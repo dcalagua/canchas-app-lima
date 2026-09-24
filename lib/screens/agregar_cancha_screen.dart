@@ -94,6 +94,12 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
       horaCierre: _cierre,
       duracionSlotMin: _duracion,
       amenidades: l.amenidades, // los servicios son del local: se heredan
+      // Los servicios EXTRA del local (piscina, sauna, entrada general…) también
+      // se heredan; los propios de la cancha (árbitro, petos) no.
+      serviciosExtra: [
+        for (final s in l.serviciosExtra)
+          if (s.esDelLocal) s,
+      ],
       superficie: _superficie,
       moneda: l.moneda, // hereda la moneda del local (mismo país)
     );

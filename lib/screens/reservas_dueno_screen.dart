@@ -652,7 +652,7 @@ class _ReservaCard extends StatelessWidget {
                 style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
             for (final s in reserva.extras)
               Text(
-                  '+ ${s.nombre}: ${reserva.monedaSimbolo} ${s.precio.toStringAsFixed(2)}',
+                  '+ ${s.nombre}${s.detalleCantidad}: ${reserva.monedaSimbolo} ${s.precio.toStringAsFixed(2)}',
                   style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
             Text(
                 'Total: ${reserva.monedaSimbolo} ${reserva.totalConExtras.toStringAsFixed(2)}',

@@ -30,6 +30,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from typing import Any
+import servicios_extra as _se
 import re
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -1382,9 +1384,19 @@ _JS_RESERVA = r"""
   var fmt = function(n){ return C.moneda + ' ' + Number(n).toFixed(2); };
   var esc = function(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
   function extrasSel(){
+    // precio = TOTAL de la línea: por persona × cantidad elegida, por turno × turnos reservados.
+    var n = Object.keys(sel).length || 1;
     return Array.prototype.map.call(document.querySelectorAll('input[name=extra]:checked'), function(x){
-      return {clave: x.dataset.clave, nombre: x.dataset.nombre, precio: parseFloat(x.value)||0}; });
+      var unit = parseFloat(x.value)||0, tipo = x.dataset.tipo || 'reserva', cant = 1;
+      if(tipo === 'persona'){ var sc = x.parentNode.querySelector('select.cant'); cant = sc ? (parseInt(sc.value)||1) : 1; }
+      else if(tipo === 'turno'){ cant = n; }
+      return {clave: x.dataset.clave, nombre: x.dataset.nombre, tipo: tipo, cantidad: cant, unitario: unit, precio: unit * cant}; });
   }
+  document.addEventListener('change', function(ev){
+    var t = ev.target; if(!t) return;
+    if(t.name === 'extra'){ var sc = t.parentNode.querySelector('select.cant'); if(sc) sc.disabled = !t.checked; }
+    if(t.name === 'extra' || (t.classList && t.classList.contains('cant'))) pintarResumen();
+  });
   function total(){
     var t = 0; Object.keys(sel).forEach(function(k){ t += sel[k].precio; });
     extrasSel().forEach(function(x){ t += x.precio; });
@@ -1397,7 +1409,7 @@ _JS_RESERVA = r"""
     else {
       ks.forEach(function(k){ var s = sel[k];
         h += '<div class="linea"><span>' + esc(C.etiquetas[s.fecha] || s.fecha) + ' · ' + s.hora + '–' + s.fin + '</span><b>' + fmt(s.precio) + '</b></div>'; });
-      extrasSel().forEach(function(x){ h += '<div class="linea"><span>' + esc(x.nombre) + '</span><b>' + fmt(x.precio) + '</b></div>'; });
+      extrasSel().forEach(function(x){ h += '<div class="linea"><span>' + esc(x.nombre) + (x.cantidad > 1 ? ' × ' + x.cantidad : '') + '</span><b>' + fmt(x.precio) + '</b></div>'; });
     }
     $('lineas').innerHTML = h;
     $('tot').textContent = fmt(t); $('totBarra').textContent = fmt(t);
@@ -1517,7 +1529,7 @@ _JS_RESERVA = r"""
     ocultarError();
     var d = datos(), v = validar(d);
     if(v){ mostrarError(v); if(!Object.keys(sel).length) $('slots').scrollIntoView({behavior:'smooth', block:'center'}); else ($('loginBox') && !C.sesion ? $('loginBox') : $('nombre')).scrollIntoView({behavior:'smooth', block:'center'}); return; }
-    var extras = extrasSel().map(function(x){ return x.clave; });
+    var extras = extrasSel().map(function(x){ return {clave: x.clave, cantidad: x.cantidad}; });
     var horas = Object.keys(sel).map(function(k){ return {fecha: sel[k].fecha, hora: sel[k].hora}; });
     var deporte = ($('deporte') && $('deporte').value) || '';
     ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = true; $(id).textContent = 'Reservando tu horario…'; });
@@ -1746,6 +1758,7 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
     extras_html = ""
     filas = ""
     for s in c.get("servicios_extra") or []:
+        s = _se.completar(s)  # nombre/emoji/tipo desde el catálogo si la fila es de un APK viejo
         clave = str(s.get("clave") or "")
         try:
             precio = float(s.get("precio") or 0)
@@ -1753,10 +1766,14 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
             precio = 0.0
         if precio <= 0 or not clave:
             continue
-        nombre = EXTRAS_NOMBRE.get(clave, clave.capitalize())
-        filas += (f"<label style='display:flex;gap:10px;align-items:center;font-weight:600;margin:8px 0'>"
-                  f"<input type='checkbox' name='extra' value='{precio:.2f}' data-clave='{e(clave)}' data-nombre='{e(nombre)}' style='width:auto'>"
-                  f"{e(nombre)} <small style='color:var(--tenue)'>+ {e(sim)} {precio:.2f}</small></label>")
+        nombre, tipo = s["nombre"], s["tipo"]
+        sufijo = {"persona": " por persona", "turno": " por turno"}.get(tipo, "")
+        # "Por persona" (piscina, entrada general): el jugador elige cuántas.
+        cant = ("<select class='cant' data-for='" + e(clave) + "' disabled aria-label='Cantidad de personas'>"
+                + "".join(f"<option value='{i}'>{i} persona{'s' if i > 1 else ''}</option>" for i in range(1, 13)) + "</select>") if tipo == "persona" else ""
+        filas += (f"<label class='extra' style='display:flex;gap:10px;align-items:center;font-weight:600;margin:8px 0;flex-wrap:wrap'>"
+                  f"<input type='checkbox' name='extra' value='{precio:.2f}' data-clave='{e(clave)}' data-nombre='{e(nombre)}' data-tipo='{e(tipo)}' style='width:auto'>"
+                  f"{s['emoji']} {e(nombre)} <small style='color:var(--tenue)'>+ {e(sim)} {precio:.2f}{sufijo}</small>{cant}</label>")
     if filas:
         extras_html = f"<div class='paso'><span>3</span> Servicios extra <small style='color:var(--tenue);font-weight:600'>(opcional)</small></div>{filas}"
 
@@ -1836,7 +1853,7 @@ class HoraReq(BaseModel):
 class AsegurarReq(BaseModel):
     cancha_id: str
     horas: list[HoraReq]
-    extras: list[str] = []
+    extras: list[Any] = []  # claves (APK/web viejos) o {clave, cantidad}
     deporte: str = ""
     nombre: str
     celular: str = ""
@@ -1898,10 +1915,20 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
         deporte = ""
     extras_ok = []
     if req.extras:
-        cat = {str(s.get("clave")): float(s.get("precio") or 0) for s in c.get("servicios_extra") or []}
-        for k in req.extras:
-            if k in cat and cat[k] > 0 and k not in [x["clave"] for x in extras_ok]:
-                extras_ok.append({"clave": k, "precio": cat[k]})
+        cat = {str(s.get("clave")): s for s in c.get("servicios_extra") or []}
+        for it in req.extras:
+            if isinstance(it, dict):
+                k, cant = str(it.get("clave") or ""), it.get("cantidad") or 1
+            else:
+                k, cant = str(it or ""), 1
+            s = cat.get(k)
+            try:
+                cant = int(cant)
+            except (TypeError, ValueError):
+                cant = 1
+            if s and float(s.get("precio") or 0) > 0 and k not in [x["clave"] for x in extras_ok]:
+                # Línea con el TOTAL (por persona × cantidad, por turno × turnos).
+                extras_ok.append(_se.linea_reserva(s, cant, len(pedidos)))
     hoy = horarios.ahora_local(pais).date()
     grupo = f"grp_web_{int(time.time() * 1000)}" if len(pedidos) > 1 else ""
     filas, total = [], 0
@@ -2446,7 +2473,8 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         f"<div class='linea'><span>{e(horarios.fecha_larga(f['fecha']))} · {e(f['hora_inicio'])}–{e(f['hora_fin'])}</span>"
         f"<b>{e(sim)} {int(f['precio']):.2f}</b></div>" for f in filas)
     lineas += "".join(
-        f"<div class='linea'><span>{e(EXTRAS_NOMBRE.get(str(x.get('clave')), str(x.get('clave')).capitalize()))}</span>"
+        f"<div class='linea'><span>{e(x.get('nombre') or EXTRAS_NOMBRE.get(str(x.get('clave')), str(x.get('clave')).capitalize()))}"
+        f"{(' × ' + str(int(x.get('cantidad')))) if int(x.get('cantidad') or 1) > 1 else ''}</span>"
         f"<b>{e(sim)} {float(x.get('precio') or 0):.2f}</b></div>" for x in extras)
     lugar = ", ".join(x for x in (c.get("direccion"), _zona(c)) if x)
     base = (config.PUBLIC_BASE_URL or "").rstrip("/")

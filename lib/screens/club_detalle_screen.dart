@@ -1671,6 +1671,8 @@ class _ResumenReserva extends StatefulWidget {
 
 class _ResumenReservaState extends State<_ResumenReserva> {
   final Set<String> _sel = {}; // claves de servicios extra elegidos
+  // Cantidad de PERSONAS por servicio "por persona" (piscina, entrada general).
+  final Map<String, int> _cant = {};
 
   Cancha get cancha => widget.cancha;
 
@@ -1684,8 +1686,15 @@ class _ResumenReservaState extends State<_ResumenReserva> {
     return m == 0 ? '$h h' : '$h h $m min';
   }
 
-  List<ServicioExtra> get _elegidos =>
-      cancha.serviciosExtra.where((s) => _sel.contains(s.clave)).toList();
+  /// Líneas elegidas con su TOTAL: por persona × cantidad, por turno × horas
+  /// del bloque, por reserva una vez (`ServicioExtra.linea`).
+  List<ServicioExtra> get _elegidos => [
+        for (final s in cancha.serviciosExtra)
+          if (_sel.contains(s.clave))
+            s.linea(
+                personas: _cant[s.clave] ?? 1,
+                turnos: widget.nSlots <= 0 ? 1 : widget.nSlots),
+      ];
 
   double get _totalFinal =>
       widget.total + _elegidos.fold(0.0, (a, s) => a + s.precio);
@@ -1771,6 +1780,9 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                   servicio: s,
                   moneda: mon,
                   marcado: _sel.contains(s.clave),
+                  cantidad: _cant[s.clave] ?? 1,
+                  turnos: widget.nSlots <= 0 ? 1 : widget.nSlots,
+                  onCantidad: (n) => setState(() => _cant[s.clave] = n),
                   onTap: () => setState(() => _sel.contains(s.clave)
                       ? _sel.remove(s.clave)
                       : _sel.add(s.clave)),
@@ -2042,52 +2054,160 @@ class _ResumenReservaState extends State<_ResumenReserva> {
   }
 }
 
-/// Fila seleccionable de un servicio extra en el resumen de reserva.
+/// Fila seleccionable de un servicio extra en el resumen de reserva. Muestra
+/// el emoji del catálogo (o el ícono legado), el tipo de cobro y, si es "por
+/// persona" y está marcado, un contador de personas (− n +).
 class _FilaServicio extends StatelessWidget {
   const _FilaServicio({
     required this.servicio,
     required this.moneda,
     required this.marcado,
     required this.onTap,
+    this.cantidad = 1,
+    this.turnos = 1,
+    this.onCantidad,
   });
   final ServicioExtra servicio;
   final String moneda;
   final bool marcado;
   final VoidCallback onTap;
+  final int cantidad;
+  final int turnos;
+  final ValueChanged<int>? onCantidad;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final emoji = servicio.emojiVisible;
+    final sufijo = servicio.porPersona
+        ? ' c/u'
+        : (servicio.porTurno ? ' por turno' : '');
+    final total = servicio.linea(personas: cantidad, turnos: turnos).precio;
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                if (emoji.isNotEmpty)
+                  SizedBox(
+                      width: 24,
+                      child: Text(emoji,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 17)))
+                else
+                  Icon(iconoServicio(servicio.clave),
+                      size: 20, color: marcado ? cs.primary : textoTenue),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(servicio.nombre,
+                          style: TextStyle(
+                              fontSize: 14.5,
+                              fontWeight:
+                                  marcado ? FontWeight.w700 : FontWeight.w500)),
+                      if (servicio.porPersona || servicio.porTurno)
+                        Text(servicio.etiquetaTipo,
+                            style: TextStyle(color: textoTenue, fontSize: 11.5)),
+                    ],
+                  ),
+                ),
+                Text('+$moneda ${servicio.precio.toStringAsFixed(2)}$sufijo',
+                    style: TextStyle(
+                        color: cs.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5)),
+                const SizedBox(width: 10),
+                Icon(
+                    marcado
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
+                    color: marcado ? cs.primary : trazo,
+                    size: 22),
+              ],
+            ),
+          ),
+        ),
+        if (marcado && servicio.porPersona && onCantidad != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 36, bottom: 6),
+            child: Row(
+              children: [
+                Text('¿Cuántas personas?',
+                    style: TextStyle(color: textoTenue, fontSize: 13)),
+                const Spacer(),
+                _BotonCantidad(
+                    icono: Icons.remove,
+                    onTap: cantidad > 1
+                        ? () => onCantidad!(cantidad - 1)
+                        : null),
+                SizedBox(
+                    width: 32,
+                    child: Text('$cantidad',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontWeight: FontWeight.w800))),
+                _BotonCantidad(
+                    icono: Icons.add,
+                    onTap: cantidad < 50
+                        ? () => onCantidad!(cantidad + 1)
+                        : null),
+                const SizedBox(width: 10),
+                Text('= $moneda ${total.toStringAsFixed(2)}',
+                    style: TextStyle(
+                        color: cs.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13)),
+              ],
+            ),
+          ),
+        if (marcado && servicio.porTurno && turnos > 1)
+          Padding(
+            padding: const EdgeInsets.only(left: 36, bottom: 6),
+            child: Row(
+              children: [
+                Text('× $turnos turnos',
+                    style: TextStyle(color: textoTenue, fontSize: 13)),
+                const Spacer(),
+                Text('= $moneda ${total.toStringAsFixed(2)}',
+                    style: TextStyle(
+                        color: cs.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13)),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Botón redondo − / + del contador de personas (estilo Airbnb).
+class _BotonCantidad extends StatelessWidget {
+  const _BotonCantidad({required this.icono, required this.onTap});
+  final IconData icono;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final activo = onTap != null;
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(
-          children: [
-            Icon(iconoServicio(servicio.clave),
-                size: 20, color: marcado ? cs.primary : textoTenue),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(servicio.nombre,
-                  style: TextStyle(
-                      fontSize: 14.5,
-                      fontWeight: marcado ? FontWeight.w700 : FontWeight.w500)),
-            ),
-            Text('+$moneda ${servicio.precio.toStringAsFixed(2)}',
-                style: TextStyle(
-                    color: cs.primary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13.5)),
-            const SizedBox(width: 10),
-            Icon(
-                marcado
-                    ? Icons.check_circle
-                    : Icons.radio_button_unchecked,
-                color: marcado ? cs.primary : trazo,
-                size: 22),
-          ],
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: activo ? cs.onSurface : trazo),
         ),
+        child: Icon(icono,
+            size: 18, color: activo ? cs.onSurface : trazo),
       ),
     );
   }

@@ -85,13 +85,55 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
   late final Map<String, double> _servicios = {
     for (final s in widget.cancha.serviciosExtra) s.clave: s.precio
   };
-  late final Map<String, TextEditingController> _precioServicio = {
-    for (final clave in ServicioExtra.catalogo.keys)
-      clave: TextEditingController(
-          text: _servicios.containsKey(clave)
-              ? _servicios[clave]!.toStringAsFixed(2)
-              : '')
+  // Lo que la cancha ya tenía guardado (nombre/emoji/tipo congelados), para
+  // conservarlo si el servicio salió del catálogo.
+  late final Map<String, ServicioExtra> _serviciosPrevios = {
+    for (final s in widget.cancha.serviciosExtra) s.clave: s
   };
+  // Controladores de precio por clave, creados bajo demanda: el catálogo es
+  // DINÁMICO (viene de la torre) y puede cambiar mientras la pantalla vive.
+  final Map<String, TextEditingController> _precioServicio = {};
+  TextEditingController _ctrlServicio(String clave) =>
+      _precioServicio.putIfAbsent(
+          clave,
+          () => TextEditingController(
+              text: _servicios.containsKey(clave)
+                  ? _servicios[clave]!.toStringAsFixed(2)
+                  : ''));
+
+  /// Catálogo del editor: el GLOBAL de la torre (o el empaquetado sin red) +
+  /// lo que esta cancha ya tiene y ya no está en el catálogo (para poder
+  /// quitarlo). Agrupado por ámbito: del local / de esta cancha.
+  List<ServicioCatalogo> get _catalogoEditor {
+    final base = ServicioExtra.catalogoActual;
+    final claves = {for (final c in base) c.clave};
+    return [
+      ...base,
+      for (final s in widget.cancha.serviciosExtra)
+        if (!claves.contains(s.clave))
+          ServicioCatalogo(
+              clave: s.clave,
+              nombre: s.nombre,
+              emoji: s.emojiVisible,
+              tipo: s.tipoEfectivo,
+              ambito: s.ambitoEfectivo),
+    ];
+  }
+
+  /// Fila a guardar: precio del dueño + nombre/emoji/tipo/ámbito congelados
+  /// desde el catálogo (o lo que ya tenía la cancha).
+  ServicioExtra _servicioParaGuardar(String clave, double precio) {
+    final cat = ServicioExtra.deCatalogo(clave);
+    final prev = _serviciosPrevios[clave];
+    return ServicioExtra(
+      clave: clave,
+      precio: precio,
+      nombre: cat?.nombre ?? prev?.nombre,
+      emoji: cat?.emoji ?? prev?.emojiVisible ?? '',
+      tipo: cat?.tipo ?? prev?.tipoEfectivo ?? '',
+      ambito: cat?.ambito ?? prev?.ambitoEfectivo ?? '',
+    );
+  }
   late LatLng _ubicacion = widget.cancha.ubicacion;
   GoogleMapController? _map;
 
@@ -326,7 +368,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       superficie: _superficie,
       serviciosExtra: [
         for (final e in _servicios.entries)
-          ServicioExtra(clave: e.key, precio: e.value),
+          _servicioParaGuardar(e.key, e.value),
       ],
       descuentoValle: _descuentoValle,
       valleDesde: _valleDesde,
@@ -339,6 +381,11 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     }
     // Los servicios son del LOCAL: se aplican a TODAS sus canchas.
     appState.actualizarServiciosLocal(club, _amenidades.toList());
+    // Los servicios EXTRA de ámbito local (piscina, sauna, entrada general…)
+    // también son del recinto: se copian a las demás canchas del local.
+    appState.actualizarServiciosExtraLocal(
+        club, actualizada.serviciosExtra.where((s) => s.esDelLocal).toList(),
+        exceptoId: actualizada.id);
 
     // Al reclamar, dispara la verificación de EXISTENCIA en segundo plano. Esto
     // confirma que el local es real, pero NO te convierte en dueño: la cancha
@@ -843,33 +890,48 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 2),
           Text(
-              'Opcionales: el jugador los agrega al reservar y suman a su total '
-              '(árbitro, pelotero, alquiler de pelota…). Pon el precio de cada uno.',
+              'Opcionales: el jugador los agrega al reservar y suman a su total. '
+              'Por reserva, por persona (el jugador elige cuántas) o por turno. '
+              'Pon el precio de cada uno. ¿Falta alguno? Pídelo desde la web '
+              '(Editar cancha → Sugerir) y lo sumamos al catálogo.',
               style: TextStyle(color: textoTenue, fontSize: 12)),
           const SizedBox(height: 6),
-          for (final e in ServicioExtra.catalogo.entries)
-            _FilaServicioEditable(
-              clave: e.key,
-              nombre: e.value,
-              moneda: widget.cancha.monedaSimbolo,
-              activo: _servicios.containsKey(e.key),
-              precioCtrl: _precioServicio[e.key]!,
-              onToggle: (v) => setState(() {
-                if (v) {
-                  final txt = _precioServicio[e.key]!.text.trim();
-                  if (txt.isEmpty) _precioServicio[e.key]!.text = '20.00';
-                  _servicios[e.key] = double.tryParse(
-                          _precioServicio[e.key]!.text.replaceAll(',', '.')) ??
-                      20;
-                } else {
-                  _servicios.remove(e.key);
-                }
-              }),
-              onPrecio: (v) {
-                final p = double.tryParse(v.replaceAll(',', '.'));
-                if (p != null) _servicios[e.key] = p;
-              },
-            ),
+          for (final grupo in const [
+            ('local', 'Del local', 'Se aplican a todas las canchas del local.'),
+            ('cancha', 'De esta cancha', 'Solo de esta cancha.'),
+          ]) ...[
+            const SizedBox(height: 8),
+            Text(grupo.$2,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700, fontSize: 13.5)),
+            Text(grupo.$3,
+                style: TextStyle(color: textoTenue, fontSize: 11.5)),
+            for (final c in _catalogoEditor)
+              if (c.ambito == grupo.$1)
+                _FilaServicioEditable(
+                  clave: c.clave,
+                  nombre: '${c.emoji} ${c.nombre}',
+                  detalle: c.etiquetaTipo,
+                  moneda: widget.cancha.monedaSimbolo,
+                  activo: _servicios.containsKey(c.clave),
+                  precioCtrl: _ctrlServicio(c.clave),
+                  onToggle: (v) => setState(() {
+                    final ctrl = _ctrlServicio(c.clave);
+                    if (v) {
+                      if (ctrl.text.trim().isEmpty) ctrl.text = '20.00';
+                      _servicios[c.clave] =
+                          double.tryParse(ctrl.text.replaceAll(',', '.')) ??
+                              20;
+                    } else {
+                      _servicios.remove(c.clave);
+                    }
+                  }),
+                  onPrecio: (v) {
+                    final p = double.tryParse(v.replaceAll(',', '.'));
+                    if (p != null) _servicios[c.clave] = p;
+                  },
+                ),
+          ],
           if (widget.cancha.dueno.isEmpty) ...[
             const SizedBox(height: 16),
             TextField(
@@ -1092,9 +1154,11 @@ class _FilaServicioEditable extends StatelessWidget {
     required this.precioCtrl,
     required this.onToggle,
     required this.onPrecio,
+    this.detalle = '',
   });
   final String clave;
   final String nombre;
+  final String detalle; // "por persona" / "por turno" / "por reserva"
   final String moneda;
   final bool activo;
   final TextEditingController precioCtrl;
@@ -1113,10 +1177,18 @@ class _FilaServicioEditable extends StatelessWidget {
             onChanged: (v) => onToggle(v ?? false),
           ),
           Expanded(
-            child: Text(nombre,
-                style: TextStyle(
-                    fontWeight:
-                        activo ? FontWeight.w700 : FontWeight.w500)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(nombre,
+                    style: TextStyle(
+                        fontWeight:
+                            activo ? FontWeight.w700 : FontWeight.w500)),
+                if (detalle.isNotEmpty)
+                  Text(detalle,
+                      style: TextStyle(color: textoTenue, fontSize: 11)),
+              ],
+            ),
           ),
           if (activo)
             SizedBox(

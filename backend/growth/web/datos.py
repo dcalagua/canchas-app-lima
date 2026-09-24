@@ -169,7 +169,7 @@ COLS_EDITABLES = {
     "nombre", "club", "deporte", "deportes", "precio_hora", "hora_apertura",
     "hora_cierre", "duracion_slot_min", "descuento_valle", "valle_desde",
     "valle_hasta", "sena_pct", "superficie", "amenidades", "servicios_extra",
-    "fotos", "foto_url",
+    "fotos", "foto_url", "direccion",
 }
 _COLS_JSON = {"deportes", "amenidades", "servicios_extra", "fotos"}
 
