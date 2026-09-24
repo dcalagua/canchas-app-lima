@@ -1092,6 +1092,43 @@ off → redeploy inmediato en cada push). URL pública:
   deporte) rotando a otro enfoque antes de repetir; un enfoque pedido a mano
   se respeta. Topes: título ≤36 (va sobre la foto), subtítulo ≤80, etiqueta
   ≤14. Test `test_redactor_ia_varia_el_enfoque_y_no_repite_lo_publicado`.
+  **PULIDO DE VIDEO "ESTILO CAPCUT" EN CASA + SUBTÍTULOS WHISPER (plan
+  aprobado por el director, 24-sep-2026, puntos 1 y 2; CapCut NO tiene API
+  pública):** `marketing/video_pulido.py`. Con el video ya subido, el pane
+  muestra "✨ Pulir con estilo Pichangol": formato (vertical 9:16 · cuadrado
+  · original), Logo (marca de agua `_png_marca`), Intro 1,2 s (`_png_intro`),
+  Rótulo con el título (`_png_rotulo`, 0,6-5,1 s), Cierre 3 s con título y
+  www.pichangol.app (`_png_cierre`), Subtítulos automáticos y música original
+  (`musica.generar_pista`) si el video no trae audio. Todo con el FFmpeg
+  empaquetado de `imageio-ffmpeg` (johnvansickle static 7.0: tiene `ass`/
+  `subtitles`, `gblur`, `concat`, `loudnorm`, `amix`; NO tiene `drawtext`,
+  por eso los textos de marca son PNG de Pillow que se superponen). Encuadre
+  que no calza → fondo desenfocado (`split` + `gblur=38` + overlay centrado);
+  audio `loudnorm I=-16`; H.264 veryfast CRF 22 + AAC 128k + faststart, 30
+  fps; intro/cierre = imagen en bucle + `aevalsrc` silencio → `concat`.
+  **Subtítulos:** `transcribir()` extrae el audio (mono 16 kHz MP3 48k) y
+  llama a Whisper (`OPENAI_API_KEY`, `WHISPER_MODEL`=whisper-1,
+  `verbose_json` con `timestamp_granularities[] = word + segment`);
+  `partir_segmentos` deja frases ≤6 palabras / ≤4 s; `escribir_ass` genera
+  ASS con DM Sans (`fontsdir=marketing/assets`), caja oscura (BorderStyle 3)
+  y la palabra en curso en LIMA con karaoke `\k` cuando hay tiempos por
+  palabra (estilo Plano si no). El operador CORRIGE los textos en la torre
+  ("✏️ Corregir subtítulos" → "🔁 Regenerar con mis correcciones"; una línea
+  editada pierde el resaltado por palabra). Trabajo en hilo
+  (`iniciar_trabajo`, progreso real de `-progress pipe:1`), endpoints
+  `POST /admin/api/redes/pichangol/video/{id}/pulir` (409 si ya corre o si
+  piden subtítulos sin llave), `GET …/estado` (sondeo cada 1,5 s),
+  `GET …/archivo?cual=pulido|original` (la torre lo pide con fetch +
+  cabecera y lo muestra como blob; un `<video src>` no puede mandar el
+  token). El pulido queda junto al temporal (`<id>_pulido.mp4`,
+  `anotar_video(pulido=, pulido_info=, transcripcion=)`); publicar usa la
+  pulida salvo `usar_pulido=false` (radio "Publicar la pulida / el
+  original"); historial con `pulido` y `subtitulos`. Un clip de 4 s se pule
+  en ~6 s; el sondeo muestra fase y %. Test
+  `test_pulido_estilo_pichangol_con_subtitulos_whisper` (renderiza de verdad
+  con FFmpeg; Whisper simulado). Backlog del plan: (3) plantillas en la nube
+  (Shotstack/Creatomate) si se quieren transiciones vistosas, (4) voz en off
+  ElevenLabs, (5) IG Reels con el mismo video.
   **El entorno de Claude NO alcanza Storage de Supabase ni bancos de
   fotos (proxy 403): las piezas con fotos reales se componen en el backend.**
   Fase 2 (backlog): calendario + copy con IA reutilizando `marketing/cm.py`.

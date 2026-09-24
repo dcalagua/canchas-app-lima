@@ -318,3 +318,119 @@ def test_redactor_ia_varia_el_enfoque_y_no_repite_lo_publicado(monkeypatch):
     h = client.get("/admin/api/redes/pichangol", headers=H).json()["historial"]
     assert h[0]["enfoque"] == "finde" and h[0]["fuente"] == "ia"
     assert pr._enfoques_usados()[:2] == ["finde", "beneficio"]
+
+
+def _clip(ruta: str, con_audio: bool = True, seg: float = 2.0) -> str:
+    from marketing import video_pulido as vp
+    ff = vp.ffmpeg_exe()
+    cmd = [ff, "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", f"testsrc=size=640x360:rate=24"]
+    if con_audio:
+        cmd += ["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100"]
+    cmd += ["-t", str(seg), "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast"] + (["-c:a", "aac", "-shortest"] if con_audio else []) + [ruta]
+    import subprocess
+    subprocess.run(cmd, check=True, capture_output=True)
+    return ruta
+
+
+def test_pulido_estilo_pichangol_con_subtitulos_whisper(monkeypatch, tmp_path):
+    """Punto 1 y 2 del plan (24-sep-2026): el video subido se pule en casa con FFmpeg
+    (intro + marca de agua + rótulo + cierre + audio normalizado, fondo desenfocado
+    si el encuadre no calza) y los subtítulos salen de Whisper, editables en la torre;
+    publicar usa la versión pulida salvo que el operador elija el original."""
+    import subprocess
+    from marketing import video_pulido as vp
+    assert vp.disponible()
+    monkeypatch.setattr(pr, "_VIDEO_DIR", str(tmp_path / "videos"))
+    pr._videos.clear(); vp._trabajos.clear()
+    # Segmentación para la caja de subtítulos: ≤6 palabras, con y sin tiempos por palabra; ASS con karaoke.
+    seg = [{"inicio": 0.0, "fin": 3.0, "texto": "uno dos tres cuatro cinco seis siete ocho", "palabras": [{"p": w, "inicio": i * 0.35, "fin": i * 0.35 + 0.3} for i, w in enumerate("uno dos tres cuatro cinco seis siete ocho".split())]},
+           {"inicio": 3.2, "fin": 6.0, "texto": "a b c d e f g h i j k l m n", "palabras": []}]
+    partes = vp.partir_segmentos(seg)
+    assert [p["texto"] for p in partes][:2] == ["uno dos tres cuatro cinco seis", "siete ocho"] and len(partes) == 5 and all(p["fin"] > p["inicio"] for p in partes)
+    ass = vp.escribir_ass(partes, 1080, 1920, str(tmp_path / "s.ass"))
+    txt = open(ass, encoding="utf-8").read()
+    assert "DM Sans" in txt and "{\\k" in txt and "Style: Pichangol" in txt and txt.count("Dialogue:") == 5
+    # Sube un clip horizontal con audio → vertical con todo; Whisper simulado.
+    clip = _clip(str(tmp_path / "clip.mp4"))
+    r = client.post("/admin/api/redes/pichangol/video?nombre=clip.mp4", content=open(clip, "rb").read(), headers=H)
+    vid = r.json()["video_id"]
+    j = client.get("/admin/api/redes/pichangol", headers=H).json()
+    assert j["pulido"]["disponible"] is True and "vertical" in j["pulido"]["formatos"]
+    monkeypatch.setattr(config, "OPENAI_API_KEY", "sk-test")
+    llamadas = []
+    def falso_whisper(ruta_audio, idioma="es"):
+        llamadas.append(os.path.getsize(ruta_audio))
+        return {"language": "spanish", "duration": 2.0, "text": "Reserva tu cancha en Pichangol",
+                "segments": [{"start": 0.1, "end": 1.9, "text": " Reserva tu cancha en Pichangol"}],
+                "words": [{"word": "Reserva", "start": 0.1, "end": 0.5}, {"word": "tu", "start": 0.5, "end": 0.7}, {"word": "cancha", "start": 0.7, "end": 1.1},
+                          {"word": "en", "start": 1.1, "end": 1.3}, {"word": "Pichangol", "start": 1.3, "end": 1.9}]}
+    monkeypatch.setattr(vp, "_whisper_api", falso_whisper)
+    r = client.post(f"/admin/api/redes/pichangol/video/{vid}/pulir", json={"formato": "vertical", "titulo": "Este sábado sí se juega", "subtitulos": True}, headers=H)
+    assert r.status_code == 200, r.text
+    assert client.post(f"/admin/api/redes/pichangol/video/{vid}/pulir", json={"formato": "vertical"}, headers=H).status_code == 409  # ya en curso
+    import time as _t
+    fin = _t.time() + 90
+    while _t.time() < fin:
+        e = client.get(f"/admin/api/redes/pichangol/video/{vid}/estado", headers=H).json()
+        if e["estado"] in ("listo", "error"):
+            break
+        _t.sleep(0.5)
+    assert e["estado"] == "listo", e
+    assert e["pulido"] is True and e["pulido_info"]["ancho"] == 1080 and e["pulido_info"]["alto"] == 1920 and e["pulido_info"]["segmentos"] == 1
+    assert abs(e["pulido_info"]["duracion"] - (2.0 + vp.INTRO_S + vp.CIERRE_S)) < 0.6
+    assert llamadas and llamadas[0] > 1000   # se extrajo el audio y se mandó a Whisper
+    assert e["transcripcion"]["segmentos"][0]["texto"] == "Reserva tu cancha en Pichangol" and len(e["transcripcion"]["segmentos"][0]["palabras"]) == 5
+    # El archivo pulido se sirve para la vista previa; el original también.
+    r = client.get(f"/admin/api/redes/pichangol/video/{vid}/archivo?cual=pulido", headers=H)
+    assert r.status_code == 200 and r.headers["content-type"].startswith("video/mp4") and len(r.content) > 10000
+    assert client.get(f"/admin/api/redes/pichangol/video/{vid}/archivo?cual=original", headers=H).status_code == 200
+    salida = vp.sondear(pr.video(vid)["pulido"])
+    assert salida["ancho"] == 1080 and salida["alto"] == 1920 and salida["audio"]
+    # Regenerar con subtítulos corregidos (sin tiempos por palabra) NO vuelve a llamar a Whisper.
+    n = len(llamadas)
+    r = client.post(f"/admin/api/redes/pichangol/video/{vid}/pulir", json={"formato": "cuadrado", "titulo": "Otro", "subtitulos": True, "intro": False,
+                    "segmentos": [{"inicio": 0.1, "fin": 1.9, "texto": "Reserva tu cancha en Pichangol app", "palabras": []}]}, headers=H)
+    assert r.status_code == 200, r.text
+    fin = _t.time() + 90
+    while _t.time() < fin:
+        e = client.get(f"/admin/api/redes/pichangol/video/{vid}/estado", headers=H).json()
+        if e["estado"] in ("listo", "error"):
+            break
+        _t.sleep(0.5)
+    assert e["estado"] == "listo" and e["pulido_info"]["ancho"] == 1080 and e["pulido_info"]["alto"] == 1080 and len(llamadas) == n
+    # Publicar usa la versión PULIDA (y el historial lo marca); con usar_pulido=false va el original.
+    monkeypatch.setattr(config, "FB_PAGE_ID", "1257"); monkeypatch.setattr(config, "FB_PAGE_TOKEN", "EAAPAGE")
+    rutas = []
+    monkeypatch.setattr(pr, "publicar_video_facebook", lambda texto, titulo, ruta: (rutas.append(ruta) or {"ok": True, "post_id": "77", "url": "u"}))
+    cuerpo = {"fotos": [], "titulo": "Otro", "texto": "Mira el video", "plantilla": "libre", "video_id": vid, "usar_pulido": False}
+    assert client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H).status_code == 200
+    assert not os.path.basename(rutas[-1]).endswith("_pulido.mp4")   # el original
+    # (el video se descarta al publicar; se sube otro para el caso pulido)
+    r = client.post("/admin/api/redes/pichangol/video?nombre=clip2.mp4", content=open(clip, "rb").read(), headers=H); vid2 = r.json()["video_id"]
+    r = client.post(f"/admin/api/redes/pichangol/video/{vid2}/pulir", json={"formato": "original", "subtitulos": False, "intro": False, "cierre": False, "rotulo": False}, headers=H)
+    assert r.status_code == 200
+    fin = _t.time() + 90
+    while _t.time() < fin:
+        e = client.get(f"/admin/api/redes/pichangol/video/{vid2}/estado", headers=H).json()
+        if e["estado"] in ("listo", "error"):
+            break
+        _t.sleep(0.5)
+    assert e["estado"] == "listo" and e["pulido_info"]["segmentos"] == 0 and e["pulido_info"]["ancho"] == 640
+    assert client.post("/admin/api/redes/pichangol/publicar", json={**cuerpo, "video_id": vid2, "usar_pulido": True}, headers=H).status_code == 200
+    assert os.path.basename(rutas[-1]).endswith("_pulido.mp4")
+    h = client.get("/admin/api/redes/pichangol", headers=H).json()["historial"]
+    assert h[0]["pulido"] is True and h[1]["pulido"] is False
+    assert pr.video(vid2) is None and not os.path.exists(rutas[-1])   # temporal y pulido borrados al publicar
+    # Sin llave de OpenAI y sin transcripción previa → 409 claro al pedir subtítulos; sin audio → sin subtítulos + música.
+    monkeypatch.setattr(config, "OPENAI_API_KEY", "")
+    mudo = _clip(str(tmp_path / "mudo.mp4"), con_audio=False)
+    r = client.post("/admin/api/redes/pichangol/video?nombre=mudo.mp4", content=open(mudo, "rb").read(), headers=H); vid3 = r.json()["video_id"]
+    assert client.post(f"/admin/api/redes/pichangol/video/{vid3}/pulir", json={"subtitulos": True}, headers=H).status_code == 409
+    assert client.post(f"/admin/api/redes/pichangol/video/{vid3}/pulir", json={"subtitulos": False, "formato": "vertical"}, headers=H).status_code == 200
+    fin = _t.time() + 90
+    while _t.time() < fin:
+        e = client.get(f"/admin/api/redes/pichangol/video/{vid3}/estado", headers=H).json()
+        if e["estado"] in ("listo", "error"):
+            break
+        _t.sleep(0.5)
+    assert e["estado"] == "listo" and vp.sondear(pr.video(vid3)["pulido"])["audio"]   # música original de fondo

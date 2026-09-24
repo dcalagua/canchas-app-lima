@@ -734,13 +734,22 @@ def video(vid: str) -> dict | None:
     return dict(v)
 
 
+def anotar_video(vid: str, **campos) -> None:
+    """Guarda datos derivados del video temporal (versión pulida, transcripción…)."""
+    v = _videos.get(vid or "")
+    if v:
+        v.update({k: val for k, val in campos.items() if val is not None})
+
+
 def descartar_video(vid: str) -> None:
     v = _videos.pop(vid or "", None)
     if v:
-        try:
-            os.remove(v["ruta"])
-        except OSError:
-            pass
+        for ruta in (v.get("ruta"), v.get("pulido")):
+            if ruta:
+                try:
+                    os.remove(ruta)
+                except OSError:
+                    pass
 
 
 def publicar_video_facebook(texto: str, titulo: str, ruta: str) -> dict:
