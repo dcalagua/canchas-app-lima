@@ -999,6 +999,21 @@ off → redeploy inmediato en cada push). URL pública:
     `pichangol-aab-prod`; el 1.º intento falló por Gradle transitorio y se
     relanzó). **Pase del 24-sep-2026 (2.º, autorizado):** `prd` = merge
     `c2c3bd2` (texto blanco del botón del popup del mapa). Solo web.
+    **Pase del 24-sep-2026 (3.º, autorizado: "pasa a PRD"):** `prd` =
+    merge `957ddca` (toda la torre de Facebook: publicar con fotos reales,
+    video con pulido y subtítulos, redactor con IA, agente 24×7, Google
+    Fotos, Mi música desde Drive con inicio configurable, fotos → video, pie
+    con la página oficial de Facebook). Solo backend/web: sin SQL, sin Edge,
+    sin APK. Variables nuevas en `pg-backend-prd` como REFERENCIAS a QAS:
+    `FB_PAGE_ID`, `FB_PAGE_TOKEN`, `GOOGLE_WEB_CLIENT_SECRET`
+    (`OPENAI_API_KEY` y `META_TOKEN_KEY` ya estaban). PENDIENTE MANUAL del
+    director en PRD: (a) en Google Cloud, agregar la URI de redirección
+    `https://www.pichangol.app/admin/api/redes/biblioteca/google/callback`
+    al cliente OAuth web (sin eso "Conectar Google Fotos/Drive" falla con
+    redirect_uri_mismatch en la torre de PRD); (b) el token de Facebook de
+    Railway QAS puede estar vencido → pegar un token en la torre de PRD
+    (Conexiones → 🔑 Token de Facebook); (c) el agente 24×7 arranca PAUSADO
+    en PRD: encenderlo en la torre cuando se quiera.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
