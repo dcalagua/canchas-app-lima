@@ -135,9 +135,13 @@ def _recortar(im, w: int, h: int):
 
 
 # ── composición ───────────────────────────────────────────────────────────────
+MIME = "image/jpeg"
+EXTENSION = "jpg"
+
+
 def componer(fotos_urls: list[str], titulo: str, subtitulo: str = "", pie: str = "www.pichangol.app",
              formato: str = "cuadrado", etiqueta: str = "") -> bytes:
-    """PNG de la publicación: fotos reales en collage + franja de marca abajo con
+    """JPEG de la publicación: fotos reales en collage + franja de marca abajo con
     título, subtítulo y pie; logo en disco arriba a la izquierda; etiqueta
     (p. ej. "Nuevo") arriba a la derecha."""
     from PIL import Image, ImageDraw, ImageFilter
@@ -168,12 +172,12 @@ def componer(fotos_urls: list[str], titulo: str, subtitulo: str = "", pie: str =
     img = img.convert("RGBA")
     # Degradado inferior para legibilidad (más alto cuanto más texto).
     alto_txt = int(H * (0.40 if formato != "historia" else 0.30))
-    grad = Image.new("RGBA", (W, alto_txt), (0, 0, 0, 0))
-    gp = grad.load()
-    for y in range(alto_txt):
-        a = int(235 * (y / alto_txt) ** 1.3)
-        for x in range(W):
-            gp[x, y] = (6, 60, 30, a)
+    # Degradado como columna de 1 px escalada (sin bucle por píxel: en el CPU
+    # compartido de Railway el bucle + PNG optimizado tardaban ~1 minuto).
+    col = Image.new("L", (1, alto_txt))
+    col.putdata([int(235 * (y / alto_txt) ** 1.3) for y in range(alto_txt)])
+    grad = Image.new("RGBA", (W, alto_txt), (6, 60, 30, 255))
+    grad.putalpha(col.resize((W, alto_txt)))
     img.alpha_composite(grad, (0, H - alto_txt))
     d = ImageDraw.Draw(img)
     # Marca arriba a la izquierda.
@@ -213,7 +217,9 @@ def componer(fotos_urls: list[str], titulo: str, subtitulo: str = "", pie: str =
         d.rounded_rectangle([m, H - m - f.size - 2 * py, m + tw + 2 * px, H - m], radius=(f.size + 2 * py) // 2, fill=(255, 255, 255))
         d.text((m + px, H - m - f.size - py - 1), pie_t, font=f, fill=NOCHE)
     out = io.BytesIO()
-    img.convert("RGB").save(out, "PNG", optimize=True)
+    # JPEG (no PNG): con fotos reales el PNG pesaba 1,5-2 MB y tardaba decenas
+    # de segundos en codificarse y viajar; Facebook publica JPEG igual.
+    img.convert("RGB").save(out, "JPEG", quality=88, optimize=True, progressive=True)
     return out.getvalue()
 
 
@@ -310,12 +316,12 @@ def estado_pagina() -> dict:
     return {"configurado": True, "page_id": config.FB_PAGE_ID, "nombre": d.get("name", ""), "link": d.get("link", "")}
 
 
-def publicar_facebook(texto: str, imagen_png: bytes) -> dict:
+def publicar_facebook(texto: str, imagen: bytes) -> dict:
     """Publica la foto con su texto en la página. Registra en el historial."""
     if not configurado():
         return {"ok": False, "error": "sin_credenciales"}
     r = _graph_multipart(f"{config.FB_PAGE_ID}/photos", {"message": texto or "", "access_token": config.FB_PAGE_TOKEN, "published": "true"},
-                         ("pichangol.png", imagen_png, "image/png"))
+                         (f"pichangol.{EXTENSION}", imagen, MIME))
     if not r.get("ok"):
         return {"ok": False, "error": r.get("error", "error")}
     d = r.get("data") or {}

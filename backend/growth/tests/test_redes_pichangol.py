@@ -50,7 +50,7 @@ def test_componer_con_fotos_reales_y_plantillas(monkeypatch):
     assert pr.rellenar("lanzamiento", None, "titulo") == "¡Llegó Pichangol!"
     for n, (w, h) in ((1, (1080, 1080)), (2, (1080, 1080)), (3, (1080, 1080)), (4, (1080, 1080))):
         png = pr.componer(["https://x.supabase.co/storage/v1/object/public/canchas/u1/a.jpg"] * n, "¡Llegó Pichangol!", "CEANDE · Lurigancho", etiqueta="Nuevo")
-        im = Image.open(io.BytesIO(png)); assert im.size == (w, h) and im.format == "PNG"
+        im = Image.open(io.BytesIO(png)); assert im.size == (w, h) and im.format == "JPEG"
     im = Image.open(io.BytesIO(pr.componer([_data_url((200, 80, 40))], "Juega esta semana", formato="horizontal")))
     assert im.size == (1200, 630)
     assert Image.open(io.BytesIO(pr.componer([_data_url((10, 10, 10))], "x", formato="historia"))).size == (1080, 1920)
@@ -80,7 +80,7 @@ def test_torre_previsualiza_publica_y_registra(monkeypatch):
     cuerpo = {"fotos": ["https://x.supabase.co/a.jpg", _data_url((90, 30, 30))], "titulo": "¡Llegó Pichangol!", "subtitulo": "CEANDE · Lurigancho",
               "etiqueta": "Nuevo", "formato": "cuadrado", "texto": "Hola Facebook", "plantilla": "lanzamiento", "cancha_id": "u1"}
     r = client.post("/admin/api/redes/pichangol/previsualizar", json=cuerpo, headers=H).json()
-    assert r["ok"] and r["imagen"].startswith("data:image/png;base64,") and r["bytes"] > 1000
+    assert r["ok"] and r["imagen"].startswith("data:image/jpeg;base64,") and r["bytes"] > 1000 and r["extension"] == "jpg"
     assert client.post("/admin/api/redes/pichangol/previsualizar", json={**cuerpo, "fotos": []}, headers=H).status_code == 400
     # Publicar sin credenciales → 409 con la guía; con credenciales → multipart a Graph + historial.
     assert client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H).status_code == 409
@@ -94,7 +94,7 @@ def test_torre_previsualiza_publica_y_registra(monkeypatch):
     r = client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H).json()
     assert r["ok"] and r["url"] == "https://www.facebook.com/123_999"
     path, campos, archivo = llamadas[0]
-    assert path == "123/photos" and campos["message"] == "Hola Facebook" and campos["access_token"] == "EAAB" and archivo[2] == "image/png"
+    assert path == "123/photos" and campos["message"] == "Hola Facebook" and campos["access_token"] == "EAAB" and archivo[2] == "image/jpeg" and archivo[0] == "pichangol.jpg"
     assert Image.open(io.BytesIO(archivo[1])).size == (1080, 1080)
     h = client.get("/admin/api/redes/pichangol", headers=H).json()["historial"]
     assert len(h) == 1 and h[0]["ok"] and h[0]["post_id"] == "123_999" and h[0]["fotos"] == 2
