@@ -920,10 +920,12 @@ def test_editar_cancha_desde_la_web_como_el_app(db, monkeypatch):
     cli.post("/web/sesion", json={"credential": "x"})
     assert "href='/anfitrion/cancha/c_lima/editar'" in cli.get("/anfitrion/canchas").text
     html = cli.get(url).text
-    for t in ("Editar cancha", "Fotos", "Nombre y local", "Deportes y tipo de piso", "Grass sintético", "Precio y promociones",
-              "Hora feliz", "Seña para reservar", "empieza el último turno", "Servicios del local", "Estacionamiento",
-              "Servicios extra", "Árbitro", "Guardar cambios", "data-v='pickleball'", "data-v='techado'", "−30 %", "1h 30min"):
+    for t in ("Editar cancha", "Fotos", "Deportes y tipo de piso", "Grass sintético", "Precio y promociones",
+              "Hora feliz", "Seña para reservar", "empieza el último turno", "Servicios extra de esta cancha", "Árbitro",
+              "Guardar cambios", "data-v='pickleball'", "−30 %", "1h 30min", "Tu local", "href='/anfitrion/local/c_lima/editar'"):
         assert t in html, t
+    # Lo del LOCAL (nombre, dirección, servicios gratis, extras del local) ya no se repite por cancha: va en "Editar local".
+    assert "Servicios del local</h2>" not in html and "data-v='techado'" not in html and "id='club'" not in html
     # Validaciones = las del app.
     base = {"nombre": "Cancha 1 · Grass", "club": "Complejo Central", "deportes": ["futbol", "voley"], "superficie": "Grass sintético",
             "precio_hora": 75.5, "descuento_valle": 20, "valle_desde": "07:00", "valle_hasta": "12:00", "sena_pct": 30,
@@ -1602,24 +1604,47 @@ def test_servicios_extra_catalogo_global_por_local_y_por_persona(db, monkeypatch
     pub2 = client.get("/config/servicios-extra").json()
     assert "fronton" not in [s["clave"] for s in pub2["servicios"]] and pub2["version"] > v0
     assert stores.to_state()["servicios_extra"]["fronton"]["activo"] is False  # persiste en el snapshot
-    # Editor web del dueño: catálogo agrupado por ámbito con tipo de cobro + caja "Sugerir".
+    # Editor web de la CANCHA: solo servicios de la cancha que aplican a su deporte (fútbol: petos sí, pelotero no),
+    # sin los del local (piscina) ni los servicios gratis del local; enlace a "Editar local".
     cli = TestClient(app, base_url="https://testserver")
     _entrar_como(cli, monkeypatch, "dueno@x.com", "Dueño")
     ed = cli.get("/anfitrion/cancha/c_lima/editar").text
-    assert "Del local" in ed and "De esta cancha" in ed and "🏊 Piscina" in ed and "por persona" in ed
-    assert "data-serv='piscina' data-ambito='local'" in ed and "id='btnSug'" in ed and "fronton" not in ed
-    # Guardar piscina (S/ 15 por persona) + entrada general en la Cancha Central → se copian a Nocturna (mismo local), no a Club Sur.
-    base = {"nombre": "Cancha Central", "club": "Club Raqueta", "deportes": ["futbol"], "superficie": "Grass sintético", "precio_hora": 60,
-            "descuento_valle": 0, "valle_desde": "07:00", "valle_hasta": "12:00", "sena_pct": 0, "hora_apertura": "07:00", "hora_cierre": "23:00",
-            "duracion_slot_min": 60, "amenidades": [], "fotos": [],
-            "servicios_extra": [{"clave": "arbitro", "precio": 30}, {"clave": "piscina", "precio": 15}, {"clave": "entrada_general", "precio": 20}, {"clave": "inventado", "precio": 9}]}
+    assert "Servicios extra de esta cancha" in ed and "data-serv='pecheras'" in ed and "data-serv='arbitro'" in ed
+    assert "data-serv='pelotero'" not in ed and "data-serv='piscina'" not in ed and "id='btnSug'" in ed
+    assert "href='/anfitrion/local/c_lima/editar'" in ed and "fronton" not in ed
+    # "Editar local": nombre, dirección, servicios del local y extras del local (por persona), una sola vez para todas las canchas.
+    le = cli.get("/anfitrion/local/c_lima/editar").text
+    assert "Editar local" in le and "Club Raqueta" in le and "data-v='techado'" in le and "🏊 Piscina" in le and "por persona" in le
+    assert "data-serv='piscina' data-ambito='local'" in le and "data-serv='arbitro'" not in le and "Cancha Central" in le and "Nocturna" in le
+    assert cli.get("/anfitrion/local/c_gye/editar").status_code == 200 and cli.get("/anfitrion/local/c_pend/editar").status_code == 404
+    # Mis canchas: agrupado por deporte dentro del local + botón Editar local.
+    mc = cli.get("/anfitrion/canchas").text
+    assert "class='anf-dep'>⚽ Fútbol · 2 canchas" in mc and "href='/anfitrion/local/c_lima/editar'" in mc
+    # Guardar el local: piscina (S/ 15 por persona) + entrada general + estacionamiento gratis → se escribe en Cancha Central
+    # y Nocturna (mismo local), cada una conserva sus servicios de cancha; Club Sur no se toca; los de cancha en el cuerpo se ignoran.
     db.canchas["c_noche"]["servicios_extra"] = [{"clave": "pecheras", "precio": 5}]
-    assert cli.post("/anfitrion/cancha/c_lima/editar", json=base).json()["ok"] is True
+    r = cli.post("/anfitrion/local/c_lima/editar", json={"nombre_local": "Club Raqueta", "direccion": "Av. Aviación 123",
+                                                        "amenidades": ["parking", "invento"],
+                                                        "servicios_extra": [{"clave": "piscina", "precio": 15}, {"clave": "entrada_general", "precio": 20},
+                                                                            {"clave": "arbitro", "precio": 99}, {"clave": "inventado", "precio": 9}]}).json()
+    assert r["ok"] is True and r["canchas"] == 2 and r["url"] == "/anfitrion/canchas?local_guardado=c_lima"
+    assert cli.post("/anfitrion/local/c_lima/editar", json={"nombre_local": "x"}).status_code == 400
+    assert cli.post("/anfitrion/local/c_lima/editar", json={"nombre_local": "Club Raqueta", "servicios_extra": [{"clave": "piscina", "precio": 0}]}).json()["campo"] == "extras"
     lima = db.canchas["c_lima"]["servicios_extra"]
     assert [(x["clave"], x["precio"], x["tipo"], x["ambito"]) for x in lima] == [("arbitro", 30.0, "reserva", "cancha"), ("piscina", 15.0, "persona", "local"), ("entrada_general", 20.0, "persona", "local")]
     noche = db.canchas["c_noche"]["servicios_extra"]
     assert [(x["clave"], float(x["precio"])) for x in noche] == [("pecheras", 5.0), ("piscina", 15.0), ("entrada_general", 20.0)]
+    assert db.canchas["c_lima"]["amenidades"] == ["parking"] and db.canchas["c_noche"]["amenidades"] == ["parking"]
     assert [x["clave"] for x in db.canchas["c_gye"]["servicios_extra"]] == ["arbitro"]
+    assert "Se aplicaron a sus 2 canchas" in cli.get("/anfitrion/canchas?local_guardado=c_lima").text
+    # Guardar la CANCHA sin mandar servicios del local ni amenidades → los conserva (no los pisa).
+    base = {"nombre": "Cancha Central", "deportes": ["futbol"], "superficie": "Grass sintético", "precio_hora": 60,
+            "descuento_valle": 0, "valle_desde": "07:00", "valle_hasta": "12:00", "sena_pct": 0, "hora_apertura": "07:00", "hora_cierre": "23:00",
+            "duracion_slot_min": 60, "fotos": [], "servicios_extra": [{"clave": "arbitro", "precio": 30}, {"clave": "pecheras", "precio": 8}]}
+    assert cli.post("/anfitrion/cancha/c_lima/editar", json=base).json()["ok"] is True
+    lima = db.canchas["c_lima"]["servicios_extra"]
+    assert [(x["clave"], x["precio"]) for x in lima] == [("arbitro", 30.0), ("pecheras", 8.0), ("piscina", 15.0), ("entrada_general", 20.0)]
+    assert db.canchas["c_lima"]["amenidades"] == ["parking"] and db.canchas["c_lima"]["club"] == "Club Raqueta"
     # Agregar una cancha al local hereda los del LOCAL (piscina, entrada) y no los de la cancha (árbitro).
     r = cli.post("/anfitrion/cancha/c_lima/agregar", json={"deporte": "tenis", "superficie": "Arcilla", "precio_hora": 40}).json()
     assert r["ok"] and [x["clave"] for x in db.canchas[r["id"]]["servicios_extra"]] == ["piscina", "entrada_general"]

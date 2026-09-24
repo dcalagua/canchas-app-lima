@@ -629,6 +629,37 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
     return ui.shell("Ingresos", cuerpo, nav=_cabecera("ingresos", ses), sesion=ses, ancho=True, titulo_tab="Ingresos · Modo anfitrión")
 
 
+def _fila_cancha_local(c: dict) -> str:
+    sim, _ = _moneda_de(c)
+    ok = datos.reservable(c)
+    deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c)[:3])
+    return (
+        f"<div class='anf-fila'><span class='ico'>{_deporte(c.get('deporte'))[1]}</span><div style='flex:1;min-width:0'>"
+        f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>{e(c['nombre'])}</b>"
+        + ("<span class='pill ok' style='font-size:11px'>✓ Verificada</span>" if ok else "<span class='pill warn' style='font-size:11px'>Aún sin verificar</span>") + "</div>"
+        f"<div class='sub' style='margin:2px 0 0'>{e(deps)} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · {c['duracion_slot_min']} min · <b>{e(sim)} {c['precio_hora']:.2f}</b>/h</div>"
+        "<div class='acciones' style='margin-top:8px'>"
+        f"<a class='btn sec' href='/reservar/{e(c['id'])}'>Ver ficha pública</a>"
+        f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}'>Calendario</a>"
+        f"<a class='btn' href='/anfitrion/cancha/{e(c['id'])}/editar'>✏️ Editar</a>"
+        "</div></div></div>")
+
+
+def _tarjeta_local(local: str, lst: list[dict], foto: str, zona: str, n: int, pill: str, filas: str) -> str:
+    c0 = lst[0]
+    return (
+        f"<div class='anf-local'><div class='cab'><div class='f'>{foto}</div><div style='flex:1;min-width:0'>"
+        f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><span class='tit'><span class='ico'>{ui.LOCAL_SVG}</span><b style='font-size:17px'>{e(local)}</b></span>{pill}</div>"
+        f"<div class='sub' style='margin:2px 0 0'>{e(c0.get('direccion') or '')}{(' · ' if c0.get('direccion') and zona else '')}{e(zona)}</div>"
+        f"<div class='sub' style='margin:2px 0 0'>{n} {'cancha' if n == 1 else 'canchas'}</div>"
+        f"<div class='acciones' style='margin-top:8px'><a class='btn sec' href='/anfitrion/local/{e(c0['id'])}/editar'>✏️ Editar local</a></div></div></div>"
+        f"<div class='filas'>{filas}</div>"
+        "<div class='acciones' style='margin-top:10px'>"
+        f"<a class='btn sec' href='/anfitrion/cancha/{e(c0['id'])}/agregar'>＋ Agregar cancha a este local</a>"
+        f"<a class='btn sec' href='{_maps(c0)}' target='_blank' rel='noopener'>📍 Mapa</a>"
+        "</div></div>")
+
+
 @router.get("/anfitrion/canchas", response_class=HTMLResponse)
 def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
     ses, canchas, resp = _contexto(request, "/anfitrion/canchas")
@@ -651,30 +682,18 @@ def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
         todas_ok = all(datos.reservable(c) for c in lst)
         pill = "<span class='pill ok'>✓ Verificado</span>" if todas_ok else ""
         filas = ""
+        # Agrupadas por DEPORTE dentro del local (pedido del director, sep-2026:
+        # "este local debe agrupar por deporte"): 🎾 Tenis · 2 canchas, ⚽ Fútbol…
+        orden_dep = catalogos.DEPORTES_ACTIVOS + catalogos.DEPORTES_LEGADO
+        por_dep: dict[str, list[dict]] = {}
         for c in lst:
-            sim, _ = _moneda_de(c)
-            ok = datos.reservable(c)
-            deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c)[:3])
-            filas += (
-                f"<div class='anf-fila'><span class='ico'>{_deporte(c.get('deporte'))[1]}</span><div style='flex:1;min-width:0'>"
-                f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>{e(c['nombre'])}</b>"
-                + ("<span class='pill ok' style='font-size:11px'>✓ Verificada</span>" if ok else "<span class='pill warn' style='font-size:11px'>Aún sin verificar</span>") + "</div>"
-                f"<div class='sub' style='margin:2px 0 0'>{e(deps)} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · {c['duracion_slot_min']} min · <b>{e(sim)} {c['precio_hora']:.2f}</b>/h</div>"
-                "<div class='acciones' style='margin-top:8px'>"
-                f"<a class='btn sec' href='/reservar/{e(c['id'])}'>Ver ficha pública</a>"
-                f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}'>Calendario</a>"
-                f"<a class='btn' href='/anfitrion/cancha/{e(c['id'])}/editar'>✏️ Editar</a>"
-                "</div></div></div>")
-        tarjetas += (
-            f"<div class='anf-local'><div class='cab'><div class='f'>{foto}</div><div style='flex:1;min-width:0'>"
-            f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><span class='tit'><span class='ico'>{ui.LOCAL_SVG}</span><b style='font-size:17px'>{e(local)}</b></span>{pill}</div>"
-            f"<div class='sub' style='margin:2px 0 0'>{e(c0.get('direccion') or '')}{(' · ' if c0.get('direccion') and zona else '')}{e(zona)}</div>"
-            f"<div class='sub' style='margin:2px 0 0'>{n} {'cancha' if n == 1 else 'canchas'}</div></div></div>"
-            f"<div class='filas'>{filas}</div>"
-            "<div class='acciones' style='margin-top:10px'>"
-            f"<a class='btn sec' href='/anfitrion/cancha/{e(c0['id'])}/agregar'>＋ Agregar cancha a este local</a>"
-            f"<a class='btn sec' href='{_maps(c0)}' target='_blank' rel='noopener'>📍 Mapa</a>"
-            "</div></div>")
+            por_dep.setdefault((c.get("deporte") or "").lower(), []).append(c)
+        for dep_k in sorted(por_dep, key=lambda d: orden_dep.index(d) if d in orden_dep else 99):
+            grupo = por_dep[dep_k]
+            filas += f"<div class='anf-dep'>{_deporte(dep_k)[1]} {e(_deporte(dep_k)[0])} · {len(grupo)} cancha{'s' if len(grupo) != 1 else ''}</div>"
+            for c in grupo:
+                filas += _fila_cancha_local(c)
+        tarjetas += _tarjeta_local(local, lst, foto, zona, n, pill, filas)
     guardada = next((c for c in canchas if c["id"] == guardado), None) if guardado else None
     aviso = (f"<div class='aviso ok' style='margin:16px 0 0'>✅ Guardamos los cambios de <b>{e(guardada['nombre'])}</b>. "
              "Ya se ven en la ficha pública y en la app.</div>") if guardada else ""
@@ -682,6 +701,11 @@ def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
     if registrada:
         aviso = (f"<div class='aviso ok' style='margin:16px 0 0'>✅ Registramos <b>{e(registrada.get('club') or registrada['nombre'])}</b>. "
                  "Queda en verificación: te avisamos por WhatsApp y en la app cuando esté activa. Mientras tanto puedes completar fotos, hora feliz y servicios.</div>")
+    local_g = next((c for c in canchas if c["id"] == request.query_params.get("local_guardado")), None)
+    if local_g:
+        n_loc = len(_hermanas_local(ses["email"], local_g))
+        aviso = (f"<div class='aviso ok' style='margin:16px 0 0'>✅ Guardamos los cambios de <b>{e(local_g.get('club') or local_g['nombre'])}</b>. "
+                 f"Se aplicaron a sus {n_loc} cancha{'s' if n_loc != 1 else ''}.</div>")
     agregada = next((c for c in canchas if c["id"] == request.query_params.get("agregada")), None)
     if agregada:
         aviso = (f"<div class='aviso ok' style='margin:16px 0 0'>✅ Agregamos <b>{e(agregada['nombre'])}</b> a <b>{e(agregada.get('club') or '')}</b>. "
@@ -742,35 +766,37 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
     dep_ops = [(d, f"{_deporte(d)[1]} {_deporte(d)[0]}") for d in catalogos.DEPORTES_ACTIVOS + [x for x in catalogos.DEPORTES_LEGADO if x in deps]]
     superficies = catalogos.SUPERFICIES.get(principal, [])
     fotos = _fotos(c)
-    # Servicios extra = CATÁLOGO GLOBAL de la torre (`servicios_extra.py`),
-    # agrupado en "Del local" (se propaga a todas las canchas del local) y
-    # "De esta cancha". Los que la cancha ya tiene pero salieron del catálogo
-    # se muestran igual, para poder quitarlos o mantener su precio.
-    actuales = {str(s.get("clave")): _se.completar(s) for s in (c.get("servicios_extra") or []) if s.get("clave")}
-    cat = _se.catalogo()
+    # Servicios extra DE ESTA CANCHA (árbitro, petos, clase…), filtrados por
+    # sus deportes (pelotero solo en raqueta, petos solo en fútbol). Los DEL
+    # LOCAL (piscina, sauna, entrada general…) y los servicios gratis del local
+    # se editan UNA vez en "Editar local" (pedido del director, sep-2026: "los
+    # atributos del local no deberían repetirse en cada cancha").
+    actuales = {str(x.get("clave")): _se.completar(x) for x in (c.get("servicios_extra") or []) if x.get("clave")}
+    cat = _se.para_cancha(deps)
     conocidas = {x["clave"] for x in cat}
-    fuera = [v for k, v in actuales.items() if k not in conocidas]
+    fuera = [v for k, v in actuales.items() if k not in conocidas and v.get("ambito") != "local"]
+    del_local = [v for v in actuales.values() if v.get("ambito") == "local"]
     filas_serv = ""
-    for amb, tit, ayuda in (("local", "Del local", "Se aplican a TODAS las canchas de este local (piscina, sauna, entrada general…). Al guardar se copian a las demás canchas del local."),
-                            ("cancha", "De esta cancha", "Solo de esta cancha (árbitro, petos, clase con entrenador…).")):
-        items = [x for x in cat if x["ambito"] == amb] + [x for x in fuera if x.get("ambito") == amb]
-        filas_serv += f"<h3 style='font-size:14px;margin:14px 0 2px'>{tit}</h3><p class='sub' style='margin:0 0 6px;font-size:12.5px'>{ayuda}</p>"
-        for x in items:
-            k = x["clave"]
-            on = k in actuales
-            precio_txt = f"{float(actuales[k]['precio']):.2f}" if on else ""
-            filas_serv += (f"<div class='serv{' sel' if on else ''}' data-serv='{e(k)}' data-ambito='{amb}'>"
-                           f"<button type='button' class='chip{' sel' if on else ''}' data-g='servicios' data-v='{e(k)}'>{x['emoji']} {e(x['nombre'])}</button>"
-                           f"<span class='sub' style='margin:0;font-size:12px'>{_se.etiqueta_tipo(x['tipo'])}</span>"
-                           f"<label class='precio-serv'{'' if on else ' hidden'}><span>{e(sim)}</span>"
-                           f"<input type='number' name='serv_{e(k)}' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
+    for x in cat + fuera:
+        k = x["clave"]
+        on = k in actuales
+        precio_txt = f"{float(actuales[k]['precio']):.2f}" if on else ""
+        filas_serv += (f"<div class='serv{' sel' if on else ''}' data-serv='{e(k)}' data-ambito='cancha'>"
+                       f"<button type='button' class='chip{' sel' if on else ''}' data-g='servicios' data-v='{e(k)}'>{x['emoji']} {e(x['nombre'])}</button>"
+                       f"<span class='sub' style='margin:0;font-size:12px'>{_se.etiqueta_tipo(x['tipo'])}</span>"
+                       f"<label class='precio-serv'{'' if on else ' hidden'}><span>{e(sim)}</span>"
+                       f"<input type='number' name='serv_{e(k)}' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
+    local_nombre = (c.get("club") or "").strip() or c["nombre"]
+    amen_txt = " · ".join(f"{catalogos.AMENIDADES[a][1]} {catalogos.AMENIDADES[a][0]}" for a in (c.get("amenidades") or []) if a in catalogos.AMENIDADES) or "ninguno configurado"
+    loc_txt = " · ".join(f"{x['emoji']} {e(x['nombre'])} {e(sim)} {float(x['precio']):.2f} {_se.etiqueta_tipo(x['tipo'])}" for x in del_local) or "ninguno configurado"
+    url_local = f"/anfitrion/local/{e(c['id'])}/editar"
     fotos_html = "".join(
         f"<div class='foto' data-url='{e(u)}'><img src='{e(u)}' alt=''>"
         f"<span class='portada'{'' if i == 0 else ' hidden'}>Portada</span>"
         "<div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada'>★</button>"
         "<button type='button' class='mini' data-acc='quitar' title='Quitar'>✕</button></div></div>" for i, u in enumerate(fotos))
-    secciones = [("fotos", "Fotos"), ("nombre", "Nombre y local"), ("deportes", "Deportes y piso"), ("precio", "Precio y promociones"),
-                 ("horario", "Horario"), ("amenidades", "Servicios del local"), ("extras", "Servicios extra")]
+    secciones = [("fotos", "Fotos"), ("nombre", "Nombre"), ("deportes", "Deportes y piso"), ("precio", "Precio y promociones"),
+                 ("horario", "Horario"), ("extras", "Servicios extra"), ("local", "Tu local")]
     nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
     cfg = {"id": c["id"], "moneda": sim, "fotos": fotos, "deportes": deps, "superficie": c.get("superficie") or "",
            "superficies": catalogos.SUPERFICIES, "activos": catalogos.DEPORTES_ACTIVOS, "maxFotos": catalogos.MAX_FOTOS,
@@ -786,10 +812,9 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
   <div class='acciones' style='margin-top:12px'><label class='btn sec' for='inFotos'>📷 Agregar fotos</label><input type='file' id='inFotos' accept='image/*' multiple hidden{' disabled' if not almacen.disponible() else ''}>
   <span class='sub' id='fotosMsg' style='margin:0'>{'' if almacen.disponible() else 'La subida de fotos desde la web no está disponible en este ambiente; súbelas desde la app.'}</span></div>
  </section>
- <section class='panel edit-sec' id='sec-nombre'><h2>Nombre y local</h2>
+ <section class='panel edit-sec' id='sec-nombre'><h2>Nombre</h2>
   <label for='nombre'>Nombre de la cancha</label><input id='nombre' name='nombre' maxlength='{catalogos.NOMBRE_MAX}' value='{e(c['nombre'])}' placeholder='Ej. Cancha 1 · Grass'>
-  <label for='club'>Local / club</label><input id='club' name='club' maxlength='{catalogos.NOMBRE_MAX}' value='{e(c.get('club') or '')}' placeholder='Ej. Complejo Los Olivos'>
-  <p class='sub' style='font-size:13px'>El local agrupa tus canchas en la ficha. Si lo cambias aquí, solo cambia en esta cancha.</p>
+  <p class='sub' style='font-size:13px'>Pertenece a <b>{e(local_nombre)}</b>. El nombre del local, la dirección y sus servicios se editan una sola vez en <a href='{url_local}'>Editar local</a>.</p>
  </section>
  <section class='panel edit-sec' id='sec-deportes'><h2>Deportes y tipo de piso</h2><p class='sub'>Marca todo lo que se juega en esta misma superficie (la agenda es una sola).</p>
   {_chips('deportes', dep_ops, set(deps), multi=True)}
@@ -817,16 +842,19 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
   <label style='margin-top:14px'>Duración del turno</label>
   {_chips('duracion_slot_min', catalogos.DURACIONES, int(c.get('duracion_slot_min') or 60), fmt=catalogos.etiqueta_duracion)}
  </section>
- <section class='panel edit-sec' id='sec-amenidades'><h2>Servicios del local</h2><p class='sub'>Gratis para el jugador. Salen como filtros en Explorar.</p>
-  {_chips('amenidades', [(k, f'{ico} {e(n)}') for k, (n, ico) in catalogos.AMENIDADES.items()], set(str(a) for a in (c.get('amenidades') or [])), multi=True)}
- </section>
- <section class='panel edit-sec' id='sec-extras'><h2>Servicios extra</h2><p class='sub'>De pago: el jugador los agrega al reservar y suman al total. Por reserva, por persona (el jugador elige cuántas) o por turno.</p>
+ <section class='panel edit-sec' id='sec-extras'><h2>Servicios extra de esta cancha</h2><p class='sub'>De pago: el jugador los agrega al reservar y suman al total. Solo los que aplican a {e(' / '.join(_deporte(d)[0] for d in deps))}. Los del local (piscina, sauna, entrada general…) van en <a href='{url_local}'>Editar local</a>.</p>
   <div class='servs'>{filas_serv}</div>
   <div style='margin-top:18px;padding-top:14px;border-top:1px solid var(--linea,#E4E4E4)'>
    <label for='sugTxt'>¿Tu local ofrece algo que no está en la lista? <span class='req'>lo revisa el equipo de Pichangol y lo agrega al catálogo</span></label>
    <div class='acciones' style='align-items:center'><input id='sugTxt' maxlength='120' placeholder='Ej. Frontón, clases de natación, cochera techada' style='flex:1;min-width:220px'><button type='button' class='btn sec' id='btnSug'>💡 Sugerir</button></div>
    <span class='sub' id='sugMsg' style='margin:4px 0 0'></span>
   </div>
+ </section>
+ <section class='panel edit-sec' id='sec-local'><h2>Tu local</h2><p class='sub'>Lo que comparten todas las canchas de <b>{e(local_nombre)}</b>. Se edita una sola vez.</p>
+  <p class='sub' style='margin:6px 0 0'><b>Dirección:</b> {e(c.get('direccion') or '—')}{(' · ' + e(_zona(c))) if _zona(c) else ''}</p>
+  <p class='sub' style='margin:6px 0 0'><b>Servicios del local (gratis):</b> {amen_txt}</p>
+  <p class='sub' style='margin:6px 0 0'><b>Servicios extra del local:</b> {loc_txt}</p>
+  <div class='acciones' style='margin-top:10px'><a class='btn sec' href='{url_local}'>✏️ Editar local</a></div>
  </section>
 </form>
 </div>
@@ -874,10 +902,10 @@ $('btnSug').addEventListener('click',async function(){var t=$('sugTxt').value.tr
   try{var r=await fetch('/anfitrion/servicios/sugerir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:t,cancha_id:CFG.id})});var j=await r.json();m.textContent=j.ok?'✅ ¡Gracias! Lo revisamos y te avisamos cuando esté disponible.':(j.error||'No se pudo enviar.');if(j.ok)$('sugTxt').value=''}catch(e){m.textContent='No se pudo enviar. Revisa tu conexión.'}});
 $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las fotos.';return}
   var serv=[];document.querySelectorAll('.serv.sel').forEach(function(r){serv.push({clave:r.dataset.serv,precio:parseFloat(r.querySelector('input').value)||0})});
-  var body={nombre:$('nombre').value,club:$('club').value,deportes:dep,superficie:sup,precio_hora:parseFloat($('precio').value),
+  var body={nombre:$('nombre').value,deportes:dep,superficie:sup,precio_hora:parseFloat($('precio').value),
     descuento_valle:parseInt(sel('descuento_valle')[0]||'0'),valle_desde:$('valle_desde').value,valle_hasta:$('valle_hasta').value,
     sena_pct:parseInt(sel('sena_pct')[0]||'0'),hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,
-    duracion_slot_min:parseInt(sel('duracion_slot_min')[0]||'60'),amenidades:sel('amenidades'),servicios_extra:serv,fotos:fotos};
+    duracion_slot_min:parseInt(sel('duracion_slot_min')[0]||'60'),servicios_extra:serv,fotos:fotos};
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Guardando…';
   try{var r=await fetch('/anfitrion/cancha/'+encodeURIComponent(CFG.id)+'/editar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){location.href='/anfitrion/canchas?guardado='+encodeURIComponent(CFG.id);return}
@@ -936,7 +964,9 @@ def _validar_edicion(c: dict, b: dict) -> tuple[dict | None, str, str]:
         horas[k] = v
     if desc > 0 and horas["valle_desde"] == horas["valle_hasta"]:
         return None, "La hora feliz necesita un rango (desde y hasta distintos).", "precio"
-    amen = []
+    # Servicios del local (gratis): se editan en "Editar local"; si el cuerpo no
+    # los trae (editor de cancha nuevo) se conservan los que la cancha ya tiene.
+    amen = [str(a) for a in (c.get("amenidades") or []) if str(a) in catalogos.AMENIDADES] if "amenidades" not in b else []
     for a in (b.get("amenidades") or []):
         a = str(a)
         if a in catalogos.AMENIDADES and a not in amen:
@@ -959,6 +989,12 @@ def _validar_edicion(c: dict, b: dict) -> tuple[dict | None, str, str]:
         vistos.add(k)
         fila["precio"] = p
         servicios.append(fila)  # {clave, precio, nombre, emoji, tipo, ambito} congelados
+    # Los servicios DEL LOCAL (piscina, sauna…) se administran en "Editar
+    # local": si el cuerpo no trae ninguno, se conservan los que ya tenía.
+    locales_body = [x for x in servicios if x.get("ambito") == "local"]
+    if not locales_body:
+        servicios += [_se.completar(x) for x in (c.get("servicios_extra") or [])
+                      if x.get("clave") and _se.completar(x).get("ambito") == "local" and str(x.get("clave")) not in vistos]
     # Fotos: solo las que ya tenía la cancha o las subidas a SU carpeta del
     # bucket (nadie cuela una URL ajena en la galería).
     actuales = set(_fotos(c))
@@ -974,7 +1010,168 @@ def _validar_edicion(c: dict, b: dict) -> tuple[dict | None, str, str]:
         "precio_hora": precio, "descuento_valle": desc, "valle_desde": horas["valle_desde"], "valle_hasta": horas["valle_hasta"],
         "sena_pct": sena, "hora_apertura": horas["hora_apertura"], "hora_cierre": horas["hora_cierre"], "duracion_slot_min": dur,
         "amenidades": amen, "servicios_extra": servicios, "fotos": fotos, "foto_url": fotos[0] if fotos else "",
+        "_propagar_locales": bool(locales_body),
     }, "", ""
+
+
+# ── EDITAR LOCAL (pedido del director, sep-2026: "los atributos del local no
+# deberían repetirse al editar cada cancha") ─────────────────────────────────
+# Lo que comparten TODAS las canchas del local se edita UNA vez aquí: nombre
+# del local, dirección, servicios del local (gratis, `amenidades`) y servicios
+# extra de ámbito local (piscina, sauna, entrada general…). Al guardar se
+# escribe en cada cancha del local (mismo `club`, mismo dueño), conservando en
+# cada una sus servicios extra propios de cancha.
+
+@router.get("/anfitrion/local/{cancha_id}/editar", response_class=HTMLResponse)
+def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
+    ses, resp = _sesion_o_entrar(request, f"/anfitrion/local/{cancha_id}/editar")
+    if resp is not None:
+        return resp
+    c = _cancha_propia(ses, cancha_id)
+    if c is None:
+        from web.router import _no_encontrada
+        r = _no_encontrada("Esta cancha no está a tu nombre"); r.status_code = 404
+        return r
+    hermanas = _hermanas_local(ses["email"], c)
+    local = (c.get("club") or "").strip() or c["nombre"]
+    sim, _ = _moneda_de(c)
+    # Unión de lo configurado en las canchas del local (deberían coincidir).
+    amen: list[str] = []
+    locales_act: dict[str, dict] = {}
+    for h in hermanas:
+        for a in (h.get("amenidades") or []):
+            if str(a) in catalogos.AMENIDADES and str(a) not in amen:
+                amen.append(str(a))
+        for x in (h.get("servicios_extra") or []):
+            x = _se.completar(x)
+            if x.get("clave") and x.get("ambito") == "local" and x["clave"] not in locales_act:
+                locales_act[x["clave"]] = x
+    cat = [x for x in _se.catalogo() if x["ambito"] == "local"]
+    conocidas = {x["clave"] for x in cat}
+    fuera = [v for k, v in locales_act.items() if k not in conocidas]
+    filas_serv = ""
+    for x in cat + fuera:
+        k = x["clave"]
+        on = k in locales_act
+        precio_txt = f"{float(locales_act[k]['precio']):.2f}" if on else ""
+        filas_serv += (f"<div class='serv{' sel' if on else ''}' data-serv='{e(k)}' data-ambito='local'>"
+                       f"<button type='button' class='chip{' sel' if on else ''}' data-g='servicios' data-v='{e(k)}'>{x['emoji']} {e(x['nombre'])}</button>"
+                       f"<span class='sub' style='margin:0;font-size:12px'>{_se.etiqueta_tipo(x['tipo'])}</span>"
+                       f"<label class='precio-serv'{'' if on else ' hidden'}><span>{e(sim)}</span>"
+                       f"<input type='number' name='serv_{e(k)}' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
+    lista = "".join(f"<li>{_deporte(h.get('deporte'))[1]} <a href='/anfitrion/cancha/{e(h['id'])}/editar'>{e(h['nombre'])}</a> · {e(_deporte(h.get('deporte'))[0])}</li>" for h in hermanas)
+    secciones = [("local", "Nombre y dirección"), ("amenidades", "Servicios del local"), ("extras", "Servicios extra del local"), ("canchas", "Canchas")]
+    nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
+    cfg = {"id": c["id"]}
+    cuerpo = f"""
+<div class='edit-top'><a class='volver-lnk' href='/anfitrion/canchas'>‹ Canchas</a>
+<h1 class='anf-hola' style='margin-top:8px'>Editar local</h1><p class='sub'>{e(local)} · {len(hermanas)} cancha{'s' if len(hermanas) != 1 else ''}. Lo que cambies aquí se aplica a todas sus canchas; precio, horario, piso, fotos y servicios propios se editan en cada cancha.</p></div>
+<div class='edit-grid'>
+<nav class='edit-nav'>{nav}</nav>
+<form id='fLocal' class='edit-form' autocomplete='off' novalidate>
+ <section class='panel edit-sec' id='sec-local'><h2>Nombre y dirección</h2>
+  <label for='local'>Nombre del local / club</label><input id='local' maxlength='{catalogos.NOMBRE_MAX}' value='{e(local)}' placeholder='Ej. Complejo Los Olivos'>
+  <label for='direccion'>Dirección</label><input id='direccion' maxlength='160' value='{e(c.get('direccion') or '')}' placeholder='Av. Aviación 1234, San Borja'>
+  <p class='sub' style='font-size:13px'>Zona: {e(_zona(c)) or '—'}. La ubicación en el mapa se ajusta desde la app.</p>
+ </section>
+ <section class='panel edit-sec' id='sec-amenidades'><h2>Servicios del local</h2><p class='sub'>Gratis para el jugador. Salen como filtros en Explorar y se aplican a todas las canchas.</p>
+  {_chips('amenidades', [(k, f'{ico} {e(n)}') for k, (n, ico) in catalogos.AMENIDADES.items()], set(amen), multi=True)}
+ </section>
+ <section class='panel edit-sec' id='sec-extras'><h2>Servicios extra del local</h2><p class='sub'>De pago, del recinto (piscina, sauna, entrada general…): el jugador los agrega al reservar cualquiera de tus canchas. Por reserva, por persona (el jugador elige cuántas) o por turno.</p>
+  <div class='servs'>{filas_serv}</div>
+  <div style='margin-top:18px;padding-top:14px;border-top:1px solid var(--linea,#E4E4E4)'>
+   <label for='sugTxt'>¿Tu local ofrece algo que no está en la lista? <span class='req'>lo revisa el equipo de Pichangol y lo agrega al catálogo</span></label>
+   <div class='acciones' style='align-items:center'><input id='sugTxt' maxlength='120' placeholder='Ej. Frontón, clases de natación, cochera techada' style='flex:1;min-width:220px'><button type='button' class='btn sec' id='btnSug'>💡 Sugerir</button></div>
+   <span class='sub' id='sugMsg' style='margin:4px 0 0'></span>
+  </div>
+ </section>
+ <section class='panel edit-sec' id='sec-canchas'><h2>Canchas de este local</h2><p class='sub'>Precio, horario, piso, fotos y servicios propios (árbitro, petos…) se editan en cada una.</p>
+  <ul class='sub' style='margin:0 0 0 18px'>{lista}</ul>
+  <div class='acciones' style='margin-top:10px'><a class='btn sec' href='/anfitrion/cancha/{e(c['id'])}/agregar'>＋ Agregar cancha a este local</a></div>
+ </section>
+</form>
+</div>
+<div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Se aplica a las {len(hermanas)} cancha{'s' if len(hermanas) != 1 else ''} del local.</span>
+<button type='button' class='btn' id='btnGuardar'>Guardar local</button></div></div>
+<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_LOCAL}</script>"""
+    return ui.shell("Editar local", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True,
+                    titulo_tab=f"Editar {local} · Modo anfitrión")
+
+
+_JS_LOCAL = r"""
+(function(){
+function $(id){return document.getElementById(id)}
+function sel(g){return Array.prototype.map.call(document.querySelectorAll(".chip.sel[data-g='"+g+"']"),function(b){return b.dataset.v})}
+document.addEventListener('click',function(ev){var b=ev.target.closest('.chip[data-g]');if(!b)return;var g=b.dataset.g;
+  if(g==='servicios'){var row=b.closest('.serv');row.classList.toggle('sel');b.classList.toggle('sel');row.querySelector('.precio-serv').hidden=!row.classList.contains('sel');if(row.classList.contains('sel'))row.querySelector('input').focus();return}
+  b.classList.toggle('sel')});
+$('btnSug').addEventListener('click',async function(){var t=$('sugTxt').value.trim(),m=$('sugMsg');if(t.length<3){m.textContent='Cuéntanos qué servicio ofrece tu local.';return}
+  try{var r=await fetch('/anfitrion/servicios/sugerir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:t,cancha_id:CFG.id})});var j=await r.json();m.textContent=j.ok?'✅ ¡Gracias! Lo revisamos y te avisamos cuando esté disponible.':(j.error||'No se pudo enviar.');if(j.ok)$('sugTxt').value=''}catch(e){m.textContent='No se pudo enviar. Revisa tu conexión.'}});
+$('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');
+  var serv=[];document.querySelectorAll('.serv.sel').forEach(function(r){serv.push({clave:r.dataset.serv,precio:parseFloat(r.querySelector('input').value)||0})});
+  var body={nombre_local:$('local').value,direccion:$('direccion').value,amenidades:sel('amenidades'),servicios_extra:serv};
+  btn.disabled=true;msg.classList.remove('err');msg.textContent='Guardando…';
+  try{var r=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
+    if(j.ok){location.href=j.url||'/anfitrion/canchas';return}msg.classList.add('err');msg.textContent=j.error||'No se pudo guardar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth'})}}
+  catch(e){msg.classList.add('err');msg.textContent='No se pudo guardar. Revisa tu conexión.'}btn.disabled=false});
+})();
+"""
+
+
+@router.post("/anfitrion/local/{cancha_id}/editar")
+async def guardar_edicion_local(request: Request, cancha_id: str) -> JSONResponse:
+    """Aplica nombre del local, dirección, servicios del local y servicios
+    extra de ámbito local a TODAS las canchas del local del dueño."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
+    c = _cancha_propia(ses, cancha_id)
+    if c is None:
+        return JSONResponse({"ok": False, "error": "Esta cancha no está a tu nombre."}, status_code=404)
+    try:
+        b = await request.json()
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
+    if not isinstance(b, dict):
+        return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
+    local = re.sub(r"\s+", " ", str(b.get("nombre_local") or "")).strip()[:catalogos.NOMBRE_MAX]
+    if len(local) < 3:
+        return JSONResponse({"ok": False, "error": "Pon el nombre de tu local.", "campo": "local"}, status_code=400)
+    direccion = re.sub(r"\s+", " ", str(b.get("direccion") or "")).strip()[:160]
+    amen = []
+    for a in (b.get("amenidades") or []):
+        a = str(a)
+        if a in catalogos.AMENIDADES and a not in amen:
+            amen.append(a)
+    locales, vistos = [], set()
+    for x in (b.get("servicios_extra") or []):
+        if not isinstance(x, dict):
+            continue
+        k = str(x.get("clave") or "")
+        fila = _se.congelar(k, 0) if (k and k not in vistos) else None
+        if fila is None or fila.get("ambito") != "local":
+            continue
+        try:
+            p = round(float(x.get("precio")), 2)
+        except (TypeError, ValueError):
+            p = 0
+        if p <= 0:
+            return JSONResponse({"ok": False, "error": f"Pon el precio de «{fila['nombre']}» o quítalo.", "campo": "extras"}, status_code=400)
+        vistos.add(k)
+        fila["precio"] = p
+        locales.append(fila)
+    hermanas = _hermanas_local(ses["email"], c)
+    n = 0
+    for h in hermanas:
+        propios = [_se.completar(x) for x in (h.get("servicios_extra") or []) if x.get("clave")]
+        nuevos = [x for x in propios if x.get("ambito") != "local"] + [dict(x) for x in locales]
+        campos = {"club": local, "direccion": direccion or None, "amenidades": amen, "servicios_extra": nuevos}
+        if datos.actualizar_cancha(h["id"], ses["email"], campos):
+            n += 1
+    if not n:
+        return JSONResponse({"ok": False, "error": "No pudimos guardar en este momento. Inténtalo de nuevo."}, status_code=503)
+    print(f"[editar-local-web] {ses['email']} guardó {local!r}: {n} canchas · amen={amen} · extras_local={[x['clave'] for x in locales]}", flush=True)
+    return JSONResponse({"ok": True, "url": f"/anfitrion/canchas?local_guardado={c['id']}", "canchas": n})
 
 
 def _propagar_servicios_local(email: str, cancha_id: str, club: str, servicios: list[dict]) -> int:
@@ -1036,12 +1233,14 @@ async def guardar_edicion_cancha(request: Request, cancha_id: str) -> JSONRespon
     campos, err, seccion = _validar_edicion(c, body)
     if campos is None:
         return JSONResponse({"ok": False, "error": err, "campo": seccion}, status_code=400)
+    propagar = bool(campos.pop("_propagar_locales", False))
     quitadas = [u for u in _fotos(c) if u not in campos["fotos"]]  # antes del UPDATE (c puede ser la misma fila)
     if not datos.actualizar_cancha(cancha_id, ses["email"], campos):
         return JSONResponse({"ok": False, "error": "No pudimos guardar en este momento. Inténtalo de nuevo."}, status_code=503)
     if quitadas:
         _en_segundo_plano(lambda: [almacen.borrar_foto(u) for u in quitadas])
-    _propagar_servicios_local(ses["email"], cancha_id, campos.get("club") or c.get("club") or "", campos.get("servicios_extra") or [])
+    if propagar:  # solo si el cuerpo trajo servicios del local (clientes que aún los mandan por cancha)
+        _propagar_servicios_local(ses["email"], cancha_id, campos.get("club") or c.get("club") or "", campos.get("servicios_extra") or [])
     print(f"[editar-web] {ses['email']} guardó {cancha_id}: {campos['nombre']} · {campos['precio_hora']} · "
           f"{campos['hora_apertura']}-{campos['hora_cierre']}/{campos['duracion_slot_min']}m · fotos={len(campos['fotos'])}", flush=True)
     return JSONResponse({"ok": True})

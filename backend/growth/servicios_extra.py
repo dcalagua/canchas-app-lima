@@ -40,9 +40,9 @@ _CLAVE_RE = re.compile(r"^[a-z0-9_]{2,40}$")
 # + los que pidió el director para clubes con más instalaciones.
 DEFAULTS: list[dict] = [
     {"clave": "arbitro", "nombre": "Árbitro", "emoji": "🧑‍⚖️", "tipo": "reserva", "ambito": "cancha"},
-    {"clave": "pelotero", "nombre": "Pelotero (recoge pelotas)", "emoji": "🏃", "tipo": "reserva", "ambito": "cancha"},
+    {"clave": "pelotero", "nombre": "Pelotero (recoge pelotas)", "emoji": "🏃", "tipo": "reserva", "ambito": "cancha", "deportes": ["tenis", "padel", "pickleball"]},
     {"clave": "pelota", "nombre": "Alquiler de pelota", "emoji": "🎾", "tipo": "reserva", "ambito": "cancha"},
-    {"clave": "pecheras", "nombre": "Petos / pecheras", "emoji": "🦺", "tipo": "reserva", "ambito": "cancha"},
+    {"clave": "pecheras", "nombre": "Petos / pecheras", "emoji": "🦺", "tipo": "reserva", "ambito": "cancha", "deportes": ["futbol", "futsal", "basquet"]},
     {"clave": "hidratacion", "nombre": "Hidratación", "emoji": "💧", "tipo": "reserva", "ambito": "cancha"},
     {"clave": "parrilla", "nombre": "Parrilla / grill", "emoji": "🔥", "tipo": "reserva", "ambito": "local"},
     {"clave": "piscina", "nombre": "Piscina", "emoji": "🏊", "tipo": "persona", "ambito": "local"},
@@ -80,6 +80,16 @@ def _asegurar() -> dict[str, dict]:
         if d["clave"] not in cat:
             cat[d["clave"]] = _norm(d, i)
             cambiado = True
+    # Semilla v2 (sep-2026): los servicios DE LA CANCHA llevan deportes
+    # (pelotero solo raqueta, petos solo fútbol/básquet); a los snapshots ya
+    # sembrados se les completa UNA vez, sin pisar lo que editó el operador.
+    if stores.cfg("servicios_extra_semilla") != "2":
+        for d in DEFAULTS:
+            x = cat.get(d["clave"])
+            if x is not None and not x.get("deportes") and d.get("deportes"):
+                x["deportes"] = list(d["deportes"])
+                cambiado = True
+        stores.config["servicios_extra_semilla"] = "2"
     if cambiado:
         stores.servicios_extra_version += 1
     return cat
@@ -99,6 +109,13 @@ def por_clave() -> dict[str, dict]:
 def para_deporte(deporte: str | None) -> list[dict]:
     d = (deporte or "").lower()
     return [s for s in catalogo() if not s.get("deportes") or not d or d in s["deportes"]]
+
+
+def para_cancha(deportes: list[str]) -> list[dict]:
+    """Servicios DE LA CANCHA que aplican a alguno de sus deportes (los de
+    ámbito local se editan en "Editar local", no aquí)."""
+    ds = {str(d).lower() for d in (deportes or [])}
+    return [s for s in catalogo() if s["ambito"] == "cancha" and (not s.get("deportes") or not ds or ds & set(s["deportes"]))]
 
 
 def etiqueta_tipo(tipo: str) -> str:

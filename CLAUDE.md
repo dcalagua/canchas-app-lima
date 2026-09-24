@@ -713,6 +713,25 @@ para la API del APK.
   reserva con contador − n + de personas (`_FilaServicio`/`_BotonCantidad`);
   `AgregarCanchaScreen` hereda los del local; Reservas del dueño muestran
   "× n". Test `test_servicios_extra_catalogo_global_por_local_y_por_persona`.
+  **EDITAR LOCAL vs EDITAR CANCHA (pedido del director, 24-sep-2026: "los
+  atributos del local no deberían repetirse al editar cada cancha"; solo
+  web):** `GET/POST /anfitrion/local/{cancha_id}/editar`
+  (`pagina_editar_local`, `guardar_edicion_local`) edita UNA vez lo que
+  comparten todas las canchas del local: nombre del local (renombra todas),
+  dirección (`COLS_EDITABLES` suma `direccion`), servicios del local
+  (`amenidades`) y servicios extra de ámbito local; se escribe en cada
+  hermana conservando sus extras propios de cancha. El editor de CANCHA ya no
+  muestra club, amenidades ni extras del local: solo nombre, deportes/piso,
+  precio, horario, fotos y "Servicios extra de esta cancha" filtrados por su
+  deporte (`servicios_extra.para_cancha`; DEFAULTS: pelotero solo
+  tenis/pádel/pickleball, petos solo fútbol/futsal/básquet; migración
+  `servicios_extra_semilla=2` completa `deportes` en snapshots ya sembrados)
+  + tarjeta "Tu local" con enlace a Editar local. `_validar_edicion` conserva
+  amenidades y extras del local si el cuerpo no los trae (compat con
+  clientes que sí los mandan). **Mis canchas** agrupa las filas por DEPORTE
+  dentro del local (`.anf-dep`: "🎾 Tenis · 2 canchas") y tiene "✏️ Editar
+  local" en la cabecera; aviso `?local_guardado=`. Test actualizado
+  `test_servicios_extra_catalogo_global_por_local_y_por_persona`.
 - **EDITAR CANCHA DESDE LA WEB (sep-2026, decisión del director: "web =
   vender y atender; app = operar", punto 1):** `GET/POST /anfitrion/cancha/
   {id}/editar` (`web/anfitrion.py`, calcado del editor de anuncios de
