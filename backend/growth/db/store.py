@@ -585,6 +585,7 @@ class Stores:
         self.sugerencias_servicios: list[dict] = []
         # Publicaciones hechas en la PÁGINA de Facebook de Pichangol desde la torre.
         self.publicaciones_redes: list[dict] = []
+        self.admin_accesos: list[dict] = []   # bitácora de logins de la torre (últimos 200)
         # Agente de marketing 24×7 de la página (borradores por aprobar + bitácora de corridas).
         self.agente_fb: dict = {"borradores": [], "corridas": []}
         # Biblioteca de marca (fotos/videos importados de Google Fotos a Storage) para los posts.
@@ -1009,6 +1010,7 @@ class Stores:
             "reclamaciones": [dict(r) for r in self.reclamaciones],
             "cancelaciones_web": [dict(r) for r in self.cancelaciones_web],
             "publicaciones_redes": [dict(r) for r in self.publicaciones_redes],
+            "admin_accesos": [dict(r) for r in self.admin_accesos],
             "agente_fb": {"borradores": [dict(b) for b in self.agente_fb.get("borradores", [])], "corridas": [dict(c) for c in self.agente_fb.get("corridas", [])]},
             "biblioteca_marca": [dict(x) for x in self.biblioteca_marca],
             "musica_marca": [dict(x) for x in self.musica_marca],
@@ -1101,6 +1103,7 @@ class Stores:
         self.reclamaciones = [dict(r) for r in (data.get("reclamaciones") or [])]
         self.cancelaciones_web = [dict(r) for r in (data.get("cancelaciones_web") or [])]
         self.publicaciones_redes = [dict(r) for r in (data.get("publicaciones_redes") or [])]
+        self.admin_accesos = [dict(r) for r in (data.get("admin_accesos") or [])]
         ag = data.get("agente_fb") or {}
         self.agente_fb = {"borradores": [dict(b) for b in (ag.get("borradores") or [])], "corridas": [dict(c) for c in (ag.get("corridas") or [])]}
         self.biblioteca_marca = [dict(x) for x in (data.get("biblioteca_marca") or [])]

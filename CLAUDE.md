@@ -999,6 +999,21 @@ off → redeploy inmediato en cada push). URL pública:
     `pichangol-aab-prod`; el 1.º intento falló por Gradle transitorio y se
     relanzó). **Pase del 24-sep-2026 (2.º, autorizado):** `prd` = merge
     `c2c3bd2` (texto blanco del botón del popup del mapa). Solo web.
+    **Pase del 24-sep-2026 (3.º, autorizado: "pasa a PRD"):** `prd` =
+    merge `957ddca` (toda la torre de Facebook: publicar con fotos reales,
+    video con pulido y subtítulos, redactor con IA, agente 24×7, Google
+    Fotos, Mi música desde Drive con inicio configurable, fotos → video, pie
+    con la página oficial de Facebook). Solo backend/web: sin SQL, sin Edge,
+    sin APK. Variables nuevas en `pg-backend-prd` como REFERENCIAS a QAS:
+    `FB_PAGE_ID`, `FB_PAGE_TOKEN`, `GOOGLE_WEB_CLIENT_SECRET`
+    (`OPENAI_API_KEY` y `META_TOKEN_KEY` ya estaban). PENDIENTE MANUAL del
+    director en PRD: (a) en Google Cloud, agregar la URI de redirección
+    `https://www.pichangol.app/admin/api/redes/biblioteca/google/callback`
+    al cliente OAuth web (sin eso "Conectar Google Fotos/Drive" falla con
+    redirect_uri_mismatch en la torre de PRD); (b) el token de Facebook de
+    Railway QAS puede estar vencido → pegar un token en la torre de PRD
+    (Conexiones → 🔑 Token de Facebook); (c) el agente 24×7 arranca PAUSADO
+    en PRD: encenderlo en la torre cuando se quiera.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -1426,7 +1441,43 @@ off → redeploy inmediato en cada push). URL pública:
 - **Panel web `/admin` = TORRE DE CONTROL del operador (SaaS).** Página HTML
   self-contained, co-marca **Pichangol + EBIM** (solo aquí), protegida por
   **`ADMIN_PANEL_TOKEN`** (header `X-Admin-Token`, no viaja en URL). Endpoints
-  `/admin/api/*`. Aquí el operador aprueba/rechaza reclamos y configura el **modo
+  `/admin/api/*`. **SEGURIDAD DEL LOGIN (pedido del director, 24-sep-2026:
+  "esta dirección es crackeable"; `propiedad/admin_auth.py` +
+  `panel.py`):** (1) **Verificación en dos pasos TOTP** (RFC 6238, apps
+  Google/Microsoft Authenticator/Authy; sin dependencias nuevas): con
+  `ADMIN_2FA=1` (default; `0` = corte de emergencia) `POST /admin/api/login`
+  devuelve, tras usuario+contraseña, un PRE-token `p1.` de 5 min (NO sirve
+  como sesión) y el paso: `enrolar` (1.ª vez: `secreto`, `otpauth`, `qr`
+  data URL vía lib `qrcode`) o `codigo`; `POST /admin/api/login/2fa {pre,
+  codigo, recordar}` valida el código (±30 s, sin reuso del mismo contador),
+  al enrolar guarda el secreto CIFRADO (`stores.config[admin_2fa_<correo>]`,
+  Fernet con `META_TOKEN_KEY` vía `redes.cifrar`) y devuelve 8 CÓDIGOS DE
+  RECUPERACIÓN `XXXX-XXXX` de un solo uso (se guarda solo su SHA-256; la
+  torre los muestra UNA vez con Copiar/Descargar .txt); "Confiar en este
+  dispositivo 30 días" = token firmado `d1.` en `localStorage`
+  `pichangol_admin_dev` que el login manda en `dispositivo` y salta el 2.º
+  paso; `olvidar_dispositivos` sube un epoch por usuario que invalida los
+  emitidos antes. (2) **Anti fuerza bruta real:** la IP sale de
+  `X-Forwarded-For` (Railway termina TLS en su proxy; antes `request.client`
+  era SIEMPRE el proxy y el bloqueo era para todos o para nadie) y se bloquea
+  por IP **y por usuario** (5 fallos → 60 s, se duplica cada racha hasta
+  15 min), también en el 2.º paso. (3) **Bitácora** `stores.admin_accesos`
+  (últimos 200: login_ok, clave_mala, 2fa_mal, bloqueado, enrolado…, con IP;
+  línea `[admin]` en logs). (4) **Cabeceras** en el middleware de `main.py`:
+  HSTS, nosniff, Referrer-Policy en todo; en `/admin*` además
+  `X-Frame-Options: DENY`, Permissions-Policy y `Cache-Control: no-store`
+  en la API. (5) "Entrar con token de administrador" ya NO se ofrece en la
+  pantalla cuando hay usuarios (`GET /admin/api/gate`); el token clásico
+  sigue valiendo en la cabecera para scripts y como último recurso. (6)
+  `/web/foto?refrescar=1` ya no acepta el token en la URL (queda en logs):
+  solo cabecera `X-Admin-Token`. Torre: Mantenimiento → **"🔐 Seguridad de la
+  torre"** (`GET /admin/api/seguridad`): estado de mi 2.º paso, "Generar
+  códigos de recuperación nuevos" (`POST …/seguridad/2fa/recuperacion`, pide
+  un código vigente), "Olvidar mis dispositivos" (`…/dispositivos/olvidar`),
+  tabla de operadores con "Restablecer 2 pasos" (`…/2fa/restablecer
+  {correo}`: perdió el teléfono → vuelve a enrolar; también con el token
+  clásico desde curl) y últimos accesos. Usuarios siguen en
+  `ADMIN_PANEL_USUARIOS`. Tests en `test_admin_login.py`. Aquí el operador aprueba/rechaza reclamos y configura el **modo
   de aprobación**: `marcha_blanca` (aprobar activa al instante) | `nuevo_flujo`
   (exige validación en sitio). Global + override por cancha (`/admin/api/modo`,
   `/admin/api/modo/cancha`; lógica en `reclamos` + `stores.modo_aprobacion`).
