@@ -3,6 +3,7 @@ composición con fotos reales (bucket o adjuntas), plantillas rellenadas con el
 local, vista previa, publicación por Graph (multipart) e historial."""
 import base64
 import io
+import json
 import os
 
 import pytest
@@ -33,7 +34,11 @@ def _cfg(monkeypatch):
     monkeypatch.setattr(config, "FB_PAGE_TOKEN", "")
     from db.store import stores
     stores.publicaciones_redes.clear()
+    stores.config.pop("fb_page_token_cifrado", None); stores.config.pop("fb_page_token_meta", None)
+    pr._token_cache.update(clave="", hasta=0.0)
     yield
+    stores.config.pop("fb_page_token_cifrado", None); stores.config.pop("fb_page_token_meta", None)
+    pr._token_cache.update(clave="", hasta=0.0)
 
 
 def test_componer_con_fotos_reales_y_plantillas(monkeypatch):
@@ -99,7 +104,7 @@ def test_torre_previsualiza_publica_y_registra(monkeypatch):
     pr._token_cache.update(clave="", hasta=0.0)
     fb = client.get("/admin/api/redes/pichangol", headers=H).json()["facebook"]
     assert fb == {"configurado": True, "page_id": "123", "nombre": "Pichangol", "link": "https://facebook.com/pichangol",
-                  "token_tipo": "pagina", "usuario": "", "faltan": [], "advertencia": ""}
+                  "token_tipo": "pagina", "usuario": "", "faltan": [], "advertencia": "", "origen": "railway", "vence": 0, "guardado": True}
     assert client.post("/admin/api/redes/pichangol/publicar", json={**cuerpo, "texto": " "}, headers=H).status_code == 400
     r = client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H).json()
     assert r["ok"] and r["url"] == "https://www.facebook.com/123_999"
@@ -152,7 +157,7 @@ def test_token_de_usuario_se_convierte_en_token_de_pagina_y_avisa_permisos(monke
     monkeypatch.setattr(pr, "_graph_get", graph_get)
     pr._token_cache.update(clave="", hasta=0.0)
     fb = client.get("/admin/api/redes/pichangol", headers=H).json()["facebook"]
-    assert fb["token_tipo"] == "usuario" and fb["usuario"] == "Dennis" and fb["faltan"] == [] and "obtiene sola" in fb["advertencia"]
+    assert fb["token_tipo"] == "usuario" and fb["usuario"] == "Dennis" and fb["faltan"] == [] and "derivó y guardó" in fb["advertencia"]
     # Publicar usa el token de PÁGINA derivado, no el de usuario.
     posts = []
     monkeypatch.setattr(pr, "_graph_multipart", lambda path, campos, archivo: (posts.append(campos) or {"ok": True, "data": {"post_id": "1257_1"}}))
@@ -181,7 +186,7 @@ def test_token_de_usuario_se_convierte_en_token_de_pagina_y_avisa_permisos(monke
         return graph_get(path, params)
     monkeypatch.setattr(pr, "_graph_get", graph_get2); pr._token_cache.update(clave="", hasta=0.0)
     fb = client.get("/admin/api/redes/pichangol", headers=H).json()["facebook"]
-    assert "no entregó" in fb["advertencia"] and "pages_show_list" in fb["advertencia"]
+    assert "no entregó" in fb["error"] and "pages_show_list" in fb["error"] and fb["nombre"] == ""
     assert client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H).status_code == 502
 
 
@@ -434,3 +439,72 @@ def test_pulido_estilo_pichangol_con_subtitulos_whisper(monkeypatch, tmp_path):
             break
         _t.sleep(0.5)
     assert e["estado"] == "listo" and vp.sondear(pr.video(vid3)["pulido"])["audio"]   # música original de fondo
+
+
+def test_token_vencido_se_reemplaza_desde_la_torre_sin_tocar_railway(monkeypatch):
+    """Caso real (24-sep-2026, 22:00 PDT): el token de usuario del Explorador dura 1-2 h y
+    Facebook respondió "(#190) Session has expired". Ahora: (1) la torre deriva el token de
+    PÁGINA (que no vence) y lo guarda cifrado en el snapshot; (2) el operador puede pegar un
+    token nuevo en la torre sin redesplegar Railway; (3) si el guardado muere, se descarta
+    solo y se vuelve al de Railway."""
+    from db.store import stores
+    monkeypatch.setattr(config, "FB_PAGE_ID", "1257")
+    monkeypatch.setattr(config, "FB_PAGE_TOKEN", "EAAUSER_CORTO")
+    monkeypatch.setattr(config, "META_APP_ID", "app1"); monkeypatch.setattr(config, "META_APP_SECRET", "sec1")
+    vivos = {"EAAUSER_CORTO", "EAAUSER_LARGO", "EAAPAGE1", "EAAPAGE2", "EAAUSER2_XXXXXXXXXXXXXXXXXX"}
+    llamadas = []
+
+    def graph_get(path, params):
+        tok = params.get("access_token", "")
+        llamadas.append((path, tok))
+        if path == "oauth/access_token":
+            assert params["grant_type"] == "fb_exchange_token" and params["client_secret"] == "sec1"
+            return {"ok": True, "data": {"access_token": "EAAUSER_LARGO", "expires_in": 5183944}} if params["fb_exchange_token"] in vivos else {"ok": False, "error": "(#190) expired"}
+        if path == "debug_token":
+            t = params["input_token"]
+            if t not in vivos:
+                return {"ok": False, "error": "(#190) Session has expired"}
+            es_pag = t.startswith("EAAPAGE")
+            return {"ok": True, "data": {"data": {"scopes": ["pages_manage_posts", "pages_read_engagement", "pages_show_list"], "expires_at": 0 if es_pag else 1790000000, "type": "PAGE" if es_pag else "USER"}}}
+        if tok not in vivos:
+            return {"ok": False, "error": "HTTP 400: Error validating access token: Session has expired on Wednesday, 23-Sep-26 22:00:00 PDT."}
+        if path == "me":
+            return {"ok": True, "data": {"id": "1257", "name": "Pichangol"}} if tok.startswith("EAAPAGE") else {"ok": True, "data": {"id": "77", "name": "Dennis"}}
+        if path == "1257" and params.get("fields") == "access_token":
+            return {"ok": True, "data": {"access_token": "EAAPAGE1" if tok == "EAAUSER_LARGO" else "EAAPAGE2"}}
+        if path == "1257":
+            return {"ok": True, "data": {"name": "Pichangol", "link": "https://facebook.com/pichangol"}}
+        return {"ok": False, "error": "ruta inesperada " + path}
+    monkeypatch.setattr(pr, "_graph_get", graph_get)
+    # 1) Token corto de usuario en Railway → se extiende (60 d) → token de página permanente, GUARDADO cifrado.
+    fb = client.get("/admin/api/redes/pichangol", headers=H).json()["facebook"]
+    assert fb["nombre"] == "Pichangol" and fb["token_tipo"] == "usuario" and fb["guardado"] is True and fb["vence"] == 0
+    assert stores.config["fb_page_token_cifrado"].startswith(("f:", "b:")) and "EAAPAGE1" not in stores.config["fb_page_token_cifrado"]
+    assert pr._token_guardado() == "EAAPAGE1" and "no vence" in fb["advertencia"]
+    assert any(p == "oauth/access_token" for p, _ in llamadas)
+    # 2) Railway vence (como pasó a las 22:00) → la torre sigue publicando con el guardado.
+    vivos.discard("EAAUSER_CORTO"); pr._token_cache.update(clave="", hasta=0.0)
+    fb = client.get("/admin/api/redes/pichangol", headers=H).json()["facebook"]
+    assert fb["nombre"] == "Pichangol" and fb["origen"] == "torre"
+    monkeypatch.setattr(pr, "_abrir_url", lambda u: base64.b64decode(u.split(",", 1)[1]))
+    posts = []
+    monkeypatch.setattr(pr, "_graph_multipart", lambda path, campos, archivo, **k: (posts.append(campos["access_token"]) or {"ok": True, "data": {"post_id": "1257_5"}}))
+    cuerpo = {"fotos": [_data_url((30, 90, 30))], "titulo": "Hola", "texto": "Publicación", "plantilla": "libre"}
+    assert client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H).status_code == 200 and posts == ["EAAPAGE1"]
+    # 3) El operador pega un token NUEVO en la torre (de usuario) → se guarda el de página derivado; el texto pegado no se devuelve.
+    r = client.post("/admin/api/redes/pichangol/token", json={"token": "EAAUSER2_XXXXXXXXXXXXXXXXXX"}, headers=H)
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["ok"] and j["tipo"] == "usuario" and j["derivado"] is True and j["extendido"] is True and j["vence"] == 0 and "EAA" not in json.dumps(j["facebook"])
+    assert pr._token_guardado() == "EAAPAGE1"   # EAAUSER2 se extiende a EAAUSER_LARGO → EAAPAGE1
+    assert client.post("/admin/api/redes/pichangol/token", json={"token": "basura"}, headers=H).status_code == 400
+    assert client.post("/admin/api/redes/pichangol/token", json={"token": "EAAMUERTO_XXXXXXXXXXXXXXXX"}, headers=H).status_code == 400
+    # 4) El guardado muere y Railway sigue muerto → error claro con la pista de pegar uno nuevo; al publicar con (#190) se olvida el guardado.
+    vivos.discard("EAAPAGE1"); pr._token_cache.update(clave="", hasta=0.0)
+    fb = client.get("/admin/api/redes/pichangol", headers=H).json()["facebook"]
+    assert fb["nombre"] == "" and "expired" in fb["error"].lower() and "fb_page_token_cifrado" not in stores.config
+    r = client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H)
+    assert r.status_code == 502 and "pégalo en la torre" in r.json()["detail"]
+    # Olvidar desde la torre.
+    stores.config["fb_page_token_cifrado"] = "b:xx"
+    assert client.post("/admin/api/redes/pichangol/token/olvidar", headers=H).json()["ok"] and "fb_page_token_cifrado" not in stores.config

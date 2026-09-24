@@ -518,7 +518,7 @@ def redactar(cancha: dict | None, tono: str = "cercano", enfoque: str = "auto", 
 
 # ── Facebook ─────────────────────────────────────────────────────────────────
 def configurado() -> bool:
-    return bool(config.FB_PAGE_ID and config.FB_PAGE_TOKEN)
+    return bool(config.FB_PAGE_ID and (config.FB_PAGE_TOKEN or stores.config.get(_CFG_TOKEN)))
 
 
 def _graph_multipart(path: str, campos: dict, archivo: tuple[str, bytes, str] | None, *,
@@ -566,53 +566,165 @@ _token_cache: dict = {"clave": "", "hasta": 0.0, "res": {}}
 _TOKEN_TTL = 600
 
 
-def _resolver_token() -> dict:
-    """Averigua QUÉ token puso el operador y consigue el de PÁGINA.
+_CFG_TOKEN = "fb_page_token_cifrado"      # token de PÁGINA permanente derivado por la torre (cifrado, snapshot)
+_CFG_TOKEN_META = "fb_page_token_meta"    # json: origen, obtenido_en, vence, usuario
 
-    Trampa real (sep-2026): Meta responde ``(#200) publish_actions … deprecated``
-    cuando ``/{page}/photos`` recibe un token de USUARIO en vez del de la página,
-    o uno de página sin ``pages_manage_posts``. Para no adivinar, la torre:
-    (1) pregunta ``/me`` con el token: si el id es la página → token de página;
-    (2) si es una persona → lee sus permisos (``/me/permissions``) y pide el token
-    de página con ``/{page}?fields=access_token`` (funciona si administra la
-    página y dio ``pages_show_list``); (3) avisa si falta ``pages_manage_posts``.
-    Devuelve ``{token, tipo, usuario, permisos, faltan, error}``; caché 10 min.
-    """
-    clave = f"{config.FB_PAGE_ID}:{config.FB_PAGE_TOKEN[-12:]}:{len(config.FB_PAGE_TOKEN)}"
-    if _token_cache["clave"] == clave and _token_cache["hasta"] > time.time():
-        return dict(_token_cache["res"])
-    tok = config.FB_PAGE_TOKEN
-    res: dict = {"token": "", "tipo": "", "usuario": "", "permisos": None, "faltan": [], "error": ""}
+
+def _token_guardado() -> str:
+    from marketing import redes
+    return redes.descifrar(stores.config.get(_CFG_TOKEN, "") or "")
+
+
+def _meta_guardada() -> dict:
+    try:
+        return json.loads(stores.config.get(_CFG_TOKEN_META, "") or "{}") or {}
+    except ValueError:
+        return {}
+
+
+def _guardar_token(token: str, meta: dict) -> None:
+    """Persiste el token de página (cifrado con META_TOKEN_KEY si existe) para no
+    depender de que el de Railway siga vivo. Se guarda YA (los GET no persisten)."""
+    from marketing import redes
+    stores.config[_CFG_TOKEN] = redes.cifrar(token)
+    stores.config[_CFG_TOKEN_META] = json.dumps(meta, ensure_ascii=False)
+    try:
+        from pagos.router import _persistir_ahora
+        _persistir_ahora()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def olvidar_token_guardado() -> None:
+    stores.config.pop(_CFG_TOKEN, None)
+    stores.config.pop(_CFG_TOKEN_META, None)
+    _token_cache.update(clave="", hasta=0.0)
+
+
+def _app_token() -> str:
+    return f"{config.META_APP_ID}|{config.META_APP_SECRET}" if config.META_APP_ID and config.META_APP_SECRET else ""
+
+
+def _debug(tok: str) -> dict:
+    """`debug_token` con el token de la app (si hay) o con el mismo token: scopes, tipo y vencimiento."""
+    for acceso in [x for x in (_app_token(), tok) if x]:
+        r = _graph_get("debug_token", {"input_token": tok, "access_token": acceso})
+        d = ((r.get("data") or {}).get("data") or {}) if r.get("ok") else {}
+        if d:
+            return d
+    return {}
+
+
+def _extender(tok: str) -> str:
+    """Token de usuario CORTO (1-2 h) → largo (60 días) con la app de Meta; vacío si no se puede."""
+    if not _app_token():
+        return ""
+    r = _graph_get("oauth/access_token", {"grant_type": "fb_exchange_token", "client_id": config.META_APP_ID,
+                                          "client_secret": config.META_APP_SECRET, "fb_exchange_token": tok})
+    return str((r.get("data") or {}).get("access_token") or "") if r.get("ok") else ""
+
+
+def _analizar_token(tok: str, origen: str) -> dict:
+    """Qué es este token y cómo llegar al de PÁGINA. Devuelve {token, tipo, usuario, permisos, faltan, vence, error, derivado}."""
+    res: dict = {"token": "", "tipo": "", "usuario": "", "permisos": None, "faltan": [], "vence": None, "error": "", "origen": origen, "derivado": False}
     yo = _graph_get("me", {"fields": "id,name", "access_token": tok})
     if not yo.get("ok"):
-        res["error"] = f"Facebook no reconoce el token: {yo.get('error', 'error')}"
+        res["error"] = f"Facebook no reconoce el token ({origen}): {yo.get('error', 'error')}"
+        return res
+    d = yo.get("data") or {}
+    dbg = _debug(tok)
+    if isinstance(dbg.get("scopes"), list):
+        res["permisos"] = [str(x) for x in dbg["scopes"]]
+    if str(d.get("id", "")) == str(config.FB_PAGE_ID):
+        res.update(tipo="pagina", token=tok, vence=int(dbg.get("expires_at") or 0))
     else:
-        d = yo.get("data") or {}
-        if str(d.get("id", "")) == str(config.FB_PAGE_ID):
-            res.update(tipo="pagina", token=tok)
-            # Con un token de página, `debug_token` (mismo token) devuelve los scopes; si no, quedan desconocidos.
-            dbg = _graph_get("debug_token", {"input_token": tok, "access_token": tok})
-            scopes = ((dbg.get("data") or {}).get("data") or {}).get("scopes") if dbg.get("ok") else None
-            if isinstance(scopes, list):
-                res["permisos"] = [str(x) for x in scopes]
-        else:
-            res.update(tipo="usuario", usuario=str(d.get("name", "")))
+        res.update(tipo="usuario", usuario=str(d.get("name", "")))
+        if res["permisos"] is None:
             perm = _graph_get("me/permissions", {"access_token": tok})
             if perm.get("ok"):
-                filas = (perm.get("data") or {}).get("data") or []
-                res["permisos"] = [str(f.get("permission")) for f in filas if f.get("status") == "granted"]
-            pag = _graph_get(config.FB_PAGE_ID, {"fields": "access_token", "access_token": tok})
-            token_pag = ((pag.get("data") or {}).get("access_token") or "") if pag.get("ok") else ""
-            if token_pag:
-                res["token"] = token_pag
-            else:
-                res["error"] = (f"El token es de la cuenta de {res['usuario'] or 'un usuario'}, no de la página, y Facebook no "
-                                f"entregó el de la página {config.FB_PAGE_ID} ({pag.get('error', 'sin acceso')}). Verifica que esa "
-                                f"cuenta administre la página y que el token tenga pages_show_list.")
-        if isinstance(res["permisos"], list):
-            res["faltan"] = [p for p in _PERMISOS_PAGINA if p not in res["permisos"]]
+                res["permisos"] = [str(f.get("permission")) for f in ((perm.get("data") or {}).get("data") or []) if f.get("status") == "granted"]
+        # Un token de usuario corto vence en 1-2 h: se extiende a 60 días y de ahí sale un token de página que NO vence.
+        largo = _extender(tok)
+        base = largo or tok
+        pag = _graph_get(config.FB_PAGE_ID, {"fields": "access_token", "access_token": base})
+        token_pag = ((pag.get("data") or {}).get("access_token") or "") if pag.get("ok") else ""
+        if token_pag:
+            res.update(token=token_pag, derivado=True, extendido=bool(largo))
+            res["vence"] = int(_debug(token_pag).get("expires_at") or 0)
+        else:
+            res["error"] = (f"El token es de la cuenta de {res['usuario'] or 'un usuario'}, no de la página, y Facebook no "
+                            f"entregó el de la página {config.FB_PAGE_ID} ({pag.get('error', 'sin acceso')}). Verifica que esa "
+                            f"cuenta administre la página y que el token tenga pages_show_list.")
+    if isinstance(res["permisos"], list):
+        res["faltan"] = [p for p in _PERMISOS_PAGINA if p not in res["permisos"]]
+    return res
+
+
+def _resolver_token(forzar: bool = False) -> dict:
+    """Consigue un token de PÁGINA vigente y lo recuerda.
+
+    Trampa real (sep-2026): Meta responde ``(#200) publish_actions … deprecated``
+    cuando ``/{page}/photos`` recibe un token de USUARIO en vez del de la página, y
+    ``(#190) Session has expired`` cuando ese token de usuario era el corto de 1-2 h
+    del Explorador. Orden: (1) el token de página que la torre ya derivó y guardó
+    (no vence); (2) ``FB_PAGE_TOKEN`` de Railway: si es de usuario se EXTIENDE con la
+    app de Meta (60 días) y se pide el de página (permanente), que se guarda para
+    no volver a depender de Railway. Devuelve ``{token, tipo, usuario, permisos,
+    faltan, vence, error, origen}``; caché 10 min.
+    """
+    guardado = _token_guardado()
+    clave = f"{config.FB_PAGE_ID}:{config.FB_PAGE_TOKEN[-12:]}:{len(config.FB_PAGE_TOKEN)}:{guardado[-12:]}"
+    if not forzar and _token_cache["clave"] == clave and _token_cache["hasta"] > time.time():
+        return dict(_token_cache["res"])
+    candidatos = []
+    if guardado:
+        candidatos.append(("torre", guardado))
+    if config.FB_PAGE_TOKEN:
+        candidatos.append(("railway", config.FB_PAGE_TOKEN))
+    res: dict = {"token": "", "tipo": "", "usuario": "", "permisos": None, "faltan": [], "vence": None, "error": "Sin token de Facebook.", "origen": ""}
+    errores = []
+    for origen, tok in candidatos:
+        r = _analizar_token(tok, origen)
+        if r.get("error"):
+            errores.append(r["error"])
+            if origen == "torre":
+                olvidar_token_guardado()      # el guardado ya no sirve: no seguir intentándolo
+            continue
+        res = r
+        if origen == "torre":
+            meta = _meta_guardada()
+            res["usuario"] = res.get("usuario") or meta.get("usuario", "")
+            res["tipo_original"] = meta.get("tipo_original", "pagina")
+        elif r.get("derivado") or r.get("tipo") == "pagina":
+            _guardar_token(r["token"], {"origen": "railway", "obtenido_en": time.time(), "vence": r.get("vence") or 0,
+                                        "usuario": r.get("usuario", ""), "tipo_original": r.get("tipo", "")})
+            res["guardado_ahora"] = True
+        break
+    else:
+        if errores:
+            res["error"] = errores[-1]
     _token_cache.update(clave=clave, hasta=time.time() + _TOKEN_TTL, res=dict(res))
     return dict(res)
+
+
+def guardar_token_operador(token: str) -> dict:
+    """El operador pega un token nuevo en la torre (de página o de usuario): se analiza,
+    se deriva el de página permanente y se guarda. Devuelve el resultado del análisis."""
+    tok = (token or "").strip()
+    if len(tok) < 20 or " " in tok:
+        return {"ok": False, "error": "Ese texto no parece un token de Facebook."}
+    if not config.FB_PAGE_ID:
+        return {"ok": False, "error": "Falta FB_PAGE_ID (id de la página) en Railway."}
+    r = _analizar_token(tok, "torre")
+    if r.get("error"):
+        return {"ok": False, "error": r["error"]}
+    if PERMISO_PUBLICAR in (r.get("faltan") or []):
+        return {"ok": False, "error": f"Al token le falta el permiso {PERMISO_PUBLICAR}; vuelve a generarlo marcándolo."}
+    _guardar_token(r["token"], {"origen": "torre", "obtenido_en": time.time(), "vence": r.get("vence") or 0,
+                                "usuario": r.get("usuario", ""), "tipo_original": r.get("tipo", "")})
+    _token_cache.update(clave="", hasta=0.0)
+    return {"ok": True, "tipo": r.get("tipo"), "usuario": r.get("usuario", ""), "vence": r.get("vence") or 0, "derivado": bool(r.get("derivado")),
+            "extendido": bool(r.get("extendido")), "faltan": r.get("faltan") or []}
 
 
 def _pista_error(err: str) -> str:
@@ -622,7 +734,8 @@ def _pista_error(err: str) -> str:
         return (" → El token no puede publicar en la página. Genera en el Explorador de la API Graph un token de PÁGINA "
                 f"(no de usuario) con {', '.join(_PERMISOS_PAGINA)}, extiéndelo y reemplaza FB_PAGE_TOKEN en Railway.")
     if "(#190)" in e or "expired" in e or "session has been invalidated" in e:
-        return " → El token caducó o fue invalidado (cambio de contraseña / cierre de sesión). Genera uno nuevo de larga duración."
+        return (" → El token venció o fue invalidado. Genera uno nuevo en el Explorador de la API Graph y pégalo en la torre "
+                "(sección 🔑 Token de Facebook): la torre lo convierte en un token de página que no vence.")
     return ""
 
 
@@ -632,21 +745,25 @@ def estado_pagina() -> dict:
     if not configurado():
         return base
     base.update(configurado=True, page_id=config.FB_PAGE_ID)
-    r = _graph_get(config.FB_PAGE_ID, {"fields": "name,link", "access_token": config.FB_PAGE_TOKEN})
+    t = _resolver_token()
+    if t.get("error") or not t.get("token"):
+        return {**base, "error": t.get("error") or "Sin token válido."}
+    r = _graph_get(config.FB_PAGE_ID, {"fields": "name,link", "access_token": t["token"]})
     if not r.get("ok"):
+        _token_cache.update(clave="", hasta=0.0)
         return {**base, "error": r.get("error")}
     d = r.get("data") or {}
     base.update(nombre=d.get("name", ""), link=d.get("link", ""))
-    t = _resolver_token()
-    base.update(token_tipo=t.get("tipo", ""), usuario=t.get("usuario", ""), faltan=list(t.get("faltan") or []))
+    base.update(token_tipo=t.get("tipo", ""), usuario=t.get("usuario", ""), faltan=list(t.get("faltan") or []),
+                origen=t.get("origen", ""), vence=int(t.get("vence") or 0), guardado=bool(stores.config.get(_CFG_TOKEN)))
     if t.get("error"):
         base["advertencia"] = t["error"]
     elif PERMISO_PUBLICAR in base["faltan"]:
         base["advertencia"] = (f"Al token le falta el permiso {PERMISO_PUBLICAR}: Facebook rechazará la publicación. "
                                "Vuelve a generarlo marcando ese permiso.")
     elif t.get("tipo") == "usuario":
-        base["advertencia"] = (f"El token es de la cuenta de {t.get('usuario') or 'usuario'}; la torre obtiene sola el de la "
-                               "página para publicar.")
+        base["advertencia"] = (f"El token de Railway es de la cuenta de {t.get('usuario') or 'usuario'}; la torre derivó y guardó el "
+                               "token de la página, que no vence.")
     return base
 
 
@@ -656,7 +773,8 @@ def publicar_facebook(texto: str, imagen: bytes) -> dict:
         return {"ok": False, "error": "sin_credenciales"}
     t = _resolver_token()
     if t.get("error") or not t.get("token"):
-        return {"ok": False, "error": t.get("error") or "No se pudo obtener el token de la página."}
+        err = t.get("error") or "No se pudo obtener el token de la página."
+        return {"ok": False, "error": err + _pista_error(err)}
     if PERMISO_PUBLICAR in (t.get("faltan") or []):
         return {"ok": False, "error": f"Al token le falta el permiso {PERMISO_PUBLICAR}." + _pista_error("permission")}
     r = _graph_multipart(f"{config.FB_PAGE_ID}/photos", {"message": texto or "", "access_token": t["token"], "published": "true"},
@@ -664,7 +782,9 @@ def publicar_facebook(texto: str, imagen: bytes) -> dict:
     if not r.get("ok"):
         err = str(r.get("error", "error"))
         if "(#190)" in err or "expired" in err.lower():
-            _token_cache["hasta"] = 0.0
+            if t.get("origen") == "torre":
+                olvidar_token_guardado()
+            _token_cache.update(clave="", hasta=0.0)
         return {"ok": False, "error": err + _pista_error(err)}
     d = r.get("data") or {}
     post_id = str(d.get("post_id") or d.get("id") or "")
@@ -758,7 +878,8 @@ def publicar_video_facebook(texto: str, titulo: str, ruta: str) -> dict:
         return {"ok": False, "error": "sin_credenciales"}
     t = _resolver_token()
     if t.get("error") or not t.get("token"):
-        return {"ok": False, "error": t.get("error") or "No se pudo obtener el token de la página."}
+        err = t.get("error") or "No se pudo obtener el token de la página."
+        return {"ok": False, "error": err + _pista_error(err)}
     if PERMISO_PUBLICAR in (t.get("faltan") or []):
         return {"ok": False, "error": f"Al token le falta el permiso {PERMISO_PUBLICAR}." + _pista_error("permission")}
     tok = t["token"]

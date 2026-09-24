@@ -1050,7 +1050,25 @@ off → redeploy inmediato en cada push). URL pública:
   `usuario`, `faltan`, `advertencia` y el pane lo pinta (rojo si falta
   `pages_manage_posts` o el usuario no administra la página, ámbar si es de
   usuario y se derivó solo). `_pista_error` traduce los #200/#190 a qué
-  hacer. Lo correcto sigue siendo pegar el token de PÁGINA. **VIDEO (pedido
+  hacer. **TOKEN QUE VENCE (caso real, 24-sep-2026 22:00 PDT: "(#190)
+  Session has expired"):** el token de usuario del Explorador sin extender
+  dura 1-2 h. Ahora `_resolver_token()` prueba (1) el token de PÁGINA que la
+  torre ya derivó y GUARDÓ cifrado en `stores.config[fb_page_token_cifrado]`
+  (Fernet con `META_TOKEN_KEY` vía `redes.cifrar`; meta en
+  `fb_page_token_meta`; se persiste al instante con `_persistir_ahora`) y
+  (2) `FB_PAGE_TOKEN` de Railway: si es de usuario lo EXTIENDE a 60 días
+  con `META_APP_ID/SECRET` (`oauth/access_token` `fb_exchange_token`) y
+  pide `/{page}?fields=access_token` → token de página que NO vence
+  (`debug_token` con `APP_ID|APP_SECRET` da `expires_at`, `vence`=0 =
+  nunca), y lo guarda. Un guardado que Facebook rechaza se olvida solo y
+  se cae al de Railway; publicar con (#190) también lo olvida. El pane tiene
+  "🔑 Token de Facebook": el operador PEGA un token nuevo (`POST
+  /admin/api/redes/pichangol/token`, `guardar_token_operador`: analiza,
+  deriva, guarda; nunca se devuelve) sin tocar Railway, ve origen
+  (torre/Railway) y vencimiento, y puede "Olvidar el guardado"
+  (`/token/olvidar`). `configurado()` vale con `FB_PAGE_ID` + (Railway o
+  guardado). Test `test_token_vencido_se_reemplaza_desde_la_torre_sin_
+  tocar_railway`. **VIDEO (pedido
   del director, 24-sep-2026: "también debe permitir subir videos y que haga
   el post"):** bloque "🎬 O publica un VIDEO" en el pane: el archivo (MP4/MOV/
   M4V/WEBM/AVI/MKV/3GP, tope `FB_VIDEO_MAX_MB`=300) sube a la torre por XHR

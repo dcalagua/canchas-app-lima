@@ -432,6 +432,31 @@ def get_redes_pichangol(x_admin_token: str | None = Header(default=None)) -> dic
             "pulido": {"disponible": _vp.disponible(), "subtitulos": _vp.subtitulos_disponibles(), "formatos": list(_vp.FORMATOS)}}
 
 
+class TokenRedesRequest(BaseModel):
+    token: str = ""
+
+
+@router.post("/admin/api/redes/pichangol/token")
+def post_redes_token(req: TokenRedesRequest, x_admin_token: str | None = Header(default=None)) -> dict:
+    """El operador pega un token nuevo (del Explorador de la API Graph); la torre lo
+    convierte en token de PÁGINA permanente y lo guarda cifrado. No pasa por Railway."""
+    _check(x_admin_token)
+    from marketing import post_redes as _pr
+    r = _pr.guardar_token_operador(req.token)
+    if not r.get("ok"):
+        raise HTTPException(status_code=400, detail=r.get("error", "Token inválido"))
+    print(f"[redes] token de Facebook actualizado desde la torre · tipo={r.get('tipo')} · derivado={r.get('derivado')}", flush=True)
+    return {**r, "facebook": _pr.estado_pagina()}
+
+
+@router.post("/admin/api/redes/pichangol/token/olvidar")
+def post_redes_token_olvidar(x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import post_redes as _pr
+    _pr.olvidar_token_guardado()
+    return {"ok": True, "facebook": _pr.estado_pagina()}
+
+
 @router.post("/admin/api/redes/pichangol/redactar")
 def post_redes_redactar(req: RedactarRedesRequest, x_admin_token: str | None = Header(default=None)) -> dict:
     """Redacta con IA título, subtítulo, etiqueta y texto para el local elegido, con un
@@ -2920,10 +2945,20 @@ function renderRedes(){
       ? `<div style="margin-top:6px;padding:8px 10px;border-radius:10px;background:#FDECEC;color:var(--rojo);font-weight:600">⚠️ ${esc(fb.advertencia)} <small>(sección "Cómo conectar la página", paso 2)</small></div>`
       : fb.advertencia ? `<div style="margin-top:6px;padding:8px 10px;border-radius:10px;background:#FFF6E5;color:#8a5a00">ℹ️ ${esc(fb.advertencia)}</div>`
       : fb.token_tipo==='pagina' ? `<small style="color:var(--muted);margin-left:8px">token de página ✓${(fb.faltan||[]).length?' · sin '+esc(fb.faltan.join(', ')):''}</small>` : '');
-  const estado = fb.configurado
+  const vence = fb.vence ? `vence el ${new Date(fb.vence*1000).toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'})}` : (fb.nombre ? 'no vence' : '');
+  const origen = fb.origen==='torre' ? 'token guardado en la torre' : fb.origen==='railway' ? 'token de Railway' : '';
+  const tokenCaja = `<details style="margin-top:8px" ${fb.configurado && !fb.nombre ? 'open' : ''}><summary style="cursor:pointer;font-weight:700;font-size:12.5px">🔑 Token de Facebook ${fb.nombre?`<small style="color:var(--muted);font-weight:400">· ${esc(origen)}${vence?' · '+vence:''}</small>`:''}</summary>
+      <div style="margin-top:6px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:#FAFBFC">
+        <small style="color:var(--muted)">Pega aquí un token nuevo del <b>Explorador de la API Graph</b> (de página o de usuario, con <code>pages_manage_posts</code>, <code>pages_read_engagement</code> y <code>pages_show_list</code>). La torre lo extiende, obtiene el token de la PÁGINA (que no vence) y lo guarda cifrado; ya no hace falta tocar Railway. El token nunca se muestra de vuelta.</small>
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><input id="rd_token" type="password" placeholder="EAAB…" autocomplete="off" style="flex:1;min-width:260px;padding:9px 12px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:13px">
+          <button type="button" class="btn-ap" id="rd_token_btn" onclick="guardarTokenRedes()">Guardar y verificar</button>
+          ${fb.guardado?'<button type="button" class="btn-sec" onclick="olvidarTokenRedes()">Olvidar el guardado</button>':''}</div>
+        <div id="rd_token_msg" style="margin-top:6px;font-size:12.5px"></div>
+      </div></details>`;
+  const estado = (fb.configurado
     ? (fb.nombre ? `<span style="color:var(--green);font-weight:700">● Conectado a la página <b>${esc(fb.nombre)}</b></span> ${fb.link?`<a href="${esc(fb.link)}" target="_blank" rel="noopener">abrir ↗</a>`:''}${tokenInfo}`
-                 : `<span style="color:var(--rojo);font-weight:700">● Credenciales configuradas pero Facebook respondió: ${esc(fb.error||'error')}</span>`)
-    : `<span style="color:var(--muted);font-weight:700">○ Sin credenciales de Facebook</span>: la torre compone y descarga la pieza; para publicar directo, pon <code>FB_PAGE_ID</code> y <code>FB_PAGE_TOKEN</code> en Railway (guía abajo).`;
+                 : `<span style="color:var(--rojo);font-weight:700">● Credenciales configuradas pero Facebook respondió: ${esc(fb.error||'error')}</span>${/expired|190|venci/i.test(fb.error||'')?'<div style="margin-top:4px;color:var(--rojo)">El token venció (los de usuario sin extender duran 1-2 h). Pega uno nuevo abajo: la torre lo convierte en uno de página que no vence.</div>':''}`)
+    : `<span style="color:var(--muted);font-weight:700">○ Sin credenciales de Facebook</span>: la torre compone y descarga la pieza; para publicar directo, pon <code>FB_PAGE_ID</code> en Railway y pega el token abajo (o <code>FB_PAGE_TOKEN</code> en Railway).`) + tokenCaja;
   const esVideo = !!redesSel.video, vd = redesSel.video || {};
   const listoPub = esVideo ? (vd.estado==='listo' && !!vd.id) : !!redesSel.img;
   const mb = b => b < 1048576 ? Math.max(1, Math.round(b/1024))+' KB' : (b/1048576).toFixed(b>=104857600?0:1)+' MB';
@@ -3004,7 +3039,7 @@ function renderRedes(){
           <li>Entra a <b>developers.facebook.com</b> con la cuenta que administra la página Pichangol → <b>Mis apps → Crear app</b> (tipo Empresa). Puede quedarse en <b>modo desarrollo</b>: los administradores de la app pueden publicar en sus propias páginas sin revisión de Meta.</li>
           <li>En la app: <b>Herramientas → Explorador de la API Graph</b>. Elige la app, en "Usuario o página" selecciona <b>Obtener token de acceso a la página</b> → marca la página Pichangol y los permisos <code>pages_manage_posts</code>, <code>pages_read_engagement</code>, <code>pages_show_list</code> → Generar. <b>Tiene que ser el token de la PÁGINA</b> (en el desplegable debe quedar elegida "Pichangol", no tu nombre): con un token de usuario Facebook responde <i>"(#200) publish_actions… deprecated"</i>. Si pegas uno de usuario, la torre intenta obtener el de página sola, pero igual necesita que hayas marcado <code>pages_manage_posts</code>.</li>
           <li>Convierte ese token en uno de LARGA duración: <b>Herramientas → Depurador de tokens de acceso</b> → pega el token → "Extender token de acceso". Un token de PÁGINA obtenido desde un token de usuario extendido no caduca.</li>
-          <li>Copia el <b>ID de la página</b> (Configuración de la página → Información de la página) y el token, y ponlos en Railway como <code>FB_PAGE_ID</code> y <code>FB_PAGE_TOKEN</code> en el servicio de este ambiente. <b>No los pegues en el chat ni en el repo.</b> Al redesplegar, arriba aparecerá "Conectado a la página …".</li>
+          <li>Copia el <b>ID de la página</b> (Configuración de la página → Información de la página) y ponlo en Railway como <code>FB_PAGE_ID</code>. El token pégalo arriba en <b>🔑 Token de Facebook</b> (la torre lo extiende y guarda el de la página, que no vence) o, si prefieres, en Railway como <code>FB_PAGE_TOKEN</code>. <b>No lo pegues en el chat ni en el repo.</b></li>
         </ol></details>
       <div class="row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)"><b>Historial</b>${hist}</div>
     </div>`;
@@ -3045,6 +3080,24 @@ function subirFotosRedes(inp){
   if(files.length > libres) alert('Solo entran '+libres+' foto(s) más (máximo '+max+' por publicación). Se toman las primeras.');
   const msgUp = document.getElementById('rd_msg'); if(msgUp) msgUp.innerHTML = '<span class="rd-spin chico"></span> Preparando '+Math.min(files.length, libres)+' foto(s)…';
   files.slice(0, libres).forEach(f=>{ const img = new Image(), url = URL.createObjectURL(f); img.onload = ()=>{ const M=1600,k=Math.min(1,M/Math.max(img.width,img.height)); const cv=document.createElement('canvas'); cv.width=Math.round(img.width*k); cv.height=Math.round(img.height*k); cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); URL.revokeObjectURL(url); toggleFotoRedes(cv.toDataURL('image/jpeg',0.86), true); }; img.onerror = ()=>{ URL.revokeObjectURL(url); alert('No se pudo leer "'+f.name+'".'); }; img.src=url; });
+}
+async function guardarTokenRedes(){
+  const inp = document.getElementById('rd_token'), msg = document.getElementById('rd_token_msg'), btn = document.getElementById('rd_token_btn');
+  const tok = (inp.value||'').trim(); if(!tok){ msg.innerHTML='<span style="color:var(--rojo)">Pega el token primero.</span>'; return; }
+  btn.disabled = true; msg.innerHTML = '<span class="rd-spin chico"></span> Verificando con Facebook y obteniendo el token de la página…';
+  try{
+    const r = await fetch('/admin/api/redes/pichangol/token',{method:'POST',headers:headers(),body:JSON.stringify({token:tok})});
+    const j = await r.json().catch(()=>({}));
+    if(r.status===401){ salir(); return; }
+    if(r.ok && j.ok){ inp.value=''; toast('Token guardado'); redes.facebook = j.facebook || redes.facebook; renderRedes(); const m2=document.getElementById('rd_token_msg'); if(m2) m2.innerHTML = `<span style="color:var(--green);font-weight:700">✓ Listo.</span> Era un token de ${j.tipo==='pagina'?'página':'usuario'}${j.derivado?' → se obtuvo el de la página':''}${j.extendido?' (extendido a 60 días antes)':''}; ${j.vence?'vence el '+new Date(j.vence*1000).toLocaleDateString('es-PE'):'no vence'}.`; }
+    else msg.innerHTML = `<span style="color:var(--rojo)">${esc(j.detail||'No se pudo guardar')}</span>`;
+  }catch(e){ msg.innerHTML = '<span style="color:var(--rojo)">Error de red.</span>'; }
+  btn.disabled = false;
+}
+async function olvidarTokenRedes(){
+  if(!confirm('¿Olvidar el token guardado en la torre? Volverá a usarse solo el de Railway.')) return;
+  const r = await fetch('/admin/api/redes/pichangol/token/olvidar',{method:'POST',headers:headers()});
+  const j = await r.json().catch(()=>({})); if(j.facebook) redes.facebook = j.facebook; renderRedes();
 }
 function ENFOQUE_NAME(k){ return ENFOQUE_NOMBRE[k] || k || ''; }
 async function redactarRedes(otra){
