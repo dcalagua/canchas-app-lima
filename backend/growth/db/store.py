@@ -589,6 +589,7 @@ class Stores:
         self.agente_fb: dict = {"borradores": [], "corridas": []}
         # Biblioteca de marca (fotos/videos importados de Google Fotos a Storage) para los posts.
         self.biblioteca_marca: list[dict] = []
+        self.musica_marca: list[dict] = []          # pistas de "Mi música" (Google Drive → Storage)
         self._idem: dict[tuple[str, str], dict] = {}
         self._ids: dict[str, int] = {}
 
@@ -1010,6 +1011,7 @@ class Stores:
             "publicaciones_redes": [dict(r) for r in self.publicaciones_redes],
             "agente_fb": {"borradores": [dict(b) for b in self.agente_fb.get("borradores", [])], "corridas": [dict(c) for c in self.agente_fb.get("corridas", [])]},
             "biblioteca_marca": [dict(x) for x in self.biblioteca_marca],
+            "musica_marca": [dict(x) for x in self.musica_marca],
             "servicios_extra": {k: dict(v) for k, v in self.servicios_extra.items()},
             "servicios_extra_version": int(self.servicios_extra_version),
             "sugerencias_servicios": [dict(r) for r in self.sugerencias_servicios],
@@ -1102,6 +1104,7 @@ class Stores:
         ag = data.get("agente_fb") or {}
         self.agente_fb = {"borradores": [dict(b) for b in (ag.get("borradores") or [])], "corridas": [dict(c) for c in (ag.get("corridas") or [])]}
         self.biblioteca_marca = [dict(x) for x in (data.get("biblioteca_marca") or [])]
+        self.musica_marca = [dict(x) for x in (data.get("musica_marca") or [])]
         self.servicios_extra = {k: dict(v) for k, v in (data.get("servicios_extra") or {}).items()}
         self.servicios_extra_version = int(data.get("servicios_extra_version") or 1)
         self.sugerencias_servicios = [dict(r) for r in (data.get("sugerencias_servicios") or [])]

@@ -858,3 +858,150 @@ def test_biblioteca_google_fotos_importa_y_el_agente_publica_video_con_musica(mo
     j = client.post("/admin/api/redes/biblioteca/google/desconectar", headers=H).json()
     assert j["conectado"] is False and len(bib.items()) == 2 and client.get("/admin/api/redes/biblioteca", headers=H).json()["fotos"] == 1
     _limpio()
+
+
+def test_mi_musica_desde_google_drive_en_videos_y_agente(monkeypatch, tmp_path):
+    """Pedido del director (24-sep-2026): "subo mi música en una carpeta de mi Google Drive
+    y desde ahí la elijo". Spotify no sirve (no entrega audio; Facebook silencia música
+    comercial). La torre conecta Drive (scope incremental sobre la conexión de Google Fotos),
+    el director elige la carpeta, se sincronizan las pistas a Storage y se usan en el pulido
+    ("Pista") y en el agente (rotación de la menos usada)."""
+    import shutil
+    import subprocess
+    import time as _t
+    from datetime import datetime, timezone as _tz
+    from db.store import stores
+    from marketing import agente_redes as ag
+    from marketing import biblioteca as bib
+    from marketing import musica_drive as md
+    from marketing import video_pulido as vp
+    from web import almacen, datos
+
+    def _limpio():
+        stores.biblioteca_marca.clear(); stores.musica_marca.clear()
+        for k in (bib.CFG_REFRESH, bib.CFG_CUENTA, bib.CFG_CONECTADO, bib.CFG_SCOPES, md.CFG_CARPETA, md.CFG_CARPETA_NOMBRE, md.CFG_SYNC, *ag.CFG.values()):
+            stores.config.pop(k, None)
+        bib._access.update(token="", hasta=0.0)
+        stores.agente_fb = {"borradores": [], "corridas": []}
+    _limpio()
+    monkeypatch.setattr(bib, "_persistir", lambda: None); monkeypatch.setattr(ag, "_persistir", lambda: None)
+    monkeypatch.setattr(config, "PUBLIC_BASE_URL", "https://pg.ebim.pe")
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid.apps.googleusercontent.com"); monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_SECRET", "csec")
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", ""); monkeypatch.setattr(config, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(config, "FB_PAGE_ID", "1257"); monkeypatch.setattr(config, "FB_PAGE_TOKEN", "EAAPAGE")
+    monkeypatch.setattr(datos, "canchas_publicas", lambda: [])
+    monkeypatch.setattr(ag, "_arte_disponible", lambda: False)
+    monkeypatch.setattr(almacen, "disponible", lambda: True)
+    subidas, borradas = [], []
+    monkeypatch.setattr(almacen, "subir", lambda bucket, ruta, datos_, ct="image/jpeg", *, max_bytes=None: (subidas.append((ruta, len(datos_), ct)) or f"https://x.supabase.co/storage/v1/object/public/{bucket}/{ruta}?v=1"))
+    monkeypatch.setattr(almacen, "borrar_foto", lambda url: borradas.append(url) or True)
+    # Una pista REAL (WAV con un tono) para que FFmpeg la mezcle de verdad.
+    pista = str(tmp_path / "cumbia.wav")
+    subprocess.run([vp.ffmpeg_exe(), "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=330:sample_rate=44100", "-t", "1.5", pista], check=True)
+    pista_bytes = open(pista, "rb").read()
+    drive = {"scope": bib.SCOPES, "archivos": [
+        {"id": "f-cumbia", "name": "cumbia.wav", "mimeType": "audio/wav", "size": str(len(pista_bytes)), "md5Checksum": "aaa1", "modifiedTime": "2026-09-20T10:00:00Z"},
+        {"id": "f-notas", "name": "notas.txt", "mimeType": "text/plain", "size": "10", "md5Checksum": "bbb"},
+        {"id": "f-gordo", "name": "set-completo.mp3", "mimeType": "audio/mpeg", "size": str(md.PISTA_MAX_BYTES + 1), "md5Checksum": "ccc"}]}
+
+    def http(url, *, datos=None, form=None, token="", metodo=None, timeout=30):
+        if url == "https://oauth2.googleapis.com/token":
+            if form.get("grant_type") == "authorization_code":
+                return {"access_token": "ya29.A", "refresh_token": "1//R", "expires_in": 3599, "scope": drive["scope"]}
+            return {"access_token": "ya29.B", "expires_in": 3599}
+        if url.startswith("https://openidconnect.googleapis.com/"):
+            return {"email": "dcalagua@ebim.pe"}
+        assert token in ("ya29.A", "ya29.B")
+        if url.startswith(f"{md.DRIVE}/files/"):
+            fid = url.split("/files/", 1)[1].split("?", 1)[0]
+            if fid == "1AbCdEfGhIjKlMnOp":
+                return {"id": fid, "name": "Música Pichangol", "mimeType": "application/vnd.google-apps.folder"}
+            if fid == "f-cumbia":
+                return {"id": fid, "name": "cumbia.wav", "mimeType": "audio/wav"}
+            raise RuntimeError("Google respondió 404: File not found")
+        if url.startswith(f"{md.DRIVE}/files?"):
+            q = dict(__import__("urllib.parse").parse.parse_qsl(url.split("?", 1)[1]))["q"]
+            if "application/vnd.google-apps.folder" in q:
+                return {"files": [{"id": "1AbCdEfGhIjKlMnOp", "name": "Música Pichangol", "modifiedTime": "2026-09-20T10:00:00Z"}] if "Pichangol" in q or "name contains" not in q else []}
+            assert "'1AbCdEfGhIjKlMnOp' in parents" in q
+            return {"files": drive["archivos"]}
+        raise AssertionError(f"URL inesperada {url}")
+    monkeypatch.setattr(bib, "_http_json", http)
+    monkeypatch.setattr(bib, "_descargar", lambda url, token, tope, timeout=180: pista_bytes if "f-cumbia" in url else (_ for _ in ()).throw(RuntimeError("no existe")))
+    # ── Sin conectar: la torre lo explica; conectar Drive = OAuth incremental con el scope de Drive.
+    j = client.get("/admin/api/redes/musica", headers=H).json()
+    assert j["conectado"] is False and j["google"] is False and j["pistas"] == 0
+    assert client.get("/admin/api/redes/musica/carpetas", headers=H).status_code == 409
+    url = client.get("/admin/api/redes/musica/google/autorizar", headers=H).json()["url"]
+    assert "drive.readonly" in url and "photospicker.mediaitems.readonly" in url and "include_granted_scopes=true" in url
+    state = dict(__import__("urllib.parse").parse.parse_qsl(url.split("?", 1)[1]))["state"]
+    # Google devuelve SOLO Fotos (el director no marcó Drive) → Google conectado pero Mi música no.
+    assert client.get("/admin/api/redes/biblioteca/google/callback", params={"code": "4/C", "state": state}).status_code == 200
+    j = client.get("/admin/api/redes/musica", headers=H).json()
+    assert j["google"] is True and j["conectado"] is False and client.get("/admin/api/redes/biblioteca", headers=H).json()["conectado"] is True
+    drive["scope"] = bib.SCOPES + " " + md.SCOPE_DRIVE
+    assert client.get("/admin/api/redes/biblioteca/google/callback", params={"code": "4/C", "state": state}).status_code == 200
+    assert client.get("/admin/api/redes/musica", headers=H).json()["conectado"] is True and md.conectado()
+    # ── Carpeta: por enlace (…/folders/<id>) o buscando por nombre; un archivo que no es carpeta se rechaza.
+    assert md.carpeta_desde_enlace("https://drive.google.com/drive/u/0/folders/1AbCdEfGhIjKlMnOp?usp=sharing") == "1AbCdEfGhIjKlMnOp"
+    assert md.carpeta_desde_enlace("https://drive.google.com/open?id=1AbCdEfGhIjKlMnOp") == "1AbCdEfGhIjKlMnOp" and md.carpeta_desde_enlace("hola") == ""
+    assert client.post("/admin/api/redes/musica/sincronizar", headers=H).status_code == 409          # sin carpeta
+    assert client.post("/admin/api/redes/musica/carpeta", json={"enlace": "https://drive.google.com/file/d/f-cumbia/view"}, headers=H).status_code == 400
+    r = client.get("/admin/api/redes/musica/carpetas?q=Pichangol", headers=H).json()
+    assert r["carpetas"][0]["nombre"] == "Música Pichangol"
+    r = client.post("/admin/api/redes/musica/carpeta", json={"enlace": "https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOp"}, headers=H).json()
+    assert r["ok"] and r["carpeta"] == {"id": "1AbCdEfGhIjKlMnOp", "nombre": "Música Pichangol"} and stores.config[md.CFG_CARPETA] == "1AbCdEfGhIjKlMnOp"
+    # ── Sincronizar: entra el WAV, se omiten el .txt (no es audio) y el MP3 gigante; el catálogo sobrevive al redeploy.
+    r = client.post("/admin/api/redes/musica/sincronizar", headers=H).json()
+    assert r["nuevos"] == 1 and r["omitidos"] == 1 and r["total"] == 1 and "set-completo.mp3" in r["detalle"][0]
+    assert subidas[-1][0].startswith("marca/musica/mm_") and subidas[-1][0].endswith(".wav") and subidas[-1][2] == "audio/wav"
+    p1 = md.items()[0]
+    assert p1["nombre"] == "cumbia.wav" and p1["url"].startswith("https://x.supabase.co/") and "?v=" not in p1["url"] and p1["usos"] == 0 and p1["md5"] == "aaa1"
+    assert len(stores.to_state()["musica_marca"]) == 1
+    r = client.post("/admin/api/redes/musica/sincronizar", headers=H).json()
+    assert r["nuevos"] == 0 and r["actualizados"] == 0 and r["quitados"] == 0                       # sin cambios → nada
+    drive["archivos"][0]["md5Checksum"] = "aaa2"                                                     # el director reemplazó el archivo
+    r = client.post("/admin/api/redes/musica/sincronizar", headers=H).json()
+    assert r["actualizados"] == 1 and md.items()[0]["id"] == p1["id"] and md.items()[0]["md5"] == "aaa2"
+    # ── Pulido con la pista propia: el video mudo sale con la cumbia (volumen medio alto, no el silencio).
+    monkeypatch.setattr(md, "descargar_a_temporal", lambda iid: pista if md.item(iid) else (_ for _ in ()).throw(RuntimeError("no")))
+    monkeypatch.setattr(pr, "_VIDEO_DIR", str(tmp_path / "videos")); pr._videos.clear(); vp._trabajos.clear()
+    mudo = _clip(str(tmp_path / "mudo.mp4"), con_audio=False)
+    vid = client.post("/admin/api/redes/pichangol/video?nombre=mudo.mp4", content=open(mudo, "rb").read(), headers=H).json()["video_id"]
+    assert client.post(f"/admin/api/redes/pichangol/video/{vid}/pulir", json={"subtitulos": False, "musica_pista": "mm_no_existe"}, headers=H).status_code == 404
+    assert client.post(f"/admin/api/redes/pichangol/video/{vid}/pulir", json={"subtitulos": False, "formato": "original", "musica_modo": "protagonista", "musica_pista": p1["id"]}, headers=H).status_code == 200
+    fin = _t.time() + 90
+    while _t.time() < fin:
+        e = client.get(f"/admin/api/redes/pichangol/video/{vid}/estado", headers=H).json()
+        if e["estado"] in ("listo", "error"):
+            break
+        _t.sleep(0.5)
+    assert e["estado"] == "listo", e
+    p = subprocess.run([vp.ffmpeg_exe(), "-hide_banner", "-i", pr.video(vid)["pulido"], "-af", "volumedetect", "-f", "null", "-"], capture_output=True, text=True, errors="ignore")
+    import re as _re
+    assert float(_re.search(r"mean_volume:\s*(-?[\d.]+) dB", p.stderr).group(1)) > -40                   # se oye la pista (1,5 s en bucle sobre 2 s de video)
+    # ── Agente: jueves con video en la biblioteca → publica con la pista propia y la marca usada.
+    clip = _clip(str(tmp_path / "gfotos.mp4"), con_audio=False)
+    stores.biblioteca_marca.append({"id": "bm_v1", "google_id": "g-v1", "tipo": "video", "url": "https://x.supabase.co/v.mp4", "mime": "video/mp4", "nombre": "VID_1.mp4", "ancho": 0, "alto": 0, "duracion_ms": 0, "bytes": 1, "creado_en": 1.0, "tomada_en": "", "origen": "google_fotos", "usos": 0, "ultimo_uso": 0.0})
+    monkeypatch.setattr(bib, "descargar_a_temporal", lambda iid: (shutil.copyfile(clip, tmp_path / f"b_{iid}.mp4") or str(tmp_path / f"b_{iid}.mp4")))
+    rendidos = []
+    monkeypatch.setattr(pr, "publicar_video_facebook", lambda texto, titulo, ruta: (rendidos.append(vp.sondear(ruta)) or {"ok": True, "post_id": "v1", "url": "https://www.facebook.com/v1"}))
+    monkeypatch.setattr(ag, "_ahora", lambda: datetime(2026, 10, 1, 12, 0, tzinfo=_tz.utc))       # jueves 07:00 Lima
+    client.post("/admin/api/redes/agente", json={"activo": True, "modo": "auto"}, headers=H)
+    brief = ag.planificar(ag.ahora_local(), audiencia="jugadores")
+    assert brief["video"]["id"] == "bm_v1" and brief["pista"]["id"] == p1["id"]
+    pieza = ag.crear_pieza(brief)
+    assert pieza["musica_id"] == p1["id"] and ag._receta(pieza)["musica_nombre"] == "cumbia.wav"
+    assert ag.tick() is True and rendidos and rendidos[0]["audio"] is True
+    h = stores.publicaciones_redes[0]
+    assert h["tipo"] == "video" and h["musica_nombre"] == "cumbia.wav" and md.item(p1["id"])["usos"] == 1
+    assert client.get("/admin/api/redes/agente", headers=H).json()["biblioteca"]["pistas"] == 1
+    # ── Quitar de Mi música borra de Storage; si el archivo desaparece de Drive, se quita solo al sincronizar.
+    assert client.post(f"/admin/api/redes/musica/{p1['id']}/quitar", headers=H).json()["items"] == [] and borradas[-1].startswith("https://x.supabase.co/")
+    client.post("/admin/api/redes/musica/sincronizar", headers=H)
+    assert len(md.items()) == 1
+    drive["archivos"].pop(0)
+    r = client.post("/admin/api/redes/musica/sincronizar", headers=H).json()
+    assert r["quitados"] == 1 and md.items() == []
+    pr.descartar_video(vid)
+    _limpio()

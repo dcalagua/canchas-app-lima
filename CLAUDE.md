@@ -1280,6 +1280,42 @@ off → redeploy inmediato en cada push). URL pública:
   `#rd_biblioteca_con`) y los mensajes van a `.rd-bib-msg` (`bibMsg`). OJO:
   la cabecera del paso es `<div class="rd-h">`, NO `<header>` (el CSS global
   de la torre pinta `header b` en blanco y los títulos desaparecían).
+  **MI MÚSICA DESDE GOOGLE DRIVE (pedido del director, 24-sep-2026: "subo mi
+  música en una carpeta de mi Google Drive y desde ahí la elijo"; Spotify NO
+  sirve: su API no entrega audio y Facebook silencia música comercial):**
+  `marketing/musica_drive.py`. (1) **Conectar Drive** = OAuth INCREMENTAL con
+  el mismo cliente de Google Fotos (`biblioteca.url_autorizacion(scopes_extra=
+  [drive.readonly])`, `include_granted_scopes`; los scopes concedidos se guardan
+  en `stores.config[gfotos_scopes]` al canjear el código y `musica_drive.
+  conectado()` exige el de Drive; scope RESTRINGIDO de Google → en modo
+  pruebas vale para los usuarios de prueba). (2) **Carpeta**: enlace
+  `…/folders/<id>` o búsqueda por nombre (`buscar_carpetas`, Drive `files.list`
+  de carpetas); `elegir_carpeta` valida `mimeType` de carpeta y guarda
+  `gdrive_musica_carpeta[_nombre]`. (3) **Sincronizar** (`sincronizar`): lista
+  los audios de la carpeta (mp3/m4a/wav/ogg/aac/flac por mime o extensión,
+  tope `MUSICA_PISTA_MAX_MB`=30), descarga con `files/{id}?alt=media` los
+  nuevos o con `md5Checksum` distinto, los sube a Storage
+  `canchas/marca/musica/mm_<id>.<ext>` y QUITA del catálogo (y de Storage)
+  los que ya no están en Drive; catálogo `stores.musica_marca` (snapshot,
+  `usos`/`ultimo_uso`). (4) **Usar**: `PulirVideoRequest.musica_pista` (id) →
+  el endpoint resuelve `musica_ruta` (copia local desde Storage,
+  `descargar_a_temporal`) y `video_pulido.pulir` la mete con `-stream_loop -1`
+  (bucle si es más corta; `amix duration=first` la corta) con fundidos y el
+  volumen del modo (fondo/protagonista) en vez de `generar_pista`; el agente
+  24×7 (`planificar` → `elegir_pista` = la menos usada; receta `musica_id`/
+  `musica_nombre`; `marcar_uso` solo si Facebook aceptó; historial
+  `musica_nombre`) usa la pista propia y, sin pistas, la sintetizada. Torre:
+  Conexiones → "🎵 Mi música · carpeta de Google Drive" (`renderMusica`,
+  conectar, enlace/buscar carpeta, Sincronizar, lista con `<audio controls>` y
+  ✕ que no toca Drive), paso 2 del video → "Pista" (`#rd_pista`: Original
+  sintetizada o cada pista, con reproductor; con pista se oculta "Estilo"),
+  píldora "● Mi música · N pistas". Endpoints `GET /admin/api/redes/musica`,
+  `GET …/musica/google/autorizar`, `GET …/musica/carpetas?q=`, `POST
+  …/musica/carpeta {enlace}`, `POST …/musica/sincronizar`, `POST
+  …/musica/{id}/quitar`. Test `test_mi_musica_desde_google_drive_en_videos_y_
+  agente` (Drive simulado; FFmpeg real mezcla un WAV en bucle sobre un video
+  mudo y se verifica con volumedetect). Backlog: música con licencia por API
+  (Mubert / ElevenLabs Music) como catálogo de estilos.
 - **DATOS DE LA EMPRESA CONFIGURABLES DESDE LA TORRE (pedido del director,
   sep-2026):** razón social, tipo y número de documento fiscal (RUC/NIT),
   dirección, ciudad corta, **WhatsApp POR PAÍS** (Perú, Ecuador, Bolivia:

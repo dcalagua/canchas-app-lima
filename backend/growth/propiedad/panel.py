@@ -385,6 +385,7 @@ class PulirVideoRequest(BaseModel):
     musica: bool | None = None            # compat: True = auto, False = sin música
     musica_modo: str = ""                 # auto | fondo | protagonista | no
     mood: str = ""                        # chill | energetico | epico
+    musica_pista: str = ""                # id de "Mi música" (Google Drive); vacío = música original sintetizada
 
 
 class RedactarRedesRequest(BaseModel):
@@ -524,6 +525,75 @@ def post_redes_biblioteca_quitar(item_id: str, x_admin_token: str | None = Heade
     if not _bib.quitar(item_id):
         raise HTTPException(status_code=404, detail="Ya no está en la biblioteca.")
     return {"ok": True, "items": _bib.items()}
+
+
+@router.get("/admin/api/redes/musica")
+def get_redes_musica(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Mi música: pistas propias sincronizadas desde una carpeta de Google Drive + estado de la conexión."""
+    _check(x_admin_token)
+    from marketing import musica_drive as _md
+    return {"ok": True, **_md.estado(), "items": _md.items()}
+
+
+@router.get("/admin/api/redes/musica/google/autorizar")
+def get_redes_musica_autorizar(x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import biblioteca as _bib
+    from marketing import musica_drive as _md
+    if not _bib.credenciales():
+        raise HTTPException(status_code=409, detail="Faltan GOOGLE_WEB_CLIENT_ID y GOOGLE_WEB_CLIENT_SECRET en Railway (cliente OAuth 'Aplicación web').")
+    if not _bib.redirect_uri():
+        raise HTTPException(status_code=409, detail="Falta PUBLIC_BASE_URL en Railway para armar la URI de redirección.")
+    return {"ok": True, "url": _md.url_autorizacion()}
+
+
+class MusicaCarpetaRequest(BaseModel):
+    enlace: str = ""
+
+
+@router.get("/admin/api/redes/musica/carpetas")
+def get_redes_musica_carpetas(q: str = "", x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import musica_drive as _md
+    if not _md.conectado():
+        raise HTTPException(status_code=409, detail="Conecta Google Drive primero.")
+    try:
+        return {"ok": True, "carpetas": _md.buscar_carpetas(q)}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)[:300])
+
+
+@router.post("/admin/api/redes/musica/carpeta")
+def post_redes_musica_carpeta(req: MusicaCarpetaRequest, x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import musica_drive as _md
+    if not _md.conectado():
+        raise HTTPException(status_code=409, detail="Conecta Google Drive primero.")
+    try:
+        c = _md.elegir_carpeta(req.enlace)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)[:300])
+    return {"ok": True, "carpeta": c, **{k: v for k, v in _md.estado().items() if k != "carpeta"}}
+
+
+@router.post("/admin/api/redes/musica/sincronizar")
+def post_redes_musica_sincronizar(x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import musica_drive as _md
+    try:
+        r = _md.sincronizar()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=409 if "primero" in str(exc) else 502, detail=str(exc)[:300])
+    return {"ok": True, **r, "items": _md.items(), **_md.estado()}
+
+
+@router.post("/admin/api/redes/musica/{item_id}/quitar")
+def post_redes_musica_quitar(item_id: str, x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import musica_drive as _md
+    if not _md.quitar(item_id):
+        raise HTTPException(status_code=404, detail="Esa pista ya no está en Mi música.")
+    return {"ok": True, "items": _md.items()}
 
 
 @router.post("/admin/api/redes/pichangol/video/desde-biblioteca/{item_id}")
@@ -757,6 +827,15 @@ def post_redes_video_pulir(video_id: str, req: PulirVideoRequest, x_admin_token:
         if req.mood not in _vp.MOODS_MUSICA:
             raise HTTPException(status_code=400, detail="Estilo de música no válido.")
         opciones["mood"] = req.mood
+    if req.musica_pista:
+        from marketing import musica_drive as _md
+        if not _md.item(req.musica_pista):
+            raise HTTPException(status_code=404, detail="Esa pista ya no está en Mi música. Sincroniza la carpeta de Drive.")
+        try:
+            opciones["musica_ruta"] = _md.descargar_a_temporal(req.musica_pista)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=f"No se pudo traer la pista: {str(exc)[:200]}")
+        opciones["musica_pista"] = req.musica_pista
     salida = os.path.splitext(v["ruta"])[0] + "_pulido.mp4"
 
     def _al_terminar(vid, res, transcripcion):
@@ -3180,7 +3259,7 @@ async function cargarRedes(){
     if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
     redes = await r.json(); renderRedes();
     if(!redesSel.cancha && redes.locales.length) redesSel.cancha = redes.locales[0].canchas[0].id;
-    aplicarPlantilla(); cargarAgente(); cargarBiblioteca();
+    aplicarPlantilla(); cargarAgente(); cargarBiblioteca(); cargarMusica();
   }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
 }
 // ── Estado de la interfaz del pane (pestaña, paso del asistente, tipo y fuente del contenido). Se recuerda en el navegador.
@@ -3228,6 +3307,7 @@ function renderRedes(){
     : (faltaPublicar || !fb.token_tipo) ? `<span class="rd-pill warn" onclick="rdUI('tab','conexiones')" title="Ir a Conexiones">⚠️ Página ${esc(fb.nombre)} · revisar permisos</span>`
     : `<span class="rd-pill ok" onclick="rdUI('tab','conexiones')" title="Ir a Conexiones">● Página ${esc(fb.nombre)}</span>`;
   const bibPill = !bib ? '' : bib.conectado ? `<span class="rd-pill ok" onclick="rdUI('tab','conexiones')" title="Ir a Conexiones">● Google Fotos · ${bib.fotos||0} fotos · ${bib.videos||0} videos</span>` : `<span class="rd-pill off" onclick="rdUI('tab','conexiones')" title="Ir a Conexiones">○ Google Fotos sin conectar</span>`;
+  const musPill = !mus ? '' : mus.conectado ? `<span class="rd-pill ok" onclick="rdUI('tab','conexiones')" title="Ir a Conexiones">● Mi música · ${mus.pistas||0} pistas</span>` : `<span class="rd-pill off" onclick="rdUI('tab','conexiones')" title="Ir a Conexiones">○ Mi música sin conectar</span>`;
 
   // ── PASO 1 · Contenido ───────────────────────────────────────────────────
   const locales = (redes.locales||[]).map(l=>`<option value="${esc(l.canchas[0].id)}"${redesSel.cancha===l.canchas[0].id?' selected':''}>${esc(l.local)}${l.zona?' · '+esc(l.zona):''} (${l.fotos.length} fotos)</option>`).join('');
@@ -3277,7 +3357,7 @@ function renderRedes(){
   const pl = vd.pulido || {}, po = pl.opciones || {};
   const MUS = {auto:'música automática', fondo:'música de fondo', protagonista:'música protagonista', no:'sin música'};
   const res2 = tipo==='foto' ? `${{cuadrado:'Cuadrado 1080×1080',horizontal:'Horizontal 1200×630',historia:'Historia 1080×1920'}[prev.f||redesSel.formato]||'Cuadrado'}${prev.e?' · etiqueta "'+esc(prev.e)+'"':''}`
-    : !esVideo ? '—' : (pl.estado==='listo' && pl.url ? `${pl.usar?'Versión pulida':'Original'} · ${po.formato||'vertical'} · ${MUS[po.musica_modo||'auto']}` : (pl.estado==='transcribiendo'||pl.estado==='renderizando') ? 'Puliendo… '+(pl.progreso||0)+'%' : 'Sin pulir (se publica el original)');
+    : !esVideo ? '—' : (pl.estado==='listo' && pl.url ? `${pl.usar?'Versión pulida':'Original'} · ${po.formato||'vertical'} · ${MUS[po.musica_modo||'auto']}${po.musica_pista&&mus?' · 🎵 '+esc(((mus.items||[]).find(t=>t.id===po.musica_pista)||{}).nombre||''):''}` : (pl.estado==='transcribiendo'||pl.estado==='renderizando') ? 'Puliendo… '+(pl.progreso||0)+'%' : 'Sin pulir (se publica el original)');
   const ok2 = redesUI.paso > 2;
 
   // ── PASO 3 · Texto ───────────────────────────────────────────────────────
@@ -3334,7 +3414,7 @@ function renderRedes(){
   const agActivo = agente && agente.config && agente.config.activo;
   document.getElementById('redesPanel').innerHTML = `
     <div class="card">
-      <div class="top" style="flex-wrap:wrap;gap:8px"><h3>📣 Redes de Pichangol</h3><span style="flex:1"></span>${fbPill} ${bibPill}</div>
+      <div class="top" style="flex-wrap:wrap;gap:8px"><h3>📣 Redes de Pichangol</h3><span style="flex:1"></span>${fbPill} ${bibPill} ${musPill}</div>
       <div class="rd-tabs">${tabBtn('publicar','✍️ Publicar ahora')}${tabBtn('agente','🤖 Agente 24×7'+(agente?(agActivo?' · activo':' · pausado'):''))}${tabBtn('historial','🕘 Historial'+(histN?' ('+histN+')':''))}${tabBtn('conexiones','🔌 Conexiones')}</div>
       ${tab('publicar', `<div class="rd-grid">
         <div>
@@ -3359,13 +3439,14 @@ function renderRedes(){
               <li>Copia el <b>ID de la página</b> (Configuración de la página → Información de la página) y ponlo en Railway como <code>FB_PAGE_ID</code>. El token pégalo arriba en <b>🔑 Token de Facebook</b> (la torre lo extiende y guarda el de la página, que no vence) o, si prefieres, en Railway como <code>FB_PAGE_TOKEN</code>. <b>No lo pegues en el chat ni en el repo.</b></li>
             </ol></details></div>
         <div class="row" style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:14px"><b>📷 Google Fotos · biblioteca de marca</b><div id="rd_biblioteca_con" style="margin-top:6px"></div></div>
+        <div class="row" style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:14px"><b>🎵 Mi música · carpeta de Google Drive</b><div id="rd_musica_con" style="margin-top:6px"></div></div>
         <div class="row" style="margin-top:12px;font-size:12.5px;color:var(--muted)">Motores de este ambiente: redactor IA ${ia.disponible===false?'<b style="color:#8a5a00">apagado (sin ANTHROPIC_API_KEY)</b>':'<b style="color:var(--green)">activo</b>'} · pulido de video ${(redes.pulido||{}).disponible===false?'<b style="color:#8a5a00">sin FFmpeg</b>':'<b style="color:var(--green)">activo</b>'} · subtítulos Whisper ${(redes.pulido||{}).subtitulos===false?'<b style="color:#8a5a00">apagados (sin OPENAI_API_KEY)</b>':'<b style="color:var(--green)">activos</b>'}.</div>`)}
     </div>`;
   const set=(id,v)=>{ const el=document.getElementById(id); if(el && v!==undefined && v!==null && v!=='') el.value=v; };
   set('rd_titulo',prev.t); set('rd_sub',prev.s); set('rd_texto',prev.x); set('rd_etq',prev.e); set('rd_pie',prev.p); set('rd_formato', prev.f || redesSel.formato); set('rd_tema', prev.tema);
   ['rd_titulo','rd_sub','rd_etq','rd_pie'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input', autoPrevRedes); });
   const fm=document.getElementById('rd_formato'); if(fm) fm.addEventListener('change', ()=>{ redesSel.formato=fm.value; autoPrevRedes(); });
-  renderAgente(); renderBiblioteca();
+  renderAgente(); renderBiblioteca(); renderMusica();
 }
 function cambiarLocalRedes(id){
   // Cambiar de local suelta las fotos del bucket del local anterior, pero CONSERVA las subidas
@@ -3470,6 +3551,7 @@ function autoPrevRedes(){ clearTimeout(rdTimer); if(redesSel.video){ botonesRede
 function cuerpoRedes(conImagen){ const g=id=>(document.getElementById(id)||{}).value||''; const c = {fotos:redesSel.fotos, titulo:g('rd_titulo'), subtitulo:g('rd_sub'), pie:g('rd_pie'), etiqueta:g('rd_etq'), formato:g('rd_formato')||redesSel.formato, texto:g('rd_texto'), plantilla:redesSel.plantilla, cancha_id:redesSel.cancha, video_id:(redesSel.video&&redesSel.video.id)||'', enfoque:(redesSel.ia&&redesSel.ia.enfoque)||'', fuente:(redesSel.ia&&redesSel.ia.fuente)||(redesSel.plantilla==='libre'?'manual':'plantilla'), usar_pulido: !!(redesSel.video&&redesSel.video.pulido&&redesSel.video.pulido.usar&&redesSel.video.pulido.url)}; if(conImagen && !c.video_id && redesSel.img) c.imagen = redesSel.img; return c; }
 // ── Biblioteca de marca + Google Fotos (Picker API) ──
 let bib = null, bibOcupado = '', bibSesion = null, bibTimer = null, bibAbierta = false;
+let mus = null, musOcupado = '', musCarpetas = null;
 async function cargarBiblioteca(){
   try{ const r = await fetch('/admin/api/redes/biblioteca',{headers:headers()}); if(r.ok) bib = await r.json(); }catch(e){}
   renderBiblioteca();
@@ -3545,6 +3627,68 @@ async function bibUsarVideo(id){
     } else alert(j.detail||'No se pudo traer el video'); }catch(e){ alert('Error de red'); }
   bibOcupado=''; renderBiblioteca();
 }
+// ── Mi música: pistas propias desde una carpeta de Google Drive (Spotify no da audio y Facebook silencia música comercial) ──
+async function cargarMusica(){
+  const primera = !mus;
+  try{ const r = await fetch('/admin/api/redes/musica',{headers:headers()}); if(r.ok) mus = await r.json(); }catch(e){}
+  if(primera && mus && document.getElementById('redesPanel')) renderRedes(); else renderMusica();   // la 1.ª carga pinta la píldora y el selector de pista
+}
+function musMsg(h){ const m=document.getElementById('rd_mus_msg'); if(m) m.innerHTML=h; }
+function renderMusica(){
+  const box = document.getElementById('rd_musica_con'); if(!box) return;
+  if(!mus){ box.innerHTML = '<div class="rd-cargando" style="padding:8px 4px"><span class="rd-spin chico"></span> Cargando Mi música…</div>'; return; }
+  const items = mus.items || [], c = mus.carpeta || {};
+  const mb = b => b < 1048576 ? Math.max(1, Math.round(b/1024))+' KB' : (b/1048576).toFixed(1)+' MB';
+  let cab;
+  if(!mus.credenciales) cab = `<small style="color:#8a5a00">Faltan las credenciales de Google en Railway (las mismas de Google Fotos).</small>`;
+  else if(!mus.conectado) cab = `<button type="button" class="btn-ap" onclick="musConectar()">🔗 Conectar Google Drive</button> <small style="color:var(--muted)">${mus.google?'Google Fotos ya está conectado; falta autorizar la lectura de Drive (solo lectura). ':''}Se abre Google para autorizar; la torre solo LEE la carpeta que elijas.</small>`;
+  else cab = `<span style="color:var(--green);font-weight:700">● Google Drive conectado</span> <small style="color:var(--muted)">${esc(mus.cuenta||'')}</small>`;
+  const carpeta = !mus.conectado ? '' : `<div style="margin-top:10px;padding:10px 12px;border-radius:12px;background:#FAFBFC;border:1px solid var(--border)">
+      <div style="font-size:12.5px;font-weight:700">Carpeta de música ${c.id?`<span style="color:var(--green)">· 📁 ${esc(c.nombre||c.id)}</span>`:'<span style="color:#8a5a00">· sin elegir</span>'}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center">
+        <input id="rd_mus_enlace" placeholder="Pega el enlace de la carpeta de Drive (…/drive/folders/…)" style="flex:1;min-width:260px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:13px">
+        <button type="button" class="btn-sec" onclick="musCarpeta()" ${musOcupado?'disabled':''}>Usar esta carpeta</button>
+        <span style="color:var(--muted);font-size:12.5px">o</span>
+        <input id="rd_mus_q" placeholder="buscar carpeta por nombre" style="min-width:180px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:13px" onkeydown="if(event.key==='Enter') musBuscar()">
+        <button type="button" class="btn-sec" onclick="musBuscar()" ${musOcupado?'disabled':''}>🔎 Buscar</button></div>
+      ${musCarpetas?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${musCarpetas.length?musCarpetas.map(f=>`<button type="button" class="rd-sub${c.id===f.id?' on':''}" onclick="musCarpeta('${f.id}')">📁 ${esc(f.nombre)}</button>`).join(''):'<small style="color:var(--muted)">No se encontraron carpetas con ese nombre.</small>'}</div>`:''}
+      <small style="display:block;margin-top:6px;color:var(--muted)">Sube ahí MP3, M4A, WAV, OGG, AAC o FLAC con derechos de uso (hasta ${mus.max_mb||30} MB cada uno) y pulsa Sincronizar. La torre copia las pistas a Storage; lo que borres de la carpeta desaparece al sincronizar.</small></div>`;
+  const sync = !(mus.conectado && c.id) ? '' : `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px"><button type="button" class="btn-ap" onclick="musSincronizar()" ${musOcupado?'disabled':''}>${musOcupado==='sync'?'<span class="rd-spin blanco"></span> Sincronizando…':'🔄 Sincronizar con Drive'}</button><small style="color:var(--muted)">${mus.sync_en?'última sincronización '+new Date(mus.sync_en*1000).toLocaleString('es-PE'):'aún no se ha sincronizado'} · ${items.length} pista(s)</small></div>`;
+  const lista = items.length ? `<div style="margin-top:8px;border:1px solid var(--border);border-radius:12px;overflow:hidden">${items.map(t=>`<div style="display:flex;gap:10px;align-items:center;padding:8px 10px;border-bottom:1px solid #F0F2F4"><audio controls preload="none" src="${esc(t.url)}" style="height:30px;width:230px"></audio><div style="flex:1;min-width:160px"><b style="font-size:13px">${esc(t.nombre)}</b><br><small style="color:var(--muted)">${mb(t.bytes||0)} · ${t.usos?t.usos+' uso(s)':'sin usar'}</small></div><button type="button" class="btn-sec" title="Quitar de Mi música (no toca tu Drive)" onclick="musQuitar('${t.id}')">✕</button></div>`).join('')}</div>` : (mus.conectado && c.id ? '<small style="display:block;margin-top:8px;color:var(--muted)">Todavía no hay pistas: sube audios a la carpeta y sincroniza.</small>' : '');
+  box.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${cab}</div><div id="rd_mus_msg" style="margin-top:6px;font-size:12.5px"></div>${carpeta}${sync}${lista}
+    <small style="display:block;margin-top:8px;color:var(--muted)">Las pistas aparecen en el paso Estilo de cada video ("Pista") y el agente 24×7 rota la menos usada. Spotify no sirve: su API no entrega el audio y Facebook silencia la música comercial.</small>`;
+}
+async function musConectar(){
+  try{ const r = await fetch('/admin/api/redes/musica/google/autorizar',{headers:headers()}); const j = await r.json().catch(()=>({}));
+    if(r.ok && j.ok){ window.open(j.url, '_blank', 'noopener'); musMsg('<span class="rd-spin chico"></span> Autoriza Google Drive en la pestaña de Google y vuelve aquí.'); let n=0; const t=setInterval(async()=>{ await cargarMusica(); await cargarBiblioteca(); n++; if((mus&&mus.conectado)||n>60) clearInterval(t); }, 3000); }
+    else alert(j.detail||'No se pudo iniciar la conexión'); }catch(e){ alert('Error de red'); }
+}
+async function musBuscar(){
+  const q = (document.getElementById('rd_mus_q')||{}).value||''; musOcupado='buscar'; renderMusica();
+  try{ const r = await fetch('/admin/api/redes/musica/carpetas?q='+encodeURIComponent(q),{headers:headers()}); const j = await r.json().catch(()=>({}));
+    musOcupado=''; if(r.ok && j.ok){ musCarpetas = j.carpetas||[]; renderMusica(); const el=document.getElementById('rd_mus_q'); if(el) el.value=q; } else { renderMusica(); musMsg(`<span style="color:var(--rojo)">${esc(j.detail||'No se pudo buscar')}</span>`); }
+  }catch(e){ musOcupado=''; renderMusica(); musMsg('<span style="color:var(--rojo)">Error de red.</span>'); }
+}
+async function musCarpeta(id){
+  const enlace = id || (document.getElementById('rd_mus_enlace')||{}).value||''; if(!enlace.trim()){ musMsg('<span style="color:var(--rojo)">Pega el enlace de la carpeta o elige una de la lista.</span>'); return; }
+  musOcupado='carpeta'; renderMusica();
+  try{ const r = await fetch('/admin/api/redes/musica/carpeta',{method:'POST',headers:headers(),body:JSON.stringify({enlace})}); const j = await r.json().catch(()=>({}));
+    musOcupado=''; if(r.ok && j.ok){ mus = {...mus, ...j, items: mus.items}; musCarpetas=null; renderMusica(); toast('Carpeta guardada: '+(j.carpeta.nombre||'')); musSincronizar(); }
+    else { renderMusica(); musMsg(`<span style="color:var(--rojo)">${esc(j.detail||'No se pudo usar esa carpeta')}</span>`); }
+  }catch(e){ musOcupado=''; renderMusica(); musMsg('<span style="color:var(--rojo)">Error de red.</span>'); }
+}
+async function musSincronizar(){
+  musOcupado='sync'; renderMusica();
+  try{ const r = await fetch('/admin/api/redes/musica/sincronizar',{method:'POST',headers:headers()}); const j = await r.json().catch(()=>({}));
+    musOcupado=''; if(r.ok && j.ok){ mus = {...mus, ...j}; renderMusica(); renderRedes(); musMsg(`<span style="color:var(--green);font-weight:700">✓ ${j.nuevos} nueva(s) · ${j.actualizados} actualizada(s) · ${j.quitados} quitada(s)</span>${j.omitidos?` · ${j.omitidos} omitida(s)`:''}${(j.detalle||[]).length?'<br><small style="color:var(--muted)">'+j.detalle.map(esc).join('<br>')+'</small>':''}`); toast('Mi música sincronizada'); }
+    else { renderMusica(); musMsg(`<span style="color:var(--rojo)">${esc(j.detail||'No se pudo sincronizar')}</span>`); }
+  }catch(e){ musOcupado=''; renderMusica(); musMsg('<span style="color:var(--rojo)">Error de red.</span>'); }
+}
+async function musQuitar(id){
+  if(!confirm('¿Quitar esta pista de Mi música? Tu archivo en Drive no se toca (si sigue en la carpeta, volverá al sincronizar).')) return;
+  const r = await fetch('/admin/api/redes/musica/'+id+'/quitar',{method:'POST',headers:headers()}); const j = await r.json().catch(()=>({}));
+  if(r.ok && j.ok){ mus.items = j.items; mus.pistas = j.items.length; if(redesSel.video&&redesSel.video.pulido&&redesSel.video.pulido.opciones.musica_pista===id) redesSel.video.pulido.opciones.musica_pista=''; renderRedes(); }
+}
 // ── Agente de marketing 24×7 (estratega + creativo + community manager de la página) ──
 let agente = null, agOcupado = '', agImg = {}, agAbierto = null;
 async function cargarAgente(){
@@ -3585,7 +3729,7 @@ function renderAgente(){
     <div class="row" style="display:flex;gap:14px;flex-wrap:wrap;align-items:end">
       <label style="display:flex;align-items:center;gap:8px;font-weight:700"><input type="checkbox" id="ag_activo" ${c.activo?'checked':''} style="width:18px;height:18px"> Activo</label>
       <label style="display:flex;align-items:center;gap:8px;font-size:12.5px" title="Solo locales verificados cuyo dueño tiene Pichangol Pro vigente entran en la rotación (enfoque 'El local protagonista')"><input type="checkbox" id="ag_pro" ${c.destacar_pro?'checked':''} style="width:16px;height:16px"> Destacar locales Pro <small style="color:var(--muted)">(${agente.locales_pro||0} disponibles)</small></label>
-      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px" title="Jueves, viernes y sábado: si hay un video de la biblioteca sin usar hace 14 días, ese día publica video pulido con música"><input type="checkbox" id="ag_videos" ${c.videos!=='nunca'?'checked':''} style="width:16px;height:16px"> Videos con música <small style="color:var(--muted)">(biblioteca: ${(agente.biblioteca||{}).fotos||0} fotos · ${(agente.biblioteca||{}).videos||0} videos)</small></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px" title="Jueves, viernes y sábado: si hay un video de la biblioteca sin usar hace 14 días, ese día publica video pulido con música"><input type="checkbox" id="ag_videos" ${c.videos!=='nunca'?'checked':''} style="width:16px;height:16px"> Videos con música <small style="color:var(--muted)">(biblioteca: ${(agente.biblioteca||{}).fotos||0} fotos · ${(agente.biblioteca||{}).videos||0} videos · ${(agente.biblioteca||{}).pistas||0} pistas propias${(agente.biblioteca||{}).pistas?', rota la menos usada':', usa la música original'})</small></label>
       <label style="font-size:12.5px;font-weight:700">Hora<br><select id="ag_hora" ${inp}>${horas.join('')}</select></label>
       <label style="font-size:12.5px;font-weight:700">Zona<br><select id="ag_zona" ${inp}>${zonas}</select></label>
       <div style="font-size:12.5px;font-weight:700">Modo<br><label style="font-weight:400;margin-right:8px"><input type="radio" name="ag_modo" value="auto" ${c.modo==='auto'?'checked':''}> Publicar solo</label><label style="font-weight:400"><input type="radio" name="ag_modo" value="aprobar" ${c.modo==='aprobar'?'checked':''}> Dejarme aprobar</label></div>
@@ -3647,7 +3791,7 @@ async function agAccion(bid, accion){
   agOcupado=''; renderAgente();
 }
 // ── Pulido con estilo Pichangol (FFmpeg en el backend) + subtítulos Whisper ──
-const PUL_DEF = {formato:'vertical', logo:true, intro:true, rotulo:true, cierre:true, subtitulos:true, musica:true, musica_modo:'auto', mood:'chill'};
+const PUL_DEF = {formato:'vertical', logo:true, intro:true, rotulo:true, cierre:true, subtitulos:true, musica:true, musica_modo:'auto', mood:'chill', musica_pista:''};
 function pulidoHtml(vd){
   const cap = redes.pulido || {};
   if(cap.disponible===false) return '<small style="display:block;margin-top:8px;color:var(--muted)">Este servidor no tiene FFmpeg: el video se publica tal cual.</small>';
@@ -3682,7 +3826,11 @@ function pulidoHtml(vd){
       <div style="margin-top:8px">${chk('logo','Logo')}${chk('intro','Intro')}${chk('rotulo','Rótulo con el título')}${chk('cierre','Cierre con título y web')}${chk('subtitulos','Subtítulos automáticos', {off: subsOff})}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">🎵 Música</small>${chip('musica_modo','auto','Automática')} ${chip('musica_modo','fondo','De fondo')} ${chip('musica_modo','protagonista','Protagonista')} ${chip('musica_modo','no','Sin música')}
         <small style="color:var(--muted);margin-left:4px">${o.musica_modo==='fondo'?'Suave bajo la voz del video (sola si el video es mudo).':o.musica_modo==='protagonista'?'La música manda; el audio original queda de ambiente, bajito.':o.musica_modo==='no'?'Se conserva solo el audio original.':'De fondo si el video trae voz; protagonista si es mudo.'}</small></div>
-      ${o.musica_modo!=='no'?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">Estilo</small>${chip('mood','chill','Chill')} ${chip('mood','energetico','Enérgica')} ${chip('mood','epico','Épica')}</div>`:''}
+      ${o.musica_modo!=='no'?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">Pista</small>
+          <select id="rd_pista" style="padding:6px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:12.5px;max-width:320px" onchange="pulOpt('musica_pista',this.value)" ${ocupado?'disabled':''}><option value="">🎼 Original de Pichangol (sintetizada)</option>${(mus&&mus.items||[]).map(t=>`<option value="${t.id}"${o.musica_pista===t.id?' selected':''}>🎵 ${esc(t.nombre)}</option>`).join('')}</select>
+          ${(mus&&mus.items&&mus.items.length)?'':`<small style="color:var(--muted)">Sin pistas propias: conéctalas en <a href="#" onclick="rdUI('tab','conexiones');return false">Conexiones → Mi música</a>.</small>`}
+          ${o.musica_pista&&mus&&(mus.items||[]).some(t=>t.id===o.musica_pista)?`<audio controls preload="none" src="${esc((mus.items.find(t=>t.id===o.musica_pista)||{}).url||'')}" style="height:30px;max-width:260px"></audio>`:''}</div>
+        ${o.musica_pista?'<small style="display:block;margin-top:4px;color:var(--muted)">La pista se pone en bucle si es más corta que el video y se corta al terminar, con fundido.</small>':`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">Estilo</small>${chip('mood','chill','Chill')} ${chip('mood','energetico','Enérgica')} ${chip('mood','epico','Épica')}</div>`}`:''}
       ${subsOff?'<small style="color:#8a5a00">Subtítulos automáticos apagados: falta OPENAI_API_KEY en este ambiente.</small>':''}
       <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button type="button" class="btn-ap" id="rd_pulir" onclick="pulirVideo()" ${ocupado?'disabled':''}>${ocupado?'<span class="rd-spin blanco"></span> Procesando…':(listo?'🎬 Volver a generar':'🎬 Generar versión pulida')}</button>
@@ -3692,7 +3840,7 @@ function pulidoHtml(vd){
     </div>`;
 }
 function fmtT(s){ s=Math.max(0,Number(s)||0); const m=Math.floor(s/60), r=s-m*60; return m+':'+(r<10?'0':'')+r.toFixed(1); }
-function pulOpt(k, v){ const pl = redesSel.video && redesSel.video.pulido; if(!pl) return; if(k==='formato'||k==='musica_modo'||k==='mood') pl.opciones[k]=v; else pl.opciones[k]=!!v; renderRedes(); }
+function pulOpt(k, v){ const pl = redesSel.video && redesSel.video.pulido; if(!pl) return; if(k==='formato'||k==='musica_modo'||k==='mood'||k==='musica_pista') pl.opciones[k]=v; else pl.opciones[k]=!!v; renderRedes(); }
 function pulUsar(u){ const pl = redesSel.video && redesSel.video.pulido; if(!pl) return; pl.usar=!!u; renderRedes(); mostrarVideoPreview(); }
 function mostrarVideoPreview(){
   const v = document.querySelector('#rd_prev video'); const vd = redesSel.video; if(!v || !vd) return;
@@ -3706,7 +3854,7 @@ async function pulirVideo(segmentos){
   const titulo = (document.getElementById('rd_titulo')||{}).value || '';
   pl.estado = (o.subtitulos && !segmentos && !(pl.transcripcion && pl.transcripcion.segmentos)) ? 'transcribiendo' : 'renderizando'; pl.progreso = 0; pl.mensaje = 'Preparando…'; pl.error='';
   renderRedes(); botonesRedes('componiendo');
-  const cuerpo = {formato:o.formato, logo:!!o.logo, intro:!!o.intro, cierre:!!o.cierre, rotulo:!!o.rotulo, titulo:titulo, subtitulos:!!o.subtitulos, segmentos: segmentos||null, musica:o.musica_modo!=='no', musica_modo:o.musica_modo||'auto', mood:o.mood||'chill'};
+  const cuerpo = {formato:o.formato, logo:!!o.logo, intro:!!o.intro, cierre:!!o.cierre, rotulo:!!o.rotulo, titulo:titulo, subtitulos:!!o.subtitulos, segmentos: segmentos||null, musica:o.musica_modo!=='no', musica_modo:o.musica_modo||'auto', mood:o.mood||'chill', musica_pista:o.musica_modo!=='no'?(o.musica_pista||''):''};
   try{
     const r = await fetch('/admin/api/redes/pichangol/video/'+encodeURIComponent(vd.id)+'/pulir',{method:'POST',headers:headers(),body:JSON.stringify(cuerpo)});
     const j = await r.json().catch(()=>({}));

@@ -421,7 +421,8 @@ def mezcla_musica(tiene_audio: bool, opciones: dict) -> dict:
 def pulir(ruta: str, salida: str, opciones: dict, *, progreso=None) -> dict:
     """Renderiza la versión pulida. `opciones`: formato, logo, intro, cierre, rotulo,
     titulo, segmentos (subtítulos ya partidos o crudos), resaltar, musica_modo
-    (auto|fondo|protagonista|no) + mood (chill|energetico|epico); `musica` bool = compat.
+    (auto|fondo|protagonista|no) + mood (chill|energetico|epico) o `musica_ruta`
+    (archivo de audio propio que reemplaza a la música sintetizada); `musica` bool = compat.
     `progreso(pct, mensaje)` se llama mientras avanza. Devuelve info de la salida."""
     ff = ffmpeg_exe()
     if not ff:
@@ -486,22 +487,29 @@ def pulir(ruta: str, salida: str, opciones: dict, *, progreso=None) -> dict:
     a_main = "a0"
     mezcla = mezcla_musica(bool(info.get("audio")), opciones)
     if mezcla["usar"]:
-        try:
-            from marketing.musica import generar_pista
-            wav = generar_pista(D + 0.5, mood=mezcla["mood"])
-        except Exception:  # noqa: BLE001
-            wav = None
+        pista = str(opciones.get("musica_ruta") or "")          # pista propia (Mi música, Google Drive): reemplaza a la sintetizada
+        wav = None
+        if pista and os.path.exists(pista) and os.path.getsize(pista) > 0:
+            entradas += ["-stream_loop", "-1", "-i", pista]      # en bucle si es más corta que el video; amix la corta al largo del video
+            wav = b"pista"
+        else:
+            try:
+                from marketing.musica import generar_pista
+                wav = generar_pista(D + 0.5, mood=mezcla["mood"])
+            except Exception:  # noqa: BLE001
+                wav = None
+            if wav:
+                pm = os.path.join(tmp, "musica.wav")
+                with open(pm, "wb") as fh:
+                    fh.write(wav)
+                entradas += ["-i", pm]
         if wav:
-            pm = os.path.join(tmp, "musica.wav")
-            with open(pm, "wb") as fh:
-                fh.write(wav)
-            entradas += ["-i", pm]
             if mezcla["vol_original"] != 1.0:
                 filtros.append(f"[a0]volume={mezcla['vol_original']}[a0d]")
                 a_orig = "a0d"
             else:
                 a_orig = "a0"
-            filtros.append(f"[{idx}:a]volume={mezcla['vol_musica']},afade=t=out:st={max(0.0, D - 1.2):.2f}:d=1.2,aformat=sample_rates=48000:channel_layouts=stereo[amus]")
+            filtros.append(f"[{idx}:a]volume={mezcla['vol_musica']},afade=t=in:st=0:d=0.6,afade=t=out:st={max(0.0, D - 1.2):.2f}:d=1.2,aformat=sample_rates=48000:channel_layouts=stereo[amus]")
             filtros.append(f"[{a_orig}][amus]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[amix]")
             a_main, idx = "amix", idx + 1
 

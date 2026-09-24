@@ -48,6 +48,7 @@ CARPETA = "marca/biblioteca"
 CFG_REFRESH = "gfotos_refresh_cifrado"
 CFG_CUENTA = "gfotos_cuenta"
 CFG_CONECTADO = "gfotos_conectado_en"
+CFG_SCOPES = "gfotos_scopes"          # permisos que Google concedió (Fotos, y Drive si el director conectó Mi música)
 FOTO_MAX_BYTES = 12 * 1024 * 1024
 VIDEO_MAX_BYTES = int(os.getenv("BIBLIOTECA_VIDEO_MAX_MB", "150") or 150) * 1024 * 1024
 MAX_ITEMS = 400
@@ -69,7 +70,7 @@ def conectado() -> bool:
 
 
 def estado() -> dict:
-    return {"credenciales": credenciales(), "conectado": conectado(), "cuenta": stores.config.get(CFG_CUENTA, ""),
+    return {"credenciales": credenciales(), "conectado": conectado(), "cuenta": stores.config.get(CFG_CUENTA, ""), "scopes": stores.config.get(CFG_SCOPES, ""),
             "conectado_en": float(stores.config.get(CFG_CONECTADO, "0") or 0), "redirect_uri": redirect_uri(),
             "storage": _storage_disponible(), "fotos": sum(1 for x in items() if x.get("tipo") == "foto"),
             "videos": sum(1 for x in items() if x.get("tipo") == "video")}
@@ -114,8 +115,11 @@ def estado_valido(state: str) -> bool:
         return False
 
 
-def url_autorizacion() -> str:
-    q = {"client_id": config.GOOGLE_WEB_CLIENT_ID, "redirect_uri": redirect_uri(), "response_type": "code", "scope": SCOPES,
+def url_autorizacion(scopes_extra: list[str] | None = None) -> str:
+    """Con `scopes_extra` (p. ej. Drive para Mi música) la autorización es INCREMENTAL:
+    `include_granted_scopes` conserva lo ya concedido (Fotos) y suma lo nuevo."""
+    scope = SCOPES + "".join(" " + s for s in (scopes_extra or []) if s and s not in SCOPES)
+    q = {"client_id": config.GOOGLE_WEB_CLIENT_ID, "redirect_uri": redirect_uri(), "response_type": "code", "scope": scope,
          "access_type": "offline", "prompt": "consent", "include_granted_scopes": "true", "state": firmar_estado()}
     return "https://accounts.google.com/o/oauth2/v2/auth?" + urllib.parse.urlencode(q)
 
@@ -164,6 +168,7 @@ def canjear_codigo(code: str) -> dict:
     stores.config[CFG_REFRESH] = redes.cifrar(refresh)
     stores.config[CFG_CUENTA] = cuenta
     stores.config[CFG_CONECTADO] = str(time.time())
+    stores.config[CFG_SCOPES] = str(t.get("scope") or "")
     _access.update(token=str(t.get("access_token") or ""), hasta=time.time() + int(t.get("expires_in") or 3000) - 60)
     _persistir()
     return {"cuenta": cuenta}
@@ -173,6 +178,7 @@ def desconectar() -> None:
     stores.config.pop(CFG_REFRESH, None)
     stores.config.pop(CFG_CUENTA, None)
     stores.config.pop(CFG_CONECTADO, None)
+    stores.config.pop(CFG_SCOPES, None)
     _access.update(token="", hasta=0.0)
 
 

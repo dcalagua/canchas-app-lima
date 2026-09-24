@@ -270,8 +270,15 @@ def planificar(fecha_local: datetime | None = None, *, audiencia: str | None = N
             video = biblioteca.elegir_video(VIDEO_DESCANSO_DIAS)
         except Exception:  # noqa: BLE001
             video = None
+    pista = None
+    if video:
+        try:
+            from marketing import musica_drive
+            pista = musica_drive.elegir_pista()
+        except Exception:  # noqa: BLE001
+            pista = None
     return {"fecha": loc.strftime("%Y-%m-%d"), "dia": DIAS[loc.weekday()], "audiencia": aud, "enfoque": enf, "tono": _cfg("tono"),
-            "local": local, "tema": tema, "formato": "cuadrado", "loc": loc, "video": video}
+            "local": local, "tema": tema, "formato": "cuadrado", "loc": loc, "video": video, "pista": pista}
 
 
 # ── creativo ─────────────────────────────────────────────────────────────────
@@ -303,6 +310,8 @@ def crear_pieza(brief: dict, *, evitar: list[str] | None = None) -> dict:
              "formato": brief.get("formato") or "cuadrado", "biblioteca_ids": biblioteca_ids, "png": b""}
     if video:
         pieza.update(video_id=video["id"], video_url=video.get("url", ""), video_nombre=video.get("nombre", ""), formato="video")
+        if brief.get("pista"):
+            pieza.update(musica_id=brief["pista"]["id"], musica_nombre=brief["pista"].get("nombre", ""))
         pieza["png"] = _poster_video(video, pieza)      # vista previa (frame + marca) para la torre
         return pieza
     pieza["png"] = _pr.componer(fotos, copy["titulo"] or "Pichangol", copy.get("subtitulo") or "", "www.pichangol.app", pieza["formato"], etiqueta)
@@ -343,8 +352,16 @@ def render_video(receta: dict) -> str:
     from marketing import video_pulido as vp
     ruta = biblioteca.descargar_a_temporal(receta["video_id"])
     salida = os.path.splitext(ruta)[0] + f"_pub_{int(time.time())}.mp4"
-    vp.pulir(ruta, salida, {"formato": "cuadrado", "logo": True, "intro": True, "cierre": True, "rotulo": True,
-                            "titulo": receta.get("titulo") or "", "segmentos": [], "musica_modo": "auto", "mood": "energetico" if receta.get("audiencia") == "jugadores" else "chill"})
+    opciones = {"formato": "cuadrado", "logo": True, "intro": True, "cierre": True, "rotulo": True,
+                "titulo": receta.get("titulo") or "", "segmentos": [], "musica_modo": "auto", "mood": "energetico" if receta.get("audiencia") == "jugadores" else "chill"}
+    # Mi música (Google Drive): la pista propia menos usada; sin pistas, la música original sintetizada.
+    if receta.get("musica_id"):
+        try:
+            from marketing import musica_drive
+            opciones["musica_ruta"] = musica_drive.descargar_a_temporal(receta["musica_id"])
+        except Exception as e:  # noqa: BLE001
+            print(f"[agente] pista propia no disponible, va con música original: {str(e)[:120]}", flush=True)
+    vp.pulir(ruta, salida, opciones)
     return salida
 
 
@@ -352,7 +369,7 @@ def _receta(pieza: dict) -> dict:
     # las fotos data: (portada de marca) no se guardan en el snapshot: se marcan y se regeneran
     fotos = ["brand:arte" if u.startswith("data:") else u for u in pieza.get("fotos") or []]
     return {k: pieza[k] for k in ("titulo", "subtitulo", "etiqueta", "texto", "enfoque", "fuente", "tono", "audiencia", "local", "local_id", "formato",
-                                  "biblioteca_ids", "video_id", "video_url", "video_nombre") if k in pieza} | {"fotos": fotos}
+                                  "biblioteca_ids", "video_id", "video_url", "video_nombre", "musica_id", "musica_nombre") if k in pieza} | {"fotos": fotos}
 
 
 def componer_receta(receta: dict) -> bytes:
@@ -412,12 +429,15 @@ def _publicar_pieza(pieza: dict, receta: dict, *, origen: str) -> dict:
         try:
             from marketing import biblioteca
             biblioteca.marcar_uso(list(receta.get("biblioteca_ids") or []) + ([receta["video_id"]] if es_video else []))
+            if receta.get("musica_id"):
+                from marketing import musica_drive
+                musica_drive.marcar_uso(receta["musica_id"])
         except Exception:  # noqa: BLE001
             pass
     _pr.registrar({"red": "facebook", "tipo": "video" if es_video else "foto", "plantilla": "agente", "enfoque": receta.get("enfoque", ""), "fuente": "agente",
                    "audiencia": receta.get("audiencia", ""), "local": receta.get("local", ""), "titulo": receta.get("titulo", ""),
                    "texto": pieza["texto"].strip()[:600], "fotos": len(receta.get("fotos") or []), "formato": receta.get("formato", "cuadrado"),
-                   "video_nombre": receta.get("video_nombre", ""), "pulido": es_video, "musica": es_video, "biblioteca": bool(receta.get("biblioteca_ids") or es_video),
+                   "video_nombre": receta.get("video_nombre", ""), "pulido": es_video, "musica": es_video, "musica_nombre": receta.get("musica_nombre", "") if es_video else "", "biblioteca": bool(receta.get("biblioteca_ids") or es_video),
                    "ok": bool(r.get("ok")), "post_id": r.get("post_id", ""), "url": r.get("url", ""), "error": r.get("error", ""), "origen": origen})
     return r
 
@@ -555,9 +575,14 @@ def _resumen_biblioteca() -> dict:
     try:
         from marketing import biblioteca
         e = biblioteca.estado()
-        return {"fotos": e["fotos"], "videos": e["videos"], "conectado": e["conectado"]}
+        try:
+            from marketing import musica_drive
+            pistas = len(musica_drive.items())
+        except Exception:  # noqa: BLE001
+            pistas = 0
+        return {"fotos": e["fotos"], "videos": e["videos"], "conectado": e["conectado"], "pistas": pistas}
     except Exception:  # noqa: BLE001
-        return {"fotos": 0, "videos": 0, "conectado": False}
+        return {"fotos": 0, "videos": 0, "conectado": False, "pistas": 0}
 
 
 def _arte_disponible() -> bool:
