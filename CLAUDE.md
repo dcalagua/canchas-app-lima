@@ -1050,7 +1050,27 @@ off → redeploy inmediato en cada push). URL pública:
   `usuario`, `faltan`, `advertencia` y el pane lo pinta (rojo si falta
   `pages_manage_posts` o el usuario no administra la página, ámbar si es de
   usuario y se derivó solo). `_pista_error` traduce los #200/#190 a qué
-  hacer. Lo correcto sigue siendo pegar el token de PÁGINA. **El entorno de Claude NO alcanza Storage de Supabase ni bancos de
+  hacer. Lo correcto sigue siendo pegar el token de PÁGINA. **VIDEO (pedido
+  del director, 24-sep-2026: "también debe permitir subir videos y que haga
+  el post"):** bloque "🎬 O publica un VIDEO" en el pane: el archivo (MP4/MOV/
+  M4V/WEBM/AVI/MKV/3GP, tope `FB_VIDEO_MAX_MB`=300) sube a la torre por XHR
+  con barra de progreso (`POST /admin/api/redes/pichangol/video?nombre=`,
+  cuerpo crudo por `request.stream()` a disco en `tempfile/pichangol_redes_
+  videos`, 413 si pasa el tope; `video_id` temporal 2 h, `_limpiar_videos`;
+  `/{id}/descartar`). La vista previa muestra el `<video>` local (el
+  navegador; nada se compone en el servidor) y el título pasa a "Título del
+  video (opcional)"; subtítulo/etiqueta/pie/formato se ocultan. Publicar con
+  `video_id` → `publicar_video_facebook`: subida REANUDABLE de Graph
+  `/{page}/videos` (`upload_phase=start` con `file_size` → `transfer` por
+  trozos `video_file_chunk` con los offsets que devuelve Meta, timeout 600 s,
+  corta si no avanza → `finish` con `description`=texto, `title`,
+  `published=true`); URL `facebook.com/{video_id}`; Facebook lo procesa unos
+  minutos. Historial con `tipo: video`, `video_nombre`, `video_bytes`; el
+  temporal se borra al publicar y se conserva si Facebook falló (reintento).
+  Preloader en todo (velo, barra, botón "Publicando…"). OJO Playwright: el
+  Chromium del sandbox no decodifica H.264 (duración 0 con .mp4); probar con
+  .webm. Test `test_video_se_sube_a_la_torre_y_se_publica_por_trozos`.
+  **El entorno de Claude NO alcanza Storage de Supabase ni bancos de
   fotos (proxy 403): las piezas con fotos reales se componen en el backend.**
   Fase 2 (backlog): calendario + copy con IA reutilizando `marketing/cm.py`.
   Portada de la página: `tool/portada_facebook.py` →

@@ -365,6 +365,7 @@ class PostRedesRequest(BaseModel):
     texto: str = ""                # texto del post (solo al publicar)
     plantilla: str = ""
     cancha_id: str = ""
+    video_id: str = ""             # video subido antes a /admin/api/redes/pichangol/video (publica video en vez de foto)
 
 
 def _redes_canchas() -> list[dict]:
@@ -397,7 +398,55 @@ def get_redes_pichangol(x_admin_token: str | None = Header(default=None)) -> dic
     _check(x_admin_token)
     from marketing import post_redes as _pr
     return {"facebook": _pr.estado_pagina(), "plantillas": {k: {"nombre": v["nombre"]} for k, v in _pr.PLANTILLAS.items()},
-            "formatos": list(_pr.FORMATOS), "locales": _redes_canchas(), "historial": _pr.historial(), "max_fotos": _pr.MAX_FOTOS}
+            "formatos": list(_pr.FORMATOS), "locales": _redes_canchas(), "historial": _pr.historial(), "max_fotos": _pr.MAX_FOTOS,
+            "video_max_mb": _pr.VIDEO_MAX_MB, "video_extensiones": sorted(_pr.VIDEO_EXTENSIONES)}
+
+
+@router.post("/admin/api/redes/pichangol/video")
+async def post_redes_video(request: Request, nombre: str = "", x_admin_token: str | None = Header(default=None)) -> dict:
+    """Recibe un VIDEO (cuerpo crudo, streaming a disco) para publicarlo luego en la
+    página. Devuelve `video_id` temporal (vence en 2 h); el tope es `FB_VIDEO_MAX_MB`."""
+    _check(x_admin_token)
+    from marketing import post_redes as _pr
+    tope = _pr.VIDEO_MAX_MB * 1024 * 1024
+    try:
+        declarado = int(request.headers.get("content-length") or 0)
+    except ValueError:
+        declarado = 0
+    if declarado > tope:
+        raise HTTPException(status_code=413, detail=f"El video pesa {declarado // (1024 * 1024)} MB; el máximo es {_pr.VIDEO_MAX_MB} MB.")
+    try:
+        v = _pr.iniciar_video(nombre)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    total = 0
+    try:
+        with open(v["ruta"], "wb") as f:
+            async for trozo in request.stream():
+                total += len(trozo)
+                if total > tope:
+                    raise HTTPException(status_code=413, detail=f"El video supera el máximo de {_pr.VIDEO_MAX_MB} MB.")
+                f.write(trozo)
+    except HTTPException:
+        _pr.descartar_video(v["id"])
+        raise
+    except Exception as exc:  # noqa: BLE001
+        _pr.descartar_video(v["id"])
+        raise HTTPException(status_code=400, detail=f"No se pudo guardar el video: {str(exc)[:120]}")
+    if total == 0:
+        _pr.descartar_video(v["id"])
+        raise HTTPException(status_code=400, detail="El video llegó vacío.")
+    v = _pr.confirmar_video(v["id"], total)
+    print(f"[redes] video recibido {v['id']} · {v['nombre']!r} · {total // 1024} KB", flush=True)
+    return {"ok": True, "video_id": v["id"], "nombre": v["nombre"], "bytes": total, "expira_en_s": _pr.VIDEO_TTL}
+
+
+@router.post("/admin/api/redes/pichangol/video/{video_id}/descartar")
+def post_redes_video_descartar(video_id: str, x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import post_redes as _pr
+    _pr.descartar_video(video_id)
+    return {"ok": True}
 
 
 @router.post("/admin/api/redes/pichangol/plantilla")
@@ -434,12 +483,26 @@ def post_redes_publicar(req: PostRedesRequest, x_admin_token: str | None = Heade
         raise HTTPException(status_code=409, detail="sin_credenciales")
     if not (req.texto or "").strip():
         raise HTTPException(status_code=400, detail="Escribe el texto de la publicación.")
+    if req.video_id:
+        # VIDEO: el archivo ya está en la torre; se sube a la página por trozos.
+        v = _pr.video(req.video_id)
+        if not v:
+            raise HTTPException(status_code=404, detail="El video ya no está en la torre (vence a las 2 h). Súbelo de nuevo.")
+        r = _pr.publicar_video_facebook(req.texto.strip(), req.titulo, v["ruta"])
+        fila = _pr.registrar({"red": "facebook", "tipo": "video", "plantilla": req.plantilla, "titulo": req.titulo, "texto": req.texto.strip()[:600],
+                              "fotos": 0, "formato": "video", "video_nombre": v["nombre"], "video_bytes": v["bytes"], "ok": bool(r.get("ok")),
+                              "post_id": r.get("post_id", ""), "url": r.get("url", ""), "error": r.get("error", "")})
+        if not r.get("ok"):
+            raise HTTPException(status_code=502, detail=f"Facebook rechazó el video: {r.get('error')}")
+        _pr.descartar_video(req.video_id)
+        print(f"[redes] video publicado en Facebook {r.get('post_id')} · {v['nombre']!r} · {r.get('trozos')} trozo(s)", flush=True)
+        return {"ok": True, "publicacion": fila, "url": r.get("url", ""), "video": True}
     try:
         png = _pr.componer(req.fotos, req.titulo, req.subtitulo, req.pie, req.formato, req.etiqueta)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     r = _pr.publicar_facebook(req.texto.strip(), png)
-    fila = _pr.registrar({"red": "facebook", "plantilla": req.plantilla, "titulo": req.titulo, "texto": req.texto.strip()[:600],
+    fila = _pr.registrar({"red": "facebook", "tipo": "foto", "plantilla": req.plantilla, "titulo": req.titulo, "texto": req.texto.strip()[:600],
                           "fotos": len(req.fotos), "formato": req.formato, "ok": bool(r.get("ok")),
                           "post_id": r.get("post_id", ""), "url": r.get("url", ""), "error": r.get("error", "")})
     if not r.get("ok"):
@@ -1320,7 +1383,7 @@ _HTML = r"""<!DOCTYPE html>
   #rd_prev .rd-velo{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:rgba(255,255,255,.82);color:var(--text);font-weight:700;font-size:14px;z-index:2;border-radius:14px;backdrop-filter:blur(1.5px)}
   #rd_prev .rd-velo .rd-spin{width:40px;height:40px;border-width:4px}
   #rd_prev .rd-velo small{font-weight:400;color:var(--muted)}
-  #rd_prev img.opaca{opacity:.35;filter:grayscale(.3)}
+  #rd_prev img.opaca,#rd_prev video.opaca{opacity:.35;filter:grayscale(.3)}
   #redesPanel button[disabled]{opacity:.6;cursor:progress}
   .rd-cargando{display:flex;align-items:center;gap:10px;color:var(--muted);padding:14px 4px}
   @media(max-width:640px){
@@ -2744,6 +2807,15 @@ function renderRedes(){
     ? (fb.nombre ? `<span style="color:var(--green);font-weight:700">● Conectado a la página <b>${esc(fb.nombre)}</b></span> ${fb.link?`<a href="${esc(fb.link)}" target="_blank" rel="noopener">abrir ↗</a>`:''}${tokenInfo}`
                  : `<span style="color:var(--rojo);font-weight:700">● Credenciales configuradas pero Facebook respondió: ${esc(fb.error||'error')}</span>`)
     : `<span style="color:var(--muted);font-weight:700">○ Sin credenciales de Facebook</span>: la torre compone y descarga la pieza; para publicar directo, pon <code>FB_PAGE_ID</code> y <code>FB_PAGE_TOKEN</code> en Railway (guía abajo).`;
+  const esVideo = !!redesSel.video, vd = redesSel.video || {};
+  const listoPub = esVideo ? (vd.estado==='listo' && !!vd.id) : !!redesSel.img;
+  const mb = b => b < 1048576 ? Math.max(1, Math.round(b/1024))+' KB' : (b/1048576).toFixed(b>=104857600?0:1)+' MB';
+  const vidHtml = !esVideo
+    ? `<div style="margin-top:6px"><label class="btn-sec" for="rd_video" style="cursor:pointer">🎬 Subir un video</label><input type="file" id="rd_video" accept="video/mp4,video/quicktime,video/x-m4v,video/webm,video/*" hidden onchange="subirVideoRedes(this)"><small style="color:var(--muted);margin-left:8px">MP4 o MOV · hasta ${redes.video_max_mb||300} MB · con video, la publicación es el video con tu texto (las fotos no se usan)</small></div>`
+    : `<div style="margin-top:6px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>🎞️ ${esc(vd.nombre||'video')}</b><small style="color:var(--muted)">${mb(vd.bytes||0)}${vd.dur?' · '+Math.round(vd.dur)+' s':''}</small>
+        <span id="rd_video_estado" style="flex:1;min-width:160px">${vd.estado==='subiendo'?'<span class="rd-spin chico"></span> Subiendo a la torre… <b id="rd_video_pct">'+(vd.pct||0)+'%</b>':vd.estado==='listo'?'<span style="color:var(--green);font-weight:700">✓ Listo para publicar</span>':'<span style="color:var(--rojo)">'+esc(vd.error||'No se pudo subir')+'</span>'}</span>
+        <button type="button" class="btn-sec" onclick="quitarVideoRedes()">✕ Quitar video</button></div>
+       <div style="height:6px;border-radius:3px;background:#E9EDF0;margin-top:8px;overflow:hidden;${vd.estado==='subiendo'?'':'display:none'}"><div id="rd_video_prog" style="height:100%;width:${vd.pct||0}%;background:var(--green);transition:width .2s"></div></div>`;
   const locales = (redes.locales||[]).map(l=>`<option value="${esc(l.canchas[0].id)}"${redesSel.cancha===l.canchas[0].id?' selected':''}>${esc(l.local)}${l.zona?' · '+esc(l.zona):''} (${l.fotos.length} fotos)</option>`).join('');
   const loc = (redes.locales||[]).find(l=>l.canchas.some(c=>c.id===redesSel.cancha));
   const fotos = loc ? loc.fotos.map(u=>`<label style="position:relative;cursor:pointer"><img src="${esc(u)}" style="width:118px;height:118px;object-fit:cover;border-radius:12px;border:3px solid ${redesSel.fotos.includes(u)?'var(--green)':'transparent'};display:block"><input type="checkbox" ${redesSel.fotos.includes(u)?'checked':''} onchange="toggleFotoRedes('${esc(u)}',this.checked)" style="position:absolute;top:8px;left:8px;width:18px;height:18px"></label>`).join('') : '<span style="color:var(--muted)">Este ambiente aún no tiene locales con fotos. Sube fotos desde tu computadora ↓</span>';
@@ -2751,7 +2823,7 @@ function renderRedes(){
   const subidas = redesSel.fotos.filter(u=>u.startsWith('data:'));
   const subidasHtml = subidas.length ? `<div style="margin-top:10px"><small style="color:var(--muted);font-weight:700">Subidas desde tu computadora</small><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${subidas.map((u,i)=>`<span style="position:relative;display:inline-block"><img src="${u}" style="width:118px;height:118px;object-fit:cover;border-radius:12px;border:3px solid var(--green);display:block"><button type="button" title="Quitar" onclick="quitarSubidaRedes(${i})" style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-weight:700;cursor:pointer;line-height:1">✕</button></span>`).join('')}</div></div>` : '';
   const plantillas = Object.entries(redes.plantillas||{}).map(([k,v])=>`<button class="btn-sec" style="${redesSel.plantilla===k?'border-color:var(--green);background:#F2F8F3':''}" onclick="redesSel.plantilla='${k}';aplicarPlantilla()">${esc(v.nombre)}</button>`).join(' ');
-  const hist = (redes.historial||[]).slice(0,8).map(h=>`<div class="row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);padding:8px 0"><span>${h.ok?'✅':'⚠️'}</span><div style="flex:1;min-width:200px"><b>${esc(h.titulo||'(sin título)')}</b> <small style="color:var(--muted)">· ${esc(h.plantilla||'')} · ${h.fotos} foto(s) · ${new Date((h.creado_en||0)*1000).toLocaleString('es-PE')}</small>${h.error?`<br><small style="color:var(--rojo)">${esc(h.error)}</small>`:''}</div>${h.url?`<a class="btn-sec" href="${esc(h.url)}" target="_blank" rel="noopener">Ver en Facebook ↗</a>`:''}</div>`).join('') || '<div class="row" style="color:var(--muted)">Todavía no hay publicaciones.</div>';
+  const hist = (redes.historial||[]).slice(0,8).map(h=>`<div class="row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);padding:8px 0"><span>${h.ok?'✅':'⚠️'}</span><div style="flex:1;min-width:200px">${h.tipo==='video'?'🎬 ':'🖼️ '}<b>${esc(h.titulo||h.video_nombre||'(sin título)')}</b> <small style="color:var(--muted)">· ${esc(h.plantilla||'')} · ${h.tipo==='video'?('video '+esc(h.video_nombre||'')+' · '+Math.round((h.video_bytes||0)/1048576)+' MB'):(h.fotos+' foto(s)')} · ${new Date((h.creado_en||0)*1000).toLocaleString('es-PE')}</small>${h.error?`<br><small style="color:var(--rojo)">${esc(h.error)}</small>`:''}</div>${h.url?`<a class="btn-sec" href="${esc(h.url)}" target="_blank" rel="noopener">Ver en Facebook ↗</a>`:''}</div>`).join('') || '<div class="row" style="color:var(--muted)">Todavía no hay publicaciones.</div>';
   document.getElementById('redesPanel').innerHTML = `
     <div class="card"><div class="top"><h3>Publicar en Facebook</h3></div>
       <div class="row">${estado}</div>
@@ -2761,25 +2833,32 @@ function renderRedes(){
             <select id="rd_local" ${inp} onchange="redesSel.cancha=this.value;redesSel.fotos=[];renderRedes();aplicarPlantilla()"><option value="">— elige un local —</option>${locales}</select></label>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px" id="rd_fotos">${fotos}</div>${subidasHtml}
           <div style="margin-top:8px"><label class="btn-sec" for="rd_subir" style="cursor:pointer">📷 Subir fotos desde tu computadora</label><input type="file" id="rd_subir" accept="image/*" multiple hidden onchange="subirFotosRedes(this)"><small style="color:var(--muted);margin-left:8px">hasta ${redes.max_fotos||4} fotos en total · ${redesSel.fotos.length} elegida(s)</small></div>
+          <div class="rd-video" style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:#FAFBFC">
+            <div style="font-size:12.5px;font-weight:700">🎬 O publica un VIDEO</div>
+            ${vidHtml}
+          </div>
           <label style="display:block;margin-top:14px;font-size:12.5px;font-weight:700">2 · Plantilla</label>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${plantillas}</div>
-          <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">Título en la imagen<input id="rd_titulo" ${inp} maxlength="60"></label>
+          <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">${esVideo?'Título del video (opcional)':'Título en la imagen'}<input id="rd_titulo" ${inp} maxlength="60"></label>
+          <div id="rd_solo_foto" style="${esVideo?'display:none':''}">
           <label style="display:block;margin-top:8px;font-size:12.5px;font-weight:700">Subtítulo<input id="rd_sub" ${inp} maxlength="90"></label>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
             <label style="font-size:12.5px;font-weight:700">Etiqueta<input id="rd_etq" ${inp} maxlength="16" placeholder="Nuevo"></label>
             <label style="font-size:12.5px;font-weight:700">Pie<input id="rd_pie" ${inp} value="www.pichangol.app" maxlength="40"></label>
             <label style="font-size:12.5px;font-weight:700">Formato<select id="rd_formato" ${inp} onchange="redesSel.formato=this.value"><option value="cuadrado">Cuadrado 1080×1080 (feed)</option><option value="horizontal">Horizontal 1200×630</option><option value="historia">Historia 1080×1920</option></select></label>
           </div>
+          </div>
           <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">3 · Texto de la publicación<textarea id="rd_texto" rows="7" ${inp}></textarea></label>
           <div class="actions" style="margin-top:12px">
-            <button class="btn-sec" id="rd_prev_btn" onclick="previsualizarRedes()">👁️ Previsualizar</button>
-            <button class="btn-sec" id="rd_descargar" onclick="descargarRedes()" ${redesSel.img?'':'disabled'}>⬇️ Descargar imagen</button>
-            <button class="btn-ap" id="rd_publicar" onclick="publicarRedes()" ${fb.configurado?(redesSel.img?'':'disabled title="Primero arma la vista previa"'):'disabled data-bloqueado="1" title="Configura FB_PAGE_ID y FB_PAGE_TOKEN en Railway"'}>📣 Publicar en Facebook</button>
+            <button class="btn-sec" id="rd_prev_btn" onclick="previsualizarRedes()" ${esVideo?'style="display:none"':''}>👁️ Previsualizar</button>
+            <button class="btn-sec" id="rd_descargar" onclick="descargarRedes()" ${redesSel.img&&!esVideo?'':'disabled'} ${esVideo?'style="display:none"':''}>⬇️ Descargar imagen</button>
+            <button class="btn-ap" id="rd_publicar" onclick="publicarRedes()" ${fb.configurado?(listoPub?'':'disabled title="'+(esVideo?'Espera a que termine de subir el video':'Primero arma la vista previa')+'"'):'disabled data-bloqueado="1" title="Configura FB_PAGE_ID y FB_PAGE_TOKEN en Railway"'}>📣 Publicar ${esVideo?'video ':''}en Facebook</button>
           </div>
           <div id="rd_msg" class="row" style="margin-top:8px"></div>
         </div>
         <div style="position:sticky;top:12px;align-self:start"><label style="font-size:12.5px;font-weight:700">Vista previa <small id="rd_prev_estado" style="color:var(--muted);font-weight:400"></small></label>
-          <div id="rd_prev" style="margin-top:4px;border:1px dashed var(--border);border-radius:14px;min-height:360px;display:flex;align-items:center;justify-content:center;color:var(--muted);background:#fafafa;overflow:hidden">${redesSel.img?`<img src="${redesSel.img}" style="max-width:100%;max-height:78vh;display:block">`:'Elige o sube fotos: la vista previa se arma sola.'}</div>
+          <div id="rd_prev" style="margin-top:4px;border:1px dashed var(--border);border-radius:14px;min-height:360px;display:flex;align-items:center;justify-content:center;color:var(--muted);background:#fafafa;overflow:hidden">${esVideo?`<video src="${redesSel.video.url}" controls playsinline style="max-width:100%;max-height:78vh;display:block;background:#000"></video>`:(redesSel.img?`<img src="${redesSel.img}" style="max-width:100%;max-height:78vh;display:block">`:'Elige o sube fotos o un video: la vista previa se arma sola.')}</div>
+          ${esVideo?`<small style="display:block;margin-top:6px;color:var(--muted)">Así se verá el video en la página; Facebook lo procesa unos minutos después de publicar. El texto de la publicación va debajo del video.</small>`:''}
         </div>
       </div>
       <details class="row" style="margin-top:14px"><summary style="cursor:pointer;font-weight:700">🔑 Cómo conectar la página (una sola vez)</summary>
@@ -2830,18 +2909,47 @@ let rdTimer = null;
 function veloPrev(on, texto){
   const prev = document.getElementById('rd_prev'); if(!prev) return;
   prev.querySelectorAll('.rd-velo').forEach(v=>v.remove());
-  prev.querySelectorAll('img').forEach(i=>i.classList.toggle('opaca', !!on));
+  prev.querySelectorAll('img,video').forEach(i=>i.classList.toggle('opaca', !!on));
   if(on){ const v=document.createElement('div'); v.className='rd-velo'; v.innerHTML='<span class="rd-spin"></span><div>'+esc(texto||'Componiendo la pieza…')+'</div><small>Fotos reales + logo + texto · unos segundos</small>'; prev.appendChild(v); if(!prev.querySelector('img')) prev.style.minHeight='360px'; }
 }
 function botonesRedes(ocupado){
   const b = id => document.getElementById(id);
   const pub = b('rd_publicar'), des = b('rd_descargar'), pre = b('rd_prev_btn');
-  if(pub){ if(ocupado) pub.dataset.txt = pub.dataset.txt || pub.innerHTML; if(!pub.dataset.bloqueado){ pub.disabled = !!ocupado || !redesSel.img; pub.title = pub.disabled ? (ocupado ? 'Espera a que termine…' : 'Primero arma la vista previa') : ''; } pub.innerHTML = ocupado==='publicando' ? '<span class="rd-spin blanco"></span> Publicando…' : (pub.dataset.txt || pub.innerHTML); }
-  if(des) des.disabled = !!ocupado || !redesSel.img;
+  const listo = redesSel.video ? (redesSel.video.estado==='listo' && !!redesSel.video.id) : !!redesSel.img;
+  if(pub){ if(ocupado) pub.dataset.txt = pub.dataset.txt || pub.innerHTML; if(!pub.dataset.bloqueado){ pub.disabled = !!ocupado || !listo; pub.title = pub.disabled ? (ocupado ? 'Espera a que termine…' : (redesSel.video ? 'Espera a que termine de subir el video' : 'Primero arma la vista previa')) : ''; } pub.innerHTML = ocupado==='publicando' ? '<span class="rd-spin blanco"></span> Publicando…' : (pub.dataset.txt || pub.innerHTML); }
+  if(des) des.disabled = !!ocupado || !redesSel.img || !!redesSel.video;
   if(pre) pre.disabled = !!ocupado;
 }
-function autoPrevRedes(){ clearTimeout(rdTimer); if(!redesSel.fotos.length) return; veloPrev(true, 'Preparando la vista previa…'); botonesRedes('componiendo'); rdTimer = setTimeout(()=>previsualizarRedes(true), 700); }
-function cuerpoRedes(){ return {fotos:redesSel.fotos, titulo:document.getElementById('rd_titulo').value, subtitulo:document.getElementById('rd_sub').value, pie:document.getElementById('rd_pie').value, etiqueta:document.getElementById('rd_etq').value, formato:document.getElementById('rd_formato').value, texto:document.getElementById('rd_texto').value, plantilla:redesSel.plantilla, cancha_id:redesSel.cancha}; }
+function autoPrevRedes(){ clearTimeout(rdTimer); if(redesSel.video){ botonesRedes(false); return; } if(!redesSel.fotos.length) return; veloPrev(true, 'Preparando la vista previa…'); botonesRedes('componiendo'); rdTimer = setTimeout(()=>previsualizarRedes(true), 700); }
+function cuerpoRedes(){ const g=id=>(document.getElementById(id)||{}).value||''; return {fotos:redesSel.fotos, titulo:g('rd_titulo'), subtitulo:g('rd_sub'), pie:g('rd_pie'), etiqueta:g('rd_etq'), formato:g('rd_formato')||redesSel.formato, texto:g('rd_texto'), plantilla:redesSel.plantilla, cancha_id:redesSel.cancha, video_id:(redesSel.video&&redesSel.video.id)||''}; }
+// ── Video: se sube a la torre con barra de progreso; al publicar, la torre lo manda a la página por trozos.
+function subirVideoRedes(inp){
+  const f = (inp.files||[])[0]; inp.value=''; if(!f) return;
+  const ext = (f.name.split('.').pop()||'').toLowerCase(), permitidas = redes.video_extensiones || ['mp4','mov','m4v','webm','avi','mkv','3gp'];
+  if(!permitidas.includes(ext)){ alert('Formato no admitido ('+ext+'). Sube un video MP4 o MOV.'); return; }
+  const maxMb = redes.video_max_mb || 300;
+  if(f.size > maxMb*1048576){ alert('El video pesa '+(f.size/1048576).toFixed(0)+' MB; el máximo es '+maxMb+' MB. Comprímelo o recórtalo.'); return; }
+  if(redesSel.video && redesSel.video.url) URL.revokeObjectURL(redesSel.video.url);
+  redesSel.video = {nombre:f.name, bytes:f.size, url:URL.createObjectURL(f), estado:'subiendo', pct:0, id:'', dur:0};
+  renderRedes();
+  // Duración con un <video> aparte (el de la vista previa se re-crea en cada renderRedes).
+  const sonda = document.createElement('video'); sonda.preload = 'metadata';
+  sonda.onloadedmetadata = ()=>{ if(redesSel.video && redesSel.video.url === sonda.src){ redesSel.video.dur = sonda.duration; renderRedes(); } sonda.removeAttribute('src'); };
+  sonda.src = redesSel.video.url;
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/admin/api/redes/pichangol/video?nombre='+encodeURIComponent(f.name));
+  xhr.setRequestHeader('X-Admin-Token', tok()); xhr.setRequestHeader('Content-Type', f.type || 'application/octet-stream');
+  xhr.upload.onprogress = e => { if(!e.lengthComputable || !redesSel.video) return; redesSel.video.pct = Math.round(e.loaded*100/e.total); const b=document.getElementById('rd_video_prog'), t=document.getElementById('rd_video_pct'); if(b) b.style.width = redesSel.video.pct+'%'; if(t) t.textContent = redesSel.video.pct+'%'; };
+  xhr.onload = () => { if(!redesSel.video) return; let j={}; try{ j=JSON.parse(xhr.responseText||'{}'); }catch(e){} if(xhr.status===401){ salir(); return; } if(xhr.status>=200 && xhr.status<300 && j.ok){ redesSel.video.id=j.video_id; redesSel.video.estado='listo'; redesSel.video.pct=100; toast('Video listo para publicar'); } else { redesSel.video.estado='error'; redesSel.video.error = j.detail || ('No se pudo subir (HTTP '+xhr.status+')'); } renderRedes(); botonesRedes(false); };
+  xhr.onerror = () => { if(!redesSel.video) return; redesSel.video.estado='error'; redesSel.video.error='Se cortó la subida (red). Inténtalo de nuevo.'; renderRedes(); };
+  xhr.send(f);
+}
+function quitarVideoRedes(){
+  const v = redesSel.video; if(!v) return;
+  if(v.id) fetch('/admin/api/redes/pichangol/video/'+encodeURIComponent(v.id)+'/descartar',{method:'POST',headers:headers()}).catch(()=>{});
+  if(v.url) URL.revokeObjectURL(v.url);
+  redesSel.video = null; renderRedes(); autoPrevRedes();
+}
 let rdSeq = 0;
 async function previsualizarRedes(auto){
   const msg = document.getElementById('rd_msg'), est = document.getElementById('rd_prev_estado');
@@ -2860,13 +2968,14 @@ async function previsualizarRedes(auto){
 }
 function descargarRedes(){ if(!redesSel.img) return; const a=document.createElement('a'); a.href=redesSel.img; a.download='pichangol-post-'+Date.now()+'.'+(redesSel.ext||'jpg'); a.click(); }
 async function publicarRedes(){
-  if(!confirm('¿Publicar ahora en la página de Facebook de Pichangol?')) return;
-  const msg = document.getElementById('rd_msg'); msg.innerHTML = '<span class="rd-spin chico"></span> Publicando en la página… (componiendo la pieza final y subiéndola a Facebook)';
-  botonesRedes('publicando'); veloPrev(true, 'Publicando en Facebook…');
+  const esVideo = !!(redesSel.video && redesSel.video.id);
+  if(!confirm(esVideo ? '¿Publicar este VIDEO ahora en la página de Facebook de Pichangol?' : '¿Publicar ahora en la página de Facebook de Pichangol?')) return;
+  const msg = document.getElementById('rd_msg'); msg.innerHTML = '<span class="rd-spin chico"></span> ' + (esVideo ? 'Subiendo el video a Facebook por partes… puede tardar según su peso.' : 'Publicando en la página… (componiendo la pieza final y subiéndola a Facebook)');
+  botonesRedes('publicando'); veloPrev(true, esVideo ? 'Subiendo el video a Facebook…' : 'Publicando en Facebook…');
   try{
     const r = await fetch('/admin/api/redes/pichangol/publicar',{method:'POST',headers:headers(),body:JSON.stringify(cuerpoRedes())});
     const j = await r.json().catch(()=>({}));
-    if(r.ok && j.ok){ toast('Publicado en Facebook'); msg.innerHTML = `✅ Publicado. ${j.url?`<a href="${esc(j.url)}" target="_blank" rel="noopener">Ver la publicación ↗</a>`:''}`; await cargarRedes(); return; }
+    if(r.ok && j.ok){ toast(esVideo ? 'Video enviado a Facebook' : 'Publicado en Facebook'); if(esVideo){ if(redesSel.video.url) URL.revokeObjectURL(redesSel.video.url); redesSel.video=null; } await cargarRedes(); const m2=document.getElementById('rd_msg'); if(m2) m2.innerHTML = esVideo ? `✅ Video enviado. Facebook lo procesa unos minutos y luego aparece en la página. ${j.url?`<a href="${esc(j.url)}" target="_blank" rel="noopener">Ver el video ↗</a>`:''}` : `✅ Publicado. ${j.url?`<a href="${esc(j.url)}" target="_blank" rel="noopener">Ver la publicación ↗</a>`:''}`; return; }
     msg.innerHTML = `<span style="color:var(--rojo)">${esc(j.detail||'No se pudo publicar')}</span>`;
   }catch(e){ msg.innerHTML = '<span style="color:var(--rojo)">No se pudo publicar (red). Revisa el historial antes de reintentar.</span>'; }
   veloPrev(false); botonesRedes(false);

@@ -3,6 +3,7 @@ composición con fotos reales (bucket o adjuntas), plantillas rellenadas con el
 local, vista previa, publicación por Graph (multipart) e historial."""
 import base64
 import io
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -172,3 +173,82 @@ def test_token_de_usuario_se_convierte_en_token_de_pagina_y_avisa_permisos(monke
     fb = client.get("/admin/api/redes/pichangol", headers=H).json()["facebook"]
     assert "no entregó" in fb["advertencia"] and "pages_show_list" in fb["advertencia"]
     assert client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H).status_code == 502
+
+
+def test_video_se_sube_a_la_torre_y_se_publica_por_trozos(monkeypatch, tmp_path):
+    """Pedido del director (24-sep-2026): "este módulo también debe permitir subir videos
+    y que haga el post para Facebook". El video entra por streaming a disco (con tope),
+    queda temporal 2 h y al publicar viaja a la página con la subida REANUDABLE de Graph
+    (start → transfer por trozos → finish con `description` = texto)."""
+    monkeypatch.setattr(pr, "_VIDEO_DIR", str(tmp_path / "videos"))
+    monkeypatch.setattr(pr, "VIDEO_MAX_MB", 1)
+    pr._videos.clear()
+    # Formato no admitido → 400; tope → 413 (por Content-Length y también por streaming).
+    assert client.post("/admin/api/redes/pichangol/video?nombre=foto.jpg", content=b"x" * 10, headers=H).status_code == 400
+    r = client.post("/admin/api/redes/pichangol/video?nombre=grande.mp4", content=b"x" * (1024 * 1024 + 1), headers=H)
+    assert r.status_code == 413 and "máximo" in r.json()["detail"]
+    assert pr._videos == {} and not any((tmp_path / "videos").glob("*")) if (tmp_path / "videos").exists() else True
+    # Subida correcta: 300 KB → id temporal, archivo en disco.
+    datos = bytes(range(256)) * 1200
+    r = client.post("/admin/api/redes/pichangol/video?nombre=Mi%20cancha.MP4", content=datos, headers=H)
+    assert r.status_code == 200, r.text
+    vid = r.json()["video_id"]
+    assert r.json()["bytes"] == len(datos) and r.json()["nombre"] == "Mi cancha.MP4" and vid.startswith("vid_")
+    v = pr.video(vid)
+    assert v and v["ext"] == "mp4" and open(v["ruta"], "rb").read() == datos
+    j = client.get("/admin/api/redes/pichangol", headers=H).json()
+    assert j["video_max_mb"] == 1 and "mp4" in j["video_extensiones"]
+    cuerpo = {"fotos": [], "titulo": "Nuestra cancha", "subtitulo": "", "etiqueta": "", "formato": "cuadrado",
+              "texto": "🎬 Mira nuestra cancha en Pichangol", "plantilla": "libre", "cancha_id": "", "video_id": vid}
+    # Sin credenciales → 409 (el video sigue guardado para reintentar).
+    assert client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H).status_code == 409
+    assert pr.video(vid)
+    # Con credenciales (token de página) → start / transfer×N / finish.
+    monkeypatch.setattr(config, "FB_PAGE_ID", "1257")
+    monkeypatch.setattr(config, "FB_PAGE_TOKEN", "EAAPAGE")
+    monkeypatch.setattr(pr, "_graph_get", lambda path, params: {"ok": True, "data": {"id": "1257", "name": "Pichangol"}} if path == "me"
+                        else {"ok": False, "error": "x"} if path == "debug_token" else {"ok": True, "data": {"name": "Pichangol", "link": "l"}})
+    pr._token_cache.update(clave="", hasta=0.0)
+    llamadas, recibido = [], bytearray()
+    TROZO = 100_000
+
+    def graph_multipart(path, campos, archivo, campo_archivo="source", timeout=60):
+        llamadas.append((path, dict(campos), archivo and (archivo[0], len(archivo[1]), archivo[2]), campo_archivo, timeout))
+        fase = campos["upload_phase"]
+        if fase == "start":
+            assert campos["file_size"] == str(len(datos)) and archivo is None
+            return {"ok": True, "data": {"upload_session_id": "ses1", "video_id": "777", "start_offset": "0", "end_offset": str(min(TROZO, len(datos)))}}
+        if fase == "transfer":
+            assert campo_archivo == "video_file_chunk" and campos["upload_session_id"] == "ses1" and timeout >= 300
+            ini = int(campos["start_offset"]); assert ini == len(recibido)
+            recibido.extend(archivo[1])
+            fin = min(len(recibido) + TROZO, len(datos))
+            return {"ok": True, "data": {"start_offset": str(len(recibido)), "end_offset": str(fin)}}
+        assert fase == "finish" and campos["description"] == "🎬 Mira nuestra cancha en Pichangol" and campos["title"] == "Nuestra cancha" and campos["published"] == "true"
+        return {"ok": True, "data": {"success": True}}
+    monkeypatch.setattr(pr, "_graph_multipart", graph_multipart)
+    r = client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H)
+    assert r.status_code == 200, r.text
+    assert r.json()["video"] is True and r.json()["url"] == "https://www.facebook.com/777"
+    fases = [c[1]["upload_phase"] for c in llamadas]
+    assert fases == ["start"] + ["transfer"] * 4 + ["finish"] and bytes(recibido) == datos
+    assert all(c[0] == "1257/videos" and c[1]["access_token"] == "EAAPAGE" for c in llamadas)
+    # El archivo temporal se borra al publicar y el historial lo registra como video.
+    assert pr.video(vid) is None and not os.path.exists(v["ruta"])
+    h = client.get("/admin/api/redes/pichangol", headers=H).json()["historial"]
+    assert h[0]["tipo"] == "video" and h[0]["post_id"] == "777" and h[0]["video_nombre"] == "Mi cancha.MP4" and h[0]["fotos"] == 0
+    # Video vencido / inexistente → 404 claro.
+    r = client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H)
+    assert r.status_code == 404 and "Súbelo de nuevo" in r.json()["detail"]
+    # Facebook corta un trozo → 502 con el trozo y el video se conserva para reintentar.
+    r = client.post("/admin/api/redes/pichangol/video?nombre=otro.mov", content=datos[:150_000], headers=H); vid2 = r.json()["video_id"]
+    monkeypatch.setattr(pr, "_graph_multipart", lambda path, campos, archivo, **k: {"ok": True, "data": {"upload_session_id": "s", "video_id": "1", "start_offset": "0", "end_offset": "150000"}}
+                        if campos["upload_phase"] == "start" else {"ok": False, "error": "HTTP 500: (#6000) transient"})
+    r = client.post("/admin/api/redes/pichangol/publicar", json={**cuerpo, "video_id": vid2}, headers=H)
+    assert r.status_code == 502 and "trozo 1" in r.json()["detail"] and pr.video(vid2)
+    # Descartar desde la torre y limpieza por vencimiento.
+    assert client.post(f"/admin/api/redes/pichangol/video/{vid2}/descartar", headers=H).json()["ok"] and pr.video(vid2) is None
+    r = client.post("/admin/api/redes/pichangol/video?nombre=viejo.mp4", content=b"v" * 10, headers=H); vid3 = r.json()["video_id"]
+    pr._videos[vid3]["creado_en"] -= pr.VIDEO_TTL + 1
+    pr._limpiar_videos()
+    assert pr.video(vid3) is None

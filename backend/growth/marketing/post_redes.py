@@ -20,6 +20,7 @@ import io
 import json
 import os
 import re
+import tempfile
 import time
 import urllib.error
 import urllib.parse
@@ -268,8 +269,10 @@ def configurado() -> bool:
     return bool(config.FB_PAGE_ID and config.FB_PAGE_TOKEN)
 
 
-def _graph_multipart(path: str, campos: dict, archivo: tuple[str, bytes, str] | None) -> dict:
-    """POST multipart a Graph (foto como archivo `source`). Devuelve {ok, data|error}."""
+def _graph_multipart(path: str, campos: dict, archivo: tuple[str, bytes, str] | None, *,
+                     campo_archivo: str = "source", timeout: int = 60) -> dict:
+    """POST multipart a Graph (foto como archivo `source`; video por trozos como
+    `video_file_chunk`). Devuelve {ok, data|error}."""
     base = f"{config.META_GRAPH_BASE}/{config.META_GRAPH_VERSION}"
     limite = "----PichangolTorre" + uuid.uuid4().hex
     partes = []
@@ -277,13 +280,13 @@ def _graph_multipart(path: str, campos: dict, archivo: tuple[str, bytes, str] | 
         partes.append(f"--{limite}\r\nContent-Disposition: form-data; name=\"{k}\"\r\n\r\n{v}\r\n".encode("utf-8"))
     if archivo:
         nombre, datos, ct = archivo
-        partes.append(f"--{limite}\r\nContent-Disposition: form-data; name=\"source\"; filename=\"{nombre}\"\r\nContent-Type: {ct}\r\n\r\n".encode("utf-8") + datos + b"\r\n")
+        partes.append(f"--{limite}\r\nContent-Disposition: form-data; name=\"{campo_archivo}\"; filename=\"{nombre}\"\r\nContent-Type: {ct}\r\n\r\n".encode("utf-8") + datos + b"\r\n")
     partes.append(f"--{limite}--\r\n".encode("utf-8"))
     cuerpo = b"".join(partes)
     req = urllib.request.Request(f"{base}/{path.lstrip('/')}", data=cuerpo, method="POST",
                                  headers={"Content-Type": f"multipart/form-data; boundary={limite}", "Content-Length": str(len(cuerpo))})
     try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         if isinstance(data, dict) and data.get("error"):
             return {"ok": False, "error": str(data["error"].get("message"))[:300]}
@@ -415,6 +418,124 @@ def publicar_facebook(texto: str, imagen: bytes) -> dict:
     post_id = str(d.get("post_id") or d.get("id") or "")
     url = f"https://www.facebook.com/{post_id}" if post_id else ""
     return {"ok": True, "post_id": post_id, "url": url}
+
+
+# ── Videos (pedido del director, 24-sep-2026: "también debe permitir subir videos") ──
+# El operador sube el archivo a la torre (streaming a disco, con progreso en el
+# navegador); queda en una carpeta temporal del backend un rato (VIDEO_TTL) y al
+# publicar se manda a la PÁGINA con la subida REANUDABLE de Graph
+# (`/{page}/videos` start → transfer por trozos → finish). Facebook lo procesa
+# unos minutos y lo publica con `description` = texto del post.
+VIDEO_MAX_MB = int(os.getenv("FB_VIDEO_MAX_MB", "300") or 300)
+VIDEO_TTL = 2 * 3600
+VIDEO_EXTENSIONES = {"mp4", "mov", "m4v", "webm", "avi", "mkv", "3gp"}
+VIDEO_MIME = {"mp4": "video/mp4", "mov": "video/quicktime", "m4v": "video/x-m4v", "webm": "video/webm",
+              "avi": "video/x-msvideo", "mkv": "video/x-matroska", "3gp": "video/3gpp"}
+_VIDEO_DIR = os.path.join(tempfile.gettempdir(), "pichangol_redes_videos")
+_videos: dict[str, dict] = {}
+
+
+def extension_video(nombre: str) -> str:
+    ext = (nombre or "").rsplit(".", 1)[-1].lower().strip() if "." in (nombre or "") else ""
+    return ext if ext in VIDEO_EXTENSIONES else ""
+
+
+def _limpiar_videos() -> None:
+    """Borra los videos temporales vencidos (y huérfanos en disco de arranques anteriores)."""
+    ahora = time.time()
+    for vid, v in list(_videos.items()):
+        if ahora - v.get("creado_en", 0) > VIDEO_TTL:
+            descartar_video(vid)
+    try:
+        for nombre in os.listdir(_VIDEO_DIR):
+            ruta = os.path.join(_VIDEO_DIR, nombre)
+            if ahora - os.path.getmtime(ruta) > VIDEO_TTL and not any(v["ruta"] == ruta for v in _videos.values()):
+                os.remove(ruta)
+    except OSError:
+        pass
+
+
+def iniciar_video(nombre: str) -> dict:
+    """Reserva id + ruta temporal para un video que se está subiendo (el router escribe el archivo)."""
+    ext = extension_video(nombre)
+    if not ext:
+        raise ValueError("Formato no admitido. Sube un video MP4 o MOV (también M4V, WEBM, AVI, MKV, 3GP).")
+    _limpiar_videos()
+    os.makedirs(_VIDEO_DIR, exist_ok=True)
+    vid = "vid_" + uuid.uuid4().hex[:16]
+    v = {"id": vid, "nombre": (nombre or "video")[:120], "ext": ext, "ruta": os.path.join(_VIDEO_DIR, f"{vid}.{ext}"),
+         "bytes": 0, "creado_en": time.time(), "listo": False}
+    _videos[vid] = v
+    return dict(v)
+
+
+def confirmar_video(vid: str, total: int) -> dict:
+    v = _videos[vid]
+    v.update(bytes=int(total), listo=True)
+    return dict(v)
+
+
+def video(vid: str) -> dict | None:
+    v = _videos.get(vid or "")
+    if not v or not v.get("listo") or not os.path.exists(v["ruta"]):
+        return None
+    return dict(v)
+
+
+def descartar_video(vid: str) -> None:
+    v = _videos.pop(vid or "", None)
+    if v:
+        try:
+            os.remove(v["ruta"])
+        except OSError:
+            pass
+
+
+def publicar_video_facebook(texto: str, titulo: str, ruta: str) -> dict:
+    """Sube el video a la página con la API reanudable de Graph y lo publica con el texto."""
+    if not configurado():
+        return {"ok": False, "error": "sin_credenciales"}
+    t = _resolver_token()
+    if t.get("error") or not t.get("token"):
+        return {"ok": False, "error": t.get("error") or "No se pudo obtener el token de la página."}
+    if PERMISO_PUBLICAR in (t.get("faltan") or []):
+        return {"ok": False, "error": f"Al token le falta el permiso {PERMISO_PUBLICAR}." + _pista_error("permission")}
+    tok = t["token"]
+    ruta_api = f"{config.FB_PAGE_ID}/videos"
+    tam = os.path.getsize(ruta)
+    r = _graph_multipart(ruta_api, {"upload_phase": "start", "file_size": str(tam), "access_token": tok}, None, timeout=120)
+    if not r.get("ok"):
+        err = str(r.get("error", "error"))
+        return {"ok": False, "error": err + _pista_error(err)}
+    d = r.get("data") or {}
+    sesion, video_id = str(d.get("upload_session_id", "")), str(d.get("video_id", ""))
+    ini, fin = int(d.get("start_offset", 0) or 0), int(d.get("end_offset", 0) or 0)
+    if not sesion:
+        return {"ok": False, "error": "Facebook no abrió la sesión de subida del video."}
+    trozos = 0
+    with open(ruta, "rb") as f:
+        while ini < fin:
+            f.seek(ini)
+            datos = f.read(fin - ini)
+            r = _graph_multipart(ruta_api, {"upload_phase": "transfer", "upload_session_id": sesion, "start_offset": str(ini), "access_token": tok},
+                                 (f"trozo_{trozos}.bin", datos, "application/octet-stream"), campo_archivo="video_file_chunk", timeout=600)
+            if not r.get("ok"):
+                return {"ok": False, "error": f"Se cortó la subida del video en el trozo {trozos + 1}: {r.get('error', 'error')}"}
+            d = r.get("data") or {}
+            trozos += 1
+            nuevo_ini, nuevo_fin = int(d.get("start_offset", fin) or 0), int(d.get("end_offset", fin) or 0)
+            if nuevo_ini == ini and nuevo_fin == fin:   # Facebook no avanzó: evitar bucle infinito
+                return {"ok": False, "error": "Facebook no aceptó el trozo del video (sin avance). Inténtalo de nuevo."}
+            ini, fin = nuevo_ini, nuevo_fin
+    campos = {"upload_phase": "finish", "upload_session_id": sesion, "description": texto or "", "access_token": tok, "published": "true"}
+    if (titulo or "").strip():
+        campos["title"] = titulo.strip()[:255]
+    r = _graph_multipart(ruta_api, campos, None, timeout=120)
+    if not r.get("ok"):
+        err = str(r.get("error", "error"))
+        return {"ok": False, "error": err + _pista_error(err)}
+    url = f"https://www.facebook.com/{video_id}" if video_id else ""
+    return {"ok": True, "post_id": video_id, "url": url, "trozos": trozos, "bytes": tam}
 
 
 def registrar(entrada: dict) -> dict:
