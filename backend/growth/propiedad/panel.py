@@ -437,6 +437,114 @@ class TokenRedesRequest(BaseModel):
     token: str = ""
 
 
+@router.get("/admin/api/redes/biblioteca")
+def get_redes_biblioteca(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Biblioteca de marca (fotos/videos importados de Google Fotos) + estado de la conexión."""
+    _check(x_admin_token)
+    from marketing import biblioteca as _bib
+    return {"ok": True, **_bib.estado(), "items": _bib.items(), "video_max_mb": _bib.VIDEO_MAX_BYTES // (1024 * 1024)}
+
+
+@router.get("/admin/api/redes/biblioteca/google/autorizar")
+def get_redes_biblioteca_autorizar(x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import biblioteca as _bib
+    if not _bib.credenciales():
+        raise HTTPException(status_code=409, detail="Faltan GOOGLE_WEB_CLIENT_ID y GOOGLE_WEB_CLIENT_SECRET en Railway (cliente OAuth 'Aplicación web').")
+    if not _bib.redirect_uri():
+        raise HTTPException(status_code=409, detail="Falta PUBLIC_BASE_URL en Railway para armar la URI de redirección.")
+    return {"ok": True, "url": _bib.url_autorizacion(), "redirect_uri": _bib.redirect_uri()}
+
+
+@router.get("/admin/api/redes/biblioteca/google/callback", response_class=HTMLResponse)
+def get_redes_biblioteca_callback(code: str = "", state: str = "", error: str = "") -> HTMLResponse:
+    """Vuelta de Google (sin cabecera de admin): el `state` firmado por la torre es la prueba."""
+    from marketing import biblioteca as _bib
+    def _pagina(titulo: str, cuerpo: str, ok: bool) -> HTMLResponse:
+        return HTMLResponse(f"<!doctype html><html lang='es'><head><meta charset='utf-8'><title>{titulo}</title>"
+                            "<style>body{font-family:system-ui,sans-serif;background:#F4F7FA;margin:0;display:flex;align-items:center;justify-content:center;height:100vh}"
+                            ".c{background:#fff;border-radius:18px;padding:28px 32px;max-width:460px;box-shadow:0 8px 30px rgba(0,0,0,.08);text-align:center}"
+                            f"h1{{font-size:20px;color:{'#0B8A3E' if ok else '#B42318'}}}p{{color:#444;line-height:1.5}}</style></head>"
+                            f"<body><div class='c'><h1>{titulo}</h1><p>{cuerpo}</p><p><b>Ya puedes cerrar esta pestaña y volver a la torre.</b></p></div></body></html>",
+                            status_code=200 if ok else 400)
+    if error:
+        return _pagina("Google canceló la conexión", f"Motivo: {error}", False)
+    if not _bib.estado_valido(state):
+        return _pagina("Enlace vencido", "La autorización no salió de la torre o pasaron más de 10 minutos. Vuelve a la torre y pulsa Conectar de nuevo.", False)
+    try:
+        r = _bib.canjear_codigo(code)
+    except Exception as exc:  # noqa: BLE001
+        return _pagina("No se pudo conectar", str(exc)[:300], False)
+    print(f"[biblioteca] Google Fotos conectado ({r.get('cuenta') or 'sin correo'})", flush=True)
+    return _pagina("Google Fotos conectado ✓", f"Cuenta: {r.get('cuenta') or 'conectada'}. Desde la torre podrás elegir fotos y videos.", True)
+
+
+@router.post("/admin/api/redes/biblioteca/google/desconectar")
+def post_redes_biblioteca_desconectar(x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import biblioteca as _bib
+    _bib.desconectar()
+    return {"ok": True, **_bib.estado()}
+
+
+@router.post("/admin/api/redes/biblioteca/google/sesion")
+def post_redes_biblioteca_sesion(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Abre una sesión del selector de Google Fotos: la torre abre `pickerUri` en otra pestaña."""
+    _check(x_admin_token)
+    from marketing import biblioteca as _bib
+    if not _bib.conectado():
+        raise HTTPException(status_code=409, detail="Conecta Google Fotos primero.")
+    try:
+        return {"ok": True, **_bib.crear_sesion()}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)[:300])
+
+
+@router.get("/admin/api/redes/biblioteca/google/sesion/{sesion_id}")
+def get_redes_biblioteca_sesion(sesion_id: str, x_admin_token: str | None = Header(default=None)) -> dict:
+    """Sondeo: cuando el director terminó de elegir, importa a la biblioteca y devuelve el resultado."""
+    _check(x_admin_token)
+    from marketing import biblioteca as _bib
+    try:
+        e = _bib.estado_sesion(sesion_id)
+        if not e["listo"]:
+            return {"ok": True, "listo": False}
+        r = _bib.importar_sesion(sesion_id)
+        return {"ok": True, "listo": True, **r, "items": _bib.items(), **{k: v for k, v in _bib.estado().items() if k in ("fotos", "videos")}}
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=str(exc)[:300])
+
+
+@router.post("/admin/api/redes/biblioteca/{item_id}/quitar")
+def post_redes_biblioteca_quitar(item_id: str, x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import biblioteca as _bib
+    if not _bib.quitar(item_id):
+        raise HTTPException(status_code=404, detail="Ya no está en la biblioteca.")
+    return {"ok": True, "items": _bib.items()}
+
+
+@router.post("/admin/api/redes/pichangol/video/desde-biblioteca/{item_id}")
+def post_redes_video_desde_biblioteca(item_id: str, x_admin_token: str | None = Header(default=None)) -> dict:
+    """Trae un video de la biblioteca al flujo de publicación (queda como video temporal, listo para pulir con música)."""
+    _check(x_admin_token)
+    from marketing import biblioteca as _bib
+    from marketing import post_redes as _pr
+    x = _bib.item(item_id)
+    if not x or x.get("tipo") != "video":
+        raise HTTPException(status_code=404, detail="Ese video ya no está en la biblioteca.")
+    try:
+        origen = _bib.descargar_a_temporal(item_id)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"No se pudo traer el video: {str(exc)[:200]}")
+    v = _pr.iniciar_video(x.get("nombre") or f"{item_id}.mp4")
+    import shutil
+    shutil.copyfile(origen, v["ruta"])
+    v = _pr.confirmar_video(v["id"], os.path.getsize(v["ruta"]))
+    _pr.anotar_video(v["id"], biblioteca_id=item_id)
+    return {"ok": True, "video_id": v["id"], "nombre": v["nombre"], "bytes": v["bytes"], "url": x.get("url", "")}
+
+
 class AgenteConfigRequest(BaseModel):
     activo: bool | None = None
     hora: str | None = None
@@ -445,6 +553,7 @@ class AgenteConfigRequest(BaseModel):
     tono: str | None = None
     plan: dict | None = None
     destacar_pro: bool | None = None
+    videos: str | None = None      # 'auto' | 'nunca'
 
 
 class AgenteCorrerRequest(BaseModel):
@@ -3031,7 +3140,7 @@ async function cargarRedes(){
     if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
     redes = await r.json(); renderRedes();
     if(!redesSel.cancha && redes.locales.length) redesSel.cancha = redes.locales[0].canchas[0].id;
-    aplicarPlantilla(); cargarAgente();
+    aplicarPlantilla(); cargarAgente(); cargarBiblioteca();
   }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
 }
 function renderRedes(){
@@ -3107,6 +3216,7 @@ function renderRedes(){
             <select id="rd_local" ${inp} onchange="cambiarLocalRedes(this.value)"><option value="">— elige un local —</option>${locales}</select></label>
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px" id="rd_fotos">${fotos}</div>${subidasHtml}
           <div style="margin-top:8px"><label class="btn-sec" for="rd_subir" style="cursor:pointer">📷 Subir fotos desde tu computadora</label><input type="file" id="rd_subir" accept="image/*" multiple hidden onchange="subirFotosRedes(this)"><small style="color:var(--muted);margin-left:8px">hasta ${redes.max_fotos||4} fotos en total · ${redesSel.fotos.length} elegida(s)</small></div>
+          <div id="rd_biblioteca" style="margin-top:12px"></div>
           <div class="rd-video" style="margin-top:12px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:#FAFBFC">
             <div style="font-size:12.5px;font-weight:700">🎬 O publica un VIDEO</div>
             ${vidHtml}
@@ -3148,7 +3258,7 @@ function renderRedes(){
   set('rd_titulo',prev.t); set('rd_sub',prev.s); set('rd_texto',prev.x); set('rd_etq',prev.e); set('rd_pie',prev.p); set('rd_formato', prev.f || redesSel.formato); set('rd_tema', prev.tema);
   ['rd_titulo','rd_sub','rd_etq','rd_pie'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input', autoPrevRedes); });
   const fm=document.getElementById('rd_formato'); if(fm) fm.addEventListener('change', ()=>{ redesSel.formato=fm.value; autoPrevRedes(); });
-  renderAgente();
+  renderAgente(); renderBiblioteca();
 }
 function cambiarLocalRedes(id){
   // Cambiar de local suelta las fotos del bucket del local anterior, pero CONSERVA las subidas
@@ -3251,6 +3361,84 @@ function botonesRedes(ocupado){
 }
 function autoPrevRedes(){ clearTimeout(rdTimer); if(redesSel.video){ botonesRedes(false); return; } if(!redesSel.fotos.length) return; veloPrev(true, 'Preparando la vista previa…'); botonesRedes('componiendo'); rdTimer = setTimeout(()=>previsualizarRedes(true), 700); }
 function cuerpoRedes(conImagen){ const g=id=>(document.getElementById(id)||{}).value||''; const c = {fotos:redesSel.fotos, titulo:g('rd_titulo'), subtitulo:g('rd_sub'), pie:g('rd_pie'), etiqueta:g('rd_etq'), formato:g('rd_formato')||redesSel.formato, texto:g('rd_texto'), plantilla:redesSel.plantilla, cancha_id:redesSel.cancha, video_id:(redesSel.video&&redesSel.video.id)||'', enfoque:(redesSel.ia&&redesSel.ia.enfoque)||'', fuente:(redesSel.ia&&redesSel.ia.fuente)||(redesSel.plantilla==='libre'?'manual':'plantilla'), usar_pulido: !!(redesSel.video&&redesSel.video.pulido&&redesSel.video.pulido.usar&&redesSel.video.pulido.url)}; if(conImagen && !c.video_id && redesSel.img) c.imagen = redesSel.img; return c; }
+// ── Biblioteca de marca + Google Fotos (Picker API) ──
+let bib = null, bibOcupado = '', bibSesion = null, bibTimer = null, bibAbierta = false;
+async function cargarBiblioteca(){
+  try{ const r = await fetch('/admin/api/redes/biblioteca',{headers:headers()}); if(r.ok) bib = await r.json(); }catch(e){}
+  renderBiblioteca();
+}
+function renderBiblioteca(){
+  const box = document.getElementById('rd_biblioteca'); if(!box) return;
+  if(!bib){ box.innerHTML = '<div class="rd-cargando" style="padding:8px 4px"><span class="rd-spin chico"></span> Cargando biblioteca…</div>'; return; }
+  const items = bib.items || [];
+  const enUso = new Set(redesSel.fotos);
+  const tarjeta = it => it.tipo==='video'
+    ? `<div style="position:relative;width:118px"><div style="width:118px;height:118px;border-radius:12px;background:#0A1B3D;display:flex;align-items:center;justify-content:center;color:#fff;font-size:28px">▶</div><small style="display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(it.nombre||'video')}${it.usos?' · '+it.usos+' uso(s)':''}</small>
+        <button type="button" class="btn-sec" style="width:100%;margin-top:3px;padding:4px 6px;font-size:12px" onclick="bibUsarVideo('${it.id}')" ${bibOcupado?'disabled':''}>${bibOcupado==='video:'+it.id?'<span class="rd-spin chico"></span>':'🎬 Usar video'}</button>
+        <button type="button" title="Quitar de la biblioteca" onclick="bibQuitar('${it.id}')" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-weight:700;cursor:pointer;line-height:1">✕</button></div>`
+    : `<div style="position:relative;width:118px"><label style="cursor:pointer;display:block"><img src="${esc(it.url)}" loading="lazy" style="width:118px;height:118px;object-fit:cover;border-radius:12px;border:3px solid ${enUso.has(it.url)?'var(--green)':'transparent'};display:block"><input type="checkbox" ${enUso.has(it.url)?'checked':''} onchange="toggleFotoRedes('${esc(it.url)}',this.checked)" style="position:absolute;top:8px;left:8px;width:18px;height:18px"></label><small style="display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.usos?it.usos+' uso(s)':'sin usar'}</small>
+        <button type="button" title="Quitar de la biblioteca" onclick="bibQuitar('${it.id}')" style="position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-weight:700;cursor:pointer;line-height:1">✕</button></div>`;
+  const conexion = !bib.credenciales
+    ? `<small style="color:#8a5a00">Para conectar Google Fotos faltan <code>GOOGLE_WEB_CLIENT_SECRET</code> (secreto del mismo cliente OAuth "Aplicación web" del login) en Railway y, en Google Cloud, habilitar la <b>Google Photos Picker API</b> y registrar la URI de redirección <code>${esc(bib.redirect_uri||'(PUBLIC_BASE_URL)/admin/api/redes/biblioteca/google/callback')}</code>.</small>`
+    : bib.conectado
+      ? `<span style="color:var(--green);font-weight:700">● Google Fotos conectado</span> <small style="color:var(--muted)">${esc(bib.cuenta||'')}</small>
+         <button type="button" class="btn-ap" style="margin-left:8px" onclick="bibElegir()" ${bibOcupado?'disabled':''}>${bibOcupado==='elegir'?'<span class="rd-spin blanco"></span> Esperando tu selección en Google Fotos…':'📷 Elegir fotos y videos en Google Fotos'}</button>
+         ${bibOcupado==='elegir'?'<button type="button" class="btn-sec" onclick="bibCancelarEspera()">Cancelar</button>':''}
+         <button type="button" class="btn-sec" onclick="bibDesconectar()" ${bibOcupado?'disabled':''}>Desconectar</button>`
+      : `<button type="button" class="btn-ap" onclick="bibConectar()">🔗 Conectar Google Fotos</button> <small style="color:var(--muted)">Se abre Google para autorizar; solo se leen las fotos y videos que TÚ elijas en el selector.</small>`;
+  box.innerHTML = `<details ${bibAbierta||items.length?'open':''} ontoggle="bibAbierta=this.open" style="padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:#FAFBFC">
+      <summary style="cursor:pointer;font-size:12.5px;font-weight:700">📷 Google Fotos · biblioteca de marca <small style="color:var(--muted);font-weight:400">· ${bib.fotos||0} fotos · ${bib.videos||0} videos</small></summary>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">${conexion}</div>
+      ${!bib.storage?'<small style="color:var(--rojo)">Sin SUPABASE_URL/ANON_KEY en Railway no se pueden guardar los archivos importados.</small>':''}
+      <div id="rd_bib_msg" style="margin-top:6px;font-size:12.5px"></div>
+      ${items.length?`<small style="display:block;margin-top:8px;color:var(--muted)">Marca fotos para esta publicación (entran al collage) o usa un video (pasa al flujo de pulido con música). El agente 24×7 también toma de aquí, rotando las menos usadas.</small>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">${items.map(tarjeta).join('')}</div>`:'<small style="display:block;margin-top:8px;color:var(--muted)">La biblioteca está vacía. Elige fotos y videos en Google Fotos y quedarán guardados aquí para las publicaciones y para el agente.</small>'}
+    </details>`;
+}
+async function bibConectar(){
+  try{ const r = await fetch('/admin/api/redes/biblioteca/google/autorizar',{headers:headers()}); const j = await r.json().catch(()=>({}));
+    if(r.ok && j.ok){ window.open(j.url, '_blank', 'noopener'); const m=document.getElementById('rd_bib_msg'); if(m) m.innerHTML='<span class="rd-spin chico"></span> Autoriza en la pestaña de Google y vuelve aquí; la biblioteca se actualiza sola.'; let n=0; const t=setInterval(async()=>{ await cargarBiblioteca(); n++; if((bib&&bib.conectado)||n>60) clearInterval(t); }, 3000); }
+    else alert(j.detail||'No se pudo iniciar la conexión'); }catch(e){ alert('Error de red'); }
+}
+async function bibDesconectar(){
+  if(!confirm('¿Desconectar Google Fotos? Lo ya importado se queda en la biblioteca.')) return;
+  await fetch('/admin/api/redes/biblioteca/google/desconectar',{method:'POST',headers:headers()}); cargarBiblioteca();
+}
+async function bibElegir(){
+  bibOcupado='elegir'; renderBiblioteca();
+  try{ const r = await fetch('/admin/api/redes/biblioteca/google/sesion',{method:'POST',headers:headers()}); const j = await r.json().catch(()=>({}));
+    if(!(r.ok && j.ok)){ alert(j.detail||'No se pudo abrir el selector'); bibOcupado=''; renderBiblioteca(); return; }
+    bibSesion = j.id; window.open(j.pickerUri, '_blank', 'noopener');
+    const m=document.getElementById('rd_bib_msg'); if(m) m.innerHTML='<span class="rd-spin chico"></span> Elige las fotos y videos en la pestaña de Google Fotos y pulsa "Listo" allá. Cuando termines, se importan solos.';
+    bibTimer = setTimeout(bibSondear, Math.max(2000, j.poll_ms||3000));
+  }catch(e){ alert('Error de red'); bibOcupado=''; renderBiblioteca(); }
+}
+async function bibSondear(){
+  if(!bibSesion) return;
+  try{ const r = await fetch('/admin/api/redes/biblioteca/google/sesion/'+encodeURIComponent(bibSesion),{headers:headers()}); const j = await r.json().catch(()=>({}));
+    if(!r.ok){ const m=document.getElementById('rd_bib_msg'); if(m) m.innerHTML=`<span style="color:var(--rojo)">${esc(j.detail||'Error')}</span>`; bibOcupado=''; bibSesion=null; renderBiblioteca(); return; }
+    if(!j.listo){ bibTimer = setTimeout(bibSondear, 3000); return; }
+    bibSesion=null; bibOcupado=''; await cargarBiblioteca();
+    const m=document.getElementById('rd_bib_msg'); if(m) m.innerHTML = `<span style="color:var(--green);font-weight:700">✓ Importados ${j.importados}</span>${j.omitidos?` · omitidos ${j.omitidos}`:''}${(j.detalle||[]).length?'<br><small style="color:var(--muted)">'+j.detalle.map(esc).join('<br>')+'</small>':''}`;
+    toast('Biblioteca actualizada');
+  }catch(e){ bibTimer = setTimeout(bibSondear, 4000); }
+}
+function bibCancelarEspera(){ clearTimeout(bibTimer); bibSesion=null; bibOcupado=''; renderBiblioteca(); }
+async function bibQuitar(id){
+  if(!confirm('¿Quitar este archivo de la biblioteca? Se borra también de Storage.')) return;
+  const r = await fetch('/admin/api/redes/biblioteca/'+id+'/quitar',{method:'POST',headers:headers()}); if(r.ok){ const it=(bib.items||[]).find(x=>x.id===id); if(it && it.url){ const i=redesSel.fotos.indexOf(it.url); if(i>=0) redesSel.fotos.splice(i,1); } await cargarBiblioteca(); renderRedes(); }
+}
+async function bibUsarVideo(id){
+  bibOcupado='video:'+id; renderBiblioteca();
+  try{ const r = await fetch('/admin/api/redes/pichangol/video/desde-biblioteca/'+id,{method:'POST',headers:headers()}); const j = await r.json().catch(()=>({}));
+    if(r.ok && j.ok){
+      if(redesSel.video && redesSel.video.url && redesSel.video.url.startsWith('blob:')) URL.revokeObjectURL(redesSel.video.url);
+      redesSel.video = {nombre:j.nombre, bytes:j.bytes, url:j.url, estado:'listo', pct:100, id:j.video_id, dur:0, pulido:null};
+      toast('Video listo: púlelo con música y publica'); renderRedes(); botonesRedes(false);
+      const el=document.getElementById('rd_pulir'); if(el) el.scrollIntoView({block:'center'});
+    } else alert(j.detail||'No se pudo traer el video'); }catch(e){ alert('Error de red'); }
+  bibOcupado=''; renderBiblioteca();
+}
 // ── Agente de marketing 24×7 (estratega + creativo + community manager de la página) ──
 let agente = null, agOcupado = '', agImg = {}, agAbierto = null;
 async function cargarAgente(){
@@ -3272,7 +3460,7 @@ function renderAgente(){
       <td style="padding:4px 6px"><select data-plan-aud="${i}" ${inp} onchange="renderAgentePlan()">${Object.entries(agente.audiencias||{}).map(([k,v])=>`<option value="${k}"${f.audiencia===k?' selected':''}>${esc(v)}</option>`).join('')}</select></td>
       <td style="padding:4px 6px"><select data-plan-enf="${i}" ${inp} ${esD?'disabled':''}>${esD?'<option value="duenos" selected>Para dueños de cancha</option>':(agente.enfoques_jugadores||[]).map(k=>`<option value="${k}"${f.enfoque===k?' selected':''}>${esc(ENFOQUE_NOMBRE[k]||k)}</option>`).join('')}</select></td></tr>`; }).join('');
   const bor = (agente.borradores||[]).map(b=>{ const ab = agAbierto===b.id; return `<div style="border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-top:8px;background:#fff">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>${esc(b.titulo||'(sin título)')}</b><small style="color:var(--muted)">${esc(b.fecha||'')} · ${esc((agente.audiencias||{})[b.audiencia]||b.audiencia||'')} · ${esc(ENFOQUE_NOMBRE[b.enfoque]||b.enfoque||'')}${b.local?' · '+esc(b.local):''}${b.fuente==='ia'?' · ✨ IA':''}</small>${b.motivo?`<small style="color:var(--rojo)">${esc(b.motivo)}</small>`:''}<span style="flex:1"></span><button type="button" class="btn-sec" onclick="agAbierto=${ab?'null':`'${b.id}'`};renderAgente();${ab?'':`agVerImagen('${b.id}')`}">${ab?'Cerrar':'👁️ Ver pieza'}</button></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>${b.video_id?'🎬 ':''}${esc(b.titulo||'(sin título)')}</b><small style="color:var(--muted)">${esc(b.fecha||'')} · ${esc((agente.audiencias||{})[b.audiencia]||b.audiencia||'')} · ${esc(ENFOQUE_NOMBRE[b.enfoque]||b.enfoque||'')}${b.local?' · '+esc(b.local):''}${b.video_id?' · video con música ('+esc(b.video_nombre||'')+')':''}${b.fuente==='ia'?' · ✨ IA':''}</small>${b.motivo?`<small style="color:var(--rojo)">${esc(b.motivo)}</small>`:''}<span style="flex:1"></span><button type="button" class="btn-sec" onclick="agAbierto=${ab?'null':`'${b.id}'`};renderAgente();${ab?'':`agVerImagen('${b.id}')`}">${ab?'Cerrar':'👁️ Ver pieza'}</button></div>
       ${ab?`<div class="rd-grid" style="margin-top:8px"><div>
           <label style="font-size:12.5px;font-weight:700">Título en la imagen<input id="ag_t_${b.id}" value="${esc(b.titulo||'')}" ${inp} style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit"></label>
           <label style="display:block;margin-top:6px;font-size:12.5px;font-weight:700">Subtítulo<input id="ag_s_${b.id}" value="${esc(b.subtitulo||'')}" style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit"></label>
@@ -3287,10 +3475,11 @@ function renderAgente(){
     </div>`; }).join('') || '<small style="color:var(--muted)">No hay borradores pendientes.</small>';
   const log = (agente.corridas||[]).map(k=>`<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #F0F2F4;font-size:12.5px"><span>${k.resultado==='publicado'?'✅':k.resultado==='borrador'?'📝':'⚠️'}</span><span style="color:var(--muted);min-width:120px">${new Date((k.en||0)*1000).toLocaleString('es-PE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</span><span style="flex:1">${esc(k.resultado)}${k.audiencia?' · '+esc((agente.audiencias||{})[k.audiencia]||k.audiencia):''}${k.titulo?' · '+esc(k.titulo):''}${k.detalle?' · <span style="color:var(--rojo)">'+esc(k.detalle)+'</span>':''}</span>${k.url?`<a href="${esc(k.url)}" target="_blank" rel="noopener">ver ↗</a>`:''}</div>`).join('') || '<small style="color:var(--muted)">Todavía no corrió.</small>';
   box.innerHTML = `<div class="top"><h3>🤖 Agente de marketing 24×7</h3>${c.activo?`<span style="color:var(--green);font-weight:700">● Activo · publica a las ${esc(c.hora)} (${esc(c.zona.replace('America/',''))})</span>`:'<span style="color:var(--muted);font-weight:700">○ Pausado</span>'}</div>
-    <div class="row" style="color:var(--muted);font-size:13px">Estratega + creativo + community manager de la página: cada día arma una pieza de <b>la MARCA Pichangol</b> (arte de marca por deporte, copy con IA que no se repite y un objetivo comercial: jugadores → descargar la app o reservar en la web; dueños → administrar su cancha con Pichangol) y la publica solo a la hora fijada, o te la deja para aprobar. Ningún local sale en la publicidad salvo que sea <b>Pro</b> y actives "Destacar locales Pro". Próxima: ${cuando} → ${esc((agente.audiencias||{})[px.audiencia]||'')} · ${esc(ENFOQUE_NOMBRE[px.enfoque]||px.enfoque||'')}. Hora local del agente: ${esc(agente.hora_local||'')}.${!agente.credenciales?' <b style="color:var(--rojo)">Falta el token de Facebook: el agente no puede publicar.</b>':''}${agente.ia===false?' <span style="color:#8a5a00">Sin ANTHROPIC_API_KEY: usa el banco de variantes.</span>':''}${agente.arte_ia===false?' <span style="color:#8a5a00">Sin proveedor de imágenes IA (OPENAI_API_KEY): usa la portada de marca.</span>':''}</div>
+    <div class="row" style="color:var(--muted);font-size:13px">Estratega + creativo + community manager de la página: cada día arma una pieza de <b>la MARCA Pichangol</b> (fotos y videos de tu biblioteca de Google Fotos si los hay, si no arte de marca por deporte; copy con IA que no se repite y un objetivo comercial: jugadores → descargar la app o reservar en la web; dueños → administrar su cancha con Pichangol) y la publica solo a la hora fijada, o te la deja para aprobar. Ningún local sale en la publicidad salvo que sea <b>Pro</b> y actives "Destacar locales Pro". Próxima: ${cuando} → ${esc((agente.audiencias||{})[px.audiencia]||'')} · ${esc(ENFOQUE_NOMBRE[px.enfoque]||px.enfoque||'')}. Hora local del agente: ${esc(agente.hora_local||'')}.${!agente.credenciales?' <b style="color:var(--rojo)">Falta el token de Facebook: el agente no puede publicar.</b>':''}${agente.ia===false?' <span style="color:#8a5a00">Sin ANTHROPIC_API_KEY: usa el banco de variantes.</span>':''}${agente.arte_ia===false?' <span style="color:#8a5a00">Sin proveedor de imágenes IA (OPENAI_API_KEY): usa la portada de marca.</span>':''}</div>
     <div class="row" style="display:flex;gap:14px;flex-wrap:wrap;align-items:end">
       <label style="display:flex;align-items:center;gap:8px;font-weight:700"><input type="checkbox" id="ag_activo" ${c.activo?'checked':''} style="width:18px;height:18px"> Activo</label>
       <label style="display:flex;align-items:center;gap:8px;font-size:12.5px" title="Solo locales verificados cuyo dueño tiene Pichangol Pro vigente entran en la rotación (enfoque 'El local protagonista')"><input type="checkbox" id="ag_pro" ${c.destacar_pro?'checked':''} style="width:16px;height:16px"> Destacar locales Pro <small style="color:var(--muted)">(${agente.locales_pro||0} disponibles)</small></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px" title="Jueves, viernes y sábado: si hay un video de la biblioteca sin usar hace 14 días, ese día publica video pulido con música"><input type="checkbox" id="ag_videos" ${c.videos!=='nunca'?'checked':''} style="width:16px;height:16px"> Videos con música <small style="color:var(--muted)">(biblioteca: ${(agente.biblioteca||{}).fotos||0} fotos · ${(agente.biblioteca||{}).videos||0} videos)</small></label>
       <label style="font-size:12.5px;font-weight:700">Hora<br><select id="ag_hora" ${inp}>${horas.join('')}</select></label>
       <label style="font-size:12.5px;font-weight:700">Zona<br><select id="ag_zona" ${inp}>${zonas}</select></label>
       <div style="font-size:12.5px;font-weight:700">Modo<br><label style="font-weight:400;margin-right:8px"><input type="radio" name="ag_modo" value="auto" ${c.modo==='auto'?'checked':''}> Publicar solo</label><label style="font-weight:400"><input type="radio" name="ag_modo" value="aprobar" ${c.modo==='aprobar'?'checked':''}> Dejarme aprobar</label></div>
@@ -3312,7 +3501,7 @@ function renderAgentePlan(){ const plan = {}; (agente.dias||[]).forEach((d,i)=>{
 function agLeerForm(){
   const plan = {}; (agente.dias||[]).forEach((d,i)=>{ const a=document.querySelector(`[data-plan-aud="${i}"]`), e=document.querySelector(`[data-plan-enf="${i}"]`); plan[String(i)] = {audiencia: a?a.value:'jugadores', enfoque: e?e.value:'auto'}; });
   const modo = (document.querySelector('input[name="ag_modo"]:checked')||{}).value || 'auto';
-  return {activo: document.getElementById('ag_activo').checked, destacar_pro: document.getElementById('ag_pro').checked, hora: document.getElementById('ag_hora').value, zona: document.getElementById('ag_zona').value, modo: modo, tono: document.getElementById('ag_tono').value, plan: plan};
+  return {activo: document.getElementById('ag_activo').checked, destacar_pro: document.getElementById('ag_pro').checked, videos: document.getElementById('ag_videos').checked ? 'auto' : 'nunca', hora: document.getElementById('ag_hora').value, zona: document.getElementById('ag_zona').value, modo: modo, tono: document.getElementById('ag_tono').value, plan: plan};
 }
 async function agGuardar(){
   const cuerpo = agLeerForm(); agOcupado='guardar'; renderAgente();
@@ -3352,7 +3541,7 @@ async function agAccion(bid, accion){
   agOcupado=''; renderAgente();
 }
 // ── Pulido con estilo Pichangol (FFmpeg en el backend) + subtítulos Whisper ──
-const PUL_DEF = {formato:'vertical', logo:true, intro:true, rotulo:true, cierre:true, subtitulos:true, musica:null};
+const PUL_DEF = {formato:'vertical', logo:true, intro:true, rotulo:true, cierre:true, subtitulos:true, musica:true};
 function pulidoHtml(vd){
   const cap = redes.pulido || {};
   if(cap.disponible===false) return '<small style="display:block;margin-top:8px;color:var(--muted)">Este servidor no tiene FFmpeg: el video se publica tal cual.</small>';
@@ -3384,11 +3573,11 @@ function pulidoHtml(vd){
   return `<div style="margin-top:12px;padding:10px 12px;border-radius:12px;border:1px dashed var(--border);background:#fff">
       <div style="font-size:12.5px;font-weight:700">✨ Pulir con estilo Pichangol</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">Formato</small>${chip('formato','vertical','Vertical 9:16 · Reels')} ${chip('formato','cuadrado','Cuadrado 1:1')} ${chip('formato','original','Original')}</div>
-      <div style="margin-top:8px">${chk('logo','Logo')}${chk('intro','Intro')}${chk('rotulo','Rótulo con el título')}${chk('cierre','Cierre con título y web')}${chk('subtitulos','Subtítulos automáticos', {off: subsOff})}</div>
+      <div style="margin-top:8px">${chk('logo','Logo')}${chk('intro','Intro')}${chk('rotulo','Rótulo con el título')}${chk('cierre','Cierre con título y web')}${chk('subtitulos','Subtítulos automáticos', {off: subsOff})}${chk('musica','🎵 Música de fondo')}</div>
       ${subsOff?'<small style="color:#8a5a00">Subtítulos automáticos apagados: falta OPENAI_API_KEY en este ambiente.</small>':''}
       <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button type="button" class="btn-ap" id="rd_pulir" onclick="pulirVideo()" ${ocupado?'disabled':''}>${ocupado?'<span class="rd-spin blanco"></span> Procesando…':(listo?'🎬 Volver a generar':'🎬 Generar versión pulida')}</button>
-        <small style="color:var(--muted)">Usa el título de arriba para el rótulo y el cierre. La música original de fondo se agrega sola si el video no trae audio.</small>
+        <small style="color:var(--muted)">Usa el título de arriba para el rótulo y el cierre. La música es original de Pichangol (libre de regalías): suena sola si el video no trae audio y de fondo, suave, si trae voz.</small>
       </div>
       ${estado}${usar}${editor}
     </div>`;

@@ -1200,6 +1200,53 @@ off → redeploy inmediato en cada push). URL pública:
   de alcance por post (insights de Graph) para que el estratega aprenda.
   Portada de la página: `tool/portada_facebook.py` →
   `static/brand/portada_facebook.png` (1640×720). Test `test_redes_pichangol.py`.
+  **GOOGLE FOTOS = BIBLIOTECA DE MARCA + VIDEOS CON MÚSICA (pedido del
+  director, 24-sep-2026: "quiero enlazar mi Google Fotos para que desde ahí
+  agarres las fotos y videos y hagas el post; ojo, los videos deben tener
+  música"):** `marketing/biblioteca.py`. Google CERRÓ en 2025 la lectura de
+  la biblioteca completa por API: una app solo lee lo que el usuario ELIGE en
+  el selector oficial (**Google Photos Picker API**). Flujo: (1) **Conectar**
+  una vez: OAuth con el MISMO cliente "Aplicación web" del login
+  (`GOOGLE_WEB_CLIENT_ID` + nueva env `GOOGLE_WEB_CLIENT_SECRET`), scope
+  `photospicker.mediaitems.readonly`, `state` firmado HMAC 10 min (el
+  callback `GET /admin/api/redes/biblioteca/google/callback` vuelve SIN
+  cabecera de admin; la firma es la prueba); el *refresh token* se guarda
+  CIFRADO en `stores.config[gfotos_refresh_cifrado]` (Fernet vía
+  `redes.cifrar`, como el de Facebook) + `gfotos_cuenta`. **Setup por
+  ambiente (manual del director):** `GOOGLE_WEB_CLIENT_SECRET` en Railway,
+  habilitar "Google Photos Picker API" en el proyecto de Google Cloud y
+  registrar la URI de redirección `{PUBLIC_BASE_URL}/admin/api/redes/
+  biblioteca/google/callback` en el cliente OAuth (QAS `https://pg.ebim.pe/
+  …`, PRD `https://www.pichangol.app/…`); sin secreto la sección lo explica y
+  `/autorizar` responde 409. (2) **Elegir**: `POST …/google/sesion` abre una
+  sesión del Picker (`pickerUri` en otra pestaña), la torre sondea `GET
+  …/google/sesion/{id}` y, cuando `mediaItemsSet`, `importar_sesion` DESCARGA
+  cada elemento con el token (foto `=w2048-h2048`, video `=dv`; las URLs de
+  Google caducan en ~1 h) y lo SUBE a Storage `canchas/marca/biblioteca/
+  bm_<id>.jpg|mp4` (`almacen.subir(max_bytes=)`, tope video
+  `BIBLIOTECA_VIDEO_MAX_MB`=150); catálogo en `stores.biblioteca_marca`
+  (snapshot; `google_id` evita duplicados; `usos`/`ultimo_uso`); cierra la
+  sesión del Picker. (3) **Usar**: sección "📷 Google Fotos · biblioteca de
+  marca" bajo el paso 1 del pane (Conectar / Elegir en Google Fotos /
+  Quitar; una foto se marca para el collage, un video "▶ Usar video" →
+  `POST /admin/api/redes/pichangol/video/desde-biblioteca/{id}` lo copia al
+  flujo de video temporal, con la casilla "🎵 Música de fondo" ENCENDIDA por
+  defecto en el pulido). El **agente 24×7** prefiere la biblioteca sobre el
+  arte IA: `crear_pieza` → `elegir_fotos` (las MENOS usadas primero, 3 para
+  jugadores / 1 para dueños) y, en **días de video** (`DIAS_VIDEO` = jue/vie/
+  sáb) con `agente_fb_videos != nunca` (casilla "Videos con música"),
+  `elegir_video(14)` = un video sin usar en 14 días → `render_video` =
+  `video_pulido.pulir` cuadrado con logo, intro, rótulo, cierre y **`musica:
+  True` SIEMPRE** (música original `musica.generar_pista`; si el clip trae
+  audio se mezcla bajito) → `publicar_video_facebook`; póster para la torre
+  = frame + marca (`_poster_video`). Sin video disponible → foto de la
+  biblioteca; sin biblioteca → arte IA → portada. La receta guarda
+  `biblioteca_ids`/`video_id` y `_publicar_pieza` hace `marcar_uso` solo si
+  Facebook aceptó; historial con `tipo: video`, `musica`, `biblioteca`.
+  Acceso revocado (`invalid_grant`) → se desconecta solo y pide reconectar;
+  desconectar conserva lo importado; quitar borra también de Storage. Test
+  `test_biblioteca_google_fotos_importa_y_el_agente_publica_video_con_musica`
+  (Google simulado, FFmpeg real con clip mudo → sale con audio).
 - **DATOS DE LA EMPRESA CONFIGURABLES DESDE LA TORRE (pedido del director,
   sep-2026):** razón social, tipo y número de documento fiscal (RUC/NIT),
   dirección, ciudad corta, **WhatsApp POR PAÍS** (Perú, Ecuador, Bolivia:

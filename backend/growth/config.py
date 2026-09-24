@@ -191,6 +191,9 @@ PLACES_API_KEY = os.getenv("PLACES_API_KEY", "").strip()
 # Con valor → reservar en la web EXIGE iniciar sesión con Google; vacío → la
 # web sigue con el formulario de invitado (nombre + correo) hasta configurarlo.
 GOOGLE_WEB_CLIENT_ID = os.getenv("GOOGLE_WEB_CLIENT_ID", "").strip()
+# Secreto del MISMO cliente OAuth "Aplicación web": lo usa la torre para conectar
+# Google Fotos (Picker API) con refresh token. Sin él, la sección explica qué falta.
+GOOGLE_WEB_CLIENT_SECRET = os.getenv("GOOGLE_WEB_CLIENT_SECRET", "").strip()
 
 # Huella SHA-256 del certificado de firma del APK (para verificar los Android
 # App Links en /.well-known/assetlinks.json). Sacarla con:

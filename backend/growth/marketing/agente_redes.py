@@ -77,9 +77,11 @@ ENFOQUES_DUENOS = ["duenos"]
 DEPORTES_MARCA = ["futbol", "tenis", "padel", "futbol", "pickleball", "tenis", "futbol"]   # deporte del arte de marca por día de la semana
 CFG = {"activo": "agente_fb_activo", "hora": "agente_fb_hora", "zona": "agente_fb_zona", "modo": "agente_fb_modo",
        "tono": "agente_fb_tono", "plan": "agente_fb_plan", "ultimo_dia": "agente_fb_ultimo_dia", "ultimo_local": "agente_fb_ultimo_local",
-       "destacar_pro": "agente_fb_destacar_pro"}
+       "destacar_pro": "agente_fb_destacar_pro", "videos": "agente_fb_videos"}
 DEFAULTS = {"activo": "0", "hora": "07:00", "zona": "America/Lima", "modo": "auto", "tono": "cercano", "plan": "", "ultimo_dia": "", "ultimo_local": "",
-            "destacar_pro": "0"}
+            "destacar_pro": "0", "videos": "auto"}
+DIAS_VIDEO = {3, 4, 5}          # jue/vie/sáb: si hay un video de la biblioteca sin usar hace 14 días, ese día sale video (con música)
+VIDEO_DESCANSO_DIAS = 14
 ZONAS = {"America/Lima": -5, "America/La_Paz": -4, "America/Guayaquil": -5}
 MAX_BORRADORES = 14
 MAX_CORRIDAS = 60
@@ -92,7 +94,8 @@ def _cfg(k: str) -> str:
 
 def configuracion() -> dict:
     return {"activo": _cfg("activo") == "1", "hora": _cfg("hora"), "zona": _cfg("zona"), "modo": _cfg("modo") if _cfg("modo") in ("auto", "aprobar") else "auto",
-            "tono": _cfg("tono"), "plan": plan(), "ultimo_dia": _cfg("ultimo_dia"), "destacar_pro": _cfg("destacar_pro") == "1"}
+            "tono": _cfg("tono"), "plan": plan(), "ultimo_dia": _cfg("ultimo_dia"), "destacar_pro": _cfg("destacar_pro") == "1",
+            "videos": _cfg("videos") if _cfg("videos") in ("auto", "nunca") else "auto"}
 
 
 def plan() -> dict:
@@ -119,6 +122,8 @@ def guardar_configuracion(datos: dict) -> dict:
         stores.config[CFG["activo"]] = "1" if datos.get("activo") else "0"
     if "destacar_pro" in datos:
         stores.config[CFG["destacar_pro"]] = "1" if datos.get("destacar_pro") else "0"
+    if "videos" in datos:
+        stores.config[CFG["videos"]] = "nunca" if str(datos.get("videos")) == "nunca" else "auto"
     if "hora" in datos:
         h = str(datos.get("hora") or "07:00")
         try:
@@ -257,8 +262,16 @@ def planificar(fecha_local: datetime | None = None, *, audiencia: str | None = N
         tema += f" Local Pro destacado del día: {local['local']} ({local.get('zona') or 'la zona'}) ya se reserva en Pichangol; menciónalo con naturalidad."
     if aud == "duenos":
         tema += " No menciones locales ni academias por nombre; habla de la solución y de lo que gana el dueño."
+    # ¿Toca VIDEO? Solo de la biblioteca de marca (Google Fotos), en días de video, sin repetir uno reciente, y siempre con música.
+    video = None
+    if not local and _cfg("videos") != "nunca" and loc.weekday() in DIAS_VIDEO:
+        try:
+            from marketing import biblioteca
+            video = biblioteca.elegir_video(VIDEO_DESCANSO_DIAS)
+        except Exception:  # noqa: BLE001
+            video = None
     return {"fecha": loc.strftime("%Y-%m-%d"), "dia": DIAS[loc.weekday()], "audiencia": aud, "enfoque": enf, "tono": _cfg("tono"),
-            "local": local, "tema": tema, "formato": "cuadrado", "loc": loc}
+            "local": local, "tema": tema, "formato": "cuadrado", "loc": loc, "video": video}
 
 
 # ── creativo ─────────────────────────────────────────────────────────────────
@@ -267,27 +280,87 @@ def crear_pieza(brief: dict, *, evitar: list[str] | None = None) -> dict:
     from marketing import post_redes as _pr
     local = brief.get("local") or {}
     cancha = local.get("muestra") if local else None
+    video = brief.get("video") or None
     fotos = list((local.get("fotos") or [])[:3]) if local else []
-    if not fotos:
+    biblioteca_ids: list[str] = []
+    if not fotos and not video:
+        # 1.º la BIBLIOTECA DE MARCA (fotos reales elegidas por el director en Google Fotos), 2.º arte IA, 3.º portada.
+        try:
+            from marketing import biblioteca
+            elegidas = biblioteca.elegir_fotos(3 if brief.get("audiencia") == "jugadores" else 1)
+        except Exception:  # noqa: BLE001
+            elegidas = []
+        fotos = [x["url"] for x in elegidas]
+        biblioteca_ids = [x["id"] for x in elegidas]
+    if not fotos and not video:
         marca = _arte_marca(brief.get("loc") or ahora_local())
         fotos = [marca] if marca else []
     copy = _pr.redactar(cancha, brief.get("tono") or "cercano", brief.get("enfoque") or "auto", brief.get("tema") or "", evitar or [])
     etiqueta = copy.get("etiqueta") or ("Para dueños" if brief.get("audiencia") == "duenos" else "")
-    png = _pr.componer(fotos, copy["titulo"] or "Pichangol", copy.get("subtitulo") or "", "www.pichangol.app", brief.get("formato") or "cuadrado", etiqueta)
-    return {"fotos": fotos, "titulo": copy["titulo"], "subtitulo": copy.get("subtitulo", ""), "etiqueta": etiqueta, "texto": copy["texto"],
-            "enfoque": copy.get("enfoque") or brief.get("enfoque"), "fuente": copy.get("fuente"), "tono": copy.get("tono"),
-            "audiencia": brief.get("audiencia"), "local": local.get("local", "") if local else "", "local_id": (local["canchas"][0]["id"] if local else ""),
-            "formato": brief.get("formato") or "cuadrado", "png": png}
+    pieza = {"fotos": fotos, "titulo": copy["titulo"], "subtitulo": copy.get("subtitulo", ""), "etiqueta": etiqueta, "texto": copy["texto"],
+             "enfoque": copy.get("enfoque") or brief.get("enfoque"), "fuente": copy.get("fuente"), "tono": copy.get("tono"),
+             "audiencia": brief.get("audiencia"), "local": local.get("local", "") if local else "", "local_id": (local["canchas"][0]["id"] if local else ""),
+             "formato": brief.get("formato") or "cuadrado", "biblioteca_ids": biblioteca_ids, "png": b""}
+    if video:
+        pieza.update(video_id=video["id"], video_url=video.get("url", ""), video_nombre=video.get("nombre", ""), formato="video")
+        pieza["png"] = _poster_video(video, pieza)      # vista previa (frame + marca) para la torre
+        return pieza
+    pieza["png"] = _pr.componer(fotos, copy["titulo"] or "Pichangol", copy.get("subtitulo") or "", "www.pichangol.app", pieza["formato"], etiqueta)
+    return pieza
+
+
+def _frame_video(ruta: str) -> str:
+    """Primer frame útil del video como data URL JPEG (para el póster/vista previa)."""
+    import base64 as _b
+    import subprocess
+    from marketing import video_pulido as vp
+    ff = vp.ffmpeg_exe()
+    salida = ruta + ".frame.jpg"
+    if ff and not os.path.exists(salida):
+        subprocess.run([ff, "-hide_banner", "-loglevel", "error", "-y", "-ss", "1.0", "-i", ruta, "-frames:v", "1", "-vf", "scale=1280:-2", salida],
+                       capture_output=True)
+    if os.path.exists(salida) and os.path.getsize(salida) > 0:
+        with open(salida, "rb") as f:
+            return "data:image/jpeg;base64," + _b.b64encode(f.read()).decode()
+    return _foto_marca()
+
+
+def _poster_video(video: dict, pieza: dict) -> bytes:
+    from marketing import post_redes as _pr
+    from marketing import biblioteca
+    try:
+        ruta = biblioteca.descargar_a_temporal(video["id"])
+        frame = _frame_video(ruta)
+    except Exception:  # noqa: BLE001
+        frame = _foto_marca()
+    return _pr.componer([frame] if frame else [], pieza["titulo"] or "Pichangol", pieza.get("subtitulo") or "", "www.pichangol.app", "cuadrado", "▶ Video")
+
+
+def render_video(receta: dict) -> str:
+    """Pule el video de la biblioteca con estilo Pichangol y MÚSICA SIEMPRE (regla del
+    director). Devuelve la ruta del MP4 listo para publicar."""
+    from marketing import biblioteca
+    from marketing import video_pulido as vp
+    ruta = biblioteca.descargar_a_temporal(receta["video_id"])
+    salida = os.path.splitext(ruta)[0] + f"_pub_{int(time.time())}.mp4"
+    vp.pulir(ruta, salida, {"formato": "cuadrado", "logo": True, "intro": True, "cierre": True, "rotulo": True,
+                            "titulo": receta.get("titulo") or "", "segmentos": [], "musica": True, "mood": "energico" if receta.get("audiencia") == "jugadores" else "chill"})
+    return salida
 
 
 def _receta(pieza: dict) -> dict:
     # las fotos data: (portada de marca) no se guardan en el snapshot: se marcan y se regeneran
     fotos = ["brand:arte" if u.startswith("data:") else u for u in pieza.get("fotos") or []]
-    return {k: pieza[k] for k in ("titulo", "subtitulo", "etiqueta", "texto", "enfoque", "fuente", "tono", "audiencia", "local", "local_id", "formato") if k in pieza} | {"fotos": fotos}
+    return {k: pieza[k] for k in ("titulo", "subtitulo", "etiqueta", "texto", "enfoque", "fuente", "tono", "audiencia", "local", "local_id", "formato",
+                                  "biblioteca_ids", "video_id", "video_url", "video_nombre") if k in pieza} | {"fotos": fotos}
 
 
 def componer_receta(receta: dict) -> bytes:
     from marketing import post_redes as _pr
+    if receta.get("video_id"):
+        from marketing import biblioteca
+        v = biblioteca.item(receta["video_id"]) or {"id": receta["video_id"], "url": receta.get("video_url", "")}
+        return _poster_video(v, receta)
     try:
         loc = datetime.strptime(str(receta.get("fecha") or ""), "%Y-%m-%d").replace(tzinfo=timezone.utc)
     except ValueError:
@@ -321,10 +394,30 @@ def _persistir() -> None:
 
 def _publicar_pieza(pieza: dict, receta: dict, *, origen: str) -> dict:
     from marketing import post_redes as _pr
-    r = _pr.publicar_facebook(pieza["texto"].strip(), pieza["png"])
-    _pr.registrar({"red": "facebook", "tipo": "foto", "plantilla": "agente", "enfoque": receta.get("enfoque", ""), "fuente": "agente",
+    es_video = bool(receta.get("video_id"))
+    if es_video:
+        try:
+            ruta = render_video(receta)
+        except Exception as e:  # noqa: BLE001
+            r = {"ok": False, "error": f"No se pudo pulir el video: {str(e)[:160]}"}
+        else:
+            r = _pr.publicar_video_facebook(pieza["texto"].strip(), receta.get("titulo") or "", ruta)
+            try:
+                os.remove(ruta)
+            except OSError:
+                pass
+    else:
+        r = _pr.publicar_facebook(pieza["texto"].strip(), pieza["png"])
+    if r.get("ok"):
+        try:
+            from marketing import biblioteca
+            biblioteca.marcar_uso(list(receta.get("biblioteca_ids") or []) + ([receta["video_id"]] if es_video else []))
+        except Exception:  # noqa: BLE001
+            pass
+    _pr.registrar({"red": "facebook", "tipo": "video" if es_video else "foto", "plantilla": "agente", "enfoque": receta.get("enfoque", ""), "fuente": "agente",
                    "audiencia": receta.get("audiencia", ""), "local": receta.get("local", ""), "titulo": receta.get("titulo", ""),
                    "texto": pieza["texto"].strip()[:600], "fotos": len(receta.get("fotos") or []), "formato": receta.get("formato", "cuadrado"),
+                   "video_nombre": receta.get("video_nombre", ""), "pulido": es_video, "musica": es_video, "biblioteca": bool(receta.get("biblioteca_ids") or es_video),
                    "ok": bool(r.get("ok")), "post_id": r.get("post_id", ""), "url": r.get("url", ""), "error": r.get("error", ""), "origen": origen})
     return r
 
@@ -458,6 +551,15 @@ def tick() -> bool:
     return bool(r.get("ok") or r.get("motivo") not in ("ya_publicado_hoy",))
 
 
+def _resumen_biblioteca() -> dict:
+    try:
+        from marketing import biblioteca
+        e = biblioteca.estado()
+        return {"fotos": e["fotos"], "videos": e["videos"], "conectado": e["conectado"]}
+    except Exception:  # noqa: BLE001
+        return {"fotos": 0, "videos": 0, "conectado": False}
+
+
 def _arte_disponible() -> bool:
     try:
         from marketing import arte_ia
@@ -471,6 +573,6 @@ def resumen() -> dict:
     from marketing import post_redes as _pr
     return {"config": configuracion(), "proxima": proxima_corrida(), "borradores": borradores(), "corridas": [dict(c) for c in _estado()["corridas"][:12]],
             "credenciales": _pr.configurado(), "ia": bool(config.ANTHROPIC_API_KEY), "locales_pro": len(_locales()), "zonas": list(ZONAS),
-            "arte_ia": _arte_disponible(),
+            "arte_ia": _arte_disponible(), "biblioteca": _resumen_biblioteca(),
             "audiencias": {k: v["nombre"] for k, v in AUDIENCIAS.items()}, "enfoques_jugadores": ["auto"] + ENFOQUES_JUGADORES, "dias": DIAS,
             "hora_local": ahora_local().strftime("%Y-%m-%d %H:%M")}

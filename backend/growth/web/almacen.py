@@ -38,10 +38,11 @@ def prefijo_carpeta(carpeta: str, bucket: str = BUCKET) -> str:
     return url_publica(f"{urllib.parse.quote(carpeta, safe='')}/", bucket)
 
 
-def subir(bucket: str, ruta: str, datos: bytes, content_type: str = "image/jpeg") -> str | None:
+def subir(bucket: str, ruta: str, datos: bytes, content_type: str = "image/jpeg", *, max_bytes: int | None = None) -> str | None:
     """Sube (upsert) `datos` a `bucket/ruta` por la REST de Storage y devuelve
-    la URL pública con `?v=` para saltar cachés (como el app). None si falló."""
-    if not disponible() or not datos or len(datos) > MAX_BYTES:
+    la URL pública con `?v=` para saltar cachés (como el app). None si falló.
+    `max_bytes` permite subir archivos grandes (videos de la biblioteca de marca)."""
+    if not disponible() or not datos or len(datos) > (max_bytes or MAX_BYTES):
         return None
     ruta_q = "/".join(urllib.parse.quote(p, safe="") for p in ruta.split("/"))
     req = urllib.request.Request(
@@ -52,7 +53,7 @@ def subir(bucket: str, ruta: str, datos: bytes, content_type: str = "image/jpeg"
                  "Content-Type": content_type or "image/jpeg",
                  "x-upsert": "true"})
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=max(30, len(datos) // 200_000)) as r:  # noqa: S310
             r.read()
     except urllib.error.HTTPError as e:
         print(f"[foto-web] subida rechazada {e.code} {bucket}/{ruta}", flush=True)
