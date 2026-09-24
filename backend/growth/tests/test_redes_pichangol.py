@@ -262,3 +262,59 @@ def test_video_se_sube_a_la_torre_y_se_publica_por_trozos(monkeypatch, tmp_path)
     pr._videos[vid3]["creado_en"] -= pr.VIDEO_TTL + 1
     pr._limpiar_videos()
     assert pr.video(vid3) is None
+
+
+def test_redactor_ia_varia_el_enfoque_y_no_repite_lo_publicado(monkeypatch):
+    """Pedido del director (24-sep-2026): "todos los posts dicen lo mismo… la IA debe
+    interactuar para que sea más natural". El redactor elige un enfoque distinto a los
+    recientes, recibe los posts ya publicados para no repetir ganchos y respeta los
+    topes de la pieza; sin llave cae al banco de variantes."""
+    from web import datos
+    monkeypatch.setattr(datos, "canchas_publicas", lambda: [
+        {"id": "u1", "nombre": "Cancha 1", "club": "CEANDE Tennis Club", "barrio": "Lurigancho", "deporte": "tenis", "deportes": ["tenis"],
+         "precio_hora": 15, "moneda": "S/", "verificada": True, "fotos": ["https://x.supabase.co/a.jpg"], "hora_apertura": "07:00", "hora_cierre": "22:00",
+         "lat": -11.98, "lng": -76.9}])
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "")
+    j = client.get("/admin/api/redes/pichangol", headers=H).json()
+    assert j["ia"]["disponible"] is False and "tip" in j["ia"]["enfoques"] and "cercano" in j["ia"]["tonos"]
+    # Sin IA: banco de variantes, con hechos del local y hashtag de marca; distintos enfoques al pedir "otra versión".
+    vistos, enfoques = [], set()
+    for _ in range(6):
+        r = client.post("/admin/api/redes/pichangol/redactar", json={"cancha_id": "u1", "tono": "cercano", "enfoque": "auto", "evitar": vistos}, headers=H).json()
+        assert r["ok"] and r["fuente"] == "banco" and "#pichangol" in r["texto"] and len(r["titulo"]) <= 36 and len(r["etiqueta"]) <= 14
+        vistos.append(r["texto"]); enfoques.add(r["enfoque"])
+    assert len(enfoques) >= 3 and len(set(vistos)) == 6   # "otra versión" nunca repite mientras queden variantes
+    r = client.post("/admin/api/redes/pichangol/redactar", json={"cancha_id": "u1", "enfoque": "duenos", "tema": "Feriado largo: agenda llena"}, headers=H).json()
+    assert r["enfoque"] == "duenos" and "Modo anfitrión" in r["texto"] and "Feriado largo" in r["texto"]
+    r = client.post("/admin/api/redes/pichangol/redactar", json={"cancha_id": "u1", "enfoque": "humor"}, headers=H).json()
+    assert "dentro o fuera" in r["texto"]   # humor del deporte del local (tenis), no el del arquero
+    # Con IA: se le pasan el local (país/moneda/horario), el tono, el enfoque y lo reciente; se recortan los topes.
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "sk-test")
+    capturado = {}
+
+    def falso_claude(payload):
+        capturado.update(payload)
+        return {"titulo": "Un título larguísimo que se pasa de los treinta y seis caracteres", "subtitulo": "Sub", "etiqueta": "Este finde ya",
+                "texto": "Hola Lurigancho, ¿este sábado se juega? Turnos libres en CEANDE.\n\n#tenis", "enfoque": "finde"}
+    monkeypatch.setattr(pr, "_con_claude_redactor", falso_claude)
+    from db.store import stores
+    stores.publicaciones_redes.clear()
+    stores.publicaciones_redes.insert(0, {"id": "pub_1", "creado_en": 1, "titulo": "¡Llegó Pichangol!", "texto": "🎾⚽ ¡Llegó Pichangol! Reserva canchas…", "enfoque": "beneficio", "ok": True})
+    r = client.post("/admin/api/redes/pichangol/redactar", json={"cancha_id": "u1", "tono": "divertido", "enfoque": "auto", "evitar": ["Texto de la sesión"]}, headers=H).json()
+    assert r["fuente"] == "ia" and r["enfoque"] == "finde" and 30 <= len(r["titulo"]) <= 36 and r["etiqueta"] == "Este finde ya"
+    assert r["texto"].endswith("#tenis\n\n#pichangol")   # el hashtag de marca se asegura
+    assert capturado["local"]["local"] == "CEANDE Tennis Club" and capturado["local"]["pais"] == "Perú" and capturado["local"]["precio"] == "S/ 15 la hora" and capturado["local"]["horario"] == "07:00–22:00"
+    assert capturado["tono"].startswith("divertido") and capturado["enfoque"]["clave"] != "beneficio"   # no repite el enfoque recién usado
+    assert any("¡Llegó Pichangol!" in x for x in capturado["recientes_no_repetir"]) and "Texto de la sesión" in capturado["recientes_no_repetir"]
+    # El enfoque y la fuente viajan al historial al publicar, para la rotación siguiente.
+    monkeypatch.setattr(config, "FB_PAGE_ID", "1257"); monkeypatch.setattr(config, "FB_PAGE_TOKEN", "EAAPAGE")
+    monkeypatch.setattr(pr, "_graph_get", lambda path, params: {"ok": True, "data": {"id": "1257", "name": "Pichangol", "link": "l"}})
+    monkeypatch.setattr(pr, "_graph_multipart", lambda *a, **k: {"ok": True, "data": {"post_id": "1257_9"}})
+    monkeypatch.setattr(pr, "_abrir_url", lambda u: base64.b64decode(u.split(",", 1)[1]))
+    pr._token_cache.update(clave="", hasta=0.0)
+    cuerpo = {"fotos": [_data_url((30, 90, 30))], "titulo": r["titulo"], "subtitulo": "", "etiqueta": "", "formato": "cuadrado", "texto": r["texto"],
+              "plantilla": "ia", "cancha_id": "u1", "enfoque": r["enfoque"], "fuente": r["fuente"]}
+    assert client.post("/admin/api/redes/pichangol/publicar", json=cuerpo, headers=H).status_code == 200
+    h = client.get("/admin/api/redes/pichangol", headers=H).json()["historial"]
+    assert h[0]["enfoque"] == "finde" and h[0]["fuente"] == "ia"
+    assert pr._enfoques_usados()[:2] == ["finde", "beneficio"]

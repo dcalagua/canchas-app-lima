@@ -367,6 +367,16 @@ class PostRedesRequest(BaseModel):
     cancha_id: str = ""
     video_id: str = ""             # video subido antes a /admin/api/redes/pichangol/video (publica video en vez de foto)
     imagen: str = ""               # data URL de la VISTA PREVIA que el operador vio: se publica tal cual (sin recomponer)
+    enfoque: str = ""              # ángulo elegido/usado por el redactor IA (se guarda en el historial para no repetir)
+    fuente: str = ""               # 'ia' | 'banco' | 'plantilla' | 'manual'
+
+
+class RedactarRedesRequest(BaseModel):
+    cancha_id: str = ""
+    tono: str = "cercano"
+    enfoque: str = "auto"
+    tema: str = ""
+    evitar: list[str] = []         # textos ya generados en esta sesión (para "otra versión")
 
 
 def _redes_canchas() -> list[dict]:
@@ -384,7 +394,8 @@ def _redes_canchas() -> list[dict]:
             out[k] = {"local": local, "zona": c.get("barrio") or c.get("distrito") or "", "canchas": [], "fotos": [],
                       "verificada": bool(c.get("verificada")), "muestra": {"id": c["id"], "club": c.get("club"), "nombre": c.get("nombre"),
                       "barrio": c.get("barrio"), "distrito": c.get("distrito"), "deporte": c.get("deporte"), "deportes": c.get("deportes"),
-                      "precio_hora": c.get("precio_hora"), "moneda": c.get("moneda")}}
+                      "precio_hora": c.get("precio_hora"), "moneda": c.get("moneda"), "lat": c.get("lat"), "lng": c.get("lng"),
+                      "hora_apertura": c.get("hora_apertura"), "hora_cierre": c.get("hora_cierre"), "verificada": bool(c.get("verificada"))}}
         out[k]["canchas"].append({"id": c["id"], "nombre": c.get("nombre"), "deporte": c.get("deporte")})
         for u in fotos:
             if u not in out[k]["fotos"]:
@@ -400,7 +411,20 @@ def get_redes_pichangol(x_admin_token: str | None = Header(default=None)) -> dic
     from marketing import post_redes as _pr
     return {"facebook": _pr.estado_pagina(), "plantillas": {k: {"nombre": v["nombre"]} for k, v in _pr.PLANTILLAS.items()},
             "formatos": list(_pr.FORMATOS), "locales": _redes_canchas(), "historial": _pr.historial(), "max_fotos": _pr.MAX_FOTOS,
-            "video_max_mb": _pr.VIDEO_MAX_MB, "video_extensiones": sorted(_pr.VIDEO_EXTENSIONES)}
+            "video_max_mb": _pr.VIDEO_MAX_MB, "video_extensiones": sorted(_pr.VIDEO_EXTENSIONES),
+            "ia": {"disponible": bool(config.ANTHROPIC_API_KEY), "enfoques": {k: v.split(":")[0].split(".")[0][:60] for k, v in _pr.ENFOQUES.items()},
+                   "tonos": list(_pr.TONOS)}}
+
+
+@router.post("/admin/api/redes/pichangol/redactar")
+def post_redes_redactar(req: RedactarRedesRequest, x_admin_token: str | None = Header(default=None)) -> dict:
+    """Redacta con IA título, subtítulo, etiqueta y texto para el local elegido, con un
+    enfoque distinto a los recientes y sin repetir ganchos ya publicados."""
+    _check(x_admin_token)
+    from marketing import post_redes as _pr
+    c = next((l["muestra"] for l in _redes_canchas() if any(x["id"] == req.cancha_id for x in l["canchas"])), None) if req.cancha_id else None
+    r = _pr.redactar(c, req.tono, req.enfoque, req.tema, req.evitar[-8:])
+    return {"ok": True, **r}
 
 
 @router.post("/admin/api/redes/pichangol/video")
@@ -490,7 +514,7 @@ def post_redes_publicar(req: PostRedesRequest, x_admin_token: str | None = Heade
         if not v:
             raise HTTPException(status_code=404, detail="El video ya no está en la torre (vence a las 2 h). Súbelo de nuevo.")
         r = _pr.publicar_video_facebook(req.texto.strip(), req.titulo, v["ruta"])
-        fila = _pr.registrar({"red": "facebook", "tipo": "video", "plantilla": req.plantilla, "titulo": req.titulo, "texto": req.texto.strip()[:600],
+        fila = _pr.registrar({"red": "facebook", "tipo": "video", "plantilla": req.plantilla, "enfoque": req.enfoque, "fuente": req.fuente, "titulo": req.titulo, "texto": req.texto.strip()[:600],
                               "fotos": 0, "formato": "video", "video_nombre": v["nombre"], "video_bytes": v["bytes"], "ok": bool(r.get("ok")),
                               "post_id": r.get("post_id", ""), "url": r.get("url", ""), "error": r.get("error", "")})
         if not r.get("ok"):
@@ -511,7 +535,7 @@ def post_redes_publicar(req: PostRedesRequest, x_admin_token: str | None = Heade
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     r = _pr.publicar_facebook(req.texto.strip(), png)
-    fila = _pr.registrar({"red": "facebook", "tipo": "foto", "plantilla": req.plantilla, "titulo": req.titulo, "texto": req.texto.strip()[:600],
+    fila = _pr.registrar({"red": "facebook", "tipo": "foto", "plantilla": req.plantilla, "enfoque": req.enfoque, "fuente": req.fuente, "titulo": req.titulo, "texto": req.texto.strip()[:600],
                           "fotos": len(req.fotos), "formato": req.formato, "ok": bool(r.get("ok")),
                           "post_id": r.get("post_id", ""), "url": r.get("url", ""), "error": r.get("error", "")})
     if not r.get("ok"):
@@ -2788,7 +2812,8 @@ function usarSugerencia(id, texto){
   atenderSugerencia(id, 'atendida');
 }
 // ── Publicar en Facebook (página de Pichangol): fotos reales + plantilla + vista previa ──
-let redes = {facebook:{}, locales:[], plantillas:{}, historial:[]}, redesSel = {fotos:[], cancha:'', plantilla:'lanzamiento', formato:'cuadrado', img:''};
+let redes = {facebook:{}, locales:[], plantillas:{}, historial:[], ia:{}}, redesSel = {fotos:[], cancha:'', plantilla:'ia', formato:'cuadrado', img:'', tono:'cercano', enfoque:'auto', ia:null, evitar:[], redactando:false};
+const ENFOQUE_NOMBRE = {auto:'Que varíe solo', beneficio:'Beneficio de reservar', local:'El local protagonista', comunidad:'Comunidad / armar partido', tip:'Tip deportivo', finde:'Plan de fin de semana', promo:'Precio / promo', duenos:'Para dueños de cancha', academia:'Para padres (academias)', humor:'Humor ligero', historia:'La historia de Pichangol'};
 async function cargarRedes(){
   const box = document.getElementById('redesPanel'); if(!box) return;
   box.innerHTML = '<div class="card"><div class="rd-cargando"><span class="rd-spin"></span> Cargando locales, fotos y estado de la página…</div></div>';
@@ -2803,7 +2828,7 @@ async function cargarRedes(){
 }
 function renderRedes(){
   const fb = redes.facebook || {};
-  const g = id => (document.getElementById(id)||{}).value; const prev = {t:g('rd_titulo'), s:g('rd_sub'), x:g('rd_texto'), e:g('rd_etq'), p:g('rd_pie'), f:g('rd_formato')};
+  const g = id => (document.getElementById(id)||{}).value; const prev = {t:g('rd_titulo'), s:g('rd_sub'), x:g('rd_texto'), e:g('rd_etq'), p:g('rd_pie'), f:g('rd_formato'), tema:g('rd_tema')};
   const inp = 'style="display:block;width:100%;margin-top:4px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:14px"';
   // Tipo de token: de PÁGINA (lo correcto), de USUARIO (la torre saca sola el de página) o con permisos faltantes.
   const faltaPublicar = (fb.faltan||[]).includes('pages_manage_posts');
@@ -2831,7 +2856,27 @@ function renderRedes(){
   // Fotos SUBIDAS desde la computadora (data URL): también se ven, con ✕ para quitarlas.
   const subidas = redesSel.fotos.filter(u=>u.startsWith('data:'));
   const subidasHtml = subidas.length ? `<div style="margin-top:10px"><small style="color:var(--muted);font-weight:700">Subidas desde tu computadora</small><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${subidas.map((u,i)=>`<span style="position:relative;display:inline-block"><img src="${u}" style="width:118px;height:118px;object-fit:cover;border-radius:12px;border:3px solid var(--green);display:block"><button type="button" title="Quitar" onclick="quitarSubidaRedes(${i})" style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-weight:700;cursor:pointer;line-height:1">✕</button></span>`).join('')}</div></div>` : '';
-  const plantillas = Object.entries(redes.plantillas||{}).map(([k,v])=>`<button class="btn-sec" style="${redesSel.plantilla===k?'border-color:var(--green);background:#F2F8F3':''}" onclick="redesSel.plantilla='${k}';aplicarPlantilla()">${esc(v.nombre)}</button>`).join(' ');
+  const ia = redes.ia || {};
+  const plantillas = [`<button class="btn-sec" style="${redesSel.plantilla==='ia'?'border-color:var(--green);background:#F2F8F3;font-weight:700':''}" onclick="redesSel.plantilla='ia';aplicarPlantilla()">✨ Redactar con IA</button>`]
+    .concat(Object.entries(redes.plantillas||{}).map(([k,v])=>`<button class="btn-sec" style="${redesSel.plantilla===k?'border-color:var(--green);background:#F2F8F3':''}" onclick="redesSel.plantilla='${k}';aplicarPlantilla()">${esc(v.nombre)}</button>`)).join(' ');
+  const tonos = (ia.tonos||['cercano','divertido','informativo','motivador']).map(t=>`<button type="button" class="btn-sec" style="padding:5px 10px;font-size:12.5px;${redesSel.tono===t?'border-color:var(--green);background:#F2F8F3;font-weight:700':''}" onclick="redesSel.tono='${t}';redactarRedes()">${t.charAt(0).toUpperCase()+t.slice(1)}</button>`).join(' ');
+  const enfoques = Object.keys(ia.enfoques||ENFOQUE_NOMBRE).map(k=>`<option value="${k}"${redesSel.enfoque===k?' selected':''}>${esc(ENFOQUE_NOMBRE[k]||k)}</option>`).join('');
+  const iaEstado = redesSel.redactando ? '<span class="rd-spin chico"></span> Redactando…'
+    : redesSel.ia ? `<span style="color:var(--green);font-weight:700">✨ ${redesSel.ia.fuente==='ia'?'Redactado con IA':'Variante del banco (sin IA)'}</span> · enfoque: <b>${esc(ENFOQUE_NAME(redesSel.ia.enfoque))}</b>` : '';
+  const iaHtml = redesSel.plantilla!=='ia' ? '' : `
+          <div style="margin-top:10px;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:#FAFBFC">
+            <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+              <div><small style="font-weight:700;color:var(--muted)">Tono</small><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${tonos}</div></div>
+              <label style="font-size:12.5px;font-weight:700;min-width:220px;flex:1">Enfoque<select id="rd_enfoque" ${inp} onchange="redesSel.enfoque=this.value;redactarRedes()">${enfoques}</select></label>
+            </div>
+            <label style="display:block;margin-top:8px;font-size:12.5px;font-weight:700">Algo que quieras que mencione (opcional)<input id="rd_tema" ${inp} maxlength="200" placeholder="p. ej. este sábado hay torneo relámpago · nueva iluminación LED · feriado largo"></label>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+              <button type="button" class="btn-sec" id="rd_otra" onclick="redactarRedes(true)" ${redesSel.redactando?'disabled':''}>🔁 Otra versión</button>
+              <span id="rd_ia_estado" style="font-size:12.5px;color:var(--muted)">${iaEstado}</span>
+              ${ia.disponible===false?'<small style="color:#8a5a00">Sin ANTHROPIC_API_KEY en este ambiente: se usa el banco de variantes.</small>':''}
+            </div>
+            <small style="display:block;margin-top:6px;color:var(--muted)">La IA cambia el ángulo en cada pieza y evita repetir los ganchos de lo ya publicado. Edita lo que quieras antes de publicar.</small>
+          </div>`;
   const hist = (redes.historial||[]).slice(0,8).map(h=>`<div class="row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);padding:8px 0"><span>${h.ok?'✅':'⚠️'}</span><div style="flex:1;min-width:200px">${h.tipo==='video'?'🎬 ':'🖼️ '}<b>${esc(h.titulo||h.video_nombre||'(sin título)')}</b> <small style="color:var(--muted)">· ${esc(h.plantilla||'')} · ${h.tipo==='video'?('video '+esc(h.video_nombre||'')+' · '+Math.round((h.video_bytes||0)/1048576)+' MB'):(h.fotos+' foto(s)')} · ${new Date((h.creado_en||0)*1000).toLocaleString('es-PE')}</small>${h.error?`<br><small style="color:var(--rojo)">${esc(h.error)}</small>`:''}</div>${h.url?`<a class="btn-sec" href="${esc(h.url)}" target="_blank" rel="noopener">Ver en Facebook ↗</a>`:''}</div>`).join('') || '<div class="row" style="color:var(--muted)">Todavía no hay publicaciones.</div>';
   document.getElementById('redesPanel').innerHTML = `
     <div class="card"><div class="top"><h3>Publicar en Facebook</h3></div>
@@ -2847,8 +2892,8 @@ function renderRedes(){
             ${vidHtml}
           </div>
           <label style="display:block;margin-top:14px;font-size:12.5px;font-weight:700">2 · Plantilla</label>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${plantillas}</div>
-          <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">${esVideo?'Título del video (opcional)':'Título en la imagen'}<input id="rd_titulo" ${inp} maxlength="60"></label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${plantillas}</div>${iaHtml}
+          <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">${esVideo?'Título del video (opcional)':'Título en la imagen'}<input id="rd_titulo" ${inp} maxlength="60" ${redesSel.redactando?'disabled placeholder="Redactando con IA…"':''}></label>
           <div id="rd_solo_foto" style="${esVideo?'display:none':''}">
           <label style="display:block;margin-top:8px;font-size:12.5px;font-weight:700">Subtítulo<input id="rd_sub" ${inp} maxlength="90"></label>
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px">
@@ -2857,7 +2902,7 @@ function renderRedes(){
             <label style="font-size:12.5px;font-weight:700">Formato<select id="rd_formato" ${inp} onchange="redesSel.formato=this.value"><option value="cuadrado">Cuadrado 1080×1080 (feed)</option><option value="horizontal">Horizontal 1200×630</option><option value="historia">Historia 1080×1920</option></select></label>
           </div>
           </div>
-          <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">3 · Texto de la publicación<textarea id="rd_texto" rows="7" ${inp}></textarea></label>
+          <label style="display:block;margin-top:12px;font-size:12.5px;font-weight:700">3 · Texto de la publicación<textarea id="rd_texto" rows="7" ${inp} ${redesSel.redactando?'disabled placeholder="Redactando con IA…"':''}></textarea></label>
           <div class="actions" style="margin-top:12px">
             <button class="btn-sec" id="rd_prev_btn" onclick="previsualizarRedes()" ${esVideo?'style="display:none"':''}>👁️ Previsualizar</button>
             <button class="btn-sec" id="rd_descargar" onclick="descargarRedes()" ${redesSel.img&&!esVideo?'':'disabled'} ${esVideo?'style="display:none"':''}>⬇️ Descargar imagen</button>
@@ -2880,7 +2925,7 @@ function renderRedes(){
       <div class="row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)"><b>Historial</b>${hist}</div>
     </div>`;
   const set=(id,v)=>{ const el=document.getElementById(id); if(el && v!==undefined && v!==null && v!=='') el.value=v; };
-  set('rd_titulo',prev.t); set('rd_sub',prev.s); set('rd_texto',prev.x); set('rd_etq',prev.e); set('rd_pie',prev.p); set('rd_formato', prev.f || redesSel.formato);
+  set('rd_titulo',prev.t); set('rd_sub',prev.s); set('rd_texto',prev.x); set('rd_etq',prev.e); set('rd_pie',prev.p); set('rd_formato', prev.f || redesSel.formato); set('rd_tema', prev.tema);
   ['rd_titulo','rd_sub','rd_etq','rd_pie'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input', autoPrevRedes); });
   const fm=document.getElementById('rd_formato'); if(fm) fm.addEventListener('change', ()=>{ redesSel.formato=fm.value; autoPrevRedes(); });
 }
@@ -2917,7 +2962,31 @@ function subirFotosRedes(inp){
   const msgUp = document.getElementById('rd_msg'); if(msgUp) msgUp.innerHTML = '<span class="rd-spin chico"></span> Preparando '+Math.min(files.length, libres)+' foto(s)…';
   files.slice(0, libres).forEach(f=>{ const img = new Image(), url = URL.createObjectURL(f); img.onload = ()=>{ const M=1600,k=Math.min(1,M/Math.max(img.width,img.height)); const cv=document.createElement('canvas'); cv.width=Math.round(img.width*k); cv.height=Math.round(img.height*k); cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); URL.revokeObjectURL(url); toggleFotoRedes(cv.toDataURL('image/jpeg',0.86), true); }; img.onerror = ()=>{ URL.revokeObjectURL(url); alert('No se pudo leer "'+f.name+'".'); }; img.src=url; });
 }
+function ENFOQUE_NAME(k){ return ENFOQUE_NOMBRE[k] || k || ''; }
+async function redactarRedes(otra){
+  // Redacta con IA (o banco de variantes) título, subtítulo, etiqueta y texto; "otra versión" manda lo ya generado para no repetirlo.
+  if(redesSel.redactando) return;
+  redesSel.redactando = true; redesSel.plantilla = 'ia';
+  const tema = (document.getElementById('rd_tema')||{}).value || '';
+  renderRedes(); botonesRedes('componiendo');
+  try{
+    const r = await fetch('/admin/api/redes/pichangol/redactar',{method:'POST',headers:headers(),body:JSON.stringify({cancha_id:redesSel.cancha, tono:redesSel.tono, enfoque:redesSel.enfoque, tema:tema, evitar:redesSel.evitar.slice(-8)})});
+    if(r.status===401){ salir(); return; }
+    const j = await r.json().catch(()=>({}));
+    redesSel.redactando = false;
+    if(r.ok && j.ok){
+      redesSel.ia = {enfoque:j.enfoque, fuente:j.fuente}; redesSel.evitar.push(j.texto);
+      renderRedes();
+      const p=(id,v)=>{ const el=document.getElementById(id); if(el) el.value = v||''; };
+      p('rd_titulo', j.titulo); p('rd_sub', j.subtitulo); p('rd_etq', j.etiqueta); p('rd_texto', j.texto); p('rd_tema', tema);
+      if(otra) toast('Nueva versión lista');
+    } else { renderRedes(); const e=document.getElementById('rd_ia_estado'); if(e) e.innerHTML = `<span style="color:var(--rojo)">${esc(j.detail||'No se pudo redactar')}</span>`; }
+  }catch(e){ redesSel.redactando = false; renderRedes(); const el=document.getElementById('rd_ia_estado'); if(el) el.innerHTML = '<span style="color:var(--rojo)">No se pudo redactar (red).</span>'; }
+  autoPrevRedes();
+}
 async function aplicarPlantilla(){
+  if(redesSel.plantilla==='ia'){ redesSel.ia = null; await redactarRedes(false); return; }
+  redesSel.ia = null;
   const estP = document.getElementById('rd_prev_estado'); if(estP) estP.innerHTML = '<span class="rd-spin chico"></span> aplicando plantilla…';
   const r = await fetch('/admin/api/redes/pichangol/plantilla',{method:'POST',headers:headers(),body:JSON.stringify({plantilla:redesSel.plantilla,cancha_id:redesSel.cancha})});
   const j = await r.json().catch(()=>({}));
@@ -2937,10 +3006,11 @@ function botonesRedes(ocupado){
   const listo = redesSel.video ? (redesSel.video.estado==='listo' && !!redesSel.video.id) : !!redesSel.img;
   if(pub){ if(ocupado) pub.dataset.txt = pub.dataset.txt || pub.innerHTML; if(!pub.dataset.bloqueado){ pub.disabled = !!ocupado || !listo; pub.title = pub.disabled ? (ocupado ? 'Espera a que termine…' : (redesSel.video ? 'Espera a que termine de subir el video' : 'Primero arma la vista previa')) : ''; } pub.innerHTML = ocupado==='publicando' ? '<span class="rd-spin blanco"></span> Publicando…' : (pub.dataset.txt || pub.innerHTML); }
   if(des) des.disabled = !!ocupado || !redesSel.img || !!redesSel.video;
+  const otra = b('rd_otra'); if(otra) otra.disabled = ocupado==='publicando' || redesSel.redactando;
   if(pre) pre.disabled = !!ocupado;
 }
 function autoPrevRedes(){ clearTimeout(rdTimer); if(redesSel.video){ botonesRedes(false); return; } if(!redesSel.fotos.length) return; veloPrev(true, 'Preparando la vista previa…'); botonesRedes('componiendo'); rdTimer = setTimeout(()=>previsualizarRedes(true), 700); }
-function cuerpoRedes(conImagen){ const g=id=>(document.getElementById(id)||{}).value||''; const c = {fotos:redesSel.fotos, titulo:g('rd_titulo'), subtitulo:g('rd_sub'), pie:g('rd_pie'), etiqueta:g('rd_etq'), formato:g('rd_formato')||redesSel.formato, texto:g('rd_texto'), plantilla:redesSel.plantilla, cancha_id:redesSel.cancha, video_id:(redesSel.video&&redesSel.video.id)||''}; if(conImagen && !c.video_id && redesSel.img) c.imagen = redesSel.img; return c; }
+function cuerpoRedes(conImagen){ const g=id=>(document.getElementById(id)||{}).value||''; const c = {fotos:redesSel.fotos, titulo:g('rd_titulo'), subtitulo:g('rd_sub'), pie:g('rd_pie'), etiqueta:g('rd_etq'), formato:g('rd_formato')||redesSel.formato, texto:g('rd_texto'), plantilla:redesSel.plantilla, cancha_id:redesSel.cancha, video_id:(redesSel.video&&redesSel.video.id)||'', enfoque:(redesSel.ia&&redesSel.ia.enfoque)||'', fuente:(redesSel.ia&&redesSel.ia.fuente)||(redesSel.plantilla==='libre'?'manual':'plantilla')}; if(conImagen && !c.video_id && redesSel.img) c.imagen = redesSel.img; return c; }
 // ── Video: se sube a la torre con barra de progreso; al publicar, la torre lo manda a la página por trozos.
 function subirVideoRedes(inp){
   const f = (inp.files||[])[0]; inp.value=''; if(!f) return;

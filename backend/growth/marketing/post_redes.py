@@ -19,6 +19,7 @@ import base64
 import io
 import json
 import os
+import random
 import re
 import tempfile
 import time
@@ -287,6 +288,232 @@ def rellenar(plantilla: str, cancha: dict | None, campo: str) -> str:
         return base.format(**valores)
     except (KeyError, IndexError, ValueError):
         return base
+
+
+# ── Redactor con IA (pedido del director, 24-sep-2026: "todos los posts dicen lo
+# mismo… acá debe interactuar la IA para que sea más natural") ───────────────
+# Cada pieza sale con un ENFOQUE distinto, un TONO elegido y sin repetir los
+# ganchos de lo ya publicado (se le pasan los últimos posts del historial y lo
+# que se generó en la sesión). Usa Anthropic (`ANTHROPIC_API_KEY`,
+# `MARKETING_MODEL`, el mismo motor del CM de academias); sin llave cae a un
+# banco de variantes por enfoque, rotando, para que QAS siga variando.
+ENFOQUES = {
+    "auto": "Elige tú el ángulo más fresco distinto a los recientes.",
+    "beneficio": "Un beneficio CONCRETO de reservar con Pichangol contado desde la vida real del jugador: ver horarios libres al toque, confirmación al instante, sin llamadas ni chats eternos. Nada de 'llegó' ni 'lanzamiento'.",
+    "local": "El LOCAL es el protagonista: qué tiene, dónde queda, para quién es ideal y cuándo conviene ir. Pichangol aparece solo como el lugar donde se reserva.",
+    "comunidad": "Habla a la comunidad de jugadores: una pregunta real, invita a armar el partido, a etiquetar al equipo o a contar su anécdota. Poca venta.",
+    "tip": "Un consejo útil y breve del deporte del local (calentamiento, técnica, hidratación, qué llevar) y recién al final conecta con reservar.",
+    "finde": "Plan para el fin de semana o la semana: horarios, ganas de jugar, ese partido pendiente. Concreto y con fecha relativa (este sábado, esta semana).",
+    "promo": "Comunica el precio o la promo con claridad y sin exagerar (SOLO con los datos dados; si no hay promo, habla del precio por hora).",
+    "duenos": "Dirigido a DUEÑOS de canchas y academias: publicar la cancha en Pichangol es gratis, reciben reservas y cobros en línea, agenda ordenada. Tono de socio, no de vendedor.",
+    "academia": "Para madres y padres: clases y academias que forman, valores del deporte en niños y adolescentes, cómo empezar.",
+    "humor": "Tono ligero con humor futbolero o tenístico, situaciones reconocibles (el que siempre llega tarde, el arquero rotativo), sin burlarse de nadie.",
+    "historia": "Detrás de Pichangol: una app hecha en Perú para que reservar una cancha sea tan fácil como pedir un taxi; propósito y cercanía, sin inventar hitos ni cifras.",
+}
+TONOS = {"cercano": "cercano y natural, como un amigo que juega", "divertido": "divertido y con chispa, sin payasadas",
+         "informativo": "claro, directo y útil, cero relleno", "motivador": "motivador y energético, sin gritar"}
+_DEPORTE_NOMBRE = {"futbol": "fútbol", "tenis": "tenis", "padel": "pádel", "pickleball": "pickleball", "voley": "vóley", "basquet": "básquet", "futsal": "futsal", "natacion": "natación"}
+_PAIS_NOMBRE = {"PE": "Perú", "BO": "Bolivia", "EC": "Ecuador"}
+
+_SYSTEM_REDACTOR = (
+    "Eres quien maneja la página de Facebook de Pichangol, una app (Android y web www.pichangol.app) para reservar "
+    "canchas de fútbol, tenis, pádel y pickleball y matricularse en academias, hecha en Perú y presente también en "
+    "Bolivia y Ecuador. Escribes en español latinoamericano natural (peruano si el local está en Perú), como una persona, "
+    "no como una marca gritando. REGLAS: (1) cada post debe sonar DISTINTO a los recientes que te paso: otro gancho, otra "
+    "primera frase, otra estructura; prohibido empezar con '¡Llegó Pichangol!' o '¡Ya llegó!' salvo que el enfoque lo pida; "
+    "(2) usa SOLO los datos del local que te doy (nombre, zona, deportes, precio, horario); no inventes promociones, "
+    "resultados, testimonios ni cifras; (3) 0 a 3 emojis en todo el texto, nunca uno por línea; (4) un solo llamado a la "
+    "acción, natural (reserva en la app o en la web); (5) 3 a 6 hashtags al final, en minúsculas, con #pichangol y el "
+    "deporte; (6) largo variable: entre 280 y 650 caracteres; (7) moneda y ciudad del país del local; (8) no menciones que "
+    "eres una IA ni pongas comillas alrededor del texto. Devuelves SOLO JSON válido: {\"titulo\": \"<= 36 caracteres, va "
+    "impreso sobre la foto, sin emoji, con gancho>\", \"subtitulo\": \"<= 80 caracteres, complementa al título>\", "
+    "\"etiqueta\": \"<= 14 caracteres, 1 o 2 palabras tipo Nuevo / Este finde / Tip / Para dueños, o vacío>\", "
+    "\"texto\": \"el post completo con saltos de línea\", \"enfoque\": \"clave del enfoque usado\"}."
+)
+
+
+def _contexto_local(c: dict | None) -> dict:
+    """Los HECHOS del local que la IA puede usar (y nada más)."""
+    c = c or {}
+    from paises import pais_de_coordenadas
+    deps = [str(x) for x in (c.get("deportes") or ([c["deporte"]] if c.get("deporte") else []))]
+    iso = pais_de_coordenadas(c.get("lat"), c.get("lng")) if c.get("lat") or c.get("lng") else "PE"
+    sim = str(c.get("moneda") or ("$" if iso == "EC" else "Bs" if iso == "BO" else "S/"))
+    try:
+        precio = f"{sim} {float(c.get('precio_hora') or 0):.0f} la hora" if float(c.get("precio_hora") or 0) > 0 else ""
+    except (TypeError, ValueError):
+        precio = ""
+    horario = ""
+    if c.get("hora_apertura") and c.get("hora_cierre"):
+        horario = f"{c['hora_apertura']}–{c['hora_cierre']}"
+    return {"local": (c.get("club") or c.get("nombre") or "").strip(), "zona": (c.get("barrio") or c.get("distrito") or "").strip(),
+            "deportes": [_DEPORTE_NOMBRE.get(d, d) for d in deps], "precio": precio, "horario": horario,
+            "pais": _PAIS_NOMBRE.get(iso, "Perú"), "iso": iso, "verificada": bool(c.get("verificada", True)),
+            "url": f"{(config.PUBLIC_BASE_URL or 'https://www.pichangol.app').rstrip('/')}/reservar/{c['id']}" if c.get("id") else "https://www.pichangol.app"}
+
+
+def _recientes(evitar: list[str] | None, n: int = 10) -> list[str]:
+    """Primeras frases de lo ya publicado + lo generado en la sesión, para no repetir."""
+    vistos = []
+    for h in stores.publicaciones_redes[:n]:
+        t = str(h.get("texto") or "").strip().splitlines()
+        if t:
+            vistos.append((str(h.get("titulo") or "").strip() + " · " + t[0][:140]).strip(" ·"))
+    for e in evitar or []:
+        lineas = [x for x in str(e or "").strip().splitlines() if x.strip()]
+        if lineas:
+            vistos.append(lineas[0].strip()[:140])
+    return vistos[:16]
+
+
+def _enfoques_usados(n: int = 4) -> list[str]:
+    return [str(h.get("enfoque") or "") for h in stores.publicaciones_redes[:n] if h.get("enfoque")]
+
+
+def _elegir_enfoque(pedido: str, ctx: dict, evitar_enfoques: list[str]) -> str:
+    if pedido in ENFOQUES and pedido != "auto":
+        return pedido
+    candidatos = [k for k in ENFOQUES if k != "auto"]
+    if not ctx.get("precio"):
+        candidatos.remove("promo")
+    if not ctx.get("local"):          # sin local elegido no hay protagonista ni plan concreto
+        candidatos.remove("local"); candidatos.remove("finde")
+    if "tenis" not in ctx.get("deportes", []) and "pádel" not in ctx.get("deportes", []) and "natación" not in ctx.get("deportes", []):
+        candidatos.remove("academia")
+    frescos = [k for k in candidatos if k not in evitar_enfoques] or candidatos
+    return random.choice(frescos)
+
+
+def _limpiar_campo(v, tope: int) -> str:
+    t = re.sub(r"\s+", " ", str(v or "")).strip().strip('"“”')
+    return t[:tope].rstrip() if len(t) > tope else t
+
+
+def _con_claude_redactor(payload: dict) -> dict | None:
+    try:
+        import anthropic
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+        resp = client.messages.create(model=config.MARKETING_MODEL, max_tokens=900, temperature=1.0, system=_SYSTEM_REDACTOR,
+                                      messages=[{"role": "user", "content": "Redacta la publicación (JSON):\n" + json.dumps(payload, ensure_ascii=False)}])
+        texto = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "")
+        m = re.search(r"\{.*\}", texto or "", re.DOTALL)
+        data = json.loads(m.group(0)) if m else None
+        return data if isinstance(data, dict) and str(data.get("texto") or "").strip() else None
+    except Exception as e:  # noqa: BLE001
+        print(f"[redes] IA no respondió, se usa el banco de variantes: {str(e)[:120]}", flush=True)
+        return None
+
+
+def _banco(enfoque: str, ctx: dict, tono: str) -> list[dict]:
+    """Variantes SIN IA por enfoque (QAS sin llave o fallo del modelo). Solo hechos del local."""
+    L = ctx.get("local") or "una cancha cerca de ti"
+    Z = ctx.get("zona") or "tu zona"
+    D = ctx.get("deportes") or ["fútbol"]
+    d0 = D[0]
+    dep_tag = "#" + d0.replace("á", "a").replace("ó", "o").replace("ú", "u").replace(" ", "")
+    precio = ctx.get("precio") or ""
+    horario = ctx.get("horario") or ""
+    url = ctx.get("url") or "https://www.pichangol.app"
+    tags = f"#pichangol {dep_tag} #reservajuegarepite"
+    B = {
+        "beneficio": [
+            {"titulo": "Horarios libres, al toque", "subtitulo": f"Mira qué hay en {L} y reserva en un minuto", "etiqueta": "",
+             "texto": f"¿Cuántos mensajes mandas para conseguir cancha un viernes? En Pichangol abres el mapa, ves los horarios libres de {L} ({Z}) y reservas. Confirmación al instante, sin llamadas.\n\nReserva aquí: {url}\n\n{tags}"},
+            {"titulo": "Sin llamar, sin esperar", "subtitulo": "Elige la hora, confirma y listo", "etiqueta": "",
+             "texto": f"Lo más difícil del partido no debería ser conseguir la cancha. {L} ya tiene sus horarios en Pichangol{(' (' + horario + ')') if horario else ''}: eliges la hora, pagas si quieres y te llega la confirmación.\n\n{url}\n\n{tags}"},
+        ],
+        "local": [
+            {"titulo": L[:36], "subtitulo": f"{' · '.join(x.capitalize() for x in D)} en {Z}", "etiqueta": "Conócelo",
+             "texto": f"{L}, en {Z}: {' y '.join(D)}{(', ' + precio) if precio else ''}{(', de ' + horario) if horario else ''}. Buen piso, buena luz y horarios en vivo para no llegar a ver si hay sitio.\n\nReserva tu turno: {url}\n\n{tags}"},
+        ],
+        "comunidad": [
+            {"titulo": "¿Con quién juegas este finde?", "subtitulo": "Etiqueta a tu equipo y arma el partido", "etiqueta": "",
+             "texto": f"Confiesa: ¿quién de tu grupo es el que siempre confirma y nunca llega? 😅 Etiquétalo y arma el partido de una vez. En {L} ({Z}) hay horarios libres esta semana.\n\n{url}\n\n{tags}"},
+            {"titulo": "Se busca rival", "subtitulo": f"Partidos de {d0} en {Z}", "etiqueta": "",
+             "texto": f"¿Tu equipo necesita rival para el sábado? Comenta la hora y el nivel, y que se arme. La cancha ya está: {L}, en {Z}, con horarios en Pichangol.\n\n{url}\n\n{tags}"},
+        ],
+        "tip": [
+            {"titulo": "5 minutos que evitan lesiones", "subtitulo": "Calienta antes de entrar a la cancha", "etiqueta": "Tip",
+             "texto": f"Antes del primer sprint: 5 minutos de trote suave, movilidad de tobillos y caderas, y dos series cortas de aceleración. Tu cuerpo llega listo y el partido se disfruta entero.\n\n¿Dónde? En {L} ({Z}) hay turnos libres esta semana: {url}\n\n{tags} #calentamiento"},
+            {"titulo": "Hidrátate antes, no después", "subtitulo": "Un tip simple que cambia tu partido", "etiqueta": "Tip",
+             "texto": f"Toma agua desde una hora antes de jugar, no solo cuando ya tienes sed. Rinde más el segundo tiempo y baja el riesgo de calambres.\n\nY el turno lo aseguras en Pichangol: {L}, {Z}. {url}\n\n{tags}"},
+        ],
+        "finde": [
+            {"titulo": "Este sábado sí se juega", "subtitulo": f"Turnos libres en {L}", "etiqueta": "Este finde",
+             "texto": f"El partido que vienen postergando hace un mes: este sábado. {L} ({Z}) tiene horarios libres{(' de ' + horario) if horario else ''}. Entra, elige la hora y avísale al grupo que ya está.\n\n{url}\n\n{tags}"},
+        ],
+        "promo": [
+            {"titulo": precio.split(" la hora")[0] + " la hora" if precio else "Precio claro", "subtitulo": f"{L} · {Z}", "etiqueta": "Precio",
+             "texto": f"Sin sorpresas: en {L} ({Z}) la hora de {d0} está a {precio} y lo ves antes de reservar. Eliges turno, pagas en línea o en la cancha, y listo.\n\n{url}\n\n{tags}"},
+        ],
+        "duenos": [
+            {"titulo": "¿Tienes una cancha?", "subtitulo": "Publícala gratis y recibe reservas", "etiqueta": "Para dueños",
+             "texto": f"Si administras una cancha o una academia, Pichangol te ordena la agenda: publicas gratis, los jugadores ven tus horarios libres y reservan solos; tú recibes el aviso y el cobro en línea si quieres.\n\nEmpieza en www.pichangol.app → Modo anfitrión.\n\n#pichangol #duenosdecancha #canchas"},
+        ],
+        "academia": [
+            {"titulo": "Su primera raqueta", "subtitulo": "Academias para niños y adolescentes", "etiqueta": "Academias",
+             "texto": f"El deporte enseña a perder, a esperar el turno y a volver a intentar. En Pichangol encuentras academias de {d0} con sus programas, horarios y tarifas claras, y matriculas desde la app.\n\nwww.pichangol.app/canchas?deporte=academias\n\n#pichangol #academias {dep_tag} #niños"},
+        ],
+        "humor": ([
+            {"titulo": "\"Esa iba fuera\"", "subtitulo": "Lo único que Pichangol no puede arbitrar", "etiqueta": "",
+             "texto": f"Cosas que Pichangol sí resuelve: encontrar cancha, ver horarios libres, confirmar al instante.\nCosas que no: si esa bola picó dentro o fuera. 🎾\n\n{L} ({Z}) tiene turnos libres esta semana: {url}\n\n{tags}"},
+        ] if d0 in ("tenis", "pádel", "pickleball") else [
+            {"titulo": "El arquero rotativo", "subtitulo": "Una tradición que Pichangol no puede arreglar", "etiqueta": "",
+             "texto": f"Cosas que Pichangol sí resuelve: encontrar cancha, ver horarios libres, confirmar al instante.\nCosas que no: quién va al arco. 🧤\n\n{L} ({Z}) tiene turnos libres esta semana: {url}\n\n{tags}"},
+        ]),
+        "historia": [
+            {"titulo": "Hecha para jugar más", "subtitulo": "Una app peruana para reservar canchas", "etiqueta": "",
+             "texto": f"Pichangol nació de algo simple: conseguir cancha no debería ser más difícil que pedir un taxi. Por eso juntamos en un mapa las canchas con sus horarios reales, como {L} en {Z}, para que reservar tome un minuto.\n\nwww.pichangol.app\n\n{tags} #hechoenperu"},
+        ],
+    }
+    return B.get(enfoque) or B["beneficio"]
+
+
+def redactar(cancha: dict | None, tono: str = "cercano", enfoque: str = "auto", tema: str = "", evitar: list[str] | None = None) -> dict:
+    """Redacta título/subtítulo/etiqueta/texto para la pieza, variando el enfoque y sin
+    repetir lo reciente. Devuelve también `fuente` ('ia' | 'banco') y el `enfoque` usado."""
+    ctx = _contexto_local(cancha)
+    tono = tono if tono in TONOS else "cercano"
+    recientes = _recientes(evitar)
+    usados = _enfoques_usados()
+    elegido = _elegir_enfoque(enfoque, ctx, usados)
+    fuente = "banco"
+    data = None
+    if config.ANTHROPIC_API_KEY:
+        payload = {"local": ctx, "tono": TONOS[tono], "enfoque": {"clave": elegido, "instruccion": ENFOQUES[elegido]},
+                   "tema_del_operador": (tema or "").strip()[:300], "recientes_no_repetir": recientes,
+                   "enfoques_recientes": usados, "fecha": time.strftime("%Y-%m-%d")}
+        data = _con_claude_redactor(payload)
+        if data:
+            fuente = "ia"
+    if not data:
+        # Banco: primero el enfoque elegido; si todas sus variantes ya salieron (en el
+        # historial o en esta sesión), pasa a otro enfoque fresco antes de repetir.
+        inicios = {r.split(" · ")[-1][:60] for r in recientes}
+        # Un enfoque pedido a mano se respeta aunque haya que repetir variante; en "auto" se rota.
+        orden = [elegido] + (random.sample([k for k in ENFOQUES if k not in ("auto", elegido)], len(ENFOQUES) - 2) if enfoque == "auto" else [])
+        frescas, usado = [], elegido
+        for k in orden:
+            frescas = [o for o in _banco(k, ctx, tono) if o["texto"].splitlines()[0][:60] not in inicios]
+            if frescas:
+                usado = k
+                break
+        if not frescas:
+            frescas = _banco(elegido, ctx, tono)
+        elegido = usado
+        data = dict(random.choice(frescas))
+        if (tema or "").strip():
+            data["texto"] = data["texto"].rstrip() + f"\n\n{tema.strip()[:200]}"
+    texto = str(data.get("texto") or "").strip()
+    if "#pichangol" not in texto.lower():
+        texto = texto.rstrip() + "\n\n#pichangol"
+    return {"titulo": _limpiar_campo(data.get("titulo"), 36), "subtitulo": _limpiar_campo(data.get("subtitulo"), 80),
+            "etiqueta": _limpiar_campo(data.get("etiqueta"), 14), "texto": texto[:1200],
+            "enfoque": str(data.get("enfoque") or elegido) if str(data.get("enfoque") or "") in ENFOQUES else elegido,
+            "tono": tono, "fuente": fuente}
 
 
 # ── Facebook ─────────────────────────────────────────────────────────────────

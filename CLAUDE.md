@@ -1070,6 +1070,28 @@ off → redeploy inmediato en cada push). URL pública:
   Preloader en todo (velo, barra, botón "Publicando…"). OJO Playwright: el
   Chromium del sandbox no decodifica H.264 (duración 0 con .mp4); probar con
   .webm. Test `test_video_se_sube_a_la_torre_y_se_publica_por_trozos`.
+  **REDACTOR CON IA (queja del director, 24-sep-2026: "todos los posts son la
+  misma temática, todos dicen llegó Pichangol; acá debe interactuar la IA
+  para que sea más natural"):** `post_redes.redactar(cancha, tono, enfoque,
+  tema, evitar)` + `POST /admin/api/redes/pichangol/redactar`. Chip
+  "✨ Redactar con IA" es la plantilla POR DEFECTO del pane (las fijas
+  siguen): controles de TONO (cercano/divertido/informativo/motivador),
+  ENFOQUE (`ENFOQUES`: auto, beneficio, local, comunidad, tip, finde, promo,
+  duenos, academia, humor, historia), "Algo que quieras que mencione" (texto
+  del operador) y "🔁 Otra versión". Motor = Anthropic (`ANTHROPIC_API_KEY`
+  + `MARKETING_MODEL`, el mismo del CM de academias) con `_SYSTEM_REDACTOR`
+  (español natural, 0-3 emojis, un CTA, 3-6 hashtags con #pichangol, solo
+  HECHOS del local vía `_contexto_local`: nombre, zona, deportes, precio con
+  moneda del país, horario, país por `pais_de_coordenadas`; prohibido
+  "¡Llegó Pichangol!" salvo pedido). ANTI-REPETICIÓN: se le pasan
+  `recientes_no_repetir` (título + 1.ª línea de los últimos 10 del historial
+  + lo generado en la sesión, `evitar`) y `enfoques_recientes`;
+  `_elegir_enfoque` en "auto" evita los últimos 4 enfoques publicados (el
+  historial guarda `enfoque` y `fuente`). Sin llave o si el modelo falla →
+  `_banco` (variantes por enfoque con los datos reales, humor según el
+  deporte) rotando a otro enfoque antes de repetir; un enfoque pedido a mano
+  se respeta. Topes: título ≤36 (va sobre la foto), subtítulo ≤80, etiqueta
+  ≤14. Test `test_redactor_ia_varia_el_enfoque_y_no_repite_lo_publicado`.
   **El entorno de Claude NO alcanza Storage de Supabase ni bancos de
   fotos (proxy 403): las piezas con fotos reales se componen en el backend.**
   Fase 2 (backlog): calendario + copy con IA reutilizando `marketing/cm.py`.
