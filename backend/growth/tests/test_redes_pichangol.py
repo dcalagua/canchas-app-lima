@@ -508,3 +508,110 @@ def test_token_vencido_se_reemplaza_desde_la_torre_sin_tocar_railway(monkeypatch
     # Olvidar desde la torre.
     stores.config["fb_page_token_cifrado"] = "b:xx"
     assert client.post("/admin/api/redes/pichangol/token/olvidar", headers=H).json()["ok"] and "fb_page_token_cifrado" not in stores.config
+
+
+def test_agente_marketing_24x7_publica_a_las_7_y_alterna_audiencias(monkeypatch):
+    """Pedido del director (24-sep-2026): "agentes de marketing 24×7 (creativo + community
+    manager, estratega comercial) que publiquen todos los días a las 7:00 am promocionando
+    Pichangol (descargar la app / reservar en la web) e incitando a los dueños a administrar
+    sus canchas". El cron llama `tick()` cada minuto: solo publica a la hora, una vez al día,
+    siguiendo el plan semanal; en modo "aprobar" deja borradores que el operador revisa."""
+    from datetime import datetime, timezone as _tz
+    from db.store import stores
+    from marketing import agente_redes as ag
+    from web import datos
+    monkeypatch.setattr(datos, "canchas_publicas", lambda: [
+        {"id": "u1", "nombre": "Cancha 1", "club": "CEANDE Tennis Club", "barrio": "Lurigancho", "deporte": "tenis", "deportes": ["tenis"], "precio_hora": 15,
+         "moneda": "S/", "verificada": True, "fotos": ["https://x.supabase.co/a.jpg"], "lat": -11.98, "lng": -76.9},
+        {"id": "u2", "nombre": "Fútbol 1", "club": "Sabor Golazo", "barrio": "Ate", "deporte": "futbol", "deportes": ["futbol"], "precio_hora": 60,
+         "moneda": "S/", "verificada": True, "fotos": ["https://x.supabase.co/b.jpg"], "lat": -12.0, "lng": -76.9}])
+    monkeypatch.setattr(pr, "_abrir_url", lambda u: _jpeg((40, 120, 60)) if u.startswith("https://") else base64.b64decode(u.split(",", 1)[1]))
+    monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "")
+    monkeypatch.setattr(config, "FB_PAGE_ID", "1257"); monkeypatch.setattr(config, "FB_PAGE_TOKEN", "EAAPAGE")
+    monkeypatch.setattr(ag, "_persistir", lambda: None)
+    publicados = []
+    monkeypatch.setattr(pr, "publicar_facebook", lambda texto, png: (publicados.append((texto, len(png))) or {"ok": True, "post_id": f"1257_{len(publicados)}", "url": "https://www.facebook.com/x"}))
+    for k in ag.CFG.values():
+        stores.config.pop(k, None)
+    stores.agente_fb = {"borradores": [], "corridas": []}
+    reloj = {"utc": datetime(2026, 9, 29, 11, 30, tzinfo=_tz.utc)}   # martes 06:30 Lima
+    monkeypatch.setattr(ag, "_ahora", lambda: reloj["utc"])
+    # Configuración por defecto: pausado, 07:00 Lima, plan 5 días jugadores / 2 dueños.
+    j = client.get("/admin/api/redes/agente", headers=H).json()
+    assert j["config"]["activo"] is False and j["config"]["hora"] == "07:00" and j["config"]["zona"] == "America/Lima"
+    assert j["config"]["plan"]["1"]["audiencia"] == "duenos" and j["config"]["plan"]["0"] == {"audiencia": "jugadores", "enfoque": "beneficio"}
+    assert j["proxima"]["dia"] == "martes" and j["proxima"]["audiencia"] == "duenos" and j["locales"] == 2
+    # Pausado → el tick no hace nada aunque sea la hora.
+    reloj["utc"] = datetime(2026, 9, 29, 12, 1, tzinfo=_tz.utc)
+    assert ag.tick() is False and publicados == []
+    # Activar desde la torre (validaciones incluidas).
+    assert client.post("/admin/api/redes/agente", json={"hora": "7am"}, headers=H).status_code == 400
+    assert client.post("/admin/api/redes/agente", json={"zona": "Europe/Madrid"}, headers=H).status_code == 400
+    r = client.post("/admin/api/redes/agente", json={"activo": True, "hora": "07:00", "modo": "auto", "tono": "cercano",
+                    "plan": {"3": {"audiencia": "jugadores", "enfoque": "humor"}, "6": {"audiencia": "duenos", "enfoque": "lo_que_sea"}}}, headers=H)
+    assert r.status_code == 200 and r.json()["config"]["activo"] is True and r.json()["config"]["plan"]["3"]["enfoque"] == "humor" and r.json()["config"]["plan"]["6"]["enfoque"] == "duenos"
+    # 06:59 → nada; 07:00 → publica UNA vez (martes = dueños); 07:01 y 09:00 → nada más ese día.
+    reloj["utc"] = datetime(2026, 9, 29, 11, 59, tzinfo=_tz.utc)
+    assert ag.tick() is False and publicados == []
+    reloj["utc"] = datetime(2026, 9, 29, 12, 0, tzinfo=_tz.utc)
+    assert ag.tick() is True and len(publicados) == 1
+    texto, tam = publicados[0]
+    assert tam > 10000 and "#pichangol" in texto.lower()
+    h = stores.publicaciones_redes[0]
+    assert h["fuente"] == "agente" and h["audiencia"] == "duenos" and h["enfoque"] == "duenos" and h["origen"] == "agente_auto" and h["ok"]
+    assert "cancha" in texto.lower() and ("anfitrión" in texto.lower() or "pichangol.app" in texto.lower())
+    for utc in ((2026, 9, 29, 12, 1), (2026, 9, 29, 14, 0), (2026, 9, 30, 11, 0)):
+        reloj["utc"] = datetime(*utc, tzinfo=_tz.utc)
+        assert ag.tick() is False
+    assert len(publicados) == 1 and stores.config["agente_fb_ultimo_dia"] == "2026-09-29"
+    j = client.get("/admin/api/redes/agente", headers=H).json()
+    assert j["proxima"]["hoy_publicado"] is False and j["proxima"]["dia"] == "miércoles" and j["proxima"]["audiencia"] == "jugadores" and j["corridas"][0]["resultado"] == "publicado"
+    # Miércoles 07:00 → jugadores, enfoque "local", rota al OTRO local y el texto empuja app/web.
+    reloj["utc"] = datetime(2026, 9, 30, 12, 0, tzinfo=_tz.utc)
+    assert ag.tick() is True and len(publicados) == 2
+    h2 = stores.publicaciones_redes[0]
+    assert h2["audiencia"] == "jugadores" and h2["enfoque"] == "local" and h2["local"] in ("CEANDE Tennis Club", "Sabor Golazo")
+    assert "pichangol.app" in publicados[1][0].lower() or "app" in publicados[1][0].lower()
+    # Si el backend estuvo caído a las 07:00, publica al volver (misma fecha): jueves 10:15 → humor.
+    reloj["utc"] = datetime(2026, 10, 1, 15, 15, tzinfo=_tz.utc)
+    assert client.get("/admin/api/redes/agente", headers=H).json()["proxima"]["pendiente_hoy"] is True
+    assert ag.tick() is True and stores.publicaciones_redes[0]["enfoque"] == "humor"
+    # Modo "aprobar": el viernes deja BORRADOR (no publica); el operador ve la pieza, edita, regenera y aprueba.
+    client.post("/admin/api/redes/agente", json={"modo": "aprobar"}, headers=H)
+    reloj["utc"] = datetime(2026, 10, 2, 12, 0, tzinfo=_tz.utc)
+    n = len(publicados)
+    assert ag.tick() is True and len(publicados) == n
+    j = client.get("/admin/api/redes/agente", headers=H).json()
+    assert len(j["borradores"]) == 1 and j["borradores"][0]["audiencia"] == "jugadores" and j["borradores"][0]["enfoque"] == "finde" and j["corridas"][0]["resultado"] == "borrador"
+    bid = j["borradores"][0]["id"]
+    assert stores.to_state()["agente_fb"]["borradores"][0]["id"] == bid   # sobrevive al redeploy
+    img = client.get(f"/admin/api/redes/agente/borrador/{bid}/imagen", headers=H).json()["imagen"]
+    assert img.startswith("data:image/jpeg;base64,") and Image.open(io.BytesIO(base64.b64decode(img.split(",", 1)[1]))).size == (1080, 1080)
+    r = client.post(f"/admin/api/redes/agente/borrador/{bid}/editar", json={"texto": "Texto corregido por el operador #pichangol", "titulo": "Sábado de partido"}, headers=H)
+    assert r.json()["borrador"]["titulo"] == "Sábado de partido"
+    r = client.post(f"/admin/api/redes/agente/borrador/{bid}/regenerar", headers=H).json()
+    assert r["ok"] and r["borrador"]["id"] == bid and r["borrador"]["texto"] != "Texto corregido por el operador #pichangol" and r["borrador"]["audiencia"] == "jugadores"
+    r = client.post(f"/admin/api/redes/agente/borrador/{bid}/aprobar", headers=H).json()
+    assert r["ok"] and len(publicados) == n + 1 and r["borradores"] == [] and stores.publicaciones_redes[0]["origen"] == "aprobado"
+    # "Publicar ahora" desde la torre (fuerza, aunque hoy ya se corrió) y "generar borrador ahora" + descartar.
+    r = client.post("/admin/api/redes/agente/correr", json={"publicar": True, "audiencia": "duenos"}, headers=H).json()
+    assert r["ok"] and r["publicado"] is True and len(publicados) == n + 2 and stores.publicaciones_redes[0]["audiencia"] == "duenos"
+    r = client.post("/admin/api/redes/agente/correr", json={"publicar": False}, headers=H).json()
+    assert r["ok"] and r["publicado"] is False and len(r["borradores"]) == 1
+    assert client.post(f"/admin/api/redes/agente/borrador/{r['borradores'][0]['id']}/descartar", headers=H).json()["borradores"] == []
+    # Facebook rechaza en modo auto → queda como borrador con el motivo y en la bitácora; no rompe el cron.
+    client.post("/admin/api/redes/agente", json={"modo": "auto"}, headers=H)
+    monkeypatch.setattr(pr, "publicar_facebook", lambda texto, png: {"ok": False, "error": "HTTP 400: (#190) Session has expired"})
+    reloj["utc"] = datetime(2026, 10, 3, 12, 0, tzinfo=_tz.utc)
+    assert ag.tick() is True
+    j = client.get("/admin/api/redes/agente", headers=H).json()
+    assert j["corridas"][0]["resultado"] == "error_facebook" and len(j["borradores"]) == 1 and "rechazó" in j["borradores"][0]["motivo"]
+    assert stores.config["agente_fb_ultimo_dia"] == "2026-10-02"   # no cuenta como publicado: lo reintenta si el operador aprueba
+    # Sin locales con fotos → usa la portada de marca.
+    monkeypatch.setattr(datos, "canchas_publicas", lambda: [])
+    brief = ag.planificar(ag.ahora_local(), audiencia="jugadores")
+    pieza = ag.crear_pieza(brief)
+    assert pieza["fotos"] and pieza["fotos"][0].startswith("data:image/png") and ag._receta(pieza)["fotos"] == ["brand:portada"] and len(pieza["png"]) > 10000
+    for k in ag.CFG.values():
+        stores.config.pop(k, None)
+    stores.agente_fb = {"borradores": [], "corridas": []}

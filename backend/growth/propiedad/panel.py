@@ -436,6 +436,104 @@ class TokenRedesRequest(BaseModel):
     token: str = ""
 
 
+class AgenteConfigRequest(BaseModel):
+    activo: bool | None = None
+    hora: str | None = None
+    zona: str | None = None
+    modo: str | None = None
+    tono: str | None = None
+    plan: dict | None = None
+
+
+class AgenteCorrerRequest(BaseModel):
+    publicar: bool = False         # False = deja borrador; True = publica ya
+    audiencia: str | None = None
+    enfoque: str | None = None
+
+
+class BorradorEditarRequest(BaseModel):
+    titulo: str | None = None
+    subtitulo: str | None = None
+    etiqueta: str | None = None
+    texto: str | None = None
+
+
+@router.get("/admin/api/redes/agente")
+def get_redes_agente(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Agente de marketing 24×7: configuración, próxima corrida, borradores y bitácora."""
+    _check(x_admin_token)
+    from marketing import agente_redes as _ag
+    return {"ok": True, **_ag.resumen()}
+
+
+@router.post("/admin/api/redes/agente")
+def post_redes_agente(req: AgenteConfigRequest, x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import agente_redes as _ag
+    datos = {k: v for k, v in req.model_dump().items() if v is not None}
+    try:
+        cfg = _ag.guardar_configuracion(datos)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    print(f"[agente] configuración: activo={cfg['activo']} hora={cfg['hora']} {cfg['zona']} modo={cfg['modo']}", flush=True)
+    return {"ok": True, **_ag.resumen()}
+
+
+@router.post("/admin/api/redes/agente/correr")
+def post_redes_agente_correr(req: AgenteCorrerRequest, x_admin_token: str | None = Header(default=None)) -> dict:
+    """Corre el agente AHORA (prueba u oportunidad): publica o deja borrador según `publicar`."""
+    _check(x_admin_token)
+    from marketing import agente_redes as _ag
+    r = _ag.ejecutar(forzar=True, publicar=req.publicar, audiencia=req.audiencia, enfoque=req.enfoque)
+    if not r.get("ok"):
+        raise HTTPException(status_code=502 if r.get("motivo") == "error_facebook" else 409, detail={"sin_credenciales": "Configura el token de Facebook primero.",
+                            "error_creativo": f"No se pudo crear la pieza: {r.get('detalle', '')}"}.get(r.get("motivo"), f"{r.get('motivo')}: {r.get('detalle', '')}"))
+    return {"ok": True, "publicado": bool(r.get("publicado")), "url": r.get("url", ""), **_ag.resumen()}
+
+
+@router.get("/admin/api/redes/agente/borrador/{bid}/imagen")
+def get_redes_agente_imagen(bid: str, x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import agente_redes as _ag
+    from marketing import post_redes as _pr
+    b = _ag.borrador(bid)
+    if not b:
+        raise HTTPException(status_code=404, detail="El borrador ya no existe.")
+    import base64 as _b64
+    png = _ag.componer_receta(b)
+    return {"ok": True, "imagen": f"data:{_pr.MIME};base64," + _b64.b64encode(png).decode()}
+
+
+@router.post("/admin/api/redes/agente/borrador/{bid}/editar")
+def post_redes_agente_editar(bid: str, req: BorradorEditarRequest, x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import agente_redes as _ag
+    b = _ag.editar_borrador(bid, **req.model_dump())
+    if not b:
+        raise HTTPException(status_code=404, detail="El borrador ya no existe.")
+    return {"ok": True, "borrador": b}
+
+
+@router.post("/admin/api/redes/agente/borrador/{bid}/{accion}")
+def post_redes_agente_borrador(bid: str, accion: str, x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from marketing import agente_redes as _ag
+    if accion == "aprobar":
+        r = _ag.aprobar_borrador(bid)
+        if not r.get("ok"):
+            raise HTTPException(status_code=502, detail=r.get("error", "No se pudo publicar"))
+        return {"ok": True, "url": r.get("url", ""), **_ag.resumen()}
+    if accion == "descartar":
+        _ag.descartar_borrador(bid)
+        return {"ok": True, **_ag.resumen()}
+    if accion == "regenerar":
+        b = _ag.regenerar_borrador(bid)
+        if not b:
+            raise HTTPException(status_code=404, detail="El borrador ya no existe.")
+        return {"ok": True, "borrador": b, **_ag.resumen()}
+    raise HTTPException(status_code=404, detail="Acción desconocida.")
+
+
 @router.post("/admin/api/redes/pichangol/token")
 def post_redes_token(req: TokenRedesRequest, x_admin_token: str | None = Header(default=None)) -> dict:
     """El operador pega un token nuevo (del Explorador de la API Graph); la torre lo
@@ -2931,7 +3029,7 @@ async function cargarRedes(){
     if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
     redes = await r.json(); renderRedes();
     if(!redesSel.cancha && redes.locales.length) redesSel.cancha = redes.locales[0].canchas[0].id;
-    aplicarPlantilla();
+    aplicarPlantilla(); cargarAgente();
   }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
 }
 function renderRedes(){
@@ -2998,6 +3096,7 @@ function renderRedes(){
           </div>`;
   const hist = (redes.historial||[]).slice(0,8).map(h=>`<div class="row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);padding:8px 0"><span>${h.ok?'✅':'⚠️'}</span><div style="flex:1;min-width:200px">${h.tipo==='video'?'🎬 ':'🖼️ '}<b>${esc(h.titulo||h.video_nombre||'(sin título)')}</b> <small style="color:var(--muted)">· ${esc(h.plantilla||'')} · ${h.tipo==='video'?('video '+esc(h.video_nombre||'')+' · '+Math.round((h.video_bytes||0)/1048576)+' MB'+(h.pulido?' · ✨ pulido'+(h.subtitulos?' · '+h.subtitulos+' subtítulos':''):'')):(h.fotos+' foto(s)')} · ${new Date((h.creado_en||0)*1000).toLocaleString('es-PE')}</small>${h.error?`<br><small style="color:var(--rojo)">${esc(h.error)}</small>`:''}</div>${h.url?`<a class="btn-sec" href="${esc(h.url)}" target="_blank" rel="noopener">Ver en Facebook ↗</a>`:''}</div>`).join('') || '<div class="row" style="color:var(--muted)">Todavía no hay publicaciones.</div>';
   document.getElementById('redesPanel').innerHTML = `
+    <div class="card" id="rd_agente"></div>
     <div class="card"><div class="top"><h3>Publicar en Facebook</h3></div>
       <div class="row">${estado}</div>
       <div class="row rd-grid">
@@ -3047,6 +3146,7 @@ function renderRedes(){
   set('rd_titulo',prev.t); set('rd_sub',prev.s); set('rd_texto',prev.x); set('rd_etq',prev.e); set('rd_pie',prev.p); set('rd_formato', prev.f || redesSel.formato); set('rd_tema', prev.tema);
   ['rd_titulo','rd_sub','rd_etq','rd_pie'].forEach(id=>{ const el=document.getElementById(id); if(el) el.addEventListener('input', autoPrevRedes); });
   const fm=document.getElementById('rd_formato'); if(fm) fm.addEventListener('change', ()=>{ redesSel.formato=fm.value; autoPrevRedes(); });
+  renderAgente();
 }
 function cambiarLocalRedes(id){
   // Cambiar de local suelta las fotos del bucket del local anterior, pero CONSERVA las subidas
@@ -3149,6 +3249,105 @@ function botonesRedes(ocupado){
 }
 function autoPrevRedes(){ clearTimeout(rdTimer); if(redesSel.video){ botonesRedes(false); return; } if(!redesSel.fotos.length) return; veloPrev(true, 'Preparando la vista previa…'); botonesRedes('componiendo'); rdTimer = setTimeout(()=>previsualizarRedes(true), 700); }
 function cuerpoRedes(conImagen){ const g=id=>(document.getElementById(id)||{}).value||''; const c = {fotos:redesSel.fotos, titulo:g('rd_titulo'), subtitulo:g('rd_sub'), pie:g('rd_pie'), etiqueta:g('rd_etq'), formato:g('rd_formato')||redesSel.formato, texto:g('rd_texto'), plantilla:redesSel.plantilla, cancha_id:redesSel.cancha, video_id:(redesSel.video&&redesSel.video.id)||'', enfoque:(redesSel.ia&&redesSel.ia.enfoque)||'', fuente:(redesSel.ia&&redesSel.ia.fuente)||(redesSel.plantilla==='libre'?'manual':'plantilla'), usar_pulido: !!(redesSel.video&&redesSel.video.pulido&&redesSel.video.pulido.usar&&redesSel.video.pulido.url)}; if(conImagen && !c.video_id && redesSel.img) c.imagen = redesSel.img; return c; }
+// ── Agente de marketing 24×7 (estratega + creativo + community manager de la página) ──
+let agente = null, agOcupado = '', agImg = {}, agAbierto = null;
+async function cargarAgente(){
+  try{ const r = await fetch('/admin/api/redes/agente',{headers:headers()}); if(r.ok){ agente = await r.json(); } }catch(e){}
+  renderAgente();
+}
+function renderAgente(){
+  const box = document.getElementById('rd_agente'); if(!box) return;
+  if(!agente){ box.innerHTML = '<div class="rd-cargando"><span class="rd-spin"></span> Cargando el agente de marketing…</div>'; return; }
+  const c = agente.config, px = agente.proxima || {}, plan = c.plan || {};
+  const inp = 'style="padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:13px;background:#fff"';
+  const horas = []; for(let h=5; h<=21; h++){ ['00','30'].forEach(m=>{ const v=(h<10?'0':'')+h+':'+m; horas.push(`<option value="${v}"${c.hora===v?' selected':''}>${v}</option>`); }); }
+  if(!horas.some(o=>o.includes('selected'))) horas.unshift(`<option value="${esc(c.hora)}" selected>${esc(c.hora)}</option>`);
+  const zonas = (agente.zonas||[]).map(z=>`<option value="${z}"${c.zona===z?' selected':''}>${z.replace('America/','')}</option>`).join('');
+  const tonos = ['cercano','divertido','informativo','motivador'].map(t=>`<option value="${t}"${c.tono===t?' selected':''}>${t.charAt(0).toUpperCase()+t.slice(1)}</option>`).join('');
+  const cuando = px.pendiente_hoy ? '<b style="color:#8a5a00">hoy, en el próximo minuto</b> (ya pasó la hora y aún no publicó)' : (px.local ? `<b>${esc(px.local)}</b>` : '—');
+  const filas = (agente.dias||[]).map((d,i)=>{ const f = plan[String(i)]||{}; const esD = f.audiencia==='duenos';
+    return `<tr><td style="padding:4px 6px;font-weight:700;text-transform:capitalize">${d}</td>
+      <td style="padding:4px 6px"><select data-plan-aud="${i}" ${inp} onchange="renderAgentePlan()">${Object.entries(agente.audiencias||{}).map(([k,v])=>`<option value="${k}"${f.audiencia===k?' selected':''}>${esc(v)}</option>`).join('')}</select></td>
+      <td style="padding:4px 6px"><select data-plan-enf="${i}" ${inp} ${esD?'disabled':''}>${esD?'<option value="duenos" selected>Para dueños de cancha</option>':(agente.enfoques_jugadores||[]).map(k=>`<option value="${k}"${f.enfoque===k?' selected':''}>${esc(ENFOQUE_NOMBRE[k]||k)}</option>`).join('')}</select></td></tr>`; }).join('');
+  const bor = (agente.borradores||[]).map(b=>{ const ab = agAbierto===b.id; return `<div style="border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin-top:8px;background:#fff">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>${esc(b.titulo||'(sin título)')}</b><small style="color:var(--muted)">${esc(b.fecha||'')} · ${esc((agente.audiencias||{})[b.audiencia]||b.audiencia||'')} · ${esc(ENFOQUE_NOMBRE[b.enfoque]||b.enfoque||'')}${b.local?' · '+esc(b.local):''}${b.fuente==='ia'?' · ✨ IA':''}</small>${b.motivo?`<small style="color:var(--rojo)">${esc(b.motivo)}</small>`:''}<span style="flex:1"></span><button type="button" class="btn-sec" onclick="agAbierto=${ab?'null':`'${b.id}'`};renderAgente();${ab?'':`agVerImagen('${b.id}')`}">${ab?'Cerrar':'👁️ Ver pieza'}</button></div>
+      ${ab?`<div class="rd-grid" style="margin-top:8px"><div>
+          <label style="font-size:12.5px;font-weight:700">Título en la imagen<input id="ag_t_${b.id}" value="${esc(b.titulo||'')}" ${inp} style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit"></label>
+          <label style="display:block;margin-top:6px;font-size:12.5px;font-weight:700">Subtítulo<input id="ag_s_${b.id}" value="${esc(b.subtitulo||'')}" style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit"></label>
+          <label style="display:block;margin-top:6px;font-size:12.5px;font-weight:700">Texto de la publicación<textarea id="ag_x_${b.id}" rows="7" style="display:block;width:100%;margin-top:4px;padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:13px">${esc(b.texto||'')}</textarea></label>
+          <div class="actions" style="margin-top:8px;flex-wrap:wrap">
+            <button type="button" class="btn-sec" onclick="agEditar('${b.id}')" ${agOcupado?'disabled':''}>💾 Guardar cambios</button>
+            <button type="button" class="btn-sec" onclick="agAccion('${b.id}','regenerar')" ${agOcupado?'disabled':''}>🔁 Otra versión</button>
+            <button type="button" class="btn-sec" onclick="agAccion('${b.id}','descartar')" ${agOcupado?'disabled':''}>🗑 Descartar</button>
+            <button type="button" class="btn-ap" onclick="agAccion('${b.id}','aprobar')" ${agOcupado||!agente.credenciales?'disabled':''}>${agOcupado==='aprobar:'+b.id?'<span class="rd-spin blanco"></span> Publicando…':'✅ Aprobar y publicar'}</button>
+          </div></div>
+          <div id="ag_img_${b.id}" style="border:1px dashed var(--border);border-radius:12px;min-height:240px;display:flex;align-items:center;justify-content:center;background:#fafafa;overflow:hidden">${agImg[b.id]?`<img src="${agImg[b.id]}" style="max-width:100%;max-height:60vh;display:block">`:'<span class="rd-spin"></span>'}</div></div>`:''}
+    </div>`; }).join('') || '<small style="color:var(--muted)">No hay borradores pendientes.</small>';
+  const log = (agente.corridas||[]).map(k=>`<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #F0F2F4;font-size:12.5px"><span>${k.resultado==='publicado'?'✅':k.resultado==='borrador'?'📝':'⚠️'}</span><span style="color:var(--muted);min-width:120px">${new Date((k.en||0)*1000).toLocaleString('es-PE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</span><span style="flex:1">${esc(k.resultado)}${k.audiencia?' · '+esc((agente.audiencias||{})[k.audiencia]||k.audiencia):''}${k.titulo?' · '+esc(k.titulo):''}${k.detalle?' · <span style="color:var(--rojo)">'+esc(k.detalle)+'</span>':''}</span>${k.url?`<a href="${esc(k.url)}" target="_blank" rel="noopener">ver ↗</a>`:''}</div>`).join('') || '<small style="color:var(--muted)">Todavía no corrió.</small>';
+  box.innerHTML = `<div class="top"><h3>🤖 Agente de marketing 24×7</h3>${c.activo?`<span style="color:var(--green);font-weight:700">● Activo · publica a las ${esc(c.hora)} (${esc(c.zona.replace('America/',''))})</span>`:'<span style="color:var(--muted);font-weight:700">○ Pausado</span>'}</div>
+    <div class="row" style="color:var(--muted);font-size:13px">Estratega + creativo + community manager de la página: cada día arma una pieza con fotos reales, copy con IA que no se repite y un objetivo comercial (jugadores → descargar la app o reservar en la web; dueños → administrar su cancha con Pichangol) y la publica solo a la hora fijada, o te la deja para aprobar. Próxima: ${cuando} → ${esc((agente.audiencias||{})[px.audiencia]||'')} · ${esc(ENFOQUE_NOMBRE[px.enfoque]||px.enfoque||'')}. Hora local del agente: ${esc(agente.hora_local||'')}.${!agente.credenciales?' <b style="color:var(--rojo)">Falta el token de Facebook: el agente no puede publicar.</b>':''}${agente.ia===false?' <span style="color:#8a5a00">Sin ANTHROPIC_API_KEY: usa el banco de variantes.</span>':''}${agente.locales===0?' <span style="color:#8a5a00">Aún no hay locales con fotos: usa la portada de marca.</span>':''}</div>
+    <div class="row" style="display:flex;gap:14px;flex-wrap:wrap;align-items:end">
+      <label style="display:flex;align-items:center;gap:8px;font-weight:700"><input type="checkbox" id="ag_activo" ${c.activo?'checked':''} style="width:18px;height:18px"> Activo</label>
+      <label style="font-size:12.5px;font-weight:700">Hora<br><select id="ag_hora" ${inp}>${horas.join('')}</select></label>
+      <label style="font-size:12.5px;font-weight:700">Zona<br><select id="ag_zona" ${inp}>${zonas}</select></label>
+      <div style="font-size:12.5px;font-weight:700">Modo<br><label style="font-weight:400;margin-right:8px"><input type="radio" name="ag_modo" value="auto" ${c.modo==='auto'?'checked':''}> Publicar solo</label><label style="font-weight:400"><input type="radio" name="ag_modo" value="aprobar" ${c.modo==='aprobar'?'checked':''}> Dejarme aprobar</label></div>
+      <label style="font-size:12.5px;font-weight:700">Tono<br><select id="ag_tono" ${inp}>${tonos}</select></label>
+      <button type="button" class="btn-ap" id="ag_guardar" onclick="agGuardar()" ${agOcupado?'disabled':''}>${agOcupado==='guardar'?'<span class="rd-spin blanco"></span> Guardando…':'Guardar'}</button>
+    </div>
+    <details class="row" ${agente._planAbierto?'open':''} ontoggle="agente._planAbierto=this.open"><summary style="cursor:pointer;font-weight:700">📅 Plan semanal (audiencia y enfoque por día)</summary>
+      <table style="margin-top:6px;border-collapse:collapse"><thead><tr><th style="text-align:left;padding:4px 6px;font-size:12px;color:var(--muted)">Día</th><th style="text-align:left;padding:4px 6px;font-size:12px;color:var(--muted)">Audiencia</th><th style="text-align:left;padding:4px 6px;font-size:12px;color:var(--muted)">Enfoque</th></tr></thead><tbody>${filas}</tbody></table>
+      <small style="color:var(--muted)">"Que varíe solo" deja que la IA elija el ángulo evitando los últimos publicados. Los días de dueños siempre invitan a registrar y administrar la cancha. Se guarda con el botón Guardar.</small></details>
+    <div class="row actions" style="flex-wrap:wrap">
+      <button type="button" class="btn-sec" onclick="agCorrer(false)" ${agOcupado?'disabled':''}>${agOcupado==='correr'?'<span class="rd-spin chico"></span> Creando…':'📝 Generar borrador ahora'}</button>
+      <button type="button" class="btn-ap" onclick="agCorrer(true)" ${agOcupado||!agente.credenciales?'disabled':''}>${agOcupado==='publicar'?'<span class="rd-spin blanco"></span> Publicando…':'📣 Publicar ahora'}</button>
+      <small style="color:var(--muted)">Prueba la pieza del día sin esperar a la hora. "Publicar ahora" cuenta como la publicación de hoy.</small>
+    </div>
+    <div class="row"><b>Borradores por aprobar (${(agente.borradores||[]).length})</b>${bor}</div>
+    <div class="row" style="padding-top:10px;border-top:1px solid var(--border)"><b>Bitácora</b>${log}</div>`;
+}
+function renderAgentePlan(){ const plan = {}; (agente.dias||[]).forEach((d,i)=>{ const a=document.querySelector(`[data-plan-aud="${i}"]`), e=document.querySelector(`[data-plan-enf="${i}"]`); plan[String(i)] = {audiencia: a?a.value:'jugadores', enfoque: e?e.value:'auto'}; }); agente.config.plan = plan; renderAgente(); }
+function agLeerForm(){
+  const plan = {}; (agente.dias||[]).forEach((d,i)=>{ const a=document.querySelector(`[data-plan-aud="${i}"]`), e=document.querySelector(`[data-plan-enf="${i}"]`); plan[String(i)] = {audiencia: a?a.value:'jugadores', enfoque: e?e.value:'auto'}; });
+  const modo = (document.querySelector('input[name="ag_modo"]:checked')||{}).value || 'auto';
+  return {activo: document.getElementById('ag_activo').checked, hora: document.getElementById('ag_hora').value, zona: document.getElementById('ag_zona').value, modo: modo, tono: document.getElementById('ag_tono').value, plan: plan};
+}
+async function agGuardar(){
+  const cuerpo = agLeerForm(); agOcupado='guardar'; renderAgente();
+  try{ const r = await fetch('/admin/api/redes/agente',{method:'POST',headers:headers(),body:JSON.stringify(cuerpo)}); const j = await r.json().catch(()=>({})); if(r.status===401){ salir(); return; }
+    if(r.ok && j.ok){ agente = j; toast(cuerpo.activo ? 'Agente activo: publica a las '+cuerpo.hora : 'Agente en pausa'); } else alert(j.detail||'No se pudo guardar'); }
+  catch(e){ alert('Error de red'); }
+  agOcupado=''; renderAgente();
+}
+async function agCorrer(publicar){
+  if(publicar && !confirm('¿Publicar AHORA la pieza del día en la página de Facebook? Contará como la publicación de hoy.')) return;
+  agOcupado = publicar ? 'publicar' : 'correr'; renderAgente();
+  try{ const r = await fetch('/admin/api/redes/agente/correr',{method:'POST',headers:headers(),body:JSON.stringify({publicar:!!publicar})}); const j = await r.json().catch(()=>({})); if(r.status===401){ salir(); return; }
+    if(r.ok && j.ok){ agente = j; toast(j.publicado ? 'Publicado en Facebook' : 'Borrador listo'); if(!j.publicado && (j.borradores||[]).length){ agAbierto = j.borradores[0].id; agVerImagen(agAbierto); } cargarRedes(); }
+    else alert(j.detail||'No se pudo'); }
+  catch(e){ alert('Error de red'); }
+  agOcupado=''; renderAgente();
+}
+async function agVerImagen(bid){
+  if(agImg[bid]) return;
+  try{ const r = await fetch('/admin/api/redes/agente/borrador/'+bid+'/imagen',{headers:headers()}); const j = await r.json().catch(()=>({})); if(j.ok){ agImg[bid]=j.imagen; const d=document.getElementById('ag_img_'+bid); if(d) d.innerHTML=`<img src="${j.imagen}" style="max-width:100%;max-height:60vh;display:block">`; } }catch(e){}
+}
+async function agEditar(bid){
+  const g = id => (document.getElementById(id)||{}).value;
+  agOcupado='editar'; renderAgente();
+  try{ const r = await fetch('/admin/api/redes/agente/borrador/'+bid+'/editar',{method:'POST',headers:headers(),body:JSON.stringify({titulo:g('ag_t_'+bid), subtitulo:g('ag_s_'+bid), texto:g('ag_x_'+bid)})}); const j = await r.json().catch(()=>({}));
+    if(r.ok && j.ok){ delete agImg[bid]; toast('Borrador guardado'); await cargarAgente(); agVerImagen(bid); return; } else alert(j.detail||'No se pudo guardar'); }catch(e){ alert('Error de red'); }
+  agOcupado=''; renderAgente();
+}
+async function agAccion(bid, accion){
+  if(accion==='descartar' && !confirm('¿Descartar este borrador?')) return;
+  if(accion==='aprobar' && !confirm('¿Publicar este borrador en la página de Facebook?')) return;
+  agOcupado = accion+':'+bid; renderAgente();
+  try{ const r = await fetch('/admin/api/redes/agente/borrador/'+bid+'/'+accion,{method:'POST',headers:headers()}); const j = await r.json().catch(()=>({})); if(r.status===401){ salir(); return; }
+    if(r.ok && j.ok){ agente = j; delete agImg[bid]; if(accion==='aprobar'){ toast('Publicado en Facebook'); agAbierto=null; cargarRedes(); } if(accion==='descartar') agAbierto=null; if(accion==='regenerar'){ toast('Nueva versión'); agAbierto=bid; agVerImagen(bid); } }
+    else alert(j.detail||'No se pudo'); }
+  catch(e){ alert('Error de red'); }
+  agOcupado=''; renderAgente();
+}
 // ── Pulido con estilo Pichangol (FFmpeg en el backend) + subtítulos Whisper ──
 const PUL_DEF = {formato:'vertical', logo:true, intro:true, rotulo:true, cierre:true, subtitulos:true, musica:null};
 function pulidoHtml(vd){

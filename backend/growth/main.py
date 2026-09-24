@@ -163,6 +163,26 @@ async def _iniciar_cron_cm() -> None:
 
 
 @app.on_event("startup")
+async def _iniciar_cron_agente_redes() -> None:
+    """AGENTE DE MARKETING 24×7 de la página de Facebook de Pichangol: cada 60 s
+    mira si ya es la hora configurada en la torre (07:00 America/Lima por defecto)
+    y, si hoy aún no publicó, crea y publica la pieza del día (o deja el borrador
+    para aprobar). Una sola réplica en Railway; fail-safe; el propio agente
+    persiste el snapshot cuando hace algo."""
+    async def _loop() -> None:
+        await asyncio.sleep(120)  # deja arrancar el servicio
+        while True:
+            try:
+                from marketing.agente_redes import tick
+                await asyncio.to_thread(tick)   # IA + Pillow + Graph: bloqueante, fuera del event loop
+            except Exception as exc:  # noqa: BLE001
+                print(f"[agente] tick falló: {str(exc)[:160]}", flush=True)
+            await asyncio.sleep(60)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
 async def _iniciar_cron_storage() -> None:
     """RECOLECTOR DE BASURA del Storage: cada N horas borra los archivos que
     quedaron sin dueño. El APK ya borra en caliente al eliminar una cancha, un

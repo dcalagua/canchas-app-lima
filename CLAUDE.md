@@ -1149,7 +1149,42 @@ off → redeploy inmediato en cada push). URL pública:
   ElevenLabs, (5) IG Reels con el mismo video.
   **El entorno de Claude NO alcanza Storage de Supabase ni bancos de
   fotos (proxy 403): las piezas con fotos reales se componen en el backend.**
-  Fase 2 (backlog): calendario + copy con IA reutilizando `marketing/cm.py`.
+  **AGENTE DE MARKETING 24×7 (pedido del director, 24-sep-2026: "agentes de
+  marketing que vivan 24×7, un creativo y un community manager, estratega
+  comercial, que publiquen todos los días a las 7:00 am promocionando
+  Pichangol —descargar la app / reservar en la web— e incitando a los dueños
+  a administrar sus canchas"):** `marketing/agente_redes.py` + tarjeta
+  "🤖 Agente de marketing 24×7" arriba del pane de Facebook. **Estratega**
+  (`planificar`): plan editorial SEMANAL editable en la torre (`PLAN_DEFAULT`:
+  lun beneficio · mar DUEÑOS · mié local · jue tip · vie finde · sáb comunidad
+  · dom DUEÑOS; audiencia `jugadores|duenos`, enfoque o "auto"), objetivo
+  comercial por audiencia (`AUDIENCIAS[..]["objetivo"]` viaja como `tema`
+  al redactor), rotación de locales verificados con foto
+  (`agente_fb_ultimo_local`) y datos reales (n.º de locales). **Creativo**
+  (`crear_pieza`): fotos del local del día (o `brand:portada` =
+  `static/brand/portada_facebook.png` si no hay locales con foto) +
+  `post_redes.redactar` (IA, sin repetir) + `componer` 1080². **Community
+  manager** (`tick` cada 60 s desde el cron de `main.py`
+  `_iniciar_cron_agente_redes`): si `agente_fb_activo=1`, hora local ≥
+  `agente_fb_hora` (zona `agente_fb_zona`: Lima/La_Paz/Guayaquil, ZoneInfo
+  con fallback a offset fijo) y `agente_fb_ultimo_dia` ≠ hoy → `ejecutar()`:
+  modo `auto` publica (`origen agente_auto`) o modo `aprobar` deja un
+  BORRADOR (receta sin bytes en `stores.agente_fb.borradores`, snapshot; la
+  imagen se recompone al verla/aprobarla); si Facebook rechaza queda como
+  borrador con `motivo` y NO cuenta el día (reintenta al aprobar). Si el
+  backend estuvo caído a las 07:00, publica al volver el mismo día
+  (`pendiente_hoy`). Bitácora `stores.agente_fb.corridas`. Torre: activo,
+  hora, zona, modo, tono, plan por día, "📝 Generar borrador ahora", "📣
+  Publicar ahora" (cuenta como la de hoy), borradores con Ver pieza / editar
+  título-subtítulo-texto / 🔁 Otra versión / ✅ Aprobar y publicar / 🗑
+  Descartar. Endpoints `GET/POST /admin/api/redes/agente`, `POST …/correr`,
+  `GET …/borrador/{id}/imagen`, `POST …/borrador/{id}/editar|aprobar|
+  descartar|regenerar`. Config en `stores.config` claves `agente_fb_*`
+  (arranca PAUSADO: el director lo enciende en la torre). Historial de
+  publicaciones con `fuente: agente`, `audiencia`, `origen`. Test
+  `test_agente_marketing_24x7_publica_a_las_7_y_alterna_audiencias` (reloj
+  simulado con `_ahora`). Backlog: Instagram con la misma pieza, métricas
+  de alcance por post (insights de Graph) para que el estratega aprenda.
   Portada de la página: `tool/portada_facebook.py` →
   `static/brand/portada_facebook.png` (1640×720). Test `test_redes_pichangol.py`.
 - **DATOS DE LA EMPRESA CONFIGURABLES DESDE LA TORRE (pedido del director,
