@@ -785,6 +785,15 @@ def estado_pagina() -> dict:
         return {**base, "error": r.get("error")}
     d = r.get("data") or {}
     base.update(nombre=d.get("name", ""), link=d.get("link", ""))
+    if d.get("link") and stores.config.get("fb_page_link") != d["link"]:
+        # El pie de la web enlaza esta página como "Facebook oficial" si el
+        # operador no pegó otra (empresa.facebook_conectada); se guarda YA.
+        stores.config["fb_page_link"] = d["link"]
+        try:
+            from pagos.router import _persistir_ahora
+            _persistir_ahora()
+        except Exception:  # noqa: BLE001
+            pass
     base.update(token_tipo=t.get("tipo", ""), usuario=t.get("usuario", ""), faltan=list(t.get("faltan") or []),
                 origen=t.get("origen", ""), vence=int(t.get("vence") or 0), guardado=bool(stores.config.get(_CFG_TOKEN)))
     if t.get("error"):

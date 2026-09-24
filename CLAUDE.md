@@ -1409,8 +1409,16 @@ off → redeploy inmediato en cada push). URL pública:
   tiktok|youtube`, URL oficial o @usuario, `_url_red` valida el dominio) y
   el pie muestra "Síguenos" + ícono SOLO de las configuradas
   (`ui.redes_pie`, `empresa.redes()`); sin configurar, ningún ícono (Culqi
-  rechaza íconos vacíos). Los SVG viven en `ui.RED_SVG` (router/academia los
-  reusan). (5) **Botón de compra funcional** → la causa real era que PCG-PRD
+  rechaza íconos vacíos). **Facebook tiene RESPALDO automático (24-sep-2026,
+  el director pegó `facebook.com/search/top?q=pichangol`, que es una
+  BÚSQUEDA, no la página):** si `empresa_facebook` está vacío,
+  `empresa.facebook_conectada()` enlaza la página desde la que PUBLICA la
+  torre (`FB_PAGE_ID`): el `link` real que devuelve Graph (lo guarda
+  `post_redes.estado_pagina` en `stores.config[fb_page_link]` al abrir el
+  pane de Facebook, persistido al instante) o, mientras no se consulte,
+  `facebook.com/<id>`. `_url_red` RECHAZA enlaces `search/`, `login/`,
+  `sharer/`, `hashtag/`… (no son la página). Los SVG viven en `ui.RED_SVG`
+  (router/academia los reusan). (5) **Botón de compra funcional** → la causa real era que PCG-PRD
   tenía 0 canchas públicas y `CULQI_PUBLIC_KEY` vacía (ver "Culqi en PRD"):
   sin canchas reservables ni llave, el revisor no ve ningún checkout. Hay que
   tener al menos una cancha VERIFICADA con dueño en PRD (y la academia con
