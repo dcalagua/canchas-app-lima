@@ -2723,6 +2723,9 @@ function renderRedes(){
   const locales = (redes.locales||[]).map(l=>`<option value="${esc(l.canchas[0].id)}"${redesSel.cancha===l.canchas[0].id?' selected':''}>${esc(l.local)}${l.zona?' · '+esc(l.zona):''} (${l.fotos.length} fotos)</option>`).join('');
   const loc = (redes.locales||[]).find(l=>l.canchas.some(c=>c.id===redesSel.cancha));
   const fotos = loc ? loc.fotos.map(u=>`<label style="position:relative;cursor:pointer"><img src="${esc(u)}" style="width:118px;height:118px;object-fit:cover;border-radius:12px;border:3px solid ${redesSel.fotos.includes(u)?'var(--green)':'transparent'};display:block"><input type="checkbox" ${redesSel.fotos.includes(u)?'checked':''} onchange="toggleFotoRedes('${esc(u)}',this.checked)" style="position:absolute;top:8px;left:8px;width:18px;height:18px"></label>`).join('') : '<span style="color:var(--muted)">Este ambiente aún no tiene locales con fotos. Sube fotos desde tu computadora ↓</span>';
+  // Fotos SUBIDAS desde la computadora (data URL): también se ven, con ✕ para quitarlas.
+  const subidas = redesSel.fotos.filter(u=>u.startsWith('data:'));
+  const subidasHtml = subidas.length ? `<div style="margin-top:10px"><small style="color:var(--muted);font-weight:700">Subidas desde tu computadora</small><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">${subidas.map((u,i)=>`<span style="position:relative;display:inline-block"><img src="${u}" style="width:118px;height:118px;object-fit:cover;border-radius:12px;border:3px solid var(--green);display:block"><button type="button" title="Quitar" onclick="quitarSubidaRedes(${i})" style="position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(0,0,0,.65);color:#fff;font-weight:700;cursor:pointer;line-height:1">✕</button></span>`).join('')}</div></div>` : '';
   const plantillas = Object.entries(redes.plantillas||{}).map(([k,v])=>`<button class="btn-sec" style="${redesSel.plantilla===k?'border-color:var(--green);background:#F2F8F3':''}" onclick="redesSel.plantilla='${k}';aplicarPlantilla()">${esc(v.nombre)}</button>`).join(' ');
   const hist = (redes.historial||[]).slice(0,8).map(h=>`<div class="row" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;border-bottom:1px solid var(--border);padding:8px 0"><span>${h.ok?'✅':'⚠️'}</span><div style="flex:1;min-width:200px"><b>${esc(h.titulo||'(sin título)')}</b> <small style="color:var(--muted)">· ${esc(h.plantilla||'')} · ${h.fotos} foto(s) · ${new Date((h.creado_en||0)*1000).toLocaleString('es-PE')}</small>${h.error?`<br><small style="color:var(--rojo)">${esc(h.error)}</small>`:''}</div>${h.url?`<a class="btn-sec" href="${esc(h.url)}" target="_blank" rel="noopener">Ver en Facebook ↗</a>`:''}</div>`).join('') || '<div class="row" style="color:var(--muted)">Todavía no hay publicaciones.</div>';
   document.getElementById('redesPanel').innerHTML = `
@@ -2732,7 +2735,7 @@ function renderRedes(){
         <div>
           <label style="font-size:12.5px;font-weight:700">1 · Local (fotos reales que subió el dueño)
             <select id="rd_local" ${inp} onchange="redesSel.cancha=this.value;redesSel.fotos=[];renderRedes();aplicarPlantilla()"><option value="">— elige un local —</option>${locales}</select></label>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px" id="rd_fotos">${fotos}</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px" id="rd_fotos">${fotos}</div>${subidasHtml}
           <div style="margin-top:8px"><label class="btn-sec" for="rd_subir" style="cursor:pointer">📷 Subir fotos desde tu computadora</label><input type="file" id="rd_subir" accept="image/*" multiple hidden onchange="subirFotosRedes(this)"><small style="color:var(--muted);margin-left:8px">hasta ${redes.max_fotos||4} fotos en total · ${redesSel.fotos.length} elegida(s)</small></div>
           <label style="display:block;margin-top:14px;font-size:12.5px;font-weight:700">2 · Plantilla</label>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px">${plantillas}</div>
@@ -2770,12 +2773,22 @@ function toggleFotoRedes(u, on){
   const i = redesSel.fotos.indexOf(u);
   if(on && i<0){ if(redesSel.fotos.length >= (redes.max_fotos||4)){ alert('Máximo '+(redes.max_fotos||4)+' fotos.'); renderRedes(); return; } redesSel.fotos.push(u); }
   if(!on && i>=0) redesSel.fotos.splice(i,1);
-  const t=document.getElementById('rd_titulo').value, s=document.getElementById('rd_sub').value, x=document.getElementById('rd_texto').value, e=document.getElementById('rd_etq').value;
-  renderRedes(); document.getElementById('rd_titulo').value=t; document.getElementById('rd_sub').value=s; document.getElementById('rd_texto').value=x; document.getElementById('rd_etq').value=e;
+  const g = id => (document.getElementById(id)||{}).value || '';
+  const t=g('rd_titulo'), s=g('rd_sub'), x=g('rd_texto'), e=g('rd_etq'), pie=g('rd_pie'); redesSel.formato = g('rd_formato') || redesSel.formato;
+  renderRedes();
+  const p = (id,v)=>{ const el=document.getElementById(id); if(el && v) el.value=v; };
+  p('rd_titulo',t); p('rd_sub',s); p('rd_texto',x); p('rd_etq',e); p('rd_pie',pie);
+}
+function quitarSubidaRedes(i){
+  const subidas = redesSel.fotos.filter(u=>u.startsWith('data:')); const u = subidas[i]; if(!u) return;
+  toggleFotoRedes(u, false);
 }
 function subirFotosRedes(inp){
   const files = Array.from(inp.files||[]); inp.value='';
-  files.forEach(f=>{ const img = new Image(), url = URL.createObjectURL(f); img.onload = ()=>{ const M=1600,k=Math.min(1,M/Math.max(img.width,img.height)); const cv=document.createElement('canvas'); cv.width=Math.round(img.width*k); cv.height=Math.round(img.height*k); cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); URL.revokeObjectURL(url); toggleFotoRedes(cv.toDataURL('image/jpeg',0.86), true); }; img.src=url; });
+  const max = redes.max_fotos||4, libres = max - redesSel.fotos.length;
+  if(libres <= 0){ alert('Ya tienes '+max+' fotos elegidas. Quita alguna para subir otra.'); return; }
+  if(files.length > libres) alert('Solo entran '+libres+' foto(s) más (máximo '+max+' por publicación). Se toman las primeras.');
+  files.slice(0, libres).forEach(f=>{ const img = new Image(), url = URL.createObjectURL(f); img.onload = ()=>{ const M=1600,k=Math.min(1,M/Math.max(img.width,img.height)); const cv=document.createElement('canvas'); cv.width=Math.round(img.width*k); cv.height=Math.round(img.height*k); cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); URL.revokeObjectURL(url); toggleFotoRedes(cv.toDataURL('image/jpeg',0.86), true); }; img.onerror = ()=>{ URL.revokeObjectURL(url); alert('No se pudo leer "'+f.name+'".'); }; img.src=url; });
 }
 async function aplicarPlantilla(){
   const r = await fetch('/admin/api/redes/pichangol/plantilla',{method:'POST',headers:headers(),body:JSON.stringify({plantilla:redesSel.plantilla,cancha_id:redesSel.cancha})});
