@@ -202,6 +202,8 @@ ul.datos li{margin:6px 0;display:flex;gap:8px;align-items:flex-start}
 .leaflet-popup-content-wrapper{border-radius:14px;font-family:"DM Sans",system-ui,sans-serif}
 .leaflet-popup-content{margin:12px 14px;font-size:13.5px}.leaflet-popup-content b{font-size:14px}
 .leaflet-popup-content .btn{padding:8px 12px;font-size:13px;margin-top:8px}
+/* Leaflet pinta TODOS los <a> del mapa de azul/verde (`.leaflet-container a`) y pisaba el blanco del botón: "Ver horarios" salía verde sobre verde (queja del director, sep-2026). */
+.leaflet-container a.btn,.leaflet-container a.btn:hover{color:#fff}.leaflet-container a.btn.sec,.leaflet-container a.btn.sec:hover{color:var(--noche)}
 .ubic{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--tinte);border-radius:var(--r);padding:12px 14px;margin-bottom:14px}
 .ubic .btn{padding:10px 14px;font-size:14px}.ubic .t{flex:1;min-width:200px;font-size:14px;font-weight:600;color:var(--teal)}
 .dist{color:var(--teal);font-weight:800}
