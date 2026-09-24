@@ -1672,3 +1672,42 @@ def test_servicios_extra_catalogo_global_por_local_y_por_persona(db, monkeypatch
     assert cargos[0]["monto_centimos"] == (120 + 45 + 30) * 100  # el cargo real incluye piscina × 3
     comp = cli.get(p["url"]).text
     assert "Piscina × 3" in comp and "S/ 45.00" in comp
+
+
+def test_acceso_de_revision_con_usuario_y_clave_para_culqi(db, monkeypatch):
+    """Culqi (24-sep-2026): "no se logró validar el proceso de compra debido a
+    que se requiere iniciar sesión… proporcionar un usuario y contraseña de
+    prueba". Con WEB_USUARIOS_PRUEBA, /entrar ofrece "Acceso de revisión" y
+    la ficha enlaza a él; el revisor abre la MISMA sesión que Google y reserva."""
+    from web import sesion, router as web_router
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    cli = TestClient(app, base_url="https://testserver")
+    # Sin cuentas configuradas: ni enlace ni formulario ni endpoint.
+    monkeypatch.setattr(config, "WEB_USUARIOS_PRUEBA", "")
+    assert "Acceso de revisión" not in cli.get("/entrar").text
+    assert "Acceso de revisión" not in cli.get("/reservar/c_lima").text
+    assert cli.post("/web/sesion/prueba", json={"usuario": "x", "clave": "y"}).json()["error"] == "no_configurado"
+    # Con cuentas: enlace en la ficha (vuelve a la misma ficha) y formulario en /entrar.
+    monkeypatch.setattr(config, "WEB_USUARIOS_PRUEBA", "revision@pichangol.app:Clave-Culqi-2026, otro@x.com:abc")
+    web_router._revision_intentos.clear()
+    html = cli.get("/reservar/c_lima").text
+    assert "Acceso de revisión con usuario y contraseña" in html and "/entrar?volver=%2Freservar%2Fc_lima#revision" in html
+    assert "id='revUsr'" in cli.get("/entrar?volver=/reservar/c_lima").text
+    # Credenciales malas → error; 5 fallos → bloqueo por IP (X-Forwarded-For, como en Railway).
+    for _ in range(5):
+        assert cli.post("/web/sesion/prueba", json={"usuario": "revision@pichangol.app", "clave": "mala"},
+                        headers={"X-Forwarded-For": "200.1.2.3"}).json()["error"] == "credenciales_invalidas"
+    assert cli.post("/web/sesion/prueba", json={"usuario": "revision@pichangol.app", "clave": "Clave-Culqi-2026"},
+                    headers={"X-Forwarded-For": "200.1.2.3"}).json()["error"] == "demasiados_intentos"
+    # Desde otra IP, con la clave correcta → cookie de sesión igual a la de Google.
+    r = cli.post("/web/sesion/prueba", json={"usuario": "Revision@pichangol.app", "clave": "Clave-Culqi-2026"},
+                 headers={"X-Forwarded-For": "200.9.9.9"})
+    assert r.json() == {"ok": True, "email": "revision@pichangol.app", "nombre": "Cuenta de revisión", "foto": ""}
+    assert sesion.leer(r.cookies[sesion.COOKIE])["email"] == "revision@pichangol.app"
+    # Con esa sesión la ficha muestra "Reservando como" y la reserva se asegura a nombre del revisor.
+    assert "revision@pichangol.app" in cli.get("/reservar/c_lima").text
+    f = _manana()
+    j = cli.post("/web/asegurar", json={"cancha_id": "c_lima", "horas": [{"fecha": f, "hora": "19:00"}], "extras": [],
+                                        "nombre": "Revisor Culqi", "celular": "999888777", "email": "otra@x.com"}).json()
+    assert j["ok"], j
+    assert db.reservas[j["ids"][0]]["usuario"] == "revision@pichangol.app"

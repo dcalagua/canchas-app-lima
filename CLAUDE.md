@@ -399,7 +399,19 @@ para la API del APK.
   cuenta. La barra muestra avatar/nombre o "Iniciar sesión"
   (`ui.chip_sesion`). **Sin `GOOGLE_WEB_CLIENT_ID` la web sigue en modo
   invitado** (nombre + correo) para no romper antes de crear el client id.
-  Test `test_reservar_exige_login_con_google_como_el_app`.
+  Test `test_reservar_exige_login_con_google_como_el_app`. **ACCESO DE
+  REVISIÓN con usuario y contraseña (Culqi, 24-sep-2026: "no se logró
+  validar el proceso de compra debido a que se requiere iniciar sesión…
+  proporcionar un usuario y contraseña de prueba"):** env
+  `WEB_USUARIOS_PRUEBA` = "correo:clave,…" (por ambiente). Con ella,
+  `sesion.boton_google(volver=)` añade bajo el botón de Google el enlace
+  "Acceso de revisión con usuario y contraseña" → `/entrar?volver=…#revision`
+  (ficha de reserva y de academia) y `/entrar` muestra el formulario;
+  `POST /web/sesion/prueba {usuario, clave}` (`sesion.credenciales_prueba_
+  validas`, bloqueo 5 fallos → 5 min por IP real) deja la MISMA cookie
+  firmada que Google (`nombre` "Cuenta de revisión"), así el revisor
+  reserva/paga/ve el comprobante como un cliente. Vacía → la opción no
+  existe. Test `test_acceso_de_revision_con_usuario_y_clave_para_culqi`.
 - **Paleta = la del LOGO oficial (sep-2026):** `ui.py` TOKENS: verde
   `#0B8A3E` (CTA), verde oscuro `#067A38`, lima `#7CB518`, naranja `#F28C28`
   (corazón de favorito), azul noche `#0A1B3D` (texto), fondo blanco `#FFFFFF`. El

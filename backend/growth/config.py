@@ -199,6 +199,13 @@ GOOGLE_WEB_CLIENT_ID = os.getenv("GOOGLE_WEB_CLIENT_ID", "").strip()
 # Secreto del MISMO cliente OAuth "Aplicación web": lo usa la torre para conectar
 # Google Fotos (Picker API) con refresh token. Sin él, la sección explica qué falta.
 GOOGLE_WEB_CLIENT_SECRET = os.getenv("GOOGLE_WEB_CLIENT_SECRET", "").strip()
+# ACCESO DE REVISIÓN para la web pública (Culqi, INDECOPI, auditores): pares
+# "correo:clave" separados por coma. Con esto configurado, /entrar y las cajas
+# "Inicia sesión con Google" ofrecen también "Acceso de revisión" con usuario y
+# contraseña, que abre la MISMA sesión firmada que Google (el revisor reserva y
+# paga como cualquier cliente). Vacío = no existe la opción. Cada ambiente pone
+# los suyos; nunca reutilizar la clave de un operador de la torre.
+WEB_USUARIOS_PRUEBA = os.getenv("WEB_USUARIOS_PRUEBA", "").strip()
 
 # Huella SHA-256 del certificado de firma del APK (para verificar los Android
 # App Links en /.well-known/assetlinks.json). Sacarla con:
