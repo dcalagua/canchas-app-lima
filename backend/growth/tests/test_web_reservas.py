@@ -865,8 +865,8 @@ def test_modo_anfitrion_en_la_web_como_airbnb(db, monkeypatch):
     assert "Cambiar a modo jugador" in menu
     html = cli.get("/anfitrion/mis-canchas").text
     assert "todavía no tienes canchas registradas" in html and "href='/anfitrion/nueva'" in html
-    aca = cli.get("/anfitrion/campeonatos").text  # campeonatos y verificador siguen en la app; academia y tienda ya son web
-    assert "Mis campeonatos está en la app" in aca and "Abrir en la app" in aca
+    aca = cli.get("/anfitrion/verificador").text  # solo el verificador sigue en la app; canchas, academia, tienda y campeonatos ya son web
+    assert "Verificador está en la app" in aca and "Abrir en la app" in aca
     assert cli.get("/anfitrion/nada").status_code == 404
     # Una reserva web pagada en la cancha del dueño.
     f = _manana()

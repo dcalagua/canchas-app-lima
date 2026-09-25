@@ -926,3 +926,110 @@ def academia_existe(academia_id: str) -> bool:
             return cur.fetchone() is not None
     except Exception:  # noqa: BLE001
         return False
+
+
+# ── Campeonatos (`pichangol_campeonatos`: una fila = un campeonato, `data` = `Campeonato.toJson`) ──
+def campeonatos_de_dueno(email: str) -> list[dict]:
+    """`misCampeonatosOrganizados`: los que organiza este correo, el más nuevo primero (id descendente, como el app)."""
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not email:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, academia_id, data FROM pichangol_campeonatos WHERE lower(dueno) = %s "
+                        "AND coalesce(eliminado,false) = false ORDER BY id DESC", (email,))
+            out = []
+            for cid, aid, data in cur.fetchall():
+                d = _json_dict(data)
+                d["id"] = cid
+                d.setdefault("academiaId", aid or "")
+                out.append(d)
+            return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def campeonato(campeonato_id: str) -> dict | None:
+    if not pg.habilitado or not campeonato_id:
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, academia_id, dueno, data FROM pichangol_campeonatos WHERE id = %s AND coalesce(eliminado,false) = false", (campeonato_id,))
+            f = cur.fetchone()
+            if not f:
+                return None
+            d = _json_dict(f[3])
+            d["id"] = f[0]
+            d.setdefault("academiaId", f[1] or "")
+            d.setdefault("dueno", f[2] or "")
+            return d
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def campeonato_existe(campeonato_id: str) -> bool:
+    if not pg.habilitado or not campeonato_id:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM pichangol_campeonatos WHERE id = %s", (campeonato_id,))
+            return cur.fetchone() is not None
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def guardar_campeonato(campeonato_id: str, dueno: str, data: dict) -> bool:
+    """UPSERT como `CampeonatosRepo.guardar` (id, academia_id, dueno, data,
+    eliminado=false) + `updated_at=now()` (el app no lo refresca y
+    `buscarPorNombre` ordena por él). Un id a nombre de OTRO correo no se toca."""
+    dueno = (dueno or "").strip().lower()
+    if not pg.habilitado or not campeonato_id or not dueno:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO pichangol_campeonatos (id, academia_id, dueno, data, eliminado, updated_at) VALUES (%s, %s, %s, %s::jsonb, false, now()) "
+                "ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, academia_id = EXCLUDED.academia_id, eliminado = false, updated_at = now() "
+                "WHERE lower(pichangol_campeonatos.dueno) = %s", (campeonato_id, str(data.get("academiaId") or ""), dueno, json.dumps(data), dueno))
+            n = cur.rowcount
+            conn.commit()
+            return n == 1
+    except Exception as e:  # noqa: BLE001
+        print(f"[campeonato-web] no se pudo guardar {campeonato_id}: {e}", flush=True)
+        return False
+
+
+def eliminar_campeonato(campeonato_id: str, dueno: str) -> bool:
+    """Borrado lógico (`eliminado=true`), como el app."""
+    dueno = (dueno or "").strip().lower()
+    if not pg.habilitado or not campeonato_id or not dueno:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE pichangol_campeonatos SET eliminado = true, updated_at = now() WHERE id = %s AND lower(dueno) = %s", (campeonato_id, dueno))
+            n = cur.rowcount
+            conn.commit()
+            return n == 1
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def canchas_para_sede() -> list[dict]:
+    """`todasLasCanchas()` del selector de sede del app: nombre, dirección y
+    punto de TODAS las canchas registradas (no eliminadas), únicas por nombre."""
+    if not pg.habilitado:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT nombre, club, direccion, lat, lng FROM pichangol_canchas WHERE coalesce(eliminada,false) = false ORDER BY nombre")
+            out, vistos = [], set()
+            for nombre, club, direccion, lat, lng in cur.fetchall():
+                n = str(nombre or club or "").strip()
+                if not n or n.lower() in vistos:
+                    continue
+                vistos.add(n.lower())
+                out.append({"nombre": n, "club": str(club or ""), "direccion": str(direccion or ""),
+                            "lat": float(lat) if lat is not None else None, "lng": float(lng) if lng is not None else None})
+            return out
+    except Exception:  # noqa: BLE001
+        return []

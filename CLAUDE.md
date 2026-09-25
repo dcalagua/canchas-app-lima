@@ -850,6 +850,49 @@ para la API del APK.
   (apoderado, WhatsApp, cuotas pagadas, deuda, estado); los COBROS siguen en
   la app. Catálogos espejo en `web/catalogos.py`. Tests
   `test_mi_tienda_en_la_web_como_el_app`, `test_mi_academia_en_la_web_como_el_app`.
+- **MIS CAMPEONATOS EN LA WEB (25-sep-2026, pedido del director: "el mismo
+  flujo y funcionamiento que ya existe en el app, tal cual"):**
+  `web/anfitrion_campeonatos.py` (router incluido en `main.py` antes del
+  comodín `/anfitrion/{modulo}`; en `MENU` "campeonatos" pasa a `True`) +
+  `web/campeonatos_logica.py` = port en Python de `TorneoFixture` y los
+  getters de `Campeonato` (llave con byes y `recomputar_llave` que propaga
+  ganadores, liga round-robin por jornadas, `tabla` reusa
+  `marketing.campeonato_web._tabla`, natación `ranking_prueba`/`parse_tiempo`/
+  `fmt_tiempo`, `estado` = pill `_EstadoCampeonato`, `importar_al_ranking`).
+  Misma fila `pichangol_campeonatos` (`data` jsonb = `Campeonato.toJson`;
+  `datos.campeonatos_de_dueno/campeonato/campeonato_existe/
+  guardar_campeonato/eliminar_campeonato/canchas_para_sede`) y mismo bucket
+  `canchas/campeonatos/<id>.jpg | _ausp_<ms> | _foto_<ms> | _fondo_<ms>`.
+  Páginas: `GET /anfitrion/campeonatos` (lista con pill de estado; candado
+  Pro = `stores.pro_activo` → modal "Es Pichangol Pro" como el app, `/nuevo`
+  redirige sin Pro), `/nuevo` y `/{id}/editar` = asistente de 3 pasos de
+  `CrearCampeonatoScreen` (logo, nombre, deporte con chips —bloqueado al
+  editar—; formato por deporte —bloqueado si ya hay fixture—, mínimo de
+  jugadores por equipo solo fútbol, categoría del catálogo + "otra"; fechas
+  desde/hasta o relámpago, cierre de inscripciones, sede = cancha de
+  Pichangol o Google Maps (`/web/lugares`) con mapa Leaflet, costo con la
+  MONEDA de la sede, exigir DNI/CI/cédula + edades, auspiciador, premios),
+  `POST /anfitrion/campeonatos/guardar` (`_validar` = solo exige nombre,
+  como el app; `codigo` de 6, moneda por `paises.pais_de_coordenadas`,
+  `fechas` con `fmt_rango`, edades solo con `exigeDni`). Detalle
+  `/{id}` = `CampeonatoDetalleScreen` del organizador: Invitar (código
+  para copiar, WhatsApp con `_publicidad`/`_resumen`, Copiar enlace, Ver
+  afiche `/c/{id}/afiche.png`, Cambiar fondo (subir o arte IA por
+  variante/tema), Página pública `/c/{id}`), auspiciadores, participantes
+  (agregar/quitar; equipos con plantel), Generar/Regenerar fixture, llave o
+  tabla+jornadas con modal de resultado (empate rechazado en llave),
+  natación (pruebas del catálogo distancia×estilo, tiempos mm:ss.cc con
+  serie/carril/DSQ, ranking 🥇🥈🥉), galería, Sumar al ranking de la
+  academia, Duplicar (nueva edición, Pro), Eliminar. Endpoints JSON bajo
+  `/anfitrion/campeonatos/{id}/…` (`foto?tipo=`, `imagen/quitar`, `afiche`,
+  `participante[/{pid}/eliminar]`, `fixture`, `resultado`, `prueba[/{pid}/
+  eliminar]`, `marca`, `ranking`, `duplicar`, `eliminar`); todos exigen
+  sesión y que el campeonato sea del correo (404 si no). La INSCRIPCIÓN del
+  jugador (con pago desde su saldo) sigue en el app. **Trampa CSS:** el
+  shell global tiene `.paso span{…círculo azul}` (pasos numerados de la
+  reserva): el asistente usa la clase `.wz-p`, NO `.paso`; y `input` es
+  `width:100%` global → radios/checkbox con `width:auto;flex:none`. Tests
+  `tests/test_web_campeonatos.py`.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en

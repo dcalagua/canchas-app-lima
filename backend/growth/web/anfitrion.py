@@ -44,7 +44,7 @@ SECCIONES = [("hoy", "Hoy", "/anfitrion/mis-canchas", "📅"), ("calendario", "C
 MENU = [
     ("mis-canchas", "Mis canchas", "Registra y administra: canchas, agenda, reservas, cuenta", "#0B7A55", "🏬", "/anfitrion/mis-canchas", True),
     ("academia", "Mi academia", "Soy profe: alumnos, cuotas y cobros", "#E07A3F", "📣", "/anfitrion/academia", True),
-    ("campeonatos", "Mis campeonatos", "Organiza torneos (fútbol, tenis…), invita y sortea", "#D4B048", "🏆", "/anfitrion/campeonatos", False),
+    ("campeonatos", "Mis campeonatos", "Organiza torneos (fútbol, tenis…), invita y sortea", "#D4B048", "🏆", "/anfitrion/campeonatos", True),
     ("tienda", "Mi tienda", "Vende en el Marketplace Pichangol: raquetas, pelotas y más", "#7B61FF", "🏪", "/anfitrion/tienda", True),
     ("verificador", "Verificador", "Rol de campo: visitas con foto, GPS y firma", "#0E8F67", "🛡️", "/anfitrion/verificador", False),
 ]
