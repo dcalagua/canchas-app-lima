@@ -84,8 +84,8 @@ def _ventas_de(email: str) -> list:
 
 _JS_TIENDA = r"""
 document.addEventListener('click',async function(ev){
-  var a=ev.target.closest('[data-activo]');if(a){a.disabled=true;try{var j=await (await fetch('/anfitrion/tienda/'+encodeURIComponent(a.dataset.activo)+'/activo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({activo:a.dataset.v==='1'})})).json();if(j.ok){pcgToast(a.dataset.v==='1'?'▶ Producto publicado':'⏸ Producto pausado');location.reload();return}pcgToast(j.error||'No se pudo guardar.')}catch(e){pcgToast('No se pudo guardar.')}a.disabled=false;return}
-  var d=ev.target.closest('[data-eliminar]');if(d){if(!confirm('¿Eliminar este producto? También se borra su foto.'))return;d.disabled=true;try{var j=await (await fetch('/anfitrion/tienda/'+encodeURIComponent(d.dataset.eliminar)+'/eliminar',{method:'POST'})).json();if(j.ok){pcgToast('🗑 Producto eliminado');location.reload();return}pcgToast(j.error||'No se pudo eliminar.')}catch(e){pcgToast('No se pudo eliminar.')}d.disabled=false}
+  var a=ev.target.closest('[data-activo]');if(a){a.disabled=true;try{var j=await (await fetch('/anfitrion/tienda/'+encodeURIComponent(a.dataset.activo)+'/activo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({activo:a.dataset.v==='1'})})).json();if(j.ok){pcgRecargar(a.dataset.v==='1'?'Publicando…':'Pausando…');return}pcgToast(j.error||'No se pudo guardar.')}catch(e){pcgToast('No se pudo guardar.')}a.disabled=false;return}
+  var d=ev.target.closest('[data-eliminar]');if(d){if(!await pcgConfirmar({titulo:'Eliminar producto',mensaje:'Se quita del Marketplace y se borra su foto.',confirmar:'Eliminar',destructivo:true}))return;d.disabled=true;pcgCargando('Eliminando…');try{var j=await (await fetch('/anfitrion/tienda/'+encodeURIComponent(d.dataset.eliminar)+'/eliminar',{method:'POST'})).json();if(j.ok){pcgRecargar();return}pcgCargando(false);pcgToast(j.error||'No se pudo eliminar.')}catch(e){pcgCargando(false);pcgToast('No se pudo eliminar.')}d.disabled=false}
 });
 """
 

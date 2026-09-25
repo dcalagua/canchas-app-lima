@@ -1866,6 +1866,22 @@ no inventar layouts propios. Rasgos Airbnb:
   menos fricción de tipeo. Texto libre SOLO donde es inevitable por naturaleza:
   nombre propio, celular, búsquedas, mensajes de chat y montos. Si un feature
   "necesita" un campo libre, proponer primero la versión con opciones.
+- **Popups en la WEB (regla del director, 25-sep-2026: "evitemos este tipo de
+  mensajes popup y usemos siempre modales, y también un preload en caso haya
+  demora"):** PROHIBIDO `confirm()`/`alert()`/`prompt()` del navegador en
+  toda la web. `ui.JS_NAV` (va en todas las páginas del `shell`) expone
+  `pcgConfirmar({titulo, mensaje, confirmar, cancelar, destructivo, icono})`
+  → `Promise<bool>` y `pcgAvisar({...})` (mismo formato que
+  `dialogo_pichangol.dart`: tarjeta blanca radio 24, ícono en burbuja,
+  primario esmeralda o rojo si `destructivo`, secundario de texto; Esc y clic
+  fuera = cancelar). **Preloader:** `pcgCargando('Guardando…')` muestra el
+  velo con spinner (tarjeta blanca), `pcgCargando(false)` lo quita,
+  `{demora: 300}` lo muestra solo si la respuesta tarda; `pcgRecargar(msg)`
+  y `pcgIr(url, msg)` dejan el velo puesto mientras el navegador navega
+  (así no se ve la página vieja tras guardar). Los `post()` de Mis
+  campeonatos ya lo llevan; en el resto de anfitrión se usa en eliminar /
+  quitar / publicar. `pcgToast` tiene fallback global ahí mismo. Test
+  Playwright: `page.on('dialog')` debe quedar en cero.
 - **Popups: UN SOLO formato (REGLA de todo el app).** Todo diálogo de
   confirmación/aviso usa `widgets/dialogo_pichangol.dart`: `confirmarPichangol(
   context, titulo:, mensaje:, textoConfirmar:, destructivo:, icono:)` (devuelve

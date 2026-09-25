@@ -410,8 +410,8 @@ $('calSi').addEventListener('click',async function(){if(!cel)return;var b=this;b
     else j=await post('/anfitrion/reserva-manual',{cancha_id:CAL.cancha,fecha:cel.dataset.b,hora:cel.dataset.h,nombre:$('mNom').value,telefono:$('mTel').value,email:$('mEm').value,precio:parseFloat($('mPre').value),pagado:$('mPag').checked});
     if(j.ok){location.reload();return} err(j.mensaje||j.error||'No se pudo guardar.')}
   catch(e){err('No se pudo guardar. Revisa tu conexión.')} b.disabled=false});
-document.addEventListener('click',async function(ev){var q=ev.target.closest('#rQuitar');if(!q||!cel)return;if(!confirm('¿Quitar esta reserva manual? El turno vuelve a quedar libre.'))return;q.disabled=true;
-  try{var j=await post('/anfitrion/reserva/'+encodeURIComponent(cel.dataset.rid)+'/quitar',{});if(j.ok){location.reload();return}err(j.error||'No se pudo quitar.')}catch(e){err('No se pudo quitar.')}q.disabled=false});
+document.addEventListener('click',async function(ev){var q=ev.target.closest('#rQuitar');if(!q||!cel)return;if(!await pcgConfirmar({titulo:'Quitar reserva manual',mensaje:'El turno vuelve a quedar libre en tu calendario.',confirmar:'Quitar',destructivo:true}))return;q.disabled=true;pcgCargando('Quitando la reserva…');
+  try{var j=await post('/anfitrion/reserva/'+encodeURIComponent(cel.dataset.rid)+'/quitar',{});if(j.ok){pcgRecargar();return}pcgCargando(false);err(j.error||'No se pudo quitar.')}catch(e){pcgCargando(false);err('No se pudo quitar.')}q.disabled=false});
 })();
 """ + JS_PAGAR
 
