@@ -59,7 +59,7 @@ def _mio(email: str, cid: str) -> dict | None:
 
 
 def _base_url() -> str:
-    return (config.LANDING_BASE_URL or config.PUBLIC_BASE_URL or "").rstrip("/")
+    return config.url_limpia(config.LANDING_BASE_URL or config.PUBLIC_BASE_URL)
 
 
 def _enlace(c: dict) -> str:

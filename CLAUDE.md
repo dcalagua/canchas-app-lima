@@ -1613,6 +1613,15 @@ off → redeploy inmediato en cada push). URL pública:
   > `GET /reclamo/{cancha_id}` (estado), `/lugar-reclamado`, `/otp/*`,
   > `/reclamo/validar` (validador, protegido por código+GPS). Aprobación por
   > WhatsApp usa `aprobar_por_codigo` (firma Twilio), no el endpoint HTTP.
+- **ESPACIOS EN `LANDING_BASE_URL`/`PUBLIC_BASE_URL` (caso real QAS,
+  25-sep-2026: "Ver afiche" llevaba a `https://www.pichangol.app%20/c/…`,
+  ERR_NAME_NOT_RESOLVED):** la variable de Railway QAS tenía el dominio de PRD
+  con un espacio al final. Ahora `config.url_limpia()` normaliza ambas al
+  leerlas (sin espacios ni barra final, en cualquier orden) y
+  `anfitrion_campeonatos._base_url()` / `marketing.router._base_landing`
+  la usan; QAS quedó con `LANDING_BASE_URL=https://pg.ebim.pe` (como manda
+  la estrategia de ambientes). Test
+  `test_enlaces_publicos_sin_espacios_aunque_la_variable_los_traiga`.
 - **`PUBLIC_BASE_URL` por ambiente (trampa resuelta sep-2026):** es la base
   de TODAS las URLs que el backend le entrega a terceros para volver (retorno
   y cancelación de PayPhone, callback de Libélula, página puente `/pagos/ec/ir`,

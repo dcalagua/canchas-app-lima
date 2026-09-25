@@ -303,3 +303,29 @@ def test_grupos_garantiza_minimo_de_partidos_y_llave_cruzada(db, monkeypatch):
     html = campeonato_web.html_campeonato(c, c["id"])
     assert "Grupo A" in html and "Fase final" in html and "Grupos + eliminatoria" in html
     stores.membresias_pro.pop("orga@gmail.com", None)
+
+
+def test_enlaces_publicos_sin_espacios_aunque_la_variable_los_traiga(db, monkeypatch):
+    """Caso real en QAS (25-sep-2026): `LANDING_BASE_URL` quedó en Railway con un
+    espacio al final y "Ver afiche" llevaba a `https://dominio%20/c/<id>/afiche.png`
+    (ERR_NAME_NOT_RESOLVED). La base se normaliza al leer el entorno y, por si
+    alguien la monkeypatchea sucia, también al armar cada enlace."""
+    monkeypatch.setenv("LANDING_BASE_URL", " https://pg.test / ")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://api.test/ ")
+    assert config._url_env("LANDING_BASE_URL") == "https://pg.test"
+    assert config._url_env("PUBLIC_BASE_URL") == "https://api.test"
+    assert config._url_env("NO_EXISTE_ESTA_VARIABLE") == ""
+
+    cli = TestClient(app, base_url="https://testserver")
+    fake = _preparar(monkeypatch)
+    monkeypatch.setattr(config, "LANDING_BASE_URL", "https://pg.test ")
+    _entrar_como(cli, monkeypatch, "orga@gmail.com", "Orga")
+    cid = L.nuevo_id()
+    fake.rows[cid] = {"id": cid, "dueno": "orga@gmail.com", "nombre": "Beata 2026", "deporte": "futbol", "formato": "eliminacion", "participantes": [], "partidos": [],
+                      "inscripcionAbierta": True, "codigo": "ABC123", "fechas": "", "costoInscripcion": 0}
+    r = cli.get(f"/anfitrion/campeonatos/{cid}")
+    assert r.status_code == 200
+    assert f"https://pg.test/c/{cid}/afiche.png" in r.text
+    assert f"https://pg.test/c/{cid}" in r.text
+    # Ni con espacio literal ni codificado (así salía en QAS: `pichangol.app%20/c/...`).
+    assert "pg.test /" not in r.text and "pg.test%20" not in r.text and "pg.test%20/" not in r.text

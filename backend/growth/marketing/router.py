@@ -408,7 +408,7 @@ def _base_landing(request: Request) -> str:
     """Base de MARCA para la URL canónica de la landing: LANDING_BASE_URL si está
     seteado, si no PUBLIC_BASE_URL, y como último recurso el host de la request."""
     if config.LANDING_BASE_URL:
-        return config.LANDING_BASE_URL.rstrip("/")
+        return config.url_limpia(config.LANDING_BASE_URL)
     if config.PUBLIC_BASE_URL:
         return config.PUBLIC_BASE_URL.rstrip("/")
     return str(request.base_url).rstrip("/")
