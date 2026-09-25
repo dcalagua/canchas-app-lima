@@ -1130,6 +1130,17 @@ off → redeploy inmediato en cada push). URL pública:
     página oficial de Facebook). Solo backend/web. En PRD cada operador
     enrola su app autenticadora en su primer ingreso (secreto propio de PRD,
     distinto al de QAS). Emergencia: `ADMIN_2FA=0` en `pg-backend-prd`.
+    **Pase del 25-sep-2026 (autorizado: "Pasar a prd"):** `prd` = merge
+    `6fa2b83` (Mis campeonatos web, formato "Grupos + eliminatoria",
+    persistencia fuera de la request, modales + preloader, acceso de
+    revisión para Culqi, enlaces sin espacios). Sin SQL ni Edge. CAMBIÓ
+    `lib/` → APK/AAB de PRD por `workflow_dispatch` (`ref=prd`,
+    `entorno=prod`). Variables en `pg-backend-prd`: `WEB_USUARIOS_PRUEBA`
+    como REFERENCIA a QAS (`${{pg-backend.WEB_USUARIOS_PRUEBA}}`; retirarla
+    cuando Culqi termine la revisión), `LANDING_BASE_URL` y
+    `PUBLIC_BASE_URL` reescritas limpias a `https://www.pichangol.app`.
+    OJO: un APK anterior a este pase pierde `fase/grupo` al guardar un
+    campeonato de grupos → actualizar el APK antes de usar ese formato.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
