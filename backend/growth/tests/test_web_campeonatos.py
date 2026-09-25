@@ -233,3 +233,73 @@ def test_campeonatos_web_candado_pro_como_el_app(db, monkeypatch):
     assert cli.get(f"/anfitrion/campeonatos/{cid}").status_code == 200
     assert cli.post(f"/anfitrion/campeonatos/{cid}/participante", json={"nombre": "Ana"}).status_code == 200
     assert cli.post(f"/anfitrion/campeonatos/{cid}/duplicar").status_code == 402
+
+
+def test_grupos_garantiza_minimo_de_partidos_y_llave_cruzada(db, monkeypatch):
+    """Formato "Grupos + eliminatoria" (pedido del director, 25-sep-2026: "quiero
+    asegurar que al menos cada equipo juegue 2 partidos a más"): fase de grupos
+    con tamaño mínimo minPartidos+1 y luego llave con los 2 primeros de cada grupo."""
+    # Garantía pura: para cualquier cantidad razonable de equipos, cada uno juega ≥ mínimo.
+    for minp in (2, 3):
+        for n in range(minp + 1, 41):  # con menos de minp+1 equipos no hay cómo garantizarlo (se juega solo la final)
+            ps = [{"id": f"p{i}", "nombre": f"E{i}"} for i in range(n)]
+            c = {"formato": "grupos", "minPartidos": minp, "participantes": ps, "partidos": []}
+            c["partidos"] = L.generar_fixture(c)
+            tams = L.armar_grupos(n, minp)
+            assert sum(tams) == n and max(tams) - min(tams) <= 1 and min(tams) >= minp + 1, (n, minp, tams)
+            assert min(L.partidos_de(c, p["id"]) for p in ps) >= minp, (n, minp)
+            assert len([m for m in L.partidos_llave(c) if int(m["ronda"]) == 0]) * 2 >= 2 * len(tams)
+    assert L.armar_grupos(8, 2) == [4, 4] and L.armar_grupos(6, 2) == [3, 3] and L.armar_grupos(12, 2) == [4, 4, 4] and L.armar_grupos(2, 2) == []
+
+    cli = TestClient(app, base_url="https://testserver")
+    fake = _preparar(monkeypatch)
+    _entrar_como(cli, monkeypatch, "orga@gmail.com", "Orga")
+    r = cli.get("/anfitrion/campeonatos/nuevo")
+    assert "Grupos + eliminatoria" in r.text and "minPartBox" in r.text and "Al menos 2" in r.text
+    cid = L.nuevo_id()
+    r = cli.post("/anfitrion/campeonatos/guardar", json={"id": cid, "nombre": "Copa Grupos", "deporte": "futbol", "formato": "grupos", "minPartidos": 2})
+    assert r.status_code == 200, r.text
+    assert fake.rows[cid]["formato"] == "grupos" and fake.rows[cid]["minPartidos"] == 2
+    ids = [cli.post(f"/anfitrion/campeonatos/{cid}/participante", json={"nombre": n}).json()["id"]
+           for n in ("Tigres", "Leones", "Pumas", "Lobos", "Osos", "Halcones", "Toros", "Zorros")]
+    assert cli.post(f"/anfitrion/campeonatos/{cid}/fixture").json()["ok"]
+    c = fake.rows[cid]
+    assert L.grupos_de(c) == ["A", "B"] and len(L.partidos_grupo(c)) == 12 and len(L.partidos_llave(c)) == 3
+    det = cli.get(f"/anfitrion/campeonatos/{cid}").text
+    assert "Grupo A" in det and "Grupo B" in det and "Fase final" in det and "Grupos y fase final" in det
+    assert "cada equipo juega al menos 2 partidos" in det and "2 grupos de 4/4" in det
+    assert "Los cruces se definen solos" in det
+    # Empate PERMITIDO en fase de grupos; los cruces de la llave siguen sin definir.
+    g = L.partidos_grupo(c)
+    r = cli.post(f"/anfitrion/campeonatos/{cid}/resultado", json={"partido": g[0]["id"], "a": 1, "b": 1})
+    assert r.status_code == 200, r.text
+    assert all(m.get("aId") is None for m in L.partidos_llave(fake.rows[cid]))
+    # El resto: gana el de menor índice → 1.º y 2.º claros en cada grupo.
+    for m in L.partidos_grupo(fake.rows[cid]):
+        if L.jugado(m):
+            continue
+        ia, ib = ids.index(m["aId"]), ids.index(m["bId"])
+        assert cli.post(f"/anfitrion/campeonatos/{cid}/resultado", json={"partido": m["id"], "a": 3 if ia < ib else 0, "b": 0 if ia < ib else 3}).status_code == 200
+    c = fake.rows[cid]
+    assert L.grupos_completos(c)
+    semis = [m for m in L.partidos_llave(c) if int(m["ronda"]) == 0]
+    # Siembra cruzada: 1.º de un grupo contra 2.º del otro, nunca dos del mismo grupo.
+    grupo_de = {m[k]: m["grupo"] for m in L.partidos_grupo(c) for k in ("aId", "bId")}
+    assert all(m["aId"] and m["bId"] and grupo_de[m["aId"]] != grupo_de[m["bId"]] for m in semis)
+    # Empate RECHAZADO en la llave; ganador avanza a la final.
+    assert cli.post(f"/anfitrion/campeonatos/{cid}/resultado", json={"partido": semis[0]["id"], "a": 2, "b": 2}).status_code == 400
+    for m in semis:
+        assert cli.post(f"/anfitrion/campeonatos/{cid}/resultado", json={"partido": m["id"], "a": 2, "b": 0}).status_code == 200
+    c = fake.rows[cid]
+    final = [m for m in L.partidos_llave(c) if int(m["ronda"]) == 1][0]
+    assert final["aId"] == semis[0]["aId"] and final["bId"] == semis[1]["aId"] and not L.terminado(c)
+    assert cli.post(f"/anfitrion/campeonatos/{cid}/resultado", json={"partido": final["id"], "a": 1, "b": 0}).status_code == 200
+    c = fake.rows[cid]
+    assert L.terminado(c) and L.campeon_y_subcampeon(c) == (final["aId"], final["bId"])
+    det = cli.get(f"/anfitrion/campeonatos/{cid}").text
+    assert "TORNEO FINALIZADO" in det and "🥇 " in det
+    # Página pública (la misma que abre el app) muestra grupos y fase final.
+    from marketing import campeonato_web
+    html = campeonato_web.html_campeonato(c, c["id"])
+    assert "Grupo A" in html and "Fase final" in html and "Grupos + eliminatoria" in html
+    stores.membresias_pro.pop("orga@gmail.com", None)

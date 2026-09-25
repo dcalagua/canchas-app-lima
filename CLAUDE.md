@@ -893,6 +893,31 @@ para la API del APK.
   reserva): el asistente usa la clase `.wz-p`, NO `.paso`; y `input` es
   `width:100%` global → radios/checkbox con `width:auto;flex:none`. Tests
   `tests/test_web_campeonatos.py`.
+- **FORMATO "GRUPOS + ELIMINATORIA" (pedido del director, 25-sep-2026:
+  "quiero asegurar que al menos cada equipo juegue 2 partidos a más"):**
+  `FormatoTorneo.grupos` en app y web (JSON `formato: "grupos"`,
+  `minPartidos: 2|3`). Fase de GRUPOS (todos contra todos dentro del
+  grupo) + LLAVE con los 2 primeros de cada grupo. `armar_grupos(n, min)` =
+  `TorneoFixture.armarGrupos` (ESPEJO exacto, no cambiar uno solo): tamaño
+  mínimo de grupo `min+1`, prefiere grupos de 4 cuando `min=2`, reparto
+  parejo (±1); n=6 → 3/3, 8 → 4/4, 12 → 4/4/4, 9 → 5/4; con menos de
+  `min+1` equipos devuelve [] y se juega solo la final. Partidos de grupo:
+  `{id: gA_j0_0, fase: 'grupo', grupo: 'A', ronda: jornada}`; llave:
+  `{id: k0_0, fase: 'llave', ronda}` (esqueleto potencia de 2 con byes).
+  `recomputar_grupos` / `recomputarGrupos`: al completarse la fase de grupos
+  siembra la ronda 0 con la siembra estándar [1,8,4,5,2,7,3,6] (mejores
+  primeros con bye; cruce 1A-2B / 1B-2A, evita rematch de grupo), SOLO
+  mientras ningún partido de llave tenga resultado; luego `recomputar_llave`
+  propaga. Empate permitido en grupos, rechazado en llave
+  (`es_partido_llave`). `terminado`/campeón usan `partidos_llave`. Web:
+  chips "Al menos 2 / 3" en el paso 2 (`#minPartBox`), detalle con tabla +
+  jornadas por grupo y "Fase final", chip "🧩 Grupos + llave · N grupos de
+  4/4"; página pública `_render_grupos`; afiche "GRUPOS + LLAVE". App:
+  `PartidoTorneo.fase/grupo` (se conservan en `toJson`: un APK viejo que
+  guarde un campeonato de grupos LOS PIERDE → actualizar el APK antes de
+  usarlo), `Campeonato.minPartidos`, widget `_Grupos`, `_Liga`/`_Llave` con
+  subconjunto. Test `test_grupos_garantiza_minimo_de_partidos_y_llave_cruzada`
+  (garantía para n = min+1 … 40).
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en

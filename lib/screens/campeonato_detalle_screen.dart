@@ -199,12 +199,16 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                 Text(
                     c.formato == FormatoTorneo.liga
                         ? 'Tabla y partidos'
-                        : 'Llave',
+                        : c.esGrupos
+                            ? 'Grupos y fase final'
+                            : 'Llave',
                     style: const TextStyle(
                         fontWeight: FontWeight.w800, fontSize: 17)),
                 const SizedBox(height: 8),
                 if (c.formato == FormatoTorneo.liga)
                   _Liga(campeonato: c, esDueno: esDueno)
+                else if (c.esGrupos)
+                  _Grupos(campeonato: c, esDueno: esDueno)
                 else
                   _Llave(campeonato: c, esDueno: esDueno),
                 // "Ver ranking" solo para deportes CON circuito (tenis/pádel/
@@ -1150,6 +1154,22 @@ class CampeonatoDetalleScreen extends StatelessWidget {
             '(${f.g}G ${f.e}E ${f.p}P, dif ${f.dif >= 0 ? '+' : ''}${f.dif})');
         pos++;
       }
+    } else if (c.esGrupos) {
+      for (final letra in c.grupos) {
+        sb.writeln('GRUPO $letra:');
+        var pos = 1;
+        for (final f in TorneoFixture.tablaGrupo(c, letra)) {
+          sb.writeln('$pos. ${f.nombre} — ${f.pts} pts');
+          pos++;
+        }
+      }
+      final jugados = c.partidosLlave.where((p) => p.jugado).toList();
+      if (jugados.isNotEmpty) sb.writeln('FASE FINAL:');
+      for (final m in jugados) {
+        final a = c.participante(m.aId)?.nombre ?? '—';
+        final b = c.participante(m.bId)?.nombre ?? '—';
+        sb.writeln('$a ${m.marcadorA}-${m.marcadorB} $b');
+      }
     } else {
       sb.writeln('RESULTADOS:');
       final jugados = c.partidos.where((p) => p.jugado).toList();
@@ -1744,17 +1764,73 @@ class _FilaMarcador extends StatelessWidget {
   }
 }
 
-class _Liga extends StatelessWidget {
-  const _Liga({required this.campeonato, required this.esDueno});
+/// Formato GRUPOS: tabla + jornadas de cada grupo y, debajo, la llave de la
+/// fase final (se siembra sola al terminar todos los partidos de grupo).
+class _Grupos extends StatelessWidget {
+  const _Grupos({required this.campeonato, required this.esDueno});
   final Campeonato campeonato;
   final bool esDueno;
   @override
   Widget build(BuildContext context) {
+    final c = campeonato;
+    final tams = TorneoFixture.armarGrupos(c.participantes.length, c.minPartidos);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+              'Cada equipo juega al menos ${c.minPartidos} partidos'
+              '${tams.isEmpty ? '' : ' · ${tams.length} grupo${tams.length == 1 ? '' : 's'} de ${tams.join('/')}'}'
+              ' · clasifican los 2 primeros de cada grupo.',
+              style: const TextStyle(color: textoTenue, fontSize: 12)),
+        ),
+        for (final letra in c.grupos) ...[
+          Text('Grupo $letra',
+              style:
+                  const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(height: 6),
+          _Liga(
+              campeonato: c,
+              esDueno: esDueno,
+              tabla: TorneoFixture.tablaGrupo(c, letra),
+              partidos: [for (final m in c.partidosGrupo) if (m.grupo == letra) m]),
+          const SizedBox(height: 8),
+        ],
+        const Text('Fase final',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+        const SizedBox(height: 6),
+        if (!c.gruposCompletos)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 6),
+            child: Text(
+                'Los cruces se definen solos cuando termine la fase de grupos.',
+                style: TextStyle(color: textoTenue, fontSize: 12)),
+          ),
+        _Llave(campeonato: c, esDueno: esDueno, partidos: c.partidosLlave),
+      ],
+    );
+  }
+}
+
+class _Liga extends StatelessWidget {
+  const _Liga(
+      {required this.campeonato,
+      required this.esDueno,
+      this.tabla,
+      this.partidos});
+  final Campeonato campeonato;
+  final bool esDueno;
+  /// Subconjunto (un grupo): tabla y partidos propios. null = todo el torneo.
+  final List<FilaTabla>? tabla;
+  final List<PartidoTorneo>? partidos;
+  @override
+  Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final tabla = TorneoFixture.tabla(campeonato);
+    final tabla = this.tabla ?? TorneoFixture.tabla(campeonato);
     // Partidos agrupados por jornada.
     final porJornada = <int, List<PartidoTorneo>>{};
-    for (final m in campeonato.partidos) {
+    for (final m in partidos ?? campeonato.partidos) {
       (porJornada[m.ronda] ??= []).add(m);
     }
     final jornadas = porJornada.keys.toList()..sort();
@@ -1855,9 +1931,11 @@ class _TablaFila extends StatelessWidget {
 }
 
 class _Llave extends StatelessWidget {
-  const _Llave({required this.campeonato, required this.esDueno});
+  const _Llave({required this.campeonato, required this.esDueno, this.partidos});
   final Campeonato campeonato;
   final bool esDueno;
+  /// Subconjunto (la fase final del formato grupos). null = todos los partidos.
+  final List<PartidoTorneo>? partidos;
 
   static String _nombreRonda(int total, int r) {
     final desdeFinal = total - 1 - r;
@@ -1873,7 +1951,7 @@ class _Llave extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final porRonda = <int, List<PartidoTorneo>>{};
-    for (final m in campeonato.partidos) {
+    for (final m in partidos ?? campeonato.partidos) {
       (porRonda[m.ronda] ??= []).add(m);
     }
     final rondas = porRonda.keys.toList()..sort();

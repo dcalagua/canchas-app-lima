@@ -192,7 +192,7 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
     inicio, hasta = _dia(c.get("inicio")), _dia(c.get("inscripcionHasta"))
     fin = _dia(c.get("_fin")) or inicio
     canchas = datos.canchas_para_sede()[:400]
-    cfg = {"id": c["id"], "nuevo": nuevo, "deporte": dep, "formato": fmt, "fixture": fix, "logo": c.get("logoUrl") or "",
+    cfg = {"id": c["id"], "nuevo": nuevo, "deporte": dep, "formato": fmt, "fixture": fix, "logo": c.get("logoUrl") or "", "minPartidos": L.min_partidos(c),
            "sede": c.get("sede") or "", "lat": c.get("sedeLat"), "lng": c.get("sedeLng"), "iso": iso, "buscar": bool(config.PLACES_API_KEY),
            "storage": almacen.disponible(), "canchas": canchas, "formatos": {d: catalogos.formatos_de(d) for d in catalogos.DEPORTES_CAMPEONATO},
            "defecto": {d: catalogos.formato_por_defecto(d) for d in catalogos.DEPORTES_CAMPEONATO}, "sub": catalogos.FORMATO_SUB,
@@ -218,6 +218,8 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
  <div class='pie'><span></span><button type='button' class='btn' data-ir='2'>Siguiente</button></div></div>
 <div class='wz-p panel' id='p2'><h2>Formato y categoría</h2>
  <label>Formato</label><div id='formatos'></div>{"<p class='sub' style='font-size:12.5px'>El fixture ya fue generado: el formato no se puede cambiar.</p>" if fix else ''}
+ <div id='minPartBox'{'' if fmt == 'grupos' else ' hidden'}><label>Partidos mínimos por equipo</label>{_chips('minp', [(2, 'Al menos 2'), (3, 'Al menos 3')], L.min_partidos(c), disabled=fix)}
+ <p class='sub' style='font-size:12.5px' id='minPartTxt'>Se arman grupos; los 2 primeros de cada grupo pasan a la llave.</p></div>
  <div id='minJugBox'{'' if dep == 'futbol' else ' hidden'}><label for='minJug'>Mínimo de jugadores por equipo <span class='req'>opcional</span></label><input id='minJug' type='number' min='0' max='30' value='{int(c.get('minJugadoresEquipo') or 0) or ''}' placeholder='ej. 7'>
  <p class='sub' style='font-size:12.5px'>Cada equipo aparece "Completo" al llegar a este número. Vacío = solo se muestra el conteo.</p></div>
  <label for='cat'>Categoría <span class='req'>opcional</span></label><select id='cat'>{cat_ops}</select>
@@ -254,10 +256,12 @@ function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 function ir(n){document.querySelectorAll('.wz .wz-p').forEach(function(p){p.classList.remove('on')});$('p'+n).classList.add('on');document.querySelectorAll('.wz-pasos span').forEach(function(s){s.classList.toggle('on',+s.dataset.p<=n)});window.scrollTo({top:0,behavior:'smooth'})}
 document.querySelectorAll('[data-ir]').forEach(function(b){b.addEventListener('click',function(){var n=+this.dataset.ir;if(n===2&&!$('nombre').value.trim()){pcgToast('Ponle nombre al campeonato para continuar.');$('nombre').focus();return}ir(n)})});
 // deporte → formato por defecto (`_formatoDe`) y formatos ofrecidos (`_formatosDe`)
-function pintarFormatos(){var ops=CFG.formatos[dep]||['eliminacion'];if(ops.indexOf(fmt)<0)fmt=CFG.defecto[dep];var lab={eliminacion:'Eliminación (llave)',liga:'Liga (tabla)',tiempos:'Por tiempos (natación)'};
+function pintarFormatos(){var ops=CFG.formatos[dep]||['eliminacion'];if(ops.indexOf(fmt)<0)fmt=CFG.defecto[dep];var lab={eliminacion:'Eliminación (llave)',liga:'Liga (tabla)',grupos:'Grupos + eliminatoria',tiempos:'Por tiempos (natación)'};
   $('formatos').innerHTML=ops.map(function(f){return "<label class='radio"+(f===fmt?' sel':'')+(CFG.fixture?' dis':'')+"'><input type='radio' name='fmt' value='"+f+"'"+(f===fmt?' checked':'')+(CFG.fixture?' disabled':'')+"><span><b>"+lab[f]+"</b><br><small class='sub'>"+esc(CFG.sub[f])+"</small></span></label>"}).join('');
-  $('minJugBox').hidden=dep!=='futbol'}
-document.addEventListener('change',function(ev){if(ev.target.name==='fmt'){fmt=ev.target.value;document.querySelectorAll('.radio').forEach(function(r){r.classList.toggle('sel',r.querySelector('input').checked)})}});
+  $('minJugBox').hidden=dep!=='futbol';pintarMinPart()}
+var minPart=CFG.minPartidos||2;function pintarMinPart(){$('minPartBox').hidden=fmt!=='grupos';$('minPartTxt').textContent='Se arman grupos de '+(minPart+1)+' o más (cada equipo juega al menos '+minPart+' partidos); los 2 primeros de cada grupo pasan a la llave.'}
+document.addEventListener('click',function(ev){var b=ev.target.closest(".chip[data-g='minp']");if(!b||b.disabled)return;b.closest('.chips').querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel')});b.classList.add('sel');minPart=+b.dataset.v;pintarMinPart()});
+document.addEventListener('change',function(ev){if(ev.target.name==='fmt'){fmt=ev.target.value;document.querySelectorAll('.radio').forEach(function(r){r.classList.toggle('sel',r.querySelector('input').checked)});pintarMinPart()}});
 document.addEventListener('click',function(ev){var b=ev.target.closest(".chip[data-g='deporte']");if(!b||b.disabled)return;b.closest('.chips').querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel')});b.classList.add('sel');dep=b.dataset.v;fmt=CFG.defecto[dep];pintarFormatos()});
 pintarFormatos();
 // categoría: del catálogo fija el rango de edad y exige DNI; "otra" = texto
@@ -283,7 +287,7 @@ $('inLogo').addEventListener('change',async function(){var f=this.files&&this.fi
 // guardar (misma validación que el app: solo el nombre es obligatorio)
 $('btnGuardar').addEventListener('click',async function(){var err=$('errGuardar');err.style.display='none';if(subiendo>0){pcgToast('Espera a que termine de subir el logo.');return}
   var cat=$('cat').value;if(cat==='otra')cat=$('catOtra').value.trim();
-  var body={id:CFG.id,nombre:$('nombre').value,deporte:dep,formato:fmt,categoria:cat,minJugadoresEquipo:+$('minJug').value||0,desde:$('desde').value,hasta:$('relampago').checked?$('desde').value:$('hastaJ').value,cierre:$('cierre').value,
+  var body={id:CFG.id,nombre:$('nombre').value,deporte:dep,formato:fmt,minPartidos:minPart,categoria:cat,minJugadoresEquipo:+$('minJug').value||0,desde:$('desde').value,hasta:$('relampago').checked?$('desde').value:$('hastaJ').value,cierre:$('cierre').value,
     sede:$('sede').value,lat:lat,lng:lng,costo:parseFloat(String($('costo').value).replace(',','.'))||0,relampago:$('relampago').checked,exigeDni:$('exigeDni').checked,edadMin:$('edadMin').value,edadMax:$('edadMax').value,auspiciador:$('ausp').value,premios:$('premios').value,logoUrl:logo};
   this.disabled=true;pcgCargando(CFG.nuevo?'Creando tu campeonato…':'Guardando cambios…');try{var r=await fetch('/anfitrion/campeonatos/guardar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){pcgIr('/anfitrion/campeonatos/'+encodeURIComponent(j.id)+(CFG.nuevo?'?creado=1':'?guardado=1'),'Abriendo tu campeonato…');return}pcgCargando(false);err.textContent=j.error||'No se pudo guardar.';err.style.display='block';if(j.paso)ir(j.paso)}catch(e){pcgCargando(false);err.textContent='No se pudo guardar. Revisa tu conexión.';err.style.display='block'}this.disabled=false});
@@ -374,6 +378,9 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
             return None
     edad_min, edad_max = (_int(b.get("edadMin")), _int(b.get("edadMax"))) if exige else (None, None)
     min_jug = max(0, _int(b.get("minJugadoresEquipo")) or 0) if dep == "futbol" else 0
+    min_part = _int(b.get("minPartidos")) if fmt == "grupos" else None
+    if fmt == "grupos" and min_part not in L.MIN_PARTIDOS:
+        min_part = L.min_partidos(actual or {})
     sede = re.sub(r"\s+", " ", str(b.get("sede") or "")).strip()[:80]
     moneda = (paises.simbolo_de_moneda(paises.moneda_de_pais(paises.pais_de_coordenadas(lat, lng))) if lat is not None
               else ((actual or {}).get("moneda") or "S/"))
@@ -387,7 +394,7 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
         "nombre": nombre, "deporte": dep, "formato": fmt, "categoria": re.sub(r"\s+", " ", str(b.get("categoria") or "")).strip()[:40],
         "sede": sede, "fechas": fechas, "costoInscripcion": costo, "moneda": moneda, "relampago": relampago, "exigeDni": exige,
         "premios": str(b.get("premios") or "").strip()[:600], "auspiciador": str(b.get("auspiciador") or "").strip().upper()[:60],
-        "minJugadoresEquipo": min_jug,
+        "minJugadoresEquipo": min_jug, "minPartidos": min_part,
     })
     if nuevo:
         data.update({"codigo": L.nuevo_codigo(), "inscripcionAbierta": True, "participantes": [], "partidos": [], "cerrado": False})
@@ -407,6 +414,8 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
             data.pop(k, None)
     if not data.get("minJugadoresEquipo"):
         data.pop("minJugadoresEquipo", None)
+    if not data.get("minPartidos"):
+        data.pop("minPartidos", None)
     if not data.get("aficheVariante"):
         data.pop("aficheVariante", None)
     data.pop("_fin", None)
@@ -469,6 +478,16 @@ def _resumen(c: dict) -> str:
         out.append("📊 Tabla:")
         for i, f in enumerate(L.tabla(c)):
             out.append(f"{i + 1}. {f['nombre']} · {f['g'] * 3 + f['e']} pts")
+    elif fmt == "grupos" and c.get("partidos"):
+        for letra in L.grupos_de(c):
+            out.append(f"📊 Grupo {letra}:")
+            for i, f in enumerate(L.tabla_grupo(c, letra)):
+                out.append(f"{i + 1}. {f['nombre']} · {f['g'] * 3 + f['e']} pts")
+        jugados = [m for m in L.partidos_llave(c) if L.jugado(m)]
+        if jugados:
+            out.append("🏁 Fase final:")
+            for m in jugados:
+                out.append(f"• {(L.participante(c, m.get('aId')) or {}).get('nombre', '')} {m['marcadorA']}-{m['marcadorB']} {(L.participante(c, m.get('bId')) or {}).get('nombre', '')}")
     elif fmt == "tiempos":
         for p in c.get("pruebas") or []:
             out.append(f"🏊 {p.get('nombre')}:")
@@ -515,9 +534,40 @@ def _tile_partido(c: dict, m: dict) -> str:
             f"<span class='lado{' win' if g and g == a else ''}'>{_lado(a, na)}</span><b class='mk'>{sa} - {sb}</b><span class='lado der{' win' if g and g == b else ''}'>{_lado(b, nb)}</span></div>")
 
 
+def _tabla_html(filas: list[dict]) -> str:
+    cuerpo = "".join(f"<tr><td>{i + 1}</td><td style='text-align:left'>{e(f['nombre'])}</td><td>{f['pj']}</td><td>{f['g']}</td><td>{f['e']}</td><td>{f['p']}</td><td>{f['gf'] - f['gc']}</td><td><b>{f['g'] * 3 + f['e']}</b></td></tr>"
+                    for i, f in enumerate(filas))
+    return f"<div class='tabla'><table><thead><tr><th>#</th><th style='text-align:left'>Equipo</th><th>PJ</th><th>G</th><th>E</th><th>P</th><th>Dif</th><th>Pts</th></tr></thead><tbody>{cuerpo}</tbody></table></div>"
+
+
+def _llave_html(c: dict, partidos: list[dict]) -> str:
+    rondas = sorted({int(p.get("ronda") or 0) for p in partidos})
+    max_r = rondas[-1] if rondas else 0
+    return "<div class='llave'>" + "".join(
+        f"<div class='col'><h4>{e(L.etiqueta_ronda(r, max_r))}</h4>" + "".join(_tile_partido(c, m) for m in sorted((p for p in partidos if int(p.get('ronda') or 0) == r), key=lambda x: int(x.get('idx') or 0))) + "</div>"
+        for r in rondas) + "</div>"
+
+
+def _grupos_html(c: dict) -> str:
+    """Formato grupos: una tabla + jornadas por grupo y debajo la fase final
+    (la llave se siembra sola cuando terminan todos los partidos de grupo)."""
+    out = []
+    for letra in L.grupos_de(c):
+        ms = sorted((m for m in L.partidos_grupo(c) if m.get("grupo") == letra), key=lambda x: (int(x.get("ronda") or 0), int(x.get("idx") or 0)))
+        jornadas = sorted({int(p.get("ronda") or 0) for p in ms})
+        js = "".join(f"<h4>Jornada {j + 1}</h4>" + "".join(_tile_partido(c, m) for m in ms if int(m.get("ronda") or 0) == j) for j in jornadas)
+        out.append(f"<div class='grupo'><h3 style='margin-top:14px'>Grupo {letra}</h3>{_tabla_html(L.tabla_grupo(c, letra))}{js}</div>")
+    llave = L.partidos_llave(c)
+    aviso = ("" if L.grupos_completos(c) else "<p class='sub' style='margin:0 0 6px'>Los cruces se definen solos cuando termine la fase de grupos (clasifican los 2 primeros de cada grupo).</p>")
+    out.append(f"<h3 style='margin-top:22px'>Fase final</h3>{aviso}{_llave_html(c, llave)}")
+    return "".join(out)
+
+
 def _fixture_html(c: dict) -> str:
     fmt = L.formato_de(c)
     partidos = c.get("partidos") or []
+    if fmt == "grupos":
+        return _grupos_html(c)
     if fmt == "liga":
         filas = "".join(f"<tr><td>{i + 1}</td><td style='text-align:left'>{e(f['nombre'])}</td><td>{f['pj']}</td><td>{f['g']}</td><td>{f['e']}</td><td>{f['p']}</td><td>{f['gf'] - f['gc']}</td><td><b>{f['g'] * 3 + f['e']}</b></td></tr>"
                         for i, f in enumerate(L.tabla(c)))
@@ -577,6 +627,9 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
         chips_cab.append(f"<span class='pill'>📍 {e(c['sede'])}</span>")
     chips_cab.append(f"<span class='pill'>Inscripción {e(mon)} {float(c.get('costoInscripcion') or 0):.2f}</span>")
     info = []
+    if fmt == "grupos":
+        tams = L.armar_grupos(len(c.get("participantes") or []), L.min_partidos(c))
+        info.append(f"<span class='chip'>🧩 Grupos + llave · cada equipo juega al menos {L.min_partidos(c)} partidos" + (f" · {len(tams)} grupo{'s' if len(tams) != 1 else ''} de {'/'.join(str(t) for t in tams)}" if tams else " · con menos de 3 equipos se juega solo la final") + "</span>")
     if c.get("inscripcionHasta"):
         info.append(f"<span class='chip'>🗓️ Cierre inscrip.: {e(_fecha_corta(c['inscripcionHasta']))}</span>")
     if c.get("relampago"):
@@ -633,7 +686,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
 <div class='panel'><div style='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap'><h3 style='margin:0'>Participantes ({len(c.get('participantes') or [])})</h3><button type='button' class='btn sec' id='btnAgregar'>＋ {'Nuevo equipo' if dep == 'futbol' else 'Agregar'}</button></div>
  <div class='chips' id='participantes' style='margin-top:12px'>{_participantes_html(c)}</div>
  {'' if tiempos else "<div class='acciones' style='margin-top:14px'><button type='button' class='btn' id='btnFixture'>" + ('🔁 Regenerar fixture' if L.fixture_generado(c) else '🎲 Generar fixture') + "</button></div>"}</div>
-{'' if tiempos or not L.fixture_generado(c) else "<div class='panel'><h3>" + ('Tabla y partidos' if fmt == 'liga' else 'Llave') + "</h3><p class='sub' style='margin:0 0 6px'>Toca un partido para cargar el resultado.</p>" + _fixture_html(c) + ("<div class='acciones' style='margin-top:14px'><button type='button' class='btn sec' id='btnRanking'>📈 Sumar resultados al ranking</button></div>" if circuito and c.get('academiaId') else '') + "</div>"}
+{'' if tiempos or not L.fixture_generado(c) else "<div class='panel'><h3>" + ('Tabla y partidos' if fmt == 'liga' else 'Grupos y fase final' if fmt == 'grupos' else 'Llave') + "</h3><p class='sub' style='margin:0 0 6px'>Toca un partido para cargar el resultado.</p>" + _fixture_html(c) + ("<div class='acciones' style='margin-top:14px'><button type='button' class='btn sec' id='btnRanking'>📈 Sumar resultados al ranking</button></div>" if circuito and c.get('academiaId') else '') + "</div>"}
 {("<div class='panel'><div style='display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap'><h3 style='margin:0'>Pruebas</h3><button type='button' class='btn sec' id='btnPrueba'>＋ Agregar prueba</button></div><p class='sub' style='margin:6px 0 0'>Toca un nadador para registrar su tiempo, serie y carril.</p><div id='pruebas' style='margin-top:10px'>" + _natacion_html(c) + "</div></div>") if tiempos else ''}
 <div class='panel'><h3>Galería del torneo</h3><div class='edit-fotos' id='fotos'>{fotos}</div><div class='acciones' style='margin-top:10px'><label class='btn sec' for='inFotos'>📷 Agregar fotos</label><input type='file' id='inFotos' accept='image/*' multiple hidden{'' if almacen.disponible() else ' disabled'}><span class='sub' id='fotosMsg' style='margin:0'></span></div></div>
 <div class='acciones' style='margin-top:18px;flex-wrap:wrap'><a class='btn' href='{BASE}/{e(c['id'])}/editar'>✏️ Editar campeonato</a><button type='button' class='btn sec' id='btnDuplicar'>📄 Duplicar campeonato (nueva edición)</button><button type='button' class='btn sec' id='btnEliminar' style='color:var(--rojo)'>🗑 Eliminar campeonato</button></div>
@@ -871,7 +924,7 @@ def cargar_resultado(request: Request, cid: str, b: dict | None = Body(None)) ->
     m = next((x for x in (c.get("partidos") or []) if x.get("id") == str(b.get("partido") or "")), None)
     if m is None or m.get("aId") is None or m.get("bId") is None:
         return _err("Ese partido aún no tiene los dos lados definidos.")
-    if L.formato_de(c) != "liga" and a == bb:
+    if L.es_partido_llave(c, m) and a == bb:
         return _err("En una llave no puede haber empate: define un ganador.")
     L.set_resultado(c, m["id"], a, bb)
     if not _guardar(ses, c):

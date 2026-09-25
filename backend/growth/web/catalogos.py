@@ -103,11 +103,12 @@ def formato_por_defecto(deporte: str) -> str:
 
 
 def formatos_de(deporte: str) -> list[str]:
-    return ["tiempos"] if deporte == "natacion" else ["eliminacion", "liga"]
+    return ["tiempos"] if deporte == "natacion" else ["eliminacion", "liga", "grupos"]
 
 
 FORMATO_SUB = {"eliminacion": "Llave: el ganador avanza (ideal tenis/pádel).",
                "liga": "Todos contra todos + tabla (ideal fútbol).",
+               "grupos": "Fase de grupos (cada equipo juega al menos 2 o 3 partidos) y luego llave con los 2 primeros de cada grupo.",
                "tiempos": "Cada nadador registra su TIEMPO por prueba; se rankea del más rápido al más lento."}
 # Temas del arte IA del afiche (`_cambiarFondo`): clave → etiqueta.
 AFICHE_TEMAS = [("", "Nocturno ⭐"), ("claro", "Fondo claro"), ("cancha", "Solo la cancha"), ("amanecer", "Amanecer"), ("celebracion", "Celebración")]

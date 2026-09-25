@@ -15,7 +15,8 @@ from datetime import date, datetime
 
 from marketing.campeonato_web import _tabla as tabla  # noqa: F401  (misma tabla que la página pública)
 
-FORMATOS = {"eliminacion": "Eliminación (llave)", "liga": "Liga (tabla)", "tiempos": "Por tiempos (natación)"}
+FORMATOS = {"eliminacion": "Eliminación (llave)", "liga": "Liga (tabla)", "grupos": "Grupos + eliminatoria", "tiempos": "Por tiempos (natación)"}
+MIN_PARTIDOS = [2, 3]  # opciones de "cada equipo juega al menos N partidos" (formato grupos)
 MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic"]
 DISTANCIAS = [25, 50, 100, 200, 400]
 ESTILOS = ["Libre", "Espalda", "Pecho", "Mariposa", "Combinado"]
@@ -24,7 +25,16 @@ ESTILOS = ["Libre", "Espalda", "Pecho", "Mariposa", "Combinado"]
 def formato_de(c: dict) -> str:
     """`FormatoTorneoX.desde`: liga / tiempos; cualquier otra cosa = eliminación."""
     f = str(c.get("formato") or "")
-    return f if f in ("liga", "tiempos") else "eliminacion"
+    return f if f in ("liga", "tiempos", "grupos") else "eliminacion"
+
+
+def min_partidos(c: dict) -> int:
+    """`Campeonato.minPartidos`: partidos mínimos por equipo en la fase de grupos (2 por defecto)."""
+    try:
+        v = int(c.get("minPartidos") or 2)
+    except (TypeError, ValueError):
+        v = 2
+    return v if v in MIN_PARTIDOS else 2
 
 
 def nuevo_id() -> str:
@@ -99,8 +109,12 @@ def ganador_id(m: dict):
     return None
 
 
-def _partido(id_: str, ronda: int, idx: int, a=None, b=None, ma=None, mb=None) -> dict:
+def _partido(id_: str, ronda: int, idx: int, a=None, b=None, ma=None, mb=None, fase=None, grupo=None) -> dict:
     d = {"id": id_, "ronda": ronda, "idx": idx}
+    if fase:
+        d["fase"] = fase
+    if grupo:
+        d["grupo"] = grupo
     if a is not None:
         d["aId"] = a
     if b is not None:
@@ -144,7 +158,8 @@ def recomputar_llave(partidos: list[dict]) -> list[dict]:
             a = ganador_id(prev[2 * i]) if 2 * i < len(prev) else None
             b = ganador_id(prev[2 * i + 1]) if 2 * i + 1 < len(prev) else None
             mismos = m.get("aId") == a and m.get("bId") == b
-            cur[i] = _partido(m["id"], r, i, a, b, m.get("marcadorA") if mismos else None, m.get("marcadorB") if mismos else None)
+            cur[i] = _partido(m["id"], r, i, a, b, m.get("marcadorA") if mismos else None, m.get("marcadorB") if mismos else None,
+                              m.get("fase"), m.get("grupo"))
     return [p for r in range(0, max_r + 1) for p in por_ronda.get(r, [])]
 
 
@@ -168,12 +183,174 @@ def _generar_liga(ps: list[dict]) -> list[dict]:
     return partidos
 
 
+# ── Grupos + eliminatoria (`TorneoFixture` formato `grupos`, sep-2026) ───────
+# Pedido del director: "quiero asegurar que al menos cada equipo juegue 2
+# partidos a más". Fase de GRUPOS (todos contra todos dentro del grupo, tamaño
+# mínimo = minPartidos + 1) y luego LLAVE con los 2 primeros de cada grupo.
+LETRAS = "ABCDEFGHIJKLMNOP"
+
+
+def armar_grupos(n: int, min_partidos: int = 2) -> list[int]:
+    """Tamaños de grupo para `n` equipos garantizando `min_partidos` partidos a
+    cada uno (grupo de k → k-1 partidos). Prefiere grupos de 4 cuando el
+    mínimo es 2 (3 partidos y una llave más pareja); reparte lo más parejo
+    posible (tamaños que difieren a lo sumo en 1). Con menos de 3 equipos no
+    hay cómo garantizarlo: devuelve [] (se juega solo la final)."""
+    tam = max(2, int(min_partidos)) + 1
+    if n < 3 or n < tam:
+        return []
+    g = max(1, n // tam)
+    if min_partidos <= 2:
+        g = min(g, max(1, int(n / 4 + 0.5)))
+    base, extra = divmod(n, g)
+    return [base + (1 if i < extra else 0) for i in range(g)]
+
+
+def _orden_siembra(size: int) -> list[int]:
+    """Posiciones de siembra estándar (1 vs size, 2 vs size-1…): [1,8,4,5,2,7,3,6] para 8."""
+    seq = [1]
+    while len(seq) < size:
+        k = len(seq) * 2
+        seq = [x for s in seq for x in (s, k + 1 - s)]
+    return seq
+
+
+def _generar_grupos(ps: list[dict], minp: int) -> list[dict]:
+    ids = [p["id"] for p in ps]
+    tams = armar_grupos(len(ids), minp)
+    if not tams:  # menos de 3 → llave directa (una final)
+        return recomputar_llave(_esqueleto_eliminacion(ps))
+    partidos, pos = [], 0
+    for gi, t in enumerate(tams):
+        letra = LETRAS[gi]
+        miembros = [{"id": i} for i in ids[pos:pos + t]]
+        pos += t
+        for m in _generar_liga(miembros):
+            partidos.append(_partido(f"g{letra}_{m['id']}", m["ronda"], m["idx"], m.get("aId"), m.get("bId"), fase="grupo", grupo=letra))
+    # Esqueleto de la llave: clasifican 2 por grupo; potencia de 2 con byes.
+    q = 2 * len(tams)
+    size = 1
+    while size < q:
+        size *= 2
+    llave = [_partido(f"k0_{i}", 0, i, fase="llave") for i in range(size // 2)]
+    matches, r = size // 2, 1
+    while matches > 1:
+        matches //= 2
+        llave.extend(_partido(f"k{r}_{i}", r, i, fase="llave") for i in range(matches))
+        r += 1
+    return partidos + llave
+
+
+def partidos_grupo(c: dict) -> list[dict]:
+    return [m for m in (c.get("partidos") or []) if m.get("fase") == "grupo"]
+
+
+def partidos_llave(c: dict) -> list[dict]:
+    """La llave: en `grupos` los partidos `fase == 'llave'`; en `eliminacion` todos."""
+    if formato_de(c) == "grupos":
+        return [m for m in (c.get("partidos") or []) if m.get("fase") == "llave"]
+    return list(c.get("partidos") or [])
+
+
+def grupos_de(c: dict) -> list[str]:
+    return sorted({str(m.get("grupo")) for m in partidos_grupo(c) if m.get("grupo")})
+
+
+def tabla_grupo(c: dict, letra: str) -> list[dict]:
+    """Tabla del grupo `letra` (solo sus equipos y sus partidos), ordenada como `tabla`."""
+    ms = [m for m in partidos_grupo(c) if m.get("grupo") == letra]
+    ids = {m.get("aId") for m in ms} | {m.get("bId") for m in ms}
+    sub = {"participantes": [p for p in (c.get("participantes") or []) if p.get("id") in ids], "partidos": ms}
+    return tabla(sub)
+
+
+def grupos_completos(c: dict) -> bool:
+    ms = partidos_grupo(c)
+    return bool(ms) and all(jugado(m) for m in ms)
+
+
+def clasificados(c: dict) -> list[dict]:
+    """Los 2 primeros de cada grupo con su siembra: primeros ordenados por
+    campaña, luego segundos ordenados por campaña. Cada uno: {id, grupo, pos}."""
+    primeros, segundos = [], []
+    for letra in grupos_de(c):
+        t = tabla_grupo(c, letra)
+        if t:
+            primeros.append((t[0], letra))
+        if len(t) > 1:
+            segundos.append((t[1], letra))
+    llave_campana = lambda x: (-(x[0]["g"] * 3 + x[0]["e"]), -(x[0]["gf"] - x[0]["gc"]), -x[0]["gf"])  # noqa: E731
+    primeros.sort(key=llave_campana)
+    segundos.sort(key=llave_campana)
+    return [{"id": f["id"], "grupo": g, "pos": 1} for f, g in primeros] + [{"id": f["id"], "grupo": g, "pos": 2} for f, g in segundos]
+
+
+def _sembrar(llave_r0: list[dict], sembrados: list[dict]) -> list[dict]:
+    """Rellena la ronda 0 de la llave con la siembra estándar (los mejores
+    primeros reciben los byes) evitando, si se puede, que dos del mismo grupo
+    se vuelvan a cruzar en la primera ronda."""
+    size = len(llave_r0) * 2
+    orden = _orden_siembra(size)
+    slots = [sembrados[o - 1] if o - 1 < len(sembrados) else None for o in orden]
+    pares = [[slots[2 * i], slots[2 * i + 1]] for i in range(len(llave_r0))]
+    for i, (a, b) in enumerate(pares):
+        if a and b and a["grupo"] == b["grupo"]:
+            for j, (c2, d2) in enumerate(pares):
+                if j == i or not c2 or not d2:
+                    continue
+                # intercambia los segundos (pos 2) entre cruces
+                if b["pos"] == 2 and d2["pos"] == 2 and d2["grupo"] != a["grupo"] and b["grupo"] != c2["grupo"]:
+                    pares[i][1], pares[j][1] = d2, b
+                    break
+    out = []
+    for i, m in enumerate(sorted(llave_r0, key=lambda x: int(x.get("idx") or 0))):
+        a, b = pares[i]
+        out.append(_partido(m["id"], 0, i, a["id"] if a else None, b["id"] if b else None, fase="llave"))
+    return out
+
+
+def recomputar_grupos(c: dict, partidos: list[dict]) -> list[dict]:
+    """Con la fase de grupos completa siembra la llave (una sola vez: mientras
+    ningún partido de llave tenga resultado) y propaga ganadores/byes."""
+    grupo = [m for m in partidos if m.get("fase") == "grupo"]
+    llave = [m for m in partidos if m.get("fase") == "llave"]
+    if not llave:
+        return partidos
+    tmp = {"participantes": c.get("participantes") or [], "partidos": grupo, "formato": "grupos"}
+    completo = grupos_completos(tmp)
+    r0 = [m for m in llave if int(m.get("ronda") or 0) == 0]
+    resto = [m for m in llave if int(m.get("ronda") or 0) != 0]
+    if not any(jugado(m) for m in llave):
+        if completo:
+            r0 = _sembrar(r0, clasificados(tmp))
+        else:
+            r0 = [_partido(m["id"], 0, int(m.get("idx") or 0), fase="llave") for m in r0]
+    return grupo + recomputar_llave(r0 + resto)
+
+
 def generar_fixture(c: dict) -> list[dict]:
-    """`TorneoFixture.generar`: ≥ 2 participantes; liga → círculo; si no → llave."""
+    """`TorneoFixture.generar`: ≥ 2 participantes; liga → círculo; grupos →
+    fase de grupos + llave (garantiza `minPartidos`); si no → llave."""
     ps = [p for p in (c.get("participantes") or []) if p.get("id")]
     if len(ps) < 2:
         return []
-    return _generar_liga(ps) if formato_de(c) == "liga" else recomputar_llave(_esqueleto_eliminacion(ps))
+    fmt = formato_de(c)
+    if fmt == "liga":
+        return _generar_liga(ps)
+    if fmt == "grupos":
+        return _generar_grupos(ps, min_partidos(c))
+    return recomputar_llave(_esqueleto_eliminacion(ps))
+
+
+def es_partido_llave(c: dict, m: dict) -> bool:
+    """¿Este partido es de eliminación directa (no admite empate)?"""
+    fmt = formato_de(c)
+    return fmt == "eliminacion" or (fmt == "grupos" and m.get("fase") == "llave")
+
+
+def partidos_de(c: dict, pid: str) -> int:
+    """Cuántos partidos con rival definido tiene el participante (para verificar el mínimo)."""
+    return sum(1 for m in (c.get("partidos") or []) if pid in (m.get("aId"), m.get("bId")) and m.get("aId") and m.get("bId"))
 
 
 def set_resultado(c: dict, partido_id: str, a: int, b: int) -> bool:
@@ -181,11 +358,18 @@ def set_resultado(c: dict, partido_id: str, a: int, b: int) -> bool:
     partidos = list(c.get("partidos") or [])
     for i, m in enumerate(partidos):
         if m.get("id") == partido_id:
-            partidos[i] = _partido(m["id"], int(m.get("ronda") or 0), int(m.get("idx") or 0), m.get("aId"), m.get("bId"), int(a), int(b))
+            partidos[i] = _partido(m["id"], int(m.get("ronda") or 0), int(m.get("idx") or 0), m.get("aId"), m.get("bId"), int(a), int(b),
+                                   m.get("fase"), m.get("grupo"))
             break
     else:
         return False
-    c["partidos"] = recomputar_llave(partidos) if formato_de(c) != "liga" else partidos
+    fmt = formato_de(c)
+    if fmt == "grupos":
+        c["partidos"] = recomputar_grupos(c, partidos)
+    elif fmt == "liga":
+        c["partidos"] = partidos
+    else:
+        c["partidos"] = recomputar_llave(partidos)
     return True
 
 
@@ -207,8 +391,11 @@ def terminado(c: dict) -> bool:
         return False
     if formato_de(c) == "liga":
         return all(jugado(m) or m.get("aId") is None or m.get("bId") is None for m in partidos)
-    max_r = max(int(p.get("ronda") or 0) for p in partidos)
-    fin = [p for p in partidos if int(p.get("ronda") or 0) == max_r]
+    llave = partidos_llave(c)
+    if not llave:
+        return False
+    max_r = max(int(p.get("ronda") or 0) for p in llave)
+    fin = [p for p in llave if int(p.get("ronda") or 0) == max_r]
     return len(fin) == 1 and ganador_id(fin[0]) is not None
 
 
@@ -225,8 +412,11 @@ def campeon_y_subcampeon(c: dict) -> tuple[str | None, str | None]:
         camp = nombres.get(t[0]["nombre"]) if t else None
         sub = nombres.get(t[1]["nombre"]) if len(t) > 1 else None
         return (camp if camp in ids else None), (sub if sub in ids else None)
-    max_r = max(int(p.get("ronda") or 0) for p in partidos)
-    fin = [p for p in partidos if int(p.get("ronda") or 0) == max_r]
+    llave = partidos_llave(c)
+    if not llave:
+        return None, None
+    max_r = max(int(p.get("ronda") or 0) for p in llave)
+    fin = [p for p in llave if int(p.get("ronda") or 0) == max_r]
     if len(fin) != 1 or not jugado(fin[0]):
         return None, None
     g = ganador_id(fin[0])

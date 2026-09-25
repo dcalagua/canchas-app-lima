@@ -64,7 +64,7 @@ def obtener_campeonato(campeonato_id: str) -> dict | None:
 def _tabla(c: dict) -> list[dict]:
     filas: dict[str, dict] = {}
     for p in c.get("participantes") or []:
-        filas[p.get("id")] = {"nombre": p.get("nombre", ""), "pj": 0, "g": 0,
+        filas[p.get("id")] = {"id": p.get("id"), "nombre": p.get("nombre", ""), "pj": 0, "g": 0,
                               "e": 0, "p": 0, "gf": 0, "gc": 0}
     for m in c.get("partidos") or []:
         if m.get("marcadorA") is None or m.get("marcadorB") is None:
@@ -128,12 +128,30 @@ def _render_llave(c: dict) -> str:
     return ''.join(out)
 
 
-def _render_liga(c: dict) -> str:
+def _render_grupos(c: dict) -> str:
+    """Formato grupos: tabla por grupo + la llave de la fase final (misma
+    lógica que `web/campeonatos_logica`, que a su vez reusa `_tabla`)."""
+    from web import campeonatos_logica as L  # import local: L importa `_tabla` de aquí
+    out = []
+    for letra in L.grupos_de(c):
+        ms = [m for m in L.partidos_grupo(c) if m.get("grupo") == letra]
+        ids = {m.get(k) for m in ms for k in ("aId", "bId")}
+        out.append(f'<h3 style="margin:14px 0 6px">Grupo {letra}</h3>')
+        out.append(_render_liga({"participantes": c.get("participantes") or [], "partidos": ms}, solo_ids=ids))
+    out.append('<h3 style="margin:18px 0 6px">Fase final</h3>')
+    if not L.grupos_completos(c):
+        out.append('<p class="vacio">Los cruces se definen cuando termine la fase de grupos (clasifican los 2 primeros de cada grupo).</p>')
+    out.append(_render_llave({"participantes": c.get("participantes") or [], "partidos": L.partidos_llave(c)}))
+    return ''.join(out)
+
+
+def _render_liga(c: dict, solo_ids=None) -> str:
     out = ['<div class="scroll"><table class="tabla"><thead><tr>'
            '<th>#</th><th class="l">Equipo</th><th>PJ</th><th>G</th><th>E</th>'
            '<th>P</th><th>GF</th><th>GC</th><th>Dif</th><th>Pts</th>'
            '</tr></thead><tbody>']
-    for i, f in enumerate(_tabla(c)):
+    filas = _tabla(c) if solo_ids is None else [f for f in _tabla(c) if f.get("id") in solo_ids]
+    for i, f in enumerate(filas):
         out.append(
             f'<tr><td>{i + 1}</td><td class="l">{_esc(f["nombre"])}</td>'
             f'<td>{f["pj"]}</td><td>{f["g"]}</td><td>{f["e"]}</td>'
@@ -160,6 +178,10 @@ def _podio(c: dict) -> tuple[str | None, str | None]:
         camp = t[0]["nombre"] if t else None
         sub = t[1]["nombre"] if len(t) > 1 else None
         return (camp, sub)
+    if c.get("formato") == "grupos":
+        partidos = [p for p in partidos if p.get("fase") == "llave"]
+        if not partidos:
+            return (None, None)
     max_r = max(p.get("ronda", 0) for p in partidos)
     fin = [p for p in partidos if p.get("ronda", 0) == max_r]
     if len(fin) != 1:
@@ -239,6 +261,7 @@ def html_campeonato(c: dict, campeonato_id: str = "",
     es_tiempos = c.get("formato") == "tiempos"
     formato = ("Liga (tabla)" if c.get("formato") == "liga"
                else "Por tiempos (pruebas)" if es_tiempos
+               else "Grupos + eliminatoria" if c.get("formato") == "grupos"
                else "Eliminación (llave)")
     mapa = ""
     if c.get("sedeLat") is not None and c.get("sedeLng") is not None:
@@ -249,7 +272,8 @@ def html_campeonato(c: dict, campeonato_id: str = "",
     if es_tiempos:
         fixture = _render_tiempos(c)
     elif partidos:
-        fixture = _render_liga(c) if c.get("formato") == "liga" else _render_llave(c)
+        fixture = (_render_liga(c) if c.get("formato") == "liga"
+                   else _render_grupos(c) if c.get("formato") == "grupos" else _render_llave(c))
     else:
         fixture = '<p class="vacio">El fixture aún no está publicado. Vuelve pronto.</p>' 
     participantes = c.get("participantes") or []
@@ -411,7 +435,7 @@ def html_campeonato(c: dict, campeonato_id: str = "",
     {inscripcion}
     {bloque_premios}
     {bloque_auspiciador}
-    <h2>{"Tabla de posiciones" if c.get("formato") == "liga" else "Pruebas y tiempos" if es_tiempos else "Llave"}</h2>
+    <h2>{"Tabla de posiciones" if c.get("formato") == "liga" else "Pruebas y tiempos" if es_tiempos else "Grupos y fase final" if c.get("formato") == "grupos" else "Llave"}</h2>
     {fixture}
     {bloque_galeria}
     <h2>Participantes ({len(participantes)})</h2>

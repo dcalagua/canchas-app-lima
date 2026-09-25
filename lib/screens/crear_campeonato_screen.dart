@@ -65,6 +65,8 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
       TextEditingController(text: widget.editar?.auspiciador ?? '');
   late Deporte _deporte = widget.deporteSugerido ?? Deporte.futbol;
   FormatoTorneo _formato = FormatoTorneo.eliminacion;
+  /// Formato grupos: cada equipo juega al menos N partidos (2 o 3).
+  int _minPartidos = 2;
   DateTimeRange? _rango;
   String _sedeNombre = '';
   LatLng? _sedeUbicacion;
@@ -141,7 +143,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   /// eliminación o liga (nunca por tiempos).
   List<FormatoTorneo> get _formatosDisponibles => _deporte == Deporte.natacion
       ? const [FormatoTorneo.tiempos]
-      : const [FormatoTorneo.eliminacion, FormatoTorneo.liga];
+      : const [FormatoTorneo.eliminacion, FormatoTorneo.liga, FormatoTorneo.grupos];
 
   @override
   void initState() {
@@ -152,6 +154,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
       _nombre.text = e.nombre;
       _deporte = e.deporte;
       _formato = e.formato;
+      _minPartidos = e.minPartidos;
       _categoria.text = e.categoria;
       _costo.text = e.costoInscripcion > 0
           ? e.costoInscripcion.toStringAsFixed(2)
@@ -309,6 +312,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         edadMax: edadMax,
         logoUrl: e.logoUrl,
         minJugadoresEquipo: minJug,
+        minPartidos: _minPartidos,
         premios: _premios.text.trim(),
         auspiciador: _auspiciador.text.trim(),
         // Conservar los LOGOS de auspiciadores ya subidos: al reconstruir sin
@@ -340,6 +344,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         edadMin: edadMin,
         edadMax: edadMax,
         minJugadoresEquipo: minJug,
+        minPartidos: _minPartidos,
         premios: _premios.text.trim(),
         auspiciador: _auspiciador.text.trim(),
       );
@@ -474,6 +479,9 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
                   'Llave: el ganador avanza (ideal tenis/pádel).',
                 FormatoTorneo.liga =>
                   'Todos contra todos + tabla (ideal fútbol).',
+                FormatoTorneo.grupos =>
+                  'Fase de grupos (cada equipo juega al menos 2 o 3 partidos) '
+                      'y luego llave con los 2 primeros de cada grupo.',
                 FormatoTorneo.tiempos =>
                   'Cada nadador registra su TIEMPO por prueba; se rankea del más '
                       'rápido al más lento (sin partidos G/P).',
@@ -487,6 +495,35 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
                   style: TextStyle(color: textoTenue, fontSize: 12)),
             ),
           const SizedBox(height: 8),
+          // Formato grupos: cuántos partidos como mínimo juega cada equipo en la
+          // fase de grupos (decide el tamaño mínimo de grupo = N+1).
+          if (_formato == FormatoTorneo.grupos) ...[
+            Text('Partidos mínimos por equipo',
+                style: TextStyle(
+                    fontWeight: FontWeight.w700, color: cs.onSurface)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final n in kMinPartidosOpciones)
+                  ChoiceChip(
+                    label: Text('Al menos $n'),
+                    selected: _minPartidos == n,
+                    onSelected: (_editando && widget.editar!.fixtureGenerado)
+                        ? null
+                        : (_) => setState(() => _minPartidos = n),
+                  ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 12),
+              child: Text(
+                  'Se arman grupos de ${_minPartidos + 1} o más (cada equipo '
+                  'juega al menos $_minPartidos partidos); los 2 primeros de '
+                  'cada grupo pasan a la llave.',
+                  style: const TextStyle(color: textoTenue, fontSize: 12)),
+            ),
+          ],
           // Fútbol (por equipos): mínimo de jugadores para marcar el equipo como
           // "completo". Cada capitán arma su plantel; al llegar a este mínimo, al
           // organizador le aparece "✅ Completo".

@@ -6,23 +6,32 @@ import 'models.dart';
 /// Formato de un campeonato de academia.
 /// - [eliminacion]: llave/bracket (ideal tenis). El ganador avanza.
 /// - [liga]: todos contra todos + tabla de posiciones (ideal fútbol).
+/// - [grupos]: fase de GRUPOS (todos contra todos dentro del grupo, así cada
+///   equipo juega al menos [Campeonato.minPartidos] partidos) y luego LLAVE con
+///   los 2 primeros de cada grupo. Pedido del director (sep-2026): "quiero
+///   asegurar que al menos cada equipo juegue 2 partidos a más".
 /// - [tiempos]: por tiempos y series (natación). No hay partidos G/P: cada nadador
 ///   registra su TIEMPO por prueba y se rankea del más rápido al más lento.
-enum FormatoTorneo { eliminacion, liga, tiempos }
+enum FormatoTorneo { eliminacion, liga, grupos, tiempos }
 
 extension FormatoTorneoX on FormatoTorneo {
   String get etiqueta => switch (this) {
         FormatoTorneo.eliminacion => 'Eliminación (llave)',
         FormatoTorneo.liga => 'Liga (tabla)',
+        FormatoTorneo.grupos => 'Grupos + eliminatoria',
         FormatoTorneo.tiempos => 'Por tiempos (natación)',
       };
   String get clave => name;
   static FormatoTorneo desde(String? s) => switch (s) {
         'liga' => FormatoTorneo.liga,
+        'grupos' => FormatoTorneo.grupos,
         'tiempos' => FormatoTorneo.tiempos,
         _ => FormatoTorneo.eliminacion,
       };
 }
+
+/// Opciones de "cada equipo juega al menos N partidos" (formato grupos).
+const kMinPartidosOpciones = [2, 3];
 
 /// La MARCA (tiempo) de un participante en una prueba de natación. [centesimas]
 /// es el tiempo total en centésimas de segundo (mm:ss.cc); 0 = sin registrar.
@@ -292,6 +301,11 @@ class PartidoTorneo {
   final String? bId;
   final int? marcadorA;
   final int? marcadorB;
+  /// Formato grupos: 'grupo' (fase de grupos) o 'llave' (fase final). null en
+  /// los demás formatos. Se conserva TAL CUAL al guardar (la web lo lee igual).
+  final String? fase;
+  /// Formato grupos: letra del grupo ('A', 'B'…) de los partidos de fase de grupos.
+  final String? grupo;
 
   const PartidoTorneo({
     required this.id,
@@ -301,7 +315,12 @@ class PartidoTorneo {
     this.bId,
     this.marcadorA,
     this.marcadorB,
+    this.fase,
+    this.grupo,
   });
+
+  bool get esGrupo => fase == 'grupo';
+  bool get esLlave => fase == 'llave';
 
   bool get jugado => marcadorA != null && marcadorB != null;
 
@@ -319,7 +338,14 @@ class PartidoTorneo {
 
   PartidoTorneo conMarcador(int a, int b) => PartidoTorneo(
         id: id, ronda: ronda, idx: idx, aId: aId, bId: bId,
-        marcadorA: a, marcadorB: b,
+        marcadorA: a, marcadorB: b, fase: fase, grupo: grupo,
+      );
+
+  /// Copia con otros lados (y marcador opcional), conservando fase/grupo.
+  PartidoTorneo conLados(String? a, String? b, {int? marcadorA, int? marcadorB}) =>
+      PartidoTorneo(
+        id: id, ronda: ronda, idx: idx, aId: a, bId: b,
+        marcadorA: marcadorA, marcadorB: marcadorB, fase: fase, grupo: grupo,
       );
 
   Map<String, dynamic> toJson() => {
@@ -330,6 +356,8 @@ class PartidoTorneo {
         if (bId != null) 'bId': bId,
         if (marcadorA != null) 'marcadorA': marcadorA,
         if (marcadorB != null) 'marcadorB': marcadorB,
+        if (fase != null) 'fase': fase,
+        if (grupo != null) 'grupo': grupo,
       };
 
   factory PartidoTorneo.fromJson(Map<String, dynamic> j) => PartidoTorneo(
@@ -340,6 +368,8 @@ class PartidoTorneo {
         bId: j['bId'] as String?,
         marcadorA: (j['marcadorA'] as num?)?.toInt(),
         marcadorB: (j['marcadorB'] as num?)?.toInt(),
+        fase: j['fase'] as String?,
+        grupo: j['grupo'] as String?,
       );
 }
 
@@ -399,6 +429,9 @@ class Campeonato {
   /// "completo". 0 = sin cupo definido (solo se muestra el conteo, sin marcar
   /// completo/incompleto). No hay tope máximo (pueden sumar suplentes).
   final int minJugadoresEquipo;
+  /// Formato grupos: cada equipo juega AL MENOS este número de partidos en la
+  /// fase de grupos (2 o 3). Decide el tamaño mínimo de grupo (minPartidos+1).
+  final int minPartidos;
   /// PREMIOS del torneo, uno por línea ("Trofeos para campeones", "Tarros de
   /// pelotas"…). Se lucen en la publicidad de compartir y en la página web.
   final String premios;
@@ -450,6 +483,7 @@ class Campeonato {
     this.edadMax,
     this.logoUrl,
     this.minJugadoresEquipo = 0,
+    this.minPartidos = 2,
     this.premios = '',
     this.auspiciador = '',
     this.auspiciadoresLogos = const [],
@@ -491,17 +525,40 @@ class Campeonato {
   bool get terminado {
     if (cerrado) return true;
     if (!fixtureGenerado) return false;
-    if (formato == FormatoTorneo.eliminacion) {
+    if (formato == FormatoTorneo.eliminacion || formato == FormatoTorneo.grupos) {
+      final llave = partidosLlave;
+      if (llave.isEmpty) return false;
       var maxR = 0;
-      for (final p in partidos) {
+      for (final p in llave) {
         if (p.ronda > maxR) maxR = p.ronda;
       }
-      final fin = partidos.where((p) => p.ronda == maxR).toList();
+      final fin = llave.where((p) => p.ronda == maxR).toList();
       return fin.length == 1 && fin.first.ganadorId != null;
     }
     return partidos
         .every((m) => m.jugado || m.aId == null || m.bId == null);
   }
+
+  bool get esGrupos => formato == FormatoTorneo.grupos;
+
+  /// Partidos de la FASE DE GRUPOS (formato grupos); vacío en otros formatos.
+  List<PartidoTorneo> get partidosGrupo =>
+      [for (final m in partidos) if (m.esGrupo) m];
+
+  /// La LLAVE: en grupos solo los partidos de fase final; en eliminación, todos.
+  List<PartidoTorneo> get partidosLlave => esGrupos
+      ? [for (final m in partidos) if (m.esLlave) m]
+      : partidos;
+
+  /// Letras de los grupos existentes, en orden ('A', 'B'…).
+  List<String> get grupos {
+    final set = <String>{for (final m in partidosGrupo) if (m.grupo != null) m.grupo!};
+    return set.toList()..sort();
+  }
+
+  /// ¿Terminó la fase de grupos (todos sus partidos con marcador)?
+  bool get gruposCompletos =>
+      partidosGrupo.isNotEmpty && partidosGrupo.every((m) => m.jugado);
 
   /// CAMPEÓN del torneo (id de participante), o null si aún no terminó.
   /// Liga → 1º de la tabla; eliminación → ganador de la final.
@@ -511,11 +568,12 @@ class Campeonato {
       final tabla = TorneoFixture.tabla(this);
       return tabla.isEmpty ? null : tabla.first.participanteId;
     }
+    final llave = partidosLlave;
     var maxR = 0;
-    for (final p in partidos) {
+    for (final p in llave) {
       if (p.ronda > maxR) maxR = p.ronda;
     }
-    final fin = partidos.where((p) => p.ronda == maxR).toList();
+    final fin = llave.where((p) => p.ronda == maxR).toList();
     return fin.length == 1 ? fin.first.ganadorId : null;
   }
 
@@ -527,11 +585,12 @@ class Campeonato {
       final tabla = TorneoFixture.tabla(this);
       return tabla.length > 1 ? tabla[1].participanteId : null;
     }
+    final llave = partidosLlave;
     var maxR = 0;
-    for (final p in partidos) {
+    for (final p in llave) {
       if (p.ronda > maxR) maxR = p.ronda;
     }
-    final fin = partidos.where((p) => p.ronda == maxR).toList();
+    final fin = llave.where((p) => p.ronda == maxR).toList();
     if (fin.length != 1) return null;
     final f = fin.first;
     final g = f.ganadorId;
@@ -579,6 +638,7 @@ class Campeonato {
     int? edadMax,
     String? logoUrl,
     int? minJugadoresEquipo,
+    int? minPartidos,
     String? premios,
     String? auspiciador,
     List<String>? auspiciadoresLogos,
@@ -614,6 +674,7 @@ class Campeonato {
         edadMax: edadMax ?? this.edadMax,
         logoUrl: logoUrl ?? this.logoUrl,
         minJugadoresEquipo: minJugadoresEquipo ?? this.minJugadoresEquipo,
+        minPartidos: minPartidos ?? this.minPartidos,
         premios: premios ?? this.premios,
         auspiciador: auspiciador ?? this.auspiciador,
         auspiciadoresLogos: auspiciadoresLogos ?? this.auspiciadoresLogos,
@@ -661,6 +722,7 @@ class Campeonato {
         if (edadMax != null) 'edadMax': edadMax,
         if (logoUrl != null && logoUrl!.isNotEmpty) 'logoUrl': logoUrl,
         if (minJugadoresEquipo > 0) 'minJugadoresEquipo': minJugadoresEquipo,
+        if (formato == FormatoTorneo.grupos) 'minPartidos': minPartidos,
         if (premios.isNotEmpty) 'premios': premios,
         if (auspiciador.isNotEmpty) 'auspiciador': auspiciador,
         if (auspiciadoresLogos.isNotEmpty)
@@ -716,6 +778,9 @@ class Campeonato {
         edadMax: (j['edadMax'] as num?)?.toInt(),
         logoUrl: j['logoUrl'] as String?,
         minJugadoresEquipo: (j['minJugadoresEquipo'] as num?)?.toInt() ?? 0,
+        minPartidos: kMinPartidosOpciones.contains((j['minPartidos'] as num?)?.toInt())
+            ? (j['minPartidos'] as num).toInt()
+            : 2,
         premios: (j['premios'] ?? '') as String,
         auspiciador: (j['auspiciador'] ?? '') as String,
         auspiciadoresLogos: (j['auspiciadoresLogos'] as List?)
@@ -736,11 +801,164 @@ class Campeonato {
 class TorneoFixture {
   /// Genera el fixture según el formato. Requiere ≥ 2 participantes.
   static List<PartidoTorneo> generar(
-      FormatoTorneo formato, List<Participante> ps) {
+      FormatoTorneo formato, List<Participante> ps, {int minPartidos = 2}) {
     if (ps.length < 2) return const [];
-    return formato == FormatoTorneo.liga
-        ? _generarLiga(ps)
-        : recomputarLlave(_esqueletoEliminacion(ps));
+    if (formato == FormatoTorneo.liga) return _generarLiga(ps);
+    if (formato == FormatoTorneo.grupos) return _generarGrupos(ps, minPartidos);
+    return recomputarLlave(_esqueletoEliminacion(ps));
+  }
+
+  /// Genera el fixture de [c] con su formato y su mínimo de partidos.
+  static List<PartidoTorneo> generarDe(Campeonato c) =>
+      generar(c.formato, c.participantes, minPartidos: c.minPartidos);
+
+  // ── Grupos + eliminatoria ─────────────────────────────────────────────────
+  static const _letras = 'ABCDEFGHIJKLMNOP';
+
+  /// Tamaños de grupo para [n] equipos garantizando [minPartidos] partidos a
+  /// cada uno (grupo de k → k-1 partidos). Prefiere grupos de 4 cuando el
+  /// mínimo es 2; reparte parejo (tamaños que difieren a lo sumo en 1). Con
+  /// menos de 3 equipos no hay cómo garantizarlo: [] (se juega solo la final).
+  /// ESPEJO de `campeonatos_logica.armar_grupos` (web): no cambiar uno solo.
+  static List<int> armarGrupos(int n, int minPartidos) {
+    final tam = (minPartidos < 2 ? 2 : minPartidos) + 1;
+    if (n < 3 || n < tam) return const [];
+    var g = n ~/ tam;
+    if (g < 1) g = 1;
+    if (minPartidos <= 2) {
+      final pref = (n / 4 + 0.5).floor();
+      g = g < (pref < 1 ? 1 : pref) ? g : (pref < 1 ? 1 : pref);
+    }
+    final base = n ~/ g, extra = n % g;
+    return [for (var i = 0; i < g; i++) base + (i < extra ? 1 : 0)];
+  }
+
+  /// Posiciones de siembra estándar (1 vs size, 2 vs size-1…): [1,8,4,5,2,7,3,6].
+  static List<int> _ordenSiembra(int size) {
+    var seq = [1];
+    while (seq.length < size) {
+      final k = seq.length * 2;
+      seq = [for (final s in seq) ...[s, k + 1 - s]];
+    }
+    return seq;
+  }
+
+  static List<PartidoTorneo> _generarGrupos(
+      List<Participante> ps, int minPartidos) {
+    final tams = armarGrupos(ps.length, minPartidos);
+    if (tams.isEmpty) return recomputarLlave(_esqueletoEliminacion(ps));
+    final partidos = <PartidoTorneo>[];
+    var pos = 0;
+    for (var gi = 0; gi < tams.length; gi++) {
+      final letra = _letras[gi];
+      final miembros = ps.sublist(pos, pos + tams[gi]);
+      pos += tams[gi];
+      for (final m in _generarLiga(miembros)) {
+        partidos.add(PartidoTorneo(
+            id: 'g${letra}_${m.id}', ronda: m.ronda, idx: m.idx,
+            aId: m.aId, bId: m.bId, fase: 'grupo', grupo: letra));
+      }
+    }
+    // Esqueleto de la llave: clasifican 2 por grupo; potencia de 2 con byes.
+    final q = 2 * tams.length;
+    var size = 1;
+    while (size < q) {
+      size *= 2;
+    }
+    for (var i = 0; i < size ~/ 2; i++) {
+      partidos.add(PartidoTorneo(id: 'k0_$i', ronda: 0, idx: i, fase: 'llave'));
+    }
+    var matches = size ~/ 2;
+    var r = 1;
+    while (matches > 1) {
+      matches ~/= 2;
+      for (var i = 0; i < matches; i++) {
+        partidos.add(PartidoTorneo(id: 'k${r}_$i', ronda: r, idx: i, fase: 'llave'));
+      }
+      r++;
+    }
+    return partidos;
+  }
+
+  /// Tabla de UN grupo (solo sus equipos y sus partidos).
+  static List<FilaTabla> tablaGrupo(Campeonato c, String letra) {
+    final ms = [for (final m in c.partidosGrupo) if (m.grupo == letra) m];
+    final ids = <String>{for (final m in ms) ...[if (m.aId != null) m.aId!, if (m.bId != null) m.bId!]};
+    return tabla(c,
+        partidos: ms,
+        participantes: [for (final p in c.participantes) if (ids.contains(p.id)) p]);
+  }
+
+  /// Clasificados con su siembra: primeros de cada grupo (ordenados por
+  /// campaña) y luego segundos (ídem). Cada uno: (id, grupo, pos).
+  static List<({String id, String grupo, int pos})> clasificados(Campeonato c) {
+    final primeros = <(FilaTabla, String)>[];
+    final segundos = <(FilaTabla, String)>[];
+    for (final letra in c.grupos) {
+      final t = tablaGrupo(c, letra);
+      if (t.isNotEmpty) primeros.add((t[0], letra));
+      if (t.length > 1) segundos.add((t[1], letra));
+    }
+    int cmp((FilaTabla, String) x, (FilaTabla, String) y) {
+      if (y.$1.pts != x.$1.pts) return y.$1.pts - x.$1.pts;
+      if (y.$1.dif != x.$1.dif) return y.$1.dif - x.$1.dif;
+      return y.$1.gf - x.$1.gf;
+    }
+    primeros.sort(cmp);
+    segundos.sort(cmp);
+    return [
+      for (final e in primeros) (id: e.$1.participanteId, grupo: e.$2, pos: 1),
+      for (final e in segundos) (id: e.$1.participanteId, grupo: e.$2, pos: 2),
+    ];
+  }
+
+  /// Rellena la ronda 0 de la llave con la siembra estándar (los mejores
+  /// primeros reciben los byes) evitando, si se puede, que dos del mismo
+  /// grupo se crucen en la primera ronda.
+  static List<PartidoTorneo> _sembrar(
+      List<PartidoTorneo> r0, List<({String id, String grupo, int pos})> sembrados) {
+    final ordenados = List<PartidoTorneo>.from(r0)..sort((a, b) => a.idx.compareTo(b.idx));
+    final size = ordenados.length * 2;
+    final orden = _ordenSiembra(size);
+    final slots = [for (final o in orden) o - 1 < sembrados.length ? sembrados[o - 1] : null];
+    final pares = [for (var i = 0; i < ordenados.length; i++) [slots[2 * i], slots[2 * i + 1]]];
+    for (var i = 0; i < pares.length; i++) {
+      final a = pares[i][0], b = pares[i][1];
+      if (a == null || b == null || a.grupo != b.grupo) continue;
+      for (var j = 0; j < pares.length; j++) {
+        final c2 = pares[j][0], d2 = pares[j][1];
+        if (j == i || c2 == null || d2 == null) continue;
+        if (b.pos == 2 && d2.pos == 2 && d2.grupo != a.grupo && b.grupo != c2.grupo) {
+          pares[i][1] = d2;
+          pares[j][1] = b;
+          break;
+        }
+      }
+    }
+    return [
+      for (var i = 0; i < ordenados.length; i++)
+        PartidoTorneo(
+            id: ordenados[i].id, ronda: 0, idx: i,
+            aId: pares[i][0]?.id, bId: pares[i][1]?.id, fase: 'llave'),
+    ];
+  }
+
+  /// Formato grupos: con la fase de grupos completa siembra la llave (solo
+  /// mientras ningún partido de llave tenga resultado) y propaga ganadores.
+  static List<PartidoTorneo> recomputarGrupos(
+      Campeonato c, List<PartidoTorneo> partidos) {
+    final grupo = [for (final m in partidos) if (m.esGrupo) m];
+    final llave = [for (final m in partidos) if (m.esLlave) m];
+    if (llave.isEmpty) return partidos;
+    final tmp = c.copyWith(partidos: grupo);
+    var r0 = [for (final m in llave) if (m.ronda == 0) m];
+    final resto = [for (final m in llave) if (m.ronda != 0) m];
+    if (!llave.any((m) => m.jugado)) {
+      r0 = tmp.gruposCompletos
+          ? _sembrar(r0, clasificados(tmp))
+          : [for (final m in r0) m.conLados(null, null)];
+    }
+    return [...grupo, ...recomputarLlave([...r0, ...resto])];
   }
 
   // ── Eliminación ──────────────────────────────────────────────────────────
@@ -796,6 +1014,7 @@ class TorneoFixture {
           id: m.id, ronda: r, idx: i, aId: a, bId: b,
           marcadorA: mismos ? m.marcadorA : null,
           marcadorB: mismos ? m.marcadorB : null,
+          fase: m.fase, grupo: m.grupo,
         );
       }
     }
@@ -831,13 +1050,15 @@ class TorneoFixture {
     return partidos;
   }
 
-  /// Tabla de posiciones (formato liga) ordenada por Pts, dif, GF.
-  static List<FilaTabla> tabla(Campeonato c) {
+  /// Tabla de posiciones (formato liga) ordenada por Pts, dif, GF. Con
+  /// [partidos]/[participantes] se calcula sobre un subconjunto (un grupo).
+  static List<FilaTabla> tabla(Campeonato c,
+      {List<PartidoTorneo>? partidos, List<Participante>? participantes}) {
     final filas = <String, FilaTabla>{
-      for (final p in c.participantes)
+      for (final p in participantes ?? c.participantes)
         p.id: FilaTabla(p.id, p.nombre),
     };
-    for (final m in c.partidos) {
+    for (final m in partidos ?? c.partidos) {
       if (!m.jugado || m.aId == null || m.bId == null) continue;
       final fa = filas[m.aId];
       final fb = filas[m.bId];
