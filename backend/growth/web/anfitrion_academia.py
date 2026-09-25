@@ -19,6 +19,16 @@ import time
 from datetime import date
 from pathlib import Path
 
+from starlette.concurrency import run_in_threadpool
+
+_JSON_INVALIDO = object()
+
+
+def _leer_json(v):
+    """El wrapper async ya leyó el JSON en el event loop; aquí solo se valida (la lógica corre en el threadpool, sin frenar el loop)."""
+    if v is _JSON_INVALIDO:
+        raise ValueError("json inválido")
+    return v
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -494,11 +504,19 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
 
 @router.post("/anfitrion/academia/guardar")
 async def guardar_academia(request: Request) -> JSONResponse:
+    try:
+        _cuerpo_json = await request.json()
+    except Exception:  # noqa: BLE001
+        _cuerpo_json = _JSON_INVALIDO
+    return await run_in_threadpool(_guardar_academia, request, _cuerpo_json)
+
+
+def _guardar_academia(request: Request, _cuerpo_json) -> JSONResponse:
     ses = sesion.de_request(request)
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
     try:
-        b = await request.json()
+        b = _leer_json(_cuerpo_json)
     except Exception:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
     if not isinstance(b, dict) or not _id_ok(str(b.get("id") or "")):
@@ -521,6 +539,11 @@ async def guardar_academia(request: Request) -> JSONResponse:
 
 @router.post("/anfitrion/academia/{aid}/foto")
 async def subir_imagen_academia(request: Request, aid: str, tipo: str = "foto") -> JSONResponse:
+    _cuerpo_bytes = await request.body()
+    return await run_in_threadpool(_subir_imagen_academia, request, aid, tipo, _cuerpo_bytes)
+
+
+def _subir_imagen_academia(request: Request, aid: str, tipo: str = "foto", _cuerpo_bytes: bytes = b"") -> JSONResponse:
     ses = sesion.de_request(request)
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
@@ -535,7 +558,7 @@ async def subir_imagen_academia(request: Request, aid: str, tipo: str = "foto") 
     ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
     if ctype not in ("image/jpeg", "image/png", "image/webp"):
         return JSONResponse({"ok": False, "error": "Formato no admitido (usa JPG, PNG o WebP)."}, status_code=415)
-    cuerpo = await request.body()
+    cuerpo = _cuerpo_bytes
     if not cuerpo or len(cuerpo) > almacen.MAX_BYTES:
         return JSONResponse({"ok": False, "error": "La imagen pesa demasiado (máx. 6 MB)."}, status_code=413)
     nombre = "logo_web.jpg" if tipo == "logo" else f"web_{int(time.time() * 1000)}.jpg"
@@ -547,6 +570,10 @@ async def subir_imagen_academia(request: Request, aid: str, tipo: str = "foto") 
 
 @router.post("/anfitrion/academia/{aid}/eliminar")
 async def eliminar_academia(request: Request, aid: str) -> JSONResponse:
+    return await run_in_threadpool(_eliminar_academia, request, aid)
+
+
+def _eliminar_academia(request: Request, aid: str) -> JSONResponse:
     ses = sesion.de_request(request)
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)

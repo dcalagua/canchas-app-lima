@@ -22,7 +22,8 @@ import time
 import urllib.parse
 from datetime import date, datetime
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Body, Request
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse
 
 import config
@@ -413,14 +414,10 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
 
 
 @router.post(BASE + "/guardar")
-async def guardar(request: Request) -> JSONResponse:
+def guardar(request: Request, b: dict | None = Body(None)) -> JSONResponse:
     ses, err = _sesion_json(request)
     if err is not None:
         return err
-    try:
-        b = await request.json()
-    except Exception:  # noqa: BLE001
-        return _err("Datos inválidos.")
     if not isinstance(b, dict) or not _id_ok(str(b.get("id") or "")):
         return _err("Datos inválidos.")
     cid = str(b["id"])
@@ -713,16 +710,15 @@ $('btnEliminar').addEventListener('click',async function(){if(!await pcgConfirma
 
 
 # ── Acciones JSON del organizador ─────────────────────────────────────────────
-async def _json(request: Request) -> dict:
-    try:
-        b = await request.json()
-        return b if isinstance(b, dict) else {}
-    except Exception:  # noqa: BLE001
-        return {}
-
-
 @router.post(BASE + "/{cid}/foto")
 async def subir_imagen(request: Request, cid: str, tipo: str = "foto") -> JSONResponse:
+    """La subida a Storage y la BD son bloqueantes: van al threadpool para no
+    frenar el event loop mientras Supabase responde."""
+    cuerpo = await request.body()
+    return await run_in_threadpool(_subir_imagen, request, cid, tipo, cuerpo)
+
+
+def _subir_imagen(request: Request, cid: str, tipo: str, cuerpo: bytes) -> JSONResponse:
     ses, err = _sesion_json(request)
     if err is not None:
         return err
@@ -736,7 +732,6 @@ async def subir_imagen(request: Request, cid: str, tipo: str = "foto") -> JSONRe
     ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
     if ctype not in ("image/jpeg", "image/png", "image/webp"):
         return _err("Formato no admitido (usa JPG, PNG o WebP).", 415)
-    cuerpo = await request.body()
     if not cuerpo or len(cuerpo) > almacen.MAX_BYTES:
         return _err("La imagen pesa demasiado (máx. 6 MB).", 413)
     ms = int(time.time() * 1000)
@@ -764,11 +759,11 @@ async def subir_imagen(request: Request, cid: str, tipo: str = "foto") -> JSONRe
 
 
 @router.post(BASE + "/{cid}/imagen/quitar")
-async def quitar_imagen(request: Request, cid: str) -> JSONResponse:
+def quitar_imagen(request: Request, cid: str, b: dict | None = Body(None)) -> JSONResponse:
     ses, c, err = _mio_json(request, cid)
     if err is not None:
         return err
-    b = await _json(request)
+    b = b if isinstance(b, dict) else {}
     url, tipo = str(b.get("url") or ""), str(b.get("tipo") or "")
     clave = {"ausp": "auspiciadoresLogos", "foto": "fotos"}.get(tipo)
     if not clave or url not in (c.get(clave) or []):
@@ -783,12 +778,12 @@ async def quitar_imagen(request: Request, cid: str) -> JSONResponse:
 
 
 @router.post(BASE + "/{cid}/afiche")
-async def elegir_afiche(request: Request, cid: str) -> JSONResponse:
+def elegir_afiche(request: Request, cid: str, b: dict | None = Body(None)) -> JSONResponse:
     """`elegirArteAfiche` / `quitarFondoAfiche`."""
     ses, c, err = _mio_json(request, cid)
     if err is not None:
         return err
-    b = await _json(request)
+    b = b if isinstance(b, dict) else {}
     viejo = c.get("aficheFondoUrl") or ""
     if b.get("quitar"):
         c.pop("aficheFondoUrl", None)
@@ -814,12 +809,12 @@ async def elegir_afiche(request: Request, cid: str) -> JSONResponse:
 
 
 @router.post(BASE + "/{cid}/participante")
-async def agregar_participante(request: Request, cid: str) -> JSONResponse:
+def agregar_participante(request: Request, cid: str, b: dict | None = Body(None)) -> JSONResponse:
     """`agregarParticipante` (organizador): id `part_<µs>`, no regenera el fixture."""
     ses, c, err = _mio_json(request, cid)
     if err is not None:
         return err
-    b = await _json(request)
+    b = b if isinstance(b, dict) else {}
     nombre = re.sub(r"\s+", " ", str(b.get("nombre") or "")).strip()[:80]
     if not nombre:
         return _err("Escribe el nombre.")
@@ -832,7 +827,7 @@ async def agregar_participante(request: Request, cid: str) -> JSONResponse:
 
 
 @router.post(BASE + "/{cid}/participante/{pid}/eliminar")
-async def eliminar_participante(request: Request, cid: str, pid: str) -> JSONResponse:
+def eliminar_participante(request: Request, cid: str, pid: str) -> JSONResponse:
     ses, c, err = _mio_json(request, cid)
     if err is not None:
         return err
@@ -846,7 +841,7 @@ async def eliminar_participante(request: Request, cid: str, pid: str) -> JSONRes
 
 
 @router.post(BASE + "/{cid}/fixture")
-async def generar_fixture(request: Request, cid: str) -> JSONResponse:
+def generar_fixture(request: Request, cid: str) -> JSONResponse:
     """`generarFixture`: (re)genera y BORRA los resultados. No aplica a tiempos."""
     ses, c, err = _mio_json(request, cid)
     if err is not None:
@@ -862,11 +857,11 @@ async def generar_fixture(request: Request, cid: str) -> JSONResponse:
 
 
 @router.post(BASE + "/{cid}/resultado")
-async def cargar_resultado(request: Request, cid: str) -> JSONResponse:
+def cargar_resultado(request: Request, cid: str, b: dict | None = Body(None)) -> JSONResponse:
     ses, c, err = _mio_json(request, cid)
     if err is not None:
         return err
-    b = await _json(request)
+    b = b if isinstance(b, dict) else {}
     try:
         a, bb = int(b.get("a")), int(b.get("b"))
         if a < 0 or bb < 0:
@@ -885,11 +880,11 @@ async def cargar_resultado(request: Request, cid: str) -> JSONResponse:
 
 
 @router.post(BASE + "/{cid}/prueba")
-async def agregar_prueba(request: Request, cid: str) -> JSONResponse:
+def agregar_prueba(request: Request, cid: str, b: dict | None = Body(None)) -> JSONResponse:
     ses, c, err = _mio_json(request, cid)
     if err is not None:
         return err
-    b = await _json(request)
+    b = b if isinstance(b, dict) else {}
     try:
         dist = int(b.get("distancia"))
     except (TypeError, ValueError):
@@ -905,7 +900,7 @@ async def agregar_prueba(request: Request, cid: str) -> JSONResponse:
 
 
 @router.post(BASE + "/{cid}/prueba/{pid}/eliminar")
-async def eliminar_prueba(request: Request, cid: str, pid: str) -> JSONResponse:
+def eliminar_prueba(request: Request, cid: str, pid: str) -> JSONResponse:
     ses, c, err = _mio_json(request, cid)
     if err is not None:
         return err
@@ -921,13 +916,13 @@ async def eliminar_prueba(request: Request, cid: str, pid: str) -> JSONResponse:
 
 
 @router.post(BASE + "/{cid}/marca")
-async def registrar_marca(request: Request, cid: str) -> JSONResponse:
+def registrar_marca(request: Request, cid: str, b: dict | None = Body(None)) -> JSONResponse:
     """Diálogo de tiempo del app: tiempo vacío borra la marca; inválido → error;
     se conserva si tiene tiempo, DSQ, serie o carril."""
     ses, c, err = _mio_json(request, cid)
     if err is not None:
         return err
-    b = await _json(request)
+    b = b if isinstance(b, dict) else {}
     prueba = next((p for p in (c.get("pruebas") or []) if p.get("id") == str(b.get("prueba") or "")), None)
     pid = str(b.get("participante") or "")
     if prueba is None or L.participante(c, pid) is None:
@@ -954,7 +949,7 @@ async def registrar_marca(request: Request, cid: str) -> JSONResponse:
 
 
 @router.post(BASE + "/{cid}/ranking")
-async def sumar_ranking(request: Request, cid: str) -> JSONResponse:
+def sumar_ranking(request: Request, cid: str) -> JSONResponse:
     """`importarCampeonatoAlRanking`: solo campeonatos de una academia del mismo dueño."""
     ses, c, err = _mio_json(request, cid)
     if err is not None:
@@ -970,7 +965,7 @@ async def sumar_ranking(request: Request, cid: str) -> JSONResponse:
 
 
 @router.post(BASE + "/{cid}/duplicar")
-async def duplicar(request: Request, cid: str) -> JSONResponse:
+def duplicar(request: Request, cid: str) -> JSONResponse:
     """`duplicarCampeonato`: nueva edición con los mismos datos, sin participantes, fixture, pruebas, fotos ni fechas."""
     ses, c, err = _mio_json(request, cid)
     if err is not None:
@@ -990,7 +985,7 @@ async def duplicar(request: Request, cid: str) -> JSONResponse:
 
 
 @router.post(BASE + "/{cid}/eliminar")
-async def eliminar(request: Request, cid: str) -> JSONResponse:
+def eliminar(request: Request, cid: str) -> JSONResponse:
     ses, c, err = _mio_json(request, cid)
     if err is not None:
         return err

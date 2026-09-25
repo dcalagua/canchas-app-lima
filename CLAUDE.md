@@ -901,6 +901,37 @@ para la API del APK.
   hora, fin, PRECIO del turno y etiqueta "⚡ hora feliz" / "−N % promo";
   ocupado = gris tachado; seleccionado = azul noche; nota "El precio varía
   según la hora: desde … hasta …" cuando hay diferencias.
+- **LENTITUD EN TODO EL SISTEMA (queja del director, 25-sep-2026: "mucho se
+  demora para agregar un simple equipo, y lo mismo sucede en todo el
+  sistema"). CAUSA RAÍZ:** el middleware de `main.py` corría, DENTRO de cada
+  POST/PUT/DELETE y en el event loop, `pg.guardar(stores.to_state())` (abría
+  una conexión NUEVA al pooler, TLS ≈ 300-500 ms, y reescribía el snapshot
+  entero aunque nada hubiera cambiado) + `pg.guardar_normalizado(stores)`
+  (otra conexión nueva y UNA ida y vuelta por CADA fila de saldos/pagos/
+  vistas/reclamos, cientos de filas × ~20 ms). Cada guardado del app o de la
+  web pagaba segundos y, como bloqueaba el loop, la recarga siguiente también
+  esperaba. Además los endpoints `async def` de anfitrión hacían psycopg/
+  Storage bloqueantes en el loop. **ARREGLO:** (1) `pg.guardar()` usa el
+  pool y solo escribe si la huella blake2b del JSON cambió
+  (`_ultimo_hash`; `forzar=True` para saltarlo); (2) `guardar_normalizado`
+  es INCREMENTAL: huella por fila (`_norm_huellas`), solo viajan filas
+  nuevas/cambiadas y en lote (`executemany`); la primera pasada tras
+  arrancar hace el backfill completo; `limpiar_todo()` resetea huellas;
+  (3) el middleware ya NO espera: `pg.persistir_en_segundo_plano(stores)`
+  marca un `Event` y un hilo único `pcg-persistir` escribe con rebote de
+  250 ms (varios POST = una escritura); `@app.on_event("shutdown")` vacía lo
+  pendiente antes del SIGTERM de Railway; los retornos de pasarela siguen
+  sincrónicos vía `pg.persistir_ahora(stores)` (= `_persistir_ahora` de
+  pagos); (4) el middleware imprime `[perf] METHOD ruta tardó N ms` cuando
+  una request pasa de 700 ms y `[persistir] …` cuando un guardado pasa de
+  400 ms → mirar los logs de Railway antes de adivinar; (5) los endpoints
+  JSON de Mis campeonatos son `def` con `Body(None)` (threadpool) y los
+  `async def` de `anfitrion.py`/`anfitrion_academia.py`/`anfitrion_tienda.py`
+  leen el JSON/bytes en el loop y delegan la lógica a `_nombre(...)` vía
+  `run_in_threadpool` (`_leer_json`/`_JSON_INVALIDO` conservan el manejo de
+  "Datos inválidos"). **Regla:** ningún handler `async def` hace psycopg,
+  Storage ni HTTP bloqueante; y nada se persiste dentro de la request salvo
+  los GET de retorno de pasarela. Test `tests/test_persistencia_rapida.py`.
 - **Pool de conexiones Postgres (`db/pg.py::conexion()`, sep-2026):** cada
   `_conn()` abría una conexión nueva al pooler de Supabase (TLS ≈ 300-500 ms)
   y la ficha hacía 4-5 seguidas → 2 s de espera. `web/datos.py` usa

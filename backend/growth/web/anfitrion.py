@@ -21,6 +21,16 @@ import time
 from datetime import date, timedelta
 
 import config
+from starlette.concurrency import run_in_threadpool
+
+_JSON_INVALIDO = object()
+
+
+def _leer_json(v):
+    """El wrapper async ya leyó el JSON en el event loop; aquí solo se valida (la lógica corre en el threadpool, sin frenar el loop)."""
+    if v is _JSON_INVALIDO:
+        raise ValueError("json inválido")
+    return v
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
@@ -427,13 +437,21 @@ def _canchas_sesion(request: Request):
 
 @router.post("/anfitrion/bloqueo")
 async def bloquear_turno(request: Request) -> JSONResponse:
+    try:
+        _cuerpo_json = await request.json()
+    except Exception:  # noqa: BLE001
+        _cuerpo_json = _JSON_INVALIDO
+    return await run_in_threadpool(_bloquear_turno, request, _cuerpo_json)
+
+
+def _bloquear_turno(request: Request, _cuerpo_json) -> JSONResponse:
     ses, canchas = _canchas_sesion(request)
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
     if not _pro_ok(ses["email"]):
         return JSONResponse(_RESP_PRO, status_code=402)
     try:
-        b = await request.json()
+        b = _leer_json(_cuerpo_json)
     except Exception:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
     c = next((x for x in canchas if x["id"] == str(b.get("cancha_id") or "")), None)
@@ -457,6 +475,14 @@ async def bloquear_turno(request: Request) -> JSONResponse:
 
 @router.post("/anfitrion/reserva-manual")
 async def reserva_manual(request: Request) -> JSONResponse:
+    try:
+        _cuerpo_json = await request.json()
+    except Exception:  # noqa: BLE001
+        _cuerpo_json = _JSON_INVALIDO
+    return await run_in_threadpool(_reserva_manual, request, _cuerpo_json)
+
+
+def _reserva_manual(request: Request, _cuerpo_json) -> JSONResponse:
     """Reserva MANUAL del dueño desde la web = la misma fila que crea el app
     (`agregarReservaManual`): confirmada, `traida_por_app=false` (cliente
     propio, sin comisión), `medio_pago='manual'`, fecha REAL del slot."""
@@ -466,7 +492,7 @@ async def reserva_manual(request: Request) -> JSONResponse:
     if not _pro_ok(ses["email"]):
         return JSONResponse(_RESP_PRO, status_code=402)
     try:
-        b = await request.json()
+        b = _leer_json(_cuerpo_json)
     except Exception:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
     c = next((x for x in canchas if x["id"] == str(b.get("cancha_id") or "")), None)
@@ -526,6 +552,14 @@ async def reserva_manual(request: Request) -> JSONResponse:
 
 @router.post("/anfitrion/reserva/{res_id}/pagado")
 async def marcar_pagado_web(request: Request, res_id: str) -> JSONResponse:
+    try:
+        _cuerpo_json = await request.json()
+    except Exception:  # noqa: BLE001
+        _cuerpo_json = _JSON_INVALIDO
+    return await run_in_threadpool(_marcar_pagado_web, request, res_id, _cuerpo_json)
+
+
+def _marcar_pagado_web(request: Request, res_id: str, _cuerpo_json) -> JSONResponse:
     """Marcar cobrada (efectivo) / volver a "por cobrar": igual que `marcarPago`
     del app, con el push "¡Te llegaron puntos! ⭐" al jugador en la
     transición no pagado → pagado de reservas traídas por la app."""
@@ -534,7 +568,7 @@ async def marcar_pagado_web(request: Request, res_id: str) -> JSONResponse:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
     ids = [x["id"] for x in canchas]
     try:
-        b = await request.json()
+        b = _leer_json(_cuerpo_json)
     except Exception:  # noqa: BLE001
         b = {}
     pagado = bool((b or {}).get("pagado", True))
@@ -563,6 +597,10 @@ async def marcar_pagado_web(request: Request, res_id: str) -> JSONResponse:
 
 @router.post("/anfitrion/reserva/{res_id}/quitar")
 async def quitar_reserva_manual(request: Request, res_id: str) -> JSONResponse:
+    return await run_in_threadpool(_quitar_reserva_manual, request, res_id)
+
+
+def _quitar_reserva_manual(request: Request, res_id: str) -> JSONResponse:
     ses, canchas = _canchas_sesion(request)
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
@@ -1120,6 +1158,14 @@ $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('ms
 
 @router.post("/anfitrion/local/{cancha_id}/editar")
 async def guardar_edicion_local(request: Request, cancha_id: str) -> JSONResponse:
+    try:
+        _cuerpo_json = await request.json()
+    except Exception:  # noqa: BLE001
+        _cuerpo_json = _JSON_INVALIDO
+    return await run_in_threadpool(_guardar_edicion_local, request, cancha_id, _cuerpo_json)
+
+
+def _guardar_edicion_local(request: Request, cancha_id: str, _cuerpo_json) -> JSONResponse:
     """Aplica nombre del local, dirección, servicios del local y servicios
     extra de ámbito local a TODAS las canchas del local del dueño."""
     ses = sesion.de_request(request)
@@ -1129,7 +1175,7 @@ async def guardar_edicion_local(request: Request, cancha_id: str) -> JSONRespons
     if c is None:
         return JSONResponse({"ok": False, "error": "Esta cancha no está a tu nombre."}, status_code=404)
     try:
-        b = await request.json()
+        b = _leer_json(_cuerpo_json)
     except Exception:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
     if not isinstance(b, dict):
@@ -1198,6 +1244,14 @@ def _propagar_servicios_local(email: str, cancha_id: str, club: str, servicios: 
 
 @router.post("/anfitrion/servicios/sugerir")
 async def sugerir_servicio(request: Request) -> JSONResponse:
+    try:
+        _cuerpo_json = await request.json()
+    except Exception:  # noqa: BLE001
+        _cuerpo_json = _JSON_INVALIDO
+    return await run_in_threadpool(_sugerir_servicio, request, _cuerpo_json)
+
+
+def _sugerir_servicio(request: Request, _cuerpo_json) -> JSONResponse:
     """El dueño sugiere un servicio que no está en el catálogo; lo atiende el
     operador en la torre (Comunicación → Servicios extra). Texto libre SOLO
     hacia el equipo: nunca se publica."""
@@ -1205,7 +1259,7 @@ async def sugerir_servicio(request: Request) -> JSONResponse:
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
     try:
-        body = await request.json()
+        body = _leer_json(_cuerpo_json)
     except Exception:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
     c = _cancha_propia(ses, str(body.get("cancha_id") or "")) if isinstance(body, dict) else None
@@ -1220,6 +1274,14 @@ async def sugerir_servicio(request: Request) -> JSONResponse:
 
 @router.post("/anfitrion/cancha/{cancha_id}/editar")
 async def guardar_edicion_cancha(request: Request, cancha_id: str) -> JSONResponse:
+    try:
+        _cuerpo_json = await request.json()
+    except Exception:  # noqa: BLE001
+        _cuerpo_json = _JSON_INVALIDO
+    return await run_in_threadpool(_guardar_edicion_cancha, request, cancha_id, _cuerpo_json)
+
+
+def _guardar_edicion_cancha(request: Request, cancha_id: str, _cuerpo_json) -> JSONResponse:
     ses = sesion.de_request(request)
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
@@ -1227,7 +1289,7 @@ async def guardar_edicion_cancha(request: Request, cancha_id: str) -> JSONRespon
     if c is None:
         return JSONResponse({"ok": False, "error": "Esta cancha no está a tu nombre."}, status_code=404)
     try:
-        body = await request.json()
+        body = _leer_json(_cuerpo_json)
     except Exception:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
     campos, err, seccion = _validar_edicion(c, body)
@@ -1248,6 +1310,11 @@ async def guardar_edicion_cancha(request: Request, cancha_id: str) -> JSONRespon
 
 @router.post("/anfitrion/cancha/{cancha_id}/foto")
 async def subir_foto_cancha(request: Request, cancha_id: str) -> JSONResponse:
+    _cuerpo_bytes = await request.body()
+    return await run_in_threadpool(_subir_foto_cancha, request, cancha_id, _cuerpo_bytes)
+
+
+def _subir_foto_cancha(request: Request, cancha_id: str, _cuerpo_bytes: bytes = b"") -> JSONResponse:
     """Recibe la imagen (ya comprimida por el navegador) en el cuerpo y la sube
     al bucket `canchas` del app. Devuelve la URL pública para la galería."""
     ses = sesion.de_request(request)
@@ -1260,7 +1327,7 @@ async def subir_foto_cancha(request: Request, cancha_id: str) -> JSONResponse:
     ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
     if ctype not in ("image/jpeg", "image/png", "image/webp"):
         return JSONResponse({"ok": False, "error": "Formato no admitido (usa JPG, PNG o WebP)."}, status_code=415)
-    cuerpo = await request.body()
+    cuerpo = _cuerpo_bytes
     if not cuerpo or len(cuerpo) > almacen.MAX_BYTES:
         return JSONResponse({"ok": False, "error": "La foto pesa demasiado (máx. 6 MB)."}, status_code=413)
     url = almacen.subir_foto(cancha_id, cuerpo, ctype)
@@ -1611,6 +1678,14 @@ def _validar_registro(b: dict, email: str) -> tuple[list[dict] | None, dict, str
 
 @router.post("/anfitrion/nueva")
 async def registrar_cancha_web(request: Request) -> JSONResponse:
+    try:
+        _cuerpo_json = await request.json()
+    except Exception:  # noqa: BLE001
+        _cuerpo_json = _JSON_INVALIDO
+    return await run_in_threadpool(_registrar_cancha_web, request, _cuerpo_json)
+
+
+def _registrar_cancha_web(request: Request, _cuerpo_json) -> JSONResponse:
     """Crea la(s) cancha(s) en `pichangol_canchas` (sin verificar, a nombre
     del correo de la sesión) y el RECLAMO en el backend; la torre lo aprueba.
     Si el lugar ya tiene un reclamo ACTIVO de otra persona, no se registra."""
@@ -1618,7 +1693,7 @@ async def registrar_cancha_web(request: Request) -> JSONResponse:
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
     try:
-        body = await request.json()
+        body = _leer_json(_cuerpo_json)
     except Exception:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
     filas, rec, err, seccion = _validar_registro(body, ses["email"])
@@ -1655,6 +1730,11 @@ async def registrar_cancha_web(request: Request) -> JSONResponse:
 
 @router.post("/anfitrion/nueva/foto")
 async def subir_foto_nueva(request: Request, id: str = "", tipo: str = "foto") -> JSONResponse:
+    _cuerpo_bytes = await request.body()
+    return await run_in_threadpool(_subir_foto_nueva, request, id, tipo, _cuerpo_bytes)
+
+
+def _subir_foto_nueva(request: Request, id: str = "", tipo: str = "foto", _cuerpo_bytes: bytes = b"") -> JSONResponse:
     """Fotos del registro ANTES de que exista la fila: van a `canchas/<id>/`
     (misma carpeta que tendrá la cancha) o `canchas/ev<id>/` (evidencia)."""
     ses = sesion.de_request(request)
@@ -1667,7 +1747,7 @@ async def subir_foto_nueva(request: Request, id: str = "", tipo: str = "foto") -
     ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
     if ctype not in ("image/jpeg", "image/png", "image/webp"):
         return JSONResponse({"ok": False, "error": "Formato no admitido (usa JPG, PNG o WebP)."}, status_code=415)
-    cuerpo = await request.body()
+    cuerpo = _cuerpo_bytes
     if not cuerpo or len(cuerpo) > almacen.MAX_BYTES:
         return JSONResponse({"ok": False, "error": "La foto pesa demasiado (máx. 6 MB)."}, status_code=413)
     url = almacen.subir_foto(f"ev{id}" if tipo == "evidencia" else id, cuerpo, ctype)
@@ -1860,6 +1940,14 @@ def _validar_agregada(b: dict, l: dict, email: str) -> tuple[dict | None, str, s
 
 @router.post("/anfitrion/cancha/{cancha_id}/agregar")
 async def agregar_cancha_web(request: Request, cancha_id: str) -> JSONResponse:
+    try:
+        _cuerpo_json = await request.json()
+    except Exception:  # noqa: BLE001
+        _cuerpo_json = _JSON_INVALIDO
+    return await run_in_threadpool(_agregar_cancha_web, request, cancha_id, _cuerpo_json)
+
+
+def _agregar_cancha_web(request: Request, cancha_id: str, _cuerpo_json) -> JSONResponse:
     """INSERT de la cancha nueva heredando del local; sin reclamo nuevo."""
     ses = sesion.de_request(request)
     if not ses:
@@ -1868,7 +1956,7 @@ async def agregar_cancha_web(request: Request, cancha_id: str) -> JSONResponse:
     if not l:
         return JSONResponse({"ok": False, "error": "no_encontrada"}, status_code=404)
     try:
-        body = await request.json()
+        body = _leer_json(_cuerpo_json)
     except Exception:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
     fila, err, seccion = _validar_agregada(body, l, ses["email"])

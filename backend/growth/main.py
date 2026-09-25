@@ -8,6 +8,7 @@ Ejecutar (desde este directorio):
 from __future__ import annotations
 
 import os
+import time
 
 import asyncio
 
@@ -82,7 +83,11 @@ async def _persistir(request: Request, call_next):
     las CABECERAS DE SEGURIDAD: HSTS (todo el dominio va por HTTPS), nosniff,
     Referrer-Policy y, en la torre /admin, anti-iframe (clickjacking),
     sin caché de respuestas de la API y sin permisos de cámara/micro/GPS."""
+    t0 = time.time()
     response = await call_next(request)
+    ms = int((time.time() - t0) * 1000)
+    if ms > 700:
+        print(f"[perf] {request.method} {request.url.path} tardó {ms} ms", flush=True)
     h = response.headers
     h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     h.setdefault("X-Content-Type-Options", "nosniff")
@@ -94,15 +99,20 @@ async def _persistir(request: Request, call_next):
         if ruta.startswith("/admin/api/"):
             h.setdefault("Cache-Control", "no-store")
     if pg.habilitado and request.method in ("POST", "PUT", "DELETE"):
-        try:
-            pg.guardar(stores.to_state())
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            pg.guardar_normalizado(stores)
-        except Exception:  # noqa: BLE001
-            pass
+        # Sin bloquear la respuesta: un hilo guarda el snapshot (solo si cambió)
+        # y las tablas normalizadas (solo filas nuevas/cambiadas). Ver db/pg.py.
+        pg.persistir_en_segundo_plano(stores)
     return response
+
+
+@app.on_event("shutdown")
+def _persistir_al_apagar() -> None:
+    """Railway manda SIGTERM en cada redeploy: vaciamos lo pendiente antes de morir."""
+    if pg.habilitado:
+        try:
+            pg.persistir_ahora(stores)
+        except Exception:  # noqa: BLE001
+            pass
 
 app.include_router(puntos_router)
 app.include_router(entrenador_router)

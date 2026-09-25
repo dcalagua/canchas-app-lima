@@ -16,6 +16,16 @@ import re
 import time
 from datetime import datetime, timezone
 
+from starlette.concurrency import run_in_threadpool
+
+_JSON_INVALIDO = object()
+
+
+def _leer_json(v):
+    """El wrapper async ya leyó el JSON en el event loop; aquí solo se valida (la lógica corre en el threadpool, sin frenar el loop)."""
+    if v is _JSON_INVALIDO:
+        raise ValueError("json inválido")
+    return v
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -227,11 +237,19 @@ def _id_ok(pid: str) -> bool:
 
 @router.post("/anfitrion/tienda/guardar")
 async def guardar_producto(request: Request) -> JSONResponse:
+    try:
+        _cuerpo_json = await request.json()
+    except Exception:  # noqa: BLE001
+        _cuerpo_json = _JSON_INVALIDO
+    return await run_in_threadpool(_guardar_producto, request, _cuerpo_json)
+
+
+def _guardar_producto(request: Request, _cuerpo_json) -> JSONResponse:
     ses, err = _sesion_vendedor(request)
     if err is not None:
         return err
     try:
-        b = await request.json()
+        b = _leer_json(_cuerpo_json)
     except Exception:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
     if not isinstance(b, dict):
@@ -284,6 +302,11 @@ async def guardar_producto(request: Request) -> JSONResponse:
 
 @router.post("/anfitrion/tienda/{pid}/foto")
 async def subir_foto_producto(request: Request, pid: str) -> JSONResponse:
+    _cuerpo_bytes = await request.body()
+    return await run_in_threadpool(_subir_foto_producto, request, pid, _cuerpo_bytes)
+
+
+def _subir_foto_producto(request: Request, pid: str, _cuerpo_bytes: bytes = b"") -> JSONResponse:
     ses, err = _sesion_vendedor(request)
     if err is not None:
         return err
@@ -297,7 +320,7 @@ async def subir_foto_producto(request: Request, pid: str) -> JSONResponse:
     ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
     if ctype not in ("image/jpeg", "image/png", "image/webp"):
         return JSONResponse({"ok": False, "error": "Formato no admitido (usa JPG, PNG o WebP)."}, status_code=415)
-    cuerpo = await request.body()
+    cuerpo = _cuerpo_bytes
     if not cuerpo or len(cuerpo) > almacen.MAX_BYTES:
         return JSONResponse({"ok": False, "error": "La foto pesa demasiado (máx. 6 MB)."}, status_code=413)
     url = almacen.subir(BUCKET, f"{pid}.jpg", cuerpo, ctype)  # misma ruta que el app (upsert)
@@ -308,6 +331,14 @@ async def subir_foto_producto(request: Request, pid: str) -> JSONResponse:
 
 @router.post("/anfitrion/tienda/{pid}/activo")
 async def activar_producto(request: Request, pid: str) -> JSONResponse:
+    try:
+        _cuerpo_json = await request.json()
+    except Exception:  # noqa: BLE001
+        _cuerpo_json = _JSON_INVALIDO
+    return await run_in_threadpool(_activar_producto, request, pid, _cuerpo_json)
+
+
+def _activar_producto(request: Request, pid: str, _cuerpo_json) -> JSONResponse:
     ses, err = _sesion_vendedor(request)
     if err is not None:
         return err
@@ -315,7 +346,7 @@ async def activar_producto(request: Request, pid: str) -> JSONResponse:
     if p is None:
         return JSONResponse({"ok": False, "error": "Producto no encontrado."}, status_code=404)
     try:
-        b = await request.json()
+        b = _leer_json(_cuerpo_json)
     except Exception:  # noqa: BLE001
         b = {}
     p["activo"] = bool((b or {}).get("activo", True))
@@ -326,6 +357,10 @@ async def activar_producto(request: Request, pid: str) -> JSONResponse:
 
 @router.post("/anfitrion/tienda/{pid}/eliminar")
 async def eliminar_producto(request: Request, pid: str) -> JSONResponse:
+    return await run_in_threadpool(_eliminar_producto, request, pid)
+
+
+def _eliminar_producto(request: Request, pid: str) -> JSONResponse:
     ses, err = _sesion_vendedor(request)
     if err is not None:
         return err
