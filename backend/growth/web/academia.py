@@ -254,7 +254,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
                  "<button type='button' class='btn sec' onclick='cerrarSesion()'>Cambiar cuenta</button></div>")
         login = (f"<div class='login-box' id='loginBox'{' style=display:none' if ses else ''}><b>Inicia sesión con Google para matricularte</b>"
                  "<div class='sub' style='margin:4px 0 12px'>Como en el app: la matrícula queda a nombre de tu cuenta y el profe te ve en su lista de alumnos.</div>"
-                 f"{sesion.boton_google()}<div class='estado bad' id='sesionErr'></div></div>")
+                 f"{sesion.boton_google(volver=f'/academia/{academia_id}')}<div class='estado bad' id='sesionErr'></div></div>")
         datos_box_ini = "" if ses else " style=display:none"
     else:
         quien, login, datos_box_ini = "", "", ""

@@ -590,8 +590,7 @@ def _persistir_ahora() -> None:
         from db import pg
         if not pg.habilitado:
             return
-        pg.guardar(stores.to_state())
-        pg.guardar_normalizado(stores)
+        pg.persistir_ahora(stores)
     except Exception:  # noqa: BLE001
         pass
 

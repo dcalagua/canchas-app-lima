@@ -505,6 +505,14 @@ body.sin-scroll{overflow:hidden}
 .modal-cuerpo{overflow-y:auto;padding:8px 24px 16px;flex:1;min-height:0}
 .modal-cuerpo section{padding:22px 0;border-bottom:1px solid var(--trazo)}.modal-cuerpo section:last-child{border-bottom:0}
 .modal-cuerpo h4{margin:0 0 14px;font-size:18px;font-weight:600}
+.pcg-dlg{display:none;position:fixed;inset:0;background:rgba(10,27,61,.5);z-index:80;align-items:center;justify-content:center;padding:24px 16px}.pcg-dlg.open{display:flex}
+.pcg-dlg .caja{background:var(--blanco);border-radius:24px;width:100%;max-width:420px;padding:28px 24px 20px;text-align:center;box-shadow:0 12px 40px rgba(10,27,61,.3);animation:pop .18s ease-out}
+.pcg-dlg .ico{width:56px;height:56px;border-radius:50%;background:var(--tinte);display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:12px}.pcg-dlg .ico.mal{background:#FDECE8}
+.pcg-dlg h3{margin:0 0 8px;font-size:19px;color:var(--noche)}.pcg-dlg p{margin:0 0 20px;color:var(--tenue);font-size:15px;line-height:1.45}
+.pcg-dlg .btn{width:100%;padding:14px 18px;font-size:15.5px}.pcg-dlg .btn.mal{background:var(--rojo)}.pcg-dlg .txt{display:block;width:100%;margin-top:6px;padding:12px;border:0;background:transparent;color:var(--noche);font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;border-radius:12px}.pcg-dlg .txt:hover{background:var(--gris)}
+.pcg-velo{display:none;position:fixed;inset:0;background:rgba(10,27,61,.35);backdrop-filter:blur(2px);z-index:90;align-items:center;justify-content:center;padding:16px}.pcg-velo.open{display:flex}
+.pcg-velo .tarjeta{background:var(--blanco);border-radius:20px;padding:24px 28px;display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--noche);font-weight:700;font-size:15px;box-shadow:0 12px 40px rgba(10,27,61,.3);min-width:220px;text-align:center}
+.pcg-velo .aro{width:46px;height:46px;border-radius:50%;border:4px solid var(--gris);border-top-color:var(--esmeralda);animation:pcgGiro .8s linear infinite}@keyframes pcgGiro{to{transform:rotate(360deg)}}
 .modal-cuerpo .sub{margin:-8px 0 14px;font-size:14px}
 .modal-cuerpo .chips{display:flex;flex-wrap:wrap;gap:8px}.modal-cuerpo .chip small{color:var(--tenue);font-weight:600}
 .modal-cuerpo .chip.sel{background:var(--noche);color:#fff;border-color:var(--noche)}.modal-cuerpo .chip.sel small{color:#cfd6d2}
@@ -822,7 +830,34 @@ JS_NAV = r"""
     mini.addEventListener('click', function(ev){ ev.preventDefault(); window.scrollTo({top: 0, behavior: 'smooth'});
       setTimeout(function(){ cab.classList.remove('chica'); var q = document.getElementById('sQ'); if(q) q.focus(); }, 350); });
   }
-  window.pcgSalir = function(){ fetch('/web/salir', {method: 'POST'}).then(function(){ location.reload(); }); };
+  window.pcgSalir = function(){ pcgCargando('Cerrando sesión…'); fetch('/web/salir', {method: 'POST'}).then(function(){ location.reload(); }); };
+  // ── Diálogos y preloader de TODA la web (regla del director, sep-2026: nada de confirm()/alert() del navegador) ──
+  // pcgConfirmar({titulo, mensaje, confirmar, cancelar, destructivo, icono}) → Promise<bool>; pcgAvisar({...}) → Promise; mismo formato que dialogo_pichangol.dart.
+  function dlg(){ var d = document.getElementById('pcgDlg'); if(d) return d; d = document.createElement('div'); d.id = 'pcgDlg'; d.className = 'pcg-dlg'; d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true');
+    d.innerHTML = "<div class='caja'><div class='ico' id='pcgDlgIco'></div><h3 id='pcgDlgTit'></h3><p id='pcgDlgMsg'></p><button type='button' class='btn' id='pcgDlgOk'></button><button type='button' class='txt' id='pcgDlgNo'></button></div>";
+    document.body.appendChild(d); return d; }
+  function abrirDlg(o, conCancelar){ return new Promise(function(res){ var d = dlg(), ok = d.querySelector('#pcgDlgOk'), no = d.querySelector('#pcgDlgNo'), ico = d.querySelector('#pcgDlgIco');
+    d.querySelector('#pcgDlgTit').textContent = o.titulo || (conCancelar ? '¿Seguro?' : 'Aviso'); d.querySelector('#pcgDlgMsg').textContent = o.mensaje || '';
+    ico.textContent = o.icono || (o.destructivo ? '🗑' : (conCancelar ? '❓' : 'ℹ️')); ico.classList.toggle('mal', !!o.destructivo);
+    ok.textContent = o.confirmar || (conCancelar ? 'Sí, continuar' : 'Entendido'); ok.classList.toggle('mal', !!o.destructivo); no.textContent = o.cancelar || 'Cancelar'; no.style.display = conCancelar ? '' : 'none';
+    function fin(v){ d.classList.remove('open'); ok.onclick = no.onclick = d.onclick = null; document.removeEventListener('keydown', esc); res(v); }
+    function esc(ev){ if(ev.key === 'Escape') fin(false); }
+    ok.onclick = function(){ fin(true); }; no.onclick = function(){ fin(false); }; d.onclick = function(ev){ if(ev.target === d) fin(false); };
+    document.addEventListener('keydown', esc); d.classList.add('open'); setTimeout(function(){ (conCancelar && o.destructivo ? no : ok).focus(); }, 40); }); }
+  window.pcgConfirmar = function(o){ return abrirDlg(o || {}, true); };
+  window.pcgAvisar = function(o){ return abrirDlg(typeof o === 'string' ? {mensaje: o} : (o || {}), false); };
+  // pcgCargando('Guardando…') muestra el velo con spinner; pcgCargando(false) lo quita. Con {demora:ms} aparece solo si la espera supera ese tiempo.
+  var veloT = null;
+  window.pcgCargando = function(msg, op){ var v = document.getElementById('pcgVelo'); if(!v){ v = document.createElement('div'); v.id = 'pcgVelo'; v.className = 'pcg-velo'; v.setAttribute('aria-live', 'polite'); v.innerHTML = "<div class='tarjeta'><div class='aro'></div><div id='pcgVeloTxt'></div></div>"; document.body.appendChild(v); }
+    if(veloT){ clearTimeout(veloT); veloT = null; }
+    if(msg === false || msg === null){ v.classList.remove('open'); return; }
+    var demora = (op && op.demora) || 0, txt = typeof msg === 'string' ? msg : 'Un momento…';
+    var abrir = function(){ v.querySelector('#pcgVeloTxt').textContent = txt; v.classList.add('open'); };
+    if(demora) veloT = setTimeout(abrir, demora); else abrir(); };
+  window.pcgRecargar = function(msg){ pcgCargando(msg || 'Actualizando…'); location.reload(); };
+  window.pcgIr = function(url, msg){ pcgCargando(msg || 'Un momento…'); location.href = url; };
+  window.addEventListener('pageshow', function(ev){ if(ev.persisted) pcgCargando(false); });
+  if(!window.pcgToast){ window.pcgToast = function(t){ var el = document.createElement('div'); el.className = 'toast'; el.textContent = t; document.body.appendChild(el); setTimeout(function(){ el.classList.add('on'); }, 10); setTimeout(function(){ el.classList.remove('on'); setTimeout(function(){ el.remove(); }, 300); }, 2600); }; }
 })();
 """
 

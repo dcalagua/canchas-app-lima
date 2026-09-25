@@ -173,12 +173,23 @@ def meta_modo() -> str:
 # Instagram debe poder descargar al publicar (Meta hace fetch de image_url). Si
 # está vacío, se arma con la URL de la request. Ej.:
 # https://pg-backend-production-c176.up.railway.app
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
+def url_limpia(valor: str | None) -> str:
+    """Base de URL NORMALIZADA: sin espacios (un espacio al final pegado en
+    Railway se colaba en los enlaces como `%20/c/...` y los rompía) y sin barra
+    final, en cualquier orden ("https://x / " → "https://x")."""
+    return (valor or "").strip().rstrip("/ \t\r\n").strip()
+
+
+def _url_env(nombre: str) -> str:
+    return url_limpia(os.getenv(nombre, ""))
+
+
+PUBLIC_BASE_URL = _url_env("PUBLIC_BASE_URL")
 # Dominio de MARCA para las landings públicas (canonical + og:url), p. ej.
 # https://www.pichangol.app. Debe coincidir con el custom domain de Railway y con
 # el dart-define LANDING_BASE_URL del APK. Si está vacío, cae a PUBLIC_BASE_URL y,
 # en última instancia, al host de la request. Ej.: https://www.pichangol.app
-LANDING_BASE_URL = os.getenv("LANDING_BASE_URL", "")
+LANDING_BASE_URL = _url_env("LANDING_BASE_URL")
 
 # Supabase (solo lectura pública): para servir la página del campeonato
 # (`GET /c/{id}`) leyendo `pichangol_campeonatos` por REST. La anon key es
@@ -199,6 +210,13 @@ GOOGLE_WEB_CLIENT_ID = os.getenv("GOOGLE_WEB_CLIENT_ID", "").strip()
 # Secreto del MISMO cliente OAuth "Aplicación web": lo usa la torre para conectar
 # Google Fotos (Picker API) con refresh token. Sin él, la sección explica qué falta.
 GOOGLE_WEB_CLIENT_SECRET = os.getenv("GOOGLE_WEB_CLIENT_SECRET", "").strip()
+# ACCESO DE REVISIÓN para la web pública (Culqi, INDECOPI, auditores): pares
+# "correo:clave" separados por coma. Con esto configurado, /entrar y las cajas
+# "Inicia sesión con Google" ofrecen también "Acceso de revisión" con usuario y
+# contraseña, que abre la MISMA sesión firmada que Google (el revisor reserva y
+# paga como cualquier cliente). Vacío = no existe la opción. Cada ambiente pone
+# los suyos; nunca reutilizar la clave de un operador de la torre.
+WEB_USUARIOS_PRUEBA = os.getenv("WEB_USUARIOS_PRUEBA", "").strip()
 
 # Huella SHA-256 del certificado de firma del APK (para verificar los Android
 # App Links en /.well-known/assetlinks.json). Sacarla con:

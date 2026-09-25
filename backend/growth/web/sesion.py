@@ -124,14 +124,52 @@ def verificar_id_token(token: str) -> dict | None:
             "foto": (info.get("picture") or "").strip()}
 
 
-def boton_google(callback: str = "onGoogleCred") -> str:
-    """HTML del botón oficial de Google (Google Identity Services)."""
+def usuarios_prueba() -> dict[str, str]:
+    """Cuentas de REVISIÓN (`WEB_USUARIOS_PRUEBA`, "correo:clave,…"): las que se
+    entregan a Culqi/INDECOPI para recorrer la compra sin cuenta de Google."""
+    out: dict[str, str] = {}
+    for par in (getattr(config, "WEB_USUARIOS_PRUEBA", "") or "").split(","):
+        par = par.strip()
+        if ":" not in par:
+            continue
+        correo, clave = par.split(":", 1)
+        correo, clave = correo.strip().lower(), clave.strip()
+        if correo and clave:
+            out[correo] = clave
+    return out
+
+
+def revision_activa() -> bool:
+    return activo() and bool(usuarios_prueba())
+
+
+def credenciales_prueba_validas(usuario: str | None, clave: str | None) -> bool:
+    esperada = usuarios_prueba().get((usuario or "").strip().lower())
+    if esperada is None:
+        hmac.compare_digest(clave or "", "x")
+        return False
+    return hmac.compare_digest(clave or "", esperada)
+
+
+def enlace_revision(volver: str = "") -> str:
+    """Enlace discreto "Acceso de revisión" bajo el botón de Google (solo si hay cuentas)."""
+    if not revision_activa():
+        return ""
+    q = f"?volver={urllib.parse.quote(volver, safe='')}" if volver else ""
+    return (f"<div style='margin-top:10px;font-size:12.5px;color:#6b7280'>¿Eres revisor (Culqi, INDECOPI)? "
+            f"<a href='/entrar{q}#revision' style='color:#0B8A3E;font-weight:700'>Acceso de revisión con usuario y contraseña</a></div>")
+
+
+def boton_google(callback: str = "onGoogleCred", volver: str = "") -> str:
+    """HTML del botón oficial de Google (Google Identity Services) + el enlace
+    de acceso de revisión cuando está configurado."""
     if not activo():
         return ""
     return (f"<div id='g_id_onload' data-client_id='{config.GOOGLE_WEB_CLIENT_ID}' data-callback='{callback}' "
             "data-auto_prompt='false' data-ux_mode='popup' data-context='signin'></div>"
             "<div class='g_id_signin' data-type='standard' data-shape='pill' data-theme='outline' "
-            "data-text='signin_with' data-size='large' data-locale='es' data-logo_alignment='left'></div>")
+            "data-text='signin_with' data-size='large' data-locale='es' data-logo_alignment='left'></div>"
+            + enlace_revision(volver))
 
 
 GIS_SCRIPT = "<script src='https://accounts.google.com/gsi/client' async defer></script>"

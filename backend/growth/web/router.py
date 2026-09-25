@@ -1192,6 +1192,39 @@ def abrir_sesion(req: SesionReq, response: Response) -> dict:
     return {"ok": True, **u}
 
 
+class SesionPruebaReq(BaseModel):
+    usuario: str
+    clave: str
+
+
+_revision_intentos: dict[str, tuple[int, float]] = {}   # ip -> (fallos, bloqueado_hasta)
+
+
+@router.post("/web/sesion/prueba")
+def abrir_sesion_prueba(req: SesionPruebaReq, request: Request, response: Response) -> dict:
+    """Acceso de REVISIÓN (Culqi/INDECOPI): usuario + contraseña de
+    `WEB_USUARIOS_PRUEBA` → la misma cookie firmada que el login con Google, así
+    el revisor reserva, paga y ve el comprobante como un cliente. Anti fuerza
+    bruta por IP real (5 fallos → 5 min)."""
+    if not sesion.revision_activa():
+        return {"ok": False, "error": "no_configurado"}
+    xff = request.headers.get("x-forwarded-for", "")
+    ip = (xff.split(",")[0].strip() if xff else (request.client.host if request.client else "?"))[:64]
+    fallos, hasta = _revision_intentos.get(ip, (0, 0.0))
+    if time.time() < hasta:
+        return {"ok": False, "error": "demasiados_intentos"}
+    if not sesion.credenciales_prueba_validas(req.usuario, req.clave):
+        fallos += 1
+        _revision_intentos[ip] = (0, time.time() + 300) if fallos >= 5 else (fallos, 0.0)
+        print(f"[web] acceso de revisión fallido usuario={req.usuario!r} ip={ip}", flush=True)
+        return {"ok": False, "error": "credenciales_invalidas"}
+    _revision_intentos.pop(ip, None)
+    u = {"email": req.usuario.strip().lower(), "nombre": "Cuenta de revisión", "foto": ""}
+    sesion.poner_cookie(response, sesion.emitir(u))
+    print(f"[web] acceso de revisión OK usuario={u['email']} ip={ip}", flush=True)
+    return {"ok": True, **u}
+
+
 @router.post("/web/salir")
 def cerrar_sesion(response: Response) -> dict:
     sesion.borrar_cookie(response)
@@ -1225,8 +1258,23 @@ def pagina_entrar(request: Request, volver: str = "/") -> HTMLResponse:
               f"<div style='display:flex;justify-content:center;margin:22px 0 10px'>{sesion.boton_google()}</div>"
               "<div class='estado bad' id='sesionErr'></div>"
               "<p class='sub' style='font-size:12.5px'>Al continuar aceptas los <a href='/legal/terminos'>términos</a> y la "
-              "<a href='/legal/privacidad'>política de privacidad</a>.</p></div>"
-              f"<script>window.alIniciarSesion=function(){{location.href={json.dumps(v)};}};{sesion.JS_SESION}</script>")
+              "<a href='/legal/privacidad'>política de privacidad</a>.</p>"
+              + (("<div id='revision' style='margin-top:18px;padding-top:16px;border-top:1px solid #eee;text-align:left'>"
+                  "<b style='font-size:14px'>Acceso de revisión</b>"
+                  "<div class='sub' style='font-size:12.5px;margin:2px 0 10px'>Para revisores (Culqi, INDECOPI): usa el usuario y la contraseña que te entregó Pichangol.</div>"
+                  "<label for='revUsr' style='font-size:12.5px;font-weight:700'>Usuario</label>"
+                  "<input id='revUsr' autocomplete='username' maxlength='120' style='width:100%;margin:4px 0 10px'>"
+                  "<label for='revPwd' style='font-size:12.5px;font-weight:700'>Contraseña</label>"
+                  "<input id='revPwd' type='password' autocomplete='current-password' maxlength='120' style='width:100%;margin:4px 0 12px'>"
+                  "<button type='button' class='btn' style='width:100%' onclick='entrarRevision()'>Entrar como revisor</button>"
+                  "<div class='estado bad' id='revErr'></div></div>") if sesion.revision_activa() else "")
+              + "</div>"
+              f"<script>window.alIniciarSesion=function(){{location.href={json.dumps(v)};}};{sesion.JS_SESION}"
+              "window.entrarRevision=function(){var u=document.getElementById('revUsr').value.trim(),c=document.getElementById('revPwd').value,er=document.getElementById('revErr');er.textContent='';"
+              "fetch('/web/sesion/prueba',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({usuario:u,clave:c})}).then(function(r){return r.json();})"
+              ".then(function(j){if(j&&j.ok){window.alIniciarSesion(j);}else{er.textContent=j&&j.error==='demasiados_intentos'?'Demasiados intentos. Espera 5 minutos.':'Usuario o contraseña incorrectos.';er.style.display='block';}})"
+              ".catch(function(){er.textContent='Sin conexión. Inténtalo de nuevo.';er.style.display='block';});};"
+              "var rp=document.getElementById('revPwd');if(rp)rp.addEventListener('keydown',function(e){if(e.key==='Enter')entrarRevision();});</script>")
     return ui.shell("Iniciar sesión", cuerpo, extra_head=sesion.GIS_SCRIPT, sesion=None)
 
 
@@ -1799,7 +1847,7 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
             f"<div class='login-box' id='loginBox'{' style=display:none' if ses else ''}>"
             "<b>Inicia sesión con Google para reservar</b>"
             "<div class='sub' style='margin:4px 0 12px'>Como en el app: tu reserva queda en \"Mis reservas\" y el comprobante llega a tu correo.</div>"
-            f"{sesion.boton_google()}<div class='estado bad' id='sesionErr'></div></div>"
+            f"{sesion.boton_google(volver='/reservar/' + c['id'])}<div class='estado bad' id='sesionErr'></div></div>"
             f"<div id='datosBox'{'' if ses else ' style=display:none'}>{quien}"
             "<div class='row'><div><label for='nombre'>Nombre y apellido</label>"
             f"<input id='nombre' autocomplete='name' maxlength='80' placeholder='Como en tu documento' value='{e((ses or {}).get('nombre', ''))}'></div>"

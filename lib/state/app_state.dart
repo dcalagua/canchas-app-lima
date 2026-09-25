@@ -2823,6 +2823,7 @@ class AppState extends ChangeNotifier {
     int? edadMin,
     int? edadMax,
     int minJugadoresEquipo = 0,
+    int minPartidos = 2,
     String premios = '',
     String auspiciador = '',
   }) {
@@ -2846,6 +2847,7 @@ class AppState extends ChangeNotifier {
       edadMin: edadMin,
       edadMax: edadMax,
       minJugadoresEquipo: minJugadoresEquipo,
+      minPartidos: minPartidos,
       premios: premios,
       auspiciador: auspiciador,
       // Congela la moneda por el país de la SEDE (no el del dispositivo): un
@@ -3196,7 +3198,7 @@ class AppState extends ChangeNotifier {
   void generarFixture(String campId) {
     final c = campeonatoPorId(campId);
     if (c == null) return;
-    final partidos = TorneoFixture.generar(c.formato, c.participantes);
+    final partidos = TorneoFixture.generarDe(c);
     guardarCampeonato(c.copyWith(partidos: partidos));
   }
 
@@ -3209,7 +3211,7 @@ class AppState extends ChangeNotifier {
     for (final c in List<Campeonato>.from(campeonatos)) {
       if (c.cerrado || c.fixtureGenerado || !c.inscripcionVencida) continue;
       if (c.participantes.length < 2) continue;
-      final partidos = TorneoFixture.generar(c.formato, c.participantes);
+      final partidos = TorneoFixture.generarDe(c);
       if (partidos.isEmpty) continue;
       final nuevo = c.copyWith(partidos: partidos);
       final i = campeonatos.indexWhere((x) => x.id == c.id);
@@ -3245,6 +3247,8 @@ class AppState extends ChangeNotifier {
     ];
     if (c.formato == FormatoTorneo.eliminacion) {
       partidos = TorneoFixture.recomputarLlave(partidos);
+    } else if (c.formato == FormatoTorneo.grupos) {
+      partidos = TorneoFixture.recomputarGrupos(c, partidos);
     }
     guardarCampeonato(c.copyWith(partidos: partidos));
   }

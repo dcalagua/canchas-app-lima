@@ -84,3 +84,32 @@ TEL_LONGITUD = {"PE": 9, "BO": 8, "EC": 9}      # `PaisConfig.telLongitud`
 TEL_PREFIJO = {"PE": "51", "BO": "591", "EC": "593"}
 GEO_LABELS = {"PE": ["Departamento", "Provincia", "Distrito"], "BO": ["Departamento", "Provincia", "Municipio"],
               "EC": ["Provincia", "Cantón", "Parroquia"]}
+
+
+# ── Campeonatos (`crear_campeonato_screen`, `FormatoTorneo`, `Natacion`) ──
+# El asistente del app ofrece TODOS los deportes de `Deporte.values` (incluido pádel).
+DEPORTES_CAMPEONATO = ["futbol", "tenis", "padel", "pickleball", "voley", "basquet", "natacion"]
+DEPORTES_CIRCUITO = ["tenis", "padel", "pickleball"]
+# (etiqueta, edadMin, edadMax) = `catalogoCategorias`.
+CATEGORIAS_CAMPEONATO = [
+    ("Sub-8", None, 8), ("Sub-10", None, 10), ("Sub-12", None, 12), ("Sub-14", None, 14), ("Sub-16", None, 16),
+    ("Sub-18", None, 18), ("Sub-21", None, 21), ("Sub-23", None, 23),
+    ("+35 (Máster)", 35, None), ("+40 (Máster)", 40, None), ("+45 (Máster)", 45, None), ("+50 (Máster)", 50, None),
+    ("Abierta / Libre", None, None),
+]
+# Formato por defecto y formatos ofrecidos por deporte (`_formatoDe` / `_formatosDe`).
+def formato_por_defecto(deporte: str) -> str:
+    return "tiempos" if deporte == "natacion" else ("liga" if deporte == "futbol" else "eliminacion")
+
+
+def formatos_de(deporte: str) -> list[str]:
+    return ["tiempos"] if deporte == "natacion" else ["eliminacion", "liga", "grupos"]
+
+
+FORMATO_SUB = {"eliminacion": "Llave: el ganador avanza (ideal tenis/pádel).",
+               "liga": "Todos contra todos + tabla (ideal fútbol).",
+               "grupos": "Fase de grupos (cada equipo juega al menos 2 o 3 partidos) y luego llave con los 2 primeros de cada grupo.",
+               "tiempos": "Cada nadador registra su TIEMPO por prueba; se rankea del más rápido al más lento."}
+# Temas del arte IA del afiche (`_cambiarFondo`): clave → etiqueta.
+AFICHE_TEMAS = [("", "Nocturno ⭐"), ("claro", "Fondo claro"), ("cancha", "Solo la cancha"), ("amanecer", "Amanecer"), ("celebracion", "Celebración")]
+AFICHE_VARIANTES = 5

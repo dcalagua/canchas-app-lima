@@ -19,6 +19,16 @@ import time
 from datetime import date
 from pathlib import Path
 
+from starlette.concurrency import run_in_threadpool
+
+_JSON_INVALIDO = object()
+
+
+def _leer_json(v):
+    """El wrapper async ya leyó el JSON en el event loop; aquí solo se valida (la lógica corre en el threadpool, sin frenar el loop)."""
+    if v is _JSON_INVALIDO:
+        raise ValueError("json inválido")
+    return v
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
@@ -365,8 +375,8 @@ function leerProgramas(){document.querySelectorAll('.prog-card').forEach(functio
 function aplanar(){var out=[];programas.forEach(function(g){FRECS.forEach(function(f){var v=g.precios[f];if(!(v>0))return;
   out.push({id:g.nombre+' | '+f+'x',nombre:g.nombre+' · '+f+'x/sem',tipo:'mensual',precioMes:v,meses:1,programa:g.nombre,frecuenciaSemana:f,etapaEdad:g.etapaEdad,duracionClase:g.duracionClase,horario:g.horario})})});return out.concat(sueltos)}
 $('programas').addEventListener('input',function(ev){var inp=ev.target;if(inp.dataset.k!=='nombre')return;var c=inp.closest('.prog-card');c.querySelector('.prog-tit').textContent=inp.value.trim()||('Programa '+(+c.dataset.i+1))});
-$('programas').addEventListener('click',function(ev){
-  var q=ev.target.closest('[data-quitar-prog]');if(q){leerProgramas();var g=programas[+q.dataset.quitarProg];if(Object.keys(g.precios).length&&!confirm('¿Quitar el programa «'+(g.nombre||'')+'» y sus tarifas?'))return;programas.splice(+q.dataset.quitarProg,1);pintarProgramas();return}
+$('programas').addEventListener('click',async function(ev){
+  var q=ev.target.closest('[data-quitar-prog]');if(q){leerProgramas();var g=programas[+q.dataset.quitarProg];if(Object.keys(g.precios).length&&!await pcgConfirmar({titulo:'Quitar programa',mensaje:'Se quita «'+(g.nombre||'Programa')+'» con sus tarifas. Se aplica al guardar.',confirmar:'Quitar',destructivo:true}))return;programas.splice(+q.dataset.quitarProg,1);pintarProgramas();return}
   var b=ev.target.closest('.chip[data-g]');if(!b)return;var wrap=b.closest('.chips');wrap.querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel')});b.classList.add('sel')});
 var sbox=$('sueltos');if(sbox)sbox.addEventListener('click',function(ev){var q=ev.target.closest('[data-quitar-suelto]');if(!q)return;leerProgramas();sueltos.splice(+q.dataset.quitarSuelto,1);pintarProgramas()});
 $('btnPrograma').addEventListener('click',function(){leerProgramas();programas.push({nombre:'',etapaEdad:'',duracionClase:'',horario:'',precios:{}});pintarProgramas();var last=$('programas').lastElementChild;if(last)last.querySelector('input').focus()});
@@ -382,8 +392,8 @@ $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('ms
   try{var r=await fetch('/anfitrion/academia/guardar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){location.href='/anfitrion/academia?guardado=1';return}msg.classList.add('err');msg.textContent=j.error||'No se pudo guardar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth'})}}
   catch(e){msg.classList.add('err');msg.textContent='No se pudo guardar. Revisa tu conexión.'}btn.disabled=false});
-var del=$('btnEliminar');if(del)del.addEventListener('click',async function(){if(!confirm('¿Eliminar esta academia? Deja de verse en la app y en tu landing (los alumnos y cuotas quedan guardados).'))return;this.disabled=true;
-  try{var j=await (await fetch('/anfitrion/academia/'+encodeURIComponent(CFG.id)+'/eliminar',{method:'POST'})).json();if(j.ok){location.href='/anfitrion/academia';return}pcgToast(j.error||'No se pudo eliminar.')}catch(e){pcgToast('No se pudo eliminar.')}this.disabled=false});
+var del=$('btnEliminar');if(del)del.addEventListener('click',async function(){if(!await pcgConfirmar({titulo:'Eliminar academia',mensaje:'Deja de verse en la app y en tu landing. Los alumnos y sus cuotas quedan guardados.',confirmar:'Eliminar',destructivo:true}))return;this.disabled=true;pcgCargando('Eliminando…');
+  try{var j=await (await fetch('/anfitrion/academia/'+encodeURIComponent(CFG.id)+'/eliminar',{method:'POST'})).json();if(j.ok){pcgIr('/anfitrion/academia');return}pcgCargando(false);pcgToast(j.error||'No se pudo eliminar.')}catch(e){pcgCargando(false);pcgToast('No se pudo eliminar.')}this.disabled=false});
 })();
 """
 
@@ -494,11 +504,19 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
 
 @router.post("/anfitrion/academia/guardar")
 async def guardar_academia(request: Request) -> JSONResponse:
+    try:
+        _cuerpo_json = await request.json()
+    except Exception:  # noqa: BLE001
+        _cuerpo_json = _JSON_INVALIDO
+    return await run_in_threadpool(_guardar_academia, request, _cuerpo_json)
+
+
+def _guardar_academia(request: Request, _cuerpo_json) -> JSONResponse:
     ses = sesion.de_request(request)
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
     try:
-        b = await request.json()
+        b = _leer_json(_cuerpo_json)
     except Exception:  # noqa: BLE001
         return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
     if not isinstance(b, dict) or not _id_ok(str(b.get("id") or "")):
@@ -521,6 +539,11 @@ async def guardar_academia(request: Request) -> JSONResponse:
 
 @router.post("/anfitrion/academia/{aid}/foto")
 async def subir_imagen_academia(request: Request, aid: str, tipo: str = "foto") -> JSONResponse:
+    _cuerpo_bytes = await request.body()
+    return await run_in_threadpool(_subir_imagen_academia, request, aid, tipo, _cuerpo_bytes)
+
+
+def _subir_imagen_academia(request: Request, aid: str, tipo: str = "foto", _cuerpo_bytes: bytes = b"") -> JSONResponse:
     ses = sesion.de_request(request)
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
@@ -535,7 +558,7 @@ async def subir_imagen_academia(request: Request, aid: str, tipo: str = "foto") 
     ctype = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
     if ctype not in ("image/jpeg", "image/png", "image/webp"):
         return JSONResponse({"ok": False, "error": "Formato no admitido (usa JPG, PNG o WebP)."}, status_code=415)
-    cuerpo = await request.body()
+    cuerpo = _cuerpo_bytes
     if not cuerpo or len(cuerpo) > almacen.MAX_BYTES:
         return JSONResponse({"ok": False, "error": "La imagen pesa demasiado (máx. 6 MB)."}, status_code=413)
     nombre = "logo_web.jpg" if tipo == "logo" else f"web_{int(time.time() * 1000)}.jpg"
@@ -547,6 +570,10 @@ async def subir_imagen_academia(request: Request, aid: str, tipo: str = "foto") 
 
 @router.post("/anfitrion/academia/{aid}/eliminar")
 async def eliminar_academia(request: Request, aid: str) -> JSONResponse:
+    return await run_in_threadpool(_eliminar_academia, request, aid)
+
+
+def _eliminar_academia(request: Request, aid: str) -> JSONResponse:
     ses = sesion.de_request(request)
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)

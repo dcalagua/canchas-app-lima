@@ -399,7 +399,19 @@ para la API del APK.
   cuenta. La barra muestra avatar/nombre o "Iniciar sesión"
   (`ui.chip_sesion`). **Sin `GOOGLE_WEB_CLIENT_ID` la web sigue en modo
   invitado** (nombre + correo) para no romper antes de crear el client id.
-  Test `test_reservar_exige_login_con_google_como_el_app`.
+  Test `test_reservar_exige_login_con_google_como_el_app`. **ACCESO DE
+  REVISIÓN con usuario y contraseña (Culqi, 24-sep-2026: "no se logró
+  validar el proceso de compra debido a que se requiere iniciar sesión…
+  proporcionar un usuario y contraseña de prueba"):** env
+  `WEB_USUARIOS_PRUEBA` = "correo:clave,…" (por ambiente). Con ella,
+  `sesion.boton_google(volver=)` añade bajo el botón de Google el enlace
+  "Acceso de revisión con usuario y contraseña" → `/entrar?volver=…#revision`
+  (ficha de reserva y de academia) y `/entrar` muestra el formulario;
+  `POST /web/sesion/prueba {usuario, clave}` (`sesion.credenciales_prueba_
+  validas`, bloqueo 5 fallos → 5 min por IP real) deja la MISMA cookie
+  firmada que Google (`nombre` "Cuenta de revisión"), así el revisor
+  reserva/paga/ve el comprobante como un cliente. Vacía → la opción no
+  existe. Test `test_acceso_de_revision_con_usuario_y_clave_para_culqi`.
 - **Paleta = la del LOGO oficial (sep-2026):** `ui.py` TOKENS: verde
   `#0B8A3E` (CTA), verde oscuro `#067A38`, lima `#7CB518`, naranja `#F28C28`
   (corazón de favorito), azul noche `#0A1B3D` (texto), fondo blanco `#FFFFFF`. El
@@ -838,6 +850,74 @@ para la API del APK.
   (apoderado, WhatsApp, cuotas pagadas, deuda, estado); los COBROS siguen en
   la app. Catálogos espejo en `web/catalogos.py`. Tests
   `test_mi_tienda_en_la_web_como_el_app`, `test_mi_academia_en_la_web_como_el_app`.
+- **MIS CAMPEONATOS EN LA WEB (25-sep-2026, pedido del director: "el mismo
+  flujo y funcionamiento que ya existe en el app, tal cual"):**
+  `web/anfitrion_campeonatos.py` (router incluido en `main.py` antes del
+  comodín `/anfitrion/{modulo}`; en `MENU` "campeonatos" pasa a `True`) +
+  `web/campeonatos_logica.py` = port en Python de `TorneoFixture` y los
+  getters de `Campeonato` (llave con byes y `recomputar_llave` que propaga
+  ganadores, liga round-robin por jornadas, `tabla` reusa
+  `marketing.campeonato_web._tabla`, natación `ranking_prueba`/`parse_tiempo`/
+  `fmt_tiempo`, `estado` = pill `_EstadoCampeonato`, `importar_al_ranking`).
+  Misma fila `pichangol_campeonatos` (`data` jsonb = `Campeonato.toJson`;
+  `datos.campeonatos_de_dueno/campeonato/campeonato_existe/
+  guardar_campeonato/eliminar_campeonato/canchas_para_sede`) y mismo bucket
+  `canchas/campeonatos/<id>.jpg | _ausp_<ms> | _foto_<ms> | _fondo_<ms>`.
+  Páginas: `GET /anfitrion/campeonatos` (lista con pill de estado; candado
+  Pro = `stores.pro_activo` → modal "Es Pichangol Pro" como el app, `/nuevo`
+  redirige sin Pro), `/nuevo` y `/{id}/editar` = asistente de 3 pasos de
+  `CrearCampeonatoScreen` (logo, nombre, deporte con chips —bloqueado al
+  editar—; formato por deporte —bloqueado si ya hay fixture—, mínimo de
+  jugadores por equipo solo fútbol, categoría del catálogo + "otra"; fechas
+  desde/hasta o relámpago, cierre de inscripciones, sede = cancha de
+  Pichangol o Google Maps (`/web/lugares`) con mapa Leaflet, costo con la
+  MONEDA de la sede, exigir DNI/CI/cédula + edades, auspiciador, premios),
+  `POST /anfitrion/campeonatos/guardar` (`_validar` = solo exige nombre,
+  como el app; `codigo` de 6, moneda por `paises.pais_de_coordenadas`,
+  `fechas` con `fmt_rango`, edades solo con `exigeDni`). Detalle
+  `/{id}` = `CampeonatoDetalleScreen` del organizador: Invitar (código
+  para copiar, WhatsApp con `_publicidad`/`_resumen`, Copiar enlace, Ver
+  afiche `/c/{id}/afiche.png`, Cambiar fondo (subir o arte IA por
+  variante/tema), Página pública `/c/{id}`), auspiciadores, participantes
+  (agregar/quitar; equipos con plantel), Generar/Regenerar fixture, llave o
+  tabla+jornadas con modal de resultado (empate rechazado en llave),
+  natación (pruebas del catálogo distancia×estilo, tiempos mm:ss.cc con
+  serie/carril/DSQ, ranking 🥇🥈🥉), galería, Sumar al ranking de la
+  academia, Duplicar (nueva edición, Pro), Eliminar. Endpoints JSON bajo
+  `/anfitrion/campeonatos/{id}/…` (`foto?tipo=`, `imagen/quitar`, `afiche`,
+  `participante[/{pid}/eliminar]`, `fixture`, `resultado`, `prueba[/{pid}/
+  eliminar]`, `marca`, `ranking`, `duplicar`, `eliminar`); todos exigen
+  sesión y que el campeonato sea del correo (404 si no). La INSCRIPCIÓN del
+  jugador (con pago desde su saldo) sigue en el app. **Trampa CSS:** el
+  shell global tiene `.paso span{…círculo azul}` (pasos numerados de la
+  reserva): el asistente usa la clase `.wz-p`, NO `.paso`; y `input` es
+  `width:100%` global → radios/checkbox con `width:auto;flex:none`. Tests
+  `tests/test_web_campeonatos.py`.
+- **FORMATO "GRUPOS + ELIMINATORIA" (pedido del director, 25-sep-2026:
+  "quiero asegurar que al menos cada equipo juegue 2 partidos a más"):**
+  `FormatoTorneo.grupos` en app y web (JSON `formato: "grupos"`,
+  `minPartidos: 2|3`). Fase de GRUPOS (todos contra todos dentro del
+  grupo) + LLAVE con los 2 primeros de cada grupo. `armar_grupos(n, min)` =
+  `TorneoFixture.armarGrupos` (ESPEJO exacto, no cambiar uno solo): tamaño
+  mínimo de grupo `min+1`, prefiere grupos de 4 cuando `min=2`, reparto
+  parejo (±1); n=6 → 3/3, 8 → 4/4, 12 → 4/4/4, 9 → 5/4; con menos de
+  `min+1` equipos devuelve [] y se juega solo la final. Partidos de grupo:
+  `{id: gA_j0_0, fase: 'grupo', grupo: 'A', ronda: jornada}`; llave:
+  `{id: k0_0, fase: 'llave', ronda}` (esqueleto potencia de 2 con byes).
+  `recomputar_grupos` / `recomputarGrupos`: al completarse la fase de grupos
+  siembra la ronda 0 con la siembra estándar [1,8,4,5,2,7,3,6] (mejores
+  primeros con bye; cruce 1A-2B / 1B-2A, evita rematch de grupo), SOLO
+  mientras ningún partido de llave tenga resultado; luego `recomputar_llave`
+  propaga. Empate permitido en grupos, rechazado en llave
+  (`es_partido_llave`). `terminado`/campeón usan `partidos_llave`. Web:
+  chips "Al menos 2 / 3" en el paso 2 (`#minPartBox`), detalle con tabla +
+  jornadas por grupo y "Fase final", chip "🧩 Grupos + llave · N grupos de
+  4/4"; página pública `_render_grupos`; afiche "GRUPOS + LLAVE". App:
+  `PartidoTorneo.fase/grupo` (se conservan en `toJson`: un APK viejo que
+  guarde un campeonato de grupos LOS PIERDE → actualizar el APK antes de
+  usarlo), `Campeonato.minPartidos`, widget `_Grupos`, `_Liga`/`_Llave` con
+  subconjunto. Test `test_grupos_garantiza_minimo_de_partidos_y_llave_cruzada`
+  (garantía para n = min+1 … 40).
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en
@@ -846,6 +926,37 @@ para la API del APK.
   hora, fin, PRECIO del turno y etiqueta "⚡ hora feliz" / "−N % promo";
   ocupado = gris tachado; seleccionado = azul noche; nota "El precio varía
   según la hora: desde … hasta …" cuando hay diferencias.
+- **LENTITUD EN TODO EL SISTEMA (queja del director, 25-sep-2026: "mucho se
+  demora para agregar un simple equipo, y lo mismo sucede en todo el
+  sistema"). CAUSA RAÍZ:** el middleware de `main.py` corría, DENTRO de cada
+  POST/PUT/DELETE y en el event loop, `pg.guardar(stores.to_state())` (abría
+  una conexión NUEVA al pooler, TLS ≈ 300-500 ms, y reescribía el snapshot
+  entero aunque nada hubiera cambiado) + `pg.guardar_normalizado(stores)`
+  (otra conexión nueva y UNA ida y vuelta por CADA fila de saldos/pagos/
+  vistas/reclamos, cientos de filas × ~20 ms). Cada guardado del app o de la
+  web pagaba segundos y, como bloqueaba el loop, la recarga siguiente también
+  esperaba. Además los endpoints `async def` de anfitrión hacían psycopg/
+  Storage bloqueantes en el loop. **ARREGLO:** (1) `pg.guardar()` usa el
+  pool y solo escribe si la huella blake2b del JSON cambió
+  (`_ultimo_hash`; `forzar=True` para saltarlo); (2) `guardar_normalizado`
+  es INCREMENTAL: huella por fila (`_norm_huellas`), solo viajan filas
+  nuevas/cambiadas y en lote (`executemany`); la primera pasada tras
+  arrancar hace el backfill completo; `limpiar_todo()` resetea huellas;
+  (3) el middleware ya NO espera: `pg.persistir_en_segundo_plano(stores)`
+  marca un `Event` y un hilo único `pcg-persistir` escribe con rebote de
+  250 ms (varios POST = una escritura); `@app.on_event("shutdown")` vacía lo
+  pendiente antes del SIGTERM de Railway; los retornos de pasarela siguen
+  sincrónicos vía `pg.persistir_ahora(stores)` (= `_persistir_ahora` de
+  pagos); (4) el middleware imprime `[perf] METHOD ruta tardó N ms` cuando
+  una request pasa de 700 ms y `[persistir] …` cuando un guardado pasa de
+  400 ms → mirar los logs de Railway antes de adivinar; (5) los endpoints
+  JSON de Mis campeonatos son `def` con `Body(None)` (threadpool) y los
+  `async def` de `anfitrion.py`/`anfitrion_academia.py`/`anfitrion_tienda.py`
+  leen el JSON/bytes en el loop y delegan la lógica a `_nombre(...)` vía
+  `run_in_threadpool` (`_leer_json`/`_JSON_INVALIDO` conservan el manejo de
+  "Datos inválidos"). **Regla:** ningún handler `async def` hace psycopg,
+  Storage ni HTTP bloqueante; y nada se persiste dentro de la request salvo
+  los GET de retorno de pasarela. Test `tests/test_persistencia_rapida.py`.
 - **Pool de conexiones Postgres (`db/pg.py::conexion()`, sep-2026):** cada
   `_conn()` abría una conexión nueva al pooler de Supabase (TLS ≈ 300-500 ms)
   y la ficha hacía 4-5 seguidas → 2 s de espera. `web/datos.py` usa
@@ -1014,6 +1125,11 @@ off → redeploy inmediato en cada push). URL pública:
     Railway QAS puede estar vencido → pegar un token en la torre de PRD
     (Conexiones → 🔑 Token de Facebook); (c) el agente 24×7 arranca PAUSADO
     en PRD: encenderlo en la torre cuando se quiera.
+    **Pase del 24-sep-2026 (4.º, autorizado: "a PRD lo mismo"):** `prd` =
+    merge `61c6651` (verificación en dos pasos de la torre + pie con la
+    página oficial de Facebook). Solo backend/web. En PRD cada operador
+    enrola su app autenticadora en su primer ingreso (secreto propio de PRD,
+    distinto al de QAS). Emergencia: `ADMIN_2FA=0` en `pg-backend-prd`.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -1497,6 +1613,15 @@ off → redeploy inmediato en cada push). URL pública:
   > `GET /reclamo/{cancha_id}` (estado), `/lugar-reclamado`, `/otp/*`,
   > `/reclamo/validar` (validador, protegido por código+GPS). Aprobación por
   > WhatsApp usa `aprobar_por_codigo` (firma Twilio), no el endpoint HTTP.
+- **ESPACIOS EN `LANDING_BASE_URL`/`PUBLIC_BASE_URL` (caso real QAS,
+  25-sep-2026: "Ver afiche" llevaba a `https://www.pichangol.app%20/c/…`,
+  ERR_NAME_NOT_RESOLVED):** la variable de Railway QAS tenía el dominio de PRD
+  con un espacio al final. Ahora `config.url_limpia()` normaliza ambas al
+  leerlas (sin espacios ni barra final, en cualquier orden) y
+  `anfitrion_campeonatos._base_url()` / `marketing.router._base_landing`
+  la usan; QAS quedó con `LANDING_BASE_URL=https://pg.ebim.pe` (como manda
+  la estrategia de ambientes). Test
+  `test_enlaces_publicos_sin_espacios_aunque_la_variable_los_traiga`.
 - **`PUBLIC_BASE_URL` por ambiente (trampa resuelta sep-2026):** es la base
   de TODAS las URLs que el backend le entrega a terceros para volver (retorno
   y cancelación de PayPhone, callback de Libélula, página puente `/pagos/ec/ir`,
@@ -1806,6 +1931,22 @@ no inventar layouts propios. Rasgos Airbnb:
   menos fricción de tipeo. Texto libre SOLO donde es inevitable por naturaleza:
   nombre propio, celular, búsquedas, mensajes de chat y montos. Si un feature
   "necesita" un campo libre, proponer primero la versión con opciones.
+- **Popups en la WEB (regla del director, 25-sep-2026: "evitemos este tipo de
+  mensajes popup y usemos siempre modales, y también un preload en caso haya
+  demora"):** PROHIBIDO `confirm()`/`alert()`/`prompt()` del navegador en
+  toda la web. `ui.JS_NAV` (va en todas las páginas del `shell`) expone
+  `pcgConfirmar({titulo, mensaje, confirmar, cancelar, destructivo, icono})`
+  → `Promise<bool>` y `pcgAvisar({...})` (mismo formato que
+  `dialogo_pichangol.dart`: tarjeta blanca radio 24, ícono en burbuja,
+  primario esmeralda o rojo si `destructivo`, secundario de texto; Esc y clic
+  fuera = cancelar). **Preloader:** `pcgCargando('Guardando…')` muestra el
+  velo con spinner (tarjeta blanca), `pcgCargando(false)` lo quita,
+  `{demora: 300}` lo muestra solo si la respuesta tarda; `pcgRecargar(msg)`
+  y `pcgIr(url, msg)` dejan el velo puesto mientras el navegador navega
+  (así no se ve la página vieja tras guardar). Los `post()` de Mis
+  campeonatos ya lo llevan; en el resto de anfitrión se usa en eliminar /
+  quitar / publicar. `pcgToast` tiene fallback global ahí mismo. Test
+  Playwright: `page.on('dialog')` debe quedar en cero.
 - **Popups: UN SOLO formato (REGLA de todo el app).** Todo diálogo de
   confirmación/aviso usa `widgets/dialogo_pichangol.dart`: `confirmarPichangol(
   context, titulo:, mensaje:, textoConfirmar:, destructivo:, icono:)` (devuelve

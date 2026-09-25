@@ -201,22 +201,50 @@ def init_y_cargar() -> dict | None:
         return None
 
 
-def guardar(state: dict) -> None:
-    """Upsert del snapshot completo. Fail-safe: ante error, no rompe la request."""
+_ultimo_hash: str | None = None   # huella del último snapshot escrito (evita reescribir lo mismo)
+_hash_lock = _th.Lock()
+
+
+def _huella(texto: str) -> str:
+    import hashlib
+    return hashlib.blake2b(texto.encode("utf-8"), digest_size=16).hexdigest()
+
+
+def guardar(state: dict, *, forzar: bool = False) -> bool:
+    """Upsert del snapshot completo. Fail-safe: ante error, no rompe la request.
+
+    LENTITUD RESUELTA (queja del director, 25-sep-2026: "mucho se demora para
+    agregar un simple equipo, y lo mismo sucede en todo el sistema"): antes
+    CADA POST abría una conexión nueva (TLS ≈ 300-500 ms) y reescribía el
+    snapshot entero aunque nada hubiera cambiado. Ahora usa el pool y solo
+    escribe si la huella del JSON cambió desde la última escritura.
+    Devuelve True si escribió."""
+    global _ultimo_hash
     if not habilitado:
-        return
+        return False
     try:
-        with _conn() as conn, conn.cursor() as cur:
+        t0 = _time.time()
+        texto = json.dumps(state)
+        h = _huella(texto)
+        if not forzar and h == _ultimo_hash:
+            return False
+        with conexion() as conn, conn.cursor() as cur:
             cur.execute(
                 "insert into growth_state (id, data, updated_at)"
                 " values (1, %s::jsonb, now())"
                 " on conflict (id) do update set data = excluded.data,"
                 " updated_at = now()",
-                [json.dumps(state)],
+                [texto],
             )
-            conn.commit()
+        with _hash_lock:
+            _ultimo_hash = h
+        ms = int((_time.time() - t0) * 1000)
+        if ms > 400:
+            print(f"[persistir] snapshot {len(texto) // 1024} KB en {ms} ms", flush=True)
+        return True
     except Exception as e:  # noqa: BLE001
         print("growth.pg save error:", e)
+        return False
 
 
 def cargar_normalizado(stores) -> None:
@@ -256,37 +284,61 @@ def cargar_normalizado(stores) -> None:
         print("growth.pg cargar_normalizado error:", e)
 
 
+_norm_huellas: dict[str, dict] = {"saldos": {}, "pagos": {}, "vistas": {}, "reclamos": {}}
+
+
+def _solo_cambiadas(tabla: str, filas: list, clave) -> list:
+    """Filtra las filas cuya huella cambió desde la última escritura (o nuevas)."""
+    vistas = _norm_huellas[tabla]
+    out, nuevas = [], {}
+    for f in filas:
+        k = clave(f)
+        h = _huella(json.dumps(f, sort_keys=True, default=str))
+        nuevas[k] = h
+        if vistas.get(k) != h:
+            out.append((k, h, f))
+    return out
+
+
 def guardar_normalizado(stores) -> None:
     """Vuelca saldos/pagos/vistas/reclamos a sus tablas (upsert idempotente).
-    Fase 1: reescribe todas las filas (volumen de piloto). Fase 2 sería
-    incremental. Fail-safe."""
+    INCREMENTAL (25-sep-2026): antes reescribía TODAS las filas en cada POST,
+    una ida y vuelta por fila (cientos de pagos × ~20 ms = segundos en cada
+    guardado del sistema). Ahora recuerda la huella de cada fila escrita en
+    este proceso y solo manda las nuevas o cambiadas, en lote (`executemany`);
+    tras un arranque la primera pasada escribe todo una vez (backfill). Fail-safe."""
     if not habilitado:
         return
     try:
-        with _conn() as conn, conn.cursor() as cur:
-            for dueno_id, cent in stores.saldos_rows():
-                cur.execute(
+        t0 = _time.time()
+        saldos = _solo_cambiadas("saldos", [list(r) for r in stores.saldos_rows()], lambda r: r[0])
+        pagos = _solo_cambiadas("pagos", stores.pagos_rows(), lambda p: p.get("id"))
+        vistas = _solo_cambiadas("vistas", [list(r) for r in stores.vistas_rows()], lambda r: (r[0], r[1]))
+        reclamos = _solo_cambiadas("reclamos", stores.reclamos_rows(), lambda r: r.get("id"))
+        n = len(saldos) + len(pagos) + len(vistas) + len(reclamos)
+        if not n:
+            return
+        with conexion() as conn, conn.cursor() as cur:
+            if saldos:
+                cur.executemany(
                     "insert into growth_saldos (dueno_id, saldo_centimos, updated_at)"
                     " values (%s, %s, now()) on conflict (dueno_id) do update set"
                     " saldo_centimos = excluded.saldo_centimos, updated_at = now()",
-                    [dueno_id, cent])
-
-            for p in stores.pagos_rows():
-                cur.execute(
+                    [(f[0], f[1]) for _, _, f in saldos])
+            if pagos:
+                cur.executemany(
                     "insert into growth_pagos"
                     f" ({', '.join(_PAGO_COLS)})"
                     f" values ({', '.join(['%s'] * len(_PAGO_COLS))})"
                     " on conflict (id) do update set estado = excluded.estado",
-                    [p.get(c) for c in _PAGO_COLS])
-
-            for id_, dia, n in stores.vistas_rows():
-                cur.execute(
+                    [[p.get(c) for c in _PAGO_COLS] for _, _, p in pagos])
+            if vistas:
+                cur.executemany(
                     "insert into growth_vistas (id, dia, n) values (%s, %s, %s)"
                     " on conflict (id, dia) do update set n = excluded.n",
-                    [id_, dia, n])
-
-            for r in stores.reclamos_rows():
-                cur.execute(
+                    [(f[0], f[1], f[2]) for _, _, f in vistas])
+            if reclamos:
+                cur.executemany(
                     "insert into growth_reclamos"
                     f" ({', '.join(_RECLAMO_COLS)})"
                     f" values ({', '.join(['%s'] * len(_RECLAMO_COLS))})"
@@ -294,10 +346,62 @@ def guardar_normalizado(stores) -> None:
                     " estado = excluded.estado, decidido_en = excluded.decidido_en,"
                     " validado_en = excluded.validado_en, validador = excluded.validador,"
                     " nota = excluded.nota",
-                    [r.get(c) for c in _RECLAMO_COLS])
-            conn.commit()
+                    [[r.get(c) for c in _RECLAMO_COLS] for _, _, r in reclamos])
+        # Solo tras el commit (al salir del `with`) damos las filas por escritas.
+        for tabla, cambios in (("saldos", saldos), ("pagos", pagos), ("vistas", vistas), ("reclamos", reclamos)):
+            for k, h, _ in cambios:
+                _norm_huellas[tabla][k] = h
+        ms = int((_time.time() - t0) * 1000)
+        if ms > 400:
+            print(f"[persistir] tablas normalizadas: {n} filas en {ms} ms", flush=True)
     except Exception as e:  # noqa: BLE001
         print("growth.pg guardar_normalizado error:", e)
+
+
+# ── Persistencia en segundo plano (25-sep-2026) ──────────────────────────────
+# El middleware de main.py ya NO guarda dentro de la request (bloqueaba el event
+# loop y la respuesta esperaba a Supabase): marca "hay cambios" y un hilo único
+# escribe con un pequeño rebote (varios POST seguidos = una sola escritura).
+_pers_evento = _th.Event()
+_pers_hilo: _th.Thread | None = None
+_pers_lock = _th.Lock()
+_pers_stores = None
+PERSISTIR_REBOTE_SEG = 0.25
+
+
+def persistir_ahora(stores) -> None:
+    """Snapshot + tablas, sincrónico (retornos de pasarela, apagado)."""
+    guardar(stores.to_state())
+    guardar_normalizado(stores)
+
+
+def _pers_bucle() -> None:
+    while True:
+        _pers_evento.wait()
+        _time.sleep(PERSISTIR_REBOTE_SEG)
+        _pers_evento.clear()
+        try:
+            if _pers_stores is not None:
+                persistir_ahora(_pers_stores)
+        except Exception as e:  # noqa: BLE001
+            print("growth.pg persistencia en segundo plano:", e)
+
+
+def persistir_en_segundo_plano(stores) -> None:
+    """Pide guardar sin bloquear la request. Fail-safe; sin DATABASE_URL no hace nada."""
+    global _pers_hilo, _pers_stores
+    if not habilitado:
+        return
+    _pers_stores = stores
+    with _pers_lock:
+        if _pers_hilo is None or not _pers_hilo.is_alive():
+            _pers_hilo = _th.Thread(target=_pers_bucle, name="pcg-persistir", daemon=True)
+            _pers_hilo.start()
+    _pers_evento.set()
+
+
+def hay_persistencia_pendiente() -> bool:
+    return _pers_evento.is_set()
 
 
 def limpiar_todo() -> None:
@@ -313,6 +417,10 @@ def limpiar_todo() -> None:
                       "growth_saldos", "growth_state"):
                 cur.execute(f"truncate table {t}")
             conn.commit()
+        global _ultimo_hash
+        _ultimo_hash = None
+        for d in _norm_huellas.values():
+            d.clear()
     except Exception as e:  # noqa: BLE001
         print("growth.pg limpiar_todo error:", e)
 
