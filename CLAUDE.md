@@ -1313,6 +1313,18 @@ off → redeploy inmediato en cada push). URL pública:
     `PUBLIC_BASE_URL` reescritas limpias a `https://www.pichangol.app`.
     OJO: un APK anterior a este pase pierde `fase/grupo` al guardar un
     campeonato de grupos → actualizar el APK antes de usar ese formato.
+    **Pase del 26-sep-2026 (autorizado: "Pasa a PRD"):** `prd` = merge
+    `249d909` (unirse al plantel con el fixture publicado y sin que la
+    fecha de cierre lo bloquee, código automático para equipos viejos,
+    "Unirme a un campeonato" en Mis campeonatos + Perfil, cierre de
+    inscripciones con HORA obligatoria en relámpago, neto de torneo POR
+    RECIBIR en la cola de liquidaciones + recordatorio diario de atrasadas,
+    código del campeonato/equipo y "Donde participo" en la web). Sin SQL ni
+    Edge; sin variables nuevas (`PICHANGOL_ADMIN_WHATSAPP` y Twilio ya
+    estaban en PRD; `LIQUIDACION_AVISO_DIAS` opcional, default 3). CAMBIÓ
+    `lib/` → APK/AAB de PRD = run 1388 (`workflow_dispatch`, `ref=prd`,
+    `entorno=prod`). OJO: un APK anterior no ve "Unirme" con el fixture
+    publicado ni el ingreso de torneo como "por recibir" → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
