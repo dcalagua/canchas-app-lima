@@ -432,7 +432,7 @@ _JS_ACADEMIA = r"""
     Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: Math.round(r.total * 100) });
     Culqi.options({ lang: 'es', installments: false,
       paymentMethods: { tarjeta: true, yape: true, bancaMovil: false, agente: false, billetera: false, cuotealo: false },
-      style: { logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar ' + fmt(r.total), buttonTextColor: '#FFFFFF' } });
+      style: { logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
     window.culqi = function(){
       if(Culqi.token){
         var token = Culqi.token.id, medio = (Culqi.token.iin && Culqi.token.iin.card_brand) ? 'tarjeta' : 'yape';
