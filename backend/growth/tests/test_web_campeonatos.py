@@ -468,8 +468,14 @@ def test_equipos_viejos_sin_codigo_reciben_enlace_al_abrir_el_detalle(db, monkey
     assert ps[1]["codigo"] == "YAEXIS"  # el que ya tenía no cambia
     assert ps[0]["roster"] == [] and ps[0]["capitanEmail"] == ""
     assert "Kinder 01 · 0 jug. · S/ 0 de 100" in r.text  # ya es equipo (chip con pozo)
-    # Con fixture y la inscripción abierta, el plantel sigue abierto (espejo del app).
+    # Con fixture y la inscripción abierta, el plantel sigue abierto (espejo del app),
+    # incluso con la fecha de cierre de inscripciones ya vencida (esa fecha es para sortear).
     assert L.plantel_abierto(fake.rows[cid])
+    fake.rows[cid]["inscripcionHasta"] = "2020-01-01T00:00:00.000"
+    assert L.inscripcion_vencida(fake.rows[cid]) and L.plantel_abierto(fake.rows[cid])
+    fake.rows[cid]["cerrado"] = True
+    assert not L.plantel_abierto(fake.rows[cid])
+    fake.rows[cid]["cerrado"] = False
     fake.rows[cid]["inscripcionAbierta"] = False
     assert not L.plantel_abierto(fake.rows[cid])
     # Sin equipos que corregir no se vuelve a guardar.

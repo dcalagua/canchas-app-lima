@@ -419,11 +419,14 @@ def plantel_abierto(c: dict) -> bool:
     """¿Un jugador aún puede UNIRSE al plantel de un equipo (fútbol)? ESPEJO de
     `Campeonato.plantelAbierto` del app. A diferencia de crear equipos o de la
     inscripción individual, el fixture ya generado NO cierra el plantel: un
-    suplente entra (y pone su parte) mientras la inscripción siga abierta y no
-    haya vencido (pedido del director, 26-sep-2026: "me quiero inscribir al
-    Kinder-01" con el torneo ya "En juego")."""
+    suplente entra (y pone su parte) mientras la inscripción siga abierta y el
+    torneo no haya terminado (pedido del director, 26-sep-2026: "me quiero
+    inscribir al Kinder-01" con el torneo ya "En juego")."""
+    # OJO: la fecha de cierre de inscripciones (`inscripcionHasta`) tampoco
+    # cierra el plantel: sirve para el sorteo; los suplentes entran hasta que
+    # el torneo termine o el organizador lo cierre.
     return (c.get("deporte") == "futbol" and not c.get("cerrado")
-            and bool(c.get("inscripcionAbierta")) and not inscripcion_vencida(c))
+            and bool(c.get("inscripcionAbierta")) and not terminado(c))
 
 
 def completar_codigos(c: dict) -> bool:

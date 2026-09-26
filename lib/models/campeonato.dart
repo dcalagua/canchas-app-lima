@@ -533,16 +533,29 @@ class Campeonato {
   bool get fixtureGenerado => partidos.isNotEmpty;
 
   /// ¿Un jugador aún puede UNIRSE al plantel de un equipo (fútbol)? A
-  /// diferencia de crear equipos o de la inscripción individual, el fixture
-  /// ya generado NO cierra el plantel: un suplente entra (y pone su parte)
-  /// mientras la inscripción siga abierta y no haya vencido (pedido del
-  /// director, 26-sep-2026: "me quiero inscribir al Kinder-01" con el torneo
-  /// ya "En juego"). ESPEJO de `campeonatos_logica.plantel_abierto`.
+  /// diferencia de crear equipos o de la inscripción individual, NI el
+  /// fixture generado NI la fecha de "cierre de inscripciones" cierran el
+  /// plantel: ese cierre sirve para sortear (cuántos equipos hay); los
+  /// suplentes entran (y ponen su parte del pozo) hasta que el torneo termine
+  /// o el organizador lo cierre (pedido del director, 26-sep-2026: "me quiero
+  /// inscribir al Kinder-01" con el torneo ya "En juego" y el cierre vencido).
+  /// ESPEJO de `campeonatos_logica.plantel_abierto`.
   bool get plantelAbierto =>
       deporte == Deporte.futbol &&
       !cerrado &&
       inscripcionAbierta &&
-      !inscripcionVencida;
+      !terminado;
+
+  /// Por qué NO se puede unir al plantel ('' = sí se puede). Para que el
+  /// modal del equipo lo diga en vez de esconder el botón en silencio.
+  String motivoPlantelCerrado() {
+    if (deporte != Deporte.futbol) return 'Este torneo no es por equipos.';
+    if (cerrado || terminado) return 'Este campeonato ya terminó.';
+    if (!inscripcionAbierta) {
+      return 'El organizador cerró las inscripciones.';
+    }
+    return '';
+  }
 
   /// Participante por id (o null).
   Participante? participanteDe(String? id) {

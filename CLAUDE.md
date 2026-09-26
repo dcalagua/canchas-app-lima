@@ -1003,7 +1003,14 @@ para la API del APK.
   Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el
   PLANTEL: `Campeonato.plantelAbierto` (app) = `campeonatos_logica.
   plantel_abierto` (web) = fútbol ∧ !cerrado ∧ inscripcionAbierta ∧
-  !inscripcionVencida. Un suplente se une (y pone su parte del pozo) por
+  !terminado. **La fecha "Cierre de inscripciones" (`inscripcionHasta`)
+  TAMPOCO cierra el plantel** (2.ª queja, 26-sep-2026: "no puedo
+  inscribirme a un equipo" con el cierre ya vencido y el fixture
+  auto-sorteado por `autoSortearVencidos`): esa fecha es para sortear
+  (cuántos equipos hay); los suplentes entran hasta que el torneo termine o
+  el organizador lo cierre. El modal del equipo DICE por qué no se puede
+  unir (`motivoPlantelCerrado`: organizador con la misma cuenta / cerrado /
+  plantel lleno / sin código) en vez de esconder el botón. Un suplente se une (y pone su parte del pozo) por
   código, por enlace del capitán o TOCANDO EL EQUIPO en la lista de la ficha
   (modal del equipo → "Unirme · pones S/ X"); la página pública `/c/{id}?
   equipo=` sigue mostrando "Te invitaron al equipo" con fixture. Lo que SÍ se

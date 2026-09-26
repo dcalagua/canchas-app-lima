@@ -243,24 +243,29 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                   ],
                 ),
               ],
-              if (c.inscripcionVencida && !c.fixtureGenerado && !esDueno) ...[
+              if (c.inscripcionVencida &&
+                  !c.fixtureGenerado &&
+                  !esDueno &&
+                  !puedeUnirseAEquipo) ...[
                 const SizedBox(height: 10),
                 const Text('Las inscripciones cerraron. Espera el fixture.',
                     style: TextStyle(color: textoTenue, fontSize: 12.5)),
               ],
-              // Fixture publicado pero plantel abierto: se puede entrar a un
+              // Plantel abierto pero ya no se crean equipos (fixture publicado
+              // o cierre de inscripciones vencido): se puede entrar a un
               // equipo (con código o tocando el equipo en la lista).
-              if (puedeUnirseAEquipo && c.fixtureGenerado) ...[
+              if (puedeUnirseAEquipo && !puedeInscribirse) ...[
                 const SizedBox(height: 12),
                 Text(
-                    c.tieneCuotaPorEquipo
-                        ? 'El fixture ya está publicado, pero aún puedes '
-                            'unirte al plantel de un equipo: toca el equipo o '
-                            'usa el código de tu capitán. Pones tu parte: '
-                            '${c.fmtMonto(c.cuotaJugadorCentimos)}.'
-                        : 'El fixture ya está publicado, pero aún puedes '
-                            'unirte al plantel de un equipo: toca el equipo o '
-                            'usa el código de tu capitán.',
+                    (c.fixtureGenerado
+                            ? 'El fixture ya está publicado, pero '
+                            : 'Ya no se crean equipos nuevos, pero ') +
+                        'aún puedes unirte al plantel de un equipo: toca el '
+                        'equipo o usa el código de tu capitán.' +
+                        (c.tieneCuotaPorEquipo
+                            ? ' Pones tu parte: '
+                                '${c.fmtMonto(c.cuotaJugadorCentimos)}.'
+                            : ''),
                     style: const TextStyle(color: textoTenue, fontSize: 12.5)),
                 const SizedBox(height: 8),
                 SizedBox(
@@ -1690,6 +1695,23 @@ class _Participantes extends StatelessWidget {
         eq.codigo.isNotEmpty &&
         c.plantelAbierto &&
         !c.equipoLleno(eq);
+    // Si NO puede unirse, se le dice por qué (nunca un botón que desaparece
+    // en silencio: queja del director, 26-sep-2026, "no puedo inscribirme").
+    String motivoNoUnirme = '';
+    if (!puedoUnirme && !soyDelPlantel && !soyCapitan) {
+      if (esDueno) {
+        motivoNoUnirme = 'Eres el organizador de este campeonato. Para '
+            'probar como jugador entra con otra cuenta de Google, o comparte '
+            'el código/enlace del equipo.';
+      } else if (c.motivoPlantelCerrado().isNotEmpty) {
+        motivoNoUnirme = c.motivoPlantelCerrado();
+      } else if (c.equipoLleno(eq)) {
+        motivoNoUnirme = 'Plantel completo (${c.maxJugadoresEquipo} jugadores).';
+      } else if (eq.codigo.isEmpty) {
+        motivoNoUnirme = 'Este equipo aún no tiene código de invitación: '
+            'pídele al organizador que abra el campeonato para generarlo.';
+      }
+    }
     await showDialog<void>(
       context: context,
       builder: (dctx) => DialogoPichangol(
@@ -1727,6 +1749,19 @@ class _Participantes extends StatelessWidget {
               ],
               if (c.tieneCuotaPorEquipo) ...[
                 _PozoEquipo(campeonato: c, equipo: eq),
+                const SizedBox(height: 10),
+              ],
+              if (motivoNoUnirme.isNotEmpty) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF4F7FA),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(motivoNoUnirme,
+                      style: const TextStyle(color: textoTenue, fontSize: 12.5)),
+                ),
                 const SizedBox(height: 10),
               ],
               Row(
