@@ -1049,6 +1049,53 @@ para la API del APK.
   son el mecanismo, igual que para las canchas. Tests actualizados en
   `test_pozo_equipo.py` (+ `test_recordatorio_diario_de_liquidaciones_
   atrasadas`), `test_pagos.py`, `test_web_campeonatos.py`.
+- **CUENTA DE COBRO + LIQUIDACIÓN POR LOTE (BCP) (pedido del director,
+  26-sep-2026, tras el primer cobro live: "¿hay forma de transferirle al
+  dueño automático o desde la torre?"; "arranca con 1 y 2, el banco es
+  BCP"):** Culqi cobra pero NO dispersa (sin payouts en Perú) y Yape no tiene
+  API para empresas: la plata sale de la cuenta empresa de EBIM en el BCP.
+  `backend/growth/pagos/cuentas_cobro.py`. (1) **Cuenta de cobro**
+  (`stores.cuentas_cobro[email]`, snapshot): dónde recibe cada dueño/
+  organizador/academia. PE → Yape / Plin (celular 9 dígitos) o banco del
+  catálogo (`BANCOS`) + n.º de cuenta + **CCI 20 dígitos** (obligatorio si el
+  banco no es BCP) + titular + DNI/CE/RUC; BO y EC → banco + cuenta + titular
+  + CI/cédula/RUC. Todo por SELECCIÓN (tipo, banco, tipo de cuenta,
+  documento); solo números y titular se escriben. Validación única en el
+  backend (`validar`): `POST/GET/DELETE /pagos/cuenta-cobro[/{email}]` (app,
+  `X-App-Key` + auth por usuario si `PAGOS_AUTH_USUARIO=1`), `GET
+  /pagos/cuenta-cobro/catalogo` (público), web `POST /anfitrion/cuenta-cobro`
+  (sesión). APK: tarjeta en **Mi billetera** ("Recibes tus liquidaciones en …"
+  o aviso ámbar "Registra tu cuenta de cobro" si hay plata por recibir) →
+  `widgets/cuenta_cobro_sheet.dart` (país = `paisBilletera`, catálogo del
+  backend, prellena nombre y DNI verificado); web: tarjeta "Cuenta de cobro"
+  en Modo anfitrión → Ingresos (`_tarjeta_cuenta_cobro`, `_JS_CUENTA_COBRO`).
+  (2) **Lote de liquidación** (torre `/admin` → Liquidaciones → "📦 Liquidar
+  por lote (BCP)"; `stores.lotes_liquidacion`, últimos 60): `POST
+  /pagos/liquidaciones/lote/preparar {moneda, umbral_soles}` agrupa TODO lo
+  pendiente por dueño (`armar_lote`) y clasifica: `archivo` (cuenta bancaria
+  peruana → entra al TXT), `manual` (Yape/Plin u otro país: el operador paga
+  a mano), `sin_cuenta`, `bajo_umbral` (se acumula; chips Sin mínimo / 20 /
+  50 / 100, default 50). `GET …/lote/{id}/telecredito.txt` = planilla de
+  **pagos masivos de Telecrédito Web** (`archivo_telecredito`: cabecera 112 +
+  detalle 225 caracteres de ancho fijo, tablas `_CABECERA`/`_DETALLE`;
+  cuenta BCP → tipo C/A con su número, otro banco → tipo B con el CCI;
+  moneda 0001; doc 1 DNI / 4 CE / 6 RUC; sin tildes ni eñes; CRLF), exige la
+  **cuenta BCP de CARGO de EBIM** (`POST …/config-bcp`, `stores.config[
+  liq_bcp_cuenta|liq_bcp_tipo]`, por ambiente). `GET …/detalle.csv` =
+  respaldo universal con TODAS las filas. `POST …/lote/{id}/pagado
+  {referencia, incluir_manuales}` marca cada liquidación del lote como pagada
+  (`transferencia`, o `yape` para las manuales si se marcó la casilla) con la
+  misma referencia; idempotente. `GET /pagos/liquidaciones/pendientes` ahora
+  trae `moneda` por fila, `cuentas` (resumen por dueño: etiqueta, canal,
+  `cuenta_pago` para "⧉ Copiar"), `bcp` y `lotes`. **OJO TXT:** la estructura
+  es la del formato clásico "Pago a proveedores" de Telecrédito; no se pudo
+  descargar el instructivo oficial desde el entorno de desarrollo → la PRIMERA
+  carga en Telecrédito es la validación (el banco rechaza con el campo exacto
+  y no mueve nada hasta firmar la planilla); cualquier ajuste es una fila de
+  la tabla. Las interbancarias (CCI) tienen comisión del banco: por eso el
+  umbral. Backlog: dispersión por API (dLocal / Kushki / API BCP) sobre esta
+  misma base = botón "Transferir" real; "Retirar" a pedido del dueño. Tests
+  `tests/test_cuentas_cobro.py`.
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
   VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
   Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el

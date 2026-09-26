@@ -1976,6 +1976,17 @@ _HTML = r"""<!DOCTYPE html>
   .liq-mini-pcg{background:#FFF3D6;color:#8A6100}
   .liq-mini-neto{background:#DDF3E1;color:#166534}
   .liq-canchas{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .liq-cuenta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;font-size:12.5px;font-weight:600;color:var(--ink)}
+  .liq-cuenta.sin{color:#8A6100;background:#FFF3D6;border-radius:10px;padding:6px 10px}
+  .liq-copy{background:#fff;border:1px solid var(--border);border-radius:999px;padding:4px 10px;font-family:inherit;font-weight:700;font-size:12px;cursor:pointer}
+  .liq-copy:disabled{opacity:.5;cursor:default}
+  .liq-tag{background:#F3F4F6;color:var(--muted);border-radius:999px;padding:3px 9px;font-size:11px;font-weight:800}
+  .liq-tag.ok{background:#DDF3E1;color:#166534}
+  .liq-lote{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border);font-size:13px}
+  .lt-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+  .lt-lbl{font-weight:700;font-size:12.5px;margin-bottom:6px}
+  .lt-chips{display:flex;gap:6px;flex-wrap:wrap}
+  @media(max-width:700px){.lt-grid{grid-template-columns:1fr}}
   .liq-cancha{background:#F3F4F6;color:var(--muted);border-radius:999px;
     padding:4px 10px;font-size:11.5px;font-weight:700}
   /* Chips de estado compactos de la lista de reclamos (maestro–detalle). */
@@ -4800,6 +4811,7 @@ async function cargarLiquidaciones(){
     if(!r.ok){ box.innerHTML=''; return; }
     const j = await r.json();
     const pend = j.pendientes||[];
+    const cuentas = j.cuentas||{}; liqBcp = j.bcp||{cuenta:'',tipo:'C'}; liqLotes = j.lotes||[];
     kpi.liqTotal = j.total_neto_soles||0; kpi.liqN = pend.length; kpi.liqAtras = j.atrasadas||0; kpi.liqDias = j.mas_antigua_dias||0; renderResumen();
     const AVISO = j.aviso_dias||3;
     if(!pend.length){
@@ -4807,7 +4819,7 @@ async function cargarLiquidaciones(){
         <div style="font-size:36px">🎉</div>
         <div style="font-weight:800;font-size:17px;margin-top:8px">Todo liquidado</div>
         <div style="color:var(--muted);font-size:13.5px;margin-top:4px">No tienes pagos pendientes a dueños.</div>
-      </div>`;
+      </div>` + lotesHtml();
       return;
     }
     // Desarma el concepto "Local · Cancha · Jugador · Día hora" para agrupar
@@ -4855,12 +4867,19 @@ async function cargarLiquidaciones(){
             <button class="liq-btn" onclick="pagarLiquidacion('${esc(p.reserva_id)}','${S(p.neto_soles||0)}')">Marcar pagado</button>
           </div>
         </div>`).join('');
+      const cta = cuentas[g.dueno] || {tiene:false};
+      const ctaHtml = cta.tiene
+        ? `<div class="liq-cuenta">${cta.canal==='archivo'?'🏦':'📱'} <span>${esc(cta.etiqueta)}</span>
+             <button class="liq-copy" onclick="copiarTexto('${esc(cta.cuenta_pago||cta.numero||'')}')" title="Copiar ${cta.cci?'CCI':'número'}">⧉ Copiar</button>
+             ${cta.canal==='archivo'?'<span class="liq-tag ok">entra al lote BCP</span>':'<span class="liq-tag">pago a mano</span>'}</div>`
+        : `<div class="liq-cuenta sin">⚠️ Sin cuenta de cobro: el dueño aún no registró dónde recibir (Billetera → Cuenta de cobro, en la app o en Ingresos de la web).</div>`;
       return `
       <div class="card" style="padding:16px 18px;margin-bottom:14px">
         <div class="liq-grupo-top">
           <div style="min-width:0">
             <div class="liq-grupo-local">${esc(g.local)}</div>
             <div class="liq-grupo-dueno">${esc(g.dueno)} · ${g.items.length} ${g.items.length===1?'pago pendiente':'pagos pendientes'}</div>
+            ${ctaHtml}
           </div>
           <div class="liq-grupo-tot">
             <span class="liq-mini">Bruto ${S(bruto)}</span>
@@ -4889,9 +4908,117 @@ async function cargarLiquidaciones(){
             <span class="liq-mini liq-mini-neto">Neto a dueños ${S(gNeto)}</span>
           </div>
         </div>
+        <div><button class="liq-btn" style="padding:11px 18px;font-size:14px" onclick="abrirLote()">📦 Liquidar por lote (BCP)</button></div>
       </div>
-      ${bloques}`;
+      ${bloques}${lotesHtml()}`;
   }catch(e){ box.innerHTML=''; }
+}
+// ── Liquidación POR LOTE: agrupa por dueño, archivo Telecrédito BCP, marca todo pagado ──
+let liqBcp = {cuenta:'', tipo:'C'}, liqLotes = [], loteActual = null;
+function copiarTexto(t){ if(!t) return; navigator.clipboard.writeText(t).then(()=>toast('Copiado ✓')).catch(()=>toast(t)); }
+function lotesHtml(){
+  if(!liqLotes.length) return '';
+  const S = n => 'S/ ' + (Math.round(n*100)/100).toFixed(2);
+  return `<div class="card" style="padding:14px 18px;margin-top:6px">
+    <div style="font-weight:800;font-size:14px;margin-bottom:6px">Lotes de liquidación</div>
+    ${liqLotes.map(l=>`<div class="liq-lote">
+      <span>${fmtFecha(l.creado_en)} · <b>${esc(l.id)}</b> · ${l.n_archivo} al BCP por ${S(l.total_archivo_soles)}${l.total_manual_soles?` · a mano ${S(l.total_manual_soles)}`:''}${l.referencia?` · ref ${esc(l.referencia)}`:''}</span>
+      <span>${l.estado==='pagado'?'<span class="liq-tag ok">pagado</span>':'<span class="liq-tag">preparado</span>'}
+        <button class="liq-copy" onclick="descargarLote('${esc(l.id)}','csv')">CSV</button>
+        ${l.n_archivo?`<button class="liq-copy" onclick="descargarLote('${esc(l.id)}','txt')">TXT BCP</button>`:''}</span>
+    </div>`).join('')}
+  </div>`;
+}
+async function descargarLote(id, tipo){
+  const url = '/pagos/liquidaciones/lote/'+encodeURIComponent(id)+(tipo==='txt'?'/telecredito.txt':'/detalle.csv');
+  const r = await fetch(url,{headers:headers(), cache:'no-store'});
+  if(!r.ok){ let m='No se pudo generar el archivo.'; try{ m = (await r.json()).detail || m; }catch(e){} toast(m); return; }
+  const blob = await r.blob(); const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'pichangol_'+id+(tipo==='txt'?'_bcp.txt':'.csv'); document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 800);
+}
+async function abrirLote(){
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,15,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px';
+  ov.innerHTML = `<div style="background:#fff;border-radius:18px;max-width:760px;width:100%;max-height:92vh;overflow:auto;padding:20px 22px;box-shadow:0 18px 50px rgba(0,0,0,.25)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
+        <div><div style="font-weight:800;font-size:17px">Liquidar por lote · Telecrédito BCP</div>
+        <div style="color:var(--muted);font-size:13px;margin-top:2px">Una transferencia por dueño. Descarga la planilla, cárgala en Telecrédito Web (Pagos → Pago a proveedores), fírmala y luego marca el lote como pagado.</div></div>
+        <button id="lt_x" style="border:0;background:transparent;font-size:22px;cursor:pointer">✕</button>
+      </div>
+      <div class="lt-grid">
+        <div><div class="lt-lbl">Cuenta BCP de cargo (EBIM)</div>
+          <div style="display:flex;gap:6px"><input id="lt_cta" value="${esc(liqBcp.cuenta||'')}" placeholder="13 o 14 dígitos" style="flex:1;padding:9px 10px;border:1px solid var(--border);border-radius:10px">
+          <select id="lt_tipo" style="padding:9px;border:1px solid var(--border);border-radius:10px"><option value="C"${liqBcp.tipo==='C'?' selected':''}>Corriente</option><option value="A"${liqBcp.tipo==='A'?' selected':''}>Ahorros</option><option value="M"${liqBcp.tipo==='M'?' selected':''}>Maestra</option></select>
+          <button class="liq-copy" id="lt_guardar_cta">Guardar</button></div></div>
+        <div><div class="lt-lbl">Mínimo por dueño (se posterga lo menor)</div>
+          <div id="lt_umbral" class="lt-chips"><button data-u="0" class="mp-chip">Sin mínimo</button><button data-u="20" class="mp-chip">S/ 20</button><button data-u="50" class="mp-chip">S/ 50</button><button data-u="100" class="mp-chip">S/ 100</button></div></div>
+      </div>
+      <div id="lt_body" style="margin-top:14px;color:var(--muted);font-size:13px">Preparando…</div>
+      <div id="lt_acc" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:16px"></div>
+    </div>`;
+  document.body.appendChild(ov);
+  let umbral = 50;
+  const chips = ov.querySelectorAll('#lt_umbral .mp-chip');
+  const pintarChips = ()=>chips.forEach(b=>{ const on = +b.dataset.u===umbral;
+    b.style.cssText='padding:7px 12px;border-radius:999px;font-weight:700;cursor:pointer;border:1px solid var(--border);background:'+(on?'#EBEBEB':'#fff'); });
+  pintarChips();
+  const cerrar = ()=>ov.remove();
+  ov.querySelector('#lt_x').onclick = cerrar;
+  ov.onclick = e=>{ if(e.target===ov) cerrar(); };
+  ov.querySelector('#lt_guardar_cta').onclick = async ()=>{
+    const r = await fetch('/pagos/liquidaciones/config-bcp',{method:'POST',headers:headers(),body:JSON.stringify({cuenta:ov.querySelector('#lt_cta').value, tipo:ov.querySelector('#lt_tipo').value})});
+    if(r.ok){ liqBcp = await r.json(); toast('Cuenta de cargo guardada ✓'); } else { let m='No se pudo guardar.'; try{ m=(await r.json()).detail||m; }catch(e){} toast(m); }
+  };
+  const S = n => 'S/ ' + (Math.round(n)/100).toFixed(2);
+  async function preparar(){
+    ov.querySelector('#lt_body').innerHTML = 'Preparando…';
+    const r = await fetch('/pagos/liquidaciones/lote/preparar',{method:'POST',headers:headers(),body:JSON.stringify({moneda:'PEN', umbral_soles:umbral})});
+    if(!r.ok){ ov.querySelector('#lt_body').innerHTML = 'No se pudo preparar el lote.'; return; }
+    const j = await r.json(); loteActual = j.lote; liqBcp = j.bcp||liqBcp;
+    const L = loteActual;
+    const fila = f => `<div class="liq-lote"><span><b>${esc(f.dueno)}</b> · ${f.n} ${f.n===1?'pago':'pagos'}<br><small style="color:var(--muted)">${esc((f.cuenta||{}).etiqueta||'Sin cuenta de cobro')}</small></span><b>${S(f.neto_centimos)}</b></div>`;
+    const grupo = (titulo, canal, nota) => { const fs = L.filas.filter(f=>f.canal===canal); if(!fs.length) return '';
+      return `<div style="margin-top:12px"><div style="font-weight:800;font-size:13.5px">${titulo} <span style="color:var(--muted);font-weight:600">· ${fs.length} · ${S(fs.reduce((a,f)=>a+f.neto_centimos,0))}</span></div><div style="color:var(--muted);font-size:12px">${nota}</div>${fs.map(fila).join('')}</div>`; };
+    ov.querySelector('#lt_body').innerHTML =
+      (L.filas.length ? '' : '<div class="anf-vacio">No hay liquidaciones pendientes en soles.</div>') +
+      grupo('🏦 Entran al archivo BCP', 'archivo', 'Cuentas bancarias peruanas: una transferencia por dueño en la planilla.') +
+      grupo('📱 Pagar a mano', 'manual', 'Yape / Plin u otro país: Telecrédito no los cubre. Págalos desde tu app y marca la casilla al confirmar.') +
+      grupo('⏳ Bajo el mínimo', 'bajo_umbral', 'Se acumulan para el próximo lote.') +
+      grupo('⚠️ Sin cuenta de cobro', 'sin_cuenta', 'Pídele al dueño que la registre en su billetera (app o web). Mientras tanto no se puede pagar.');
+    ov.querySelector('#lt_acc').innerHTML =
+      `<button class="liq-copy" id="lt_csv">⬇ CSV del lote</button>
+       <button class="liq-copy" id="lt_txt" ${L.n_archivo?'':'disabled'}>⬇ Planilla Telecrédito (.txt)</button>
+       <label style="font-size:12.5px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="lt_man"> Ya pagué también los de Yape/otro país</label>
+       <input id="lt_ref" placeholder="N.º de planilla / referencia" style="padding:9px 10px;border:1px solid var(--border);border-radius:10px;min-width:200px">
+       <button class="liq-btn" id="lt_ok" ${(L.n_archivo||L.filas.some(f=>f.canal==='manual'))?'':'disabled'}>✅ Marcar lote pagado</button>`;
+    ov.querySelector('#lt_csv').onclick = ()=>descargarLote(L.id,'csv');
+    ov.querySelector('#lt_txt').onclick = ()=>{ if(!(liqBcp.cuenta||'').length){ toast('Guarda primero la cuenta BCP de cargo.'); return; } descargarLote(L.id,'txt'); };
+    ov.querySelector('#lt_ok').onclick = async ()=>{
+      const inc = ov.querySelector('#lt_man').checked, ref = ov.querySelector('#lt_ref').value.trim();
+      const n = L.filas.filter(f=>f.canal==='archivo'||(inc&&f.canal==='manual')).length;
+      if(!n){ toast('No hay nada que marcar en este lote.'); return; }
+      if(!(await confirmarModal('Marcar '+n+' dueño(s) como pagados', 'Solo hazlo si la planilla ya está firmada en Telecrédito'+(inc?' y pagaste a mano los de Yape/otro país':'')+'. Las liquidaciones quedarán como pagadas con la referencia '+(ref||L.id)+'.'))) return;
+      const r = await fetch('/pagos/liquidaciones/lote/'+encodeURIComponent(L.id)+'/pagado',{method:'POST',headers:headers(),body:JSON.stringify({referencia:ref, incluir_manuales:inc})});
+      if(r.ok){ const j = await r.json(); toast(j.marcadas+' liquidaciones marcadas como pagadas ✓'); cerrar(); await cargarLiquidaciones(); }
+      else toast('No se pudo marcar el lote.');
+    };
+  }
+  chips.forEach(b=>b.onclick=()=>{ umbral=+b.dataset.u; pintarChips(); preparar(); });
+  preparar();
+}
+function confirmarModal(titulo, mensaje){
+  return new Promise(res=>{
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(10,20,15,.45);display:flex;align-items:center;justify-content:center;z-index:10000';
+    ov.innerHTML = `<div style="background:#fff;border-radius:18px;max-width:420px;width:92%;padding:20px 22px;box-shadow:0 18px 50px rgba(0,0,0,.25)">
+      <div style="font-weight:800;font-size:16px">${esc(titulo)}</div><div style="color:var(--muted);font-size:13px;margin-top:6px">${esc(mensaje)}</div>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px"><button id="cm_no" style="padding:9px 16px;border-radius:999px;border:none;background:transparent;font-weight:700;cursor:pointer">Cancelar</button><button id="cm_si" class="btn-ap" style="padding:9px 18px;border-radius:999px;cursor:pointer">Confirmar ✓</button></div></div>`;
+    ov.querySelector('#cm_no').onclick=()=>{ ov.remove(); res(false); };
+    ov.querySelector('#cm_si').onclick=()=>{ ov.remove(); res(true); };
+    ov.onclick=e=>{ if(e.target===ov){ ov.remove(); res(false); } };
+    document.body.appendChild(ov);
+  });
 }
 // MODAL de marca de pago (regla de la casa: nunca popup del navegador,
 // siempre modal propio). Devuelve {medio, ref} o null si canceló.

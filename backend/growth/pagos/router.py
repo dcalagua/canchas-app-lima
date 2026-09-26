@@ -33,6 +33,7 @@ from . import culqi
 from . import libelula
 from . import payphone
 from . import pozos
+from . import cuentas_cobro as _cc
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
@@ -240,6 +241,34 @@ class VentaProductoReq(BaseModel):
 class MarcarLiquidacionReq(BaseModel):
     metodo: str | None = None       # yape | transferencia | efectivo
     referencia: str | None = None   # nº de operación / nota
+
+
+class CuentaCobroReq(BaseModel):
+    email: str
+    pais: str = "PE"
+    tipo: str = ""            # yape | plin | banco
+    banco: str = ""           # código del catálogo (`cuentas_cobro.BANCOS`)
+    tipo_cuenta: str = ""     # ahorros | corriente
+    numero: str = ""          # celular (Yape/Plin) o n.º de cuenta
+    cci: str = ""             # Perú, 20 dígitos (otro banco distinto de BCP)
+    titular: str = ""
+    doc_tipo: str = ""        # DNI | CE | RUC | CI | NIT | CEDULA | PASAPORTE
+    doc_numero: str = ""
+
+
+class LotePrepararReq(BaseModel):
+    moneda: str = "PEN"
+    umbral_soles: float = 0   # neto mínimo acumulado por dueño para incluirlo
+
+
+class LotePagadoReq(BaseModel):
+    referencia: str = ""      # n.º de planilla / operación del banco
+    incluir_manuales: bool = False  # también marcar los de Yape/Plin/otro país
+
+
+class ConfigBcpReq(BaseModel):
+    cuenta: str = ""          # cuenta de CARGO de EBIM en el BCP
+    tipo: str = "C"           # C corriente · A ahorros · M maestra
 
 
 class MetodoReq(BaseModel):
@@ -2331,6 +2360,7 @@ def _liquidacion_dict(p) -> dict:
     return {
         "reserva_id": p.culqi_charge_id,
         "tipo": p.tipo,
+        "moneda": moneda_iso(p.moneda),
         "dias": dias,
         "dueno_id": p.dueno_id,
         "concepto": p.concepto or "Reserva online",
@@ -2351,10 +2381,155 @@ def get_liquidaciones_pendientes() -> dict:
     debe el neto). Para saber a quién transferir y cuánto. Más antiguas primero."""
     pend = [_liquidacion_dict(p) for p in stores.liquidaciones(solo_pendientes=True)]
     total = sum(x["neto_soles"] for x in pend)
+    # Cuenta de cobro de cada dueño con pendientes: la torre la pinta junto a
+    # su grupo (copiar CCI / Yape) y el lote sabe a quién puede pagar por archivo.
+    cuentas = {d: _cc.resumen(stores.cuenta_cobro(d)) for d in {x["dueno_id"] for x in pend if x["dueno_id"]}}
     return {"pendientes": pend, "total_neto_soles": round(total, 2),
             "mas_antigua_dias": max((x["dias"] for x in pend), default=0),
             "atrasadas": sum(1 for x in pend if x["dias"] >= LIQUIDACION_AVISO_DIAS),
-            "aviso_dias": LIQUIDACION_AVISO_DIAS}
+            "aviso_dias": LIQUIDACION_AVISO_DIAS, "cuentas": cuentas,
+            "bcp": _config_bcp(), "lotes": _lotes_resumen()}
+
+
+def _config_bcp() -> dict:
+    return {"cuenta": stores.config.get("liq_bcp_cuenta", ""), "tipo": stores.config.get("liq_bcp_tipo", "C") or "C"}
+
+
+def _lotes_resumen() -> list[dict]:
+    out = []
+    for l in stores.lotes_liquidacion[-12:][::-1]:
+        out.append({"id": l["id"], "creado_en": l["creado_en"], "estado": l["estado"], "moneda": l["moneda"],
+                    "referencia": l.get("referencia", ""), "n_archivo": l.get("n_archivo", 0),
+                    "total_archivo_soles": l.get("total_archivo_centimos", 0) / 100.0,
+                    "total_manual_soles": l.get("total_manual_centimos", 0) / 100.0,
+                    "pagado_en": l.get("pagado_en", "")})
+    return out
+
+
+# ── CUENTA DE COBRO del dueño (dónde recibe sus liquidaciones) ──────────────
+
+@router.get("/cuenta-cobro/catalogo")
+def get_cuenta_cobro_catalogo() -> dict:
+    """Catálogo por país (tipos, bancos, documentos) para el formulario del
+    app y de la web. Público: no expone nada del usuario."""
+    return {"paises": _cc.catalogo()}
+
+
+@router.get("/cuenta-cobro/{email}", dependencies=_APP)
+def get_cuenta_cobro(email: str, x_user_token: str | None = Header(default=None)) -> dict:
+    _require_usuario(email, x_user_token)
+    c = stores.cuenta_cobro(email)
+    return {"email": email.strip().lower(), "cuenta": c, "resumen": _cc.resumen(c)}
+
+
+@router.post("/cuenta-cobro", dependencies=_APP)
+def post_cuenta_cobro(req: CuentaCobroReq, x_user_token: str | None = Header(default=None)) -> dict:
+    """Guarda/reemplaza la cuenta de cobro del usuario (misma validación que
+    la web; el backend manda). Con PAGOS_AUTH_USUARIO=1 exige su token."""
+    _require_usuario(req.email, x_user_token)
+    cuenta, err, campo = _cc.validar(req.model_dump())
+    if cuenta is None:
+        return {"ok": False, "error": err, "campo": campo}
+    c = stores.guardar_cuenta_cobro(req.email, cuenta)
+    print(f"[cuenta-cobro] {req.email.strip().lower()} → {_cc.resumen(c)['etiqueta']}", flush=True)
+    return {"ok": True, "cuenta": c, "resumen": _cc.resumen(c)}
+
+
+@router.delete("/cuenta-cobro/{email}", dependencies=_APP)
+def delete_cuenta_cobro(email: str, x_user_token: str | None = Header(default=None)) -> dict:
+    _require_usuario(email, x_user_token)
+    return {"ok": stores.borrar_cuenta_cobro(email)}
+
+
+# ── LIQUIDACIÓN POR LOTE (torre): archivo Telecrédito BCP ───────────────────
+
+@router.post("/liquidaciones/config-bcp", dependencies=_ADMIN)
+def post_config_bcp(req: ConfigBcpReq) -> dict:
+    """Cuenta de CARGO de EBIM en el BCP (de donde salen las liquidaciones).
+    Se guarda en la config de la torre; cada ambiente tiene la suya."""
+    cuenta = _cc._digitos(req.cuenta)
+    if cuenta and not (13 <= len(cuenta) <= 14):
+        raise HTTPException(status_code=400, detail="La cuenta BCP de cargo tiene 13 o 14 dígitos.")
+    stores.config["liq_bcp_cuenta"] = cuenta
+    stores.config["liq_bcp_tipo"] = (req.tipo or "C")[:1].upper() if (req.tipo or "C")[:1].upper() in "CAM" else "C"
+    return {"ok": True, **_config_bcp()}
+
+
+@router.post("/liquidaciones/lote/preparar", dependencies=_ADMIN)
+def post_lote_preparar(req: LotePrepararReq) -> dict:
+    """Agrupa TODO lo pendiente por dueño (en la moneda pedida) y arma el lote:
+    quién entra al archivo BCP, quién se paga a mano (Yape/Plin/otro país),
+    quién no tiene cuenta y quién queda bajo el umbral. No marca nada aún."""
+    pend = [_liquidacion_dict(p) for p in stores.liquidaciones(solo_pendientes=True)]
+    cuentas = {d: (stores.cuenta_cobro(d) or {}) for d in {x["dueno_id"] for x in pend if x["dueno_id"]}}
+    lote = _cc.armar_lote(pend, cuentas, moneda=req.moneda, umbral_centimos=int(round(max(0.0, req.umbral_soles) * 100)))
+    stores.guardar_lote(lote)
+    return {"ok": True, "lote": lote, "bcp": _config_bcp()}
+
+
+@router.get("/liquidaciones/lote/{lote_id}", dependencies=_ADMIN)
+def get_lote(lote_id: str) -> dict:
+    l = stores.lote(lote_id)
+    if not l:
+        raise HTTPException(status_code=404, detail="lote_no_encontrado")
+    return {"ok": True, "lote": l}
+
+
+@router.get("/liquidaciones/lote/{lote_id}/telecredito.txt", dependencies=_ADMIN)
+def get_lote_txt(lote_id: str):
+    """Archivo de pagos masivos para Telecrédito Web (BCP). Exige la cuenta de
+    cargo configurada y al menos un dueño con cuenta bancaria peruana."""
+    from fastapi.responses import PlainTextResponse
+    l = stores.lote(lote_id)
+    if not l:
+        raise HTTPException(status_code=404, detail="lote_no_encontrado")
+    cfg = _config_bcp()
+    if not cfg["cuenta"]:
+        raise HTTPException(status_code=409, detail="Configura la cuenta BCP de cargo antes de generar el archivo.")
+    if not l.get("n_archivo"):
+        raise HTTPException(status_code=409, detail="Ningún dueño del lote tiene cuenta bancaria peruana: no hay nada que mandar al BCP.")
+    txt = _cc.archivo_telecredito(l, cfg["cuenta"], cfg["tipo"], referencia=f"PICHANGOL {l['id'][-8:]}")
+    return PlainTextResponse(txt, media_type="text/plain; charset=utf-8",
+                             headers={"Content-Disposition": f"attachment; filename=pichangol_{l['id']}_bcp.txt"})
+
+
+@router.get("/liquidaciones/lote/{lote_id}/detalle.csv", dependencies=_ADMIN)
+def get_lote_csv(lote_id: str):
+    from fastapi.responses import PlainTextResponse
+    l = stores.lote(lote_id)
+    if not l:
+        raise HTTPException(status_code=404, detail="lote_no_encontrado")
+    return PlainTextResponse(_cc.archivo_csv(l), media_type="text/csv; charset=utf-8",
+                             headers={"Content-Disposition": f"attachment; filename=pichangol_{l['id']}.csv"})
+
+
+@router.post("/liquidaciones/lote/{lote_id}/pagado", dependencies=_ADMIN)
+def post_lote_pagado(lote_id: str, req: LotePagadoReq) -> dict:
+    """El operador ya cargó la planilla en Telecrédito (y, si marcó la casilla,
+    ya pagó a mano los de Yape/otro país): marca TODAS esas liquidaciones como
+    pagadas con la misma referencia. Idempotente."""
+    l = stores.lote(lote_id)
+    if not l:
+        raise HTTPException(status_code=404, detail="lote_no_encontrado")
+    canales = {"archivo"} | ({"manual"} if req.incluir_manuales else set())
+    ref = (req.referencia or "").strip()[:60] or l["id"]
+    marcadas = 0
+    duenos = 0
+    for f in l.get("filas", []):
+        if f.get("canal") not in canales:
+            continue
+        duenos += 1
+        metodo = "transferencia" if f["canal"] == "archivo" else ("yape" if (f.get("cuenta") or {}).get("tipo") in ("yape", "plin") else "transferencia")
+        for rid in f.get("reserva_ids", []):
+            if stores.marcar_liquidacion_pagada(rid, metodo, ref) is not None:
+                marcadas += 1
+    l["estado"] = "pagado"
+    l["referencia"] = ref
+    l["pagado_en"] = datetime.now(timezone.utc).isoformat()
+    l["incluyo_manuales"] = bool(req.incluir_manuales)
+    stores.guardar_lote(l)
+    print(f"[liquidaciones] lote {lote_id} pagado: {marcadas} liquidaciones de {duenos} dueño(s), ref {ref}", flush=True)
+    return {"ok": True, "marcadas": marcadas, "duenos": duenos, "lote": l}
 
 
 # A los N días sin pagar, una liquidación cuenta como ATRASADA: la torre la

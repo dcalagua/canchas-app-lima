@@ -1542,4 +1542,78 @@ class PagosService {
       return false;
     }
   }
+
+  // --- Cuenta de COBRO (dónde recibe el dueño sus liquidaciones) ----------
+  /// Catálogo por país (tipos, bancos, documentos) para la hoja de la
+  /// billetera. {'PE': {...}, 'BO': {...}, 'EC': {...}} o null sin red.
+  static Future<Map<String, dynamic>?> cuentaCobroCatalogo() async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .get(Uri.parse('$_baseUrl/pagos/cuenta-cobro/catalogo'))
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      return Map<String, dynamic>.from(j['paises'] as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Cuenta de cobro guardada: {'cuenta': {...}|null, 'resumen': {...}}.
+  static Future<Map<String, dynamic>?> cuentaCobro(String email) async {
+    final e = email.trim().toLowerCase();
+    if (!disponible || e.isEmpty) return null;
+    try {
+      final r = await http
+          .get(
+              Uri.parse(
+                  '$_baseUrl/pagos/cuenta-cobro/${Uri.encodeComponent(e)}'),
+              headers: await _headersUsuario())
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Guarda/reemplaza la cuenta de cobro. Devuelve {ok, resumen} o
+  /// {ok:false, error, campo}; null sin red.
+  static Future<Map<String, dynamic>?> guardarCuentaCobro({
+    required String email,
+    required String pais,
+    required String tipo,
+    String banco = '',
+    String tipoCuenta = '',
+    required String numero,
+    String cci = '',
+    required String titular,
+    required String docTipo,
+    required String docNumero,
+  }) async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/cuenta-cobro'),
+              headers: await _headersUsuario(json: true),
+              body: jsonEncode({
+                'email': email.trim().toLowerCase(),
+                'pais': pais,
+                'tipo': tipo,
+                'banco': banco,
+                'tipo_cuenta': tipoCuenta,
+                'numero': numero,
+                'cci': cci,
+                'titular': titular,
+                'doc_tipo': docTipo,
+                'doc_numero': docNumero,
+              }))
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
 }
