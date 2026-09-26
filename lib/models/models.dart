@@ -1,6 +1,11 @@
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
-/// Distritos del piloto (densidad geográfica antes que cobertura amplia).
+import '../config/pais.dart';
+
+/// Clasificación GRUESA heredada del piloto de Lima. Ya NO se muestra al usuario
+/// directamente: la zona visible es [Cancha.zonaMostrable], que usa el barrio
+/// real (reverse-geocode) y cae a esta etiqueta solo si aún no hay barrio (datos
+/// viejos). Se conserva por compatibilidad de datos, no como fuente de display.
 enum Distrito {
   sanBorja('San Borja'),
   surco('Surco'),
@@ -14,10 +19,289 @@ enum Deporte {
   tenis('Tenis'),
   padel('Pádel'),
   futbol('Fútbol'),
-  pickleball('Pickleball');
+  pickleball('Pickleball'),
+  voley('Vóley'),
+  basquet('Básquet'),
+  natacion('Natación');
 
   final String etiqueta;
   const Deporte(this.etiqueta);
+
+  /// Deportes de RAQUETA. El CIRCUITO Pichangol (ranking, retos, Pro, jugadores
+  /// disponibles) es hoy una capa de TENIS para fortalecer academias, y aplica a
+  /// deportes de raqueta. El fútbol (y otros) usan solo reservar + partidos; su
+  /// circuito será otro tema más adelante.
+  bool get esRaqueta =>
+      this == Deporte.tenis ||
+      this == Deporte.padel ||
+      this == Deporte.pickleball;
+}
+
+/// Deportes con CIRCUITO (raqueta). Ver `Deporte.esRaqueta`.
+const List<Deporte> deportesCircuito = [
+  Deporte.tenis,
+  Deporte.padel,
+  Deporte.pickleball,
+];
+
+/// Parsea un nombre de `Deporte` de forma segura (null si no existe, p. ej. un
+/// valor viejo/desconocido en datos persistidos). Evita que `byName` reviente.
+Deporte? deportePorNombre(String? s) {
+  for (final d in Deporte.values) {
+    if (d.name == s) return d;
+  }
+  return null;
+}
+
+/// Deportes que la app OFRECE al usuario (selectores, filtros, secciones).
+/// Pádel se retiró del piloto: sigue en el enum para no romper datos antiguos
+/// al cargarlos, pero no se muestra ni se puede elegir. Muchos locales alquilan
+/// también vóley y básquet (misma loza multiuso), por eso entran al catálogo.
+const List<Deporte> deportesActivos = [
+  Deporte.futbol,
+  Deporte.tenis,
+  Deporte.pickleball,
+  Deporte.voley,
+  Deporte.basquet,
+];
+
+/// Deportes ofrecibles al crear una ACADEMIA. Incluye natación (disciplina de
+/// academia/clases, no de cancha reservable), por eso va aparte de
+/// [deportesActivos] (que alimenta filtros de canchas y registro de canchas).
+const List<Deporte> deportesAcademia = [
+  Deporte.futbol,
+  Deporte.tenis,
+  Deporte.pickleball,
+  Deporte.voley,
+  Deporte.basquet,
+  Deporte.natacion,
+];
+
+/// Entrada del CATÁLOGO GLOBAL de servicios extra (lo administra el operador
+/// en la torre; el app lo baja de `GET /config/servicios-extra` y lo cachea).
+/// Espejo de `servicios_extra.py` del backend.
+class ServicioCatalogo {
+  final String clave;
+  final String nombre;
+  final String emoji;
+  /// Cómo se cobra: 'reserva' (una vez), 'persona' (× cantidad de personas) o
+  /// 'turno' (× turnos reservados).
+  final String tipo;
+  /// 'local' (del recinto: piscina, sauna; se aplica a todas las canchas del
+  /// local) o 'cancha' (solo de esa cancha: árbitro, petos).
+  final String ambito;
+  final List<String> deportes; // vacío = todos
+
+  const ServicioCatalogo({
+    required this.clave,
+    required this.nombre,
+    this.emoji = '➕',
+    this.tipo = 'reserva',
+    this.ambito = 'cancha',
+    this.deportes = const [],
+  });
+
+  bool get esDelLocal => ambito == 'local';
+
+  String get etiquetaTipo => ServicioExtra.etiquetaDeTipo(tipo);
+
+  factory ServicioCatalogo.fromJson(Map<String, dynamic> j) => ServicioCatalogo(
+        clave: (j['clave'] ?? '').toString(),
+        nombre: (j['nombre'] ?? '').toString(),
+        emoji: (j['emoji'] ?? '➕').toString(),
+        tipo: (j['tipo'] ?? 'reserva').toString(),
+        ambito: (j['ambito'] ?? 'cancha').toString(),
+        deportes: [
+          for (final d in (j['deportes'] is List ? j['deportes'] as List : const []))
+            d.toString()
+        ],
+      );
+
+  Map<String, dynamic> toJson() => {
+        'clave': clave,
+        'nombre': nombre,
+        'emoji': emoji,
+        'tipo': tipo,
+        'ambito': ambito,
+        'deportes': deportes,
+      };
+}
+
+/// Un servicio EXTRA de pago que una cancha ofrece como add-on de la reserva
+/// (árbitro, pelotero, piscina, entrada general…). El jugador los elige al
+/// reservar y suman al total; el dueño los ve en sus cobros. Distinto de
+/// `amenidades` (servicios GRATIS del local, sin precio).
+///
+/// En la CANCHA, `precio` es el unitario configurado por el dueño. En una
+/// RESERVA, `precio` es el TOTAL de la línea (unitario × [cantidad]) — así los
+/// APKs que solo suman `precio` siguen cuadrando — y `unitario`/`cantidad`
+/// permiten mostrar "Piscina × 3". `nombre/emoji/tipo/ambito` viajan
+/// congelados en el JSON para mostrarse aunque el catálogo cambie.
+class ServicioExtra {
+  final String clave;
+  final double precio;
+  final String? nombreJson;
+  final String emoji;
+  final String tipo;
+  final String ambito;
+  final int cantidad;
+  final double? unitario;
+
+  const ServicioExtra({
+    required this.clave,
+    required this.precio,
+    String? nombre,
+    this.emoji = '',
+    this.tipo = '',
+    this.ambito = '',
+    this.cantidad = 1,
+    this.unitario,
+  }) : nombreJson = nombre;
+
+  /// Catálogo EMPAQUETADO (respaldo sin red): clave → nombre visible.
+  static const catalogo = <String, String>{
+    'arbitro': 'Árbitro',
+    'pelotero': 'Pelotero (recoge pelotas)',
+    'pelota': 'Alquiler de pelota',
+    'pecheras': 'Petos / pecheras',
+    'hidratacion': 'Hidratación',
+    'parrilla': 'Parrilla / grill',
+  };
+  static const _emojiLegado = <String, String>{
+    'arbitro': '🧑‍⚖️',
+    'pelotero': '🏃',
+    'pelota': '🎾',
+    'pecheras': '🦺',
+    'hidratacion': '💧',
+    'parrilla': '🔥',
+  };
+
+  /// Catálogo VIVO bajado de la torre (`AppState.cargarCatalogoServicios`).
+  /// Vacío hasta que cargue: entonces manda el empaquetado.
+  static List<ServicioCatalogo> catalogoRemoto = const [];
+
+  /// Catálogo a usar en el editor del dueño (remoto si llegó, si no el local).
+  static List<ServicioCatalogo> get catalogoActual => catalogoRemoto.isNotEmpty
+      ? catalogoRemoto
+      : [
+          for (final e in catalogo.entries)
+            ServicioCatalogo(
+              clave: e.key,
+              nombre: e.value,
+              emoji: _emojiLegado[e.key] ?? '➕',
+              ambito: e.key == 'parrilla' ? 'local' : 'cancha',
+            ),
+        ];
+
+  static ServicioCatalogo? deCatalogo(String clave) {
+    for (final s in catalogoActual) {
+      if (s.clave == clave) return s;
+    }
+    return null;
+  }
+
+  static List<ServicioCatalogo> parsearCatalogo(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => ServicioCatalogo.fromJson(Map<String, dynamic>.from(e)))
+        .where((s) => s.clave.isNotEmpty && s.nombre.isNotEmpty)
+        .toList();
+  }
+
+  static String etiquetaDeTipo(String tipo) {
+    switch (tipo) {
+      case 'persona':
+        return 'por persona';
+      case 'turno':
+        return 'por turno';
+      default:
+        return 'por reserva';
+    }
+  }
+
+  String get nombre {
+    final n = nombreJson;
+    if (n != null && n.isNotEmpty) return n;
+    return deCatalogo(clave)?.nombre ?? catalogo[clave] ?? clave;
+  }
+
+  String get emojiVisible =>
+      emoji.isNotEmpty ? emoji : (deCatalogo(clave)?.emoji ?? '');
+  String get tipoEfectivo =>
+      tipo.isNotEmpty ? tipo : (deCatalogo(clave)?.tipo ?? 'reserva');
+  String get ambitoEfectivo =>
+      ambito.isNotEmpty ? ambito : (deCatalogo(clave)?.ambito ?? 'cancha');
+  bool get esDelLocal => ambitoEfectivo == 'local';
+  bool get porPersona => tipoEfectivo == 'persona';
+  bool get porTurno => tipoEfectivo == 'turno';
+  String get etiquetaTipo => etiquetaDeTipo(tipoEfectivo);
+
+  /// " × 3" cuando la línea de una reserva cobró más de una unidad.
+  String get detalleCantidad => cantidad > 1 ? ' × $cantidad' : '';
+
+  /// Línea para la RESERVA a partir del servicio configurado en la cancha:
+  /// total = unitario × (personas | turnos | 1) según el tipo de cobro.
+  ServicioExtra linea({required int personas, required int turnos}) {
+    var n = 1;
+    if (porPersona) {
+      n = personas < 1 ? 1 : (personas > 50 ? 50 : personas);
+    } else if (porTurno) {
+      n = turnos < 1 ? 1 : turnos;
+    }
+    return ServicioExtra(
+      clave: clave,
+      precio: precio * n,
+      nombre: nombre,
+      emoji: emojiVisible,
+      tipo: tipoEfectivo,
+      ambito: ambitoEfectivo,
+      cantidad: n,
+      unitario: precio,
+    );
+  }
+
+  ServicioExtra copyWith({double? precio}) => ServicioExtra(
+        clave: clave,
+        precio: precio ?? this.precio,
+        nombre: nombreJson,
+        emoji: emoji,
+        tipo: tipo,
+        ambito: ambito,
+        cantidad: cantidad,
+        unitario: unitario,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'clave': clave,
+        'precio': precio,
+        if (nombreJson != null && nombreJson!.isNotEmpty) 'nombre': nombreJson,
+        if (emoji.isNotEmpty) 'emoji': emoji,
+        if (tipo.isNotEmpty) 'tipo': tipo,
+        if (ambito.isNotEmpty) 'ambito': ambito,
+        if (cantidad != 1) 'cantidad': cantidad,
+        if (unitario != null) 'unitario': unitario,
+      };
+
+  factory ServicioExtra.fromJson(Map<String, dynamic> j) => ServicioExtra(
+        clave: (j['clave'] ?? '').toString(),
+        precio: ((j['precio'] ?? 0) as num).toDouble(),
+        nombre: j['nombre']?.toString(),
+        emoji: (j['emoji'] ?? '').toString(),
+        tipo: (j['tipo'] ?? '').toString(),
+        ambito: (j['ambito'] ?? '').toString(),
+        cantidad: ((j['cantidad'] ?? 1) as num).toInt(),
+        unitario: j['unitario'] == null ? null : (j['unitario'] as num).toDouble(),
+      );
+
+  static List<ServicioExtra> listaDe(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((e) => ServicioExtra.fromJson(Map<String, dynamic>.from(e)))
+        .where((s) => s.clave.isNotEmpty)
+        .toList();
+  }
 }
 
 /// Una cancha en el marketplace.
@@ -26,7 +310,17 @@ class Cancha {
   final String nombre;
   final String club;
   final Distrito distrito;
-  final Deporte deporte;
+  /// Barrio/zona REAL de la cancha (ej. "Sopocachi", "Equipetrol", "San Borja"),
+  /// obtenido del reverse-geocode de sus coordenadas al registrarla. Es la zona
+  /// que ve el usuario en cualquier país. Vacío = dato viejo o cancha descubierta
+  /// → NO se muestra zona (la dirección real va aparte). Usar [zonaMostrable].
+  final String barrio;
+  final Deporte deporte; // deporte PRINCIPAL (ícono/color/categoría en el mapa)
+  /// Todos los deportes que se pueden jugar en ESTA cancha (loza multiuso). Si
+  /// está vacío, se asume que solo ofrece [deporte] (compat. con datos viejos).
+  /// La agenda es COMPARTIDA: reservar un slot ocupa la cancha para todos los
+  /// deportes (es la misma superficie física). Usar el getter [deportesJugables].
+  final List<Deporte> deportes;
   final double precioHora; // soles por hora (admite 2 decimales)
   final LatLng ubicacion;
   final bool clubFundador; // sello "Club Fundador" de su distrito
@@ -41,13 +335,73 @@ class Cancha {
   final String horaCierre; // fin de atención, ej. "23:00"
   final int duracionSlotMin; // duración del bloque reservable (60 / 90 / 120 min)
   final bool eliminada; // borrado lógico durable en la nube (sobrevive reinstalar)
+  final List<String> amenidades; // claves de servicios (vestuario, parking…), editable por el dueño
+  final String superficie; // tipo de piso: arcilla, loza, grass sintético… (según deporte)
+  /// Símbolo de moneda de ESTA cancha, congelado al registrarla según el país
+  /// donde se creó ('S/' Perú, 'Bs' Bolivia…). El precio vive en esta moneda: no
+  /// cambia aunque el dueño abra la app desde otro país. Vacío = 'S/' (todas las
+  /// canchas del piloto nacieron en Perú). Usar el getter [monedaSimbolo].
+  final String moneda;
+  /// Servicios EXTRA de pago que ofrece la cancha (árbitro, pelotero…). El
+  /// jugador los agrega al reservar. Vacío = la cancha no ofrece ninguno.
+  final List<ServicioExtra> serviciosExtra;
+  /// "Hora feliz": descuento (%) que aplica el dueño a las horas VALLE (mañanas)
+  /// para llenar cancha vacía. 0 = sin descuento. Gana el dueño (más ocupación)
+  /// y el jugador (más barato).
+  final int descuentoValle;
+
+  /// SEÑA anti no-show: % del precio que el jugador paga por adelantado (Culqi)
+  /// al reservar para GARANTIZAR el slot. 0 = sin seña (reserva sin adelanto).
+  /// Es NO REEMBOLSABLE: si el jugador no se presenta, el dueño se queda la seña.
+  /// El resto se paga en la cancha. Configurable por el dueño en "Editar cancha".
+  final int senaPct;
+
+  /// ¿Esta cancha exige seña al reservar? (dueño la configuró > 0).
+  bool get exigeSena => senaPct > 0;
+
+  /// Monto de la seña (redondeado) para un precio de slot dado.
+  int senaDe(int precioSlot) =>
+      senaPct <= 0 ? 0 : (precioSlot * senaPct.clamp(0, 100) / 100).round();
+
+  /// Ventana de la HORA FELIZ, configurable por el dueño ("HH:MM"). Vacías =
+  /// default histórico: desde medianoche hasta las 12:00 (las mañanas). Si el
+  /// fin es <= al inicio, la ventana CRUZA medianoche (cancha nocturna, p. ej.
+  /// 22:00 → 02:00).
+  final String valleDesde;
+  final String valleHasta;
+
+  /// Ventana efectiva (aplica los defaults si el dueño no configuró nada).
+  String get valleDesdeEfectivo =>
+      valleDesde.trim().isNotEmpty ? valleDesde.trim() : '00:00';
+  String get valleHastaEfectivo =>
+      valleHasta.trim().isNotEmpty ? valleHasta.trim() : '12:00';
+
+  /// ¿Una hora ("07:00") cae dentro de la ventana de hora feliz de ESTA cancha?
+  /// (El inicio es inclusivo y el fin exclusivo: 08:00→12:00 cubre 08:00–11:59.)
+  bool esValle(String hora) {
+    final d = valleDesdeEfectivo, h = valleHastaEfectivo;
+    if (d == h) return false; // ventana vacía
+    if (d.compareTo(h) < 0) {
+      return hora.compareTo(d) >= 0 && hora.compareTo(h) < 0;
+    }
+    return hora.compareTo(d) >= 0 || hora.compareTo(h) < 0; // cruza medianoche
+  }
+
+  /// Precio efectivo por hora en un horario dado (aplica el descuento de hora
+  /// feliz si corresponde). Fuente única para mostrar y para cobrar.
+  double precioEn(String hora) =>
+      (descuentoValle > 0 && esValle(hora))
+          ? precioHora * (100 - descuentoValle.clamp(0, 90)) / 100
+          : precioHora;
 
   const Cancha({
     required this.id,
     required this.nombre,
     required this.club,
     required this.distrito,
+    this.barrio = '',
     required this.deporte,
+    this.deportes = const [],
     required this.precioHora,
     required this.ubicacion,
     required this.clubFundador,
@@ -62,7 +416,44 @@ class Cancha {
     this.horaCierre = '23:00',
     this.duracionSlotMin = 60,
     this.eliminada = false,
+    this.amenidades = const [],
+    this.superficie = '',
+    this.moneda = '',
+    this.serviciosExtra = const [],
+    this.descuentoValle = 0,
+    this.valleDesde = '',
+    this.valleHasta = '',
+    this.senaPct = 0,
   });
+
+  /// Símbolo de moneda de la cancha. La UBICACIÓN de la cancha es la fuente de
+  /// verdad (una cancha en La Paz cobra en Bs, aunque el dueño la registrara
+  /// desde Perú): se deriva del país donde caen sus coordenadas. Esto además
+  /// auto-corrige canchas viejas que quedaron con la moneda del dispositivo del
+  /// dueño. Si por algún motivo no se puede derivar, cae a la moneda congelada
+  /// al registrarla y, en última instancia, a 'S/'.
+  String get monedaSimbolo =>
+      monedaDeCoordenadas(ubicacion.latitude, ubicacion.longitude);
+
+  /// Zona/barrio VISIBLE de la cancha, en cualquier país. Usa SOLO el barrio real
+  /// (reverse-geocode de sus coordenadas al registrarla). Si aún no hay barrio
+  /// (dato viejo o cancha descubierta de Google), queda **vacío**: NO se inventa
+  /// el distrito (`Distrito.sanBorja` es solo un valor referencial y mostrarlo
+  /// haría aparecer "San Borja" en canchas que no están ahí). La dirección real
+  /// se muestra aparte. Puede quedar vacío: los llamadores deben tolerarlo.
+  String get zonaMostrable => barrio.trim();
+
+  /// Deportes jugables en esta cancha, garantizando al menos el principal.
+  /// Es la fuente de verdad para filtros/visibilidad (una loza multiuso aparece
+  /// en cada deporte que ofrece) y para elegir deporte al reservar.
+  List<Deporte> get deportesJugables =>
+      deportes.isEmpty ? [deporte] : deportes;
+
+  /// ¿Esta cancha permite jugar [d]? (para filtros por deporte).
+  bool ofrece(Deporte d) => deportesJugables.contains(d);
+
+  /// ¿Es una cancha multideporte (loza multiuso con más de un deporte)?
+  bool get esMultideporte => deportesJugables.length > 1;
 
   /// Se puede reservar online solo si está en Pichangol y su propiedad fue
   /// verificada (evita reservas en canchas reclamadas por alguien sin validar).
@@ -85,24 +476,41 @@ class Cancha {
         return 70;
       case Deporte.pickleball:
         return 80;
+      case Deporte.voley:
+        return 80;
+      case Deporte.basquet:
+        return 90;
+      case Deporte.natacion:
+        return 0; // natación es disciplina de academia, no cancha reservable
     }
   }
 
   /// Horas de INICIO reservables entre apertura y cierre, en pasos de
-  /// [duracionSlotMin]. Ej. apertura 07:00, cierre 23:00, slot 90 min →
-  /// 07:00, 08:30, 10:00, … Solo se incluye un slot si cabe completo antes
-  /// del cierre. Fuente de la grilla que ve el jugador (reemplaza el array fijo).
+  /// [duracionSlotMin]. REGLA (decisión del director, sep-2026): la hora de
+  /// cierre es la hora en que EMPIEZA el último turno — cierra 23:00 → último
+  /// turno 23:00–00:00; cierra 00:00 → último turno 00:00–01:00 (madrugada del
+  /// día siguiente). Con turnos de 90 min el último es el mayor inicio que no
+  /// pase del cierre (07:00→23:00: 22:00–23:30). Excepción: cancha de 24 h
+  /// (abre y cierra 00:00) = 24 turnos, sin repetir el de medianoche.
+  /// Fuente de la grilla que ve el jugador (reemplaza el array fijo).
   ///
   /// Si se pasa [desdeMinutos] (minutos desde medianoche), se omiten los slots
   /// cuyo inicio ya pasó — se usa para el día de HOY, para no ofrecer horas
   /// pasadas.
   List<String> horariosSlots({int? desdeMinutos}) {
     final ini = horaEnMinutos(horaApertura);
-    final fin = horaEnMinutos(horaCierre);
+    var fin = horaEnMinutos(horaCierre);
     final paso = duracionSlotMin <= 0 ? 60 : duracionSlotMin;
-    if (ini == null || fin == null || fin <= ini) return const [];
+    if (ini == null || fin == null) return const [];
+    // Cierre que CRUZA MEDIANOCHE: si el cierre es <= apertura, cae al día
+    // siguiente. Cubre los 3 casos: "hasta medianoche" (07:00→00:00), cancha
+    // nocturna (18:00→02:00) y 24 horas (00:00→00:00). Se le suma un día.
+    if (fin <= ini) fin += 24 * 60;
+    // El último turno EMPIEZA a la hora de cierre (m <= fin); en 24 h no se
+    // repite el turno de medianoche (m < fin).
+    final tope = fin - ini >= 24 * 60 ? fin - 1 : fin;
     final slots = <String>[];
-    for (var m = ini; m + paso <= fin; m += paso) {
+    for (var m = ini; m <= tope; m += paso) {
       if (desdeMinutos != null && m < desdeMinutos) continue; // ya pasó
       slots.add(minutosEnHora(m));
     }
@@ -117,14 +525,48 @@ class Cancha {
     return minutosEnHora(m + paso);
   }
 
+  /// ¿El slot [hora] cae en la MADRUGADA del día SIGUIENTE? Pasa cuando el
+  /// horario CRUZA medianoche (cierre <= apertura) y la hora del slot es menor
+  /// que la apertura (ej. cancha 18:00→02:00: los slots 00:00 y 01:00 son de la
+  /// madrugada del día siguiente). Sirve para ligar la reserva a su FECHA
+  /// CALENDARIO real (no a la "jornada" elegida).
+  bool slotEsMadrugada(String hora) {
+    final ap = horaEnMinutos(horaApertura);
+    final sl = horaEnMinutos(hora);
+    if (ap == null || sl == null) return false;
+    return sl < ap;
+  }
+
+  /// Fecha ISO ('YYYY-MM-DD') REAL de un slot dado el día base [baseIso]: la
+  /// misma, o la del día SIGUIENTE si el slot cruzó medianoche ([slotEsMadrugada]).
+  String fechaRealSlot(String baseIso, String hora) {
+    if (!slotEsMadrugada(hora)) return baseIso;
+    final b = DateTime.tryParse(baseIso);
+    if (b == null) return baseIso;
+    final d = b.add(const Duration(days: 1));
+    return '${d.year.toString().padLeft(4, '0')}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+  }
+
+  /// ¿La reserva (`rFecha`,`rHora`) pertenece a la SESIÓN de la jornada [baseIso]?
+  /// La sesión de un día abarca desde la apertura hasta el cierre, incluida la
+  /// MADRUGADA del día siguiente (turnos con hora < apertura viven en baseIso+1).
+  /// Se usa en la agenda, que muestra la jornada completa aunque cruce medianoche.
+  bool reservaEnSesion(String baseIso, String rFecha, String rHora) =>
+      rFecha == fechaRealSlot(baseIso, rHora);
+
   Cancha copyWith({
     String? nombre,
     String? club,
     Distrito? distrito,
+    String? barrio,
     Deporte? deporte,
+    List<Deporte>? deportes,
     double? precioHora,
     LatLng? ubicacion,
     String? direccion,
+    bool? registrada,
     String? fotoUrl,
     List<String>? fotos,
     String? dueno,
@@ -133,19 +575,29 @@ class Cancha {
     String? horaCierre,
     int? duracionSlotMin,
     bool? eliminada,
+    List<String>? amenidades,
+    String? superficie,
+    String? moneda,
+    List<ServicioExtra>? serviciosExtra,
+    int? descuentoValle,
+    String? valleDesde,
+    String? valleHasta,
+    int? senaPct,
   }) {
     return Cancha(
       id: id,
       nombre: nombre ?? this.nombre,
       club: club ?? this.club,
       distrito: distrito ?? this.distrito,
+      barrio: barrio ?? this.barrio,
       deporte: deporte ?? this.deporte,
+      deportes: deportes ?? this.deportes,
       precioHora: precioHora ?? this.precioHora,
       ubicacion: ubicacion ?? this.ubicacion,
       clubFundador: clubFundador,
       digitalizada: digitalizada,
       direccion: direccion ?? this.direccion,
-      registrada: registrada,
+      registrada: registrada ?? this.registrada,
       fotoUrl: fotoUrl ?? this.fotoUrl,
       fotos: fotos ?? this.fotos,
       dueno: dueno ?? this.dueno,
@@ -154,6 +606,14 @@ class Cancha {
       horaCierre: horaCierre ?? this.horaCierre,
       duracionSlotMin: duracionSlotMin ?? this.duracionSlotMin,
       eliminada: eliminada ?? this.eliminada,
+      amenidades: amenidades ?? this.amenidades,
+      superficie: superficie ?? this.superficie,
+      moneda: moneda ?? this.moneda,
+      serviciosExtra: serviciosExtra ?? this.serviciosExtra,
+      descuentoValle: descuentoValle ?? this.descuentoValle,
+      valleDesde: valleDesde ?? this.valleDesde,
+      valleHasta: valleHasta ?? this.valleHasta,
+      senaPct: senaPct ?? this.senaPct,
     );
   }
 
@@ -162,7 +622,9 @@ class Cancha {
         'nombre': nombre,
         'club': club,
         'distrito': distrito.name,
+        'barrio': barrio,
         'deporte': deporte.name,
+        'deportes': deportesJugables.map((e) => e.name).toList(),
         'precioHora': precioHora,
         'lat': ubicacion.latitude,
         'lng': ubicacion.longitude,
@@ -178,14 +640,30 @@ class Cancha {
         'horaCierre': horaCierre,
         'duracionSlotMin': duracionSlotMin,
         'eliminada': eliminada,
+        'amenidades': amenidades,
+        'superficie': superficie,
+        'moneda': moneda,
+        'serviciosExtra': serviciosExtra.map((s) => s.toJson()).toList(),
+        'descuentoValle': descuentoValle,
+        'valleDesde': valleDesde,
+        'valleHasta': valleHasta,
+        'senaPct': senaPct,
       };
 
   factory Cancha.fromJson(Map<String, dynamic> j) => Cancha(
         id: j['id'] as String,
         nombre: j['nombre'] as String,
         club: j['club'] as String,
-        distrito: Distrito.values.byName(j['distrito'] as String),
+        distrito: Distrito.values.firstWhere(
+            (d) => d.name == j['distrito'],
+            orElse: () => Distrito.sanBorja),
+        barrio: (j['barrio'] ?? '') as String,
         deporte: Deporte.values.byName(j['deporte'] as String),
+        deportes: (j['deportes'] as List?)
+                ?.map((e) => deportePorNombre(e.toString()))
+                .whereType<Deporte>()
+                .toList() ??
+            const [],
         precioHora: (j['precioHora'] as num).toDouble(),
         ubicacion: LatLng(
             (j['lat'] as num).toDouble(), (j['lng'] as num).toDouble()),
@@ -202,6 +680,15 @@ class Cancha {
         horaCierre: (j['horaCierre'] ?? '23:00') as String,
         duracionSlotMin: ((j['duracionSlotMin'] ?? 60) as num).toInt(),
         eliminada: (j['eliminada'] ?? false) as bool,
+        amenidades: (j['amenidades'] as List?)?.map((e) => e.toString()).toList() ??
+            const [],
+        superficie: (j['superficie'] ?? '') as String,
+        moneda: (j['moneda'] ?? '') as String,
+        serviciosExtra: ServicioExtra.listaDe(j['serviciosExtra']),
+        descuentoValle: (j['descuentoValle'] ?? 0) as int,
+        valleDesde: (j['valleDesde'] ?? '') as String,
+        valleHasta: (j['valleHasta'] ?? '') as String,
+        senaPct: ((j['senaPct'] ?? 0) as num).toInt(),
       );
 }
 
@@ -217,7 +704,9 @@ int? horaEnMinutos(String hhmm) {
 
 /// Convierte minutos desde medianoche a "HH:MM".
 String minutosEnHora(int min) {
-  final h = (min ~/ 60).toString().padLeft(2, '0');
+  // % 24 para envolver el cruce de medianoche: 1440 → '00:00', 1500 → '01:00'
+  // (en vez de '24:00'/'25:00'). Así los turnos de madrugada se ven bien.
+  final h = ((min ~/ 60) % 24).toString().padLeft(2, '0');
   final m = (min % 60).toString().padLeft(2, '0');
   return '$h:$m';
 }
@@ -239,7 +728,11 @@ class Reserva {
   final String jugador;
   final String nivel; // ej. "Intermedio 3.5" (ángulo social / por nivel)
   final String fecha; // fuente de verdad del día reservado, ISO "2026-06-27"
-  final String dia; // etiqueta visible ("Hoy", "Mañana", "Lun 22")
+  /// Etiqueta CONGELADA al reservar ("Hoy", "Mañana", "Lun 22"). NO usarla
+  /// para mostrar: una reserva hecha "para mañana" seguía diciendo "Mañana"
+  /// semanas después en el historial (queja del director, 26-sep-2026). Usar
+  /// [diaVisible], que se calcula desde [fecha] cada vez.
+  final String dia;
   final String horaInicio; // "07:00"
   final String horaFin; // "08:00"
   final EstadoReserva estado;
@@ -247,7 +740,57 @@ class Reserva {
   final int precio;
   final int sena; // monto de seña/garantía con tarjeta (anti no-show)
   final bool pagado; // el dueño confirmó el pago (efectivo en cancha)
+  /// Medio de pago: 'tarjeta' | 'yape' (online, ya cobrado por Culqi) |
+  /// 'efectivo' (paga en la cancha, el dueño cobra) | 'sena' (adelantó una parte
+  /// online y paga el resto en efectivo) | '' (desconocido/legado). Trazabilidad.
+  final String medioPago;
   final String usuario; // correo del jugador (para "mis reservas" entre dispositivos)
+  final String deporte; // deporte elegido para este slot (Deporte.name); '' = el principal de la cancha
+  final String moneda; // símbolo de moneda de la cancha al reservar ('' = 'S/')
+  final List<ServicioExtra> extras; // servicios extra elegidos al reservar
+  final String telefono; // teléfono del cliente (solo en reservas manuales del dueño)
+  // Agrupa las horas de UNA reserva de varias horas seguidas (18:00–20:00 = 2
+  // Reservas con el mismo grupo). '' = reserva suelta de una sola hora (legado).
+  final String grupoReservaId;
+
+  /// Moneda de la reserva (default 'S/'), congelada de la cancha al reservar.
+  String get monedaSimbolo => moneda.isNotEmpty ? moneda : 'S/';
+
+  /// Suma de los servicios extra elegidos (0 si ninguno).
+  double get extrasTotal => extras.fold(0.0, (a, s) => a + s.precio);
+
+  /// Total que paga el jugador: precio de la cancha + servicios extra.
+  double get totalConExtras => precio + extrasTotal;
+
+  /// La reserva se pagó CANJEANDO un bono de horas prepagadas: el dinero ya
+  /// entró (una sola vez) al COMPRAR el bono, no aquí. Por eso NO cuenta como
+  /// ingreso fresco en la caja/reportes del día del canje (evita doble conteo).
+  bool get esBono => medioPago == 'bono';
+
+  /// Dinero FRESCO que entra por esta reserva el día que ocurre: 0 si se cubrió
+  /// con bono (ya cobrado en el paquete), si no el total con extras.
+  double get ingresoFresco => esBono ? 0 : totalConExtras;
+
+  /// Día para MOSTRAR, calculado desde [fecha]: "Hoy" / "Mañana" / "Ayer" o
+  /// "jue 18 set" para cualquier otra fecha (pasada o futura). Cae a [dia]
+  /// solo si la reserva no tiene fecha ISO (legado).
+  String get diaVisible {
+    final d = DateTime.tryParse(fecha);
+    if (d == null) return dia;
+    final hoy = DateTime.now();
+    final base = DateTime(hoy.year, hoy.month, hoy.day);
+    final diff = DateTime(d.year, d.month, d.day).difference(base).inDays;
+    if (diff == 0) return 'Hoy';
+    if (diff == 1) return 'Mañana';
+    if (diff == -1) return 'Ayer';
+    const dias = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+    const meses = [
+      'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+      'jul', 'ago', 'set', 'oct', 'nov', 'dic'
+    ];
+    final anio = d.year != hoy.year ? ' ${d.year}' : '';
+    return '${dias[d.weekday - 1]} ${d.day} ${meses[d.month - 1]}$anio';
+  }
 
   const Reserva({
     required this.id,
@@ -264,9 +807,16 @@ class Reserva {
     required this.sena,
     this.pagado = false,
     this.usuario = '',
+    this.deporte = '',
+    this.moneda = '',
+    this.extras = const [],
+    this.telefono = '',
+    this.grupoReservaId = '',
+    this.medioPago = '',
   });
 
-  Reserva copyWith({EstadoReserva? estado, bool? pagado}) => Reserva(
+  Reserva copyWith({EstadoReserva? estado, bool? pagado, String? medioPago}) =>
+      Reserva(
         id: id,
         canchaId: canchaId,
         jugador: jugador,
@@ -281,6 +831,12 @@ class Reserva {
         sena: sena,
         pagado: pagado ?? this.pagado,
         usuario: usuario,
+        deporte: deporte,
+        moneda: moneda,
+        extras: extras,
+        telefono: telefono,
+        grupoReservaId: grupoReservaId,
+        medioPago: medioPago ?? this.medioPago,
       );
 
   Map<String, dynamic> toJson() => {
@@ -298,6 +854,12 @@ class Reserva {
         'sena': sena,
         'pagado': pagado,
         'usuario': usuario,
+        'deporte': deporte,
+        'moneda': moneda,
+        'extras': extras.map((s) => s.toJson()).toList(),
+        'telefono': telefono,
+        'grupoReservaId': grupoReservaId,
+        'medioPago': medioPago,
       };
 
   factory Reserva.fromJson(Map<String, dynamic> j) => Reserva(
@@ -315,6 +877,12 @@ class Reserva {
         sena: j['sena'] as int,
         pagado: (j['pagado'] ?? false) as bool,
         usuario: (j['usuario'] ?? '') as String,
+        deporte: (j['deporte'] ?? '') as String,
+        moneda: (j['moneda'] ?? '') as String,
+        extras: ServicioExtra.listaDe(j['extras']),
+        telefono: (j['telefono'] ?? '') as String,
+        grupoReservaId: (j['grupoReservaId'] ?? '') as String,
+        medioPago: (j['medioPago'] ?? '') as String,
       );
 }
 
@@ -346,28 +914,82 @@ class BloqueHorario {
 }
 
 /// Movimiento del saldo prepago del club (modelo estilo inDrive).
-enum TipoMovimiento { recarga, consumo }
+/// Tipo de movimiento del dueño: recarga (entra saldo), consumo (comisión que
+/// sale del saldo por reserva en efectivo) y liquidacion (reserva online: el
+/// jugador pagó a Pichangol y le queda un NETO por recibir; no toca el saldo).
+enum TipoMovimiento { recarga, consumo, liquidacion }
 
 class MovimientoSaldo {
   final TipoMovimiento tipo;
-  final int monto; // soles
+  final int monto; // soles (redondeado, para la lista)
   final String concepto;
   final String cuando; // etiqueta simple ("Ahora", "Hoy", etc.)
+  /// Solo para [TipoMovimiento.liquidacion]: ¿Pichangol ya transfirió el neto?
+  /// false = "por recibir"; true = "recibido".
+  final bool liquidado;
+  /// Monto EXACTO con decimales (para el recibo). Puede ser negativo (egreso).
+  final double montoSoles;
+  /// N.º de comprobante (id del pago en el backend). 0 = sin comprobante.
+  final int comprobante;
+  /// Fecha ISO del movimiento (para el recibo). Vacío si no se conoce.
+  final String fechaIso;
+  /// Monto BRUTO de la reserva (lo que pagó el jugador). Solo liquidaciones.
+  final double brutoSoles;
+  /// Comisión de Pichangol de esta reserva (para el recibo). Solo liquidaciones.
+  final double comisionSoles;
+  /// De dónde salió la comisión: 'saldo' (de tu billetera prepago),
+  /// 'transaccion' (del pago del jugador, recibes el neto) o '' (no aplica).
+  final String fuente;
+
+  /// MEDIO con el que pagó el jugador ('yape' | 'tarjeta' | 'sena' | ''):
+  /// trazabilidad del origen del cobro en billetera y estado de cuenta.
+  final String medio;
 
   const MovimientoSaldo({
     required this.tipo,
     required this.monto,
     required this.concepto,
     required this.cuando,
+    this.liquidado = false,
+    this.montoSoles = 0,
+    this.comprobante = 0,
+    this.fechaIso = '',
+    this.brutoSoles = 0,
+    this.comisionSoles = 0,
+    this.fuente = '',
+    this.medio = '',
   });
 
-  Map<String, dynamic> toJson() =>
-      {'tipo': tipo.name, 'monto': monto, 'concepto': concepto, 'cuando': cuando};
+  bool get esIngreso =>
+      tipo == TipoMovimiento.recarga || tipo == TipoMovimiento.liquidacion;
+
+  Map<String, dynamic> toJson() => {
+        'tipo': tipo.name,
+        'monto': monto,
+        'concepto': concepto,
+        'cuando': cuando,
+        'liquidado': liquidado,
+        'montoSoles': montoSoles,
+        'comprobante': comprobante,
+        'fechaIso': fechaIso,
+        'brutoSoles': brutoSoles,
+        'comisionSoles': comisionSoles,
+        'fuente': fuente,
+        'medio': medio,
+      };
 
   factory MovimientoSaldo.fromJson(Map<String, dynamic> j) => MovimientoSaldo(
         tipo: TipoMovimiento.values.byName(j['tipo'] as String),
         monto: j['monto'] as int,
         concepto: j['concepto'] as String,
         cuando: j['cuando'] as String,
+        liquidado: (j['liquidado'] ?? false) as bool,
+        montoSoles: ((j['montoSoles'] ?? 0) as num).toDouble(),
+        comprobante: ((j['comprobante'] ?? 0) as num).toInt(),
+        fechaIso: (j['fechaIso'] ?? '') as String,
+        brutoSoles: ((j['brutoSoles'] ?? 0) as num).toDouble(),
+        comisionSoles: ((j['comisionSoles'] ?? 0) as num).toDouble(),
+        fuente: (j['fuente'] ?? '') as String,
+        medio: (j['medio'] ?? '') as String,
       );
 }

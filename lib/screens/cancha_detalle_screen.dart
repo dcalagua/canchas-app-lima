@@ -4,9 +4,15 @@ import '../data/reservas_repo.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/dialogo_pichangol.dart';
+import '../widgets/chat_burbuja.dart';
 import '../widgets/court_lines.dart';
+import '../widgets/pago_tarjeta_sheet.dart';
+import 'chat_screen.dart';
 import 'login_google_sheet.dart';
 import 'registrar_cancha_screen.dart';
+import '../utils/moneda.dart';
+import '../utils/ubicacion_share.dart';
 
 /// Detalle de una cancha (estilo ficha de Airbnb) con selección de día/hora y
 /// flujo de reserva. Demo sin backend: la reserva se guarda en memoria.
@@ -22,7 +28,9 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
   String _dia = 'Hoy';
   String? _hora;
 
-  Cancha get cancha => widget.cancha;
+  // Versión VIGENTE (no el snapshot con el que se abrió la pantalla): así la
+  // duración/precio/horario recién editados por el dueño se ven al instante.
+  Cancha get cancha => appState.canchaVigente(widget.cancha);
   Color get _color => colorDeporte(cancha.deporte);
 
   /// Horas reservables reales de ESTA cancha (apertura→cierre, paso = duración).
@@ -47,8 +55,10 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
   }
 
   bool _ocupada(String hora) {
+    // Fecha REAL del slot (madrugada = día siguiente si el horario cruza medianoche).
+    final f = cancha.fechaRealSlot(_fechaIso, hora);
     return appState.reservas.any((r) =>
-        r.canchaId == cancha.id && r.fecha == _fechaIso && r.horaInicio == hora);
+        r.canchaId == cancha.id && r.fecha == f && r.horaInicio == hora);
   }
 
   Future<void> _reservar() async {
@@ -56,17 +66,26 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     if (hora == null) return;
 
     // Navegar/buscar es libre; reservar exige login con Google.
-    if (!appState.logueado) {
-      final ok = await LoginGoogleSheet.mostrar(context);
-      if (!ok || !mounted) return;
+    if (!await LoginGoogleSheet.mostrar(context, motivo: 'reservar tu cancha')) {
+      return;
     }
+    if (!mounted) return;
 
     final total = cancha.precioHora * cancha.duracionSlotMin / 60;
+    // Seña anti no-show: si la cancha la exige, el jugador adelanta un % y paga
+    // el resto en la cancha (no reembolsable). Manda sobre el efectivo.
+    final exigeSena = cancha.exigeSena;
+    final senaMonto = exigeSena ? cancha.senaDe(total.round()) : 0;
+    final resto = total - senaMonto;
+    // El efectivo (pago en la cancha) SOLO se ofrece si el dueño tiene saldo:
+    // así PCG cobra su comisión de ese saldo. Sin saldo, el jugador paga online.
+    final efectivo = !exigeSena && appState.esDestacada(cancha);
     final confirmar = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirmar reserva'),
-        content: Column(
+      builder: (ctx) => DialogoPichangol(
+        titulo: 'Confirmar reserva',
+        icono: Icons.event_available,
+        contenido: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -74,26 +93,43 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
             const SizedBox(height: 8),
             Text('$_dia · $hora a ${cancha.horaFinDe(hora)}'),
             const SizedBox(height: 8),
-            Text('Total: S/ ${total.toStringAsFixed(2)}',
-                style: const TextStyle(
-                    color: verdeCancha, fontWeight: FontWeight.w700)),
+            Text('Total: ${cancha.monedaSimbolo} ${total.toStringAsFixed(2)}',
+                style: TextStyle(
+                    color: Theme.of(ctx).colorScheme.primary,
+                    fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
-            const Text(
-              'Reservas ahora y pagas en la cancha (efectivo). El club confirma '
-              'tu pago al llegar.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+            Text(
+              exigeSena
+                  ? 'Adelantas una seña de ${cancha.monedaSimbolo} '
+                      '${senaMonto.toDouble().toStringAsFixed(2)} (Yape/tarjeta) para '
+                      'asegurar tu hora y pagas ${cancha.monedaSimbolo} '
+                      '${resto.toStringAsFixed(2)} en la cancha. La seña no es '
+                      'reembolsable.'
+                  : efectivo
+                      ? 'Reservas ahora y pagas en la cancha (efectivo). El club '
+                          'confirma tu pago al llegar.'
+                      : 'Pagas ahora por la app (Yape/tarjeta) para asegurar tu hora.',
+              style: const TextStyle(fontSize: 12, color: textoTenue),
             ),
           ],
         ),
-        actions: [
+        acciones: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
+            style: TextButton.styleFrom(foregroundColor: textoTenue),
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: coral),
+            style: FilledButton.styleFrom(
+                backgroundColor: lima,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Reservar'),
+            child: const Text('Reservar',
+                style: TextStyle(fontWeight: FontWeight.w800)),
           ),
         ],
       ),
@@ -102,8 +138,96 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
 
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
-    final res =
-        await appState.agregarReservaJugador(cancha, _fechaIso, _dia, hora);
+    // ── FASE 1 (si hay cobro por adelantado): ASEGURA el horario ANTES de
+    // cobrar (el UNIQUE de Supabase decide la carrera). Si otro jugador va por
+    // la misma hora, el que pierde ve "ocupado" SIN haber puesto su tarjeta.
+    // Si el pago luego falla o se cancela, el horario se LIBERA al instante.
+    Reserva? asegurada;
+    if (exigeSena || !efectivo) {
+      final (resHold, tomadas) = await appState.asegurarBloqueJugador(
+          cancha, _fechaIso, _dia, [hora]);
+      if (!mounted) return;
+      if (resHold == ResultadoReserva.ocupado) {
+        setState(() => _hora = null);
+        messenger.showSnackBar(const SnackBar(
+          backgroundColor: Colors.redAccent,
+          content: Text(
+              '⛔ Esa hora ya está ocupada: otro jugador la acaba de reservar. '
+              'Elige otro horario, por favor. No se te cobró nada.'),
+        ));
+        return;
+      }
+      if (resHold != ResultadoReserva.ok) {
+        messenger.showSnackBar(const SnackBar(
+          backgroundColor: Color(0xFFB4471F),
+          content: Text(
+              '⚠️ Sin conexión: para pagar online necesitas señal. Puedes '
+              'elegir pagar en la cancha mientras tanto.'),
+        ));
+        return;
+      }
+      asegurada = tomadas.first;
+    }
+    // Con seña → cobra la seña; sin saldo del dueño → el jugador paga TODO online
+    // ANTES de reservar (ahí queda la comisión de PCG). Si cancela o falla el
+    // pago, se libera el horario asegurado y no se reserva.
+    if (exigeSena) {
+      final pagado = await PagoTarjeta.cobrar(
+        context,
+        monto: senaMonto,
+        concepto: 'Seña · ${cancha.nombre} · $_dia $hora',
+        email: appState.usuario?.email ?? '',
+        moneda: cancha.monedaSimbolo,
+      );
+      if (!pagado) {
+        await appState.liberarBloqueAsegurado([asegurada!]);
+        if (PagoTarjeta.ultimoError.isNotEmpty) {
+          appState.avisarPagoRechazado(
+              cancha: cancha,
+              fecha: cancha.fechaRealSlot(_fechaIso, hora),
+              horas: hora,
+              motivo: PagoTarjeta.ultimoError);
+        }
+        return;
+      }
+    } else if (!efectivo) {
+      final pagado = await PagoTarjeta.cobrar(
+        context,
+        monto: total,
+        concepto: 'Reserva · ${cancha.nombre} · $_dia $hora',
+        email: appState.usuario?.email ?? '',
+        moneda: cancha.monedaSimbolo,
+      );
+      if (!pagado) {
+        await appState.liberarBloqueAsegurado([asegurada!]);
+        if (PagoTarjeta.ultimoError.isNotEmpty) {
+          appState.avisarPagoRechazado(
+              cancha: cancha,
+              fecha: cancha.fechaRealSlot(_fechaIso, hora),
+              horas: hora,
+              motivo: PagoTarjeta.ultimoError);
+        }
+        return;
+      }
+    }
+    // Trazabilidad del medio de pago: efectivo, seña (adelanto), o el medio real
+    // con que se cobró online (yape/tarjeta lo expone PagoTarjeta.ultimoMetodo).
+    final medioPago = exigeSena
+        ? 'sena'
+        : (efectivo
+            ? 'efectivo'
+            : (PagoTarjeta.ultimoMetodo.isNotEmpty
+                ? PagoTarjeta.ultimoMetodo
+                : 'online'));
+    final res = await appState.agregarReservaJugador(
+        cancha, cancha.fechaRealSlot(_fechaIso, hora), _dia, hora,
+        // seña → adelanto (resto en la cancha); con saldo → efectivo (comisión
+        // del saldo); sin saldo → online (ya se cobró al jugador; liquidación al
+        // dueño).
+        cobro: exigeSena ? 'sena' : (efectivo ? 'efectivo' : 'online'),
+        medioPago: medioPago,
+        sena: exigeSena ? senaMonto : 0,
+        asegurada: asegurada);
     if (!mounted) return;
 
     if (res == ResultadoReserva.ocupado) {
@@ -116,16 +240,53 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     }
 
     nav.pop(); // vuelve al mapa
+    // Solo es "confirmada" si llegó a Supabase (fuente de verdad anti-doble
+    // reserva). Con sinConexion/error queda PENDIENTE y se reintenta sola.
+    final confirmada = res == ResultadoReserva.ok;
     messenger.showSnackBar(SnackBar(
-      backgroundColor: verdeCancha,
-      content:
-          Text('✅ Reserva confirmada en ${cancha.nombre} · $_dia $hora'),
+      backgroundColor: confirmada ? verdeCancha : const Color(0xFFB4471F),
+      duration: Duration(seconds: confirmada ? 5 : 9),
+      content: Text(res == ResultadoReserva.error
+          ? '⚠️ No se pudo registrar en el servidor. Queda pendiente y se '
+              'reintenta. Detalle: ${ReservasRepo.ultimoError}'
+          : !confirmada
+          ? '⚠️ Sin señal: guardamos tu reserva como PENDIENTE y la '
+              'confirmaremos sola al recuperar conexión. Si para entonces otra '
+              'persona tomó el horario, te avisaremos.'
+          : exigeSena
+              ? '✅ Seña pagada · Reserva confirmada en ${cancha.nombre} · $_dia $hora · paga ${cancha.monedaSimbolo} ${resto.toStringAsFixed(2)} en la cancha'
+              : '✅ Reserva confirmada en ${cancha.nombre} · $_dia $hora'),
+    ));
+  }
+
+  /// Chat interno con el DUEÑO de la cancha. Exige cuenta (portón único).
+  Future<void> _chatearConDueno() async {
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'escribirle al dueño')) {
+      return;
+    }
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        academiaId: '',
+        cuentaEmail: appState.usuario!.email,
+        titulo: cancha.club.isNotEmpty ? cancha.club : cancha.nombre,
+        soyProfe: false,
+        tipo: 'cancha',
+        refId: cancha.dueno,
+      ),
     ));
   }
 
   @override
   Widget build(BuildContext context) {
+    final email = appState.usuario?.email ?? '';
+    final soyDueno = email.isNotEmpty && cancha.dueno == email;
     return Scaffold(
+      // Globo de chat con el dueño (si hay dueño y no soy yo): siempre a la mano.
+      floatingActionButton: (cancha.dueno.isNotEmpty && !soyDueno)
+          ? ChatBurbuja(logoUrl: cancha.fotoUrl, onTap: _chatearConDueno)
+          : null,
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
@@ -173,33 +334,33 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                   Row(
                     children: [
                       _Pill(cancha.deporte.etiqueta, _color),
-                      const SizedBox(width: 8),
-                      _Pill(cancha.distrito.etiqueta, Colors.black54),
+                      if (cancha.zonaMostrable.isNotEmpty) ...[
+                        const SizedBox(width: 8),
+                        _Pill(cancha.zonaMostrable, Colors.black54),
+                      ],
                       const Spacer(),
                       if (cancha.registrada) ...[
                         Text(
-                          'S/ ${cancha.precioHora.toStringAsFixed(2)}',
-                          style: const TextStyle(
+                          '${cancha.monedaSimbolo} ${cancha.precioHora.toStringAsFixed(2)}',
+                          style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 22,
-                              color: verdeCancha),
+                              color: Theme.of(context).colorScheme.primary),
                         ),
                         const Text(' /hora',
                             style: TextStyle(color: Colors.grey)),
                       ],
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    cancha.direccion ?? cancha.club,
-                    style: const TextStyle(color: Colors.grey, fontSize: 14),
-                  ),
+                  const SizedBox(height: 8),
+                  _FilaUbicacion(cancha: cancha),
                   const SizedBox(height: 16),
                   if (!cancha.registrada)
                     _PanelDescubierta(cancha: cancha)
                   else ...[
                     Text(
-                      'Cancha de ${cancha.deporte.etiqueta.toLowerCase()} en ${cancha.distrito.etiqueta}. '
+                      'Cancha de ${cancha.deporte.etiqueta.toLowerCase()}'
+                      '${cancha.zonaMostrable.isNotEmpty ? ' en ${cancha.zonaMostrable}' : ''}. '
                       'Reserva tu hora y juega con quien quieras, a tu nivel. '
                       'Reservas online y pagas en la cancha (efectivo).',
                       style: const TextStyle(height: 1.4),
@@ -289,12 +450,13 @@ class _BarraReserva extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 8)],
+      decoration: BoxDecoration(
+        color: cs.surface,
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 8)],
       ),
       child: Row(
         children: [
@@ -304,15 +466,15 @@ class _BarraReserva extends StatelessWidget {
                   ? 'Reservar $dia · $textoHora'
                   : 'Elige una hora disponible',
               style: TextStyle(
-                color: habilitado ? Colors.black87 : Colors.grey,
+                color: habilitado ? cs.onSurface : Colors.grey,
                 fontWeight: FontWeight.w600,
               ),
             ),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: pino,
-              foregroundColor: lima,
+              backgroundColor: lima,
+              foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
             ),
             onPressed: habilitado ? onReservar : null,
@@ -332,19 +494,20 @@ class _DiaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
         decoration: BoxDecoration(
-          color: activo ? verdeCancha : Colors.white,
+          color: activo ? verdeCancha : cs.surface,
           borderRadius: BorderRadius.circular(30),
           border: Border.all(color: verdeCancha),
         ),
         child: Text(
           texto,
           style: TextStyle(
-            color: activo ? Colors.white : verdeCancha,
+            color: activo ? Colors.white : cs.primary,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -383,12 +546,13 @@ class _HoraChip extends StatelessWidget {
         ),
       );
     }
+    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
         decoration: BoxDecoration(
-          color: seleccionada ? verdeCancha : Colors.white,
+          color: seleccionada ? verdeCancha : cs.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
               color: seleccionada ? verdeCancha : const Color(0xFFCDD8D1)),
@@ -396,7 +560,7 @@ class _HoraChip extends StatelessWidget {
         child: Text(
           hora,
           style: TextStyle(
-            color: seleccionada ? Colors.white : Colors.black87,
+            color: seleccionada ? Colors.white : cs.onSurface,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -458,6 +622,63 @@ class _PanelDescubierta extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Ubicación de la cancha: dirección REAL (tocar = abrir en Google Maps) + botón
+/// para compartir/“cómo llegar”. Nunca inventa distrito: si no hay dirección ni
+/// barrio real, cae al nombre del club (y el mapa siempre funciona por GPS).
+class _FilaUbicacion extends StatelessWidget {
+  const _FilaUbicacion({required this.cancha});
+  final Cancha cancha;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final dir = (cancha.direccion ?? '').trim();
+    final zona = cancha.zonaMostrable;
+    final texto = dir.isNotEmpty ? dir : (zona.isNotEmpty ? zona : cancha.club);
+    final tituloShare = dir.isNotEmpty ? '${cancha.nombre} · $dir' : cancha.nombre;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.place_outlined, size: 20, color: cs.primary),
+        const SizedBox(width: 6),
+        Expanded(
+          child: InkWell(
+            onTap: () => UbicacionShare.abrirMapa(cancha.ubicacion),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(texto,
+                    style: const TextStyle(
+                        color: Color(0xFF444444), fontSize: 14, height: 1.3)),
+                if (dir.isNotEmpty && zona.isNotEmpty && zona != dir)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(zona,
+                        style: const TextStyle(
+                            color: Colors.grey, fontSize: 12.5)),
+                  ),
+                const SizedBox(height: 2),
+                Text('Ver en el mapa',
+                    style: TextStyle(
+                        color: cs.primary,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+        ),
+        TextButton.icon(
+          onPressed: () => UbicacionShare.menu(context,
+              punto: cancha.ubicacion, titulo: tituloShare),
+          icon: const Icon(Icons.ios_share, size: 18),
+          label: const Text('Compartir'),
+          style: TextButton.styleFrom(foregroundColor: cs.primary),
+        ),
+      ],
     );
   }
 }

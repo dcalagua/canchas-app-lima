@@ -2,34 +2,45 @@ import 'package:flutter/material.dart';
 
 import '../services/payments_service.dart';
 import '../theme.dart';
-
-const Color _yape = Color(0xFF6E2A8C);
+import '../utils/moneda.dart';
+import '../widgets/marcas_pago.dart';
 
 /// Hoja de pago estilo checkout (Yape o tarjeta). Demo: usa [PasarelaSimulada].
 /// Devuelve el [PagoResult] por Navigator.pop (o null si se cancela).
+///
+/// Multi-país (piloto): los métodos dependen del país (por la moneda). Perú =
+/// Yape + tarjeta (Culqi). Otros países (Ecuador/Bolivia con Libélula, etc.) =
+/// tarjeta por ahora; sus métodos locales (QR, Tigo Money…) se agregan por país
+/// en la fase de pasarela real. Los logos son de marca, no íconos genéricos.
 class PagoSheet extends StatefulWidget {
-  final int monto;
+  final num monto; // unidad mayor, admite 2 decimales
   final String concepto;
   final bool esRecarga;
+  final String moneda;
   const PagoSheet({
     super.key,
     required this.monto,
     required this.concepto,
     this.esRecarga = false,
+    this.moneda = '',
   });
 
   static Future<PagoResult?> mostrar(
     BuildContext context, {
-    required int monto,
+    required num monto,
     required String concepto,
     bool esRecarga = false,
+    String moneda = '',
   }) {
     return showModalBottomSheet<PagoResult>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) =>
-          PagoSheet(monto: monto, concepto: concepto, esRecarga: esRecarga),
+      builder: (_) => PagoSheet(
+          monto: monto,
+          concepto: concepto,
+          esRecarga: esRecarga,
+          moneda: moneda),
     );
   }
 
@@ -38,15 +49,49 @@ class PagoSheet extends StatefulWidget {
 }
 
 class _PagoSheetState extends State<PagoSheet> {
-  MetodoPago _metodo = MetodoPago.yape;
+  String get _mon => widget.moneda.isNotEmpty ? widget.moneda : monedaSimbolo;
+
+  /// País del pago por la moneda. Yape solo aplica en Perú; los demás países
+  /// (Libélula, etc.) van con tarjeta por ahora.
+  bool get _esPeru => widget.moneda.isEmpty || widget.moneda == 'S/';
+
+  late MetodoPago _metodo =
+      _esPeru ? MetodoPago.yape : MetodoPago.tarjeta;
   bool _procesando = false;
+
+  final _cel = TextEditingController(); // Yape
+  final _num = TextEditingController();
+  final _exp = TextEditingController();
+  final _cvv = TextEditingController();
+
+  @override
+  void dispose() {
+    _cel.dispose();
+    _num.dispose();
+    _exp.dispose();
+    _cvv.dispose();
+    super.dispose();
+  }
+
+  /// Rellena datos FICTICIOS para simular el pago sin tipear (modo demo).
+  void _autocompletar() {
+    setState(() {
+      _cel.text = '987 654 321';
+      _num.text = '4111 1111 1111 1111';
+      _exp.text = '09/28';
+      _cvv.text = '123';
+    });
+  }
 
   Future<void> _pagar() async {
     setState(() => _procesando = true);
+    // Pasarela SIMULADA (demo, sin cobro real): su API usa montoSoles:int, así
+    // que redondeamos solo aquí. El cobro real (Culqi/Libélula) sí respeta los
+    // decimales (ese va por otra ruta, no por esta hoja demo).
     final result = widget.esRecarga
-        ? await pasarela.recargarSaldo(montoSoles: widget.monto, metodo: _metodo)
+        ? await pasarela.recargarSaldo(montoSoles: widget.monto.round(), metodo: _metodo)
         : await pasarela.cobrar(
-            montoSoles: widget.monto,
+            montoSoles: widget.monto.round(),
             metodo: _metodo,
             concepto: widget.concepto);
     if (!mounted) return;
@@ -55,10 +100,11 @@ class _PagoSheetState extends State<PagoSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.fromLTRB(
           20, 14, 20, 24 + MediaQuery.of(context).viewInsets.bottom),
@@ -78,27 +124,30 @@ class _PagoSheetState extends State<PagoSheet> {
           Text(widget.concepto,
               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
-          Text('S/ ${widget.monto}',
-              style: const TextStyle(
-                  fontSize: 32, fontWeight: FontWeight.bold, color: verdeCancha)),
+          Text('$_mon ${montoTxt(widget.monto)}',
+              style: TextStyle(
+                  fontSize: 32, fontWeight: FontWeight.bold, color: cs.primary)),
           const SizedBox(height: 18),
           Row(
             children: [
-              Expanded(
-                child: _OpcionMetodo(
-                  activo: _metodo == MetodoPago.yape,
-                  color: _yape,
-                  icono: Icons.account_balance_wallet,
-                  texto: 'Yape',
-                  onTap: () => setState(() => _metodo = MetodoPago.yape),
+              // Yape: solo Perú (por país). En otros países se ocultará hasta
+              // integrar su método local (Libélula/QR/…).
+              if (_esPeru) ...[
+                Expanded(
+                  child: _OpcionMetodo(
+                    activo: _metodo == MetodoPago.yape,
+                    color: const Color(0xFF742284),
+                    marca: const YapeBadge(alto: 26),
+                    onTap: () => setState(() => _metodo = MetodoPago.yape),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
+                const SizedBox(width: 12),
+              ],
               Expanded(
                 child: _OpcionMetodo(
                   activo: _metodo == MetodoPago.tarjeta,
                   color: azulPadel,
-                  icono: Icons.credit_card,
+                  marca: const MarcasTarjeta(),
                   texto: 'Tarjeta',
                   onTap: () => setState(() => _metodo = MetodoPago.tarjeta),
                 ),
@@ -106,8 +155,58 @@ class _PagoSheetState extends State<PagoSheet> {
             ],
           ),
           const SizedBox(height: 16),
-          if (_metodo == MetodoPago.yape) const _FormYape() else const _FormTarjeta(),
-          const SizedBox(height: 18),
+          if (_metodo == MetodoPago.yape)
+            TextField(
+              controller: _cel,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(
+                labelText: 'Número de celular Yape',
+                hintText: '9XX XXX XXX',
+                prefixIcon: Icon(Icons.phone_iphone),
+              ),
+            )
+          else ...[
+            TextField(
+              controller: _num,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Número de tarjeta',
+                hintText: '4111 1111 1111 1111',
+                prefixIcon: Icon(Icons.credit_card),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _exp,
+                    decoration: const InputDecoration(labelText: 'MM/AA'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextField(
+                    controller: _cvv,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    decoration: const InputDecoration(labelText: 'CVV'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 10),
+          // DEMO: autocompletar datos ficticios para simular sin tipear.
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _autocompletar,
+              icon: const Icon(Icons.auto_fix_high, size: 18),
+              label: const Text('Autocompletar datos de prueba'),
+            ),
+          ),
+          const SizedBox(height: 6),
           SizedBox(
             width: double.infinity,
             child: FilledButton(
@@ -123,12 +222,13 @@ class _PagoSheetState extends State<PagoSheet> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white),
                     )
-                  : Text('Pagar S/ ${widget.monto}'),
+                  : Text('Pagar $_mon ${montoTxt(widget.monto)}'),
             ),
           ),
           const SizedBox(height: 10),
           const Text(
-            'Pago de demostración. La pasarela real (Culqi/Yape) se conecta con el backend en la siguiente fase.',
+            'Pago de demostración. La pasarela real (Culqi en Perú, Libélula en '
+            'Ecuador/Bolivia) se conecta con el backend en la siguiente fase.',
             textAlign: TextAlign.center,
             style: TextStyle(color: Colors.grey, fontSize: 11),
           ),
@@ -141,15 +241,15 @@ class _PagoSheetState extends State<PagoSheet> {
 class _OpcionMetodo extends StatelessWidget {
   final bool activo;
   final Color color;
-  final IconData icono;
-  final String texto;
+  final Widget marca; // logo de marca (YapeBadge / MarcasTarjeta)
+  final String? texto; // etiqueta opcional bajo la marca
   final VoidCallback onTap;
   const _OpcionMetodo({
     required this.activo,
     required this.color,
-    required this.icono,
-    required this.texto,
+    required this.marca,
     required this.onTap,
+    this.texto,
   });
 
   @override
@@ -157,7 +257,8 @@ class _OpcionMetodo extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
+        height: 62,
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: activo ? color.withOpacity(0.10) : Colors.white,
           borderRadius: BorderRadius.circular(14),
@@ -166,70 +267,20 @@ class _OpcionMetodo extends StatelessWidget {
               width: activo ? 2 : 1),
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icono, color: color),
-            const SizedBox(height: 6),
-            Text(texto,
-                style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: activo ? color : Colors.black87)),
+            marca,
+            if (texto != null) ...[
+              const SizedBox(height: 4),
+              Text(texto!,
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: activo ? color : Colors.black87)),
+            ],
           ],
         ),
       ),
-    );
-  }
-}
-
-class _FormYape extends StatelessWidget {
-  const _FormYape();
-
-  @override
-  Widget build(BuildContext context) {
-    return const TextField(
-      keyboardType: TextInputType.phone,
-      decoration: InputDecoration(
-        labelText: 'Número de celular Yape',
-        hintText: '9XX XXX XXX',
-        prefixIcon: Icon(Icons.phone_iphone),
-      ),
-    );
-  }
-}
-
-class _FormTarjeta extends StatelessWidget {
-  const _FormTarjeta();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: const [
-        TextField(
-          keyboardType: TextInputType.number,
-          decoration: InputDecoration(
-            labelText: 'Número de tarjeta',
-            hintText: '4111 1111 1111 1111',
-            prefixIcon: Icon(Icons.credit_card),
-          ),
-        ),
-        SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                decoration: InputDecoration(labelText: 'MM/AA'),
-              ),
-            ),
-            SizedBox(width: 12),
-            Expanded(
-              child: TextField(
-                keyboardType: TextInputType.number,
-                obscureText: true,
-                decoration: InputDecoration(labelText: 'CVV'),
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 }

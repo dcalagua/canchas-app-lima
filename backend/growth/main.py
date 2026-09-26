@@ -7,13 +7,36 @@ Ejecutar (desde este directorio):
 
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, Request
+import os
+import time
 
+import asyncio
+
+from fastapi import Depends, FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+
+import config
 from compliance.consent import consent_store
+from concierge.router import router as concierge_router
 from convocatorias.router import router as convocatorias_router
 from db import pg
+from entrenador.router import router as entrenador_router
 from db.store import seed_verificadores, stores
+from legal.router import router as legal_router
+from web.router import router as web_router
+from web.anfitrion import router as anfitrion_router
+from web.anfitrion_academia import router as anfitrion_academia_router
+from web.anfitrion_tienda import router as anfitrion_tienda_router
+from web.anfitrion_campeonatos import router as anfitrion_campeonatos_router
+from web.academia import router as academia_web_router
 from models import ConfigRequest, ConsentimientoRequest
+from marketing.router import router as marketing_router
+from pagos.router import (procesar_renovaciones, procesar_renovaciones_alumnos,
+                          procesar_renovaciones_pro)
+from pagos.router import router as pagos_router
+from retos.router import router as retos_router
+from ventas.router import router as ventas_router
+from circuito.router import router as circuito_router
 from propiedad.panel import router as panel_router
 from propiedad.router import _require_admin
 from propiedad.router import router as propiedad_router
@@ -27,31 +50,214 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Persistencia: carga el snapshot guardado (si hay BD) y siembra verificadores.
+# Persistencia: carga el snapshot y, encima, las tablas normalizadas (saldos/
+# pagos/vistas/reclamos) que ganan si tienen datos. En el primer deploy las
+# tablas están vacías → se conserva el snapshot y se hace *backfill* a las tablas.
 _snapshot = pg.init_y_cargar()
 if _snapshot:
     stores.load_state(_snapshot)
+pg.cargar_normalizado(stores)   # tablas reales = fuente de verdad de lo crítico
+if pg.habilitado:               # backfill inicial (snapshot -> tablas) idempotente
+    try:
+        pg.guardar_normalizado(stores)
+    except Exception:  # noqa: BLE001
+        pass
 if not stores.verificadores:
     seed_verificadores()
+
+# Unificación de servicios: migra suscripciones del plan retirado "gestion" a
+# "redes", y cancela solapamientos (Presencia ya incluye Landing/Manejo).
+_cambios = stores.migrar_suscripciones_legacy()
+_cambios += stores.resolver_solapamiento_servicios()
+if _cambios and pg.habilitado:
+    try:
+        pg.guardar(stores.to_state())
+    except Exception:  # noqa: BLE001
+        pass
 
 
 @app.middleware("http")
 async def _persistir(request: Request, call_next):
-    """Tras cada request que muta estado, guarda el snapshot (fail-safe)."""
+    """Tras cada request que muta estado, guarda el snapshot completo (respaldo)
+    y vuelca lo crítico a sus tablas normalizadas. Todo fail-safe. Además pone
+    las CABECERAS DE SEGURIDAD: HSTS (todo el dominio va por HTTPS), nosniff,
+    Referrer-Policy y, en la torre /admin, anti-iframe (clickjacking),
+    sin caché de respuestas de la API y sin permisos de cámara/micro/GPS."""
+    t0 = time.time()
     response = await call_next(request)
+    ms = int((time.time() - t0) * 1000)
+    if ms > 700:
+        print(f"[perf] {request.method} {request.url.path} tardó {ms} ms", flush=True)
+    h = response.headers
+    h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    ruta = request.url.path
+    if ruta == "/admin" or ruta.startswith("/admin/"):
+        h.setdefault("X-Frame-Options", "DENY")
+        h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        if ruta.startswith("/admin/api/"):
+            h.setdefault("Cache-Control", "no-store")
     if pg.habilitado and request.method in ("POST", "PUT", "DELETE"):
-        try:
-            pg.guardar(stores.to_state())
-        except Exception:  # noqa: BLE001
-            pass
+        # Sin bloquear la respuesta: un hilo guarda el snapshot (solo si cambió)
+        # y las tablas normalizadas (solo filas nuevas/cambiadas). Ver db/pg.py.
+        pg.persistir_en_segundo_plano(stores)
     return response
 
+
+@app.on_event("shutdown")
+def _persistir_al_apagar() -> None:
+    """Railway manda SIGTERM en cada redeploy: vaciamos lo pendiente antes de morir."""
+    if pg.habilitado:
+        try:
+            pg.persistir_ahora(stores)
+        except Exception:  # noqa: BLE001
+            pass
+
 app.include_router(puntos_router)
+app.include_router(entrenador_router)
 app.include_router(solicitudes_router)
 app.include_router(vf_router)
 app.include_router(propiedad_router)
 app.include_router(panel_router)
 app.include_router(convocatorias_router)
+app.include_router(pagos_router)
+app.include_router(retos_router)
+app.include_router(ventas_router)
+app.include_router(circuito_router)
+app.include_router(marketing_router)
+app.include_router(legal_router)
+app.include_router(web_router)
+app.include_router(academia_web_router)  # ficha pública /academia/{id} + matrícula web
+app.include_router(anfitrion_academia_router)  # antes del comodín /anfitrion/{modulo}
+app.include_router(anfitrion_tienda_router)
+app.include_router(anfitrion_campeonatos_router)  # antes del comodín /anfitrion/{modulo}
+app.include_router(anfitrion_router)
+# Assets de marca de la web pública (pin, logo para OG/favicon). Ruta fija
+# junto a este archivo para que Railway (root dir backend/growth) los sirva.
+app.mount("/static", StaticFiles(directory=os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "static")), name="static")
+app.include_router(concierge_router)
+
+
+@app.on_event("startup")
+async def _iniciar_cron_renovaciones() -> None:
+    """Cron INTERNO: cada 12 h renueva las suscripciones vencidas (cobra del saldo
+    o de la tarjeta de débito automático). Corre dentro del mismo proceso (una
+    sola réplica en Railway), fail-safe, y persiste si cambió algo."""
+    async def _loop() -> None:
+        await asyncio.sleep(60)  # deja arrancar el servicio
+        while True:
+            try:
+                r = procesar_renovaciones()
+                ra = procesar_renovaciones_alumnos()  # mensualidades mes a mes
+                rp = procesar_renovaciones_pro()  # membresías Pichangol Pro
+                cambio = (r.get("cobradas") or r.get("por_tarjeta")
+                          or r.get("pendientes")
+                          or ra.get("cobradas") or ra.get("pendientes")
+                          or rp.get("renovadas"))
+                if cambio and pg.habilitado:
+                    pg.guardar(stores.to_state())
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(12 * 3600)  # cada 12 horas
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_cm() -> None:
+    """Community manager AUTÓNOMO (Fase 0): cada 30 min pre-genera el "post del
+    día" de cada academia suscrita que toca por cadencia, para que el dueño lo
+    encuentre listo. Una sola réplica en Railway; fail-safe; persiste si generó."""
+    async def _loop() -> None:
+        await asyncio.sleep(90)  # deja arrancar el servicio
+        while True:
+            try:
+                from marketing.cm import procesar_cm_pendientes
+                # En un hilo: generar flyer/reel y publicar son bloqueantes
+                # (CPU + red); no deben congelar el event loop.
+                n = await asyncio.to_thread(procesar_cm_pendientes)
+                if n and pg.habilitado:
+                    pg.guardar(stores.to_state())
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(30 * 60)  # cada 30 minutos
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_agente_redes() -> None:
+    """AGENTE DE MARKETING 24×7 de la página de Facebook de Pichangol: cada 60 s
+    mira si ya es la hora configurada en la torre (07:00 America/Lima por defecto)
+    y, si hoy aún no publicó, crea y publica la pieza del día (o deja el borrador
+    para aprobar). Una sola réplica en Railway; fail-safe; el propio agente
+    persiste el snapshot cuando hace algo."""
+    async def _loop() -> None:
+        await asyncio.sleep(120)  # deja arrancar el servicio
+        while True:
+            try:
+                from marketing.agente_redes import tick
+                await asyncio.to_thread(tick)   # IA + Pillow + Graph: bloqueante, fuera del event loop
+            except Exception as exc:  # noqa: BLE001
+                print(f"[agente] tick falló: {str(exc)[:160]}", flush=True)
+            await asyncio.sleep(60)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_liquidaciones() -> None:
+    """RECORDATORIO de liquidaciones ATRASADAS (dueños de cancha y organizadores
+    de torneo): cada hora revisa y, una vez al día desde las 09:00 de Lima,
+    avisa al operador por WhatsApp y en los logs lo que lleva ≥ N días sin
+    pagarse. Decisión del director (26-sep-2026): "¿qué pasa si el operador se
+    olvida? tendremos problemas". Fail-safe."""
+    async def _loop() -> None:
+        await asyncio.sleep(120)
+        while True:
+            try:
+                from pagos.router import recordar_liquidaciones_pendientes
+                recordar_liquidaciones_pendientes()
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(3600)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_storage() -> None:
+    """RECOLECTOR DE BASURA del Storage: cada N horas borra los archivos que
+    quedaron sin dueño. El APK ya borra en caliente al eliminar una cancha, un
+    producto o un estado; esto cubre lo que ese borrado NO alcanza (el teléfono
+    se quedó sin red a medio camino, el usuario tiene un APK viejo, faltaba la
+    policy del bucket). Así el bucket no crece por goteo.
+
+    Apagado por defecto (`STORAGE_BARRIDO_AUTO=1` para encenderlo): un borrado
+    automático solo se justifica cuando la revisión manual de la torre ya
+    mostró números correctos."""
+    if not config.STORAGE_BARRIDO_AUTO:
+        return
+
+    async def _loop() -> None:
+        await asyncio.sleep(300)  # deja arrancar el servicio
+        try:
+            horas = max(1, int(config.STORAGE_BARRIDO_HORAS))
+        except (TypeError, ValueError):
+            horas = 24
+        while True:
+            try:
+                import storage_limpieza
+                # En un hilo: son consultas + N llamadas HTTP al Storage API,
+                # todas bloqueantes; no deben congelar el event loop.
+                await asyncio.to_thread(storage_limpieza.limpiar)
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(horas * 3600)
+
+    asyncio.create_task(_loop())
 
 
 @app.get("/health")

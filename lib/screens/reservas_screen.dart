@@ -5,6 +5,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/chips.dart';
+import '../utils/moneda.dart';
 
 class ReservasScreen extends StatelessWidget {
   const ReservasScreen({super.key});
@@ -68,7 +69,7 @@ class _ReservaCard extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              '${cancha?.nombre ?? "Cancha"} · ${reserva.dia} ${reserva.horaInicio}–${reserva.horaFin}',
+              '${cancha?.nombre ?? "Cancha"} · ${reserva.diaVisible} ${reserva.horaInicio}–${reserva.horaFin}',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             if (reserva.nivel != '—')
@@ -88,7 +89,7 @@ class _ReservaCard extends StatelessWidget {
                   const Icon(Icons.credit_card, color: arena, size: 18),
                   const SizedBox(width: 4),
                   Text(
-                    'Seña S/ ${reserva.sena}',
+                    'Seña ${reserva.monedaSimbolo} ${reserva.sena}',
                     style: const TextStyle(
                       color: arena,
                       fontWeight: FontWeight.w600,
@@ -98,7 +99,7 @@ class _ReservaCard extends StatelessWidget {
                 ],
                 const Spacer(),
                 Text(
-                  'S/ ${reserva.precio}',
+                  '${reserva.monedaSimbolo} ${reserva.precio}',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                         color: verdeCancha,

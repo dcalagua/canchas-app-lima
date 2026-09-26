@@ -15,15 +15,93 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
 
 ## Reglas de trabajo
 
+- **ESTO ES DESARROLLO REAL PARA PRODUCCIÓN. NO es demo ni piloto.** (Regla del
+  director, repetida.) No tomar atajos justificados con "para el piloto está bien"
+  ni "es solo demo": construir cada feature **de forma correcta y completa, lista
+  para prod** (casos borde, datos reales, robustez). Si una solución tiene una
+  versión "simple" y una "correcta", implementar la **correcta**; si de verdad hay
+  que diferir algo, avisarlo explícito con su costo, no asumir que "por ser piloto
+  da igual". Las referencias históricas a "piloto/QAS" en este doc son de
+  ambientes/infra, NO permiso para bajar la calidad del código.
 - **Idioma:** todas las respuestas al usuario en **español**.
 - **Rama de desarrollo:** `claude/apk-google-maps-setup-fvpl9w`. Commitear y
   pushear ahí (`git push -u origin <rama>`). No crear PRs salvo que se pida.
+- **PRODUCCIÓN SOLO CON AUTORIZACIÓN EXPLÍCITA (regla del director, ago-2026):**
+  nada toca PRD hasta que el director diga "pasa a PRD" / "sube a producción".
+  Eso incluye: push a la rama `prd`, migraciones o SQL sobre **PCG-PRD**
+  (`xjoqotzfgniinxyxvhxj`), variables de `pg-backend-prd` en Railway y builds
+  de PRD. Sin esa orden, se trabaja SIEMPRE contra dev/QAS: rama
+  `claude/apk-google-maps-setup-fvpl9w`, Supabase **"Pichangol"**
+  (`iuwnpjbxsltgmsybooeg`, otra cuenta — el conector MCP de Claude NO la ve) y
+  torre `https://pg-backend-production-c176.up.railway.app/admin`. Ojo: el
+  conector Supabase de Claude sí ve PCG-PRD, así que es fácil tocar producción
+  por accidente; ante la duda, preguntar. Cada torre muestra a qué proyecto
+  habla en Mantenimiento → Limpiar almacenamiento (línea "Base de datos / Storage").
 - **No exponer secretos** en commits/PRs/código. El usuario ha pegado en el chat
   contraseñas/tokens (DB, Factiliza) — recordar rotarlos; nunca guardarlos en el
   repo. No incluir el identificador de modelo en artefactos del repo.
 - **Builds solo por CI** (no hay Android SDK local). Ver "Build" abajo.
+- **Scripts SQL → SIEMPRE dar el LINK de GitHub** (no solo la ruta): cada vez que
+  creas o mencionas un `.sql` que el usuario debe correr, entrégale el enlace
+  clickable `https://github.com/dcalagua/canchas-app-lima/blob/<rama>/<ruta>`
+  (rama actual `claude/apk-google-maps-setup-fvpl9w`). El usuario corre los SQL a
+  mano en Supabase.
 - **Flutter 3.24.5**: NO existe `Color.withValues`/`.a`. Por eso
   `font_awesome_flutter` está **clavado en 10.8.0** (10.9.0 rompe el build).
+- **MULTI-PAÍS SIEMPRE (regla del director, ago-2026):** TODO lo que se
+  construya debe estar pensado para los 3 países del despliegue — **Perú,
+  Bolivia y Ecuador** — desde el día uno:
+  - **Moneda por país**: usar `paisActual.moneda` (S/, Bs, $) o
+    `monedaDeCoordenadas(...)` para lo anclado a una sede; NUNCA "S/" fijo en
+    UI, backend ni páginas públicas. Lo que viaja a la nube guarda su moneda
+    (p. ej. `Campeonato.moneda`, `pichangol_bodega_productos.moneda`) para que
+    las páginas públicas la muestren bien.
+  - **Sin jerga local fija**: "Yape/Plin" solo si `paisActual.iso == 'PE'`
+    (fuera: "QR / transferencia"); documento = DNI/CI/cédula según
+    `docIdActual`/`PaisConfig`.
+  - **Catálogos y sugerencias por país**: marcas/productos (bodega:
+    `_sugerenciasPE/BO/EC`), prefijo telefónico (`codigoTelActual`),
+    validación de documento por país.
+  - **Pasarela por país** (`PaisConfig.pasarela`, la decide `paisActual`):
+    PE → **Culqi** (tokeniza en la app; `pago_tarjeta_sheet.dart`), BO →
+    **Libélula** (página hospedada en WebView; `pago_libelula.dart`), EC →
+    **PayPhone** (botón de pagos hospedado en USD; `pago_payphone.dart`,
+    backend `pagos/payphone.py` + `/pagos/ec/*`, hecho sep-2026). **La
+    página de PayPhone se abre en NAVEGADOR REAL (Chrome Custom Tab vía
+    `launchUrl(inAppBrowserView)`), NUNCA en WebView:** PayPhone rechaza el
+    WebView de Android ("No autorizado… intenta desde la página de origen")
+    aunque dominio y puente estén bien; la misma URL en Chrome carga. La app
+    se queda en un diálogo que sondea `/pagos/ec/pago/{id}` (y al volver al
+    frente) hasta que el retorno confirme; el WebView queda solo de respaldo. Todo cobro
+    entra por `PagoTarjeta.cobrar`, que enruta por país. **Sin pasarela
+    configurada, en PRODUCCIÓN nunca se simula** (`kEsProduccion`): se avisa y
+    se devuelve false; en dev/QAS cae a la pasarela simulada para probar.
+  - **Comisión con MÍNIMO POR MONEDA (decisión del director, sep-2026):**
+    5 % con mínimo **S/ 2 · \$ 0.50 · Bs 3** (`config.comision_min` en el
+    backend, `PaisConfig.comisionMin` en el APK). Los endpoints
+    `/pagos/comision-reserva`, `/pagos/liquidacion-online` y `/pagos/venta`
+    reciben `moneda` (ISO o símbolo; vacío = PEN para APKs viejos) y la
+    GUARDAN en el pago, así el desglose de liquidaciones recalcula con la
+    moneda real. El APK la manda desde el país de las coordenadas de la
+    cancha (`_accionContable`) o la moneda del producto. Test
+    `test_comision_moneda.py`. Pendiente: la cuota de torneo sigue en PEN.
+  - **Montos de recarga por país:** `PaisConfig.recargas` (chips) +
+    `recargaMin`/`recargaMax` ("Otro monto"): S/ 20-200 (10-1000), \$ 5-50
+    (1-300), Bs 50-500 (20-3000). Para PRD subir el mínimo de EC a \$ 5.
+  - Referencia central: `lib/config/pais.dart` (`PaisConfig`, `paisActual`).
+  - **TRES países, no uno (decisión del director, sep-2026, opción C):**
+    (1) **país que EXPLORA** = `paisActual` (GPS, pero el usuario lo elige a
+    mano en la bienvenida, en la bandera de la barra de Explorar o en el
+    banner "Parece que estás en Ecuador"; con elección explícita
+    `paisElegido=true` el GPS ya no lo pisa, solo propone vía
+    `sugerenciaPais`, una vez por viaje); (2) **país de CASA / billetera** =
+    `appState.paisBilletera` (moneda congelada del saldo → país de su 1.ª
+    cancha → `paisCasa` persistido → GPS); decide la moneda del saldo y la
+    pasarela de RECARGA; se cambia en Perfil → "Mi país" SOLO con saldo 0;
+    (3) **país del COBRO** = `paisDeCoordenadas(cancha.ubicacion)`: decide
+    moneda y pasarela del checkout ("Pagas en $ · PayPhone"). NUNCA preguntar
+    el país con un modal en cada arranque. Selector único:
+    `widgets/selector_pais.dart`.
 
 ## App Flutter (`lib/`)
 
@@ -57,8 +135,1177 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
   (= `https://pg-backend-production-c176.up.railway.app`), `VERIF_API_URL`
   (= `https://eexpense-production.up.railway.app`, módulo de existencia),
   `MAPS_API_KEY`, `PLACES_API_KEY`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
-  `APP_API_KEY` (secreto app↔backend; el APK lo manda en `X-App-Key`).
+  `APP_API_KEY` (secreto app↔backend; el APK lo manda en `X-App-Key`),
+  `LANDING_BASE_URL` (dominio de marca para el enlace público de la landing).
   **OJO:** `GROWTH_API_URL` ≠ `VERIF_API_URL` (servicios distintos).
+
+## Dominio oficial: `pichangol.app`
+
+El dominio de marca **YA ESTÁ REGISTRADO Y VIVO**. En Railway (`pg-backend`) el
+custom domain **`www.pichangol.app`** apunta al servicio (SSL activo, verde);
+también existe `pg.ebim.pe`. **`https://www.pichangol.app` es el dominio de
+marca/PRODUCCIÓN** de las landings. En el **piloto** (dev/QAS, provisional) las
+landings usan **`https://pg.ebim.pe`** y se RESERVA `pichangol.app` para PROD
+(ver «Estrategia de ambientes» más abajo). El host `*.up.railway.app` queda solo
+para la API del APK.
+
+- **Landing pública:** `https://www.pichangol.app/l/{academiaId}` (motor FastAPI
+  en `backend/growth/marketing/`, ruta `GET /l/{id}`).
+- **Cómo se arma la URL:** el APK usa el dart-define `LANDING_BASE_URL`
+  (`lib/services/pagos_service.dart`, `landingUrl`); si está vacío cae al host del
+  API. El backend emite `canonical`/`og:url` con la env `LANDING_BASE_URL`
+  (`config.py` → `marketing/router.py` → `marketing/landing.py`), fallback a
+  `PUBLIC_BASE_URL` o al host de la request.
+- **Para activarlo hay que setear el valor en dos lados** (por entorno):
+  secret `LANDING_BASE_URL` en GitHub Actions (para el APK) **y** variable
+  `LANDING_BASE_URL` en Railway `pg-backend` (para el HTML) = `https://pg.ebim.pe`
+  en el **piloto**, `https://www.pichangol.app` en **PROD**.
+- **Home de marca en la raíz (`GET /`, hecho sep-2026):** el backend sirve
+  `backend/growth/legal/home.html` (antes `landing/index.html`, que no se
+  servía en ningún lado y `www.pichangol.app/` daba 404). Es la **URL del
+  comercio** que se declara en Culqi/PayPhone al afiliar: razón social, RUC,
+  contacto, términos, cancelaciones, Libro de Reclamaciones y enlaces a
+  `/legal/*`. Test `test_home_de_marca_en_la_raiz`. **Requisitos de Culqi
+  para la URL del comercio (infografía, sep-2026), ya cubiertos:** ≥5
+  servicios con foto (SVG inline), descripción y precio visible + botón de
+  compra (sección `#servicios`, enlaza a Play); **Libro de Reclamaciones
+  INTEGRADO** (INDECOPI: no correo ni formularios externos): la home hace
+  `POST /reclamaciones` (`legal/router.py`, número `PICH-AAAAMMDD-NNNN`,
+  `stores.reclamaciones` en el snapshot) y el operador lo atiende en la
+  torre `/admin` → Cobros → Libro de Reclamaciones (responder en ≤15 días
+  hábiles); SSL en todo el dominio; contacto con número, correo y dirección.
+  Culqi además exige que la app esté PUBLICADA en Play (o darles acceso de
+  tester). La URL registrada en Culqi debe ser `www.pichangol.app`, NO
+  `grupoebim.com` (observación de Culqi, sep-2026).
+- **RESERVA WEB (fase 1, hecho sep-2026, autorizado por el director):**
+  `backend/growth/web/` — `GET /canchas` (catálogo de canchas verificadas,
+  agrupado por país, filtro `?deporte=`), `GET /reservar/{id}` (fecha,
+  horarios libres con precio, datos del cliente, extras, **Culqi Checkout
+  v4** con Yape + tarjeta), `GET /web/disponibilidad/{id}?fecha=` (JSON),
+  `POST /web/asegurar` (INSERT `pichangol_reservas` estado `nueva` con
+  hold de 10 min, id `web_<epoch_ms>_n`, firma HMAC), `POST /web/pagar`
+  (cargo Culqi → `confirmada`+`pagado`+`medio_pago` → `/pagos/
+  liquidacion-online` billetera-first → push "Nueva reserva 📅" al dueño),
+  `POST /web/liberar`, `GET /reserva/{id|grupo}` (comprobante). Lee y
+  escribe las MISMAS tablas del APK por Postgres directo (`web/datos.py`,
+  `DATABASE_URL`, sin RLS) — el dueño ve la reserva web en su agenda como
+  una online más; el UNIQUE `(cancha_id, fecha, hora_inicio)` evita la
+  doble reserva. `web/horarios.py` es ESPEJO de `Cancha` (slots, cierre
+  que cruza medianoche, fecha real de madrugada, hora feliz, descuentos por
+  slot, bloqueos). **Multi-país:** cobro web sólo en soles (Culqi); canchas
+  en \$ o Bs muestran el detalle y mandan a la app. El checkout se muestra
+  con cualquier `CULQI_PUBLIC_KEY` (también `pk_test`, para que Culqi lo
+  revise en PRD antes de dar las llaves live); el APK sigue apagado hasta
+  `sk_live`. Tests `test_web_reservas.py` (base simulada). **Look & feel =
+  el del APK** (decisión del director, sep-2026): `web/ui.py` es el sistema
+  de diseño web (tokens de `lib/theme.dart`: Montserrat, azul noche
+  `#0F1B2D`, esmeralda `#0E8F67`, papel `#F4F7FA`; wordmark Pichang[o]l con
+  la pelota SVG; chips/tarjetas/botones Airbnb; marcas Yape/Visa/MC; sello
+  "✓ Verificada"); `ui.shell()` envuelve TODAS las páginas públicas y la home
+  usa los mismos tokens. Assets de marca en `backend/growth/static/brand/`
+  (`/static/...`, montado en `main.py`; favicon/OG). Reserva: tira de 14
+  días (Hoy/Mañana/…), selector de deporte si la loza es multiuso, resumen
+  fijo "Resumen de tu reserva" (barra inferior en móvil), skeleton al
+  cargar, comprobante con check animado + `.ics` + Cómo llegar + WhatsApp,
+  JSON-LD `SportsActivityLocation`, 404 propio. **`/canchas` es la pantalla
+  inicial "Explorar" de la web (sep-2026):** pide ubicación al cargar (y con
+  el botón "Usar mi ubicación"), ordena por cercanía con la distancia en cada
+  tarjeta, pone primero el país del usuario (cajas de `paises._CAJAS`
+  pasadas al JS) y muestra un mapa **Leaflet + OpenStreetMap** (sin API key)
+  con pines de precio y popup "Ver horarios"; la ubicación se recuerda en
+  `localStorage`. Banderas como SVG (`ui.bandera`): los emoji de bandera no
+  se ven en Windows. Regla anti scroll horizontal: `html,body{overflow-x:
+  hidden}` + `minmax(0,1fr)`/`min-width:0` en las columnas de la grilla.
+  **Canchas NO verificadas NO salen en la web hasta ser aprobadas (regla
+  del director, 23-sep-2026, "sigue el flujo como en el app"; REVIERTE la
+  decisión anterior de mostrarlas con "Aún sin verificar"):** el explorador
+  lista solo `datos.reservable(c)` (verificada + con dueño, espejo de
+  `Cancha.reservable`); `datos.canchas_publicas()` sigue trayendo todas las
+  registradas para otros usos. La ficha `/reservar/{id}` de una cancha en
+  verificación CON dueño responde 404 ("Esta cancha aún está en
+  verificación") salvo al propio dueño (vista previa con "Reserva desde la
+  app"); el LEGADO sin dueño sí se abre por enlace para reclamarlo.
+  `/web/asegurar` responde `no_verificada`. El modal de filtros ya no tiene
+  "Tipo de local". Dedup de descubiertas: contra las registradas CON dueño;
+  el legado sin dueño no se descuenta (su pin de Google sigue) y "Reclámala"
+  → `/anfitrion/nueva?place&lat&lng` ADOPTA la fila legado a ≤120 m
+  (`anfitrion._legado_cerca`) en vez de duplicarla. **FICHA = LOCAL (queja
+  del director: "sale el nombre de la cancha en vez del local"):** `_ficha`
+  pone de título `_titulo_local(c)` (= `club`, como `club_detalle` del app),
+  la cancha debajo y, si el local tiene varias (`_hermanas`: mismo `club`,
+  aprobadas + las del dueño que mira), chips para cambiar de cancha;
+  `<title>`, descripción, JSON-LD y "Cómo llegar" usan el local. Test
+  `test_no_verificadas_no_salen_hasta_ser_aprobadas`.
+  **TARJETA DEL EXPLORADOR = UN LOCAL (queja del director, 23-sep-2026:
+  "sigue saliendo el nombre de la cancha como nombre del local"):**
+  `_agrupar_locales` junta las canchas aprobadas por `club` (como
+  `Club.agrupar`/`ClubCard` del app) y `_tarjeta(grupo, ratings, fecha)`
+  pinta título = local, zona, "N canchas · deportes · horario (el más
+  temprano–el último cierre) · duración", precio "desde" el más barato y ★
+  ponderado de todas. `data-ids` lleva todas las canchas: el filtro de
+  fecha+hora oculta el local solo si NINGUNA tiene turno libre y el enlace
+  apunta a la cancha que SÍ lo tiene (`idsDe` en el JS); `data-pasos` y
+  `data-sup` con varios valores para Duración/Superficie del modal.
+  **Canchas DESCUBIERTAS en Google también (sep-2026):** `web/descubrir.py`
+  llama a la MISMA Edge Function `places-cerca` que el APK (key de Places
+  como secret de Supabase; el backend usa `SUPABASE_URL` + `SUPABASE_ANON_KEY`)
+  y aplica la misma heurística de `places_service.dart` (`deporte_de`), con
+  caché en memoria por celda de ~2 km + país (6 h) y dedup contra las
+  registradas (nombre + <120 m). `GET /web/descubrir?lat&lng[&fotos=1][&deporte=]`
+  (la pestaña activa viaja al servidor y filtra: en Tenis no salen canchas de
+  fútbol descubiertas, queja del director sep-2026; `buscarEnGoogle` también
+  filtra por `C.dep`); el
+  explorador las pinta en "Más canchas cerca de ti" con "Aún sin registrar",
+  "Reservar en la app", "Cómo llegar" y "¿Es tuya? Reclámala"; pines grises
+  en el mapa. Sin Supabase/key → lista vacía, la web sigue.
+- **ACADEMIAS EN EL EXPLORADOR (pedido del director, sep-2026: "he creado
+  una academia, ¿cómo la busco por acá?"):** `datos.academias_publicas()`
+  (`pichangol_academias` no eliminadas, `data` = `Academia.toJson`) →
+  sección `#academias` (`.grupo-aca`, título "🎓 Academias [de tenis]") entre
+  las canchas registradas y las descubiertas, filtrada por la pestaña de
+  deporte (`academia.deporte == dep`; natación solo en "Todas") y ORDENADA
+  POR CERCANÍA con las canchas (`ordenar()` también recorre `.grupo-aca`).
+  `router._tarjeta_academia`: `<a class='lst aca'>` a su página `/l/{id}`,
+  logo/fotos o emoji del deporte, badge "🎓 Academia", sede · zona, "N
+  programas · a X km", "S/ 250 al mes desde" (mínimo `precioMes` de sus
+  planes, moneda congelada o la del país de la sede) o "Consulta precios",
+  botones Ver academia / 💬 WhatsApp (`span.wa[data-wa]` + handler;
+  prefijo del país de la sede si el número es local) / 📍 Cómo llegar
+  (`.ir`). **OJO: la tarjeta es un `<a>`; un `<a>` anidado (el WhatsApp
+  fue así en la 1.ª versión) hace que el navegador parta la tarjeta en
+  tres.** En el JS las academias pasan solo por texto/cercanía (`pasaBase`
+  devuelve true para `.aca`, se saltan `pasaFil`), la sección se oculta si
+  ninguna pasa, y en el mapa llevan pin `🎓 Deporte` con popup "Ver
+  academia". **Botones (pedido del director, sep-2026):** "Ver academia"
+  abre la FICHA WEB `/academia/{id}` (ver abajo; existe siempre). ~~SOLO si el dueño generó su página~~ (versión anterior: (`/l/{id}` existe en `stores.landings`;
+  si no, esa ruta responde 404 "Landing no disponible"); en su lugar salen
+  las REDES registradas (`Academia.redes`: instagram/facebook/tiktok/youtube/
+  web, `_botones_redes` + `_url_red` acepta @usuario o URL completa) con
+  logo SVG inline y color de marca (`.red-<red>`), enlace directo en pestaña
+  nueva (`span.wa[data-wa]`). Sin redes → ningún botón. Una tarjeta sin
+  página (`data-sinpagina='1'`, `href='#'`) no navega: el clic abre su
+  primera red/WhatsApp; el popup del mapa hace lo mismo. **PESTAÑA "🎓
+  Academias" en la cabecera (pedido del director, sep-2026: "¿dónde busco
+  academias?"):** última de `CATEGORIAS` (`?deporte=academias`,
+  `solo_aca` en `_explorar`): solo academias de TODOS los deportes,
+  ordenadas por cercanía; sin canchas registradas, sin descubiertas
+  (`descubrir()`/`buscarEnGoogle()` se saltan con `C.dep==='academias'`),
+  sin barra/modal de Filtros (amenidades y precio por hora no aplican), el
+  "Dónde" dice "Busca academias por nombre o zona" y filtra por texto;
+  vacío propio y, sin academias, CTA "Publicar mi academia". Test
+  `test_academias_en_el_explorador_por_deporte_y_cercania`.
+- **FICHA DE ACADEMIA + MATRÍCULA WEB (`web/academia.py`, pedido del
+  director, sep-2026: "si hago clic en la academia debería ir a la academia,
+  ver los planes y poder matricularme"):** `GET /academia/{id}` = ficha
+  tipo anuncio (galería logo+fotos, deporte, sede · zona, descripción,
+  `ul.datos` con Cómo llegar → mapa Leaflet inline y WhatsApp, botones de
+  redes con logo, enlace a `/l/{id}` si la landing existe), "Programas y
+  tarifario" (`_tarifario`: tarjeta `.prog` por programa con etapa ·
+  duración · horario, filas `.tarifa-fila` por frecuencia/modalidad con
+  precio socio e invitado si hay `recargoInvitado`, "Otros planes" para los
+  sin programa, descuentos hermanos/prepago) y el panel de matrícula = el
+  MISMO flujo que `academia_detalle_screen._matricular` del app: sesión
+  Google obligatoria (login-box como la reserva), Para mí / Para mi hijo(a)
+  (+ edad 2-17; el titular queda como `apoderadoNombre`), nombre + celular,
+  Mes a mes (solo mensuales) o Adelantado con cantidad 1/2/3/6/12 y
+  descuento prepago si `cantidad ≥ mesesMinPrepago`, Culqi Checkout v4 (solo
+  PEN; en $/Bs el tarifario se ve y "Matricúlate desde la app"). `POST
+  /web/matricular` recalcula el total en el servidor (`_total` =
+  `_HojaDatosAlumno._total`), cobra (`culqi.crear_cargo`) y escribe en
+  `pichangol_matriculas` (`datos.insertar_matricula`) EXACTAMENTE la fila de
+  `AppState.matricular`: `Alumno.toJson` (`al_<µs>`, `email` = cuenta
+  Google, `esSocioSede` true, `sedeId` '') + `cuotas` (`cu_<µs>_i`,
+  concepto "Plan · Mes", `vencimiento` = mismo día i meses después, mes a
+  mes = 1 pagada + resto pendientes con `autoDebito`, `operacionId` =
+  charge) + extras que el app ignora (`canal: web`, `pagoWeb {monto,
+  ahorro, operacion, medio}` = lo cobrado con descuento, que el comprobante
+  muestra). Luego: `pagos.router.post_matricula` (comisión del país, neto
+  "por recibir"), `stores.registrar_pago(cobro_web, concepto
+  matricula:<id>)`, mes a mes → `post_suscripcion_alumno` best-effort
+  (débito automático de los meses restantes) y push al dueño "Nuevo alumno
+  🎓" (`_aviso_push_usuario`). `GET /academia/{id}/matricula/{alumno_id}` =
+  comprobante solo para el titular (cuotas ✅/⏳, N.º de operación, WhatsApp
+  a la academia). `datos.academia(id)`, `insertar_matricula`, `matricula`.
+  Test `test_ficha_de_academia_y_matricula_web_como_el_app`.
+- **PORTADA TIPO AIRBNB (`GET /`, hecho sep-2026, pedido del director):** la
+  raíz del dominio YA NO es la home de marketing sino el EXPLORADOR
+  (`web/router.py::_explorar`; `/canchas` es alias): cabecera con buscador en
+  pastilla (Dónde · Deporte · Cuándo · lupa), "Pon tu cancha" + "Descarga la
+  app", barra de categorías con ícono y subrayado (`CATEGORIAS`), grilla de
+  tarjetas Airbnb (`_tarjeta`: foto cuadrada con carrusel scroll-snap y
+  puntos, corazón = favorito en `localStorage`, badge Verificada / Aún sin
+  verificar, ★ promedio real de `pichangol_resenas` vía `datos.ratings()` o
+  "Nuevo", zona, deportes + turnos + distancia, precio por hora), botón
+  flotante "Mostrar mapa" (split view lista+mapa sticky en escritorio, mapa a
+  pantalla completa en móvil; Leaflet se dibuja al abrirlo; preferencia en
+  `localStorage`), "Filtros" (solo verificadas, precio máx.). El DEPORTE lo
+  filtra el servidor (`?deporte=`, categorías = enlaces, SEO); zona/texto,
+  verificadas y precio se filtran en el navegador; la FECHA del buscador
+  viaja a la ficha (`/reservar/{id}?fecha=` preselecciona el día de la tira).
+  Debajo de las canchas van las secciones de comercio que revisan Culqi e
+  INDECOPI (`web/marca.py` extrae de `legal/home.html` las secciones desde
+  "Qué ofrecemos" hasta el Libro de Reclamaciones y re-escribe su CSS bajo el
+  prefijo `.marca` para no pisar `ui.py`); el pie (`ui.footer()`, columnas
+  estilo Airbnb) lleva razón social, RUC, contacto y enlaces legales en TODAS
+  las páginas. `home.html` sigue siendo el texto legal/comercial editable, ya
+  no se sirve entero. Test `test_raiz_es_el_explorador_tipo_airbnb`.
+  **PRIMERA FOTO SIEMPRE (regla del director, sep-2026):** la web muestra la
+  primera foto como el app. Las canchas SEMBRADAS desde el app no guardan las
+  fotos de Google en la base; `GET /web/foto?id|nombre&club&lat&lng`
+  (`descubrir.fotos_de_lugar` → misma Edge Function `places-cerca` con radio
+  250 m y `fotos=true`; `_elegir_lugar` = mejor coincidencia de palabras con
+  nombre/club sin el sufijo de sede, a igual puntaje el más cercano; caché
+  12 h por lugar, 10 min si vino vacío) las resuelve en vivo. Las tarjetas y
+  la galería de la ficha nacen con placeholder `data-buscar` y el JS las
+  rellena (cola de 3 en paralelo); también las descubiertas más allá de las
+  16 con foto que devuelve la Edge. **Respaldo directo:** si la Edge no trae
+  fotos (en QAS pasó: las descubiertas salían sin foto aun con `fotos=1`) y
+  hay `PLACES_API_KEY` en Railway (llave SIN restricción Android, la misma
+  del secret de Supabase), el backend habla con Google Places (New)
+  (`_fotos_directo`: Place Details por `place_id` o Text Search por
+  nombre/club a 300 m; URLs públicas vía `skipHttpRedirect`). Cada
+  resolución imprime una línea `[foto] …` en los logs de Railway (lugares
+  que devolvió la Edge, cuántos con foto, `diag` de Google, origen) para
+  diagnosticar sin adivinar. Dedup de descubiertas también por CLUB
+  (`registradas` lleva `club`; "Fútbol 1" del club "Sabor Golazo" = el
+  lugar de Google). **CUOTA (trampa real, sep-2026):** la 1.ª versión pedía
+  la foto de cada tarjeta vía la Edge (12 Text Search por tarjeta) →
+  Google 429 "SearchTextRequest per minute" y NADA tenía foto. Regla:
+  con `PLACES_API_KEY` es UNA llamada a Google por lugar (Place Details por
+  id / un Text Search por club) y la Edge solo sin llave; semáforo de 3 en
+  el servidor; un 429 pausa 60 s sin cachear vacíos; el navegador pide
+  fotos solo de las tarjetas visibles (IntersectionObserver, 2 a la vez).
+  **COSECHA de fotos** (`pichangol_lugares_fotos`, SQL
+  `docs/piloto/supabase_lugares_fotos.sql`; `datos.leer/guardar_fotos_lugar`):
+  la primera foto resuelta se guarda por `place_id` (o `cancha:<id>`) y se
+  paga UNA vez; se refresca sola a los 30 días (tope de caché de los
+  términos de Google; nunca se descarga el archivo) y, si Google falla, vale
+  la guardada. Lugares que Google confirma SIN foto se reintentan cada 6 h.
+  Test `test_primera_foto_siempre_como_el_app`.
+- **LOGIN CON GOOGLE EN LA WEB (decisión del director, sep-2026: mismo
+  flujo que el app):** `web/sesion.py`. Botón oficial de Google Identity
+  Services (`GOOGLE_WEB_CLIENT_ID` = client id OAuth de tipo "Aplicación
+  web" del proyecto de Google de Pichangol, con orígenes autorizados
+  `https://pg.ebim.pe` y `https://www.pichangol.app`); `POST /web/sesion`
+  verifica el ID token contra Google (tokeninfo, audiencia = ese client id
+  o `GOOGLE_OAUTH_CLIENT_IDS`) y deja la cookie httpOnly FIRMADA
+  `pcg_sesion` (HMAC con el secreto del backend, 30 días); `POST /web/salir`,
+  `GET /web/sesion`, página `GET /entrar?volver=`. Con el client id
+  configurado, la ficha muestra en "Tus datos" la caja "Inicia sesión con
+  Google para reservar" (sin recargar: `alIniciarSesion`), luego "Reservando
+  como" + Cambiar cuenta; `/web/asegurar` y `/web/pagar` responden
+  `sesion_requerida` sin cookie y la reserva queda a nombre del CORREO de
+  Google (`usuario`), así aparece en "Mis reservas" del app con la misma
+  cuenta. La barra muestra avatar/nombre o "Iniciar sesión"
+  (`ui.chip_sesion`). **Sin `GOOGLE_WEB_CLIENT_ID` la web sigue en modo
+  invitado** (nombre + correo) para no romper antes de crear el client id.
+  Test `test_reservar_exige_login_con_google_como_el_app`. **ACCESO DE
+  REVISIÓN con usuario y contraseña (Culqi, 24-sep-2026: "no se logró
+  validar el proceso de compra debido a que se requiere iniciar sesión…
+  proporcionar un usuario y contraseña de prueba"):** env
+  `WEB_USUARIOS_PRUEBA` = "correo:clave,…" (por ambiente). Con ella,
+  `sesion.boton_google(volver=)` añade bajo el botón de Google el enlace
+  "Acceso de revisión con usuario y contraseña" → `/entrar?volver=…#revision`
+  (ficha de reserva y de academia) y `/entrar` muestra el formulario;
+  `POST /web/sesion/prueba {usuario, clave}` (`sesion.credenciales_prueba_
+  validas`, bloqueo 5 fallos → 5 min por IP real) deja la MISMA cookie
+  firmada que Google (`nombre` "Cuenta de revisión"), así el revisor
+  reserva/paga/ve el comprobante como un cliente. Vacía → la opción no
+  existe. Test `test_acceso_de_revision_con_usuario_y_clave_para_culqi`.
+- **Paleta = la del LOGO oficial (sep-2026):** `ui.py` TOKENS: verde
+  `#0B8A3E` (CTA), verde oscuro `#067A38`, lima `#7CB518`, naranja `#F28C28`
+  (corazón de favorito), azul noche `#0A1B3D` (texto), fondo blanco `#FFFFFF`. El
+  wordmark web es el logo real: `/static/brand/logo_pin.png` + "Pichangol"
+  peso 800 SIN cursiva (`ui.wordmark`, pedido del director). Buscador con foco tipo Airbnb (pastilla gris,
+  segmento activo blanco con sombra, cursor visible, chevron en el select);
+  categorías centradas en escritorio.
+- **CABECERA TAL CUAL AIRBNB.COM (pedido del director, sep-2026):**
+  `ui.cabecera()` es la cabecera de TODAS las páginas web: fila 1 = logo a
+  la izquierda · pestañas por deporte con ícono al centro (`CATEGORIAS`,
+  subrayado negro en la activa) · a la derecha "Modo anfitrión" (→ Play), el
+  avatar (foto de Google si hay sesión, silueta si no) y el botón ☰ con menú
+  desplegable (`ui.menu_cuenta`: Iniciar sesión o registrarse / nombre +
+  correo + Mis reservas + Cerrar sesión, Cómo funciona, Centro de ayuda, Pon
+  tu cancha, Descarga la app, Libro de Reclamaciones; se cierra al hacer
+  clic fuera o con Esc, `ui.JS_NAV`); fila 2 = buscador GRANDE centrado en
+  pastilla (Dónde · Cuándo · Hora · botón verde "Buscar"; el deporte va en
+  las pestañas). Bajo "Dónde" se desglosa un panel (`#sugDonde`) con
+  **Búsquedas recientes** (`localStorage` `pcg_busq`, se guardan al
+  Buscar/Enter/elegir) y **Zonas sugeridas** ("Cerca de ti" →
+  `ubicar(true)` + las zonas con más canchas, `router._zonas_sugeridas`).
+  **"Cuándo" abre un CALENDARIO tipo Airbnb** (`#panCuando`, dos meses en
+  escritorio / uno en móvil, flechas, días pasados y más allá de
+  `DIAS_ADELANTE` tachados, toggle "Fecha | Cualquier día", atajos Hoy /
+  Mañana / Sábado / Domingo; al elegir un día se abre solo el panel de
+  hora). **"Hora" abre un panel de chips** (`#panHora`: Cualquier hora +
+  Mañana/Tarde/Noche, 06:00-23:00). **Con "Hoy", las horas que ya pasaron
+  quedan DESHABILITADAS** (`horaPasada`: solo turnos que empiezan después
+  de este momento, reloj del navegador; grupos enteros en gris y aviso si
+  ya no queda ninguna); una hora elegida que pasa a ser inválida se
+  descarta. **También se deshabilitan las horas en las que NINGUNA cancha
+  de la lista tiene turno** (tooltip "Ninguna cancha tiene turno a esta
+  hora"; con la regla "el último turno EMPIEZA a la hora de cierre", una
+  que cierra 23:00 sí ofrece las 23:00) y el vacío explica el motivo ("Ninguna cancha tiene
+  turno libre hoy a las 23:00…"). La tarjeta muestra el horario
+  (`07:00–23:00 · 60 min`) para que se entienda por qué sale o no. **NADA se filtra hasta pulsar "Buscar"** (regla del director,
+  sep-2026, como Airbnb): lo elegido vive en `pend` (zona, fecha, hora) y
+  `buscar()` lo copia a `filtro`, aplica, guarda la búsqueda reciente y
+  pinta el resumen "Buscando: … · Limpiar" (`#resBusq`) en la línea de
+  ubicación. Elegir una zona sugerida solo rellena "Dónde" y pasa a
+  "Cuándo"; **"Cerca de ti"** pone ese texto en "Dónde" y, al Buscar, pide
+  la ubicación, ordena por cercanía y deja solo las canchas a ≤30 km
+  (`filtro.cerca`). **FILTROS TAL CUAL AIRBNB (sep-2026):** bajo la línea
+  de ubicación va la barra `_barra_filtros` (botón "⚙️ Filtros" con badge
+  de filtros activos + chips rápidos con las amenidades más comunes, que
+  aplican al instante) y el MODAL `_modal_filtros` (`#modalFiltros`, 568
+  px, cuerpo con scroll, pie fijo): "Recomendado para ti" (tarjetas con
+  ícono: estacionamiento, iluminación, vestuarios, techada — las que
+  existan en los datos), "Tipo de local" (segmentado Cualquier tipo /
+  Verificadas / Aún sin verificar), "Rango de precios" (histograma de los
+  precios reales + doble slider + cajas Mínimo/Máximo; SOLO en la moneda
+  del país del usuario o del primer grupo, `data-mon`; las canchas en
+  otra moneda no se filtran por precio), "Servicios del local" (todas las
+  amenidades con conteo), "Superficie" y "Duración del turno" (si hay más
+  de una). Todo se cuenta en vivo ("Mostrar N canchas"), "Limpiar
+  filtros" y se aplica al pulsar Mostrar (`fil` vs `filTmp`; `pasaBase` =
+  buscador, `pasaFil` = modal). Datos por tarjeta: `data-am`, `data-sup`,
+  `data-paso`, `data-mon`, `data-pnum`. Los viejos chips "Solo verificadas
+  / precio máx." desaparecieron. **PANTALLA COMPLETA como Airbnb:**
+  `.wrap-xl` ya no tiene tope de 1440 px: márgenes 80 px (≥1128), 40 px,
+  24 px, 16 px; la grilla es `auto-fill minmax(250px)` (5-6 columnas en
+  1900 px). El filtro de hora es REAL, no cosmético: en el navegador se ocultan las canchas cerradas a esa hora
+  (`data-ap`/`data-ci`/`data-paso` de cada tarjeta, `abiertaA`) y, con
+  fecha + hora, `GET /web/libres?fecha&hora` responde qué canchas
+  reservables tienen un turno LIBRE que cubra esa hora (`_hora_libre`:
+  inicio ≤ hora < fin, misma lógica de slots/madrugada/turnos pasados que
+  la ficha; `datos.ocupados_varias` = UNA consulta para todas). La fecha y
+  la hora viajan a la ficha (`/reservar/{id}?fecha=&hora=` → `cfg.hora`
+  preselecciona el turno libre que la cubre) y también se aceptan en la
+  URL de la portada (`/?fecha=&hora=`). Un solo desplegable abierto a la
+  vez (`abrirPanel`); OJO: al repintar el calendario el día clicado sale
+  del DOM, por eso el "clic fuera" ignora nodos `!isConnected`. Test
+  `test_buscador_por_fecha_y_hora_como_airbnb`. Al hacer scroll la cabecera se COMPACTA
+  (`.cab.chica`): pestañas y buscador se esconden y al centro queda la
+  pastilla chica "Cualquier zona · Cualquier deporte · Cuándo quieras"
+  (`ui.busq_mini`); tocarla vuelve arriba y enfoca "Dónde". Las páginas
+  interiores (`nav_simple`) llevan la misma cabecera en modo `simple` con la
+  pastilla chica enlazando a `/canchas`. Responsive: <1400 px las 8
+  pestañas pasan a su propia fila centrada bajo el buscador (no caben junto
+  al logo); <1060 px sin compactar, tira desplazable; <900 px se esconden
+  "Modo anfitrión", "Cuándo" y el texto de Buscar. Los filtros (Solo
+  verificadas, precio máx.) viven en el cuerpo, botón "⚙️ Filtros" a la
+  derecha de la línea de ubicación. **Fuente = DM Sans** (Airbnb Cereal es
+  propietaria y no se puede descargar; DM Sans es su equivalente libre) y
+  fondo BLANCO (`--papel:#FFFFFF`) como airbnb.com. **Trampa CSS:**
+  `overflow-x:hidden` en `body` convierte al body en scroll container y
+  mata el `position:sticky` de la cabecera → `html{overflow-x:hidden}` +
+  `body{overflow-x:clip}`.
+  **MÓVIL (≤900 px, arreglado sep-2026 tras captura del director):** la
+  cabecera `simple` de las páginas interiores ponía logo · pastilla · avatar
+  en UNA fila y "Pichangol" se montaba sobre la pastilla. Ahora en móvil
+  va en dos filas como airbnb.com en el celular: logo + avatar + ☰ arriba y
+  la pastilla a TODO el ancho debajo, con lupa a la izquierda y dos líneas
+  ("¿Dónde juegas?" / "Cualquier zona · Cualquier deporte · Cuándo quieras",
+  `busq_mini` lleva el bloque `.mov` solo visible en móvil); la compacta
+  `.chica` en móvil deja solo la pastilla. Toda pantalla web nueva se prueba
+  también a 390 px (Playwright `isMobile`).
+- **MIS RESERVAS EN LA WEB (sep-2026, pedido del director):** `GET
+  /mis-reservas` (router `pagina_mis_reservas`) lista las reservas del CORREO
+  de Google con sesión — las mismas que "Mis reservas" del app —
+  (`datos.reservas_de_usuario`: `lower(usuario)=email`, sin retenciones
+  web sin pagar), separadas en Próximas y Pasadas, con estado (Pagada /
+  Pagas en la cancha / Cancelada / No asististe), precio, Comprobante
+  (`/reserva/{grupo|id}`), Ver cancha / Reservar de nuevo y Cómo llegar; los
+  turnos de una misma reserva se agrupan en UNA tarjeta
+  (`_agrupar_reservas`: 19:00–21:00 · 2 turnos, precio sumado). Sin cookie →
+  302 a `/entrar?volver=/mis-reservas`; sin `GOOGLE_WEB_CLIENT_ID` explica
+  que están en la app. Enlace "📅 Mis reservas" en el menú ☰ (solo con
+  sesión). **Layout = "Viajes" de Airbnb (sep-2026):** columna izquierda
+  (≤520 px) con tarjetas `.viaje` (foto cuadrada — propia o resuelta con
+  `/web/foto` —, cancha, club, fecha · hora · turnos, avatar del jugador,
+  pill de estado, precio y "Cancelar reserva"); clic = comprobante. Derecha:
+  mapa Leaflet sticky con un pin por reserva próxima (popup "Ver reserva").
+  Debajo: `<details>` "Dónde has jugado" (pasadas) y "🗓️ Reservaciones
+  canceladas" (historial de `stores.cancelaciones_web` con el estado de la
+  devolución). Aviso verde tras cancelar (`sessionStorage` `pcg_aviso`).
+  **CANCELACIÓN CON REEMBOLSO DESDE LA WEB (hecho sep-2026, autorizado por
+  el director):** `POST /web/cancelar {ref}` (grupo o turno; solo con sesión
+  y solo reservas del propio correo; `estado_cancelacion()` decide: no se
+  cancela lo que ya empezó; con ≥ `WEB_CANCELACION_HORAS` (6, env) y pagada
+  → devolución del 100 %). Flujo: (1) si el cargo fue WEB (`stores` tipo
+  `cobro_web`, registrado en `/web/pagar` con el `charge_id` de Culqi y
+  `concepto=web:<ref>`) → `culqi.reembolsar` (`POST /v2/refunds`, funciona
+  en test y live) → `reembolsado` (o `fallo` si Culqi rechazó); si pagó en el
+  APP no tenemos su cargo → `manual` (el operador devuelve); < 6 h →
+  `sin_reembolso`; pago en la cancha → `no_aplica`. (2) Reversa contable del
+  dueño SOLO si el cliente recupera su plata: liquidación
+  (`liquidacion_full|online` por `reserva_id`) → `anulado` si aún no se le
+  pagó, y la comisión `<id>_com` → `anulado` devolviendo al dueño la parte
+  real a su saldo y la parte regalo (`PagoRegistro.promo_centimos`, nuevo
+  campo que guarda `post_liquidacion_online`) a su bolsillo promo; si YA se
+  le liquidó → pago `ajuste_cancelacion` (estado `pendiente`) +
+  `deuda_dueno_centimos` en el registro para descontar en la siguiente
+  liquidación. (3) Se BORRAN las filas de `pichangol_reservas` (igual que el
+  app al cancelar: libera el horario y el app deja de mostrarla; los puntos
+  derivados desaparecen solos). (4) Registro en `stores.cancelaciones_web`
+  (snapshot) + push al dueño ("Reserva cancelada 📅 … quedó libre") y al
+  jugador (qué pasa con su plata) + línea `[cancelar]` en logs. Torre: `GET
+  /pagos/cancelaciones-web[?pendientes=1]` (X-Admin-Token) lista todo; las
+  `fallo`/`manual`/con deuda las atiende el operador en la torre `/admin` →
+  Cobros → **"↩️ Cancelaciones web"** (`cargarCancelacionesWeb` en
+  `propiedad/panel.py`; pendientes primero con borde ámbar): "✅ Marcar
+  devuelto" (`POST /pagos/cancelaciones-web/{id}/resolver {accion:
+  devuelto, referencia}` → `reembolsado_manual`) y "➖ Marcar deuda
+  descontada" (`accion: descontado` → `deuda_resuelta` y el pago
+  `ajuste_cancelacion` pasa a `aplicado`). El comprobante `/reserva/{ref}` muestra "Cancelar reserva" al
+  dueño de la reserva (modal `_MODAL_CANCELAR` + `JS_CANCELAR`, compartidos
+  con Mis reservas) y la política con las horas configuradas.
+- **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
+  que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
+  `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`
+  (sin sesión → `/entrar?volver=`) = **el MISMO MENÚ del app** (pedido del
+  director, sep-2026): cabecera verde "‹ Modo anfitrión · Publica tu cancha
+  o academia…" + tarjetas con ícono de color (`MENU`): 🏬 Mis canchas →
+  `/anfitrion/mis-canchas` (panel web completo), 📣 Mi academia y 🏪 Mi
+  tienda (web, ver abajo), 🏆 Mis campeonatos y 🛡️ Verificador →
+  `/anfitrion/{modulo}` (páginas "está en la app" con pill "En la app" y
+  botón Abrir en la app). Dentro de Mis canchas la
+  cabecera cambia a modo anfitrión (`ui.cabecera(modo="anfitrion")`: logo →
+  `/anfitrion`, pestañas 📅 Hoy · 🗓️ Calendario · 📋 Reservas · 💰 Ingresos ·
+  🏟️ Canchas, y a la derecha "Cambiar a modo jugador" → `/`, también en el
+  menú ☰; enlace "‹ Modo anfitrión" vuelve al menú). Datos:
+  `datos.canchas_de_dueno(email)` (`lower(dueno)=correo`, no eliminadas),
+  `datos.reservas_de_canchas(ids, desde, hasta)` (sin holds ni canceladas),
+  `datos.bloqueos_de`. Sin canchas a su nombre → onboarding "Hola 👋 …
+  Registrar mi cancha en la app" (el reclamo/verificación siguen en el
+  app). **Hoy** = chips Hoy / Mañana / Próximos 7 días / Por cobrar en
+  efectivo con tarjetas (hora, cancha, jugador + correo + celular + botón
+  WhatsApp, monto, pill Pagada en línea · yape|tarjeta / Cobrada / Cobrar en
+  la cancha) + atajos. **Calendario** = agenda SEMANAL de una cancha (chips
+  para cambiar, ‹ › Hoy): filas = turnos (regla "último turno empieza al
+  cierre"), celdas verde = pagada, ámbar = cobrar en cancha, gris =
+  bloqueado; solo lectura (bloquear/manual → app). **Reservas** = próximas y
+  pasadas 30 d agrupadas por día. **Ingresos** = billetera del backend
+  (`stores.saldo_centimos`, `saldo_promo_centimos`, `liquidaciones` +
+  `_liquidacion_dict`): KPIs Por recibir / Saldo / Regalo, liquidaciones
+  pendientes y pagadas, últimos movimientos. **Canchas** = sus locales con
+  foto, verificada, deportes, horario, precio y botones Ver ficha pública /
+  Calendario / Mapa / Editar. **Agrupado por LOCAL como el app (sep-2026,
+  queja del director: "el nombre del local me sale el de la cancha"):**
+  `pagina_canchas` arma UNA tarjeta `.anf-local` por `club` (título = local,
+  dirección · zona, N canchas, pill "✓ Verificado" si todas lo están) y
+  dentro una fila `.anf-fila` por cancha (emoji del deporte, nombre, pill
+  ✓ Verificada / Aún sin verificar, deporte · horario · duración · precio,
+  Ficha / Calendario / Editar) + "＋ Agregar cancha a este local" (abre
+  `/anfitrion/nueva` prellenado con nombre, dirección y punto del local) y
+  Mapa; el botón de abajo dice "Registrar otro local". Test
+  `test_modo_anfitrion_en_la_web_como_airbnb`.
+- **PON TU CANCHA / RECLÁMALA DESDE LA WEB (sep-2026, autorizado por el
+  director: "web = vender y atender"):** `GET/POST /anfitrion/nueva`
+  (`web/anfitrion.py::pagina_nueva_cancha`, `_validar_registro`,
+  `registrar_cancha_web`; fotos previas al alta `POST /anfitrion/nueva/foto?id=
+  u<ms>&tipo=foto|evidencia` → `canchas/<id>/` y `canchas/ev<id>/`). MISMO
+  flujo que `registrar_cancha_screen.dart`: local + dirección + punto en mapa
+  Leaflet (obligatorio, dentro de las cajas PE/EC/BO: de ahí salen país,
+  moneda, prefijo de WhatsApp y documento) + zona en cascada (`barrio`),
+  deportes (chips) con "loza multiuso (una agenda)" vs "canchas separadas
+  (una por deporte)" y piso por deporte, precio + horario + duración, fotos,
+  y VERIFICACIÓN (WhatsApp local con largo por país, relación
+  dueño/administrador/encargado, documento opcional con largo por país, nota,
+  foto de evidencia, GPS del navegador en silencio). Al enviar: INSERT en
+  `pichangol_canchas` (`datos.insertar_canchas`, ids `u<ms>` o
+  `u<ms>_<deporte>`, `verificada=false`, `dueno`=correo de Google, moneda por
+  coordenadas, `distrito=''`) + `reclamos.crear_reclamo` EN PROCESO (nota con
+  sufijo `[web · place gp_…]`); si el lugar ya tiene reclamo activo ajeno →
+  409 y `datos.borrar_canchas` revierte. Entradas: onboarding de Modo
+  anfitrión ("Registrar mi cancha"), "＋ Registrar otra cancha" en Canchas,
+  "Pon tu cancha en Pichangol" (pie y menú ☰) y el botón **"🏷️ ¿Es tuya?
+  Reclámala"** de cada cancha DESCUBIERTA del explorador (prellena nombre,
+  dirección, punto, deporte y `place`). **Al tocar una cancha descubierta se
+  abre su FICHA WEB `GET /lugar/{gp_id}?nombre&direccion&lat&lng&deporte`**
+  (`router.pagina_lugar`: foto vía `/web/foto`, Cómo llegar, "Aún sin
+  registrar", panel "¿Es tuya? Reclámala y recibe reservas" y "Abrir en la
+  app"); antes la tarjeta entera mandaba a Play (queja del director). **Canchas
+  REGISTRADAS sin dueño (legado reclamable):** su ficha `/reservar/{id}`
+  muestra "¿Es tuya esta cancha? → Reclamar" → `/anfitrion/nueva?cancha=<id>`
+  PRELLENA todo (`_legado_reclamable`: existe, no verificada, `dueno` vacío)
+  y el envío ADOPTA la misma fila (`datos.adoptar_cancha`: UPDATE con
+  `dueno`=correo + campos `COLS_ADOPCION`, solo si sigue sin dueño; si el
+  reclamo falla, `desadoptar_cancha`). `marcar_verificada` también cubre las
+  hermanas del mismo dueño a ≈150 m del reclamo (legado sin prefijo `u<ts>`).
+  **BUSCAR MI LOCAL POR NOMBRE (caso "Campo deportivo Edu Jr.", sep-2026):** el
+  descubrimiento por celda solo trae los ~20 lugares MÁS CERCANOS por consulta
+  (Text Search `rankPreference: DISTANCE`, `maxResultCount` 20) → en zonas
+  densas un local a 2-4 km no entra en ninguna lista aunque la heurística lo
+  acepte. Tres arreglos: (1) `GET /web/lugares?q&lat&lng`
+  (`descubrir.buscar_lugares`: Text Search con la consulta LIBRE del dueño,
+  sesgo 30 km, sin filtro de deporte, caché 10 min; exige `PLACES_API_KEY`,
+  sin ella `disponible:false`) y en "Pon tu cancha" la caja "🔎 Busca tu
+  local en Google Maps" (`#busca`, debounce 400 ms) cuyo resultado rellena
+  nombre, dirección, punto, `place` y sugiere el deporte; (2) el explorador
+  web RE-DESCUBRE al mover el mapa (`moveend`, zoom ≥ 12, 1 llamada por celda
+  de ~1 km) y ACUMULA las descubiertas por id (`descAcum`) recalculando la
+  distancia desde el usuario o el centro del mapa; (3) la Edge `places-cerca`
+  sigue `nextPageToken` (hasta 3 páginas en "canchas de fútbol" y "campo
+  deportivo", 2 en "complejo deportivo" y "grass sintético") → **hay que
+  redesplegarla** (`supabase functions deploy places-cerca`, laptop) en QAS y
+  PRD; también beneficia al APK, que usa la misma Edge. **(4) El EXPLORADOR
+  también busca por nombre:** lo escrito en "Dónde" + Buscar llama a
+  `/web/lugares` (`buscarEnGoogle`, una vez por consulta) y los lugares que
+  la heurística reconoce entran a "Más canchas cerca de ti" como descubiertas
+  (`data-q` = consulta que los trajo, así pasan el filtro de texto aunque el
+  nombre no contenga lo escrito); el vacío dice "Buscando … también en
+  Google Maps…" / "No encontramos … ni en Google Maps". Flag `C.lugares`
+  (= hay `PLACES_API_KEY`). Test `test_buscar_mi_local_en_google_por_nombre`.
+  El panel muestra el estado real del reclamo
+  (`_aviso_verificacion` en Hoy y Canchas: En verificación / falta validar /
+  No aprobada…). **ESPEJO EN LA NUBE (bug que esto destapó):** la torre
+  marcaba `verificada` solo en `stores.canchas` y era el APK quien escribía
+  `pichangol_canchas.verificada=true` al sincronizar → un dueño solo-web
+  nunca quedaba reservable. Ahora `reclamos._nube_verificada` (llamado en
+  `aprobar_directo`, `activar_admin`, `validar_en_sitio` y
+  `_revocar_cancha_al_rechazar`) hace `datos.marcar_verificada(cancha_id,
+  dueno, bool)` sobre la reclamada y sus hermanas `u<ts>_*` (fail-safe). OTP
+  por WhatsApp y verificación de existencia (IA) siguen solo en el app. Test
+  `test_registrar_y_reclamar_cancha_desde_la_web_como_el_app`.
+  **AGREGAR CANCHA A UN LOCAL EXISTENTE (pedido del director, 23-sep-2026:
+  "¿cómo registro otra cancha, y de otro deporte?"):** `GET/POST
+  /anfitrion/cancha/{id}/agregar` (`web/anfitrion.py::pagina_agregar_cancha`,
+  `_validar_agregada`, `agregar_cancha_web`) = `AgregarCanchaScreen` del app:
+  la cancha nueva HEREDA club, dirección, punto, zona, fotos, servicios del
+  local, moneda, dueño y ESTADO DE VERIFICACIÓN (local activo → activa al
+  instante; en verificación → se activa con el local vía las hermanas de
+  `marcar_verificada`); NO crea otro reclamo. Solo pide deporte (uno), piso,
+  nombre opcional (auto "Fútbol 2" = siguiente número del deporte en el
+  local, `_nombre_auto`), precio, horario y duración (defaults del local).
+  Entradas: "＋ Agregar cancha a este local" en Mis canchas y "Pon tu
+  cancha" prellenado con un local que ya es del dueño (mismo nombre o ≤120 m,
+  `_local_propio`) → 303 al flujo corto (antes creaba otro local + otro
+  reclamo y la 2.ª cancha quedaba "Aún sin verificar" para siempre). Aviso
+  `?agregada=` en Mis canchas. Test
+  `test_agregar_cancha_a_local_desde_la_web_como_el_app`.
+  **SERVICIOS EXTRA = CATÁLOGO GLOBAL EN LA TORRE (decisión del director,
+  23-sep-2026: "el admin debe poder registrar más servicios extra, p. ej.
+  piscina y entrada general"):** `backend/growth/servicios_extra.py`.
+  Antes eran 6 claves fijas duplicadas en el app (`ServicioExtra.catalogo`) y
+  la web (`catalogos.SERVICIOS_EXTRA`, retirado). Ahora: (1) el OPERADOR
+  administra el catálogo en `/admin` → Comunicación → **"🧩 Servicios
+  extra"** (`GET/POST /admin/api/servicios-extra`, `/{clave}/activo`,
+  sugerencias `/sugerencias/{id}`): clave (slug estable), nombre, emoji,
+  **tipo de cobro** `reserva` (una vez) · `persona` (× cantidad que elige el
+  jugador) · `turno` (× turnos reservados), **ámbito** `local` (piscina,
+  sauna, entrada general: se copia a TODAS las canchas del local) · `cancha`
+  (árbitro, petos: solo esa cancha), deportes ([] = todos), activo. Semilla
+  `DEFAULTS` = los 6 de siempre (misma clave y cobro, no cambia data) +
+  piscina, entrada_general, sauna, gimnasio, toallas, locker,
+  estacionamiento_pago, clase, iluminacion, grabacion; vive en
+  `stores.servicios_extra` (+ `servicios_extra_version`,
+  `sugerencias_servicios`) en el snapshot. (2) **Público** `GET
+  /config/servicios-extra` (APK + web). (3) El DUEÑO solo elige de la lista
+  y pone precio: editor web agrupado "Del local / De esta cancha" con la
+  etiqueta del cobro; al guardar, `_validar_edicion` CONGELA `{clave, precio,
+  nombre, emoji, tipo, ambito}` (`_se.congelar`) y `_propagar_servicios_local`
+  copia los de ámbito local a las hermanas (mismo `club`, mismo dueño)
+  conservando los propios de cada cancha; "Agregar cancha a este local"
+  hereda los del local. **Sin texto libre** para el dueño: caja "💡 Sugerir"
+  (`POST /anfitrion/servicios/sugerir`, solo hacia el equipo) que la torre
+  lista con "➕ Agregar al catálogo". (4) **Checkout web**: los "por persona"
+  llevan `<select class='cant'>` (1-12); `/web/asegurar` acepta `extras` como
+  claves o `{clave, cantidad}` y guarda la LÍNEA `{clave, precio=TOTAL,
+  unitario, cantidad, nombre, emoji, tipo}` (`_se.linea_reserva`; `precio`
+  total = compatible con APKs que solo suman `precio`); comprobante y
+  resumen muestran "Piscina × 3". (5) **APK** (`lib/models/models.dart`):
+  `ServicioCatalogo` + `ServicioExtra` con `nombre/emoji/tipo/ambito/
+  cantidad/unitario`, `catalogoRemoto` (cache-first en SharedPreferences
+  `servicios_extra_catalogo`, `AppState.cargarCatalogoServicios` al
+  arrancar junto a `cargarCanalComunicacion`; sin red, `catalogo`
+  empaquetado), `linea(personas:, turnos:)`; editor del app agrupado por
+  ámbito con `_ctrlServicio` bajo demanda y `AppState.
+  actualizarServiciosExtraLocal` (espejo de la propagación web); resumen de
+  reserva con contador − n + de personas (`_FilaServicio`/`_BotonCantidad`);
+  `AgregarCanchaScreen` hereda los del local; Reservas del dueño muestran
+  "× n". Test `test_servicios_extra_catalogo_global_por_local_y_por_persona`.
+  **EDITAR LOCAL vs EDITAR CANCHA (pedido del director, 24-sep-2026: "los
+  atributos del local no deberían repetirse al editar cada cancha"; solo
+  web):** `GET/POST /anfitrion/local/{cancha_id}/editar`
+  (`pagina_editar_local`, `guardar_edicion_local`) edita UNA vez lo que
+  comparten todas las canchas del local: nombre del local (renombra todas),
+  dirección (`COLS_EDITABLES` suma `direccion`), servicios del local
+  (`amenidades`) y servicios extra de ámbito local; se escribe en cada
+  hermana conservando sus extras propios de cancha. El editor de CANCHA ya no
+  muestra club, amenidades ni extras del local: solo nombre, deportes/piso,
+  precio, horario, fotos y "Servicios extra de esta cancha" filtrados por su
+  deporte (`servicios_extra.para_cancha`; DEFAULTS: pelotero solo
+  tenis/pádel/pickleball, petos solo fútbol/futsal/básquet; migración
+  `servicios_extra_semilla=2` completa `deportes` en snapshots ya sembrados)
+  + tarjeta "Tu local" con enlace a Editar local. `_validar_edicion` conserva
+  amenidades y extras del local si el cuerpo no los trae (compat con
+  clientes que sí los mandan). **Mis canchas** agrupa las filas por DEPORTE
+  dentro del local (`.anf-dep`: "🎾 Tenis · 2 canchas") y tiene "✏️ Editar
+  local" en la cabecera; aviso `?local_guardado=`. Test actualizado
+  `test_servicios_extra_catalogo_global_por_local_y_por_persona`.
+- **EDITAR CANCHA DESDE LA WEB (sep-2026, decisión del director: "web =
+  vender y atender; app = operar", punto 1):** `GET/POST /anfitrion/cancha/
+  {id}/editar` (`web/anfitrion.py`, calcado del editor de anuncios de
+  Airbnb: nav lateral de secciones + tarjetas + barra inferior fija "Guardar
+  cambios"). MISMO formulario, catálogos y validaciones que
+  `editar_cancha_screen.dart`: fotos (hasta 8, portada = la primera, ★ para
+  hacer portada, ✕ quita), nombre y local (único texto libre), deportes
+  (chips ≥1, principal = 1.º de `deportesActivos`), tipo de piso
+  (obligatorio, por deporte principal), precio + hora feliz [0,10,15,20,30]
+  con rango + seña [0,20,30,50] con vista previa, horario (selects en punto,
+  regla "cierre = empieza el último turno") + duración 60/90/120,
+  amenidades (claves del APP: vestuario, duchas, parking, luces, techado,
+  cafeteria, wifi, alquiler) y servicios extra con precio. Catálogo espejo
+  en `web/catalogos.py` (**al cambiar un catálogo en el app, cambiarlo
+  ahí**). Fotos: el navegador comprime a 1600 px JPEG y hace `POST
+  /anfitrion/cancha/{id}/foto` (cuerpo crudo) → `web/almacen.py` sube al
+  MISMO bucket `canchas/<id>/web_<ms>.jpg` por la REST de Storage con la
+  llave anon (`SUPABASE_URL` + `SUPABASE_ANON_KEY` en Railway; sin ellas
+  la subida queda apagada y se avisa); al guardar solo se aceptan URLs que
+  ya tenía la cancha o de SU carpeta, y las quitadas se borran del bucket.
+  Guardado: `datos.actualizar_cancha(id, dueno, campos)` = UPDATE con
+  `lower(dueno)=correo de la sesión` en el WHERE (cancha ajena → 404) solo
+  sobre `COLS_EDITABLES`; el explorador (`AMENIDAD_NOMBRE/ICONO`) reconoce
+  las claves del app. **APK:** `_sincronizarConfigLocalDesdeNube` ahora
+  también trae deportes, fotos y servicios extra (si no, el siguiente upsert
+  del app pisaba la edición web). Test
+  `test_editar_cancha_desde_la_web_como_el_app`.
+- **CALENDARIO WEB OPERATIVO (sep-2026, puntos 2 y 3 del plan aprobado):**
+  en `/anfitrion/calendario` cada turno es clicable (como el calendario de
+  Airbnb, modal `#modalCal`): LIBRE → "📝 Reserva manual" (cliente reciente
+  de sus propias reservas de 180 d, nombre, teléfono, correo opcional para
+  que la vea en su app, precio sugerido = `precio_slot` con hora feliz y
+  descuento del slot, "Ya pagó") o "⛔ Bloquear turno"; BLOQUEADO →
+  Desbloquear; RESERVA → detalle + WhatsApp + "✅ Marcar pagada" / "↩
+  Marcar por cobrar" (no en pagadas en línea) + "🗑 Quitar reserva" (SOLO
+  manuales). Endpoints JSON (sesión + cancha del dueño, si no 401/404):
+  `POST /anfitrion/bloqueo {cancha_id, fecha, hora, bloquear}`
+  (`datos.bloquear`, tabla `pichangol_bloqueos` = la del app, 409 si hay
+  reserva), `POST /anfitrion/reserva-manual` (misma fila que
+  `agregarReservaManual`: id `man_<ms>_w`, `confirmada`,
+  `traida_por_app=false` → sin comisión ni billetera, `medio_pago='manual'`,
+  fecha REAL del slot de madrugada, rechaza pasado/bloqueado/ocupado; push
+  "Reserva confirmada 🎾" al correo del cliente), `POST
+  /anfitrion/reserva/{id}/pagado {pagado}` (`datos.marcar_pagado`, = 
+  `marcarPago` del app; en la transición a pagado de reservas traídas por
+  la app manda el push "¡Te llegaron puntos! ⭐"; también botón en la
+  tarjeta de "Hoy", `JS_PAGAR`) y `POST /anfitrion/reserva/{id}/quitar`
+  (`datos.borrar_reserva_manual`, solo `medio_pago='manual'`; push
+  "Reserva cancelada 📅"). **Candado Pro:** `WEB_MANUAL_REQUIERE_PRO=1`
+  (env, fail-open como `CM_REQUIERE_PRO`) exige `stores.pro_activo` para
+  reserva manual y bloqueos (402 `requiere_pro` + aviso en el calendario);
+  marcar pagado nunca es Pro. Apagado hasta que el APK también lo exija
+  (backlog "Candado PRO"). Test
+  `test_calendario_web_reserva_manual_bloqueo_y_marcar_pagado`. OJO tests:
+  `FakeDB` copia las fixtures (`dict(c)`) — antes un test mutaba `LIMA`
+  para los siguientes.
+- **MI ACADEMIA Y MI TIENDA EN LA WEB (sep-2026, pedido del director):**
+  `web/anfitrion_academia.py` y `web/anfitrion_tienda.py` (routers incluidos
+  en `main.py` ANTES de `anfitrion_router`, porque `/anfitrion/{modulo}` es
+  comodín; en `MENU` ambos van con `True` = web). **Mi tienda**
+  (`/anfitrion/tienda`): candado = `puedeVender` del app
+  (`datos.esta_verificado` en `pichangol_verificaciones` O dueño de canchas);
+  lista con Publicado/Pausado, "＋ Publicar producto" (`/anfitrion/tienda/
+  nuevo`, id `prod_<µs>_w`), editor tipo Airbnb (foto → bucket
+  `productos/<id>.jpg` como el app, nombre, categoría chips
+  `catalogos.CATEGORIAS_PRODUCTO`, descripción, moneda chips S/ $ Bs FIJA al
+  crear —por defecto la del país de su 1.ª cancha—, precio, stock vacío =
+  ilimitado, Publicado), `POST /anfitrion/tienda/guardar` (UPSERT
+  `pichangol_productos` con `WHERE lower(vendedor_email)=yo`: id ajeno →
+  404), `/{id}/activo`, `/{id}/eliminar` (borra fila + foto), y VENTAS
+  desde `stores.ventas` por `vendedor_email`. **Mi academia**
+  (`/anfitrion/academia`): lista de `pichangol_academias` del dueño
+  (`data` jsonb = `Academia.toJson`), onboarding "Crear mi academia", editor
+  (`/anfitrion/academia/nueva` id `ac_<µs>`, `/{id}/editar`): logo →
+  `canchas/academia_<id>/logo_web.jpg`, deporte chips `DEPORTES_ACADEMIA`,
+  nombre, descripción, sede (el campo "Club / local" AUTOCOMPLETA con
+  Google Maps vía `/web/lugares` —pedido del director, sep-2026: escribir
+  "esmon" y que el pin se ponga solo; `#resSede`, `CFG.buscar` = hay
+  `PLACES_API_KEY`, sin llave es texto simple— + MAPA Leaflet clic / "Usar
+  mi ubicación": del punto salen país → prefijo de WhatsApp, moneda —fija al
+  crear— y zona; OJO: el div del mapa lleva la clase `.mapa-sede`, NO
+  `.mapa-ficha`, que arranca en `display:none` y lo ocultaba), **zona en cascada** por país (`GET /web/geo/{iso}` sirve
+  `web/geo/{pe,bo,ec}_geo.json` = COPIA de `assets/geo` del app; se guarda
+  el nivel 3 como el app), WhatsApp (largo por país `TEL_LONGITUD`), fotos
+  (hasta 8), redes chips + handle, **PROGRAMAS Y TARIFARIO = el MISMO
+  editor del app `_EditorPrograma` (pedido del director, sep-2026: "en el
+  app está perfecto, debería ser como en el app")**: tarjeta por PROGRAMA
+  (Bola Roja y Naranja, Avanzados…) con etapa/edad, duración de clase, días y
+  horario y el PRECIO SOCIO por frecuencia 2x…5x/sem (vacío = no se ofrece);
+  al guardar se aplanan a los mismos `planes` mensuales que genera el app
+  (id `prog | 2x`, nombre `prog · 2x/sem`, `programa` compartido). El editor
+  web anterior ("Plan N" + programa escondido en un desplegable) hacía crear
+  un plan por programa. Los planes viejos que no encajan (sin programa, sin
+  frecuencia 2-5 o no mensuales) salen como "planes sueltos" solo para
+  quitarlos; si no se tocan se conservan. `POST /guardar` deriva el nombre
+  del plan si viene vacío con `programa`; reglas de cobro (recargo invitado, descuentos
+  2.º/3.º hermano y prepago, meses mínimos, retribución al club). `POST
+  /anfitrion/academia/guardar` valida como `crear_academia_screen._validar`
+  y hace MERGE sobre la fila actual: `sedes`, `horarios`, `preciosSede`,
+  `partidos`, `categorias`, `landingUrl` se CONSERVAN (se editan en la app).
+  `/{id}/foto?tipo=logo|foto`, `/{id}/eliminar` (borrado lógico). **Alumnos**
+  (`/anfitrion/academia/alumnos?academia=`): `pichangol_matriculas` con KPIs
+  (alumnos, cobrado este mes, por cobrar, vencido) y tabla por alumno
+  (apoderado, WhatsApp, cuotas pagadas, deuda, estado); los COBROS siguen en
+  la app. Catálogos espejo en `web/catalogos.py`. Tests
+  `test_mi_tienda_en_la_web_como_el_app`, `test_mi_academia_en_la_web_como_el_app`.
+- **MIS CAMPEONATOS EN LA WEB (25-sep-2026, pedido del director: "el mismo
+  flujo y funcionamiento que ya existe en el app, tal cual"):**
+  `web/anfitrion_campeonatos.py` (router incluido en `main.py` antes del
+  comodín `/anfitrion/{modulo}`; en `MENU` "campeonatos" pasa a `True`) +
+  `web/campeonatos_logica.py` = port en Python de `TorneoFixture` y los
+  getters de `Campeonato` (llave con byes y `recomputar_llave` que propaga
+  ganadores, liga round-robin por jornadas, `tabla` reusa
+  `marketing.campeonato_web._tabla`, natación `ranking_prueba`/`parse_tiempo`/
+  `fmt_tiempo`, `estado` = pill `_EstadoCampeonato`, `importar_al_ranking`).
+  Misma fila `pichangol_campeonatos` (`data` jsonb = `Campeonato.toJson`;
+  `datos.campeonatos_de_dueno/campeonato/campeonato_existe/
+  guardar_campeonato/eliminar_campeonato/canchas_para_sede`) y mismo bucket
+  `canchas/campeonatos/<id>.jpg | _ausp_<ms> | _foto_<ms> | _fondo_<ms>`.
+  Páginas: `GET /anfitrion/campeonatos` (lista con pill de estado; candado
+  Pro = `stores.pro_activo` → modal "Es Pichangol Pro" como el app, `/nuevo`
+  redirige sin Pro), `/nuevo` y `/{id}/editar` = asistente de 3 pasos de
+  `CrearCampeonatoScreen` (logo, nombre, deporte con chips —bloqueado al
+  editar—; formato por deporte —bloqueado si ya hay fixture—, mínimo de
+  jugadores por equipo solo fútbol, categoría del catálogo + "otra"; fechas
+  desde/hasta o relámpago, cierre de inscripciones, sede = cancha de
+  Pichangol o Google Maps (`/web/lugares`) con mapa Leaflet, costo con la
+  MONEDA de la sede, exigir DNI/CI/cédula + edades, auspiciador, premios),
+  `POST /anfitrion/campeonatos/guardar` (`_validar` = solo exige nombre,
+  como el app; `codigo` de 6, moneda por `paises.pais_de_coordenadas`,
+  `fechas` con `fmt_rango`, edades solo con `exigeDni`). Detalle
+  `/{id}` = `CampeonatoDetalleScreen` del organizador: Invitar (código
+  para copiar, WhatsApp con `_publicidad`/`_resumen`, Copiar enlace, Ver
+  afiche `/c/{id}/afiche.png`, Cambiar fondo (subir o arte IA por
+  variante/tema), Página pública `/c/{id}`), auspiciadores, participantes
+  (agregar/quitar; equipos con plantel), Generar/Regenerar fixture, llave o
+  tabla+jornadas con modal de resultado (empate rechazado en llave),
+  natación (pruebas del catálogo distancia×estilo, tiempos mm:ss.cc con
+  serie/carril/DSQ, ranking 🥇🥈🥉), galería, Sumar al ranking de la
+  academia, Duplicar (nueva edición, Pro), Eliminar. Endpoints JSON bajo
+  `/anfitrion/campeonatos/{id}/…` (`foto?tipo=`, `imagen/quitar`, `afiche`,
+  `participante[/{pid}/eliminar]`, `fixture`, `resultado`, `prueba[/{pid}/
+  eliminar]`, `marca`, `ranking`, `duplicar`, `eliminar`); todos exigen
+  sesión y que el campeonato sea del correo (404 si no). La INSCRIPCIÓN del
+  jugador (con pago desde su saldo) sigue en el app. **Trampa CSS:** el
+  shell global tiene `.paso span{…círculo azul}` (pasos numerados de la
+  reserva): el asistente usa la clase `.wz-p`, NO `.paso`; y `input` es
+  `width:100%` global → radios/checkbox con `width:auto;flex:none`. Tests
+  `tests/test_web_campeonatos.py`.
+- **FORMATO "GRUPOS + ELIMINATORIA" (pedido del director, 25-sep-2026:
+  "quiero asegurar que al menos cada equipo juegue 2 partidos a más"):**
+  `FormatoTorneo.grupos` en app y web (JSON `formato: "grupos"`,
+  `minPartidos: 2|3`). Fase de GRUPOS (todos contra todos dentro del
+  grupo) + LLAVE con los 2 primeros de cada grupo. `armar_grupos(n, min)` =
+  `TorneoFixture.armarGrupos` (ESPEJO exacto, no cambiar uno solo): tamaño
+  mínimo de grupo `min+1`, prefiere grupos de 4 cuando `min=2`, reparto
+  parejo (±1); n=6 → 3/3, 8 → 4/4, 12 → 4/4/4, 9 → 5/4; con menos de
+  `min+1` equipos devuelve [] y se juega solo la final. Partidos de grupo:
+  `{id: gA_j0_0, fase: 'grupo', grupo: 'A', ronda: jornada}`; llave:
+  `{id: k0_0, fase: 'llave', ronda}` (esqueleto potencia de 2 con byes).
+  `recomputar_grupos` / `recomputarGrupos`: al completarse la fase de grupos
+  siembra la ronda 0 con la siembra estándar [1,8,4,5,2,7,3,6] (mejores
+  primeros con bye; cruce 1A-2B / 1B-2A, evita rematch de grupo), SOLO
+  mientras ningún partido de llave tenga resultado; luego `recomputar_llave`
+  propaga. Empate permitido en grupos, rechazado en llave
+  (`es_partido_llave`). `terminado`/campeón usan `partidos_llave`. Web:
+  chips "Al menos 2 / 3" en el paso 2 (`#minPartBox`), detalle con tabla +
+  jornadas por grupo y "Fase final", chip "🧩 Grupos + llave · N grupos de
+  4/4"; página pública `_render_grupos`; afiche "GRUPOS + LLAVE". App:
+  `PartidoTorneo.fase/grupo` (se conservan en `toJson`: un APK viejo que
+  guarde un campeonato de grupos LOS PIERDE → actualizar el APK antes de
+  usarlo), `Campeonato.minPartidos`, widget `_Grupos`, `_Liga`/`_Llave` con
+  subconjunto. Test `test_grupos_garantiza_minimo_de_partidos_y_llave_cruzada`
+  (garantía para n = min+1 … 40). **GRUPOS ARMADOS A MANO (pedido del
+  director desde el campo, 26-sep-2026):** además del sorteo automático, el
+  organizador elige CUÁNTOS grupos y quién va en cada uno; dentro de cada
+  grupo sigue siendo todos contra todos y clasifican 2. `Campeonato.
+  gruposManuales` (JSON `gruposManuales: [[ids],…]` en orden A, B, C…; solo
+  con formato grupos) = `L.grupos_manuales(c)`; validación espejo
+  `TorneoFixture.validarGruposManuales` / `L.validar_grupos_manuales`
+  (1..16 grupos, ≥2 por grupo, todos asignados una vez; si entra o sale un
+  equipo dejan de calzar y se sortea automático). App: al generar en formato
+  grupos con ≥4 equipos, diálogo "¿Cómo armamos los grupos?" → 🎲 Sortear /
+  ✋ Armar a mano → `_ArmarGruposSheet` (chips de cantidad, tarjeta por grupo,
+  tocar equipo → chips de grupo, "Repartir", sin texto libre) →
+  `appState.generarFixture(id, gruposManuales:)`; `sortear: true` los borra.
+  Web: `POST /fixture {grupos: [[ids]]}` valida, guarda y genera (`manual`
+  en la respuesta); `{sortear: true}` vuelve al automático; modal
+  `elegirModoGrupos` → `armarGrupos` (select de cantidad + select por
+  equipo + "Repartir parejo"); chip "✋ armados a mano · 3 grupos de
+  3/2/2". Test `test_grupos_armados_a_mano_por_el_organizador`. **"MAÑANA"
+  EN EL HISTORIAL (queja del director, 26-sep-2026):** `Reserva.dia` es la
+  etiqueta CONGELADA al reservar; para mostrar se usa `Reserva.diaVisible`
+  (Hoy / Mañana / Ayer / "jue 18 set", calculado desde `fecha`) en Mis
+  reservas, Reservas y Mis pagos.
+- **ENLACE DEL CAPITÁN + DESCARGA A PLAY + APP LINKS (pedido del director,
+  26-sep-2026: "¿es viable que el que recibe el link por WhatsApp se
+  inscriba en un equipo?" → sí, y se hicieron los 3 puntos):** (1) **Enlace
+  de equipo (fútbol):** `/c/{id}?equipo=CODIGO`. La página pública
+  (`campeonato_web.html_campeonato(equipo=)`, `equipo_por_codigo`) muestra
+  "Te invitaron al equipo «X»" + botón "Unirme al equipo en la app" cuyo
+  `intent://c/{id}?equipo=…` lleva el código; código inexistente → CTA
+  normal + aviso; en deportes sin equipos se ignora. El APK
+  (`EnlacesService.codigoEquipoDe` → `CampeonatoDetalleScreen.
+  unirseConEnlace`) abre la ficha y, tras login/DNI, confirma "Unirme a «X»"
+  y lo mete al plantel con `unirseAEquipoPorCodigo` (sin escribir el
+  código). El capitán lo comparte desde el app (`textoInvitacionEquipo`:
+  texto + enlace + código, en "¡Equipo creado!" y en la tarjeta del equipo)
+  y el organizador desde la web (modal del equipo en Mis campeonatos:
+  "🔗 Copiar enlace del equipo" + WhatsApp). (2) **Descarga por ambiente:**
+  `config.APP_DOWNLOAD_URL` = Play Store si `PICHANGOL_ENTORNO` es PRD,
+  Release de GitHub en dev/QAS (`APP_DOWNLOAD_URL` env lo fuerza); lo usan
+  el `browser_fallback_url` del intent y el pie "Descargar la app"
+  (`campeonato_web._descarga()`). (3) **Android App Links:**
+  `ANDROID_CERT_SHA256` ya está en Railway QAS y PRD con la huella del
+  keystore del CI (`21:E5:AD:A0:…:EC:28`, la que imprime el paso "Verificar
+  firma del APK"); `/.well-known/assetlinks.json` acepta huellas con o sin
+  dos puntos (`_huella_con_dos_puntos`) y varias por coma. **PENDIENTE del
+  director:** agregar a esa variable (coma) las SHA-256 de las llaves de
+  firma de Play (Play Console → Firma de apps: la actual, la poscuántica y la
+  ANTERIOR rotada) para que el link de WhatsApp abra la app instalada desde
+  Play sin pasar por el navegador; sin eso el botón intent:// cubre igual.
+  Solo Android: en iPhone (sin app iOS) se queda en la web. Tests
+  `test_enlace_del_capitan_une_directo_al_equipo`,
+  `test_descarga_va_a_play_en_produccion`,
+  `test_assetlinks_acepta_huella_sin_dos_puntos`.
+- **WHATSAPP DESDE LA WEB SIN "��" (queja del director, 26-sep-2026,
+  captura de un resumen compartido desde Mis campeonatos):** WhatsApp para
+  WINDOWS rompe los emojis de 4 bytes (🏆 📊 👉 📍 🎁 💰 📲…) que viajan por
+  `wa.me/?text=` y los pinta como "��"; los de 2 bytes (⚽ ⭐ ✅ ➡ ⚑ ✨ ▶) sí
+  llegan. Regla: TODO enlace de WhatsApp que arme la web pasa por
+  `ui.enlace_whatsapp(texto, tel="")` (usa `ui.texto_whatsapp`, que traduce
+  con `_WA_EMOJI_SEGURO` y quita cualquier astral sin traducción). Ya lo usan
+  Mis campeonatos (publicidad/resumen) y el comprobante de reserva. El APK
+  comparte desde el teléfono y no tiene el problema: su texto queda igual.
+  Test `test_whatsapp_desde_la_web_sin_emojis_de_4_bytes`.
+- **LA VAQUITA DEL EQUIPO = cuota de torneo POR EQUIPO repartida entre el
+  plantel (decisión del director, 26-sep-2026: "el campeonato es 100 soles
+  por equipo… con 3 suplentes serían 100/10 y eso paga cada usuario"):**
+  `pagos/pozos.py` (fuente de verdad del dinero, `stores.pozos_equipo` en
+  el snapshot, clave `<campeonato_id>|<equipo_id>`) + endpoints `POST
+  /pagos/torneo/equipo/aportar|completar|devolver`, `GET /pagos/torneo/
+  pozos/{camp}` y `/pagos/torneo/equipo/{camp}/{equipo}`. Reglas: (1)
+  `Campeonato.maxJugadoresEquipo` (nuevo, fútbol; tope de plantel, nunca
+  < mínimo) define el CUPO de reparto (máximo → mínimo → 0 = quien crea
+  paga entera); (2) cuota por jugador = cuota ÷ cupo redondeada HACIA
+  ARRIBA a 0.50 (`pozos.cuota_jugador_centimos` = `Campeonato.
+  cuotaJugadorCentimos` = `L.cuota_jugador_centimos`); (3) cada jugador
+  pone su parte de su SALDO al unirse (el capitán al crear); queda
+  RETENIDA (pago `aporte_equipo`, egreso en su billetera); el último paga
+  solo lo que falta; los que entran con el pozo lleno no pagan; (4)
+  cualquiera del plantel puede COMPLETAR el faltante; (5) al cubrirse la
+  cuota se cobra la comisión UNA sola vez sobre la cuota del EQUIPO
+  (`comision_centimos(cuota, moneda)`, nunca por aporte: el mínimo de S/ 2
+  se comería el 20 % de cada S/ 10) y el NETO se acredita al organizador
+  (`inscripcion_torneo_ingreso`); (6) si el equipo queda fuera ANTES de
+  completar (quitar equipo o "Excluir y devolver" al generar el fixture),
+  `devolver` regresa cada parte a cada jugador (`aporte_equipo_devolucion`);
+  ya liquidado → `ya_liquidado` y la devolución queda de lado del
+  organizador (aviso en app y web). El JSON del campeonato espeja
+  `Integrante.aporteCentimos` solo para mostrar. **App:** `_aportarPozo`
+  (falta saldo → Recargar), "Crear mi equipo · pones S/ 10" (paga ANTES de
+  crear, id `eq_<µs>` generado en la pantalla), `_confirmarYUnirme` (código
+  o enlace: valida lleno/repetido, confirma con la parte, cobra, une),
+  `_PozoEquipo` (barra + faltante) y "Completar S/ X" en la tarjeta del
+  equipo, chips "N/10 jug. · S/ 60 de 100" / "✅", `_quitar` y `_generar`
+  con devolución; `agregarParticipante` del ORGANIZADOR en fútbol crea el
+  equipo CON código (así "Kinder 01" se llena por el enlace); `unirse`
+  rechaza plantel lleno. **Web:** asistente con máximo, chips y modal con
+  pozo/aportes por jugador, `POST /fixture` responde 409
+  `pozos_incompletos` → modal "Generar con todos / Excluirlos y devolver"
+  (`{con_todos}` / `{excluir:[ids]}`), quitar equipo devuelve; publicidad y
+  página pública dicen "cada jugador pone S/ 10". Tests
+  `test_pozo_equipo.py`, `test_vaquita_del_equipo_en_la_web`. Pendiente:
+  la cuota individual (`/torneo/inscribir`) sigue en PEN.
+  **EL NETO DEL TORNEO ES "POR RECIBIR", NO SALDO (decisión del director,
+  26-sep-2026: "PCG le debe transferir de manera automática, así como hace
+  con los dueños de cancha; ¿qué pasa si el operador se olvida?"):** antes
+  `pozos._liquidar` y `/torneo/inscribir` hacían `stores.acreditar(org,
+  neto)` (saldo dentro de la app, fuera de toda cola de pago). Ahora el
+  ingreso `inscripcion_torneo_ingreso` nace con `culqi_charge_id =
+  pozo:<camp>|<equipo>` (o `torneo:<pago_id>` en la cuota individual),
+  `liquidado=False`, y entra en `stores.liquidaciones()` → la MISMA cola
+  que las reservas online y ventas: torre `/admin` → Liquidaciones (agrupa
+  "🏆 Torneo · Equipo"), billetera del APK "Por recibir" (el parser mapea
+  el tipo a `TipoMovimiento.liquidacion`), web Ingresos, `GET
+  /pagos/por-recibir/{email}`; el operador transfiere y marca pagado con
+  `POST /pagos/liquidaciones/{clave}/pagar`. `es_liquidacion_torneo(p)`
+  distingue los NUEVOS de los registros viejos (sin clave) que ya se
+  acreditaron al saldo: esos no se liquidan dos veces. `devolver` con el
+  neto pendiente (aún no pagado) ANULA la liquidación (`estado=anulado`) y
+  devuelve a los jugadores; solo si la torre ya pagó responde
+  `ya_liquidado`; `marcar_liquidacion_pagada` ignora anuladas. **Anti
+  olvido:** `_liquidacion_dict` trae `dias`; `/pagos/liquidaciones/
+  pendientes` suma `atrasadas`, `mas_antigua_dias`, `aviso_dias`
+  (`LIQUIDACION_AVISO_DIAS`, env, 3); la torre pinta banner rojo, "hace N
+  días" por fila y el KPI "N atrasados"; el cron `_iniciar_cron_
+  liquidaciones` (cada hora) llama `recordar_liquidaciones_pendientes()`,
+  que una vez al día desde las 09:00 de Lima avisa por WhatsApp al admin
+  (`PICHANGOL_ADMIN_WHATSAPP` vía `reclamos._notificar_admin`) y en logs
+  `[liquidaciones]` mientras haya atrasadas. NO existe transferencia
+  bancaria automática (Culqi no ofrece payouts): la cola + el recordatorio
+  son el mecanismo, igual que para las canchas. Tests actualizados en
+  `test_pozo_equipo.py` (+ `test_recordatorio_diario_de_liquidaciones_
+  atrasadas`), `test_pagos.py`, `test_web_campeonatos.py`.
+- **CUENTA DE COBRO + LIQUIDACIÓN POR LOTE (BCP) (pedido del director,
+  26-sep-2026, tras el primer cobro live: "¿hay forma de transferirle al
+  dueño automático o desde la torre?"; "arranca con 1 y 2, el banco es
+  BCP"):** Culqi cobra pero NO dispersa (sin payouts en Perú) y Yape no tiene
+  API para empresas: la plata sale de la cuenta empresa de EBIM en el BCP.
+  `backend/growth/pagos/cuentas_cobro.py`. (1) **Cuenta de cobro**
+  (`stores.cuentas_cobro[email]`, snapshot): dónde recibe cada dueño/
+  organizador/academia. PE → Yape / Plin (celular 9 dígitos) o banco del
+  catálogo (`BANCOS`) + n.º de cuenta + **CCI 20 dígitos** (obligatorio si el
+  banco no es BCP) + titular + DNI/CE/RUC; BO y EC → banco + cuenta + titular
+  + CI/cédula/RUC. Todo por SELECCIÓN (tipo, banco, tipo de cuenta,
+  documento); solo números y titular se escriben. Validación única en el
+  backend (`validar`): `POST/GET/DELETE /pagos/cuenta-cobro[/{email}]` (app,
+  `X-App-Key` + auth por usuario si `PAGOS_AUTH_USUARIO=1`), `GET
+  /pagos/cuenta-cobro/catalogo` (público), web `POST /anfitrion/cuenta-cobro`
+  (sesión). APK: tarjeta en **Mi billetera** ("Recibes tus liquidaciones en …"
+  o aviso ámbar "Registra tu cuenta de cobro" si hay plata por recibir) →
+  `widgets/cuenta_cobro_sheet.dart` (país = `paisBilletera`, catálogo del
+  backend, prellena nombre y DNI verificado); web: tarjeta "Cuenta de cobro"
+  en Modo anfitrión → Ingresos (`_tarjeta_cuenta_cobro`, `_JS_CUENTA_COBRO`).
+  (2) **Lote de liquidación** (torre `/admin` → Liquidaciones → "📦 Liquidar
+  por lote (BCP)"; `stores.lotes_liquidacion`, últimos 60): `POST
+  /pagos/liquidaciones/lote/preparar {moneda, umbral_soles}` agrupa TODO lo
+  pendiente por dueño (`armar_lote`) y clasifica: `archivo` (cuenta bancaria
+  peruana → entra al TXT), `manual` (Yape/Plin u otro país: el operador paga
+  a mano), `sin_cuenta`, `bajo_umbral` (se acumula; chips Sin mínimo / 20 /
+  50 / 100, default 50). `GET …/lote/{id}/telecredito.txt` = planilla de
+  **pagos masivos de Telecrédito Web** (`archivo_telecredito`: cabecera 112 +
+  detalle 225 caracteres de ancho fijo, tablas `_CABECERA`/`_DETALLE`;
+  cuenta BCP → tipo C/A con su número, otro banco → tipo B con el CCI;
+  moneda 0001; doc 1 DNI / 4 CE / 6 RUC; sin tildes ni eñes; CRLF), exige la
+  **cuenta BCP de CARGO de EBIM** (`POST …/config-bcp`, `stores.config[
+  liq_bcp_cuenta|liq_bcp_tipo]`, por ambiente). `GET …/detalle.csv` =
+  respaldo universal con TODAS las filas. `POST …/lote/{id}/pagado
+  {referencia, incluir_manuales}` marca cada liquidación del lote como pagada
+  (`transferencia`, o `yape` para las manuales si se marcó la casilla) con la
+  misma referencia; idempotente. `GET /pagos/liquidaciones/pendientes` ahora
+  trae `moneda` por fila, `cuentas` (resumen por dueño: etiqueta, canal,
+  `cuenta_pago` para "⧉ Copiar"), `bcp` y `lotes`. **OJO TXT:** la estructura
+  es la del formato clásico "Pago a proveedores" de Telecrédito; no se pudo
+  descargar el instructivo oficial desde el entorno de desarrollo → la PRIMERA
+  carga en Telecrédito es la validación (el banco rechaza con el campo exacto
+  y no mueve nada hasta firmar la planilla); cualquier ajuste es una fila de
+  la tabla. Las interbancarias (CCI) tienen comisión del banco: por eso el
+  umbral. Backlog: dispersión por API (dLocal / Kushki / API BCP) sobre esta
+  misma base = botón "Transferir" real; "Retirar" a pedido del dueño. Tests
+  `tests/test_cuentas_cobro.py`.
+- **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
+  VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
+  Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el
+  PLANTEL: `Campeonato.plantelAbierto` (app) = `campeonatos_logica.
+  plantel_abierto` (web) = fútbol ∧ !cerrado ∧ inscripcionAbierta ∧
+  !terminado. **La fecha "Cierre de inscripciones" (`inscripcionHasta`)
+  TAMPOCO cierra el plantel** (2.ª queja, 26-sep-2026: "no puedo
+  inscribirme a un equipo" con el cierre ya vencido y el fixture
+  auto-sorteado por `autoSortearVencidos`): esa fecha es para sortear
+  (cuántos equipos hay); los suplentes entran hasta que el torneo termine o
+  el organizador lo cierre. El modal del equipo DICE por qué no se puede
+  unir (`motivoPlantelCerrado`: organizador con la misma cuenta / cerrado /
+  plantel lleno / sin código) en vez de esconder el botón. **CIERRE DE
+  INSCRIPCIONES = DÍA + HORA (pedido del director, 26-sep-2026: "si es
+  relámpago debe indicarme una hora"):** `inscripcionHasta` guarda la hora;
+  el asistente del app (`_elegirCierre`: date picker → time picker) y el web
+  (`#cierre` + `#cierreHora`, body `cierreHora`) la piden. En RELÁMPAGO es
+  OBLIGATORIA y el día no puede pasar del día del torneo (error en el paso
+  3 / snack en el app); en torneos de varios días es opcional (sin hora =
+  00:00 de ese día, como antes). La hora se muestra en la ficha del app
+  (`_fmtDiaHora`), en el detalle web (`_fecha_hora_corta`) y en la
+  publicidad de WhatsApp ("Inscripciones hasta el 7 mar · 09:30"). Test
+  `test_relampago_exige_hora_de_cierre_de_inscripciones`. Un suplente se une (y pone su parte del pozo) por
+  código, por enlace del capitán o TOCANDO EL EQUIPO en la lista de la ficha
+  (modal del equipo → "Unirme · pones S/ X"); la página pública `/c/{id}?
+  equipo=` sigue mostrando "Te invitaron al equipo" con fixture. Lo que SÍ se
+  cierra con el fixture: crear equipos nuevos e inscripción individual
+  (`puedeInscribirse`). `_confirmarYUnirme` valida `plantelAbierto` ANTES de
+  cobrar (nunca se debita sin poder unirse). (2) Fútbol: TODO participante es
+  un equipo con CÓDIGO. Los creados por el organizador antes del build 1380
+  (p. ej. "Kinder 01") no tenían código ni eran `esEquipo`/`es_equipo` → nadie
+  podía unirse. `AppState.completarCodigosEquipos` (el ORGANIZADOR al abrir la
+  ficha, post-frame) y `L.completar_codigos` (al abrir el detalle web) les
+  asignan uno único y guardan; el organizador ve el código/compartir en el
+  modal del equipo (antes solo el capitán). (3) "Unirme a un campeonato"
+  acepta también el CÓDIGO DE EQUIPO: `CampeonatosRepo.porCodigoEquipo`
+  (jsonb `data->participantes cs [{"codigo":…}]`, como String: postgrest-dart
+  codifica una List con llaves de array) → abre la ficha y dispara
+  `unirseConEnlace`. Tests `test_enlace_del_equipo_sigue_valiendo_con_el_
+  fixture_publicado`, `test_equipos_viejos_sin_codigo_reciben_enlace_al_abrir_
+  el_detalle`. **ENTRADA DEL JUGADOR (queja del director, 26-sep-2026:
+  "tengo el código pero solo me sale Organizar"):** "Unirme a un campeonato"
+  (`UnirseCampeonato.mostrar`) solo vivía en "Liga de tenis Pichangol" (Perfil,
+  solo con `usaCircuito`) y en la pantalla de campeonatos de una academia.
+  Ahora `MisCampeonatosScreen` es de AMBOS roles: ícono QR en la barra,
+  tarjeta "Unirme a un campeonato" arriba, sección "Donde participo"
+  (`AppState.campeonatosDondeParticipo`: inscrito / capitán / en un plantel,
+  sin organizar; tarjeta con rol "En Kinder 01") y "Organizo"; el vacío
+  ofrece "Tengo un código · Unirme" además de Organizar. Perfil tiene el ítem
+  "Campeonatos" → esa pantalla para cualquier jugador (fútbol incluido).
+  **WEB igual (captura del director, 26-sep-2026: "acá también debería
+  ingresar el código y ver el campeonato, como en el app"):** en
+  `/anfitrion/campeonatos` la caja "¿Te compartieron un código?" (`_caja_
+  codigo`) → `GET /anfitrion/campeonatos/unirme?codigo=` →
+  `datos.campeonato_por_codigo` (código del TORNEO `data->>'codigo'` o de un
+  EQUIPO por contención jsonb en `participantes`) → 303 a la página pública
+  `/c/{id}` (con `?equipo=COD` si era de equipo: ahí "Unirme al equipo en la
+  app"; la web no cobra la parte); inexistente → `?no_encontrado=1` con
+  aviso. Sección "Donde participo" (`datos.campeonatos_donde_participa`:
+  prefiltro `data::text LIKE %email%` + `participa_en`; tarjeta con rol
+  `_rol_en` → `/c/{id}`) y "Organizo". El vacío dice "Aún no tienes
+  campeonatos". Test `test_web_unirme_con_codigo_y_donde_participo`.
+- **PAGO FAMILIAR EN ACADEMIAS (pedido del director, 26-sep-2026: "yo pago
+  la academia de tenis de mi esposa, de mis hijos y mi propia mensualidad,
+  hago un solo pago por ellos"; "Sí, familiar, implementa los tres puntos"):**
+  (1) **"Para otra persona"** = otro ADULTO de la familia (esposa, pareja,
+  hermano) que el titular matricula y paga: `Alumno.parentesco`
+  (`'' | 'hijo' | 'familiar'`, JSON `parentesco`) + `Alumno.emailAlumno`
+  (correo propio OPCIONAL: con él la persona ve sus clases y pagos en SU
+  app; `Alumno.administradaPor(correo)`, `AppState.misMatriculas` y
+  `MatriculasRepo.deAlumno` con `.or('email.eq.x,data->>emailAlumno.eq.x')`;
+  el comprobante web también lo ve). Sin apoderado ni foto del titular
+  (`fotoUrl` solo si el alumno ES el titular). Tercer chip en la hoja de
+  matrícula del app (`_HojaDatosAlumno`, `_quien`) y de la web
+  (`data-quien='familiar'`, `#emailPersonaBox`; body `quien` +
+  `email_persona`; `es_hijo` sigue valiendo para clientes viejos). (2)
+  **"Mi familia · un solo pago"** (`mis_clases_screen._MiFamilia`): cuando
+  hay cuotas pendientes de 2+ personas que pago yo (misma moneda), una
+  tarjeta arriba las agrupa por persona con casillas y UN solo
+  `PagoTarjeta.cobrar`; luego `PagosService.registrarMatricula` POR
+  ACADEMIA (cada una congela su comisión y recibe su neto) y todas las
+  cuotas quedan con el mismo `operacionId` (`_pagarFamilia`). (3)
+  **Descuento familiar AUTOMÁTICO por orden:** `Academia.descuentoFamiliar`
+  (bool, default true; chips "Toda la familia / Solo hijos" en el editor
+  del app y de la web) decide quién cuenta; `Academia.ordenFamiliarPara(
+  alumnos, emailPagador, parentescoNuevo:)` = `web/academia.py::
+  orden_familiar(a, previas, parentesco)` (ESPEJO) cuenta las matrículas
+  que YA paga esa cuenta en la academia (`datos.matriculas_de_pagador`) →
+  1.º sin descuento, 2.º `descuentoHermano2`, 3.º+ `descuentoHermano3`
+  (`dto_familiar_pct`); en "Solo hijos" solo cuentan los hijos y solo
+  descuenta un hijo. Aditivo al prepago (`_pctTotal` / `_total(...,
+  dto_fam)`), también en mes a mes y en el débito automático (la cuota se
+  guarda con el precio descontado y el concepto lleva " (−10% familiar)";
+  `ordenHermano` guarda el orden; web `pagoWeb.dtoFamiliar`). El orden lo
+  calcula SIEMPRE el servidor en `/web/matricular`; el JS lo pide en
+  `GET /web/academia/{id}/descuento-familiar` (`C.dtoFam[quien]`) al
+  iniciar sesión. Alumnos del anfitrión web muestra "Familiar · paga
+  <correo>" y "N.º de la familia". Etiquetas del tarifario: "2.º de la
+  familia −10 %" (o "hermano" si es solo hijos). Test
+  `test_matricula_familiar_un_pagador_varias_personas`.
+- **CARRITO DE MATRÍCULA (pedido del director, 26-sep-2026: "quiero
+  matricularme con mi esposa en bola verde, mi hijo en bola naranja y yo
+  pago todo" → "Si haz ese carrito"):** en la ficha de la academia (app y
+  web) se agregan VARIAS personas de la familia, cada una con su programa,
+  sede, quién es (yo / hijo / familiar) y forma de pago (mes a mes o
+  adelantado × cantidad), se ve el total con los descuentos y se PAGA UNA
+  SOLA VEZ. **Descuento familiar EN SECUENCIA:** la 1.ª del carrito sigue a
+  las matrículas que YA paga esa cuenta, la 2.ª cuenta también a la 1.ª, etc.
+  (1.º completo, 2.º −H2, 3.º+ −H3, respetando `descuentoFamiliar`); si se
+  quita a alguien las siguientes se reacomodan. Lo calcula SIEMPRE el
+  servidor en la web; el navegador/app solo lo muestran. **Web**
+  (`web/academia.py`): paso 5 "¿Matriculas a más personas?" + botón
+  "➕ Guardar a esta persona y agregar otra" (`#btnAgregar`; el formulario
+  se vacía para la siguiente, "Para mí" queda deshabilitado si ya va el
+  titular), el resumen lista `.cart-it` por persona con ✕ y "Persona N (en
+  edición)", botón "Pagar S/ X · N personas"; `cfg.fam` (`_fam_base`:
+  previas, previasHijos, familiar, h2, h3; también en
+  `/web/academia/{id}/descuento-familiar`) para el orden en secuencia en el
+  JS (`ordenPara`). `POST /web/matricular-varios {academia_id, token, medio,
+  personas:[PersonaReq…]}` (máx. 8) → `_preparar_personas` (valida TODO
+  antes de cobrar, error con `persona` = índice y prefijo "Persona N:",
+  nombre repetido → `repetida`) → `_cobrar_y_matricular`: UN
+  `culqi.crear_cargo` por la suma ("Matrícula X · N personas"), una fila
+  por persona (`_fila_matricula`, ids `al_<µs+k>`, mismo `operacionId`),
+  `post_matricula` UNA vez por el total (comisión sobre lo cobrado),
+  `registrar_pago(cobro_web, concepto matricula:<id1>,<id2>…)`,
+  suscripción mes a mes por persona y UN push al dueño ("N alumnos nuevos
+  🎓"). `/web/matricular` (una persona) ahora pasa por el mismo camino.
+  Comprobante familiar `GET /academia/{id}/matriculas?ids=a,b,c` (solo el
+  pagador; un familiar con correo propio ve solo el suyo). **Un `tkn_` de
+  Culqi se usa una vez:** `SuscripcionAlumnoReq.reusar_tarjeta_de` (alumno
+  de la 1.ª suscripción, misma cuenta) hace que la 2.ª persona mes a mes
+  reuse la `crd_` guardada en vez de gastar el token otra vez (app:
+  `crearSuscripcionAlumno(reusarTarjetaDe:)`, se esperan en orden). **App**
+  (`academia_detalle_screen.dart`): `_CarritoMatricula` (ChangeNotifier en
+  `_PlanesSectionState`), la hoja `_HojaDatosAlumno(carrito:)` muestra "Ya
+  llevas N personas (S/ X)", calcula el orden con `_pseudoAlumnos` del
+  carrito, botón secundario "Agregar otra persona (pago después, todo
+  junto)" (`_DatosMatricula.agregarOtra`) y primario "Pagar todo · S/ X · N
+  personas"; `_CarritoCard` bajo los planes (filas con ✕, total, "Pagar
+  todo"); `_pagarMatriculas` = UN `PagoTarjeta.cobrar`, `registrarMatricula`
+  una vez por el total, `appState.matricular` por persona con el mismo
+  `operacionId` (`_recalcularCarrito` + `_totalMatricula`, espejo de
+  `_total` web). Test `test_carrito_de_matricula_familiar_un_solo_pago`.
+- **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
+  el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
+  enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en
+  otra pestaña. Los turnos van ORDENADOS por franja (🌅 Mañana <12 · ☀️ Tarde
+  12-18 · 🌙 Noche + madrugada del día siguiente) en tarjetas `.slot` con
+  hora, fin, PRECIO del turno y etiqueta "⚡ hora feliz" / "−N % promo";
+  ocupado = gris tachado; seleccionado = azul noche; nota "El precio varía
+  según la hora: desde … hasta …" cuando hay diferencias.
+- **LENTITUD EN TODO EL SISTEMA (queja del director, 25-sep-2026: "mucho se
+  demora para agregar un simple equipo, y lo mismo sucede en todo el
+  sistema"). CAUSA RAÍZ:** el middleware de `main.py` corría, DENTRO de cada
+  POST/PUT/DELETE y en el event loop, `pg.guardar(stores.to_state())` (abría
+  una conexión NUEVA al pooler, TLS ≈ 300-500 ms, y reescribía el snapshot
+  entero aunque nada hubiera cambiado) + `pg.guardar_normalizado(stores)`
+  (otra conexión nueva y UNA ida y vuelta por CADA fila de saldos/pagos/
+  vistas/reclamos, cientos de filas × ~20 ms). Cada guardado del app o de la
+  web pagaba segundos y, como bloqueaba el loop, la recarga siguiente también
+  esperaba. Además los endpoints `async def` de anfitrión hacían psycopg/
+  Storage bloqueantes en el loop. **ARREGLO:** (1) `pg.guardar()` usa el
+  pool y solo escribe si la huella blake2b del JSON cambió
+  (`_ultimo_hash`; `forzar=True` para saltarlo); (2) `guardar_normalizado`
+  es INCREMENTAL: huella por fila (`_norm_huellas`), solo viajan filas
+  nuevas/cambiadas y en lote (`executemany`); la primera pasada tras
+  arrancar hace el backfill completo; `limpiar_todo()` resetea huellas;
+  (3) el middleware ya NO espera: `pg.persistir_en_segundo_plano(stores)`
+  marca un `Event` y un hilo único `pcg-persistir` escribe con rebote de
+  250 ms (varios POST = una escritura); `@app.on_event("shutdown")` vacía lo
+  pendiente antes del SIGTERM de Railway; los retornos de pasarela siguen
+  sincrónicos vía `pg.persistir_ahora(stores)` (= `_persistir_ahora` de
+  pagos); (4) el middleware imprime `[perf] METHOD ruta tardó N ms` cuando
+  una request pasa de 700 ms y `[persistir] …` cuando un guardado pasa de
+  400 ms → mirar los logs de Railway antes de adivinar; (5) los endpoints
+  JSON de Mis campeonatos son `def` con `Body(None)` (threadpool) y los
+  `async def` de `anfitrion.py`/`anfitrion_academia.py`/`anfitrion_tienda.py`
+  leen el JSON/bytes en el loop y delegan la lógica a `_nombre(...)` vía
+  `run_in_threadpool` (`_leer_json`/`_JSON_INVALIDO` conservan el manejo de
+  "Datos inválidos"). **Regla:** ningún handler `async def` hace psycopg,
+  Storage ni HTTP bloqueante; y nada se persiste dentro de la request salvo
+  los GET de retorno de pasarela. Test `tests/test_persistencia_rapida.py`.
+- **Pool de conexiones Postgres (`db/pg.py::conexion()`, sep-2026):** cada
+  `_conn()` abría una conexión nueva al pooler de Supabase (TLS ≈ 300-500 ms)
+  y la ficha hacía 4-5 seguidas → 2 s de espera. `web/datos.py` usa
+  `with pg.conexion() as conn` (hasta 4 conexiones reutilizadas, TTL 4 min,
+  commit al salir / rollback+descarte si falló). Los caminos del snapshot
+  siguen con `_conn()`.
+- El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
+
+## Estrategia de ambientes (piloto → prod)
+
+**Decisión vigente (jul-2026):** para el **piloto / primeras pruebas con
+academias amigas** se usa **UN SOLO ambiente** (el actual: Railway `pg-backend` +
+Supabase dev). **DEV y QAS colapsados**; NO se monta un QAS separado todavía
+(acelera salir a pruebas). Cuando el piloto esté sólido se monta el PROD real.
+
+- **Piloto (dev/QAS, ahora):** dominio de landings **`https://pg.ebim.pe`** — se
+  reserva la marca. Culqi en `sk_test`. Supabase dev.
+- **PROD real (fase posterior):** ambiente dedicado — Supabase prod **con
+  backups** + Culqi `sk_live` + AAB a Play Store (`pe.ebim.pichangol`). Al
+  montarlo se **mueve** el custom domain `www.pichangol.app` de `pg-backend` al
+  backend PROD, y el piloto queda con `pg.ebim.pe` / el host `*.up.railway.app`.
+  Ahí `LANDING_BASE_URL = https://www.pichangol.app`.
+- Por qué reservar `pichangol.app` para PROD: no exponer la marca ni el SEO a
+  páginas de prueba, y evitar que enlaces de piloto compartidos bajo el dominio
+  de marca se rompan en el corte a PROD (los datos del piloto son desechables).
+- Referencia técnica del salto a QAS/PROD dedicado: `docs/entornos-qas-prod.md`
+  y `docs/checklist-qas.md`.
 
 ## Flujo de PROPIEDAD (clave del producto)
 
@@ -109,10 +1356,596 @@ off → redeploy inmediato en cada push). URL pública:
   validar en sitio), `service.py` (OTP), `identidad.py` (Factiliza DNI/RUC),
   `twilio_adapter.py` + `whatsapp_adapter.py` (OTP multicanal), `router.py`,
   `panel.py` (panel web admin).
+- **TORRES DE CONTROL (una por ambiente, IDÉNTICAS a la vista):**
+  - **QAS / dev** → `https://pg-backend-production-c176.up.railway.app/admin`
+    (mismo servicio: `https://pg.ebim.pe/admin`). Habla con Supabase
+    **"Pichangol"** (`iuwnpjbxsltgmsybooeg`). Es la de trabajo diario.
+  - **PRD** → `https://pg-backend-prd-production.up.railway.app/admin`. Habla
+    con **PCG-PRD** (`xjoqotzfgniinxyxvhxj`). NO se toca sin autorización.
+  - **`www.pichangol.app` → PRD** (movido ago-2026, autorizado por el director):
+    el dominio de marca apunta al servicio `pg-backend-prd`, así que
+    `https://www.pichangol.app/admin` **es la torre de PRODUCCIÓN**. Antes
+    apuntaba a dev/QAS y esa trampa hizo revisar producción creyendo que era
+    dev. QAS queda con `pg.ebim.pe` y su host `*.up.railway.app`.
+    Las landings del piloto siguen emitiendo `pg.ebim.pe` (`LANDING_BASE_URL`
+    de `pg-backend` sin cambios); la de PRD se ajusta en el corte.
+  - Cada torre muestra su ambiente en la barra lateral (`PICHANGOL_ENTORNO` +
+    ref del proyecto Supabase; PRD sale en rojo). Ante la duda, mirar ahí.
+  - **PASE A PRD del 11-sep-2026 (autorizado por el director: "Pasar todo a
+    producción. El app y la parte web"):** `prd` = merge `eadf629` de la rama
+    de desarrollo (web anfitrión completa, reserva web, cabecera móvil, sync
+    APK). Procedimiento que se siguió y se repite en cada pase: (1) `git
+    checkout -B prd origin/prd && git merge --no-ff origin/<rama-dev> && git
+    push origin prd` (Railway `pg-backend-prd` redespliega solo); (2) SQL
+    pendientes en PCG-PRD vía el conector Supabase `apply_migration`
+    (aplicados: `pichangol_chat_prefs`, `pichangol_lugares_fotos`); (3)
+    variables nuevas en `pg-backend-prd` como REFERENCIAS al servicio QAS
+    cuando el valor es el mismo (`GOOGLE_WEB_CLIENT_ID=${{pg-backend.
+    GOOGLE_WEB_CLIENT_ID}}`, `PLACES_API_KEY` igual); (4) APK/AAB de PRD =
+    `workflow_dispatch` de `build.yml` con `ref=prd` e `inputs.entorno=prod`
+    (run 1277 → `pichangol-prod-1277.aab` como artifact + APK en el Release).
+    Pendiente manual del checklist `docs/prd_railway_checklist.md`: llaves
+    Culqi live y `DATABASE_URL` de PCG-PRD si aún no están. **Pase del
+    18-sep-2026 (autorizado: "pasa todo a PRD"):** `prd` = merge `2b9b027`
+    (reclamo/registro de canchas desde la web, ficha `/lugar`, búsqueda por
+    nombre en Google, redescubrir al mover el mapa); Edge `places-cerca`
+    v6 (paginación) desplegada en PCG-PRD vía el conector Supabase
+    `deploy_edge_function` (`verify_jwt=false`, como estaba). Sin cambios
+    en `lib/` → no hizo falta APK nuevo. **`search_path` de las funciones
+    de push: aplicado en QAS (13-sep, push real verificado por el director)
+    y en PRD el 18-sep-2026** vía `apply_migration`
+    (`push_funciones_search_path`): las 3 funciones (`notificar_push_aviso`,
+    `_matricula`, `_mensaje`) con `proconfig = {search_path=public, net}`,
+    SECURITY DEFINER y su trigger activo. **Pase del 21-sep-2026
+    (autorizado: "pasa todo a PRD"):** `prd` = merge `670f631` (mapa de la
+    sede visible con `.mapa-sede` + buscador de club con Google Maps en Mi
+    academia). Solo backend/web: sin SQL, sin Edge, sin APK. **Pase del
+    22-sep-2026 (autorizado):** `prd` = merge de "Programas y tarifario en
+    Mi academia igual que el app" (solo web). **Pase del 22-sep-2026 (2.º,
+    autorizado):** `prd` = merge de "academias en el explorador web +
+    descubiertas por pestaña" (solo web). **Pase del 22-sep-2026 (3.º,
+    autorizado):** `prd` = merge `3688132` (ficha web de academia
+    `/academia/{id}` con programas, tarifario y matrícula en línea + redes
+    con logo en la tarjeta). Solo web: sin SQL, sin Edge, sin APK. **Pase
+    del 22-sep-2026 (4.º, autorizado):** `prd` = merge `b498b24` (pestaña
+    "🎓 Academias" en el explorador web). Solo web. **Pase del 23-sep-2026
+    (autorizado):** `prd` = merge `6922720` (requisitos de Culqi: Libro de
+    Reclamaciones en página propia, /legal/devoluciones, términos de
+    compra web, redes oficiales configurables; Mis canchas del anfitrión
+    agrupado por local). Solo web. Pendiente del director en PRD: cargar
+    las redes oficiales en la torre y tener ≥1 cancha verificada. **Pase del
+    23-sep-2026 (2.º, autorizado):** `prd` = merge del ícono SVG de local
+    (`ui.LOCAL_SVG`) en Mis canchas. Solo web. **Pase del 23-sep-2026 (3.º,
+    autorizado):** `prd` = merge de "ficha con el LOCAL de título + canchas
+    en verificación ocultas hasta aprobarse" (solo web).
+    **Pase del 23-sep-2026 (4.º, autorizado):** `prd` = merge `701ae4b`
+    (explorador web con una tarjeta por LOCAL, como el app). Solo web.
+    **Pase del 23-sep-2026 (5.º, autorizado):** `prd` = merge `6d9a97e`
+    (agregar otra cancha a un local existente desde la web). Solo web.
+    **Pase del 24-sep-2026 (autorizado: "Pasa a prd"):** `prd` = merge
+    `940e636` (catálogo global de servicios extra en torre/web/APK, cobro por
+    persona, Editar local separado del editor de cancha, Mis canchas por
+    deporte). Sin SQL ni Edge (el catálogo se siembra solo en el snapshot).
+    CAMBIÓ `lib/` → APK/AAB de PRD por `workflow_dispatch` de `build.yml`
+    con `ref=prd` e `inputs.entorno=prod`.
+    APK/AAB de PRD = run 1335 (`pichangol-1335.apk`, artifact
+    `pichangol-aab-prod`; el 1.º intento falló por Gradle transitorio y se
+    relanzó). **Pase del 24-sep-2026 (2.º, autorizado):** `prd` = merge
+    `c2c3bd2` (texto blanco del botón del popup del mapa). Solo web.
+    **Pase del 24-sep-2026 (3.º, autorizado: "pasa a PRD"):** `prd` =
+    merge `957ddca` (toda la torre de Facebook: publicar con fotos reales,
+    video con pulido y subtítulos, redactor con IA, agente 24×7, Google
+    Fotos, Mi música desde Drive con inicio configurable, fotos → video, pie
+    con la página oficial de Facebook). Solo backend/web: sin SQL, sin Edge,
+    sin APK. Variables nuevas en `pg-backend-prd` como REFERENCIAS a QAS:
+    `FB_PAGE_ID`, `FB_PAGE_TOKEN`, `GOOGLE_WEB_CLIENT_SECRET`
+    (`OPENAI_API_KEY` y `META_TOKEN_KEY` ya estaban). PENDIENTE MANUAL del
+    director en PRD: (a) en Google Cloud, agregar la URI de redirección
+    `https://www.pichangol.app/admin/api/redes/biblioteca/google/callback`
+    al cliente OAuth web (sin eso "Conectar Google Fotos/Drive" falla con
+    redirect_uri_mismatch en la torre de PRD); (b) el token de Facebook de
+    Railway QAS puede estar vencido → pegar un token en la torre de PRD
+    (Conexiones → 🔑 Token de Facebook); (c) el agente 24×7 arranca PAUSADO
+    en PRD: encenderlo en la torre cuando se quiera.
+    **Pase del 24-sep-2026 (4.º, autorizado: "a PRD lo mismo"):** `prd` =
+    merge `61c6651` (verificación en dos pasos de la torre + pie con la
+    página oficial de Facebook). Solo backend/web. En PRD cada operador
+    enrola su app autenticadora en su primer ingreso (secreto propio de PRD,
+    distinto al de QAS). Emergencia: `ADMIN_2FA=0` en `pg-backend-prd`.
+    **Pase del 25-sep-2026 (autorizado: "Pasar a prd"):** `prd` = merge
+    `6fa2b83` (Mis campeonatos web, formato "Grupos + eliminatoria",
+    persistencia fuera de la request, modales + preloader, acceso de
+    revisión para Culqi, enlaces sin espacios). Sin SQL ni Edge. CAMBIÓ
+    `lib/` → APK/AAB de PRD por `workflow_dispatch` (`ref=prd`,
+    `entorno=prod`). Variables en `pg-backend-prd`: `WEB_USUARIOS_PRUEBA`
+    como REFERENCIA a QAS (`${{pg-backend.WEB_USUARIOS_PRUEBA}}`; retirarla
+    cuando Culqi termine la revisión), `LANDING_BASE_URL` y
+    `PUBLIC_BASE_URL` reescritas limpias a `https://www.pichangol.app`.
+    OJO: un APK anterior a este pase pierde `fase/grupo` al guardar un
+    campeonato de grupos → actualizar el APK antes de usar ese formato.
+    **Pase del 26-sep-2026 (autorizado: "Pasa a PRD"):** `prd` = merge
+    `249d909` (unirse al plantel con el fixture publicado y sin que la
+    fecha de cierre lo bloquee, código automático para equipos viejos,
+    "Unirme a un campeonato" en Mis campeonatos + Perfil, cierre de
+    inscripciones con HORA obligatoria en relámpago, neto de torneo POR
+    RECIBIR en la cola de liquidaciones + recordatorio diario de atrasadas,
+    código del campeonato/equipo y "Donde participo" en la web). Sin SQL ni
+    Edge; sin variables nuevas (`PICHANGOL_ADMIN_WHATSAPP` y Twilio ya
+    estaban en PRD; `LIQUIDACION_AVISO_DIAS` opcional, default 3). CAMBIÓ
+    `lib/` → APK/AAB de PRD = run 1388 (`workflow_dispatch`, `ref=prd`,
+    `entorno=prod`). OJO: un APK anterior no ve "Unirme" con el fixture
+    publicado ni el ingreso de torneo como "por recibir" → actualizar.
+    **Pase del 26-sep-2026 (2.º, autorizado: "Pasa a PRD"):** `prd` = merge
+    `46ec72b` (grupos armados a mano en formato grupos, fecha real en el
+    historial de reservas, pago familiar en academias: "Para otra persona",
+    "Mi familia · un solo pago" y descuento familiar por orden). Sin SQL ni
+    Edge; sin variables nuevas. CAMBIÓ `lib/` → APK/AAB de PRD por
+    `workflow_dispatch` (`ref=prd`, `entorno=prod`). OJO: un APK anterior no
+    tiene "Para otra persona" ni la tarjeta "Mi familia" → actualizar.
+    **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
+    entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
+    `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
+    llaves `pk_test`/`sk_test`) para que la reserva y la matrícula web se
+    vean en producción (Culqi lo revisa ahí). El director las sobrescribe A
+    MANO con las live cuando lleguen; ojo: hasta entonces una tarjeta de
+    prueba deja matrículas/reservas "pagadas" sin plata real en PRD. **RLS en
+    `growth_*` de PCG-PRD: ACTIVADO el 12-sep-2026** (sin políticas ni
+    FORCE: el backend entra como `postgres`, dueño de las tablas, y no lo
+    afecta; la anon key ya no puede leerlas). **Funciones trigger de push
+    `notificar_push_*` (SECURITY DEFINER): `EXECUTE` revocado a
+    PUBLIC/anon/authenticated el 12-sep-2026 en PRD y el 13-sep en QAS
+    (push real verificado por el director)** (script tolerante a funciones
+    inexistentes: en QAS no hay `notificar_push_aviso()`, ahí el aviso va
+    por Database Webhook; `docs/piloto/supabase_push_funciones_privilegios.sql`). Los
+    triggers siguen disparando: Postgres pide EXECUTE al CREAR el trigger,
+    no al dispararlo (probado con tabla desechable: INSERT como anon →
+    dispara; llamada directa como anon → permission denied).
+- **PUBLICAR EN FACEBOOK DESDE LA TORRE (pedido del director, 24-sep-2026:
+  "una variante con fotos reales de canchas para mi primera publicación… y
+  que en el admin haya un agente que mueva las redes"):** fase 1 en
+  `backend/growth/marketing/post_redes.py` + pane `/admin` → Comunicación →
+  **"📣 Publicar en Facebook"** (`GET /admin/api/redes/pichangol`, `POST
+  …/plantilla|previsualizar|publicar`). El operador elige un LOCAL (fotos
+  reales del bucket `canchas/` que subió el dueño, `_redes_canchas` agrupa
+  por `club`) o sube fotos desde su computadora (data URL, comprimidas a
+  1600 px en el navegador), hasta 4; plantilla (`PLANTILLAS`: lanzamiento,
+  nuevo_local, promo, libre; `rellenar()` con {local} {zona} {deportes}
+  {precio} {url}); `componer()` arma la pieza con Pillow (collage 1-4 fotos,
+  degradado inferior, logo en disco, etiqueta naranja, título/subtítulo/pie;
+  formatos `cuadrado` 1080², `horizontal` 1200×630, `historia` 1080×1920; DM
+  Sans en `marketing/assets/`, sin emojis en la imagen). Vista previa en
+  base64, "Descargar PNG" y **"Publicar en Facebook"** = Graph
+  `/{FB_PAGE_ID}/photos` con el archivo en multipart (`_graph_multipart`, no
+  necesita URL pública) + `message`. Credenciales `FB_PAGE_ID` +
+  `FB_PAGE_TOKEN` (Page Access Token de larga duración, app propia en modo
+  desarrollo: los administradores publican en sus páginas SIN App Review;
+  guía en el propio pane); sin ellas el botón queda deshabilitado y la torre
+  solo compone. Historial en `stores.publicaciones_redes` (snapshot, últimas
+  50). **TOKEN DE PÁGINA vs DE USUARIO (trampa real, 24-sep-2026):** el
+  director pegó en Railway el token de USUARIO extendido y Meta respondió
+  `(#200) The permission(s) publish_actions are not available… deprecated`
+  (ese mensaje NO habla de la página: sale cuando `/{page}/photos` recibe un
+  token de usuario o uno sin `pages_manage_posts`). Ahora
+  `post_redes._resolver_token()` pregunta `/me` con el token: si el id es la
+  página → token de página (scopes vía `debug_token`); si es una persona →
+  lee `/me/permissions`, pide `/{page}?fields=access_token` y publica con ESE
+  token de página (caché 10 min); `estado_pagina()` devuelve `token_tipo`,
+  `usuario`, `faltan`, `advertencia` y el pane lo pinta (rojo si falta
+  `pages_manage_posts` o el usuario no administra la página, ámbar si es de
+  usuario y se derivó solo). `_pista_error` traduce los #200/#190 a qué
+  hacer. **TOKEN QUE VENCE (caso real, 24-sep-2026 22:00 PDT: "(#190)
+  Session has expired"):** el token de usuario del Explorador sin extender
+  dura 1-2 h. Ahora `_resolver_token()` prueba (1) el token de PÁGINA que la
+  torre ya derivó y GUARDÓ cifrado en `stores.config[fb_page_token_cifrado]`
+  (Fernet con `META_TOKEN_KEY` vía `redes.cifrar`; meta en
+  `fb_page_token_meta`; se persiste al instante con `_persistir_ahora`) y
+  (2) `FB_PAGE_TOKEN` de Railway: si es de usuario lo EXTIENDE a 60 días
+  con `META_APP_ID/SECRET` (`oauth/access_token` `fb_exchange_token`) y
+  pide `/{page}?fields=access_token` → token de página que NO vence
+  (`debug_token` con `APP_ID|APP_SECRET` da `expires_at`, `vence`=0 =
+  nunca), y lo guarda. Un guardado que Facebook rechaza se olvida solo y
+  se cae al de Railway; publicar con (#190) también lo olvida. El pane tiene
+  "🔑 Token de Facebook": el operador PEGA un token nuevo (`POST
+  /admin/api/redes/pichangol/token`, `guardar_token_operador`: analiza,
+  deriva, guarda; nunca se devuelve) sin tocar Railway, ve origen
+  (torre/Railway) y vencimiento, y puede "Olvidar el guardado"
+  (`/token/olvidar`). `configurado()` vale con `FB_PAGE_ID` + (Railway o
+  guardado). Test `test_token_vencido_se_reemplaza_desde_la_torre_sin_
+  tocar_railway`. **VIDEO (pedido
+  del director, 24-sep-2026: "también debe permitir subir videos y que haga
+  el post"):** bloque "🎬 O publica un VIDEO" en el pane: el archivo (MP4/MOV/
+  M4V/WEBM/AVI/MKV/3GP, tope `FB_VIDEO_MAX_MB`=300) sube a la torre por XHR
+  con barra de progreso (`POST /admin/api/redes/pichangol/video?nombre=`,
+  cuerpo crudo por `request.stream()` a disco en `tempfile/pichangol_redes_
+  videos`, 413 si pasa el tope; `video_id` temporal 2 h, `_limpiar_videos`;
+  `/{id}/descartar`). La vista previa muestra el `<video>` local (el
+  navegador; nada se compone en el servidor) y el título pasa a "Título del
+  video (opcional)"; subtítulo/etiqueta/pie/formato se ocultan. Publicar con
+  `video_id` → `publicar_video_facebook`: subida REANUDABLE de Graph
+  `/{page}/videos` (`upload_phase=start` con `file_size` → `transfer` por
+  trozos `video_file_chunk` con los offsets que devuelve Meta, timeout 600 s,
+  corta si no avanza → `finish` con `description`=texto, `title`,
+  `published=true`); URL `facebook.com/{video_id}`; Facebook lo procesa unos
+  minutos. Historial con `tipo: video`, `video_nombre`, `video_bytes`; el
+  temporal se borra al publicar y se conserva si Facebook falló (reintento).
+  Preloader en todo (velo, barra, botón "Publicando…"). OJO Playwright: el
+  Chromium del sandbox no decodifica H.264 (duración 0 con .mp4); probar con
+  .webm. Test `test_video_se_sube_a_la_torre_y_se_publica_por_trozos`.
+  **REDACTOR CON IA (queja del director, 24-sep-2026: "todos los posts son la
+  misma temática, todos dicen llegó Pichangol; acá debe interactuar la IA
+  para que sea más natural"):** `post_redes.redactar(cancha, tono, enfoque,
+  tema, evitar)` + `POST /admin/api/redes/pichangol/redactar`. Chip
+  "✨ Redactar con IA" es la plantilla POR DEFECTO del pane (las fijas
+  siguen): controles de TONO (cercano/divertido/informativo/motivador),
+  ENFOQUE (`ENFOQUES`: auto, beneficio, local, comunidad, tip, finde, promo,
+  duenos, academia, humor, historia), "Algo que quieras que mencione" (texto
+  del operador) y "🔁 Otra versión". Motor = Anthropic (`ANTHROPIC_API_KEY`
+  + `MARKETING_MODEL`, el mismo del CM de academias) con `_SYSTEM_REDACTOR`
+  (español natural, 0-3 emojis, un CTA, 3-6 hashtags con #pichangol, solo
+  HECHOS del local vía `_contexto_local`: nombre, zona, deportes, precio con
+  moneda del país, horario, país por `pais_de_coordenadas`; prohibido
+  "¡Llegó Pichangol!" salvo pedido). ANTI-REPETICIÓN: se le pasan
+  `recientes_no_repetir` (título + 1.ª línea de los últimos 10 del historial
+  + lo generado en la sesión, `evitar`) y `enfoques_recientes`;
+  `_elegir_enfoque` en "auto" evita los últimos 4 enfoques publicados (el
+  historial guarda `enfoque` y `fuente`). Sin llave o si el modelo falla →
+  `_banco` (variantes por enfoque con los datos reales, humor según el
+  deporte) rotando a otro enfoque antes de repetir; un enfoque pedido a mano
+  se respeta. Topes: título ≤36 (va sobre la foto), subtítulo ≤80, etiqueta
+  ≤14. Test `test_redactor_ia_varia_el_enfoque_y_no_repite_lo_publicado`.
+  **PULIDO DE VIDEO "ESTILO CAPCUT" EN CASA + SUBTÍTULOS WHISPER (plan
+  aprobado por el director, 24-sep-2026, puntos 1 y 2; CapCut NO tiene API
+  pública):** `marketing/video_pulido.py`. Con el video ya subido, el pane
+  muestra "✨ Pulir con estilo Pichangol": formato (vertical 9:16 · cuadrado
+  · original), Logo (marca de agua `_png_marca`), Intro 1,2 s (`_png_intro`),
+  Rótulo con el título (`_png_rotulo`, 0,6-5,1 s), Cierre 3 s con título y
+  www.pichangol.app (`_png_cierre`), Subtítulos automáticos y música original
+  (`musica.generar_pista`) si el video no trae audio. Todo con el FFmpeg
+  empaquetado de `imageio-ffmpeg` (johnvansickle static 7.0: tiene `ass`/
+  `subtitles`, `gblur`, `concat`, `loudnorm`, `amix`; NO tiene `drawtext`,
+  por eso los textos de marca son PNG de Pillow que se superponen). Encuadre
+  que no calza → fondo desenfocado (`split` + `gblur=38` + overlay centrado);
+  audio `loudnorm I=-16`; H.264 veryfast CRF 22 + AAC 128k + faststart, 30
+  fps; intro/cierre = imagen en bucle + `aevalsrc` silencio → `concat`.
+  **Subtítulos:** `transcribir()` extrae el audio (mono 16 kHz MP3 48k) y
+  llama a Whisper (`OPENAI_API_KEY`, `WHISPER_MODEL`=whisper-1,
+  `verbose_json` con `timestamp_granularities[] = word + segment`);
+  `partir_segmentos` deja frases ≤6 palabras / ≤4 s; `escribir_ass` genera
+  ASS con DM Sans (`fontsdir=marketing/assets`), caja oscura (BorderStyle 3)
+  y la palabra en curso en LIMA con karaoke `\k` cuando hay tiempos por
+  palabra (estilo Plano si no). El operador CORRIGE los textos en la torre
+  ("✏️ Corregir subtítulos" → "🔁 Regenerar con mis correcciones"; una línea
+  editada pierde el resaltado por palabra). Trabajo en hilo
+  (`iniciar_trabajo`, progreso real de `-progress pipe:1`), endpoints
+  `POST /admin/api/redes/pichangol/video/{id}/pulir` (409 si ya corre o si
+  piden subtítulos sin llave), `GET …/estado` (sondeo cada 1,5 s),
+  `GET …/archivo?cual=pulido|original` (la torre lo pide con fetch +
+  cabecera y lo muestra como blob; un `<video src>` no puede mandar el
+  token). El pulido queda junto al temporal (`<id>_pulido.mp4`,
+  `anotar_video(pulido=, pulido_info=, transcripcion=)`); publicar usa la
+  pulida salvo `usar_pulido=false` (radio "Publicar la pulida / el
+  original"); historial con `pulido` y `subtitulos`. Un clip de 4 s se pule
+  en ~6 s; el sondeo muestra fase y %. Test
+  `test_pulido_estilo_pichangol_con_subtitulos_whisper` (renderiza de verdad
+  con FFmpeg; Whisper simulado). **Música DE FONDO o PROTAGONISTA (pregunta
+  del director, sep-2026):** chips "🎵 Música" Automática · De fondo ·
+  Protagonista · Sin música + "Estilo" Chill · Enérgica · Épica en el pulido
+  (`musica_modo` + `mood` en `PulirVideoRequest`, validados contra
+  `video_pulido.MODOS_MUSICA/MOODS_MUSICA`). `video_pulido.mezcla_musica(
+  tiene_audio, opciones)` decide volúmenes: fondo = 0.16 bajo la voz (0.55
+  sola si es mudo), protagonista = música 0.8 y audio original a 0.22 de
+  ambiente, no = solo el original (un mudo queda con pista en silencio,
+  Facebook prefiere que exista), auto = fondo con voz / protagonista mudo.
+  `musica: bool` sigue por compatibilidad; el agente usa `auto` con mood
+  `energetico` (jugadores) / `chill` (dueños). Backlog del plan: (3) plantillas en la nube
+  (Shotstack/Creatomate) si se quieren transiciones vistosas, (4) voz en off
+  ElevenLabs, (5) IG Reels con el mismo video.
+  **El entorno de Claude NO alcanza Storage de Supabase ni bancos de
+  fotos (proxy 403): las piezas con fotos reales se componen en el backend.**
+  **AGENTE DE MARKETING 24×7 (pedido del director, 24-sep-2026: "agentes de
+  marketing que vivan 24×7, un creativo y un community manager, estratega
+  comercial, que publiquen todos los días a las 7:00 am promocionando
+  Pichangol —descargar la app / reservar en la web— e incitando a los dueños
+  a administrar sus canchas"):** `marketing/agente_redes.py` + tarjeta
+  "🤖 Agente de marketing 24×7" arriba del pane de Facebook. **REGLA del
+  director (24-sep-2026, tras ver un borrador con la primera academia): la
+  publicidad es de la MARCA Pichangol (la app y la web), NUNCA de un local
+  por defecto; más adelante solo los locales PRO que paguen suscripción
+  tendrán publicidad aquí.** Por eso: el plan base no lleva el enfoque
+  "local" (`PLAN_DEFAULT`: lun beneficio · mar DUEÑOS · mié historia · jue
+  tip · vie finde · sáb comunidad · dom DUEÑOS), el `tema` que viaja al
+  redactor dice "no menciones ningún local", la IMAGEN es arte de marca
+  (`_arte_marca`: `arte_ia.fondo_para(deporte_del_día, semana_ISO, tema)`,
+  fotorrealista sin texto ni logos, cacheado en Storage por clave; sin
+  proveedor → `static/brand/portada_facebook.png`; en la receta queda
+  `brand:arte` y se recompone con la fecha del borrador) y `_locales()`
+  devuelve SOLO locales verificados con foto cuyo dueño tiene
+  `stores.pro_activo(dueno)` (la `muestra` de `_redes_canchas` ahora trae
+  `dueno`). Un local Pro entra únicamente con la casilla "Destacar locales
+  Pro" (`agente_fb_destacar_pro`, apagada por defecto) y en el enfoque
+  "local"; sin eso, "local" cae a "beneficio". **Estratega**
+  (`planificar`): plan editorial SEMANAL editable en la torre (audiencia
+  `jugadores|duenos`, enfoque o "auto"), objetivo comercial por audiencia
+  (`AUDIENCIAS[..]["objetivo"]`), rotación de locales Pro
+  (`agente_fb_ultimo_local`). **Creativo** (`crear_pieza`): arte de marca
+  (o fotos del local Pro destacado) + `post_redes.redactar` (IA, sin
+  repetir) + `componer` 1080². **Community
+  manager** (`tick` cada 60 s desde el cron de `main.py`
+  `_iniciar_cron_agente_redes`): si `agente_fb_activo=1`, hora local ≥
+  `agente_fb_hora` (zona `agente_fb_zona`: Lima/La_Paz/Guayaquil, ZoneInfo
+  con fallback a offset fijo) y `agente_fb_ultimo_dia` ≠ hoy → `ejecutar()`:
+  modo `auto` publica (`origen agente_auto`) o modo `aprobar` deja un
+  BORRADOR (receta sin bytes en `stores.agente_fb.borradores`, snapshot; la
+  imagen se recompone al verla/aprobarla); si Facebook rechaza queda como
+  borrador con `motivo` y NO cuenta el día (reintenta al aprobar). Si el
+  backend estuvo caído a las 07:00, publica al volver el mismo día
+  (`pendiente_hoy`). Bitácora `stores.agente_fb.corridas`. Torre: activo,
+  hora, zona, modo, tono, plan por día, "📝 Generar borrador ahora", "📣
+  Publicar ahora" (cuenta como la de hoy), borradores con Ver pieza / editar
+  título-subtítulo-texto / 🔁 Otra versión / ✅ Aprobar y publicar / 🗑
+  Descartar. Endpoints `GET/POST /admin/api/redes/agente`, `POST …/correr`,
+  `GET …/borrador/{id}/imagen`, `POST …/borrador/{id}/editar|aprobar|
+  descartar|regenerar`. Config en `stores.config` claves `agente_fb_*`
+  (arranca PAUSADO: el director lo enciende en la torre). Historial de
+  publicaciones con `fuente: agente`, `audiencia`, `origen`. Test
+  `test_agente_marketing_24x7_publica_a_las_7_y_alterna_audiencias` (reloj
+  simulado con `_ahora`). Backlog: Instagram con la misma pieza, métricas
+  de alcance por post (insights de Graph) para que el estratega aprenda.
+  Portada de la página: `tool/portada_facebook.py` →
+  `static/brand/portada_facebook.png` (1640×720). Test `test_redes_pichangol.py`.
+  **GOOGLE FOTOS = BIBLIOTECA DE MARCA + VIDEOS CON MÚSICA (pedido del
+  director, 24-sep-2026: "quiero enlazar mi Google Fotos para que desde ahí
+  agarres las fotos y videos y hagas el post; ojo, los videos deben tener
+  música"):** `marketing/biblioteca.py`. Google CERRÓ en 2025 la lectura de
+  la biblioteca completa por API: una app solo lee lo que el usuario ELIGE en
+  el selector oficial (**Google Photos Picker API**). Flujo: (1) **Conectar**
+  una vez: OAuth con el MISMO cliente "Aplicación web" del login
+  (`GOOGLE_WEB_CLIENT_ID` + nueva env `GOOGLE_WEB_CLIENT_SECRET`), scope
+  `photospicker.mediaitems.readonly`, `state` firmado HMAC 10 min (el
+  callback `GET /admin/api/redes/biblioteca/google/callback` vuelve SIN
+  cabecera de admin; la firma es la prueba); el *refresh token* se guarda
+  CIFRADO en `stores.config[gfotos_refresh_cifrado]` (Fernet vía
+  `redes.cifrar`, como el de Facebook) + `gfotos_cuenta`. **Setup por
+  ambiente (manual del director):** `GOOGLE_WEB_CLIENT_SECRET` en Railway,
+  habilitar "Google Photos Picker API" en el proyecto de Google Cloud y
+  registrar la URI de redirección `{PUBLIC_BASE_URL}/admin/api/redes/
+  biblioteca/google/callback` en el cliente OAuth (QAS `https://pg.ebim.pe/
+  …`, PRD `https://www.pichangol.app/…`); sin secreto la sección lo explica y
+  `/autorizar` responde 409. (2) **Elegir**: `POST …/google/sesion` abre una
+  sesión del Picker (`pickerUri` en otra pestaña), la torre sondea `GET
+  …/google/sesion/{id}` y, cuando `mediaItemsSet`, `importar_sesion` DESCARGA
+  cada elemento con el token (foto `=w2048-h2048`, video `=dv`; las URLs de
+  Google caducan en ~1 h) y lo SUBE a Storage `canchas/marca/biblioteca/
+  bm_<id>.jpg|mp4` (`almacen.subir(max_bytes=)`, tope video
+  `BIBLIOTECA_VIDEO_MAX_MB`=150); catálogo en `stores.biblioteca_marca`
+  (snapshot; `google_id` evita duplicados; `usos`/`ultimo_uso`); cierra la
+  sesión del Picker. (3) **Usar**: sección "📷 Google Fotos · biblioteca de
+  marca" bajo el paso 1 del pane (Conectar / Elegir en Google Fotos /
+  Quitar; una foto se marca para el collage, un video "▶ Usar video" →
+  `POST /admin/api/redes/pichangol/video/desde-biblioteca/{id}` lo copia al
+  flujo de video temporal, con la casilla "🎵 Música de fondo" ENCENDIDA por
+  defecto en el pulido). El **agente 24×7** prefiere la biblioteca sobre el
+  arte IA: `crear_pieza` → `elegir_fotos` (las MENOS usadas primero, 3 para
+  jugadores / 1 para dueños) y, en **días de video** (`DIAS_VIDEO` = jue/vie/
+  sáb) con `agente_fb_videos != nunca` (casilla "Videos con música"),
+  `elegir_video(14)` = un video sin usar en 14 días → `render_video` =
+  `video_pulido.pulir` cuadrado con logo, intro, rótulo, cierre y **`musica:
+  True` SIEMPRE** (música original `musica.generar_pista`; si el clip trae
+  audio se mezcla bajito) → `publicar_video_facebook`; póster para la torre
+  = frame + marca (`_poster_video`). Sin video disponible → foto de la
+  biblioteca; sin biblioteca → arte IA → portada. La receta guarda
+  `biblioteca_ids`/`video_id` y `_publicar_pieza` hace `marcar_uso` solo si
+  Facebook aceptó; historial con `tipo: video`, `musica`, `biblioteca`.
+  Acceso revocado (`invalid_grant`) → se desconecta solo y pide reconectar;
+  desconectar conserva lo importado; quitar borra también de Storage. Test
+  `test_biblioteca_google_fotos_importa_y_el_agente_publica_video_con_musica`
+  (Google simulado, FFmpeg real con clip mudo → sale con audio).
+  **UX DEL PANE = ASISTENTE POR PASOS (queja del director, 24-sep-2026: "me
+  confundo mucho, se me hace difícil navegar en la pantalla"):** el pane
+  "Publicar en Facebook" (`renderRedes`) ya no es una página larga sino una
+  tarjeta "📣 Redes de Pichangol" con PESTAÑAS (`redesUI.tab`, recordado en
+  `localStorage` `pichangol_redes_ui`): **✍️ Publicar ahora** = asistente de
+  4 pasos tipo acordeón (`.rd-paso`, uno abierto a la vez, cabecera con
+  número/✓ + resumen + "Editar", botones Siguiente/←): 1 Contenido (tiles
+  📷 Fotos / 🎬 Video + "De dónde": Google Fotos · Fotos de un local · Mi
+  computadora; tira "Elegidas n/4"; al elegir un video de la biblioteca o
+  terminar de subir uno salta solo al paso 2), 2 Estilo (fotos: formato,
+  etiqueta, pie; video: `pulidoHtml` con 🎵 Música y Estilo), 3 Texto
+  (plantilla/IA, título, subtítulo, texto) y 4 Revisar y publicar (botones +
+  `rd_msg`); vista previa sticky a la derecha. **🤖 Agente 24×7** (`#rd_agente`),
+  **🕘 Historial** (completo) y **🔌 Conexiones** (estado + token de Facebook +
+  guía, Google Fotos conectar/elegir/desconectar + gestión con ✕, motores del
+  ambiente). Píldoras de estado en la cabecera (Facebook / Google Fotos) que
+  llevan a Conexiones. TODOS los inputs (`rd_titulo`, `rd_etq`, `rd_formato`…)
+  quedan SIEMPRE en el DOM (pasos/pestañas ocultos con `display:none`), porque
+  `renderRedes` re-lee sus valores en cada repintado. `renderBiblioteca` pinta
+  en tres contenedores (`#rd_biblioteca` fotos, `#rd_biblioteca_videos`,
+  `#rd_biblioteca_con`) y los mensajes van a `.rd-bib-msg` (`bibMsg`). OJO:
+  la cabecera del paso es `<div class="rd-h">`, NO `<header>` (el CSS global
+  de la torre pinta `header b` en blanco y los títulos desaparecían).
+  **MI MÚSICA DESDE GOOGLE DRIVE (pedido del director, 24-sep-2026: "subo mi
+  música en una carpeta de mi Google Drive y desde ahí la elijo"; Spotify NO
+  sirve: su API no entrega audio y Facebook silencia música comercial):**
+  `marketing/musica_drive.py`. (1) **Conectar Drive** = OAuth INCREMENTAL con
+  el mismo cliente de Google Fotos (`biblioteca.url_autorizacion(scopes_extra=
+  [drive.readonly])`, `include_granted_scopes`; los scopes concedidos se guardan
+  en `stores.config[gfotos_scopes]` al canjear el código y `musica_drive.
+  conectado()` exige el de Drive; scope RESTRINGIDO de Google → en modo
+  pruebas vale para los usuarios de prueba). (2) **Carpeta**: enlace
+  `…/folders/<id>` o búsqueda por nombre (`buscar_carpetas`, Drive `files.list`
+  de carpetas); `elegir_carpeta` valida `mimeType` de carpeta y guarda
+  `gdrive_musica_carpeta[_nombre]`. (3) **Sincronizar** (`sincronizar`): lista
+  los audios de la carpeta Y SUS SUBCARPETAS (el director organiza por
+  género: Musica/Cumbia, Musica/Rock en español…; `listar_audio` recursivo,
+  ≤3 niveles, cada pista con `carpeta` = subcarpeta; mp3/m4a/wav/ogg/aac/flac
+  por mime o extensión, tope `MUSICA_PISTA_MAX_MB`=30), descarga con
+  `files/{id}?alt=media` los
+  nuevos o con `md5Checksum` distinto, los sube a Storage
+  `canchas/marca/musica/mm_<id>.<ext>` y QUITA del catálogo (y de Storage)
+  los que ya no están en Drive; catálogo `stores.musica_marca` (snapshot,
+  `usos`/`ultimo_uso`). (4) **Usar**: `PulirVideoRequest.musica_pista` (id) →
+  el endpoint resuelve `musica_ruta` (copia local desde Storage,
+  `descargar_a_temporal`) y `video_pulido.pulir` la mete con `-stream_loop -1`
+  (bucle si es más corta; `amix duration=first` la corta) con fundidos y el
+  volumen del modo (fondo/protagonista) en vez de `generar_pista`; el agente
+  24×7 (`planificar` → `elegir_pista` = la menos usada; receta `musica_id`/
+  `musica_nombre`; `marcar_uso` solo si Facebook aceptó; historial
+  `musica_nombre`) usa la pista propia y, sin pistas, la sintetizada. Torre:
+  Conexiones → "🎵 Mi música · carpeta de Google Drive" (`renderMusica`,
+  conectar, enlace/buscar carpeta, Sincronizar, lista con `<audio controls>` y
+  ✕ que no toca Drive), paso 2 del video → "Pista" (`#rd_pista`: Original
+  sintetizada, `optgroup` por subcarpeta con "🎲 Cualquiera de <género>" =
+  `carpeta:<nombre>` y "🎲 Cualquiera de mis pistas" = `cualquiera`, que
+  `musica_drive.resolver_pista` convierte en la menos usada; con pista se
+  oculta "Estilo"),
+  píldora "● Mi música · N pistas". Endpoints `GET /admin/api/redes/musica`,
+  `GET …/musica/google/autorizar`, `GET …/musica/carpetas?q=`, `POST
+  …/musica/carpeta {enlace}`, `POST …/musica/sincronizar`, `POST
+  …/musica/{id}/quitar`. Test `test_mi_musica_desde_google_drive_en_videos_y_
+  agente` (Drive simulado; FFmpeg real mezcla un WAV en bucle sobre un video
+  mudo y se verifica con volumedetect). Backlog: música con licencia por API
+  (Mubert / ElevenLabs Music) como catálogo de estilos.
+  **DESDE QUÉ SEGUNDO ARRANCA LA PISTA + FOTOS → VIDEO CON MOVIMIENTO
+  (pedido del director, 24-sep-2026: "hay veces que la música tarda 2 o 3
+  segundos en sonar… y me gustaría trabajar con fotos para que salgan
+  estilos con movimiento, CapCut o similar"):** (1) `PulirVideoRequest.
+  musica_desde` (segundos, 0-600): `video_pulido.recortar_pista` corta la
+  pista ANTES del bucle (`-ss`), así el video arranca ya con música. La
+  torre SUGIERE el valor: al sincronizar Drive, `musica_drive._inicio_
+  sugerido` corre `video_pulido.detectar_inicio` (FFmpeg `silencedetect`,
+  umbral −35 dB, hasta 15 s) y guarda `inicio_sugerido` por pista; el paso 2
+  del video muestra "Empieza en el segundo [n]" (`#rd_pista_desde`,
+  `musInicioSugerido`) con "📍 Usar donde está el reproductor"
+  (`pulDesdeReproductor` toma `currentTime` del `<audio>` de la vista
+  previa). El agente 24×7 manda `musica_desde = inicio_sugerido` de la
+  pista elegida. (2) `marketing/foto_video.py::generar(fotos, salida,
+  formato, segundos)`: Ken Burns (zoom/paneo lentos con ease in-out, 5
+  movimientos rotando), fundido desde negro, cruces de 0,5 s entre fotos y
+  cierre a negro; frames de Pillow enviados por pipe a FFmpeg (rawvideo →
+  H.264 CRF 22, 30 fps, sin audio); formatos `vertical` 1080×1920 (Reels),
+  `cuadrado` 1080², `horizontal` 1280×720; hasta 10 fotos, 1,5-6 s por
+  foto. `POST /admin/api/redes/pichangol/video/desde-fotos {fotos (URLs o
+  data URLs), formato, segundos}` deja el clip como VIDEO TEMPORAL
+  (`anotar_video(desde_fotos=n)`) y entra al mismo flujo de pulido (logo,
+  intro, rótulo, cierre, música). En el paso 1 del asistente, con fotos
+  elegidas, botón "🎬 Convertir estas fotos en un video con movimiento" +
+  selects formato / s por foto (`fotosAVideo`, `fvOcupado`); al terminar
+  salta solo al paso 2 con `redesUI.tipo='video'`. Con pista propia el pie
+  del pulido recuerda tener licencia para Facebook. Test
+  `test_fotos_a_video_con_movimiento_y_pista_desde_el_segundo` (3 fotos →
+  clip real de ~8 s; pulido con `musica_desde=1.0` → la pista de prueba
+  con 1 s de silencio ya suena desde el arranque, volumedetect). Backlog:
+  transiciones vistosas (Shotstack/Creatomate), plantillas de texto
+  animado, voz en off.
+- **DATOS DE LA EMPRESA CONFIGURABLES DESDE LA TORRE (pedido del director,
+  sep-2026):** razón social, tipo y número de documento fiscal (RUC/NIT),
+  dirección, ciudad corta, **WhatsApp POR PAÍS** (Perú, Ecuador, Bolivia:
+  claves `contacto_whatsapp_pe|ec|bo`, las MISMAS que ya usaba el APK vía
+  `reclamos.contacto_whatsapp(pais)` → una sola fuente app+web; el pane viejo
+  "Contacto WhatsApp" se fusionó aquí), correo de contacto, correo de
+  privacidad (opcional; vacío = el de contacto) y horario viven en
+  `stores.config` (claves `empresa_*`, defaults en `CONFIG_DEFAULT`) y se
+  editan en la torre `/admin` → Comunicación → **"🏢 Datos de la empresa"**
+  (`GET/POST /admin/api/empresa`, valida correo/WhatsApp local 7-10 dígitos/
+  obligatorios). Un país sin número NO se muestra en la web; con varios, la
+  tarjeta Contacto lista uno por línea con bandera SVG y hay un botón
+  "WhatsApp Perú / Ecuador / Bolivia" por país. Migración única en
+  `Stores.load_state` (`empresa_wa_migrado`): los snapshots viejos tenían
+  Perú vacío y se siembra con el número que ya estaba publicado. Fuente
+  única: `backend/growth/empresa.py` (`datos()` ya escapado + derivados
+  `whatsapps`, `wa_url`, `whatsapp_bonito`, `anio`; `rellenar(html)`
+  sustituye los marcadores `{{EMPRESA}} {{DOC_ETIQUETA}} {{RUC}} {{DIRECCION}}
+  {{CIUDAD}} {{WA_URL}} {{WHATSAPP}} {{WHATSAPP_LISTA}} {{WA_BOTONES}}
+  {{CORREO}} {{CORREO_PRIVACIDAD}} {{HORARIO}} {{ANIO}}`). Lo
+  consumen: `legal/home.html` (secciones Contacto/Términos/Privacidad/Libro
+  que la portada anida vía `web/marca.py`), el pie de TODAS las páginas web
+  (`ui.footer`), `/legal/*` (`legal/router.py`, `CONTACTO` ahora es dinámico),
+  la respuesta de `POST /reclamaciones` y los textos "Dudas:" del checkout,
+  Mis reservas y el comprobante. **Nunca volver a escribir RUC/correo/
+  teléfono a mano en HTML**: cada ambiente (QAS y PRD) tiene los suyos en su
+  snapshot y el director los cambia sin publicar código. Test
+  `test_datos_de_la_empresa_configurables_desde_la_torre`.
+- **OBSERVACIONES DE CULQI AL AFILIAR www.pichangol.app (22-sep-2026) y cómo
+  se cubrieron:** (1) **Libro de Reclamaciones "no implementado de forma
+  correcta"** → antes solo era una sección anclada (`/#reclamaciones`) al
+  fondo del explorador; ahora tiene PÁGINA PROPIA `GET /libro-de-reclamaciones`
+  (alias `/legal/libro-de-reclamaciones`, `legal/router.py::
+  libro_de_reclamaciones`, `ui.shell` con cabecera y pie) con el formato de
+  hoja del D.S. 011-2011-PCM: distintivo rojo `ui.LIBRO_SVG`, datos del
+  proveedor (razón social, RUC, domicilio, correo de la torre), consumidor
+  (+ `c_apoderado` si es menor), bien contratado, detalle/pedido, texto legal
+  (no impide denunciar ante INDECOPI; 15 días hábiles prorrogables), y tras
+  registrar (`POST /reclamaciones`, mismo endpoint) muestra la HOJA completa
+  con número y fecha, "Observaciones del proveedor: pendiente" y botón
+  "Imprimir / guardar copia" (`window.print`, CSS `@media print` oculta
+  cabecera/pie/formulario). La sección de la portada sigue y enlaza a la
+  página. (2) **Política de cambios y devoluciones con razón social
+  explícita** → `GET /legal/devoluciones` (reservas con `WEB_CANCELACION_
+  HORAS`, matrículas, marketplace 7 días, saldo/Pro, cómo pedirla, mismo
+  medio ≤7 días hábiles); la sección `#devoluciones` de `home.html` nombra a
+  `{{EMPRESA}}` y enlaza. (3) **Términos visibles** → `/legal/terminos` suma
+  "3-bis. Compras en la web" (precio visible, Culqi, comprobante, Libro) y
+  el pie + menú ☰ enlazan Términos / Devoluciones / Libro (páginas propias,
+  ya no anclas). (4) **Redes sociales** → la web NO tenía íconos; ahora
+  `empresa.REDES` (instagram/facebook/tiktok/youtube) son campos de la
+  torre → Comunicación → Datos de la empresa (`empresa_instagram|facebook|
+  tiktok|youtube`, URL oficial o @usuario, `_url_red` valida el dominio) y
+  el pie muestra "Síguenos" + ícono SOLO de las configuradas
+  (`ui.redes_pie`, `empresa.redes()`); sin configurar, ningún ícono (Culqi
+  rechaza íconos vacíos). **Facebook tiene RESPALDO automático (24-sep-2026,
+  el director pegó `facebook.com/search/top?q=pichangol`, que es una
+  BÚSQUEDA, no la página):** si `empresa_facebook` está vacío,
+  `empresa.facebook_conectada()` enlaza la página desde la que PUBLICA la
+  torre (`FB_PAGE_ID`): el `link` real que devuelve Graph (lo guarda
+  `post_redes.estado_pagina` en `stores.config[fb_page_link]` al abrir el
+  pane de Facebook, persistido al instante) o, mientras no se consulte,
+  `facebook.com/<id>`. `_url_red` RECHAZA enlaces `search/`, `login/`,
+  `sharer/`, `hashtag/`… (no son la página). Los SVG viven en `ui.RED_SVG`
+  (router/academia los reusan). (5) **Botón de compra funcional** → la causa real era que PCG-PRD
+  tenía 0 canchas públicas y `CULQI_PUBLIC_KEY` vacía (ver "Culqi en PRD"):
+  sin canchas reservables ni llave, el revisor no ve ningún checkout. Hay que
+  tener al menos una cancha VERIFICADA con dueño en PRD (y la academia con
+  matrícula). Test `test_requisitos_culqi_libro_devoluciones_terminos_y_redes`.
 - **Panel web `/admin` = TORRE DE CONTROL del operador (SaaS).** Página HTML
   self-contained, co-marca **Pichangol + EBIM** (solo aquí), protegida por
   **`ADMIN_PANEL_TOKEN`** (header `X-Admin-Token`, no viaja en URL). Endpoints
-  `/admin/api/*`. Aquí el operador aprueba/rechaza reclamos y configura el **modo
+  `/admin/api/*`. **SEGURIDAD DEL LOGIN (pedido del director, 24-sep-2026:
+  "esta dirección es crackeable"; `propiedad/admin_auth.py` +
+  `panel.py`):** (1) **Verificación en dos pasos TOTP** (RFC 6238, apps
+  Google/Microsoft Authenticator/Authy; sin dependencias nuevas): con
+  `ADMIN_2FA=1` (default; `0` = corte de emergencia) `POST /admin/api/login`
+  devuelve, tras usuario+contraseña, un PRE-token `p1.` de 5 min (NO sirve
+  como sesión) y el paso: `enrolar` (1.ª vez: `secreto`, `otpauth`, `qr`
+  data URL vía lib `qrcode`) o `codigo`; `POST /admin/api/login/2fa {pre,
+  codigo, recordar}` valida el código (±30 s, sin reuso del mismo contador),
+  al enrolar guarda el secreto CIFRADO (`stores.config[admin_2fa_<correo>]`,
+  Fernet con `META_TOKEN_KEY` vía `redes.cifrar`) y devuelve 8 CÓDIGOS DE
+  RECUPERACIÓN `XXXX-XXXX` de un solo uso (se guarda solo su SHA-256; la
+  torre los muestra UNA vez con Copiar/Descargar .txt); "Confiar en este
+  dispositivo 30 días" = token firmado `d1.` en `localStorage`
+  `pichangol_admin_dev` que el login manda en `dispositivo` y salta el 2.º
+  paso; `olvidar_dispositivos` sube un epoch por usuario que invalida los
+  emitidos antes. (2) **Anti fuerza bruta real:** la IP sale de
+  `X-Forwarded-For` (Railway termina TLS en su proxy; antes `request.client`
+  era SIEMPRE el proxy y el bloqueo era para todos o para nadie) y se bloquea
+  por IP **y por usuario** (5 fallos → 60 s, se duplica cada racha hasta
+  15 min), también en el 2.º paso. (3) **Bitácora** `stores.admin_accesos`
+  (últimos 200: login_ok, clave_mala, 2fa_mal, bloqueado, enrolado…, con IP;
+  línea `[admin]` en logs). (4) **Cabeceras** en el middleware de `main.py`:
+  HSTS, nosniff, Referrer-Policy en todo; en `/admin*` además
+  `X-Frame-Options: DENY`, Permissions-Policy y `Cache-Control: no-store`
+  en la API. (5) "Entrar con token de administrador" ya NO se ofrece en la
+  pantalla cuando hay usuarios (`GET /admin/api/gate`); el token clásico
+  sigue valiendo en la cabecera para scripts y como último recurso. (6)
+  `/web/foto?refrescar=1` ya no acepta el token en la URL (queda en logs):
+  solo cabecera `X-Admin-Token`. Torre: Mantenimiento → **"🔐 Seguridad de la
+  torre"** (`GET /admin/api/seguridad`): estado de mi 2.º paso, "Generar
+  códigos de recuperación nuevos" (`POST …/seguridad/2fa/recuperacion`, pide
+  un código vigente), "Olvidar mis dispositivos" (`…/dispositivos/olvidar`),
+  tabla de operadores con "Restablecer 2 pasos" (`…/2fa/restablecer
+  {correo}`: perdió el teléfono → vuelve a enrolar; también con el token
+  clásico desde curl) y últimos accesos. Usuarios siguen en
+  `ADMIN_PANEL_USUARIOS`. Tests en `test_admin_login.py`. Aquí el operador aprueba/rechaza reclamos y configura el **modo
   de aprobación**: `marcha_blanca` (aprobar activa al instante) | `nuevo_flujo`
   (exige validación en sitio). Global + override por cancha (`/admin/api/modo`,
   `/admin/api/modo/cancha`; lógica en `reclamos` + `stores.modo_aprobacion`).
@@ -132,14 +1965,113 @@ off → redeploy inmediato en cada push). URL pública:
   > `GET /reclamo/{cancha_id}` (estado), `/lugar-reclamado`, `/otp/*`,
   > `/reclamo/validar` (validador, protegido por código+GPS). Aprobación por
   > WhatsApp usa `aprobar_por_codigo` (firma Twilio), no el endpoint HTTP.
+- **ESPACIOS EN `LANDING_BASE_URL`/`PUBLIC_BASE_URL` (caso real QAS,
+  25-sep-2026: "Ver afiche" llevaba a `https://www.pichangol.app%20/c/…`,
+  ERR_NAME_NOT_RESOLVED):** la variable de Railway QAS tenía el dominio de PRD
+  con un espacio al final. Ahora `config.url_limpia()` normaliza ambas al
+  leerlas (sin espacios ni barra final, en cualquier orden) y
+  `anfitrion_campeonatos._base_url()` / `marketing.router._base_landing`
+  la usan; QAS quedó con `LANDING_BASE_URL=https://pg.ebim.pe` (como manda
+  la estrategia de ambientes). Test
+  `test_enlaces_publicos_sin_espacios_aunque_la_variable_los_traiga`.
+- **`PUBLIC_BASE_URL` por ambiente (trampa resuelta sep-2026):** es la base
+  de TODAS las URLs que el backend le entrega a terceros para volver (retorno
+  y cancelación de PayPhone, callback de Libélula, página puente `/pagos/ec/ir`,
+  media del CM). QAS (`pg-backend`) DEBE ser `https://pg.ebim.pe` y PRD
+  (`pg-backend-prd`) `https://www.pichangol.app`. QAS quedó con el dominio de
+  marca tras moverlo a PRD y todos los retornos de pasarela de pruebas caían en
+  producción (que no conoce el pago) → PayPhone "No autorizado" + reversa a
+  los 5 min. Al registrar dominios autorizados en una pasarela, registrar el
+  host de `PUBLIC_BASE_URL` de ESE ambiente.
 - **Config (env, `config.py`):** `ADMIN_PANEL_TOKEN`, `FACTILIZA_API_TOKEN`,
   `PICHANGOL_ADMIN_WHATSAPP`, `TWILIO_*`, `WHATSAPP_*`, `OTP_CANAL_PREFERIDO`
   (`whatsapp|twilio_whatsapp|sms`), `VALIDADOR_ACTIVA_AUTOMATICO`,
   `RECLAMO_VALIDACION_GPS_MAX_M=150`, `RECLAMO_UBICACION_MAX_M=150`, `DATABASE_URL`,
+  `LIBELULA_APPKEY` (Bolivia), `PAYPHONE_TOKEN` + `PAYPHONE_STORE_ID`
+  (Ecuador; se sacan en PayPhone Business → Developer → Aplicaciones; sin
+  ambos el módulo queda inactivo y `/pagos/ec/config` responde
+  `disponible:false`). PayPhone exige CONFIRMAR cada cobro antes de 5 min o
+  lo revierte: lo hace `/pagos/ec/retorno` al instante y, de respaldo, el APK
+  manda el `transaction_id` al consultar `/pagos/ec/pago/{id}`.
+  **Persistencia en GET (trampa, sep-2026):** el middleware de `main.py`
+  solo guarda el snapshot tras POST/PUT/DELETE; los RETORNOS de pasarela
+  llegan por GET (el navegador del cliente vuelve) → todo handler GET que
+  mute plata debe llamar `pagos/router.py::_persistir_ahora()` (lo hacen
+  `/pagos/ec/retorno`, `/pagos/ec/pago/{id}` y `/pagos/ec/cancelado`). Se
+  perdió la primera recarga real de PayPhone por esto.
   `APP_API_KEY` (clave app↔backend: si está seteada, los endpoints PÚBLICOS de
   `propiedad/router.py` exigen la cabecera `X-App-Key` — solo el APK oficial la
   trae; vacía = no se exige, para rollout gradual). Debe coincidir con el
-  dart-define `APP_API_KEY` del APK.
+  dart-define `APP_API_KEY` del APK. `CM_REQUIERE_PRO` (candado del community
+  manager con IA: si `1`, sólo un correo con **Pichangol Pro** vigente
+  —`stores.pro_activo(email)`— puede generar post/reel o activar el CM;
+  `marketing/router.py:_require_pro` responde **402 `requiere_pro`**. Fail-open:
+  apagado por defecto y no bloquea a APKs que no mandan `email` — sólo a quien SÍ
+  se identifica y no es Pro. El APK manda `email` y ante 402 ofrece activar Pro).
+- **Recargas por QR (Yape directo) — código HECHO, EN STANDBY (decisión del
+  director ago-2026):** NO activar hasta tener un **QR de Yape EMPRESA a
+  nombre de Pichangol/EBIM** (un QR personal mata la confianza). El flujo
+  completo ya está: el usuario yapea al QR, sube su constancia
+  (`RecargaQrScreen`, bucket `canchas/recargas/`) y el OPERADOR
+  aprueba/rechaza en la torre (`/admin` → Cobros → Recargas QR): al aprobar
+  se acredita el saldo (pago `recarga`, medio `yape_qr`) y llega push vía
+  `pichangol_avisos`. Mientras las envs de Railway estén VACÍAS, la opción
+  queda OCULTA en el APK (así se queda por ahora). Para activar cuando exista
+  el Yape Empresa: `RECARGA_YAPE_QR_URL` (imagen del QR) +
+  `RECARGA_YAPE_NUMERO` + `RECARGA_YAPE_NOMBRE`. Endpoints
+  `/pagos/recarga-qr*` (app) y `/pagos/recargas-qr` (admin). Una pendiente
+  por usuario; tope S/1000.
+- **Auth por usuario billetera (endurecimiento PROD):** `PAGOS_AUTH_USUARIO=1`
+  exige ID token de Google (header `X-User-Token`) en saldo/movimientos/reset;
+  apagado default. Opcional `GOOGLE_OAUTH_CLIENT_IDS` (audiencia).
+- **Promos de billetera (hecho ago-2026):** BONO DE RECARGA (config en torre
+  `/admin` → Cobros → Promociones: % extra + recarga mínima + tope; 0% =
+  apagado; se acredita solo en TODOS los caminos de recarga — Culqi síncrono,
+  webhook, QR aprobado, Libélula — idempotente por cargo, pago
+  `bono_recarga` + push 🎁) y CUPONES de saldo (crear/desactivar en torre;
+  canje `/pagos/cupon/canjear`, un canje por usuario, pago `cupon`). APK:
+  banner de la promo en billetera y en Recargar; "¿Tienes un cupón?" en la
+  billetera. El costo lo asume Pichangol (marketing).
+- **MARCHA BLANCA / onboarding de dueños (hecho ago-2026):** (1) **Pro de
+  CORTESÍA**: torre `/admin` → Cobros → Pichangol Pro → "🎁 Pro de cortesía"
+  (correo + 30/60/90/180 días; revocable; `POST /pagos/pro/cortesia`, admin).
+  La cortesía NUNCA se auto-renueva del saldo (candado en
+  `procesar_renovaciones_pro`) y queda FUERA del MRR. (2) **BIENVENIDA
+  AUTOMÁTICA** (config torre, mismo pane: `bienvenida_pro_dias` +
+  `bienvenida_saldo_soles`, 0/0 = off): al ACTIVARSE la primera cancha de un
+  dueño (`_bienvenida_al_activar` en los 3 caminos de reclamos), recibe días
+  de Pro cortesía + **SALDO DE REGALO POR PAÍS** (decisión del director,
+  sep-2026: **S/ 20 · \$ 5 · Bs 35**; claves `bienvenida_saldo_soles|usd|bob`,
+  el país sale de las coordenadas del reclamo vía `paises.py::
+  pais_de_coordenadas`, espejo de las cajas del APK) (`stores.saldos_promo`, bolsillo
+  SEPARADO que SOLO consumen comisiones vía `debitar_comision` — regalo
+  primero, plata real después; NO liquidable/transferible/gastable en
+  Pro/torneo/bodega, así no se vuelve plata real que salga de PCG). Un regalo
+  por correo (`stores.bienvenidas`), pago auditable `bono_bienvenida` + push
+  🎁. `/pagos/saldo` devuelve `saldo_promo_soles`; el APK lo pinta en la
+  billetera (banner 🎁 en `cuenta_screen`, silencia el aviso "saldo bajo"
+  mientras haya regalo).
+- **Limpieza de Storage (hecho ago-2026):** el APK borra cada archivo cuando
+  muere su dueño lógico (`lib/data/storage_limpieza.dart` + los `eliminar` de
+  canchas/estados/productos/bodega/campeonatos, avatares viejos al cambiar foto,
+  y estados+docs de identidad en "Dejar en virgen"). Para lo ACUMULADO antes,
+  la torre `/admin` → Mantenimiento → **"Limpiar almacenamiento"** hace el
+  barrido (`backend/growth/storage_limpieza.py`: detecta por SQL contra
+  `storage.objects` y borra por Storage API). **Principio: nunca borrar lo que
+  no se reconoce** — cada consulta parte de un JOIN contra la tabla dueña y
+  sólo marca el archivo si esa fila dice que murió; lo que no corresponde a
+  nada conocido se REPORTA (`desconocidos`), no se borra. Buckets cubiertos:
+  `canchas`, `estados`, `productos`, `chat` (avatares viejos + media de chats
+  borrados), `canales`, `grupos`, `verificacion`. **Jamás se borran**
+  `canchas/recargas/*` (constancias), `ilustraciones/`, `afiches/` ni
+  `bodega/packshot*` (arte compartido del backend). Cuidado al escribir SQL de
+  detección: `NOT IN` con un solo NULL devuelve vacío en silencio (usar JOIN),
+  y una denylist de carpetas se rompe apenas el backend crea una carpeta nueva.
+  La torre muestra cuántos archivos ALCANZA A VER (radiografía): un "0
+  huérfanos" sin ese dato no distingue "limpio" de "no veo nada". Opcional:
+  cron `STORAGE_BARRIDO_AUTO=1` (apagado por defecto) cada
+  `STORAGE_BARRIDO_HORAS`. Requiere las policies de
+  `docs/piloto/supabase_storage_limpieza.sql`.
 - **Tests:** `cd backend/growth && python3 -m pytest -q` (deben pasar todos).
   Cumplimiento Ley 29733 (DNI = dato personal: solo validar dueño, no publicar).
 
@@ -148,6 +2080,40 @@ off → redeploy inmediato en cada push). URL pública:
 
 ## Build (GitHub Actions → APK)
 
+- **Nivel de API (Play Store):** `tool/configure_platforms.py::configurar_target_sdk`
+  fuerza `compileSdk`/`targetSdk` a `SDK_OBJETIVO` (**36** desde ago-2026) y
+  silencia el aviso del AGP viejo (`android.suppressUnsupportedCompileSdk`). Sin
+  esto Play RECHAZA el App Bundle. **El mínimo SUBE con el tiempo** (34 → 35 →
+  36): cuando Play lo vuelva a subir, se cambia esa constante y nada más. Los
+  subproyectos de plugin van al mismo nivel. Ojo: apuntar a 35+ activa el modo
+  borde a borde — revisar que ninguna pantalla quede tapada por las barras del
+  sistema.
+- **AAB para Play:** sólo lo generan los builds MANUALES (`workflow_dispatch`).
+  `entorno=dev` → paquete `pe.ebim.pichangol`; `entorno=qas` → `.qas`, que
+  **rompe el login con Google** (el cliente OAuth está registrado para el
+  paquete de producción) — no usar `.qas` para pruebas con usuarios reales.
+
+- **LOGIN CON GOOGLE EN LA VERSIÓN DE PLAY (trampa resuelta sep-2026):** Play
+  App Signing re-firma el AAB, así que la app bajada de la tienda NO lleva la
+  firma del keystore del CI. Google Sign-In exige un cliente OAuth Android por
+  cada certificado (paquete + SHA-1); si falta uno, `ApiException: 10`. Hoy hay
+  CUATRO huellas registradas en Firebase `fire-b9e79` (app `pe.ebim.pichangol`)
+  y cada una con su cliente OAuth en Google Cloud (Firebase NO crea el cliente
+  solo — hay que crearlo a mano en Credenciales):
+  1. keystore del CI (sideload) `B9:37:…:81:07`;
+  2. **llave de firma ANTERIOR de Play** `B1:37:61:D0:…:CC:FB:83:D1` — Play la
+     generó el 29-ago-2026 y la rotó el mismo día; la consola la esconde al
+     fondo de "Firma de apps → Claves de firma de la app anteriores" con 0 %
+     de instalaciones, pero el APK entregado la lleva como PRIMER certificado
+     del historial (`signingCertificateHistory[0]`) y ES la que Google Sign-In
+     valida. Fue la causa de un día entero de "error 10" con todo lo demás
+     bien configurado;
+  3. clásica actual `A5:C1:…:51:73:18`; 4. poscuántica `4C:55:…:42:EC:BB`.
+  Para diagnosticar sin adivinar: **Ajustes → Diagnóstico → "Firma de esta
+  instalación"** muestra el SHA-256 del primer certificado del historial y el
+  origen (Play vs sideload); se compara contra las huellas de Play Console.
+  Ojo: la consola muestra SHA-1 y SHA-256 del MISMO certificado y no se parecen
+  en nada — comparar siempre el mismo algoritmo.
 - Workflow `.github/workflows/build.yml`: jobs Android + iOS.
   `--build-number=${{ github.run_number }}` (versionCode único).
 - APK con nombre único `dist/pichangol-<run_number>.apk` (evita cache de APK
@@ -158,6 +2124,133 @@ off → redeploy inmediato en cada push). URL pública:
   `https://github.com/dcalagua/canchas-app-lima/releases/tag/v0.1.0`.
 - Tras instalar, confirmar versión en Ajustes → Apps → Pichangol → build N.
 
+## Marketplace Pichangol
+
+Feed **global único** de productos (raquetas, pelotas, indumentaria…) que
+publican **dueños/academias y cualquier usuario VERIFICADO**. El comprador paga
+en la app (Culqi) y **coordina la entrega por chat** con el vendedor; Pichangol
+cobra su comisión (5% mín S/2) y deja el **neto "por recibir"** del vendedor
+(misma contabilidad que una reserva online).
+- **Modelo/datos:** `lib/models/producto.dart`, `lib/data/productos_repo.dart`
+  (Supabase tabla `pichangol_productos` + bucket público `productos`, fail-safe).
+- **Comprador:** `marketplace_screen.dart` (feed + buscador + categorías) →
+  `producto_detalle_screen.dart` (Comprar con `PagoTarjeta.cobrar` →
+  `PagosService.venta` → coordinar por chat). Acceso: Perfil → "Marketplace".
+- **Vendedor:** `mis_productos_screen.dart` + `editar_producto_screen.dart`.
+  Acceso: **botón flotante "Vender" DENTRO del Marketplace** (no en el Perfil) y
+  Modo anfitrión → "Mi tienda".
+  **Candado:** publicar exige `appState.puedeVender` (verificado **o** dueño);
+  si no, manda a "Verificar identidad". Badge "Vendedor verificado ✓" (icono
+  `Icons.verified` lima) en el feed y la ficha vía `appState.estaVerificado`.
+- **Backend:** `POST /pagos/venta` (`backend/growth/pagos/router.py`), tipo de
+  pago `venta_producto`, idempotente por `venta_id`; entra en
+  `liquidaciones()`/"por recibir". El catálogo NO vive en el backend growth (es
+  Supabase).
+
+## Mi bodega (POS ligero del dueño, función Pro)
+
+Pestaña **Bodega** del panel del dueño (`bodega_screen.dart`): caja rápida
+(venta en 3 s, descuenta stock, medio efectivo/yape/cortesía — la plata NO
+pasa por Pichangol, cero comisión), catálogo con stock y alertas de
+reposición, reportes (hoy/7 días/top/valorizado) y **carta digital pública**
+`/b/{carta_id}` con QR imprimible (`/b/{id}/qr.png`, lib `qrcode` en el
+backend growth). `carta_id` = hash FNV del correo (no expone el email).
+Datos: `lib/models/bodega.dart`, `lib/data/bodega_repo.dart`, tablas
+`pichangol_bodega_productos`/`pichangol_bodega_ventas`
+(SQL `docs/piloto/supabase_bodega.sql` + `supabase_bodega_moneda.sql`).
+Candado Pro dentro de la pantalla.
+**Fase 2 — PEDIDOS A LA CANCHA (hecho):** el jugador pide desde la ficha del
+club (`pedir_bodega_screen.dart`, botón "Bodega del local" en club_detalle,
+solo locales verificados) → push al dueño (`avisarPedidoBodega`) → pestaña
+"Pedidos" de la bodega: Confirmar/Rechazar y "Entregado · cobrar" (registra
+venta + descuenta stock). Candados: toggle `acepta_pedidos` (off default) +
+zonas configurables + GPS ≤250 m + expira a los 10 min. Tablas
+`pichangol_bodega_pedidos`/`pichangol_bodega_config`
+(SQL `docs/piloto/supabase_bodega_pedidos.sql`).
+**CUENTA ABIERTA (hecho):** "apúntamelo, pago al salir" — el dueño la activa
+(toggle `permite_cuenta`, off default) con TOPE por cuenta (`tope_cuenta`,
+chips 50/100/200/300/sin tope, moneda del local). "A la cuenta 📒" aparece al
+entregar un pedido (cliente identificado) y en la caja (solo cuentas ya
+abiertas); el stock baja al entregar, la VENTA se registra UNA sola vez al
+CERRAR la cuenta (cobro efectivo/yape/cortesía). Cliente ve "llevas X" en
+vivo en `pedir_bodega_screen`. Candados de concurrencia en cerrar/anotar
+(solo si sigue abierta) y en todo cambio de estado de pedidos
+(`cambiarEstadoPedidoSi`: cancelar vs confirmar, cobro doble entre equipos).
+Tabla `pichangol_bodega_cuentas` + columnas config
+(SQL `docs/piloto/supabase_bodega_cuentas.sql`).
+**Packshots IA (hecho):** imagen automática del producto = foto real del
+dueño > packshot IA genérico por TIPO sin marcas (`marketing/packshot.py`,
+`GET /bodega/packshot/{tipo}`, Storage `bodega/packshot_*.jpg`,
+`packshotTipoDe`/`ImagenProductoBodega` en el APK) > emoji.
+**Fase 3 — PAGO CON SALDO (hecho ago-2026):** el cliente puede PREPAGAR el
+pedido con su saldo Pichangol en la confirmación (solo si alcanza y la
+moneda coincide): debita al pedir, el pedido nace `pagado=true` (columna
+SQL `supabase_bodega_pago.sql`; insert ESTRICTO si pagado — sin la columna
+no se cobra) y el dueño recibe el monto COMPLETO "por recibir" (bodega =
+CERO comisión, `venta_bodega` con comisión congelada 0; egreso del cliente
+`bodega_pago`). El dueño VERIFICA el pago contra el backend antes de
+entregar sin cobrar (`GET /pagos/bodega-pago/{id}`) y la venta se registra
+con medio `saldo`. Cancelación/rechazo → `POST /pagos/bodega-reembolso`
+(idempotente, bloqueado si ya se liquidó al dueño) + push 💸. La cuenta
+abierta sigue cobrándose al cierre (efectivo/yape).
+
+## Mensajería: arquitectura DEVICE-FIRST (cache, tal cual WhatsApp)
+
+**REGLA de arquitectura (transversal a TODA la mensajería):** chats, inbox,
+estados/historias, canales, avatares y media deben comportarse **exactamente
+como WhatsApp** — **pre-cargados y cacheados**, nunca "cargando" al reabrir. Toda
+pantalla/feature nueva de mensajería se diseña **device-first**: pinta al
+instante desde el teléfono y solo sincroniza/actualiza en segundo plano.
+
+Piezas ya implementadas (reusar, no reinventar):
+- **Inbox (`mensajes_screen.dart`):** caché local **SQLite** (`data/db_local.dart`,
+  `DbLocal.leerConvs/guardarConvs`) → pinta al instante; refresco en silencio
+  (`_cargar(silencioso:true)`), sin spinner de pantalla completa. **Anti-shrink:**
+  la bandeja NUNCA se encoge en un refresco (conserva de la caché los chats que
+  una pasada no reconstruyó porque su fuente aún no cargó); auto-refresca cuando
+  cargan academias/alumnos. El borrado explícito se respeta con `chatOculto`.
+- **Chat (`chat_screen.dart`):** mensajes device-first desde SQLite; solo baja lo
+  nuevo. Fotos/avatares con **`CachedNetworkImage`/`CachedNetworkImageProvider`**
+  (caché en disco vía `flutter_cache_manager`), nunca `NetworkImage` crudo.
+- **Estados/Novedades:** pre-cache de la media de las historias vigentes
+  (`AppState._precacharEstados`), avatares/íconos de Novedades pre-calentados
+  (`novedades_screen._precachar` + `CachedNetworkImageProvider`); video
+  device-first (archivo local → caché → red y baja a caché).
+- **Canales:** lista cacheada (`AppState.leerCanalesCache/guardarCanalesCache`) y
+  detalle device-first (`_seedDesdeCache`), video con la misma estrategia.
+- **Perfiles** (nombre/foto) persistidos en `SharedPreferences`
+  (`AppState._perfiles`) para no re-bajarlos cada vez.
+
+- **UNA PERSONA = UN CHAT (hecho sep-2026):** con la misma persona podían
+  existir varios hilos (`cancha_<dueño>|<jugador>` desde la ficha,
+  `directo_a|b` desde contactos, `<academiaId>|<alumno>`) y salían como filas
+  DUPLICADAS. `mensajes_screen._fusionarPorPersona` agrupa por
+  `_personaDe(conv)` (correo de la contraparte) y deja UNA fila: el hilo
+  principal es el más reciente (ahí se envía lo nuevo), `_Conv.hilos` lleva
+  todos, no leídos sumados, título = nombre del local/academia si soy el
+  jugador/alumno, si no el nombre de perfil. `ChatScreen(hilosExtra:)` muestra
+  el historial de todos los hilos (`MensajesRepo.streamHilos`, `inFilter`) y
+  decide "mío" por correo en los mensajes de otros hilos. Fijar/archivar/
+  silenciar/eliminar aplican a TODOS los hilos de la fila. `hiloCancha`
+  ahora pasa el correo del dueño a minúsculas (evita hilos gemelos por
+  mayúsculas).
+- **BANDEJA EN LA NUBE (hecho sep-2026):** eliminar/fijar/archivar/silenciar
+  vivían SOLO en `SharedPreferences` → al reinstalar o volver a entrar, los
+  chats eliminados reaparecían. Ahora se espejan en Supabase
+  `pichangol_chat_prefs` (email, hilo, oculto_en, fijado, archivado,
+  silenciado; SQL `docs/piloto/supabase_chat_prefs.sql`) vía
+  `ChatPrefsRepo`: cada acción sube su fila (`AppState._subirPrefChat`) y
+  `sincronizarBandejaChats` (al login forzado + al abrir Mensajes, cada 10
+  min) baja y fusiona (la nube manda sobre los hilos que conoce; lo solo-local
+  se sube). Regla "reaparece si llega algo más nuevo" intacta (`chatOculto`
+  también limpia la nube). "Eliminar mi cuenta" y "Dejar en virgen" borran
+  las filas.
+
+**Al agregar cualquier cosa nueva a mensajería:** primero pregúntate "¿esto cómo
+lo cachea WhatsApp?" y hazlo cache-first (disco + pre-warm) antes de mostrar
+spinners. Un spinner de pantalla completa al reabrir un chat/inbox/estado se
+considera un bug.
+
 ## Diseño (handoff)
 
 `docs/handoff_v2/` (referencia). Paleta oficial EBIM, **DM Sans**, premium
@@ -166,15 +2259,372 @@ lima). Splash en verde claro `#AEEA94` con el pin + amarillo `#F2C94C` donde
 aporta. Eslogan: "Reserva, juega, repite." La co-marca con EBIM solo en el panel
 web admin; la app del jugador es 100% Pichangol.
 
+**Estándar de UI/UX: estilo Airbnb (siempre).** Toda pantalla/componente nuevo
+sigue el lenguaje Airbnb sobre la paleta EBIM. **REGLA del director (sep-2026):
+TODO el diseño, app y web, debe ser similar al de Airbnb** — antes de dibujar
+una pantalla nueva, buscar la pantalla equivalente en airbnb.com (Explorar =
+portada, Mis reservas = "Viajes", ficha = anuncio, filtros = modal Filtros,
+cabecera, menú ☰, calendario) y calcarla con la paleta y el logo de Pichangol;
+no inventar layouts propios. Rasgos Airbnb:
+- **Pastillas/chips:** blancas, borde gris muy suave (`#E4E4E4`), relieve leve
+  (sombra `0x0F000000`), esquinas muy redondeadas. Seleccionado = relleno gris
+  plomo (`#EBEBEB`) o tinte lima, **nunca borde negro**.
+- **Tarjetas:** fondo blanco, radio 16–18, sombra sutil, sin bordes duros.
+- **Tipografía:** DM Sans (equivalente a Cereal), jerarquía clara, tamaños
+  generosos (títulos 15–19+, texto charcoal `#222`).
+- **Fondos** claros; acentos con lima/bosque, no saturar.
+- **Pagos/estados:** caja centrada animada (procesando → check), logos de marca
+  reales (Yape morado, Visa/Mastercard). Ver `widgets/marcas_pago.dart`,
+  `widgets/pago_procesando.dart`.
+- **NADA de campos de texto libre para el usuario (REGLA de todo el app).**
+  Toda entrada de datos del usuario se hace por SELECCIÓN (chips, listas,
+  pickers, toggles) con opciones curadas — nunca un TextField libre para datos
+  descriptivos. Motivo: data limpia y filtrable, cero moderación de contenido,
+  menos fricción de tipeo. Texto libre SOLO donde es inevitable por naturaleza:
+  nombre propio, celular, búsquedas, mensajes de chat y montos. Si un feature
+  "necesita" un campo libre, proponer primero la versión con opciones.
+- **Popups en la WEB (regla del director, 25-sep-2026: "evitemos este tipo de
+  mensajes popup y usemos siempre modales, y también un preload en caso haya
+  demora"):** PROHIBIDO `confirm()`/`alert()`/`prompt()` del navegador en
+  toda la web. `ui.JS_NAV` (va en todas las páginas del `shell`) expone
+  `pcgConfirmar({titulo, mensaje, confirmar, cancelar, destructivo, icono})`
+  → `Promise<bool>` y `pcgAvisar({...})` (mismo formato que
+  `dialogo_pichangol.dart`: tarjeta blanca radio 24, ícono en burbuja,
+  primario esmeralda o rojo si `destructivo`, secundario de texto; Esc y clic
+  fuera = cancelar). **Preloader:** `pcgCargando('Guardando…')` muestra el
+  velo con spinner (tarjeta blanca), `pcgCargando(false)` lo quita,
+  `{demora: 300}` lo muestra solo si la respuesta tarda; `pcgRecargar(msg)`
+  y `pcgIr(url, msg)` dejan el velo puesto mientras el navegador navega
+  (así no se ve la página vieja tras guardar). Los `post()` de Mis
+  campeonatos ya lo llevan; en el resto de anfitrión se usa en eliminar /
+  quitar / publicar. `pcgToast` tiene fallback global ahí mismo. Test
+  Playwright: `page.on('dialog')` debe quedar en cero.
+- **Popups: UN SOLO formato (REGLA de todo el app).** Todo diálogo de
+  confirmación/aviso usa `widgets/dialogo_pichangol.dart`: `confirmarPichangol(
+  context, titulo:, mensaje:, textoConfirmar:, destructivo:, icono:)` (devuelve
+  `bool`) para Sí/No, o `avisarPichangol(...)` para un solo botón. Formato: tarjeta
+  blanca radio 24, ícono opcional en burbuja, título charcoal, mensaje tenue,
+  primario relleno lima (rojo `clayOscuro` si `destructivo`), secundario de texto.
+  **No** usar `AlertDialog`/`showDialog` suelto con estilos propios en pantallas
+  nuevas; migrar los viejos a este componente cuando se toquen.
+- **Íconos del menú lateral CON COLOR (Airbnb "con vida"):** los íconos de los
+  rails/barras de navegación van coloreados por sección (no gris plano). La
+  pestaña **Mensajes lleva un ícono de chat NORMAL** (`Icons.chat_bubble` /
+  `_outline`, vía `IconoMensajesLogo`/`IconoChatPichan`, que heredan el color
+  del tema o reciben el de la sección) — decisión del director sep-2026:
+  ni el logo de PCG ni la burbuja con la "P" (ambas se probaron y se
+  revirtieron). El globo de chat de las fichas (ChatBurbuja) sí usa el pin de
+  Pichangol como fallback sin logo del local.
+- **Avatares SIEMPRE con foto real:** cualquier avatar de jugador (ranking,
+  jugadores disponibles, retos —incluido el reto de dobles—, chat, perfil, etc.)
+  DEBE mostrar la foto del perfil (`appState.fotoDe(email)` o `usuario.fotoUrl`),
+  cayendo a la inicial de color solo si no hay foto. Nunca dejar un ícono
+  genérico donde va una persona. Si la lista trae correos, precargar perfiles
+  con `appState.cargarPerfiles([...])` para que la foto esté disponible.
+- **Contenido CENTRADO en pantallas anchas (REGLA de todo el app):** en tablet u
+  horizontal el contenido NUNCA se estira de borde a borde; va **centrado con
+  ancho máximo**. Envolver el `body:` (o el ListView/formulario) con
+  `AnchoTablet` (`lib/widgets/responsive.dart`, canónico) — o el equivalente
+  `AnchoLectura`. `maxWidth` según el contenido: ~560–640 para menús/formularios
+  de una columna (p. ej. Perfil), ~760–900 para fichas/listas con tarjetas. En
+  móvil vertical no cambia nada (devuelve el hijo tal cual). Toda pantalla nueva
+  debe respetarlo; el spinner/loader también centrado.
+
+## Entrenador virtual (visión IA, HECHO fase 0 ago-2026)
+
+"Coach que ve tu video": el jugador graba su golpe (≤20 s) →
+`entrenador_screen.dart` (Perfil → Entrenador virtual; deporte/golpe por
+chips, multi-deporte) sube el clip al bucket `canchas/entrenador/` →
+`POST /entrenador/analizar` (backend `entrenador/router.py`): extrae frames
+(imageio-ffmpeg), visión IA (`ENTRENADOR_MODEL`, default haiku) con prompt de
+coach → informe JSON (resumen, fortalezas, correcciones con `tip_reloj` ≤42
+chars, drills, `encuadre_ok`). Historial en Supabase
+`pichangol_entrenador_analisis` (SQL `docs/piloto/supabase_entrenador.sql`;
+PRD ya aplicado). **TIPS AL RELOJ** (idea del director): toggle "⌚ Tips en mi
+reloj" → las correcciones salen como avisos push cortos vía
+`pichangol_avisos` y Android los ESPEJA al smartwatch emparejado (sin app de
+reloj); sin reloj quedan en el informe. Candados: `ENTRENADOR_REQUIERE_PRO`
+(fail-open, como CM), `ENTRENADOR_LIMITE_MES` (20), `ENTRENADOR_MAX_MB` (40),
+solo videos del propio Supabase. El video NO se conserva en el backend.
+Fase 2 (backlog): pose estimation on-device (ML Kit — ojo plugin nativo vs
+Flutter 3.24.5, probar en CI aislado).
+
+### Páginas legales (Play Store / Ley 29733)
+
+`backend/growth/legal/router.py` sirve, públicas y sin login:
+`/legal/privacidad`, `/legal/terminos`, `/legal/eliminar-cuenta` (la que exige
+Play para apps con registro) y `/legal/eliminacion-datos` (+ callback POST de
+Meta, no tocar). En PRD son `https://www.pichangol.app/legal/...`.
+La privacidad se reescribió (ago-2026) para declarar lo que la app realmente
+recoge: ubicación, contenido subido, mensajes, documento de identidad, pagos vía
+Culqi, notificaciones, videos del entrenador analizados por IA y transferencia
+internacional. **Al agregar un dato nuevo hay que actualizarla**: una política
+que omite un dato que sí se recoge hace que Play rechace la ficha y no cubre
+nada ante la ley. **"Eliminar mi cuenta"** vive en Perfil (último ítem, en rojo)
+→ `AppState.eliminarMiCuenta`: reusa `resetVirgen` (todo lo que el usuario creó,
+local y nube) y suma su identidad (perfil + avatar + verificación), con doble
+confirmación. NO borra comprobantes de pagos (obligación contable) ni los
+mensajes que ya entregó a otros — así está declarado en la página pública.
+
+### Pago online: interruptor por ambiente (ago-2026)
+
+`GET /config/canal` (público, el APK ya lo consultaba) devuelve además
+`pago_online`. Lo decide `propiedad/panel.py::pago_online_disponible()`: sólo
+una llave **`sk_live`** de Culqi lo habilita; `PAGO_ONLINE_ACTIVO=1|0` fuerza
+el valor (probar en QAS con llaves de prueba, o corte de emergencia en PRD).
+
+En el APK, `appState.pagoOnlineDisponible` (arranca en **false**, fail-safe) hace
+que el checkout de `club_detalle` ofrezca SÓLO "Reservar y pagar en la cancha".
+Motivo: sin cobro real, "Pagar ahora" lleva a un pago imposible — y simularlo
+sería mentirle al jugador y llenar la billetera del dueño de plata inexistente.
+Al cargar la llave live, el botón de pago aparece **sin publicar un APK nuevo**.
+Ojo: con seña configurada el flujo exige pago online, así que durante esta fase
+las canchas del piloto van con **seña 0**.
+
+### Feature flags por ENTORNO (`lib/config/features.dart`)
+
+El CI inyecta `--dart-define=ENTORNO=dev|qas|prod`, y de ahí salen `kEntorno` y
+`kEsProduccion`. Lo que aún se prueba se ata al entorno, NO a un booleano suelto:
+así el APK de PROD lo oculta solo, sin depender de que alguien recuerde apagarlo
+antes del corte.
+- `kEntrenadorVirtualActivo = !kEsProduccion` — **Entrenador virtual sigue en
+  QAS y NO sale a producción** (decisión del director, ago-2026). Único acceso:
+  Perfil → "Entrenador virtual". El backend `/entrenador/*` queda intacto.
+- `kServiciosPichangolActivo = false` — Servicios Pichangol, oculto en el piloto.
+- `kHerramientasPruebaActivas = !kEsProduccion` — la **Zona de pruebas** de
+  Ajustes ("Dejar en virgen", "Empezar de cero", **"Depurar academias"**,
+  simuladores de llamada) NO viaja en el APK de la tienda: "Depurar academias"
+  lista todas las academias con el correo de su dueño y borra cualquiera en la
+  nube. En producción el usuario tiene Perfil → "Eliminar mi cuenta"; el
+  **diagnóstico de push** vive fuera de esa zona (sección "Diagnóstico") porque
+  sólo lee y sirve para dar soporte. `OCULTAR_PRUEBAS=1` las apaga también en
+  dev/QAS.
+
 ## Pendientes / backlog
 
+- **Community Manager AUTÓNOMO (servicio estrella, ingreso recurrente):** la
+  visión del director NO es "generar posts para que el dueño publique a mano"
+  (eso ya existe, `community_manager_screen.dart` + `backend/growth/marketing/`).
+  Es un **agente que mueve las redes de la academia/cancha SOLO, sin intervención
+  manual** (suscripción ~S/100/mes): genera foto/video/copy/hashtags y **publica
+  automático** en su Instagram/Facebook, en un calendario; el dueño solo entra a
+  sus redes y ve que ya se posteó. Debe ser **configurable** (auto vs
+  aprobar-antes; frecuencia; tono). **Estado (Fase 0 ya en código):**
+  (1) **generación de media** — flyer de marca (`marketing/flyer.py`, Pillow,
+  fuente empaquetada, plantillas por tipo) **y reels/video** (`marketing/reel.py`,
+  Pillow+`imageio-ffmpeg` **empaquetado**, Ken Burns con variedad de movimiento,
+  9:16, con **música ORIGINAL libre de regalías** —`marketing/musica.py`, síntesis
+  numpy pad+kick por mood según el tipo, muxeada como AAC); (2) **scheduler** (`main.py` cron 30 min → `cm.procesar_cm_
+  pendientes` en hilo) pre-arma flyer+reel por academia suscrita; (3) **auto-
+  publish Meta** — `redes.publicar(texto, imagen_url, video_url)` sube foto **o
+  reel** (IG Reels: contenedor `media_type=REELS` + poll de estado + publish; FB
+  `/videos`), con **modo sandbox** que simula todo (test end-to-end sin Meta);
+  el CM lo dispara solo si `auto_publicar` + redes conectadas (`cm._auto_publicar`
+  usa `config.PUBLIC_BASE_URL` para la URL pública de la media). **APK:** en "Post
+  del día" hay toggles "Publicar automático" + "Publicar solo en mis redes" y botón
+  "Crear/Compartir reel". **Bloqueador real:** **App Review + Business Verification
+  de Meta** (permisos `pages_manage_posts` / `instagram_content_publish`; la ruta
+  `produccion` no corre hasta que Meta apruebe — ojo cuenta ya tuvo problemas).
+  Pendiente: (4) guardrails/marca, música licenciada en el reel, push "tu post está
+  listo" al dueño (vía FCM de Supabase, el backend growth no hace FCM), IA de imagen
+  para negocios sin buenas fotos, y el candado "usuario pro" (#28).
+- **Perfil/página de cada academia = HUB (NO clonar Facebook):** decisión de
+  producto — NO construir una red social horizontal desde cero (efectos de red
+  brutales, alto costo, bajo ROI). En su lugar, la **landing pública
+  (`/l/{id}`, SEO en pichangol.app)** evoluciona a la "página" del negocio
+  (galería, horario, reseñas, botón **Seguir**), y el engagement in-app se hace
+  con lo que YA existe (**canales** = difusión tipo WhatsApp Channels, **estados/
+  historias**, **rankings**, **retos**, **marketplace**). El CM autónomo empuja
+  el contenido HACIA AFUERA (IG/FB, donde ya está la audiencia). Tesis: **capa
+  social VERTICAL (deporte) sobre un core transaccional (reservas/pagos)**, no un
+  FB genérico. Comparable de mercado que valida el modelo: **Playtomic** (reservas
+  + comunidad + rankings + perfiles de jugador); otros: MindBody/ClassPass,
+  Spond/Heja (gestión de equipos). Pendiente: barrido de mercado ligero.
 - Conexión con redes sociales (Fase 1): stub, **habilitado solo tras verificar
   dueño** (`docs/conexiones-sociales.md`).
 - Política **RLS de DELETE** en `pichangol_canchas` (para que el borrado también
   sea en la nube / sobreviva reinstalación).
+- ~~`search_path` fijo en las funciones trigger de push~~ HECHO en QAS y PRD
+  (sep-2026, `docs/piloto/supabase_push_funciones_search_path.sql`). Si se
+  crea una función `notificar_push_*` nueva, agregarla a la lista del script
+  y correrlo en ambos ambientes.
 - Validación en sitio (motorizado) como fase de endurecimiento.
 - Apelación a Meta (cuenta bloqueada) + Twilio Sandbox como respaldo OTP.
 - Idea biométrica para validación de dueño (madurar).
+- **Validación de documento en "Verificar identidad" (por país):** ya implementado
+  Perú (DNI vs RENIEC/Factiliza; trae fecha de nacimiento → edad para categorías
+  de campeonato; no guarda foto del doc). Pendientes:
+  1. **Ecuador (cédula):** el usuario tiene un API propio → falta enchufarlo
+     (endpoint + token) y activar el camino "por número" poniendo `consultaDoc:
+     true` en `PaisConfig['EC']` + `consultar_cedula` en el backend (espejo de
+     `identidad.consultar_dni`). Devolver también fecha de nacimiento.
+  2. **Bolivia (CI):** no hay API oficial → **OCR on-device** (recomendado:
+     `google_mlkit_text_recognition`, gratis/offline) para (a) confirmar que la
+     imagen ES un documento (palabras "CÉDULA/IDENTIDAD/ESTADO PLURINACIONAL",
+     patrón de número/fecha) y bloquear imágenes cualquiera, y (b) extraer nº +
+     nacimiento. **Ojo build:** agregar plugin nativo puede romper Flutter 3.24.5
+     → probar en CI aislado antes de mergear. Alternativa sin plugin: OCR en la
+     nube (Google Vision), pero cuesta y viaja el dato personal.
+- **Explorar carga rápida (idea del usuario, para más adelante):**
+  1. **GPS colgado con mala señal:** Explorar se queda en "Detectando tu
+     ubicación…" indefinidamente. Fix: timeout al GPS + caer a última ubicación
+     conocida / default por país + botón reintentar; mostrar canchas ya con esa
+     ubicación y reordenar por cercanía cuando el GPS resuelva.
+  2. **Cosechar canchas a Supabase (no bajar todo en vivo cada vez):** llenar
+     `pichangol_canchas` una vez con las descubiertas de Google (place_id +
+     nombre + dirección + lat/lng + deporte) y que la app LEA de la tabla
+     (instantáneo, offline-friendly, menos costo Google); la reserva sigue en
+     vivo. Cuidados: **no** guardar fotos de Google (caducan + licencia) → foto
+     diferida/placeholder en la lista y foto real sólo en canchas reclamadas;
+     **refresco periódico** de la zona (frescura + ToS). Prioridad: que la lista
+     NO se bloquee por GPS ni por fotos.
+
+### Memoria sesión pagos/reservas (ago-2026)
+
+**Ya HECHO (en el APK):**
+- **Reserva online = pagada automático** (`pagado=true` si `cobro=='online'`): el
+  dueño NO marca como pagado lo que el jugador pagó por Culqi. Efectivo/seña sí
+  los marca (hay efectivo por cobrar).
+- **Trazabilidad `medioPago`** en `Reserva` (yape/tarjeta/efectivo/sena/manual):
+  se captura al reservar (online lee `PagoTarjeta.ultimoMetodo`), viaja a Supabase
+  (col `medio_pago`) y se muestra como chip en Reservas del dueño.
+- **Reporte "Cuánto vas a recibir"**: `_ResumenComision` (reporte_canchas) ahora
+  se calcula de `appState.movimientos` (los mismos que la billetera), desglosado
+  por fuente (comisión del pago vs de tu saldo) → **cuadra EXACTO con "Por
+  recibir"** de la billetera. Antes estimaba 5% local y no cuadraba.
+- **Recordatorio LOCAL "cobra en efectivo"** (`recordatorio_service.dart`,
+  `flutter_local_notifications` + `timezone`, modo INEXACTO): se programa en el
+  teléfono del DUEÑO al sincronizar, 30 min antes, para reservas efectivo/futuras/
+  no pagadas de sus canchas; se cancela al marcar pagado. **Requiere desugaring**
+  (inyectado en `tool/configure_platforms.py::configurar_desugaring`).
+- **Fix privacidad billetera**: `sincronizarSaldo` refleja SIEMPRE el backend
+  (lista vacía → limpia); `_limpiarDatosDeSesion` vacía movimientos/saldo. Un
+  jugador ya NO ve los movimientos del dueño.
+- **Push "tu cancha fue aprobada"** (`supabase/functions/push-aprobacion`, el
+  growth la dispara al aprobar) — código listo, falta DEPLOY (tarea laptop).
+- **"Dejar en virgen"** ya vacía de verdad: local + nube + tombstones (canchas y
+  academias) + reclamos + billetera del backend (`/pagos/reset-mi-billetera`) +
+  colas de contabilidad. Sin data demo (no se auto-siembra academia/canchas, saldo 0).
+
+**DECISIONES de producto:**
+- **Seña**: la decide el DUEÑO por cancha (`senaPct`), NO el jugador (elegirla
+  mataría la protección anti no-show + baja conversión). Default recomendado 30% ⭐.
+  Seña por franja pico/valle = **post-piloto** (falta data de no-shows).
+
+**PENDIENTES (ver tasks):** SQL `medio_pago` en Supabase; deploy Edge Function
+`push-aprobacion` + envs Railway; SQL limpieza (academia demo + RLS academias);
+filtro Online/Efectivo en Reservas + medio en reporte/estado de cuenta;
+auth por usuario en `/pagos/movimientos` (PROD).
+
+### Memoria sesión duración de turno + Servicios + Pro (ago-2026)
+
+**Ya HECHO (en el APK):**
+- **Bug "duración 1.5h": el cliente veía 1h.** Cadena de fixes:
+  (1) `AppState.canchaVigente(c)` → versión más fresca por id (canchasExtra >
+  canchasRemotas > descubiertas), con **fallback por sitio**: si lo mostrado es la
+  cancha DESCUBIERTA de Google (`registrada=false`, id=place_id), cae a la MISMA
+  cancha registrada cercana (Supabase) para usar su duración/precio reales.
+  `club_detalle`/`cancha_detalle` leen `canchaVigente` y la ficha **baja canchas
+  frescas de Supabase al abrir** (`_refrescarCanchasYFicha`).
+  (2) `CanchasRepo.actualizar` ahora hace **UPSERT** (antes UPDATE): persiste aunque
+  la fila no existiera. `_toRow` manda `duracion_slot_min` siempre.
+  (3) **Causa raíz real:** la misma cancha tenía **VARIAS filas en Supabase** (ids
+  distintos por re-registros de prueba); `_dedupPorLugar` conservaba en otro equipo
+  un id que seguía en 60. Fix: `_propagarEdicionADuplicados` propaga
+  duración/precio/horario/seña/valle a todos los duplicados del mismo lugar (local
+  + nube) al editar. SQL: `docs/piloto/supabase_duracion_slot.sql` (columna),
+  `docs/piloto/diag_canchas_duplicadas.sql` (ver duplicados),
+  `docs/piloto/dedupe_canchas.sql` (dejar 1 fila: reapunta reservas + borrado lógico).
+- **Verificación de guardado en la nube:** al editar (no reclamo) la app reescribe y
+  RELEE `duracion_slot_min` de Supabase; si no persistió (columna/RLS) avisa al dueño
+  en rojo en vez de "✅ actualizada" (`CanchasRepo.leerDuracion`).
+- **Diagnóstico TEMPORAL en la ficha** (`club_detalle`): línea roja
+  "🔧 dur Nmin · id … · reg … · fuente …" (`AppState.fuenteCancha`). **Quitar** una
+  vez cerrado el tema de duración.
+- **Servicios Pichangol OCULTO en el piloto** por feature flag
+  `lib/config/features.dart` → `kServiciosPichangolActivo = false`. Se ocultaron
+  TODOS los accesos (Mis canchas, academia shell/Mi academia, crear/editar academia,
+  "Post del día", "Generar con IA" en canales). Código y backend intactos → reactivar
+  = poner el flag en `true`.
+- **Versión visible en Ajustes:** pie con "Pichangol · versión X (build N)" +
+  `pichangol-N.apk`, toca para copiar (`package_info_plus`). El build = `run_number`
+  del CI = nombre del APK.
+
+**PENDIENTES nuevos (ver tasks) — pedido del director:**
+- **Push al JUGADOR cuando el dueño le crea una RESERVA MANUAL** (hoy la reserva
+  manual no notifica al usuario). Reusar arquitectura FCM/Edge Functions (device-first).
+- **Notificaciones de ACADEMIA:** matrícula de alumno, pagos/cuotas (vencida, pagada),
+  etc. → push al alumno/apoderado y/o al dueño.
+- **Candado PRO:** **Reserva manual** y **Bloqueo de horas** pasan a ser features de la
+  **suscripción Pichangol Pro** (gate `appState` tipo `esPro`/`pro_activo`, con CTA
+  "Hazte Pro" — ver `hazte_pro_screen.dart` y `stores.pro_activo` del backend).
+- **PUNTOS PICHANGOL (fidelidad, HECHO ago-2026) — ARQUITECTURA DERIVADA:**
+  los puntos GANADOS se DERIVAN de las reservas del jugador (`AppState.
+  misPuntos/_puntosDe`: 1 pto por S/1 de `totalConExtras` de reservas
+  `traidaPorApp` PAGADAS, últimos 12 meses — sin contador aparte = sin doble
+  acreditación, retroactivo y consistente entre equipos). Online acredita al
+  instante; EFECTIVO al `marcarPago` del dueño (el jugador exige que marquen);
+  MANUAL no acumula. Lo CANJEADO vive en Supabase `pichangol_puntos_canjes`
+  (`PuntosRepo`; disponibles = ganados − canjeados; `cargarPuntosCanjeados` en
+  login + reset por cuenta en logout). CANJE EN CHECKOUT (hecho): toggle en el
+  resumen de `club_detalle` (`usarPuntos`), 100 pts = S/3, solo pago online en
+  S/, 1 canje por reserva; el descuento lo absorbe la comisión PCG (la
+  liquidación al dueño va con el precio completo). UI: tarjeta en Mis reservas
+  (`_PuntosCard`) + pantalla "Mis puntos" en Perfil (`mis_puntos_screen.dart`).
+  SQL: `docs/piloto/supabase_puntos_canjes.sql`. OJO: el backend growth
+  `/puntos/*` es el motor de INCENTIVOS growth (traer_cancha, etc.; ahora con
+  caducidad FIFO 180d y valor 100 pts = 3 configurable) — el APK NO lo usa
+  para la fidelidad de reservas. Push "te llegaron puntos": HECHO (reservas
+  efectivo al `marcarPago`; bodega al entregar).
+  **PUNTOS POR BODEGA (decisión del director, ago-2026):** SOLO los pedidos
+  de bodega **pagados con SALDO Pichangol** suman puntos (incentivar la
+  billetera; el efectivo del local NO acumula — cero comisión + fraude
+  fácil). Derivado igual que reservas: `BodegaRepo.puntosBodegaCliente`
+  (pedidos `pagado=true` + `entregado`, 12 meses) → `AppState._puntosBodega`
+  (`cargarPuntosBodega` en login/splash/Mis puntos) se SUMA en `misPuntos`.
+  Push ⭐ al entregarse (`avisarPuntosBodega`); nudge "⭐ ganas +N puntos"
+  en la confirmación del pedido; historial unificado en `mis_puntos_screen`.
+
+### Horarios de cancha (apertura/cierre) y cruce de medianoche
+- `Cancha.horariosSlots()` genera los INICIOS reservables de apertura a cierre en
+  pasos de `duracionSlotMin`. **REGLA (decisión del director, sep-2026): la hora
+  de CIERRE es la hora en que EMPIEZA el último turno** — cierra 23:00 → último
+  turno 23:00–00:00; cierra 00:00 → 00:00–01:00 (madrugada del día siguiente);
+  con turnos de 90 min el último es el mayor inicio ≤ cierre (07:00→23:00:
+  22:00–23:30). Excepción: 24 h (00:00→00:00) = 24 turnos sin repetir el de
+  medianoche. Antes el turno debía caber COMPLETO antes del cierre (último
+  22:00–23:00) y los dueños decían "sí atiendo a las 23:00". `web/horarios.py::
+  slots` y `abiertaA` del explorador web son ESPEJO de esta regla; el texto de
+  ayuda del selector de horario del APK lo explica al dueño.
+- **Cierre que CRUZA MEDIANOCHE:** si `cierre <= apertura`, el cierre cae al día
+  siguiente (`fin += 24h`). Cubre "hasta medianoche" (07:00→00:00, último turno
+  23:00–00:00), cancha nocturna (18:00→02:00) y **24 h** (00:00→00:00).
+  `minutosEnHora` envuelve con `% 24` (1440 → `00:00`).
+- **Fecha calendario REAL (producción):** los turnos de madrugada (hora < apertura)
+  se ligan a su fecha real = día base + 1. Helpers en `Cancha`: `slotEsMadrugada`,
+  `fechaRealSlot(baseIso, hora)`, `reservaEnSesion(baseIso, rFecha, rHora)`. Toda
+  ocupación/bloqueo/precio/guardado de reserva usa la fecha real por slot
+  (`agregarReservasJugadorMulti`, `agregarReservaManual`, `club_detalle._fechaSlot`,
+  `cancha_detalle`). La **agenda** muestra la SESIÓN del día (incluye la madrugada
+  del día siguiente vía `reservaEnSesion`); KPIs y match por slot usan la fecha real.
+- `reserva_manual_screen._ocupada` también usa la fecha real por slot (marca
+  ocupado un slot de madrugada ya tomado).
+
+### Nota billetera/reservas (recordatorio de diseño)
+- **Billetera (`cuenta_screen`)** = plata que pasa por la APP: pagos ONLINE del
+  dueño ("por recibir"/liquidación), comisiones, recargas, Pro. Re-sincroniza al
+  abrir (`flushContabilidad` + `sincronizarSaldo`) para reflejar un pago online
+  recién hecho.
+- **Reserva MANUAL del dueño** (`agregarReservaManual`, `traidaPorApp:false`) =
+  cliente propio, **fuera de comisión**: NO genera movimiento en la billetera (a
+  propósito); aparece en **reporte/caja del día**. Solo las reservas pagadas por
+  la app (online) generan "por recibir".
+- **Sync config de canchas entre equipos del mismo dueño:** la nube manda.
+  `cargarCanchasRemotas` → `_sincronizarConfigLocalDesdeNube` actualiza
+  `canchasExtra` (duración/precio/horario) desde Supabase. "Mis canchas" la llama
+  al abrir y en pull-to-refresh.
+- **`build` del footer de Ajustes = versionCode de Android** (arm64 → 2xxx), NO el
+  número del APK (`pichangol-N.apk`). Para comparar equipos basta que coincida.
 
 ## Tips operativos
 
