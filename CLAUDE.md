@@ -1482,6 +1482,14 @@ off → redeploy inmediato en cada push). URL pública:
     Edge; sin variables nuevas. CAMBIÓ `lib/` → APK/AAB de PRD por
     `workflow_dispatch` (`ref=prd`, `entorno=prod`). OJO: un APK anterior no
     tiene "Para otra persona" ni la tarjeta "Mi familia" → actualizar.
+    **Pase del 26-sep-2026 (3.º, autorizado: "Pasa a PRD"):** `prd` = merge
+    `4fca94e` (carrito de matrícula app+web con un solo pago, cuenta de
+    cobro del dueño + liquidación por lote BCP, botón del checkout web de
+    Culqi sin monto duplicado). Sin SQL ni Edge; sin variables nuevas (la
+    cuenta BCP de cargo de EBIM se configura en la torre de PRD →
+    Liquidaciones → Liquidar por lote). CAMBIÓ `lib/` → APK/AAB de PRD por
+    `workflow_dispatch` (`ref=prd`, `entorno=prod`). OJO: un APK anterior no
+    tiene el carrito ni la tarjeta "Cuenta de cobro" → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
