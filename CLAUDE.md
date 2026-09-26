@@ -1384,6 +1384,13 @@ off → redeploy inmediato en cada push). URL pública:
     `lib/` → APK/AAB de PRD = run 1388 (`workflow_dispatch`, `ref=prd`,
     `entorno=prod`). OJO: un APK anterior no ve "Unirme" con el fixture
     publicado ni el ingreso de torneo como "por recibir" → actualizar.
+    **Pase del 26-sep-2026 (2.º, autorizado: "Pasa a PRD"):** `prd` = merge
+    `46ec72b` (grupos armados a mano en formato grupos, fecha real en el
+    historial de reservas, pago familiar en academias: "Para otra persona",
+    "Mi familia · un solo pago" y descuento familiar por orden). Sin SQL ni
+    Edge; sin variables nuevas. CAMBIÓ `lib/` → APK/AAB de PRD por
+    `workflow_dispatch` (`ref=prd`, `entorno=prod`). OJO: un APK anterior no
+    tiene "Para otra persona" ni la tarjeta "Mi familia" → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
