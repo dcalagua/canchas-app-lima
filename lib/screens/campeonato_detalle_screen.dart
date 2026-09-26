@@ -2147,6 +2147,41 @@ class _Participantes extends StatelessWidget {
       );
       if (!ok) return;
     }
+    final c1 = appState.campeonatoPorId(campeonato.id) ?? campeonato;
+    if (c1.formato == FormatoTorneo.grupos && c1.participantes.length >= 4) {
+      // Grupos: sorteo automático o armados a mano (pedido del director,
+      // 26-sep-2026, desde el campo).
+      final modo = await showDialog<String>(
+        context: context,
+        builder: (dctx) => DialogoPichangol(
+          titulo: '¿Cómo armamos los grupos?',
+          icono: Icons.grid_view_rounded,
+          contenido: const Text(
+              'Dentro de cada grupo se juega todos contra todos y los 2 '
+              'primeros pasan a la llave.',
+              style: TextStyle(color: textoTenue)),
+          acciones: [
+            TextButton(
+                onPressed: () => Navigator.pop(dctx, 'mano'),
+                child: const Text('✋ Armar a mano')),
+            FilledButton(
+                onPressed: () => Navigator.pop(dctx, 'auto'),
+                child: const Text('🎲 Sortear automático')),
+          ],
+        ),
+      );
+      if (modo == null || !context.mounted) return;
+      if (modo == 'mano') {
+        final grupos = await _ArmarGruposSheet.mostrar(context, c1);
+        if (grupos == null || !context.mounted) return;
+        appState.generarFixture(c1.id, gruposManuales: grupos);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Fixture listo con tus grupos. 🧩')));
+        return;
+      }
+      appState.generarFixture(c1.id, sortear: true);
+      return;
+    }
     appState.generarFixture(campeonato.id);
   }
 
@@ -3939,6 +3974,239 @@ class _YaInscritoCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+/// "✋ Armar los grupos a mano" (pedido del director, 26-sep-2026): el
+/// organizador elige CUÁNTOS grupos (chips) y en qué grupo va cada equipo
+/// (tocar el equipo → chips de grupo). Sin texto libre. "Repartir parejo"
+/// reparte en orden (1.º al A, 2.º al B…). Devuelve los grupos válidos o null.
+class _ArmarGruposSheet extends StatefulWidget {
+  const _ArmarGruposSheet({required this.campeonato});
+  final Campeonato campeonato;
+
+  static Future<List<List<String>>?> mostrar(
+          BuildContext context, Campeonato c) =>
+      showModalBottomSheet<List<List<String>>>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+        builder: (_) => _ArmarGruposSheet(campeonato: c),
+      );
+
+  @override
+  State<_ArmarGruposSheet> createState() => _ArmarGruposSheetState();
+}
+
+class _ArmarGruposSheetState extends State<_ArmarGruposSheet> {
+  static const _letras = 'ABCDEFGHIJKLMNOP';
+  late int _k;
+  final Map<String, int> _asig = {};
+
+  List<Participante> get _ps => widget.campeonato.participantes;
+  int get _maxK => (_ps.length ~/ 2).clamp(1, _letras.length);
+
+  @override
+  void initState() {
+    super.initState();
+    final previos = TorneoFixture.gruposManualesDe(widget.campeonato);
+    if (previos != null) {
+      _k = previos.length;
+      for (var i = 0; i < previos.length; i++) {
+        for (final id in previos[i]) {
+          _asig[id] = i;
+        }
+      }
+    } else {
+      _k = (_ps.length / 4).round().clamp(1, _maxK);
+      _repartir();
+    }
+  }
+
+  void _repartir() {
+    _asig.clear();
+    for (var i = 0; i < _ps.length; i++) {
+      _asig[_ps[i].id] = i % _k;
+    }
+  }
+
+  List<List<String>> get _grupos => [
+        for (var g = 0; g < _k; g++)
+          [for (final p in _ps) if ((_asig[p.id] ?? 0) == g) p.id],
+      ];
+
+  Future<void> _mover(Participante p) async {
+    final actual = _asig[p.id] ?? 0;
+    final g = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (bctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('¿A qué grupo va ${p.nombre}?',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 17)),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (var i = 0; i < _k; i++)
+                    ChoiceChip(
+                      label: Text('Grupo ${_letras[i]}'),
+                      selected: i == actual,
+                      onSelected: (_) => Navigator.pop(bctx, i),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (g != null) setState(() => _asig[p.id] = g);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final error =
+        TorneoFixture.validarGruposManuales(widget.campeonato, _grupos);
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return DraggableScrollableSheet(
+      expand: false,
+      initialChildSize: 0.9,
+      maxChildSize: 0.95,
+      builder: (ctx, scroll) => Padding(
+        padding: EdgeInsets.fromLTRB(20, 14, 20, 16 + bottom),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.grid_view_rounded, color: bosque),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Armar los grupos',
+                      style:
+                          t.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+                ),
+                IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close)),
+              ],
+            ),
+            Text(
+                'Dentro de cada grupo se juega todos contra todos. Toca un '
+                'equipo para cambiarlo de grupo.',
+                style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Text('Grupos:',
+                    style: TextStyle(fontWeight: FontWeight.w700)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (var i = 1; i <= _maxK; i++)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: Text('$i'),
+                              selected: _k == i,
+                              onSelected: (_) => setState(() {
+                                _k = i;
+                                _repartir();
+                              }),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => setState(_repartir),
+                  icon: const Icon(Icons.shuffle, size: 18),
+                  label: const Text('Repartir'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Expanded(
+              child: ListView(
+                controller: scroll,
+                children: [
+                  for (var g = 0; g < _k; g++) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10, bottom: 6),
+                      child: Text(
+                          'Grupo ${_letras[g]} · ${_grupos[g].length} equipos',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 15)),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF4F7FA),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final p in _ps)
+                            if ((_asig[p.id] ?? 0) == g)
+                              InputChip(
+                                avatar: const Icon(Icons.groups, size: 16),
+                                label: Text(p.nombre),
+                                onPressed: () => _mover(p),
+                              ),
+                          if (_grupos[g].length < 2)
+                            const Padding(
+                              padding: EdgeInsets.all(6),
+                              child: Text('Necesita al menos 2 equipos',
+                                  style: TextStyle(
+                                      color: naranja, fontSize: 12.5)),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                ],
+              ),
+            ),
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(error,
+                    style: const TextStyle(color: naranja, fontSize: 12.5)),
+              ),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed:
+                    error == null ? () => Navigator.pop(context, _grupos) : null,
+                icon: const Icon(Icons.sports_soccer),
+                label: const Text('Generar fixture con estos grupos'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

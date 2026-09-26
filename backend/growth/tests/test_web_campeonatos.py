@@ -565,3 +565,46 @@ def test_web_unirme_con_codigo_y_donde_participo(db, monkeypatch):
     r = cli.get("/anfitrion/campeonatos")
     assert "Organizo" in r.text and "Copa Beata" in r.text and "¿Te compartieron un código?" in r.text
     assert "Donde participo" not in r.text
+
+
+def test_grupos_armados_a_mano_por_el_organizador(db, monkeypatch):
+    """Pedido del director desde el campo (26-sep-2026): además del sorteo
+    automático, el organizador puede decidir cuántos grupos y quién va en cada
+    uno; dentro de cada grupo se juega todos contra todos. Se validan (todos
+    asignados una vez, ≥2 por grupo), se guardan en `gruposManuales` (el app los
+    respeta), el detalle lo dice y `sortear: true` vuelve al automático."""
+    cli = TestClient(app, base_url="https://testserver")
+    fake = _preparar(monkeypatch)
+    _entrar_como(cli, monkeypatch, "orga@gmail.com", "Orga")
+    cid = L.nuevo_id()
+    assert cli.post("/anfitrion/campeonatos/guardar", json={"id": cid, "nombre": "Copa Manual", "deporte": "futbol", "formato": "grupos", "minPartidos": 2}).status_code == 200
+    ids = [cli.post(f"/anfitrion/campeonatos/{cid}/participante", json={"nombre": n}).json()["id"]
+           for n in ("Tigres", "Leones", "Pumas", "Lobos", "Osos", "Halcones", "Toros")]
+    # 7 equipos a mano: 3 grupos (3/2/2) — el automático habría hecho 4/3.
+    grupos = [[ids[0], ids[2], ids[4]], [ids[1], ids[3]], [ids[5], ids[6]]]
+    r = cli.post(f"/anfitrion/campeonatos/{cid}/fixture", json={"grupos": grupos})
+    assert r.status_code == 200 and r.json()["manual"], r.text
+    c = fake.rows[cid]
+    assert c["gruposManuales"] == grupos and L.grupos_de(c) == ["A", "B", "C"]
+    # Todos contra todos DENTRO de cada grupo: A (3 equipos) = 3 partidos, B y C = 1 c/u; llave de 6 → 4 partidos (2 byes).
+    por_grupo = {g: [m for m in L.partidos_grupo(c) if m["grupo"] == g] for g in "ABC"}
+    assert len(por_grupo["A"]) == 3 and len(por_grupo["B"]) == 1 and len(por_grupo["C"]) == 1
+    assert {m["aId"] for m in por_grupo["A"]} | {m["bId"] for m in por_grupo["A"]} == set(grupos[0])
+    assert len([m for m in L.partidos_llave(c) if int(m["ronda"]) == 0]) == 4
+    det = cli.get(f"/anfitrion/campeonatos/{cid}").text
+    assert "armados a mano" in det and "3 grupos de 3/2/2" in det and "gruposManuales" in det and "Armar los grupos a mano" in det
+    # Validaciones: falta uno / grupo de 1 / equipo repetido.
+    r = cli.post(f"/anfitrion/campeonatos/{cid}/fixture", json={"grupos": [[ids[0], ids[1]], [ids[2], ids[3]]]})
+    assert r.status_code == 400 and "Falta asignar a: Osos" in r.json()["error"]
+    r = cli.post(f"/anfitrion/campeonatos/{cid}/fixture", json={"grupos": [ids[:6], [ids[6]]]})
+    assert r.status_code == 400 and "grupo B necesita al menos 2" in r.json()["error"]
+    r = cli.post(f"/anfitrion/campeonatos/{cid}/fixture", json={"grupos": [ids[:4], ids[3:]]})
+    assert r.status_code == 400 and "dos grupos" in r.json()["error"]
+    assert fake.rows[cid]["gruposManuales"] == grupos  # nada cambió con los rechazos
+    # Un equipo nuevo invalida los grupos guardados → el sorteo cae al automático.
+    nuevo = cli.post(f"/anfitrion/campeonatos/{cid}/participante", json={"nombre": "Zorros"}).json()["id"]
+    assert L.grupos_manuales(fake.rows[cid]) is None
+    r = cli.post(f"/anfitrion/campeonatos/{cid}/fixture", json={"sortear": True})
+    assert r.status_code == 200 and not r.json()["manual"] and "gruposManuales" not in fake.rows[cid]
+    assert [len(g) for g in [[m for m in L.partidos_grupo(fake.rows[cid]) if m["grupo"] == g] for g in "AB"]] == [6, 6]  # 8 → 4/4
+    assert nuevo in {m["aId"] for m in L.partidos_grupo(fake.rows[cid])} | {m["bId"] for m in L.partidos_grupo(fake.rows[cid])}

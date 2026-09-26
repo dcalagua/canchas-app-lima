@@ -73,7 +73,7 @@ class _MisPagosScreenState extends State<MisPagosScreen> {
       final lugar = cancha?.club.isNotEmpty == true
           ? cancha!.club
           : (cancha?.nombre ?? 'Cancha');
-      final cuando = '${r.dia} ${r.horaInicio}–${r.horaFin}';
+      final cuando = '${r.diaVisible} ${r.horaInicio}–${r.horaFin}';
       pagos.add(_Pago(
         fecha: DateTime.tryParse(r.fecha) ?? DateTime.now(),
         titulo: 'Reserva · $lugar',

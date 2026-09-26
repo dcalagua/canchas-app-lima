@@ -3292,9 +3292,18 @@ class AppState extends ChangeNotifier {
   }
 
   /// (Re)genera el fixture del campeonato según su formato. Borra resultados.
-  void generarFixture(String campId) {
-    final c = campeonatoPorId(campId);
+  void generarFixture(String campId, {List<List<String>>? gruposManuales,
+      bool sortear = false}) {
+    var c = campeonatoPorId(campId);
     if (c == null) return;
+    // Grupos a mano (pedido del director, 26-sep-2026): se guardan en el
+    // campeonato para que la web y un re-sorteo los respeten; `sortear`
+    // vuelve al automático.
+    if (gruposManuales != null) {
+      c = c.copyWith(gruposManuales: gruposManuales);
+    } else if (sortear) {
+      c = c.copyWith(gruposManuales: const []);
+    }
     final partidos = TorneoFixture.generarDe(c);
     guardarCampeonato(c.copyWith(partidos: partidos));
   }

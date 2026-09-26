@@ -917,7 +917,28 @@ para la API del APK.
   guarde un campeonato de grupos LOS PIERDE → actualizar el APK antes de
   usarlo), `Campeonato.minPartidos`, widget `_Grupos`, `_Liga`/`_Llave` con
   subconjunto. Test `test_grupos_garantiza_minimo_de_partidos_y_llave_cruzada`
-  (garantía para n = min+1 … 40).
+  (garantía para n = min+1 … 40). **GRUPOS ARMADOS A MANO (pedido del
+  director desde el campo, 26-sep-2026):** además del sorteo automático, el
+  organizador elige CUÁNTOS grupos y quién va en cada uno; dentro de cada
+  grupo sigue siendo todos contra todos y clasifican 2. `Campeonato.
+  gruposManuales` (JSON `gruposManuales: [[ids],…]` en orden A, B, C…; solo
+  con formato grupos) = `L.grupos_manuales(c)`; validación espejo
+  `TorneoFixture.validarGruposManuales` / `L.validar_grupos_manuales`
+  (1..16 grupos, ≥2 por grupo, todos asignados una vez; si entra o sale un
+  equipo dejan de calzar y se sortea automático). App: al generar en formato
+  grupos con ≥4 equipos, diálogo "¿Cómo armamos los grupos?" → 🎲 Sortear /
+  ✋ Armar a mano → `_ArmarGruposSheet` (chips de cantidad, tarjeta por grupo,
+  tocar equipo → chips de grupo, "Repartir", sin texto libre) →
+  `appState.generarFixture(id, gruposManuales:)`; `sortear: true` los borra.
+  Web: `POST /fixture {grupos: [[ids]]}` valida, guarda y genera (`manual`
+  en la respuesta); `{sortear: true}` vuelve al automático; modal
+  `elegirModoGrupos` → `armarGrupos` (select de cantidad + select por
+  equipo + "Repartir parejo"); chip "✋ armados a mano · 3 grupos de
+  3/2/2". Test `test_grupos_armados_a_mano_por_el_organizador`. **"MAÑANA"
+  EN EL HISTORIAL (queja del director, 26-sep-2026):** `Reserva.dia` es la
+  etiqueta CONGELADA al reservar; para mostrar se usa `Reserva.diaVisible`
+  (Hoy / Mañana / Ayer / "jue 18 set", calculado desde `fecha`) en Mis
+  reservas, Reservas y Mis pagos.
 - **ENLACE DEL CAPITÁN + DESCARGA A PLAY + APP LINKS (pedido del director,
   26-sep-2026: "¿es viable que el que recibe el link por WhatsApp se
   inscriba en un equipo?" → sí, y se hicieron los 3 puntos):** (1) **Enlace

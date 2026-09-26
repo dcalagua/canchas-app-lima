@@ -453,6 +453,12 @@ class Campeonato {
   /// Formato grupos: cada equipo juega AL MENOS este número de partidos en la
   /// fase de grupos (2 o 3). Decide el tamaño mínimo de grupo (minPartidos+1).
   final int minPartidos;
+  /// GRUPOS ARMADOS A MANO por el organizador (pedido del director,
+  /// 26-sep-2026, desde el campo): lista de grupos (A, B, C…) con los ids de
+  /// sus participantes. Vacío = el sorteo automático (`armarGrupos`). Si
+  /// dejan de calzar con los inscritos (entró o salió alguien) se ignoran.
+  /// JSON `gruposManuales: [[id,…],[…]]`. ESPEJO en `campeonatos_logica`.
+  final List<List<String>> gruposManuales;
   /// PREMIOS del torneo, uno por línea ("Trofeos para campeones", "Tarros de
   /// pelotas"…). Se lucen en la publicidad de compartir y en la página web.
   final String premios;
@@ -506,6 +512,7 @@ class Campeonato {
     this.minJugadoresEquipo = 0,
     this.maxJugadoresEquipo = 0,
     this.minPartidos = 2,
+    this.gruposManuales = const [],
     this.premios = '',
     this.auspiciador = '',
     this.auspiciadoresLogos = const [],
@@ -743,6 +750,7 @@ class Campeonato {
     int? minJugadoresEquipo,
     int? maxJugadoresEquipo,
     int? minPartidos,
+    List<List<String>>? gruposManuales,
     String? premios,
     String? auspiciador,
     List<String>? auspiciadoresLogos,
@@ -780,6 +788,7 @@ class Campeonato {
         minJugadoresEquipo: minJugadoresEquipo ?? this.minJugadoresEquipo,
         maxJugadoresEquipo: maxJugadoresEquipo ?? this.maxJugadoresEquipo,
         minPartidos: minPartidos ?? this.minPartidos,
+        gruposManuales: gruposManuales ?? this.gruposManuales,
         premios: premios ?? this.premios,
         auspiciador: auspiciador ?? this.auspiciador,
         auspiciadoresLogos: auspiciadoresLogos ?? this.auspiciadoresLogos,
@@ -829,6 +838,8 @@ class Campeonato {
         if (minJugadoresEquipo > 0) 'minJugadoresEquipo': minJugadoresEquipo,
         if (maxJugadoresEquipo > 0) 'maxJugadoresEquipo': maxJugadoresEquipo,
         if (formato == FormatoTorneo.grupos) 'minPartidos': minPartidos,
+        if (formato == FormatoTorneo.grupos && gruposManuales.isNotEmpty)
+          'gruposManuales': gruposManuales,
         if (premios.isNotEmpty) 'premios': premios,
         if (auspiciador.isNotEmpty) 'auspiciador': auspiciador,
         if (auspiciadoresLogos.isNotEmpty)
@@ -888,6 +899,10 @@ class Campeonato {
         minPartidos: kMinPartidosOpciones.contains((j['minPartidos'] as num?)?.toInt())
             ? (j['minPartidos'] as num).toInt()
             : 2,
+        gruposManuales: [
+          for (final g in (j['gruposManuales'] as List?) ?? const [])
+            if (g is List) [for (final x in g) x.toString()],
+        ],
         premios: (j['premios'] ?? '') as String,
         auspiciador: (j['auspiciador'] ?? '') as String,
         auspiciadoresLogos: (j['auspiciadoresLogos'] as List?)
@@ -908,16 +923,61 @@ class Campeonato {
 class TorneoFixture {
   /// Genera el fixture según el formato. Requiere ≥ 2 participantes.
   static List<PartidoTorneo> generar(
-      FormatoTorneo formato, List<Participante> ps, {int minPartidos = 2}) {
+      FormatoTorneo formato, List<Participante> ps,
+      {int minPartidos = 2, List<List<String>>? gruposManuales}) {
     if (ps.length < 2) return const [];
     if (formato == FormatoTorneo.liga) return _generarLiga(ps);
-    if (formato == FormatoTorneo.grupos) return _generarGrupos(ps, minPartidos);
+    if (formato == FormatoTorneo.grupos) {
+      return _generarGrupos(ps, minPartidos, gruposManuales);
+    }
     return recomputarLlave(_esqueletoEliminacion(ps));
   }
 
-  /// Genera el fixture de [c] con su formato y su mínimo de partidos.
-  static List<PartidoTorneo> generarDe(Campeonato c) =>
-      generar(c.formato, c.participantes, minPartidos: c.minPartidos);
+  /// Genera el fixture de [c] con su formato, su mínimo de partidos y, si el
+  /// organizador los armó a mano y siguen válidos, sus grupos.
+  static List<PartidoTorneo> generarDe(Campeonato c) => generar(
+      c.formato, c.participantes,
+      minPartidos: c.minPartidos, gruposManuales: gruposManualesDe(c));
+
+  /// Los grupos a mano de [c] si existen y siguen siendo válidos; si no, null
+  /// (sorteo automático). ESPEJO de `campeonatos_logica.grupos_manuales`.
+  static List<List<String>>? gruposManualesDe(Campeonato c) {
+    if (c.gruposManuales.isEmpty) return null;
+    if (validarGruposManuales(c, c.gruposManuales) != null) return null;
+    return c.gruposManuales;
+  }
+
+  /// Valida grupos a mano: 1..16 grupos, cada uno con ≥ 2 equipos y TODOS los
+  /// participantes asignados exactamente una vez. Devuelve el mensaje de error
+  /// o null si es válido. ESPEJO de `validar_grupos_manuales` (web).
+  static String? validarGruposManuales(
+      Campeonato c, List<List<String>> grupos) {
+    final ids = [for (final p in c.participantes) p.id];
+    if (grupos.isEmpty) return 'Arma al menos un grupo.';
+    if (grupos.length > _letras.length) return 'Máximo ${_letras.length} grupos.';
+    final vistos = <String>{};
+    for (var i = 0; i < grupos.length; i++) {
+      final g = grupos[i];
+      if (g.length < 2) {
+        return 'El grupo ${_letras[i]} necesita al menos 2 equipos.';
+      }
+      for (final x in g) {
+        if (!ids.contains(x)) {
+          return 'Hay un equipo que ya no está inscrito: vuelve a armar los grupos.';
+        }
+        if (!vistos.add(x)) return 'Un equipo está en dos grupos.';
+      }
+    }
+    final faltan = [
+      for (final p in c.participantes)
+        if (!vistos.contains(p.id)) p.nombre
+    ];
+    if (faltan.isNotEmpty) {
+      return 'Falta asignar a: ${faltan.take(4).join(', ')}'
+          '${faltan.length > 4 ? '…' : ''}';
+    }
+    return null;
+  }
 
   // ── Grupos + eliminatoria ─────────────────────────────────────────────────
   static const _letras = 'ABCDEFGHIJKLMNOP';
@@ -951,15 +1011,31 @@ class TorneoFixture {
   }
 
   static List<PartidoTorneo> _generarGrupos(
-      List<Participante> ps, int minPartidos) {
-    final tams = armarGrupos(ps.length, minPartidos);
-    if (tams.isEmpty) return recomputarLlave(_esqueletoEliminacion(ps));
+      List<Participante> ps, int minPartidos,
+      [List<List<String>>? gruposManuales]) {
+    final List<List<Participante>> listas;
+    if (gruposManuales != null && gruposManuales.isNotEmpty) {
+      // A mano: el organizador decidió cuántos grupos y quién va en cada uno.
+      final porId = {for (final p in ps) p.id: p};
+      listas = [
+        for (final g in gruposManuales)
+          [for (final id in g) if (porId[id] != null) porId[id]!],
+      ];
+    } else {
+      final tams = armarGrupos(ps.length, minPartidos);
+      if (tams.isEmpty) return recomputarLlave(_esqueletoEliminacion(ps));
+      listas = [];
+      var pos = 0;
+      for (final t in tams) {
+        listas.add(ps.sublist(pos, pos + t));
+        pos += t;
+      }
+    }
+    final tams = [for (final l in listas) l.length];
     final partidos = <PartidoTorneo>[];
-    var pos = 0;
-    for (var gi = 0; gi < tams.length; gi++) {
+    for (var gi = 0; gi < listas.length; gi++) {
       final letra = _letras[gi];
-      final miembros = ps.sublist(pos, pos + tams[gi]);
-      pos += tams[gi];
+      final miembros = listas[gi];
       for (final m in _generarLiga(miembros)) {
         partidos.add(PartidoTorneo(
             id: 'g${letra}_${m.id}', ronda: m.ronda, idx: m.idx,
