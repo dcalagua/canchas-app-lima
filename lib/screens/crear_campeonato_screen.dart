@@ -78,6 +78,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   final _edadMax = TextEditingController();
   // Fútbol: mínimo de jugadores por equipo para marcarlo "completo".
   final _minJug = TextEditingController();
+  final _maxJug = TextEditingController();
   // Categoría elegida del combo (label del catálogo) o el sentinel 'otra'
   // (texto libre). null = aún no elige (sin categoría).
   String? _catSel;
@@ -168,6 +169,8 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
       _edadMax.text = e.edadMax?.toString() ?? '';
       _minJug.text =
           e.minJugadoresEquipo > 0 ? e.minJugadoresEquipo.toString() : '';
+      _maxJug.text =
+          e.maxJugadoresEquipo > 0 ? e.maxJugadoresEquipo.toString() : '';
       _logoUrlActual = e.logoUrl;
       _fechasIniciales = e.fechas;
       // Categoría: si coincide con una del catálogo, selecciona ese ítem; si no,
@@ -277,6 +280,11 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
     final minJug = _deporte == Deporte.futbol
         ? (int.tryParse(_minJug.text.trim()) ?? 0)
         : 0;
+    // Tope de plantel (titulares + suplentes): nunca por debajo del mínimo.
+    var maxJug = _deporte == Deporte.futbol
+        ? (int.tryParse(_maxJug.text.trim()) ?? 0)
+        : 0;
+    if (maxJug > 0 && minJug > 0 && maxJug < minJug) maxJug = minJug;
 
     final Campeonato c;
     if (_editando) {
@@ -312,6 +320,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         edadMax: edadMax,
         logoUrl: e.logoUrl,
         minJugadoresEquipo: minJug,
+        maxJugadoresEquipo: maxJug,
         minPartidos: _minPartidos,
         premios: _premios.text.trim(),
         auspiciador: _auspiciador.text.trim(),
@@ -344,6 +353,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         edadMin: edadMin,
         edadMax: edadMax,
         minJugadoresEquipo: minJug,
+        maxJugadoresEquipo: maxJug,
         minPartidos: _minPartidos,
         premios: _premios.text.trim(),
         auspiciador: _auspiciador.text.trim(),
@@ -369,6 +379,31 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
       return false;
     }
     return true;
+  }
+
+  /// Texto de ayuda del tope: cuánto pone cada jugador con el costo actual.
+  String _ayudaCuota() {
+    final costo =
+        double.tryParse(_costo.text.trim().replaceAll(',', '.')) ?? 0;
+    final maxJ = int.tryParse(_maxJug.text.trim()) ?? 0;
+    final minJ = int.tryParse(_minJug.text.trim()) ?? 0;
+    final cupo = maxJ > 0 ? maxJ : minJ;
+    if (costo <= 0) {
+      return 'Tope del plantel. Con costo de inscripción, la cuota del equipo '
+          'se reparte entre este número.';
+    }
+    if (cupo <= 0) {
+      return 'Sin cupo, quien crea el equipo paga la cuota completa. Pon un '
+          'máximo para que se reparta entre los jugadores.';
+    }
+    final centimos = ((costo * 100).round() / cupo / 50).ceil() * 50;
+    final v = centimos / 100.0;
+    final txt = (v - v.roundToDouble()).abs() < 0.005
+        ? v.round().toString()
+        : v.toStringAsFixed(2);
+    return 'Cada jugador pone $_monedaSede $txt al unirse (cuota ÷ $cupo). '
+        'El equipo queda inscrito cuando el pozo cubre la cuota; el último '
+        'paga solo lo que falta.';
   }
 
   @override
@@ -531,12 +566,30 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
             TextField(
               controller: _minJug,
               keyboardType: TextInputType.number,
+              onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 labelText: 'Mínimo de jugadores por equipo (opcional)',
                 hintText: 'ej. 7',
                 helperText: 'Cada equipo aparece "Completo" al llegar a este '
                     'número. Vacío = solo se muestra el conteo.',
                 helperMaxLines: 3,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // LA VAQUITA DEL EQUIPO (decisión del director, 26-sep-2026): con
+            // costo, la cuota del EQUIPO se reparte entre este tope; cada
+            // jugador pone su parte al unirse y el equipo queda inscrito
+            // cuando el pozo la cubre.
+            TextField(
+              controller: _maxJug,
+              keyboardType: TextInputType.number,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText:
+                    'Máximo de jugadores por equipo (titulares + suplentes)',
+                hintText: 'ej. 10',
+                helperText: _ayudaCuota(),
+                helperMaxLines: 4,
               ),
             ),
             const SizedBox(height: 12),
@@ -620,8 +673,12 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
           TextField(
             controller: _costo,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            // Refresca la ayuda "cada jugador pone S/ X" del tope de plantel.
+            onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
-                labelText: 'Costo de inscripción (opcional)',
+                labelText: _deporte == Deporte.futbol
+                    ? 'Costo de inscripción por equipo (opcional)'
+                    : 'Costo de inscripción (opcional)',
                 prefixText: '$_monedaSede '),
           ),
           const SizedBox(height: 18),

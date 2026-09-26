@@ -664,6 +664,112 @@ class PagosService {
     }
   }
 
+  // ── POZO DEL EQUIPO (cuota de torneo repartida entre el plantel) ─────────
+  // Espejo de `pagos/pozos.py`: la plata vive en el backend; el APK solo
+  // pide/aporta y espeja `aporteCentimos` en el roster para mostrarlo.
+  static Map<String, dynamic> _pozoBody({
+    required String email,
+    required String campeonatoId,
+    required String equipoId,
+    required double cuotaEquipoSoles,
+    required int cupo,
+    required String moneda,
+    required String organizador,
+    required String campeonatoNombre,
+    required String equipoNombre,
+    double? montoSoles,
+  }) =>
+      {
+        'email': email,
+        'campeonato_id': campeonatoId,
+        'equipo_id': equipoId,
+        'cuota_equipo_soles': cuotaEquipoSoles,
+        'cupo': cupo,
+        'moneda': moneda,
+        'organizador': organizador,
+        'campeonato_nombre': campeonatoNombre,
+        'equipo_nombre': equipoNombre,
+        if (montoSoles != null) 'monto_soles': montoSoles,
+      };
+
+  static Future<Map<String, dynamic>> _postPozo(
+      String ruta, Map<String, dynamic> body) async {
+    if (!disponible) return {'ok': false, 'error': 'Pagos no disponibles.'};
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/torneo/equipo/$ruta'),
+              headers: _appHeaders(json: true), body: jsonEncode(body))
+          .timeout(const Duration(seconds: 20));
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return {'ok': false, 'error': 'Sin conexión con el servidor de pagos.'};
+    }
+  }
+
+  /// El jugador pone SU PARTE de la cuota del equipo (o lo que falte si es
+  /// menos). Devuelve `aporte_centimos` y el `pozo` (completo/liquidado…).
+  static Future<Map<String, dynamic>> aportarEquipo({
+    required String email,
+    required String campeonatoId,
+    required String equipoId,
+    required double cuotaEquipoSoles,
+    required int cupo,
+    required String moneda,
+    required String organizador,
+    required String campeonatoNombre,
+    required String equipoNombre,
+  }) =>
+      _postPozo(
+          'aportar',
+          _pozoBody(
+              email: email,
+              campeonatoId: campeonatoId,
+              equipoId: equipoId,
+              cuotaEquipoSoles: cuotaEquipoSoles,
+              cupo: cupo,
+              moneda: moneda,
+              organizador: organizador,
+              campeonatoNombre: campeonatoNombre,
+              equipoNombre: equipoNombre));
+
+  /// Cualquiera del equipo pone lo que FALTA del pozo para quedar inscritos.
+  static Future<Map<String, dynamic>> completarPozo({
+    required String email,
+    required String campeonatoId,
+    required String equipoId,
+    required double cuotaEquipoSoles,
+    required int cupo,
+    required String moneda,
+    required String organizador,
+    required String campeonatoNombre,
+    required String equipoNombre,
+  }) =>
+      _postPozo(
+          'completar',
+          _pozoBody(
+              email: email,
+              campeonatoId: campeonatoId,
+              equipoId: equipoId,
+              cuotaEquipoSoles: cuotaEquipoSoles,
+              cupo: cupo,
+              moneda: moneda,
+              organizador: organizador,
+              campeonatoNombre: campeonatoNombre,
+              equipoNombre: equipoNombre));
+
+  /// El organizador saca a un equipo con el pozo sin completar: cada jugador
+  /// recupera su parte. `ya_liquidado` si ya se le acreditó al organizador.
+  static Future<Map<String, dynamic>> devolverPozo({
+    required String campeonatoId,
+    required String equipoId,
+    required String solicitante,
+  }) =>
+      _postPozo('devolver', {
+        'campeonato_id': campeonatoId,
+        'equipo_id': equipoId,
+        'solicitante': solicitante,
+      });
+
   /// Cabeceras con la IDENTIDAD del usuario (ID token de Google) además de la
   /// app key: los endpoints de billetera del backend verifican que el correo
   /// del token sea el consultado (nadie mira/borra billeteras ajenas).

@@ -31,6 +31,72 @@ import '../config/pais.dart';
 /// Detalle de un campeonato: participantes, fixture (llave o tabla), carga de
 /// resultados y compartir por WhatsApp. Los controles de edición se muestran
 /// solo al organizador (dueño).
+/// LA VAQUITA DEL EQUIPO (decisión del director, 26-sep-2026): con costo de
+/// inscripción en fútbol, cada jugador pone SU PARTE al unirse (cuota ÷ cupo)
+/// de su saldo Pichangol; queda retenida en el pozo del equipo (backend
+/// `pagos/pozos.py`); el equipo queda inscrito cuando el pozo cubre la cuota.
+/// Devuelve los céntimos aportados (0 si el torneo no cobra por equipo) o null
+/// si no se pudo (falta saldo → ofrece recargar, sin red, cancelado).
+Future<int?> _aportarPozo(BuildContext context, Campeonato c,
+    {required String equipoId,
+    required String equipoNombre,
+    bool completar = false}) async {
+  if (!c.tieneCuotaPorEquipo) return 0;
+  final email = appState.usuario?.email ?? '';
+  if (email.isEmpty) return null;
+  Future<Map<String, dynamic>> llamar() => completar
+      ? PagosService.completarPozo(
+          email: email,
+          campeonatoId: c.id,
+          equipoId: equipoId,
+          cuotaEquipoSoles: c.costoInscripcion,
+          cupo: c.cupoReparto,
+          moneda: c.monedaSimbolo,
+          organizador: c.dueno,
+          campeonatoNombre: c.nombre,
+          equipoNombre: equipoNombre)
+      : PagosService.aportarEquipo(
+          email: email,
+          campeonatoId: c.id,
+          equipoId: equipoId,
+          cuotaEquipoSoles: c.costoInscripcion,
+          cupo: c.cupoReparto,
+          moneda: c.monedaSimbolo,
+          organizador: c.dueno,
+          campeonatoNombre: c.nombre,
+          equipoNombre: equipoNombre);
+  final r = await conPreload(context, llamar,
+      texto: completar ? 'Completando el pozo…' : 'Poniendo tu parte…');
+  if (!context.mounted) return null;
+  if (r['ok'] == true) {
+    await appState.sincronizarSaldo();
+    return (r['aporte_centimos'] as num?)?.toInt() ?? 0;
+  }
+  if (r['falta_saldo'] == true) {
+    final req = (r['requerido_soles'] as num?)?.toDouble() ?? 0;
+    final ok = await confirmarPichangol(
+      context,
+      titulo: 'Te falta saldo',
+      mensaje: 'Tu parte es ${c.monedaSimbolo} ${req.toStringAsFixed(2)} y '
+          'se paga de tu saldo Pichangol. Recarga y vuelve a intentarlo.',
+      textoConfirmar: 'Recargar saldo',
+      textoCancelar: 'Ahora no',
+      icono: Icons.account_balance_wallet_outlined,
+    );
+    if (ok && context.mounted) {
+      await Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) =>
+              RecargarSaldoScreen(duenoId: email, titulo: 'Recargar saldo')));
+      await appState.sincronizarSaldo();
+    }
+    return null;
+  }
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content:
+          Text((r['error'] ?? 'No se pudo registrar tu parte.').toString())));
+  return null;
+}
+
 class CampeonatoDetalleScreen extends StatelessWidget {
   const CampeonatoDetalleScreen({super.key, required this.campeonatoId});
   final String campeonatoId;
@@ -197,7 +263,9 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                     child: FilledButton.icon(
                       onPressed: () => _crearEquipo(context, c),
                       icon: const Icon(Icons.groups),
-                      label: const Text('Crear mi equipo'),
+                      label: Text(c.tieneCuotaPorEquipo
+                          ? 'Crear mi equipo · pones ${c.fmtMonto(c.aporteSiguiente(null))}'
+                          : 'Crear mi equipo'),
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -840,7 +908,10 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                 if (c.costoInscripcion > 0) ...[
                   const SizedBox(height: 8),
                   Text(
-                      'Inscripción: ${c.monedaSimbolo} ${c.costoInscripcion.toStringAsFixed(2)}',
+                      c.tieneCuotaPorEquipo
+                          ? 'Inscripción: ${c.monedaSimbolo} ${c.costoInscripcion.toStringAsFixed(2)} por equipo'
+                              '${c.cupoReparto > 0 ? ' · cada jugador pone ${c.fmtMonto(c.cuotaJugadorCentimos)}' : ''}'
+                          : 'Inscripción: ${c.monedaSimbolo} ${c.costoInscripcion.toStringAsFixed(2)}',
                       style: const TextStyle(color: textoTenue)),
                 ],
                 if (c.exigeDni) ...[
@@ -1008,7 +1079,37 @@ class CampeonatoDetalleScreen extends StatelessWidget {
       ),
     );
     if (ok != true || !context.mounted) return;
-    final res = appState.crearEquipoCampeonato(c.id, nombre.text);
+    if (nombre.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Ponle nombre al equipo.')));
+      return;
+    }
+    final yo = (appState.usuario?.email ?? '').toLowerCase();
+    final yaTengo =
+        c.participantes.any((p) => p.capitanEmail.toLowerCase() == yo);
+    final equipoId = 'eq_${DateTime.now().microsecondsSinceEpoch}';
+    var aporte = 0;
+    if (c.tieneCuotaPorEquipo && !yaTengo) {
+      // La vaquita: el capitán pone su parte ahora; el resto la pone al unirse.
+      final parte = c.aporteSiguiente(null);
+      final si = await confirmarPichangol(
+        context,
+        titulo: 'Crear «${nombre.text.trim()}»',
+        mensaje: 'La inscripción es ${c.fmtMonto(c.cuotaEquipoCentimos)} por '
+            'equipo. Como capitán pones ahora tu parte: ${c.fmtMonto(parte)} '
+            'de tu saldo. Tus jugadores ponen la suya al entrar con tu '
+            'enlace y el equipo queda inscrito cuando el pozo se completa.',
+        textoConfirmar: 'Pagar mi parte y crear',
+        icono: Icons.groups,
+      );
+      if (!si || !context.mounted) return;
+      final a = await _aportarPozo(context, c,
+          equipoId: equipoId, equipoNombre: nombre.text.trim());
+      if (a == null || !context.mounted) return;
+      aporte = a;
+    }
+    final res = appState.crearEquipoCampeonato(c.id, nombre.text,
+        equipoId: equipoId, aporteCentimos: aporte);
     if (!context.mounted) return;
     if (!res.ok) {
       ScaffoldMessenger.of(context)
@@ -1083,31 +1184,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     final codigo = TextEditingController(text: codigoInicial ?? '');
     final inicial = (codigoInicial ?? '').trim().toUpperCase();
     if (inicial.isNotEmpty) {
-      final nombreEq = _nombreEquipoDe(c, inicial);
-      final yaDentro = appState.usuario != null &&
-          c.participantes.any((p) =>
-              p.codigo.toUpperCase() == inicial &&
-              p.roster.any((r) =>
-                  r.email.toLowerCase() ==
-                  appState.usuario!.email.toLowerCase()));
-      if (nombreEq.isNotEmpty && !yaDentro) {
-        final si = await confirmarPichangol(
-          context,
-          titulo: 'Unirme a «$nombreEq»',
-          mensaje: 'Te invitaron a este equipo en "${c.nombre}". Quedarás en '
-              'el plantel con tu cuenta y tu capitán recibirá el aviso.',
-          textoConfirmar: 'Unirme',
-          icono: Icons.group_add,
-        );
-        if (si != true || !context.mounted) return;
-      }
-      // Código inválido o ya dentro: `unirseAEquipoPorCodigo` da el mensaje.
-      final res = appState.unirseAEquipoPorCodigo(c.id, inicial);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(res.mensaje),
-            backgroundColor: res.ok ? bosque : null));
-      }
+      await _confirmarYUnirme(context, c, inicial, desdeEnlace: true);
       return;
     }
     final ok = await showDialog<bool>(
@@ -1133,12 +1210,71 @@ class CampeonatoDetalleScreen extends StatelessWidget {
       ),
     );
     if (ok != true || !context.mounted) return;
-    final res = appState.unirseAEquipoPorCodigo(c.id, codigo.text);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(res.mensaje),
-          backgroundColor: res.ok ? bosque : null));
+    await _confirmarYUnirme(context, c, codigo.text.trim().toUpperCase());
+  }
+
+  /// Une al usuario al equipo del [cod]: valida (existe, no lleno, no repetido),
+  /// confirma — con la PARTE que le toca si el torneo cobra por equipo —,
+  /// cobra del saldo (`_aportarPozo`) y recién ahí lo mete al plantel.
+  Future<void> _confirmarYUnirme(
+      BuildContext context, Campeonato c, String cod,
+      {bool desdeEnlace = false}) async {
+    final yo = (appState.usuario?.email ?? '').toLowerCase();
+    Participante? eq;
+    for (final p in c.participantes) {
+      if (p.codigo.toUpperCase() == cod) eq = p;
     }
+    void avisar(String msg, {bool ok = false}) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(msg), backgroundColor: ok ? bosque : null));
+      }
+    }
+
+    if (eq == null || cod.isEmpty) {
+      avisar('Código no válido. Pídeselo a tu capitán.');
+      return;
+    }
+    if (eq.roster.any((r) => r.email.toLowerCase() == yo)) {
+      avisar('Ya estás en "${eq.nombre}".', ok: true);
+      return;
+    }
+    if (c.equipoLleno(eq)) {
+      avisar('"${eq.nombre}" ya tiene el plantel completo '
+          '(${c.maxJugadoresEquipo} jugadores).');
+      return;
+    }
+    final parte = c.aporteSiguiente(eq);
+    final cuota = c.tieneCuotaPorEquipo;
+    final si = await confirmarPichangol(
+      context,
+      titulo: 'Unirme a «${eq.nombre}»',
+      mensaje: (desdeEnlace
+              ? 'Te invitaron a este equipo en "${c.nombre}". '
+              : 'Equipo de "${c.nombre}". ') +
+          (cuota
+              ? (parte > 0
+                  ? 'Pones tu parte: ${c.fmtMonto(parte)} de tu saldo '
+                      '(el equipo lleva ${c.fmtMonto(c.pozoCentimos(eq))} de '
+                      '${c.fmtMonto(c.cuotaEquipoCentimos)}). Quedas en el '
+                      'plantel con tu cuenta.'
+                  : 'El pozo del equipo ya está completo: entras sin pagar.')
+              : 'Quedarás en el plantel con tu cuenta y tu capitán recibirá '
+                  'el aviso.'),
+      textoConfirmar: parte > 0 ? 'Pagar ${c.fmtMonto(parte)} y unirme' : 'Unirme',
+      icono: Icons.group_add,
+    );
+    if (!si || !context.mounted) return;
+    var aporte = 0;
+    if (parte > 0) {
+      final a =
+          await _aportarPozo(context, c, equipoId: eq.id, equipoNombre: eq.nombre);
+      if (a == null || !context.mounted) return;
+      aporte = a;
+    }
+    final res =
+        appState.unirseAEquipoPorCodigo(c.id, cod, aporteCentimos: aporte);
+    avisar(res.mensaje, ok: res.ok);
   }
 
   /// PUBLICIDAD del torneo (estilo RALLY CHALLENGE, pedido del director):
@@ -1172,7 +1308,14 @@ class CampeonatoDetalleScreen extends StatelessWidget {
       }
     }
     sb.writeln('');
-    if (c.costoInscripcion > 0) {
+    if (c.tieneCuotaPorEquipo) {
+      sb.writeln('✨ Inscripción *${c.monedaSimbolo} '
+          '${c.costoInscripcion.toStringAsFixed(2)} por equipo* — ¡cupos limitados!');
+      if (c.cupoReparto > 0) {
+        sb.writeln('👥 Cada jugador pone *${c.fmtMonto(c.cuotaJugadorCentimos)}* '
+            'al unirse a su equipo (hasta ${c.cupoReparto} por equipo).');
+      }
+    } else if (c.costoInscripcion > 0) {
       sb.writeln('✨ Inscríbete por solo *${c.monedaSimbolo} '
           '${c.costoInscripcion.toStringAsFixed(2)}* — ¡cupos limitados!');
     } else {
@@ -1273,7 +1416,11 @@ class _Cabecera extends StatelessWidget {
       if (c.fechas.isNotEmpty) '📅 ${c.fechas}',
       if (c.sede.isNotEmpty) '📍 ${c.sede}',
       if (c.costoInscripcion > 0)
-        'Inscripción ${c.monedaSimbolo} ${c.costoInscripcion.toStringAsFixed(2)}',
+        c.tieneCuotaPorEquipo
+            ? 'Inscripción ${c.monedaSimbolo} ${c.costoInscripcion.toStringAsFixed(2)} por equipo'
+            : 'Inscripción ${c.monedaSimbolo} ${c.costoInscripcion.toStringAsFixed(2)}',
+      if (c.tieneCuotaPorEquipo && c.cupoReparto > 0)
+        '👥 ${c.fmtMonto(c.cuotaJugadorCentimos)} por jugador (hasta ${c.cupoReparto})',
     ];
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1372,6 +1519,70 @@ class _EstadoCampeonato extends StatelessWidget {
 }
 
 /// Pastilla de estado del equipo (Completo / Faltan N) en el diálogo del plantel.
+/// Barra del POZO del equipo: cuánto lleva juntado de la cuota, cuánto pone
+/// cada jugador y cuánto falta (o "inscrito" cuando se completó).
+class _PozoEquipo extends StatelessWidget {
+  const _PozoEquipo({required this.campeonato, required this.equipo});
+  final Campeonato campeonato;
+  final Participante equipo;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = campeonato;
+    final pozo = c.pozoCentimos(equipo);
+    final total = c.cuotaEquipoCentimos;
+    final completo = c.pozoCompleto(equipo);
+    final pct = total > 0 ? (pozo / total).clamp(0.0, 1.0) : 0.0;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: completo ? limaSuave : const Color(0xFFFFF4E8),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(completo ? Icons.check_circle : Icons.savings_outlined,
+                  size: 18, color: completo ? bosque : naranja),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                    completo
+                        ? 'Equipo inscrito · pozo completo'
+                        : 'Pozo del equipo',
+                    style: const TextStyle(fontWeight: FontWeight.w800)),
+              ),
+              Text('${c.fmtMonto(pozo)} / ${c.fmtMonto(total)}',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w800, fontSize: 12.5)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: pct,
+              minHeight: 8,
+              backgroundColor: Colors.white,
+              color: completo ? bosque : naranja,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+              completo
+                  ? 'Cada jugador puso ${c.fmtMonto(c.cuotaJugadorCentimos)}. '
+                      'Los que entren ahora ya no pagan.'
+                  : 'Cada jugador pone ${c.fmtMonto(c.cuotaJugadorCentimos)} al '
+                      'unirse · faltan ${c.fmtMonto(c.faltantePozo(equipo))}.',
+              style: const TextStyle(color: textoTenue, fontSize: 12)),
+        ],
+      ),
+    );
+  }
+}
+
 class _ChipEstadoEquipo extends StatelessWidget {
   const _ChipEstadoEquipo(
       {required this.texto, required this.color, required this.icono});
@@ -1458,9 +1669,15 @@ class _Participantes extends StatelessWidget {
                 ),
                 const Divider(),
               ],
+              if (c.tieneCuotaPorEquipo) ...[
+                _PozoEquipo(campeonato: c, equipo: eq),
+                const SizedBox(height: 10),
+              ],
               Row(
                 children: [
-                  Text('Plantel (${eq.roster.length})',
+                  Text(
+                      'Plantel (${eq.roster.length}'
+                      '${c.maxJugadoresEquipo > 0 ? '/${c.maxJugadoresEquipo}' : ''})',
                       style: const TextStyle(fontWeight: FontWeight.w800)),
                   if (c.usaCupoEquipos) ...[
                     const SizedBox(width: 8),
@@ -1490,6 +1707,20 @@ class _Participantes extends StatelessWidget {
                           color: m.verificado ? lima : textoTenue),
                       const SizedBox(width: 8),
                       Expanded(child: Text(m.nombre)),
+                      if (c.tieneCuotaPorEquipo)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 6),
+                          child: Text(
+                              m.aporteCentimos > 0
+                                  ? 'pagó ${c.fmtMonto(m.aporteCentimos)}'
+                                  : 'sin pagar',
+                              style: TextStyle(
+                                  color: m.aporteCentimos > 0
+                                      ? bosque
+                                      : naranja,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700)),
+                        ),
                       if (m.email.toLowerCase() == eq.capitanEmail.toLowerCase())
                         const Text('Capitán',
                             style: TextStyle(
@@ -1503,6 +1734,38 @@ class _Participantes extends StatelessWidget {
           ),
         ),
         acciones: [
+          // Completar lo que falta: cualquiera del plantel (o el capitán).
+          if (c.tieneCuotaPorEquipo &&
+              !c.pozoCompleto(eq) &&
+              (soyCapitan ||
+                  eq.roster.any((r) => r.email.toLowerCase() == yo)))
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: lima),
+              onPressed: () async {
+                final falta = c.faltantePozo(eq);
+                final si = await confirmarPichangol(
+                  dctx,
+                  titulo: 'Completar el pozo',
+                  mensaje: 'Pones los ${c.fmtMonto(falta)} que faltan de tu '
+                      'saldo y "${eq.nombre}" queda inscrito.',
+                  textoConfirmar: 'Pagar ${c.fmtMonto(falta)}',
+                  icono: Icons.savings_outlined,
+                );
+                if (!si || !dctx.mounted) return;
+                final a = await _aportarPozo(dctx, c,
+                    equipoId: eq.id, equipoNombre: eq.nombre, completar: true);
+                if (a == null) return;
+                appState.registrarAporteEquipo(c.id, eq.id, yo, a);
+                if (dctx.mounted) Navigator.pop(dctx);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text('"${eq.nombre}" quedó inscrito. 🏆'),
+                      backgroundColor: bosque));
+                }
+              },
+              icon: const Icon(Icons.savings_outlined, size: 18),
+              label: Text('Completar ${c.fmtMonto(c.faltantePozo(eq))}'),
+            ),
           if (soyCapitan)
             TextButton.icon(
               onPressed: () async {
@@ -1655,11 +1918,111 @@ class _Participantes extends StatelessWidget {
     }
   }
 
+  /// QUITAR un participante. Si es un equipo con pozo sin completar, cada
+  /// jugador recupera su parte (backend); si ya se liquidó, se avisa.
+  Future<void> _quitar(
+      BuildContext context, Campeonato c, Participante p) async {
+    final ok = await confirmarPichangol(
+      context,
+      titulo: 'Quitar a "${p.nombre}"',
+      mensaje: c.tieneCuotaPorEquipo && p.esEquipo && c.pozoCentimos(p) > 0
+          ? (c.pozoCompleto(p)
+              ? 'Su pozo ya se te acreditó: la devolución a sus jugadores '
+                  'queda de tu lado.'
+              : 'Sus jugadores recuperan lo que pusieron '
+                  '(${c.fmtMonto(c.pozoCentimos(p))}) en su saldo.')
+          : 'Sale del campeonato.',
+      textoConfirmar: 'Quitar',
+      destructivo: true,
+      icono: Icons.person_remove_outlined,
+    );
+    if (!ok || !context.mounted) return;
+    if (c.tieneCuotaPorEquipo && p.esEquipo && !c.pozoCompleto(p)) {
+      await conPreload(
+          context,
+          () => PagosService.devolverPozo(
+              campeonatoId: c.id,
+              equipoId: p.id,
+              solicitante: appState.usuario?.email ?? ''),
+          texto: 'Devolviendo aportes…');
+    }
+    appState.eliminarParticipante(c.id, p.id);
+  }
+
   Future<void> _generar(BuildContext context) async {
     if (campeonato.participantes.length < 2) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Agrega al menos 2 participantes.')));
       return;
+    }
+    // La vaquita: equipos con el pozo incompleto → el organizador decide.
+    final c0 = campeonato;
+    final incompletos = c0.tieneCuotaPorEquipo
+        ? c0.participantes
+            .where((p) => p.esEquipo && !c0.pozoCompleto(p))
+            .toList()
+        : const <Participante>[];
+    if (incompletos.isNotEmpty) {
+      final decision = await showDialog<String>(
+        context: context,
+        builder: (dctx) => DialogoPichangol(
+          titulo: 'Equipos con el pozo incompleto',
+          icono: Icons.savings_outlined,
+          contenido: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                  'Aún no cubren la cuota de '
+                  '${c0.fmtMonto(c0.cuotaEquipoCentimos)}:',
+                  style: const TextStyle(color: textoTenue)),
+              const SizedBox(height: 8),
+              for (final p in incompletos)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Text(
+                      '⏳ ${p.nombre} · ${c0.fmtMonto(c0.pozoCentimos(p))} de '
+                      '${c0.fmtMonto(c0.cuotaEquipoCentimos)}'),
+                ),
+              const SizedBox(height: 8),
+              const Text(
+                  'Si los excluyes, cada jugador recupera lo que puso en su '
+                  'saldo Pichangol.',
+                  style: TextStyle(color: textoTenue, fontSize: 12.5)),
+            ],
+          ),
+          acciones: [
+            TextButton(
+                onPressed: () => Navigator.pop(dctx),
+                child: const Text('Cancelar')),
+            TextButton(
+                onPressed: () => Navigator.pop(dctx, 'excluir'),
+                child: Text('Excluir ${incompletos.length} y devolver')),
+            FilledButton(
+                onPressed: () => Navigator.pop(dctx, 'todos'),
+                child: const Text('Generar con todos')),
+          ],
+        ),
+      );
+      if (decision == null || !context.mounted) return;
+      if (decision == 'excluir') {
+        await conPreload(context, () async {
+          for (final p in incompletos) {
+            await PagosService.devolverPozo(
+                campeonatoId: c0.id,
+                equipoId: p.id,
+                solicitante: appState.usuario?.email ?? '');
+            appState.eliminarParticipante(c0.id, p.id);
+          }
+        }, texto: 'Devolviendo aportes…');
+        if (!context.mounted) return;
+        if ((appState.campeonatoPorId(c0.id)?.participantes.length ?? 0) < 2) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text(
+                  'Quedaron menos de 2 participantes: no se generó el fixture.')));
+          return;
+        }
+      }
     }
     if (campeonato.fixtureGenerado) {
       final ok = await confirmarPichangol(
@@ -1732,11 +2095,16 @@ class _Participantes extends StatelessWidget {
                                 color: cs.primary))
                         : null,
                 label: Text(p.esEquipo
-                    ? (c.usaCupoEquipos
-                        // Con cupo: "N/min" + ✅ si está completo.
-                        ? '${p.nombre} · ${p.roster.length}/${c.minJugadoresEquipo}'
-                            '${c.equipoCompleto(p) ? '  ✅' : ''}'
-                        : '${p.nombre} · ${p.roster.length} jug.')
+                    ? (c.tieneCuotaPorEquipo
+                        // La vaquita: "N/max jug. · S/ 60 de 100" o "✅ inscrito".
+                        ? '${p.nombre} · ${p.roster.length}'
+                            '${c.maxJugadoresEquipo > 0 ? '/${c.maxJugadoresEquipo}' : ''} jug. · '
+                            '${c.pozoCompleto(p) ? '${c.fmtMonto(c.cuotaEquipoCentimos)} ✅' : '${c.fmtMonto(c.pozoCentimos(p))} de ${c.fmtMonto(c.cuotaEquipoCentimos)}'}'
+                        : c.usaCupoEquipos
+                            // Con cupo: "N/min" + ✅ si está completo.
+                            ? '${p.nombre} · ${p.roster.length}/${c.minJugadoresEquipo}'
+                                '${c.equipoCompleto(p) ? '  ✅' : ''}'
+                            : '${p.nombre} · ${p.roster.length} jug.')
                     : p.esMenor
                         ? '${p.nombre} · apod. ${p.apoderadoNombre}'
                         // Nombre VIVO: si el inscrito cambió su nombre de
@@ -1744,9 +2112,7 @@ class _Participantes extends StatelessWidget {
                         : _nombreVigente(p)),
                 onPressed:
                     p.esEquipo ? () => _verEquipo(context, c, p) : null,
-                onDeleted: esDueno
-                    ? () => appState.eliminarParticipante(c.id, p.id)
-                    : null,
+                onDeleted: esDueno ? () => _quitar(context, c, p) : null,
               ),
           ],
         ),

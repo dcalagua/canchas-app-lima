@@ -2823,6 +2823,7 @@ class AppState extends ChangeNotifier {
     int? edadMin,
     int? edadMax,
     int minJugadoresEquipo = 0,
+    int maxJugadoresEquipo = 0,
     int minPartidos = 2,
     String premios = '',
     String auspiciador = '',
@@ -2847,6 +2848,7 @@ class AppState extends ChangeNotifier {
       edadMin: edadMin,
       edadMax: edadMax,
       minJugadoresEquipo: minJugadoresEquipo,
+      maxJugadoresEquipo: maxJugadoresEquipo,
       minPartidos: minPartidos,
       premios: premios,
       auspiciador: auspiciador,
@@ -2991,8 +2993,34 @@ class AppState extends ChangeNotifier {
         // Cuenta-app vinculada (si el organizador lo eligió del buscador):
         // habilita foto real y avisos al jugador.
         email: email.trim().toLowerCase(),
-        fotoUrl: (fotoUrl ?? '').trim().isEmpty ? null : fotoUrl!.trim());
+        fotoUrl: (fotoUrl ?? '').trim().isEmpty ? null : fotoUrl!.trim(),
+        // Fútbol: los equipos que crea el ORGANIZADOR también reciben código
+        // (enlace de equipo), así "Kinder 01" se llena por el link (pedido del
+        // director, 26-sep-2026). Sin capitán hasta que alguien lo asuma.
+        codigo: c.deporte == Deporte.futbol ? _nuevoCodigoEquipo() : '');
     guardarCampeonato(c.copyWith(participantes: [...c.participantes, p]));
+  }
+
+  /// Espeja en el roster lo que un jugador PUSO en el pozo (tras un aporte o
+  /// un "completar" aceptado por el backend). Suma al aporte previo.
+  void registrarAporteEquipo(
+      String campId, String equipoId, String email, int centimos) {
+    if (centimos <= 0) return;
+    final c = campeonatoPorId(campId);
+    if (c == null) return;
+    final idx = c.participantes.indexWhere((p) => p.id == equipoId);
+    if (idx < 0) return;
+    final eq = c.participantes[idx];
+    final roster = [
+      for (final m in eq.roster)
+        if (m.email.toLowerCase() == email.toLowerCase())
+          m.copyWith(aporteCentimos: m.aporteCentimos + centimos)
+        else
+          m,
+    ];
+    final parts = [...c.participantes];
+    parts[idx] = eq.copyWith(roster: roster);
+    guardarCampeonato(c.copyWith(participantes: parts));
   }
 
   void eliminarParticipante(String campId, String partId) {
@@ -3063,7 +3091,8 @@ class AppState extends ChangeNotifier {
   /// Crea un EQUIPO (fútbol) con el usuario como CAPITÁN y un CÓDIGO para que sus
   /// jugadores se auto-inscriban al plantel. Devuelve el código a compartir.
   ({bool ok, String mensaje, String codigo, String equipoId})
-      crearEquipoCampeonato(String campId, String nombreEquipo) {
+      crearEquipoCampeonato(String campId, String nombreEquipo,
+          {String? equipoId, int aporteCentimos = 0}) {
     final u = usuario;
     if (u == null) {
       return (ok: false, mensaje: 'Inicia sesión.', codigo: '', equipoId: '');
@@ -3110,7 +3139,9 @@ class AppState extends ChangeNotifier {
     final codigo = _nuevoCodigoEquipo();
     final micro = DateTime.now().microsecondsSinceEpoch;
     final p = Participante(
-      id: 'eq_$micro',
+      // El id puede venir de la pantalla: con cuota por equipo, el capitán
+      // APORTA al pozo (backend) antes de que el equipo exista aquí.
+      id: (equipoId ?? '').isNotEmpty ? equipoId! : 'eq_$micro',
       nombre: nombre,
       email: u.email,
       fotoUrl: u.fotoUrl,
@@ -3118,7 +3149,7 @@ class AppState extends ChangeNotifier {
       codigo: codigo,
       roster: [
         Integrante(id: 'in_$micro', nombre: u.nombre, email: u.email,
-            fotoUrl: u.fotoUrl),
+            fotoUrl: u.fotoUrl, aporteCentimos: aporteCentimos),
       ],
     );
     guardarCampeonato(c.copyWith(participantes: [...c.participantes, p]));
@@ -3133,7 +3164,7 @@ class AppState extends ChangeNotifier {
   /// Un jugador se UNE a un equipo por su CÓDIGO (queda en el roster, verificado
   /// por tener cuenta). Avisa al capitán.
   ({bool ok, String mensaje}) unirseAEquipoPorCodigo(String campId, String codigo,
-      {String? nombre}) {
+      {String? nombre, int aporteCentimos = 0}) {
     final u = usuario;
     if (u == null) return (ok: false, mensaje: 'Inicia sesión.');
     final c = campeonatoPorId(campId);
@@ -3151,6 +3182,13 @@ class AppState extends ChangeNotifier {
         .any((r) => r.email.toLowerCase() == u.email.toLowerCase())) {
       return (ok: true, mensaje: 'Ya estás en "${eq.nombre}".');
     }
+    if (c.equipoLleno(eq)) {
+      return (
+        ok: false,
+        mensaje: '"${eq.nombre}" ya tiene el plantel completo '
+            '(${c.maxJugadoresEquipo} jugadores).'
+      );
+    }
     final integrante = Integrante(
       id: 'in_${DateTime.now().microsecondsSinceEpoch}',
       nombre: (nombre != null && nombre.trim().isNotEmpty)
@@ -3158,6 +3196,7 @@ class AppState extends ChangeNotifier {
           : u.nombre,
       email: u.email,
       fotoUrl: u.fotoUrl,
+      aporteCentimos: aporteCentimos,
     );
     final parts = [...c.participantes];
     parts[idx] = eq.copyWith(roster: [...eq.roster, integrante]);

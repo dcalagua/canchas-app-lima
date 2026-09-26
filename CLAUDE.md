@@ -959,6 +959,45 @@ para la API del APK.
   Mis campeonatos (publicidad/resumen) y el comprobante de reserva. El APK
   comparte desde el teléfono y no tiene el problema: su texto queda igual.
   Test `test_whatsapp_desde_la_web_sin_emojis_de_4_bytes`.
+- **LA VAQUITA DEL EQUIPO = cuota de torneo POR EQUIPO repartida entre el
+  plantel (decisión del director, 26-sep-2026: "el campeonato es 100 soles
+  por equipo… con 3 suplentes serían 100/10 y eso paga cada usuario"):**
+  `pagos/pozos.py` (fuente de verdad del dinero, `stores.pozos_equipo` en
+  el snapshot, clave `<campeonato_id>|<equipo_id>`) + endpoints `POST
+  /pagos/torneo/equipo/aportar|completar|devolver`, `GET /pagos/torneo/
+  pozos/{camp}` y `/pagos/torneo/equipo/{camp}/{equipo}`. Reglas: (1)
+  `Campeonato.maxJugadoresEquipo` (nuevo, fútbol; tope de plantel, nunca
+  < mínimo) define el CUPO de reparto (máximo → mínimo → 0 = quien crea
+  paga entera); (2) cuota por jugador = cuota ÷ cupo redondeada HACIA
+  ARRIBA a 0.50 (`pozos.cuota_jugador_centimos` = `Campeonato.
+  cuotaJugadorCentimos` = `L.cuota_jugador_centimos`); (3) cada jugador
+  pone su parte de su SALDO al unirse (el capitán al crear); queda
+  RETENIDA (pago `aporte_equipo`, egreso en su billetera); el último paga
+  solo lo que falta; los que entran con el pozo lleno no pagan; (4)
+  cualquiera del plantel puede COMPLETAR el faltante; (5) al cubrirse la
+  cuota se cobra la comisión UNA sola vez sobre la cuota del EQUIPO
+  (`comision_centimos(cuota, moneda)`, nunca por aporte: el mínimo de S/ 2
+  se comería el 20 % de cada S/ 10) y el NETO se acredita al organizador
+  (`inscripcion_torneo_ingreso`); (6) si el equipo queda fuera ANTES de
+  completar (quitar equipo o "Excluir y devolver" al generar el fixture),
+  `devolver` regresa cada parte a cada jugador (`aporte_equipo_devolucion`);
+  ya liquidado → `ya_liquidado` y la devolución queda de lado del
+  organizador (aviso en app y web). El JSON del campeonato espeja
+  `Integrante.aporteCentimos` solo para mostrar. **App:** `_aportarPozo`
+  (falta saldo → Recargar), "Crear mi equipo · pones S/ 10" (paga ANTES de
+  crear, id `eq_<µs>` generado en la pantalla), `_confirmarYUnirme` (código
+  o enlace: valida lleno/repetido, confirma con la parte, cobra, une),
+  `_PozoEquipo` (barra + faltante) y "Completar S/ X" en la tarjeta del
+  equipo, chips "N/10 jug. · S/ 60 de 100" / "✅", `_quitar` y `_generar`
+  con devolución; `agregarParticipante` del ORGANIZADOR en fútbol crea el
+  equipo CON código (así "Kinder 01" se llena por el enlace); `unirse`
+  rechaza plantel lleno. **Web:** asistente con máximo, chips y modal con
+  pozo/aportes por jugador, `POST /fixture` responde 409
+  `pozos_incompletos` → modal "Generar con todos / Excluirlos y devolver"
+  (`{con_todos}` / `{excluir:[ids]}`), quitar equipo devuelve; publicidad y
+  página pública dicen "cada jugador pone S/ 10". Tests
+  `test_pozo_equipo.py`, `test_vaquita_del_equipo_en_la_web`. Pendiente:
+  la cuota individual (`/torneo/inscribir`) sigue en PEN.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en
