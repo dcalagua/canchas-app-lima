@@ -2434,6 +2434,10 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">🎁</span>
             <span class="md-txt"><b>Promociones</b><small>Bono de recarga · cupones</small></span>
           </button>
+          <button class="md-item" data-pane="tarifasPanel" onclick="mostrarPane(this,'tarifasPanel');cargarTarifas()">
+            <span class="md-ico">💳</span>
+            <span class="md-txt"><b>Tarifas de pasarela</b><small>Lo que cobra Culqi / PayPhone / Libélula · margen real</small></span>
+          </button>
           <button class="md-item" data-pane="reclamacionesPanel" onclick="mostrarPane(this,'reclamacionesPanel');cargarReclamaciones()">
             <span class="md-ico">📕</span>
             <span class="md-txt"><b>Libro de Reclamaciones</b><small>INDECOPI · responder en 15 días hábiles</small></span>
@@ -2452,6 +2456,7 @@ _HTML = r"""<!DOCTYPE html>
           <div class="md-pane" id="proPanel" style="display:none"></div>
           <div class="md-pane" id="recargasQr" style="display:none"></div>
           <div class="md-pane" id="promosPanel" style="display:none"></div>
+          <div class="md-pane" id="tarifasPanel" style="display:none"></div>
           <div class="md-pane" id="reclamacionesPanel" style="display:none"></div>
           <div class="md-pane" id="cancelacionesPanel" style="display:none"></div>
         </div>
@@ -4704,6 +4709,97 @@ async function desactivarCupon(codigo){
   if(r.ok) cargarPromos();
 }
 
+// --- Tarifas de la PASARELA (Culqi / PayPhone / Libélula) + simulador de margen ---
+// Pedido del director (26-sep-2026): "¿cuánto me descuenta Culqi y cuál es mi
+// comisión?". La torre estima el costo de la pasarela con la tarifa contratada
+// y muestra el margen real (comisión Pichangol − pasarela).
+let tarifasCache = null;
+async function cargarTarifas(){
+  const box = document.getElementById('tarifasPanel');
+  if(!box) return;
+  box.innerHTML = '<div class="card">Cargando…</div>';
+  try{
+    const r = await fetch('/pagos/tarifas-pasarela',{headers:headers(), cache:'no-store'});
+    if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
+    const j = await r.json(); tarifasCache = j.tarifas;
+    const inp = (id, v, step, w) => `<input id="${id}" type="number" min="0" step="${step}" value="${v}" style="width:${w||88}px;padding:8px;border-radius:10px;border:1px solid var(--border)">`;
+    const bloques = Object.entries(j.tarifas).map(([k,t])=>`
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+          <div style="font-weight:800;font-size:15px">💳 ${esc(t.nombre)} <span style="color:#667;font-weight:600;font-size:12.5px">· ${esc(t.pais)} · cobra en ${esc(t.simbolo)}</span></div>
+          ${t.configurada?'<span class="liq-tag ok">configurada</span>':'<span class="liq-tag">sin configurar · no se descuenta</span>'}
+        </div>
+        <div style="color:#667;font-size:12.5px;margin:4px 0 10px">${esc(t.nota)}</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:end">
+          ${Object.entries(t.medios).map(([m,v])=>`
+            <div style="display:flex;gap:8px;align-items:end;padding:8px 10px;border:1px solid var(--border);border-radius:12px">
+              <div style="font-weight:700;font-size:13px;min-width:56px">${m==='yape'?'Yape':'Tarjeta'}</div>
+              <label style="font-size:12px">% por cobro<br>${inp('tp_'+k+'_'+m+'_pct', v.pct, '0.01')}</label>
+              <label style="font-size:12px">+ fijo (${esc(t.simbolo)})<br>${inp('tp_'+k+'_'+m+'_fijo', v.fijo, '0.01')}</label>
+            </div>`).join('')}
+          <label style="font-size:12px">${esc(t.impuesto)} sobre la tarifa (%)<br>${inp('tp_'+k+'_imp', t.impuesto_pct, '1', 80)}</label>
+        </div>
+      </div>`).join('');
+    box.innerHTML = `
+      <div class="card" style="margin-bottom:12px;background:#F4FBF7">
+        <div style="font-weight:800;font-size:15px;margin-bottom:4px">¿Cómo se reparte cada cobro?</div>
+        <div style="color:#667;font-size:12.5px">El jugador paga el <b>bruto</b>. La pasarela se queda con su tarifa (se la cobra a Pichangol, el dueño no la ve).
+          Pichangol cobra su <b>comisión</b> (${j.simulacion.comision_pct}% con mínimo por moneda) y le transfiere el <b>neto</b> al dueño.
+          <b>Margen real = comisión − pasarela.</b> Es una estimación con la tarifa contratada: el número exacto está en el panel de la pasarela.</div>
+      </div>
+      ${bloques}
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+        <button class="btn-ap" onclick="guardarTarifas()">Guardar tarifas</button>
+        <span id="tp_msg" style="font-size:12.5px;color:#667"></span>
+      </div>
+      <div class="card">
+        <div style="font-weight:800;font-size:15px;margin-bottom:6px">🧮 Simulador de un cobro</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
+          <label style="font-size:12px">Monto<br>${inp('sim_monto', j.simulacion.bruto_soles, '0.5', 100)}</label>
+          <label style="font-size:12px">Moneda<br><select id="sim_mon" style="padding:8px;border-radius:10px;border:1px solid var(--border)">
+            <option value="PEN"${j.simulacion.moneda==='PEN'?' selected':''}>S/ · Perú (Culqi)</option>
+            <option value="USD"${j.simulacion.moneda==='USD'?' selected':''}>$ · Ecuador (PayPhone)</option>
+            <option value="BOB"${j.simulacion.moneda==='BOB'?' selected':''}>Bs · Bolivia (Libélula)</option></select></label>
+          <label style="font-size:12px">Medio<br><select id="sim_medio" style="padding:8px;border-radius:10px;border:1px solid var(--border)">
+            <option value="tarjeta">Tarjeta</option><option value="yape"${j.simulacion.medio==='yape'?' selected':''}>Yape</option></select></label>
+          <button class="btn-rc" onclick="simularTarifa()">Calcular</button>
+        </div>
+        <div id="sim_out">${simHtml(j.simulacion)}</div>
+      </div>`;
+  }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
+}
+function simHtml(x){
+  const S = n => x.simbolo + ' ' + (Math.round(n*100)/100).toFixed(2);
+  const neg = x.margen_soles < 0;
+  return `<div class="liq-resumen" style="gap:8px">
+      <span class="liq-mini">Paga el jugador ${S(x.bruto_soles)}</span>
+      <span class="liq-mini" style="background:#FFF4E5;color:#7A4B00">Pasarela (${esc(x.pasarela)} · ${x.medio}) −${S(x.pasarela_soles)}</span>
+      <span class="liq-mini liq-mini-pcg">Comisión Pichangol ${S(x.comision_soles)}</span>
+      <span class="liq-mini liq-mini-neto">Al dueño ${S(x.neto_soles)}</span>
+      <span class="liq-mini" style="background:${neg?'#FDE8E8':'#E6F7EE'};color:${neg?'#B3261E':'#0B7A55'};font-weight:800">Margen Pichangol ${S(x.margen_soles)}</span>
+    </div>
+    <div style="color:#667;font-size:12.5px;margin-top:8px">Comisión ${x.comision_pct}% con mínimo ${S(x.comision_min)}${neg?' · <b style="color:#B3261E">en este monto la pasarela cuesta más que la comisión: pierdes plata</b>':''}.</div>`;
+}
+async function simularTarifa(){
+  const monto = Number(document.getElementById('sim_monto').value||0), mon = document.getElementById('sim_mon').value, medio = document.getElementById('sim_medio').value;
+  const r = await fetch('/pagos/tarifas-pasarela?monto='+encodeURIComponent(monto)+'&moneda='+mon+'&medio='+medio,{headers:headers(), cache:'no-store'});
+  if(!r.ok) return;
+  const j = await r.json();
+  document.getElementById('sim_out').innerHTML = simHtml(j.simulacion);
+}
+async function guardarTarifas(){
+  if(!tarifasCache) return;
+  const body = {};
+  for(const [k,t] of Object.entries(tarifasCache)){
+    body[k] = {medios:{}, impuesto_pct: Number(document.getElementById('tp_'+k+'_imp').value||0)};
+    for(const m of Object.keys(t.medios)) body[k].medios[m] = {pct: Number(document.getElementById('tp_'+k+'_'+m+'_pct').value||0), fijo: Number(document.getElementById('tp_'+k+'_'+m+'_fijo').value||0)};
+  }
+  const msg = document.getElementById('tp_msg'); msg.textContent = 'Guardando…';
+  const r = await fetch('/pagos/tarifas-pasarela',{method:'POST',headers:headers(),body:JSON.stringify(body)});
+  if(r.ok){ toast('Tarifas guardadas ✓'); cargarTarifas(); }
+  else { let d=''; try{ d=(await r.json()).detail||''; }catch(e){} msg.textContent = d || 'Valores inválidos.'; }
+}
+
 // --- Identidad (DNI): revocar la verificación 1 DNI = 1 cuenta ------------------
 async function cargarDni(){
   const box = document.getElementById('dniPanel');
@@ -4834,10 +4930,10 @@ async function cargarLiquidaciones(){
     const S = n => 'S/ ' + (Math.round(n*100)/100).toFixed(2);
 
     // Totales GLOBALES (lo que realmente le toca a Pichangol = la comisión).
-    let gBruto=0, gCom=0, gNeto=0;
+    let gBruto=0, gCom=0, gNeto=0, gPas=0, gMar=0;
     const grupos = new Map(); // "local||dueño" → {local, dueno, items}
     for(const p of pend){
-      gBruto += p.bruto_soles||0; gCom += p.comision_soles||0; gNeto += p.neto_soles||0;
+      gBruto += p.bruto_soles||0; gCom += p.comision_soles||0; gNeto += p.neto_soles||0; gPas += p.pasarela_soles||0; gMar += p.margen_soles||0;
       const k = localDe(p) + '||' + (p.dueno_id||'');
       if(!grupos.has(k)) grupos.set(k, {local: localDe(p), dueno: p.dueno_id||'—', items: []});
       grupos.get(k).items.push(p);
@@ -4847,6 +4943,8 @@ async function cargarLiquidaciones(){
       const bruto = g.items.reduce((a,p)=>a+(p.bruto_soles||0),0);
       const com   = g.items.reduce((a,p)=>a+(p.comision_soles||0),0);
       const neto  = g.items.reduce((a,p)=>a+(p.neto_soles||0),0);
+      const pas   = g.items.reduce((a,p)=>a+(p.pasarela_soles||0),0);
+      const mar   = g.items.reduce((a,p)=>a+(p.margen_soles||0),0);
       // Subtotales por CANCHA dentro del local.
       const porCancha = new Map();
       for(const p of g.items){
@@ -4863,7 +4961,8 @@ async function cargarLiquidaciones(){
             <div class="liq-det">${esc(restoDe(p))} · ${fmtFecha(p.creado_en)}</div>
           </div>
           <div class="liq-der">
-            <div class="liq-monto" title="Bruto ${S(p.bruto_soles||0)} − comisión Pichangol ${S(p.comision_soles||0)}">${S(p.neto_soles||0)}</div>
+            <div class="liq-monto" title="Bruto ${S(p.bruto_soles||0)} − comisión Pichangol ${S(p.comision_soles||0)} · pasarela ${S(p.pasarela_soles||0)}${p.medio?' ('+esc(p.medio)+')':''} · margen ${S(p.margen_soles||0)}">${S(p.neto_soles||0)}</div>
+            <div class="liq-det" style="font-size:11.5px">pasarela −${S(p.pasarela_soles||0)} · margen <b style="color:${(p.margen_soles||0)<0?'#B3261E':'#0B7A55'}">${S(p.margen_soles||0)}</b></div>
             <button class="liq-btn" onclick="pagarLiquidacion('${esc(p.reserva_id)}','${S(p.neto_soles||0)}')">Marcar pagado</button>
           </div>
         </div>`).join('');
@@ -4884,6 +4983,8 @@ async function cargarLiquidaciones(){
           <div class="liq-grupo-tot">
             <span class="liq-mini">Bruto ${S(bruto)}</span>
             <span class="liq-mini liq-mini-pcg">Pichangol ${S(com)}</span>
+            <span class="liq-mini" style="background:#FFF4E5;color:#7A4B00">Pasarela −${S(pas)}</span>
+            <span class="liq-mini" style="background:${mar<0?'#FDE8E8':'#E6F7EE'};color:${mar<0?'#B3261E':'#0B7A55'}">Margen ${S(mar)}</span>
             <span class="liq-mini liq-mini-neto">Al dueño ${S(neto)}</span>
           </div>
         </div>
@@ -4905,6 +5006,8 @@ async function cargarLiquidaciones(){
           <div class="liq-resumen">
             <span class="liq-mini">Bruto cobrado ${S(gBruto)}</span>
             <span class="liq-mini liq-mini-pcg">Comisión Pichangol ${S(gCom)}</span>
+            <span class="liq-mini" style="background:#FFF4E5;color:#7A4B00" title="Estimado con la tarifa configurada en Cobros → Tarifas de pasarela">Pasarela −${S(gPas)}</span>
+            <span class="liq-mini" style="background:${gMar<0?'#FDE8E8':'#E6F7EE'};color:${gMar<0?'#B3261E':'#0B7A55'}" title="Comisión − pasarela">Margen Pichangol ${S(gMar)}</span>
             <span class="liq-mini liq-mini-neto">Neto a dueños ${S(gNeto)}</span>
           </div>
         </div>

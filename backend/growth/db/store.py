@@ -32,6 +32,15 @@ CONFIG_DEFAULT: dict[str, str] = {
     "bienvenida_saldo_soles": "0",   # regalo para dueños de PERÚ (S/)
     "bienvenida_saldo_usd": "0",     # ECUADOR ($)
     "bienvenida_saldo_bob": "0",     # BOLIVIA (Bs)
+    # TARIFA DE LA PASARELA (lo que Culqi / PayPhone / Libélula cobran a
+    # Pichangol por cobro): porcentaje + fijo + impuesto sobre la tarifa,
+    # editable en la torre → Cobros → "Tarifas de pasarela"; con esto la torre
+    # muestra el MARGEN real (comisión − pasarela). Ver pagos/tarifas_pasarela.py.
+    "tarifa_culqi_tarjeta_pct": "3.44", "tarifa_culqi_tarjeta_fijo": "0.30",
+    "tarifa_culqi_yape_pct": "3.44", "tarifa_culqi_yape_fijo": "0.30",
+    "tarifa_culqi_impuesto_pct": "18",
+    "tarifa_payphone_tarjeta_pct": "0", "tarifa_payphone_tarjeta_fijo": "0", "tarifa_payphone_impuesto_pct": "0",
+    "tarifa_libelula_tarjeta_pct": "0", "tarifa_libelula_tarjeta_fijo": "0", "tarifa_libelula_impuesto_pct": "0",
     # DATOS DE LA EMPRESA (razón social, RUC, dirección, correo, horario) que
     # salen en la portada, el pie de la web, las páginas legales y el Libro de
     # Reclamaciones. Editables desde la torre (Comunicación → "Datos de la

@@ -21,7 +21,7 @@ import html as _html
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Body
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -34,6 +34,7 @@ from . import libelula
 from . import payphone
 from . import pozos
 from . import cuentas_cobro as _cc
+from . import tarifas_pasarela as _tp
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
@@ -2360,6 +2361,9 @@ def _liquidacion_dict(p) -> dict:
                               "inscripcion_torneo_ingreso")
                 else comision_centimos(bruto / 100.0, p.moneda))
     neto = bruto - comision
+    # Costo estimado de la PASARELA (Culqi/PayPhone/Libélula) y margen real de
+    # Pichangol = comisión − pasarela (tarifa configurable en la torre).
+    pasarela = _tp.costo_centimos(bruto, moneda_iso(p.moneda), p.medio, p.tipo)
     # Antigüedad: para que la torre avise lo que lleva días sin pagarse.
     try:
         dias = max(0, (datetime.now(timezone.utc) - p.creado_en).days)
@@ -2376,6 +2380,9 @@ def _liquidacion_dict(p) -> dict:
         "bruto_soles": bruto / 100.0,
         "comision_soles": comision / 100.0,
         "neto_soles": neto / 100.0,
+        "pasarela_soles": pasarela / 100.0,
+        "margen_soles": (comision - pasarela) / 100.0,
+        "medio": p.medio or "",
         "liquidado": p.liquidado,
         "liquidado_en": p.liquidado_en.isoformat() if p.liquidado_en else None,
         "metodo_liquidacion": p.metodo_liquidacion,
@@ -2393,10 +2400,42 @@ def get_liquidaciones_pendientes() -> dict:
     # su grupo (copiar CCI / Yape) y el lote sabe a quién puede pagar por archivo.
     cuentas = {d: _cc.resumen(stores.cuenta_cobro(d)) for d in {x["dueno_id"] for x in pend if x["dueno_id"]}}
     return {"pendientes": pend, "total_neto_soles": round(total, 2),
+            "total_pasarela_soles": round(sum(x["pasarela_soles"] for x in pend), 2),
+            "total_margen_soles": round(sum(x["margen_soles"] for x in pend), 2),
+            "tarifas": _tp.leer(),
             "mas_antigua_dias": max((x["dias"] for x in pend), default=0),
             "atrasadas": sum(1 for x in pend if x["dias"] >= LIQUIDACION_AVISO_DIAS),
             "aviso_dias": LIQUIDACION_AVISO_DIAS, "cuentas": cuentas,
             "bcp": _config_bcp(), "lotes": _lotes_resumen()}
+
+
+@router.get("/tarifas-pasarela", dependencies=_ADMIN)
+def get_tarifas_pasarela(monto: float = 15.0, moneda: str = "PEN", medio: str = "tarjeta") -> dict:
+    """TORRE: tarifas vigentes de cada pasarela + simulación de un cobro
+    (bruto → pasarela → comisión Pichangol → margen → neto del dueño)."""
+    return {"tarifas": _tp.leer(), "simulacion": simular_cobro(monto, moneda, medio)}
+
+
+def simular_cobro(monto: float, moneda: str = "PEN", medio: str = "tarjeta") -> dict:
+    iso = moneda_iso(moneda)
+    bruto = _soles_a_centimos(max(0.0, float(monto or 0)))
+    com = comision_centimos(bruto / 100.0, iso) if bruto > 0 else 0
+    d = _tp.desglose(bruto, com, iso, medio, "liquidacion_online")
+    return {"moneda": iso, "simbolo": moneda_simbolo(iso), "medio": d["medio"], "pasarela": d["pasarela"],
+            "bruto_soles": bruto / 100.0, "pasarela_soles": d["pasarela_centimos"] / 100.0,
+            "comision_soles": com / 100.0, "margen_soles": d["margen_centimos"] / 100.0,
+            "neto_soles": d["neto_centimos"] / 100.0,
+            "comision_pct": config.COMISION_PORC, "comision_min": config.comision_min(iso)}
+
+
+@router.post("/tarifas-pasarela", dependencies=_ADMIN)
+def post_tarifas_pasarela(valores: dict = Body(...)) -> dict:
+    """TORRE: guarda las tarifas {culqi: {medios: {tarjeta: {pct, fijo}, yape: {…}}, impuesto_pct}, …}."""
+    ok, err = _tp.guardar(valores)
+    if not ok:
+        raise HTTPException(status_code=400, detail=err)
+    print(f"[tarifas] pasarela actualizada: {valores}", flush=True)
+    return {"ok": True, "tarifas": _tp.leer()}
 
 
 def _config_bcp() -> dict:
