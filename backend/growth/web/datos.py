@@ -733,6 +733,29 @@ def insertar_matricula(alumno_id: str, academia_id: str, email: str, data: dict)
         return False
 
 
+def matriculas_de_pagador(academia_id: str, email: str) -> list[dict]:
+    """Matrículas que PAGA este correo en la academia (titular + pareja +
+    hijos): base del orden del descuento familiar. ESPEJO de lo que el app
+    cuenta en `Academia.ordenFamiliarPara`."""
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not academia_id or not email:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, academia_id, email, data FROM pichangol_matriculas WHERE academia_id = %s AND lower(email) = %s "
+                        "AND coalesce(eliminada,false) = false ORDER BY id", (academia_id, email))
+            out = []
+            for mid, aid, em, data in cur.fetchall():
+                d = _json_dict(data)
+                d["id"] = mid
+                d.setdefault("academiaId", aid)
+                d.setdefault("email", em or "")
+                out.append(d)
+            return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def matricula(alumno_id: str) -> dict | None:
     """Una matrícula por id (no eliminada): `data` + `id`, `academiaId`, `email`."""
     if not pg.habilitado or not alumno_id:

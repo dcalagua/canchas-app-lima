@@ -188,6 +188,9 @@ class FakeDB:
         m = next((m for m in self.matriculas if m.get("id") == alumno_id), None)
         return dict(m) if m else None
 
+    def matriculas_de_pagador(self, academia_id, email):
+        return [dict(m) for m in self.matriculas if m.get("academiaId") == academia_id and (m.get("email") or "").lower() == (email or "").lower()]
+
     def academias_de_dueno(self, email):
         return [dict(a, id=k) for k, a in self.academias.items() if (a.get("dueno") or "").lower() == email.lower() and not a.get("_eliminada")]
 
@@ -259,7 +262,7 @@ def db(monkeypatch):
                "insertar_reservas", "confirmar_reservas", "borrar_reservas", "reservas_de",
                "reservas_por_grupo", "reservas_de_usuario", "eliminar_reservas", "canchas_de_dueno", "reservas_de_canchas", "bloqueos_de",
                "actualizar_cancha", "bloquear", "reserva_de_dueno", "marcar_pagado", "borrar_reserva_manual",
-               "academias_publicas", "academia", "insertar_matricula", "matricula", "academias_de_dueno", "academia_existe", "guardar_academia", "eliminar_academia", "matriculas_de_academias",
+               "academias_publicas", "academia", "insertar_matricula", "matricula", "academias_de_dueno", "academia_existe", "guardar_academia", "eliminar_academia", "matriculas_de_academias", "matriculas_de_pagador",
                "productos_de_vendedor", "producto_por_id", "guardar_producto", "eliminar_producto", "esta_verificado",
                "insertar_canchas", "borrar_canchas", "marcar_verificada", "adoptar_cancha", "desadoptar_cancha"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
@@ -1463,7 +1466,7 @@ def test_ficha_de_academia_y_matricula_web_como_el_app(db, monkeypatch):
     for t in ("Academia Baseline", "Club Lawn Tennis · San Borja", "Tenis para todos", "Programas y tarifario", "Bola Roja", "5 a 10 años · 1 h",
               "2x por semana", "S/ 250</b>", "invitado S/ 300", "Otros planes", "Por clase", "data-plan='Bola Roja | 2x'", "class='btn chico elegir'",
               "https://www.tiktok.com/@baseline", "wa.me/51999888777", "id='mapaFicha'", "Inicia sesión con Google para matricularte",
-              "Para mi hijo(a)", "Mes a mes", "Adelantado", "checkout.culqi.com", "pago adelantado de 3+ meses −10 %", "2.º hermano −10 %"):
+              "Para mi hijo(a)", "Mes a mes", "Adelantado", "checkout.culqi.com", "pago adelantado de 3+ meses −10 %", "2.º de la familia −10 %", "Para otra persona", "id='emailPersonaBox'", "\"dtoFam\""):
         assert t in html, t
     # Multi-país: en Bs el tarifario se ve pero la matrícula va a la app.
     bo = cli.get("/academia/ac_bo").text
@@ -1500,12 +1503,16 @@ def test_ficha_de_academia_y_matricula_web_como_el_app(db, monkeypatch):
     assert conta[0].academia_id == "ac_t1" and conta[0].monto_soles == 675 and conta[0].matricula_id == "chr_mat_1" and conta[0].pais == "pe"
     assert pushes[0][0][0] == "profe@gmail.com" and "Nuevo alumno" in pushes[0][0][1] and "Lucas Pérez" in pushes[0][0][2] and not susc
     # Mes a mes, 6 meses: hoy 1 cuota; 5 pendientes con autoDebito; suscripción con 5 cobros restantes.
+    # Ana ya paga a Lucas aquí → ella es la 2.ª DE LA FAMILIA: −10 % (330 → 297) en la cuota de hoy y en el débito automático.
+    assert cli.get("/web/academia/ac_t1/descuento-familiar").json()["dtoFam"] == {"yo": {"orden": 2, "pct": 10.0}, "hijo": {"orden": 2, "pct": 10.0}, "familiar": {"orden": 2, "pct": 10.0}}
     r = cli.post("/web/matricular", json={"academia_id": "ac_t1", "plan_id": "Bola Roja | 3x", "nombre": "Ana Pérez", "celular": "999888777",
-                                          "cantidad": 6, "mes_a_mes": True, "token": "tkn_2"}).json()
-    assert r["ok"] and cargos[-1]["monto_centimos"] == 33000
+                                          "cantidad": 6, "mes_a_mes": True, "token": "tkn_2", "quien": "yo"}).json()
+    assert r["ok"] and cargos[-1]["monto_centimos"] == 29700
     m = db.matriculas[-1]; cu = m["cuotas"]
     assert m["apoderadoNombre"] == "" and m["whatsapp"] == "999888777" and len(cu) == 6 and cu[0]["pagada"] and not cu[1]["pagada"] and all(c.get("autoDebito") for c in cu)
-    assert "fechaPago" not in cu[1] and susc[0].alumno_id == m["id"] and susc[0].cobros_restantes == 5 and susc[0].monto_soles == 330
+    assert m["ordenHermano"] == 2 and "parentesco" not in m and all(c["monto"] == 297 and c["concepto"].endswith("(−10% familiar)") for c in cu)
+    assert m["pagoWeb"]["monto"] == 297 and m["pagoWeb"]["ahorro"] == 33 and m["pagoWeb"]["dtoFamiliar"] == 10
+    assert "fechaPago" not in cu[1] and susc[0].alumno_id == m["id"] and susc[0].cobros_restantes == 5 and susc[0].monto_soles == 297
     # Cargo rechazado → no se guarda nada.
     monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: {"ok": False, "error": "tarjeta_rechazada"})
     n = len(db.matriculas)
@@ -1513,9 +1520,90 @@ def test_ficha_de_academia_y_matricula_web_como_el_app(db, monkeypatch):
     assert len(db.matriculas) == n
     # Comprobante: solo el titular; muestra cuotas y N.º de operación.
     comp = cli.get(r["url"]).text
-    assert "¡Matrícula registrada!" in comp and "Ana Pérez" in comp and "S/ 330.00" in comp and "chr_mat_1" in comp and "⏳" in comp and "wa.me/51999888777" in comp
+    assert "¡Matrícula registrada!" in comp and "Ana Pérez" in comp and "S/ 297.00" in comp and "chr_mat_1" in comp and "⏳" in comp and "wa.me/51999888777" in comp
+    assert "Descuento familiar aplicado: −10 % (2.º de tu familia" in comp
     _entrar_como(cli, monkeypatch, "otro@gmail.com")
     assert "Esta matrícula es privada" in cli.get(r["url"]).text
+
+
+def test_matricula_familiar_un_pagador_varias_personas(db, monkeypatch):
+    """Pedido del director (26-sep-2026): "yo pago la academia de tenis de mi
+    esposa, de mis hijos y mi propia mensualidad". (1) "Para otra persona" =
+    otro ADULTO de la familia (`parentesco: familiar`), con correo propio
+    opcional para que vea sus clases en SU app; (2) el DESCUENTO FAMILIAR se
+    asigna solo por orden (1.º sin descuento, 2.º −H2, 3.º+ −H3) contando a
+    todos los que paga la misma cuenta, aditivo al prepago; (3) la academia
+    puede limitarlo a "Solo hijos" (`descuentoFamiliar: false`)."""
+    from web import academia as wa
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
+    db.academias["ac_f"] = {"nombre": "Academia Familia", "deporte": "tenis", "dueno": "profe@gmail.com", "sedeClub": "Club X", "zona": "Surco",
+                            "lat": -12.1, "lng": -77.0, "whatsapp": "999888777", "descuentoPrepago": 10, "mesesMinPrepago": 3,
+                            "descuentoHermano2": 10, "descuentoHermano3": 20,
+                            "planes": [{"id": "m", "nombre": "Mensual", "precioMes": 100}]}
+    cli = TestClient(app, base_url="https://testserver")
+    cargos = []
+    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: cargos.append(kw) or {"ok": True, "charge_id": f"chr_{len(cargos)}"})
+    import pagos.router as pr
+    monkeypatch.setattr(pr, "post_matricula", lambda req: {"ok": True})
+    monkeypatch.setattr(pr, "post_suscripcion_alumno", lambda req: {"ok": True})
+    monkeypatch.setattr(pr, "_aviso_push_usuario", lambda *a, **k: None)
+    _entrar_como(cli, monkeypatch, "dennis@gmail.com", nombre="Dennis")
+    # Lógica pura, espejo de `Academia.ordenFamiliarPara`.
+    a = db.academias["ac_f"]
+    assert wa.orden_familiar(a, []) == 1 and wa.orden_familiar(a, [{"parentesco": "hijo"}]) == 2 and wa.orden_familiar(a, [{}, {"parentesco": "familiar"}], "hijo") == 3
+    assert wa.dto_familiar_pct(a, 1) == 0 and wa.dto_familiar_pct(a, 2) == 10 and wa.dto_familiar_pct(a, 5) == 20
+    solo_hijos = dict(a, descuentoFamiliar=False)
+    assert wa.orden_familiar(solo_hijos, [{"parentesco": "hijo"}], "familiar") == 1  # la esposa no descuenta
+    assert wa.orden_familiar(solo_hijos, [{}, {"parentesco": "hijo"}], "hijo") == 2  # el 2.º hijo sí (el titular no cuenta)
+    # 1) Yo: sin descuento. 100 × 1.
+    r = cli.post("/web/matricular", json={"academia_id": "ac_f", "plan_id": "m", "nombre": "Dennis Calagua", "celular": "999888777", "token": "t", "quien": "yo"}).json()
+    assert r["ok"] and cargos[-1]["monto_centimos"] == 10000 and db.matriculas[-1]["ordenHermano"] == 1
+    # 2) Mi esposa ("Para otra persona") con su correo: 2.ª de la familia → −10 %; sin apoderado ni foto mía; ve sus clases con su correo.
+    assert cli.get("/web/academia/ac_f/descuento-familiar").json()["dtoFam"]["familiar"] == {"orden": 2, "pct": 10.0}
+    r = cli.post("/web/matricular", json={"academia_id": "ac_f", "plan_id": "m", "nombre": "María López", "celular": "988777666", "token": "t",
+                                          "quien": "familiar", "email_persona": "Maria@Gmail.com"}).json()
+    assert r["ok"] and cargos[-1]["monto_centimos"] == 9000
+    m = db.matriculas[-1]
+    assert m["parentesco"] == "familiar" and m["emailAlumno"] == "maria@gmail.com" and m["email"] == "dennis@gmail.com" and m["ordenHermano"] == 2
+    assert m["apoderadoNombre"] == "" and m["whatsapp"] == "988777666" and "fotoUrl" not in m and m["cuotas"][0]["monto"] == 90
+    assert "Descuento familiar aplicado: −10 % (2.º de tu familia" in cli.get(r["url"]).text
+    _entrar_como(cli, monkeypatch, "maria@gmail.com", nombre="María")
+    assert "¡Matrícula registrada!" in cli.get(r["url"]).text  # el familiar con su correo también ve el comprobante
+    _entrar_como(cli, monkeypatch, "dennis@gmail.com", nombre="Dennis")
+    # Correo del familiar mal formado o igual al mío → error sin cobrar.
+    n = len(cargos)
+    assert cli.post("/web/matricular", json={"academia_id": "ac_f", "plan_id": "m", "nombre": "Pepe", "celular": "988777666", "token": "t", "quien": "familiar", "email_persona": "pepe"}).json()["error"] == "email_persona"
+    assert cli.post("/web/matricular", json={"academia_id": "ac_f", "plan_id": "m", "nombre": "Pepe", "celular": "988777666", "token": "t", "quien": "familiar", "email_persona": "dennis@gmail.com"}).json()["error"] == "email_persona"
+    assert len(cargos) == n
+    # 3) Mi hijo, 3.º de la familia, 3 meses adelantados: prepago 10 % + familiar 20 % = 30 % → 300 − 90 = 210.
+    r = cli.post("/web/matricular", json={"academia_id": "ac_f", "plan_id": "m", "nombre": "Lucas", "celular": "999888777", "token": "t",
+                                          "quien": "hijo", "edad": 9, "cantidad": 3}).json()
+    assert r["ok"] and cargos[-1]["monto_centimos"] == 21000
+    m = db.matriculas[-1]
+    assert m["parentesco"] == "hijo" and m["ordenHermano"] == 3 and m["apoderadoNombre"] == "Dennis" and m["pagoWeb"]["ahorro"] == 90 and m["pagoWeb"]["dtoFamiliar"] == 20
+    assert all(c["monto"] == 80 and c["concepto"].endswith("(−20% familiar)") for c in m["cuotas"])
+    # Cliente viejo (sin `quien`, con es_hijo) sigue funcionando: 4.º → −20 %.
+    r = cli.post("/web/matricular", json={"academia_id": "ac_f", "plan_id": "m", "nombre": "Mateo", "celular": "999888777", "token": "t", "es_hijo": True, "edad": 7}).json()
+    assert r["ok"] and cargos[-1]["monto_centimos"] == 8000 and db.matriculas[-1]["parentesco"] == "hijo" and db.matriculas[-1]["ordenHermano"] == 4
+    # "Solo hijos": otra cuenta en una academia que lo restringe → la pareja no descuenta, el 2.º hijo sí.
+    db.academias["ac_h"] = dict(a, nombre="Academia Solo Hijos", descuentoFamiliar=False)
+    _entrar_como(cli, monkeypatch, "rosa@gmail.com", nombre="Rosa")
+    assert cli.post("/web/matricular", json={"academia_id": "ac_h", "plan_id": "m", "nombre": "Rosa Díaz", "celular": "999888777", "token": "t", "quien": "yo"}).json()["ok"]
+    assert cli.post("/web/matricular", json={"academia_id": "ac_h", "plan_id": "m", "nombre": "Juan Díaz", "celular": "999888777", "token": "t", "quien": "familiar"}).json()["ok"]
+    assert cargos[-1]["monto_centimos"] == 10000 and db.matriculas[-1]["ordenHermano"] == 1
+    assert cli.post("/web/matricular", json={"academia_id": "ac_h", "plan_id": "m", "nombre": "Hijo 1", "celular": "999888777", "token": "t", "quien": "hijo", "edad": 8}).json()["ok"]
+    assert cargos[-1]["monto_centimos"] == 10000 and db.matriculas[-1]["ordenHermano"] == 1
+    assert cli.post("/web/matricular", json={"academia_id": "ac_h", "plan_id": "m", "nombre": "Hijo 2", "celular": "999888777", "token": "t", "quien": "hijo", "edad": 6}).json()["ok"]
+    assert cargos[-1]["monto_centimos"] == 9000 and db.matriculas[-1]["ordenHermano"] == 2
+    html = cli.get("/academia/ac_h").text
+    assert "2.º hermano −10 %" in html and "3.º hermano −20 %" in html
+    # El dueño ve el parentesco y el orden en Alumnos; el editor tiene el selector.
+    _entrar_como(cli, monkeypatch, "profe@gmail.com", nombre="Profe")
+    al = cli.get("/anfitrion/academia/alumnos?academia=ac_f").text
+    assert "Familiar · paga dennis@gmail.com" in al and "3.º de la familia · descuento familiar" in al
+    ed = cli.get("/anfitrion/academia/ac_f/editar").text
+    assert "Descuento familiar aplica a" in ed and "data-g='descuentoFamiliar' data-v='1'" in ed and "Solo hijos" in ed
 
 
 def test_agregar_cancha_a_local_desde_la_web_como_el_app(db, monkeypatch):

@@ -247,16 +247,63 @@ def _orden_siembra(size: int) -> list[int]:
     return seq
 
 
-def _generar_grupos(ps: list[dict], minp: int) -> list[dict]:
+def validar_grupos_manuales(c: dict, grupos) -> str:
+    """GRUPOS ARMADOS A MANO por el organizador (pedido del director,
+    26-sep-2026, desde el campo). `grupos` = lista de listas de ids de
+    participantes, en orden A, B, C… Reglas: entre 1 y 16 grupos, cada grupo
+    con ≥ 2 equipos, y TODOS los participantes asignados exactamente una vez.
+    Devuelve el mensaje de error ('' = válido). ESPEJO de
+    `TorneoFixture.validarGruposManuales`."""
+    ids = [str(p.get("id")) for p in (c.get("participantes") or []) if p.get("id")]
+    if not isinstance(grupos, list) or not grupos:
+        return "Arma al menos un grupo."
+    if len(grupos) > len(LETRAS):
+        return f"Máximo {len(LETRAS)} grupos."
+    vistos: set[str] = set()
+    for i, g in enumerate(grupos):
+        if not isinstance(g, list) or len(g) < 2:
+            return f"El grupo {LETRAS[i] if i < len(LETRAS) else i + 1} necesita al menos 2 equipos."
+        for x in g:
+            x = str(x)
+            if x not in ids:
+                return "Hay un equipo que ya no está inscrito: vuelve a armar los grupos."
+            if x in vistos:
+                return "Un equipo está en dos grupos."
+            vistos.add(x)
+    faltan = [x for x in ids if x not in vistos]
+    if faltan:
+        nombres = [str(p.get("nombre") or "?") for p in c.get("participantes") or [] if str(p.get("id")) in faltan]
+        return "Falta asignar a: " + ", ".join(nombres[:4]) + ("…" if len(nombres) > 4 else "")
+    return ""
+
+
+def grupos_manuales(c: dict) -> list[list[str]] | None:
+    """Los grupos armados a mano si existen Y siguen siendo válidos para los
+    participantes actuales; si no, None (se sortea automático)."""
+    g = c.get("gruposManuales")
+    if not g or validar_grupos_manuales(c, g):
+        return None
+    return [[str(x) for x in grupo] for grupo in g]
+
+
+def _generar_grupos(ps: list[dict], minp: int, grupos: list[list[str]] | None = None) -> list[dict]:
     ids = [p["id"] for p in ps]
-    tams = armar_grupos(len(ids), minp)
-    if not tams:  # menos de 3 → llave directa (una final)
-        return recomputar_llave(_esqueleto_eliminacion(ps))
-    partidos, pos = [], 0
-    for gi, t in enumerate(tams):
+    if grupos:
+        # A mano: el organizador decidió cuántos grupos y quién va en cada uno.
+        listas = [[i for i in g if i in ids] for g in grupos]
+        tams = [len(g) for g in listas]
+    else:
+        tams = armar_grupos(len(ids), minp)
+        if not tams:  # menos de 3 → llave directa (una final)
+            return recomputar_llave(_esqueleto_eliminacion(ps))
+        listas, pos = [], 0
+        for t in tams:
+            listas.append(ids[pos:pos + t])
+            pos += t
+    partidos = []
+    for gi, miembros_ids in enumerate(listas):
         letra = LETRAS[gi]
-        miembros = [{"id": i} for i in ids[pos:pos + t]]
-        pos += t
+        miembros = [{"id": i} for i in miembros_ids]
         for m in _generar_liga(miembros):
             partidos.append(_partido(f"g{letra}_{m['id']}", m["ronda"], m["idx"], m.get("aId"), m.get("bId"), fase="grupo", grupo=letra))
     # Esqueleto de la llave: clasifican 2 por grupo; potencia de 2 con byes.
@@ -370,7 +417,7 @@ def generar_fixture(c: dict) -> list[dict]:
     if fmt == "liga":
         return _generar_liga(ps)
     if fmt == "grupos":
-        return _generar_grupos(ps, min_partidos(c))
+        return _generar_grupos(ps, min_partidos(c), grupos_manuales(c))
     return recomputar_llave(_esqueleto_eliminacion(ps))
 
 

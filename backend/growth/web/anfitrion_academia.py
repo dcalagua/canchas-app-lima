@@ -168,6 +168,10 @@ def pagina_alumnos(request: Request, academia: str = "") -> HTMLResponse:
         estado = ("<span class='pill bad'>Vencida</span>" if venc else ("<span class='pill warn'>Por cobrar</span>" if pend else "<span class='pill ok'>Al día</span>"))
         tel = str(m.get("apoderadoWhatsapp") or m.get("whatsapp") or "")
         quien = e(m.get("nombre") or "Alumno") + (f"<div class='sub' style='margin:0;font-size:12px'>Apoderado: {e(m.get('apoderadoNombre'))}</div>" if m.get("apoderadoNombre") else "")
+        if m.get("parentesco") == "familiar":
+            quien += f"<div class='sub' style='margin:0;font-size:12px'>Familiar · paga {e(m.get('email') or '')}</div>"
+        if int(m.get("ordenHermano") or 1) > 1:
+            quien += f"<div class='sub' style='margin:0;font-size:12px'>{int(m['ordenHermano'])}.º de la familia · descuento familiar</div>"
         prox = min((_fecha(c.get("vencimiento")) for c in pend), default="")
         filas += (f"<tr><td><b>{quien}</b></td><td>{e(str(m.get('edad') or '—'))}</td><td>{e(tel or '—')}</td>"
                   f"<td>{len(cuotas) - len(pend)}/{len(cuotas)}</td><td>{e(sim)} {deuda:.2f}{(' · vence ' + e(prox)) if prox else ''}</td><td>{estado}</td>"
@@ -196,7 +200,7 @@ def pagina_nueva_academia(request: Request) -> HTMLResponse:
         return resp
     a = {"id": f"ac_{int(time.time() * 1_000_000)}", "nombre": "", "deporte": "tenis", "dueno": ses["email"], "whatsapp": "",
          "descripcion": "", "sedeClub": "", "zona": "", "planes": [], "redes": {}, "fotos": [], "moneda": "", "recargoInvitado": 0,
-         "descuentoHermano2": 0, "descuentoHermano3": 0, "descuentoPrepago": 0, "mesesMinPrepago": 3, "retribucionClubPct": 0}
+         "descuentoHermano2": 0, "descuentoHermano3": 0, "descuentoPrepago": 0, "descuentoFamiliar": True, "mesesMinPrepago": 3, "retribucionClubPct": 0}
     return _editor(ses, a, nueva=True)
 
 
@@ -275,8 +279,9 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
  </section>
  <section class='panel edit-sec' id='sec-reglas'><h2>Reglas de cobro</h2>
   <label for='recargo'>Recargo para invitados (no socios de la sede) <span class='req'>0 = un solo precio</span></label><div class='inp-moneda' style='max-width:220px'><span id='monSpan'>{e(_moneda(a))}</span><input id='recargo' type='number' min='0' step='1' value='{float(a.get('recargoInvitado') or 0):.0f}'></div>
-  <label>Descuento 2.º hermano</label>{_chips('descuentoHermano2', catalogos.DESCUENTOS_ACADEMIA, int(float(a.get('descuentoHermano2') or 0)), pct)}
-  <label>Descuento 3.º hermano en adelante</label>{_chips('descuentoHermano3', catalogos.DESCUENTOS_ACADEMIA, int(float(a.get('descuentoHermano3') or 0)), pct)}
+  <label>Descuento familiar aplica a <span class='req'>quién cuenta como 2.º / 3.º cuando un mismo titular paga varias matrículas</span></label>{_chips('descuentoFamiliar', [('1', 'Toda la familia (él, su pareja, sus hijos)'), ('0', 'Solo hijos')], '1' if a.get('descuentoFamiliar', True) is not False else '0')}
+  <label>Descuento 2.º de la familia</label>{_chips('descuentoHermano2', catalogos.DESCUENTOS_ACADEMIA, int(float(a.get('descuentoHermano2') or 0)), pct)}
+  <label>Descuento 3.º de la familia en adelante</label>{_chips('descuentoHermano3', catalogos.DESCUENTOS_ACADEMIA, int(float(a.get('descuentoHermano3') or 0)), pct)}
   <label>Descuento por prepago</label>{_chips('descuentoPrepago', catalogos.DESCUENTOS_ACADEMIA, int(float(a.get('descuentoPrepago') or 0)), pct)}
   <label>Desde cuántos meses adelantados aplica</label>{_chips('mesesMinPrepago', catalogos.MESES_MIN_PREPAGO, int(a.get('mesesMinPrepago') or 3), lambda v: f"{v} mes{'es' if v != 1 else ''}")}
   <label for='retri'>Retribución al club / sede <span class='req'>% de lo cobrado · 0 = no aplica</span></label><div class='inp-moneda' style='max-width:160px'><input id='retri' type='number' min='0' max='50' step='1' value='{float(a.get('retribucionClubPct') or 0):.0f}'><span>%</span></div>
@@ -386,7 +391,7 @@ pintarProgramas();
 $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las imágenes.';return}leerProgramas();var errP=validarProgramas();if(errP){msg.textContent=errP;var sp=$('sec-planes');if(sp)sp.scrollIntoView({behavior:'smooth',block:'start'});return}planes=aplanar();
   var redes={};document.querySelectorAll('.serv.sel[data-red]').forEach(function(r){var v=r.querySelector('input').value.trim();if(v)redes[r.dataset.red]=v});
   var body={id:CFG.id,nombre:$('nombre').value,deporte:sel('deporte'),descripcion:$('desc').value,sedeClub:$('sede').value,lat:lat,lng:lng,zona:$('g3').value,whatsapp:$('wa').value,
-    logoUrl:logo,fotos:fotos,redes:redes,planes:planes,recargoInvitado:parseFloat($('recargo').value)||0,descuentoHermano2:+sel('descuentoHermano2'),descuentoHermano3:+sel('descuentoHermano3'),
+    logoUrl:logo,fotos:fotos,redes:redes,planes:planes,recargoInvitado:parseFloat($('recargo').value)||0,descuentoHermano2:+sel('descuentoHermano2'),descuentoHermano3:+sel('descuentoHermano3'),descuentoFamiliar:sel('descuentoFamiliar')!=='0',
     descuentoPrepago:+sel('descuentoPrepago'),mesesMinPrepago:+sel('mesesMinPrepago'),retribucionClubPct:parseFloat($('retri').value)||0};
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Guardando…';
   try{var r=await fetch('/anfitrion/academia/guardar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
@@ -487,6 +492,7 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
         "moneda": (actual or {}).get("moneda") or paises.simbolo_de_moneda(paises.moneda_de_pais(iso)),
         "recargoInvitado": recargo, "descuentoHermano2": _pct("descuentoHermano2", catalogos.DESCUENTOS_ACADEMIA),
         "descuentoHermano3": _pct("descuentoHermano3", catalogos.DESCUENTOS_ACADEMIA), "descuentoPrepago": _pct("descuentoPrepago", catalogos.DESCUENTOS_ACADEMIA),
+        "descuentoFamiliar": b.get("descuentoFamiliar", (actual or {}).get("descuentoFamiliar", True)) is not False,
         "mesesMinPrepago": mmin, "retribucionClubPct": retri,
     })
     if logo:

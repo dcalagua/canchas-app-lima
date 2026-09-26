@@ -351,7 +351,7 @@ class _ReservaDestacada extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                 decoration: BoxDecoration(
                     color: lima, borderRadius: BorderRadius.circular(999)),
-                child: Text('PRÓXIMA · ${reserva.dia.toUpperCase()}',
+                child: Text('PRÓXIMA · ${reserva.diaVisible.toUpperCase()}',
                     style: const TextStyle(
                         color: Colors.white,
                         fontSize: 11,
@@ -485,7 +485,7 @@ class _ReservaCard extends StatelessWidget {
                     style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 2),
                 Text(
-                  '${cancha?.club ?? ''} · ${reserva.dia} ${reserva.horaInicio}–${reserva.horaFin}',
+                  '${cancha?.club ?? ''} · ${reserva.diaVisible} ${reserva.horaInicio}–${reserva.horaFin}',
                   style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                 ),
                 const SizedBox(height: 6),
@@ -582,7 +582,7 @@ Future<void> _confirmarCancelar(BuildContext context, Reserva r) async {
     titulo: historial ? '¿Quitar del historial?' : '¿Cancelar esta reserva?',
     mensaje: historial
         ? 'Se eliminará esta reserva de tu historial. No se puede deshacer.'
-        : 'Se liberará el horario ${r.dia} ${r.horaInicio}–${r.horaFin} y '
+        : 'Se liberará el horario ${r.diaVisible} ${r.horaInicio}–${r.horaFin} y '
                 'dejará de aparecer en tus reservas.'
             '${r.sena > 0 && !r.pagado ? '\n\nLa seña de ${r.monedaSimbolo} ${r.sena} que adelantaste NO se devuelve (queda para el local); el resto ya no lo pagas.' : ''}'
             '${r.pagado ? '\n\nEsta reserva ya está pagada: la cancelación no genera reembolso automático.' : ''}',

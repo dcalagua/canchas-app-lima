@@ -780,8 +780,7 @@ class _TarjetaPlan extends StatelessWidget {
     }
     if (!context.mounted) return;
     // 1) Datos del alumno + MODO (mes a mes / adelantado) + cantidad + total.
-    final datos = await showModalBottomSheet<
-        (String, String, int, bool, double, bool, int?, String)>(
+    final datos = await showModalBottomSheet<_DatosMatricula>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -791,6 +790,7 @@ class _TarjetaPlan extends StatelessWidget {
       builder: (_) => _HojaDatosAlumno(
         nombreInicial: appState.usuario?.nombre ?? '',
         academia: academia.nombre,
+        academiaObj: academia,
         logoUrl: academia.logoUrl,
         planObj: plan,
         moneda: academia.monedaSimbolo,
@@ -802,14 +802,24 @@ class _TarjetaPlan extends StatelessWidget {
       ),
     );
     if (datos == null) return;
-    final (nombre, whatsapp, cantidad, mesAMes, totalAhora, esHijo, edad,
-            sedeId) =
-        datos;
+    final nombre = datos.nombre;
+    final whatsapp = datos.whatsapp;
+    final cantidad = datos.cantidad;
+    final mesAMes = datos.mesAMes;
+    final totalAhora = datos.total;
+    final esHijo = datos.parentesco == 'hijo';
+    final edad = datos.edad;
+    final sedeId = datos.sedeId;
     final monto = totalAhora.round();
     // Precio mensual y total del plan EN LA SEDE elegida (multi-sede con tarifas
-    // por local): así las cuotas y el débito automático usan el precio correcto.
-    final precioMesSede = academia.precioMesEnSede(plan, sedeId);
-    final totalPlanSede = academia.totalPlanEnSede(plan, sedeId);
+    // por local) y con el DESCUENTO FAMILIAR (2.º/3.º de la familia): así las
+    // cuotas pendientes y el débito automático cobran el precio correcto.
+    final factorFam = 1 - datos.dtoFamiliarPct / 100;
+    final precioMesSede = academia.precioMesEnSede(plan, sedeId) * factorFam;
+    final totalPlanSede = academia.totalPlanEnSede(plan, sedeId) * factorFam;
+    final notaDto = datos.dtoFamiliarPct > 0
+        ? ' (−${datos.dtoFamiliarPct.toStringAsFixed(0)}% familiar)'
+        : '';
 
     // 2) Pago del total a cobrar AHORA (mes a mes = 1 mes; adelantado = N meses
     // con descuento si aplica). Capturamos el token para el débito automático.
@@ -856,6 +866,10 @@ class _TarjetaPlan extends StatelessWidget {
       operacionId: operacionId ?? '',
       sedeId: sedeId,
       precioMesOverride: precioMesSede,
+      parentesco: datos.parentesco,
+      emailAlumno: datos.emailAlumno,
+      ordenHermano: datos.orden,
+      notaDescuento: notaDto,
     );
 
     // 3b) Mes a mes: activa el débito automático de los meses restantes con la
@@ -921,10 +935,39 @@ class _TarjetaPlan extends StatelessWidget {
 
 /// Hoja para capturar nombre + WhatsApp del alumno y la CANTIDAD (clases/meses/
 /// paquetes) antes de pagar.
+/// Lo que devuelve la hoja de matrícula.
+class _DatosMatricula {
+  const _DatosMatricula({
+    required this.nombre,
+    required this.whatsapp,
+    required this.cantidad,
+    required this.mesAMes,
+    required this.total,
+    required this.parentesco,
+    required this.edad,
+    required this.sedeId,
+    required this.emailAlumno,
+    required this.orden,
+    required this.dtoFamiliarPct,
+  });
+  final String nombre;
+  final String whatsapp;
+  final int cantidad; // meses comprometidos (mes a mes) o adelantados
+  final bool mesAMes;
+  final double total; // lo que se cobra AHORA (con descuentos)
+  final String parentesco; // '' yo · 'hijo' · 'familiar'
+  final int? edad;
+  final String sedeId;
+  final String emailAlumno; // correo propio del familiar (opcional)
+  final int orden; // orden del descuento familiar (1 = primero)
+  final double dtoFamiliarPct; // % aplicado por ser 2.º/3.º de la familia
+}
+
 class _HojaDatosAlumno extends StatefulWidget {
   const _HojaDatosAlumno({
     required this.nombreInicial,
     required this.academia,
+    required this.academiaObj,
     required this.planObj,
     required this.moneda,
     this.logoUrl,
@@ -936,6 +979,7 @@ class _HojaDatosAlumno extends StatefulWidget {
   });
   final String nombreInicial;
   final String academia;
+  final Academia academiaObj; // descuento familiar (orden del pagador)
   final String? logoUrl;
   final Plan planObj;
   final String moneda;
@@ -954,9 +998,21 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
   late final TextEditingController _nombre = TextEditingController();
   final _whatsapp = TextEditingController();
   final _edad = TextEditingController();
+  final _emailAlumno = TextEditingController();
   int _cantidad = 1;
   bool _mesAMes = false; // solo aplica a planes mensuales
-  bool _esHijo = false; // ¿matriculo a mi hijo(a)? (yo soy el apoderado)
+  // ¿Para quién? '' = para mí · 'hijo' = mi hijo(a) menor · 'familiar' = otro
+  // adulto de mi familia (esposa, pareja) al que yo matriculo y pago.
+  String _quien = '';
+  bool get _esHijo => _quien == 'hijo';
+  bool get _esFamiliar => _quien == 'familiar';
+
+  // DESCUENTO FAMILIAR: orden del próximo matriculado por este pagador en la
+  // academia (yo 1.º, esposa 2.º, hijo 3.º…) y su % (config de la academia).
+  int get _orden => widget.academiaObj.ordenFamiliarPara(
+      appState.alumnos, appState.usuario?.email ?? '',
+      parentescoNuevo: _quien);
+  double get _dtoFamiliar => widget.academiaObj.descuentoHermanoPct(_orden);
   String? _error; // mensaje de validación inline (visible)
   // Sede elegida (academias multi-sede): por defecto la primera.
   late String? _sedeId =
@@ -1000,10 +1056,22 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
       _plan.tipo == TipoPlan.porClase ? _precioMesEf : _precioMesEf * _plan.meses;
 
   double get _totalSinDto => _planTotalEf * _cantidad;
-  double get _ahorro =>
+  // Descuentos ADITIVOS (como `Academia.descuentoTotalPct`): prepago + familiar.
+  double get _pctTotal =>
+      ((_aplicaDescuento ? widget.descuentoPrepago : 0) + _dtoFamiliar)
+          .clamp(0, 100)
+          .toDouble();
+  double get _ahorro => _totalSinDto * _pctTotal / 100;
+  double get _ahorroPrepago =>
       _aplicaDescuento ? _totalSinDto * widget.descuentoPrepago / 100 : 0;
-  // Lo que se cobra AHORA: mes a mes = 1 mes; adelantado = total − descuento.
-  double get _total => _mesAMes ? _planTotalEf : (_totalSinDto - _ahorro);
+  double get _ahorroFamiliar => _mesAMes
+      ? _planTotalEf * _dtoFamiliar / 100
+      : _totalSinDto * _dtoFamiliar / 100;
+  // Lo que se cobra AHORA: mes a mes = 1 mes (con dto. familiar); adelantado =
+  // total − descuentos.
+  double get _total => _mesAMes
+      ? _planTotalEf * (1 - _dtoFamiliar / 100)
+      : (_totalSinDto - _ahorro);
 
   @override
   void initState() {
@@ -1014,6 +1082,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
   @override
   void dispose() {
     _nombre.dispose();
+    _emailAlumno.dispose();
     _whatsapp.dispose();
     _edad.dispose();
     super.dispose();
@@ -1053,9 +1122,9 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                 child: _ChipModo(
                   titulo: 'Para mí',
                   subtitulo: 'Soy yo quien entrena',
-                  activo: !_esHijo,
+                  activo: _quien == '',
                   onTap: () => setState(() {
-                    _esHijo = false;
+                    _quien = '';
                     _nombre.text = widget.nombreInicial;
                   }),
                 ),
@@ -1067,21 +1136,61 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                   subtitulo: 'Yo soy el apoderado',
                   activo: _esHijo,
                   onTap: () => setState(() {
-                    _esHijo = true;
+                    _quien = 'hijo';
                     if (_nombre.text == widget.nombreInicial) _nombre.clear();
                   }),
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          // Otro ADULTO de la familia (esposa, pareja, hermano) que yo matriculo
+          // y pago (pedido del director, 26-sep-2026).
+          _ChipModo(
+            titulo: 'Para otra persona',
+            subtitulo: 'Mi pareja o un familiar adulto · yo pago',
+            activo: _esFamiliar,
+            onTap: () => setState(() {
+              _quien = 'familiar';
+              if (_nombre.text == widget.nombreInicial) _nombre.clear();
+            }),
+          ),
+          if (_dtoFamiliar > 0) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                  color: limaSuave, borderRadius: BorderRadius.circular(12)),
+              child: Text(
+                  '🎉 Descuento familiar: ${_orden == 2 ? '2.º' : '3.º o más'} '
+                  'de tu familia en esta academia → −${_dtoFamiliar.toStringAsFixed(0)} %.',
+                  style: const TextStyle(fontSize: 12.5, color: bosque)),
+            ),
+          ],
           const SizedBox(height: 14),
           TextField(
             controller: _nombre,
             textCapitalization: TextCapitalization.words,
             decoration: InputDecoration(
-                labelText: _esHijo ? 'Nombre del hijo(a)' : 'Nombre del alumno',
+                labelText: _esHijo
+                    ? 'Nombre del hijo(a)'
+                    : _esFamiliar
+                        ? 'Nombre de la persona'
+                        : 'Nombre del alumno',
                 prefixIcon: const Icon(Icons.person_outline)),
           ),
+          if (_esFamiliar) ...[
+            const SizedBox(height: 14),
+            TextField(
+              controller: _emailAlumno,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                  labelText: 'Su correo de Google (opcional)',
+                  helperText:
+                      'Con su correo verá sus clases y pagos en su propia app.',
+                  prefixIcon: Icon(Icons.alternate_email)),
+            ),
+          ],
           if (_esHijo) ...[
             const SizedBox(height: 14),
             TextField(
@@ -1099,7 +1208,9 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
             decoration: InputDecoration(
                 labelText: _esHijo
                     ? 'WhatsApp del apoderado (tú)'
-                    : 'WhatsApp de contacto',
+                    : _esFamiliar
+                        ? 'WhatsApp de la persona'
+                        : 'WhatsApp de contacto',
                 prefixText: '$codigoTelActual ',
                 prefixIcon: const Icon(Icons.chat_outlined)),
           ),
@@ -1190,7 +1301,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
               children: [
                 Text(
                     _mesAMes
-                        ? 'Pagas hoy 1 mes: ${widget.moneda} ${_plan.total.toStringAsFixed(2)}'
+                        ? 'Pagas hoy 1 mes: ${widget.moneda} ${_total.toStringAsFixed(2)}'
                         : 'Pagarás ahora: ${widget.moneda} ${_total.toStringAsFixed(2)}',
                     style: const TextStyle(
                         color: bosque,
@@ -1199,7 +1310,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                 if (_mesAMes) ...[
                   const SizedBox(height: 2),
                   Text(
-                      'Luego ${widget.moneda} ${_plan.total.toStringAsFixed(2)} '
+                      'Luego ${widget.moneda} ${_total.toStringAsFixed(2)} '
                       'automático por ${_cantidad - 1} '
                       '${_cantidad - 1 == 1 ? 'mes más' : 'meses más'}.',
                       style: const TextStyle(
@@ -1207,11 +1318,21 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                           fontWeight: FontWeight.w700,
                           fontSize: 12.5)),
                 ],
+                if (_ahorroFamiliar > 0) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                      'Descuento familiar ${_dtoFamiliar.toStringAsFixed(0)}% · '
+                      'ahorras ${widget.moneda} ${_ahorroFamiliar.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                          color: lima,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12.5)),
+                ],
                 if (_aplicaDescuento) ...[
                   const SizedBox(height: 4),
                   Text(
                       'Descuento ${widget.descuentoPrepago.toStringAsFixed(0)}% '
-                      'por adelantar · ahorras ${widget.moneda} ${_ahorro.toStringAsFixed(2)}',
+                      'por adelantar · ahorras ${widget.moneda} ${_ahorroPrepago.toStringAsFixed(2)}',
                       style: const TextStyle(
                           color: lima,
                           fontWeight: FontWeight.w700,
@@ -1270,16 +1391,24 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                       _error = 'Pon un WhatsApp de contacto válido (9 dígitos).');
                   return;
                 }
+                final em = _emailAlumno.text.trim().toLowerCase();
+                if (_esFamiliar && em.isNotEmpty && !em.contains('@')) {
+                  setState(() => _error = 'El correo no parece válido.');
+                  return;
+                }
                 setState(() => _error = null);
-                Navigator.of(context).pop((
-                  n,
-                  _whatsapp.text.trim(),
-                  _cantidad, // meses comprometidos (mes a mes) o adelantados
-                  _mesAMes,
-                  _total,
-                  _esHijo,
-                  int.tryParse(_edad.text.trim()),
-                  _sedeId ?? '',
+                Navigator.of(context).pop(_DatosMatricula(
+                  nombre: n,
+                  whatsapp: _whatsapp.text.trim(),
+                  cantidad: _cantidad,
+                  mesAMes: _mesAMes,
+                  total: _total,
+                  parentesco: _quien,
+                  edad: int.tryParse(_edad.text.trim()),
+                  sedeId: _sedeId ?? '',
+                  emailAlumno: _esFamiliar ? em : '',
+                  orden: _orden,
+                  dtoFamiliarPct: _dtoFamiliar,
                 ));
               },
               child: Text(_mesAMes

@@ -69,7 +69,7 @@ class _ReservaCard extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              '${cancha?.nombre ?? "Cancha"} · ${reserva.dia} ${reserva.horaInicio}–${reserva.horaFin}',
+              '${cancha?.nombre ?? "Cancha"} · ${reserva.diaVisible} ${reserva.horaInicio}–${reserva.horaFin}',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             if (reserva.nivel != '—')

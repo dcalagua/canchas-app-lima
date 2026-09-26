@@ -32,17 +32,21 @@ class MatriculasRepo {
     }
   }
 
-  /// Matrículas de un alumno-app por su correo (para que vea sus academias).
+  /// Matrículas de un alumno-app por su correo (para que vea sus academias):
+  /// las que PAGA (columna `email` = titular) y las que un familiar registró
+  /// con SU correo (`data->>emailAlumno`, "Para otra persona"), así la esposa
+  /// ve sus clases en su propia app aunque las pague el titular.
   static Future<({List<Alumno> alumnos, List<Cuota> cuotas})> deAlumno(
       String email) async {
     if (!SupabaseService.disponible || email.isEmpty) {
       return (alumnos: <Alumno>[], cuotas: <Cuota>[]);
     }
     try {
+      final e = email.trim().toLowerCase().replaceAll(',', '');
       final rows = await SupabaseService.client
           .from(_tabla)
           .select()
-          .eq('email', email)
+          .or('email.eq.$e,data->>emailAlumno.eq.$e')
           .neq('eliminada', true);
       return _mapear(rows);
     } catch (_) {

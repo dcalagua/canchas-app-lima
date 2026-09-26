@@ -744,8 +744,10 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
     chips_cab.append(f"<span class='pill'>Inscripción {e(mon)} {float(c.get('costoInscripcion') or 0):.2f}</span>")
     info = []
     if fmt == "grupos":
-        tams = L.armar_grupos(len(c.get("participantes") or []), L.min_partidos(c))
-        info.append(f"<span class='chip'>🧩 Grupos + llave · cada equipo juega al menos {L.min_partidos(c)} partidos" + (f" · {len(tams)} grupo{'s' if len(tams) != 1 else ''} de {'/'.join(str(t) for t in tams)}" if tams else " · con menos de 3 equipos se juega solo la final") + "</span>")
+        gm = L.grupos_manuales(c)
+        tams = [len(g) for g in gm] if gm else L.armar_grupos(len(c.get("participantes") or []), L.min_partidos(c))
+        info.append(f"<span class='chip'>🧩 Grupos + llave · " + ("✋ armados a mano" if gm else f"cada equipo juega al menos {L.min_partidos(c)} partidos")
+                    + (f" · {len(tams)} grupo{'s' if len(tams) != 1 else ''} de {'/'.join(str(t) for t in tams)}" if tams else " · con menos de 3 equipos se juega solo la final") + "</span>")
     if c.get("inscripcionHasta"):
         info.append(f"<span class='chip'>🗓️ Cierre inscrip.: {e(_fecha_hora_corta(c['inscripcionHasta']))}</span>")
     if c.get("relampago"):
@@ -774,6 +776,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
            "participantes": [{"id": p["id"], "nombre": p.get("nombre"), "email": p.get("email") or "", "contacto": p.get("contacto") or "", "capitanEmail": p.get("capitanEmail") or "",
                               "codigo": p.get("codigo") or "", "roster": p.get("roster") or []} for p in (c.get("participantes") or [])],
            "minJug": int(c.get("minJugadoresEquipo") or 0), "maxJug": L.max_jugadores(c), "fixture": L.fixture_generado(c), "arte": _base_url() or "",
+           "gruposManuales": L.grupos_manuales(c) or [], "letras": L.LETRAS,
            "cuotaEq": L.cuota_equipo_centimos(c) if dep == "futbol" else 0, "cuotaJug": L.cuota_jugador_centimos(c) if dep == "futbol" else 0,
            "cupo": L.cupo_reparto(c), "mon": _moneda(c),
            "pozos": {st["equipo_id"]: st for st in pozos.de_campeonato(c["id"])} if dep == "futbol" and L.cuota_equipo_centimos(c) > 0 else {}}
@@ -866,7 +869,30 @@ document.addEventListener('click',async function(ev){var q=ev.target.closest('[d
       (p.roster.map(function(i){var em=(i.email||'').toLowerCase();return "<div class='marca'><span class='pos'>"+(i.email?'✅':'👤')+"</span><span class='nom'>"+esc(i.nombre)+(i.email&&i.email===p.capitanEmail?" <span class='pill'>Capitán</span>":'')+(CFG.cuotaEq>0?(pago[em]?" <span class='pill'>pagó "+esc(CFG.mon)+" "+fmtC(pago[em])+"</span>":" <span class='pill' style='background:#FFF1E3;color:#B25E0A'>sin pagar</span>"):'')+"</span></div>"}).join('')||"<p class='sub'>Sin jugadores aún. Comparte el enlace del equipo: cada jugador entra"+(CFG.cuotaEq>0?" y pone su parte":"")+" desde la app.</p>")+"</section>",null)}});
 function fmtC(c){var v=(c||0)/100;return Math.abs(v-Math.round(v))<0.005?String(Math.round(v)):v.toFixed(2)}
 var bf=$('btnFixture');if(bf)bf.addEventListener('click',async function(){if(CFG.participantes.length<2){pcgToast('Agrega al menos 2 participantes.');return}
-  if(CFG.fixture&&!await pcgConfirmar({titulo:'Regenerar fixture',mensaje:'Se sortea de nuevo y se BORRAN los resultados cargados.',confirmar:'Regenerar',destructivo:true,icono:'🔁'}))return;await sortear({})});
+  if(CFG.fixture&&!await pcgConfirmar({titulo:'Regenerar fixture',mensaje:'Se sortea de nuevo y se BORRAN los resultados cargados.',confirmar:'Regenerar',destructivo:true,icono:'🔁'}))return;
+  if(CFG.formato==='grupos'&&CFG.participantes.length>=4){elegirModoGrupos();return}
+  await sortear({})});
+// GRUPOS A MANO (pedido del director, 26-sep-2026): el organizador elige cuántos
+// grupos y quién va en cada uno; dentro de cada grupo se juega todos contra todos.
+function elegirModoGrupos(){modal('¿Cómo armamos los grupos?',"<p class='sub'>Dentro de cada grupo se juega todos contra todos y los 2 primeros pasan a la llave.</p>"+
+  "<div class='acciones' style='flex-direction:column;align-items:stretch;gap:10px;margin-top:12px'><button type='button' class='btn' id='gmAuto'>🎲 Sortear automático</button><button type='button' class='btn sec' id='gmMano'>✋ Armar los grupos a mano</button></div>",null);
+  $('gmAuto').onclick=function(){cerrar();sortear({sortear:true})};$('gmMano').onclick=function(){cerrar();armarGrupos()}}
+function armarGrupos(){var ps=CFG.participantes,n=ps.length,maxG=Math.floor(n/2),prev=CFG.gruposManuales||[],asig={},k=prev.length||Math.max(1,Math.min(maxG,Math.round(n/4)));
+  prev.forEach(function(g,i){g.forEach(function(id){asig[id]=i})});
+  function repartir(){asig={};ps.forEach(function(p,i){asig[p.id]=i%k})}
+  if(!prev.length)repartir();
+  function cuerpo(){var ops='';for(var i=1;i<=maxG;i++)ops+="<option value='"+i+"'"+(i===k?' selected':'')+">"+i+" grupo"+(i>1?'s':'')+"</option>";
+    var filas=ps.map(function(p){var sel='';for(var i=0;i<k;i++)sel+="<option value='"+i+"'"+(asig[p.id]===i?' selected':'')+">Grupo "+CFG.letras[i]+"</option>";
+      return "<div class='marca' style='align-items:center'><span class='nom' style='flex:1'>"+esc(p.nombre)+"</span><select data-gm='"+esc(p.id)+"' style='width:auto;min-width:130px'>"+sel+"</select></div>"}).join('');
+    var res=[];for(var i=0;i<k;i++){res.push(CFG.letras[i]+': '+ps.filter(function(p){return asig[p.id]===i}).length)}
+    return "<label>Cantidad de grupos</label><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><select id='gmK' style='width:auto'>"+ops+"</select><button type='button' class='btn sec' id='gmRep'>Repartir parejo</button></div>"+
+      "<p class='sub' id='gmRes' style='margin:8px 0 4px'>Equipos por grupo · "+res.join(' · ')+"</p><div style='max-height:50vh;overflow:auto'>"+filas+"</div>"+pie('Generar fixture con estos grupos')}
+  function pintar(){modal('✋ Armar los grupos',cuerpo(),async function(){var grupos=[];for(var i=0;i<k;i++)grupos.push([]);ps.forEach(function(p){grupos[asig[p.id]||0].push(p.id)});
+      var vacio=grupos.findIndex(function(g){return g.length<2});if(vacio>=0){err('El grupo '+CFG.letras[vacio]+' necesita al menos 2 equipos.');return}
+      try{await post('/fixture',{grupos:grupos,con_todos:true},'Generando el fixture…');pcgRecargar('Fixture listo con tus grupos')}catch(e){err(e.message)}});
+    $('gmK').onchange=function(){k=+this.value;repartir();pintar()};$('gmRep').onclick=function(){repartir();pintar()};
+    $('modalCuerpo').querySelectorAll('select[data-gm]').forEach(function(s){s.onchange=function(){asig[this.dataset.gm]=+this.value;var res=[];for(var i=0;i<k;i++){res.push(CFG.letras[i]+': '+ps.filter(function(p){return asig[p.id]===i}).length)}$('gmRes').textContent='Equipos por grupo · '+res.join(' · ')}})}
+  pintar()}
 async function sortear(body){try{var j=await post('/fixture',body,'Sorteando el fixture…');pcgRecargar(j.devueltos?'Fixture listo · '+j.devueltos+' jugador(es) recuperaron su parte':undefined)}catch(e){
   if(e.equipos){var eq=e.equipos;modal('Equipos con el pozo incompleto',"<p class='sub'>Estos equipos aún no cubren la cuota de "+esc(CFG.mon)+" "+fmtC(CFG.cuotaEq)+":</p>"+eq.map(function(q){return "<div class='marca'><span class='pos'>⏳</span><span class='nom'>"+esc(q.nombre)+" · "+esc(CFG.mon)+" "+fmtC(q.pozo_centimos)+" de "+fmtC(CFG.cuotaEq)+"</span></div>"}).join('')+
     "<div class='acciones' style='margin-top:16px;flex-wrap:wrap'><button type='button' class='btn' id='fxTodos'>Generar con todos</button><button type='button' class='btn sec' id='fxExcluir'>Excluirlos y devolver sus aportes</button></div><p class='sub' style='font-size:12px;margin-top:8px'>Si los excluyes, cada jugador recupera lo que puso en su saldo Pichangol.</p>",null);
@@ -1083,10 +1109,22 @@ def generar_fixture(request: Request, cid: str, b: dict | None = Body(None)) -> 
         c["participantes"] = [p for p in (c.get("participantes") or []) if p.get("id") not in ids]
     if len(c.get("participantes") or []) < 2:
         return _err("Agrega al menos 2 participantes.")
+    # Grupos a mano (pedido del director, 26-sep-2026): `grupos` = [[ids], …]
+    # en orden A, B, C…; se validan y se GUARDAN en el campeonato (así el app
+    # y un re-sorteo posterior los respetan). `sortear: true` los descarta.
+    if L.formato_de(c) == "grupos":
+        if isinstance(b.get("grupos"), list):
+            grupos = [[str(x) for x in g] for g in b["grupos"] if isinstance(g, list)]
+            err_g = L.validar_grupos_manuales(c, grupos)
+            if err_g:
+                return _err(err_g)
+            c["gruposManuales"] = grupos
+        elif b.get("sortear"):
+            c.pop("gruposManuales", None)
     c["partidos"] = L.generar_fixture(c)
     if not _guardar(ses, c):
         return _err("No pudimos guardar.", 503)
-    return _ok(c, partidos=len(c["partidos"]), devueltos=devueltos)
+    return _ok(c, partidos=len(c["partidos"]), devueltos=devueltos, manual=bool(L.grupos_manuales(c)))
 
 
 @router.post(BASE + "/{cid}/resultado")

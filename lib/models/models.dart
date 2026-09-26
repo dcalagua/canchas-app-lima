@@ -728,7 +728,11 @@ class Reserva {
   final String jugador;
   final String nivel; // ej. "Intermedio 3.5" (ángulo social / por nivel)
   final String fecha; // fuente de verdad del día reservado, ISO "2026-06-27"
-  final String dia; // etiqueta visible ("Hoy", "Mañana", "Lun 22")
+  /// Etiqueta CONGELADA al reservar ("Hoy", "Mañana", "Lun 22"). NO usarla
+  /// para mostrar: una reserva hecha "para mañana" seguía diciendo "Mañana"
+  /// semanas después en el historial (queja del director, 26-sep-2026). Usar
+  /// [diaVisible], que se calcula desde [fecha] cada vez.
+  final String dia;
   final String horaInicio; // "07:00"
   final String horaFin; // "08:00"
   final EstadoReserva estado;
@@ -766,6 +770,27 @@ class Reserva {
   /// Dinero FRESCO que entra por esta reserva el día que ocurre: 0 si se cubrió
   /// con bono (ya cobrado en el paquete), si no el total con extras.
   double get ingresoFresco => esBono ? 0 : totalConExtras;
+
+  /// Día para MOSTRAR, calculado desde [fecha]: "Hoy" / "Mañana" / "Ayer" o
+  /// "jue 18 set" para cualquier otra fecha (pasada o futura). Cae a [dia]
+  /// solo si la reserva no tiene fecha ISO (legado).
+  String get diaVisible {
+    final d = DateTime.tryParse(fecha);
+    if (d == null) return dia;
+    final hoy = DateTime.now();
+    final base = DateTime(hoy.year, hoy.month, hoy.day);
+    final diff = DateTime(d.year, d.month, d.day).difference(base).inDays;
+    if (diff == 0) return 'Hoy';
+    if (diff == 1) return 'Mañana';
+    if (diff == -1) return 'Ayer';
+    const dias = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom'];
+    const meses = [
+      'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+      'jul', 'ago', 'set', 'oct', 'nov', 'dic'
+    ];
+    final anio = d.year != hoy.year ? ' ${d.year}' : '';
+    return '${dias[d.weekday - 1]} ${d.day} ${meses[d.month - 1]}$anio';
+  }
 
   const Reserva({
     required this.id,

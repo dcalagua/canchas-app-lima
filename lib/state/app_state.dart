@@ -3292,9 +3292,18 @@ class AppState extends ChangeNotifier {
   }
 
   /// (Re)genera el fixture del campeonato según su formato. Borra resultados.
-  void generarFixture(String campId) {
-    final c = campeonatoPorId(campId);
+  void generarFixture(String campId, {List<List<String>>? gruposManuales,
+      bool sortear = false}) {
+    var c = campeonatoPorId(campId);
     if (c == null) return;
+    // Grupos a mano (pedido del director, 26-sep-2026): se guardan en el
+    // campeonato para que la web y un re-sorteo los respeten; `sortear`
+    // vuelve al automático.
+    if (gruposManuales != null) {
+      c = c.copyWith(gruposManuales: gruposManuales);
+    } else if (sortear) {
+      c = c.copyWith(gruposManuales: const []);
+    }
     final partidos = TorneoFixture.generarDe(c);
     guardarCampeonato(c.copyWith(partidos: partidos));
   }
@@ -3511,9 +3520,9 @@ class AppState extends ChangeNotifier {
   List<Alumno> get misMatriculas {
     final email = usuario?.email.trim().toLowerCase();
     if (email == null || email.isEmpty) return const [];
-    return alumnos
-        .where((a) => a.email.trim().toLowerCase() == email)
-        .toList();
+    // Las que pago yo (titular) y las que un familiar registró con MI correo
+    // para que yo vea mis clases aunque las pague otro.
+    return alumnos.where((a) => a.administradaPor(email)).toList();
   }
 
   void agregarAlumno(Alumno a) {
@@ -4321,22 +4330,31 @@ class AppState extends ChangeNotifier {
     String operacionId = '', // N.º de operación del pago (para el comprobante)
     String sedeId = '', // sede (local) elegida en academias multi-sede
     double? precioMesOverride, // precio de la sede (multi-sede con tarifa propia)
+    String parentesco = '', // '' yo · 'hijo' · 'familiar' (otro adulto)
+    String emailAlumno = '', // correo propio del familiar (opcional)
+    int ordenHermano = 1, // orden del descuento familiar (1 = sin descuento)
+    String notaDescuento = '', // "(−10%)" en el concepto de las cuotas
   }) {
     final n = cantidad < 1 ? 1 : cantidad;
     // Precio mensual/por-clase efectivo: el de la sede si vino, si no el del plan.
     final precioMes = precioMesOverride ?? plan.precioMes;
     final esMenor = apoderadoNombre.trim().isNotEmpty;
+    final esFamiliar = parentesco == 'familiar';
     final alumno = Alumno(
       id: 'al_${DateTime.now().microsecondsSinceEpoch}',
       academiaId: academiaId,
       nombre: nombre,
       whatsapp: esMenor ? '' : whatsapp,
       email: usuario?.email ?? '', // la CUENTA que administra (titular)
-      fotoUrl: esMenor ? null : usuario?.fotoUrl,
+      // La foto del titular solo si el alumno ES el titular.
+      fotoUrl: (esMenor || esFamiliar) ? null : usuario?.fotoUrl,
       apoderadoNombre: apoderadoNombre.trim(),
       apoderadoWhatsapp: apoderadoWhatsapp.trim(),
       edad: edad,
       sedeId: sedeId,
+      parentesco: parentesco,
+      emailAlumno: emailAlumno.trim().toLowerCase(),
+      ordenHermano: ordenHermano < 1 ? 1 : ordenHermano,
     );
     alumnos.add(alumno);
     final hoy = DateTime.now();
@@ -4369,7 +4387,7 @@ class AppState extends ChangeNotifier {
           id: 'cu_${hoy.microsecondsSinceEpoch}_$i',
           academiaId: academiaId,
           alumnoId: alumno.id,
-          concepto: '${plan.nombre} · ${_mesNombre(venc)}',
+          concepto: '${plan.nombre} · ${_mesNombre(venc)}$notaDescuento',
           monto: precioMes,
           vencimiento: venc,
           pagada: pagada,
