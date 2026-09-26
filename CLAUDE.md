@@ -918,6 +918,37 @@ para la API del APK.
   usarlo), `Campeonato.minPartidos`, widget `_Grupos`, `_Liga`/`_Llave` con
   subconjunto. Test `test_grupos_garantiza_minimo_de_partidos_y_llave_cruzada`
   (garantía para n = min+1 … 40).
+- **ENLACE DEL CAPITÁN + DESCARGA A PLAY + APP LINKS (pedido del director,
+  26-sep-2026: "¿es viable que el que recibe el link por WhatsApp se
+  inscriba en un equipo?" → sí, y se hicieron los 3 puntos):** (1) **Enlace
+  de equipo (fútbol):** `/c/{id}?equipo=CODIGO`. La página pública
+  (`campeonato_web.html_campeonato(equipo=)`, `equipo_por_codigo`) muestra
+  "Te invitaron al equipo «X»" + botón "Unirme al equipo en la app" cuyo
+  `intent://c/{id}?equipo=…` lleva el código; código inexistente → CTA
+  normal + aviso; en deportes sin equipos se ignora. El APK
+  (`EnlacesService.codigoEquipoDe` → `CampeonatoDetalleScreen.
+  unirseConEnlace`) abre la ficha y, tras login/DNI, confirma "Unirme a «X»"
+  y lo mete al plantel con `unirseAEquipoPorCodigo` (sin escribir el
+  código). El capitán lo comparte desde el app (`textoInvitacionEquipo`:
+  texto + enlace + código, en "¡Equipo creado!" y en la tarjeta del equipo)
+  y el organizador desde la web (modal del equipo en Mis campeonatos:
+  "🔗 Copiar enlace del equipo" + WhatsApp). (2) **Descarga por ambiente:**
+  `config.APP_DOWNLOAD_URL` = Play Store si `PICHANGOL_ENTORNO` es PRD,
+  Release de GitHub en dev/QAS (`APP_DOWNLOAD_URL` env lo fuerza); lo usan
+  el `browser_fallback_url` del intent y el pie "Descargar la app"
+  (`campeonato_web._descarga()`). (3) **Android App Links:**
+  `ANDROID_CERT_SHA256` ya está en Railway QAS y PRD con la huella del
+  keystore del CI (`21:E5:AD:A0:…:EC:28`, la que imprime el paso "Verificar
+  firma del APK"); `/.well-known/assetlinks.json` acepta huellas con o sin
+  dos puntos (`_huella_con_dos_puntos`) y varias por coma. **PENDIENTE del
+  director:** agregar a esa variable (coma) las SHA-256 de las llaves de
+  firma de Play (Play Console → Firma de apps: la actual, la poscuántica y la
+  ANTERIOR rotada) para que el link de WhatsApp abra la app instalada desde
+  Play sin pasar por el navegador; sin eso el botón intent:// cubre igual.
+  Solo Android: en iPhone (sin app iOS) se queda en la web. Tests
+  `test_enlace_del_capitan_une_directo_al_equipo`,
+  `test_descarga_va_a_play_en_produccion`,
+  `test_assetlinks_acepta_huella_sin_dos_puntos`.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en

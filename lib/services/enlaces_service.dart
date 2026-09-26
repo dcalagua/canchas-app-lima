@@ -12,6 +12,9 @@ import 'push_service.dart';
 ///  - `https://…/c/{campeonatoId}` (App Link del dominio de marca), y
 ///  - `pichangol://c/{campeonatoId}` (esquema propio: lo dispara el botón
 ///    "Unirme en la app" de la página web del campeonato).
+/// Ambos aceptan `?equipo=CODIGO` (enlace que comparte el CAPITÁN en fútbol):
+/// la app abre la ficha y, tras el login, ofrece "Unirme a «equipo»" sin que
+/// el jugador escriba el código (pedido del director, sep-2026).
 /// Si la app está instalada, el enlace la abre en la FICHA del campeonato
 /// (con su botón "Inscribirme"); si no, la página web empuja a descargarla.
 /// Fail-safe: cualquier error se ignora (la app arranca normal).
@@ -53,14 +56,21 @@ class EnlacesService {
     return AppState.idCampeonatoDe(uri.toString());
   }
 
+  /// Código de equipo del enlace (`?equipo=`), en mayúsculas; '' si no trae.
+  static String codigoEquipoDe(Uri uri) {
+    final e = (uri.queryParameters['equipo'] ?? '').trim().toUpperCase();
+    if (e.isEmpty || e.length > 16) return '';
+    return e;
+  }
+
   static void _manejar(Uri uri) {
     final id = _idCampeonato(uri);
     if (id.isEmpty) return;
     _pendiente = uri;
-    _abrirCampeonato(id);
+    _abrirCampeonato(id, equipo: codigoEquipoDe(uri));
   }
 
-  static Future<void> _abrirCampeonato(String id) async {
+  static Future<void> _abrirCampeonato(String id, {String equipo = ''}) async {
     // Espera a que el navegador global exista (arranque en frío: el enlace
     // llega durante el splash). Reintenta unos segundos y desiste.
     NavigatorState? nav;
@@ -77,5 +87,17 @@ class EnlacesService {
     _pendiente = null;
     nav.push(MaterialPageRoute(
         builder: (_) => CampeonatoDetalleScreen(campeonatoId: c.id)));
+    if (equipo.isEmpty) return;
+    // Enlace del capitán: con la ficha ya abierta, ofrecer unirse a SU equipo
+    // (login → confirmación → roster). Sobre el overlay del navegador para
+    // que los diálogos vivan bajo el MaterialApp.
+    await Future.delayed(const Duration(milliseconds: 450));
+    final ctx = nav.overlay?.context;
+    if (ctx == null || !ctx.mounted) return;
+    try {
+      await CampeonatoDetalleScreen.unirseConEnlace(ctx, c, equipo);
+    } catch (_) {
+      // fail-safe: la ficha queda abierta con el botón manual
+    }
   }
 }

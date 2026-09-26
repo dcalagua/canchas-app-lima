@@ -414,6 +414,15 @@ def _base_landing(request: Request) -> str:
     return str(request.base_url).rstrip("/")
 
 
+def _huella_con_dos_puntos(h: str) -> str:
+    """Google exige `AA:BB:…` en mayúsculas; apksigner y Play Console la
+    muestran a veces sin dos puntos (64 hex seguidos). Se acepta cualquiera."""
+    limpia = "".join(ch for ch in h.strip().upper() if ch in "0123456789ABCDEF")
+    if len(limpia) != 64:
+        return h.strip().upper() if ":" in h else ""
+    return ":".join(limpia[i:i + 2] for i in range(0, 64, 2))
+
+
 @router.get("/.well-known/assetlinks.json")
 def assetlinks() -> list[dict]:
     """Verificación de ANDROID APP LINKS: con esto, tocar https://…/c/{id}
@@ -421,8 +430,9 @@ def assetlinks() -> list[dict]:
     Pichangol instalada. Requiere la env ANDROID_CERT_SHA256 (huella SHA-256
     del certificado de firma del APK; admite varias separadas por coma).
     Sin la env → 404 (el botón intent:// de la página cubre igual)."""
-    huellas = [h.strip().upper() for h in
+    huellas = [_huella_con_dos_puntos(h) for h in
                config.ANDROID_CERT_SHA256.split(",") if h.strip()]
+    huellas = [h for h in huellas if h]
     if not huellas:
         raise HTTPException(status_code=404, detail="sin_huella")
     return [{
@@ -543,7 +553,8 @@ def afiche_de_campeonato(campeonato_id: str, rapido: int = 0) -> Response:
 
 
 @router.get("/c/{campeonato_id}", response_class=HTMLResponse)
-def ver_campeonato(campeonato_id: str, request: Request) -> HTMLResponse:
+def ver_campeonato(campeonato_id: str, request: Request,
+                   equipo: str = "") -> HTMLResponse:
     """Página PÚBLICA de un campeonato (enlace para compartir). Reemplaza a la
     Edge Function `campeonato-web` (su deploy manual servía el HTML como texto
     plano); aquí FastAPI garantiza text/html; charset=utf-8 y el redeploy es
@@ -579,7 +590,8 @@ def ver_campeonato(campeonato_id: str, request: Request) -> HTMLResponse:
     afiche = (f"{_base_landing(request)}/c/"
               f"{campeonato_id}/afiche.png?rapido=1")
     return HTMLResponse(campeonato_web.html_campeonato(
-        data, campeonato_id=campeonato_id, og_image=afiche))
+        data, campeonato_id=campeonato_id, og_image=afiche,
+        equipo=(equipo or "")[:16]))
 
 
 @router.get("/l/{academia_id}", response_class=HTMLResponse)

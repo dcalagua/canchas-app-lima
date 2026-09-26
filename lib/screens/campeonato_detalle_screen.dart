@@ -35,6 +35,37 @@ class CampeonatoDetalleScreen extends StatelessWidget {
   const CampeonatoDetalleScreen({super.key, required this.campeonatoId});
   final String campeonatoId;
 
+  /// ENLACE DEL CAPITÁN (`…/c/{id}?equipo=CODIGO`, ver `EnlacesService`):
+  /// une al usuario al equipo de ese código con confirmación, sin que tenga
+  /// que escribirlo. Mismo flujo (login, DNI si el torneo lo exige) que el
+  /// botón "Unirme a un equipo (código)".
+  static Future<void> unirseConEnlace(
+      BuildContext context, Campeonato c, String codigo) =>
+      CampeonatoDetalleScreen(campeonatoId: c.id)
+          ._unirmeAEquipo(context, c, codigoInicial: codigo);
+
+  /// Enlace público del campeonato con el código del equipo: quien lo abre
+  /// con la app entra directo al equipo; sin app, la página lo manda a
+  /// descargarla (y el enlace sigue valiendo después).
+  static String? enlaceEquipo(Campeonato c, String codigo) {
+    final base = SupabaseService.paginaCampeonato(c.id);
+    if (base == null || codigo.trim().isEmpty) return null;
+    return '$base?equipo=${Uri.encodeQueryComponent(codigo.trim().toUpperCase())}';
+  }
+
+  /// Texto que comparte el capitán por WhatsApp (con enlace si hay dominio).
+  static String textoInvitacionEquipo(
+      Campeonato c, String nombreEquipo, String codigo) {
+    final enlace = enlaceEquipo(c, codigo);
+    final b = StringBuffer(
+        'Únete a mi equipo «$nombreEquipo» en "${c.nombre}" (Pichangol).');
+    if (enlace != null) {
+      b.write(' Toca y quedas inscrito: $enlace');
+    }
+    b.write(' Código: $codigo');
+    return b.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1016,9 +1047,8 @@ class CampeonatoDetalleScreen extends StatelessWidget {
           FilledButton.icon(
             style: FilledButton.styleFrom(backgroundColor: lima),
             onPressed: () {
-              WhatsAppLink.compartir(
-                  'Únete a mi equipo en "${c.nombre}" (Pichangol). '
-                  'Código: $codigo');
+              WhatsAppLink.compartir(CampeonatoDetalleScreen
+                  .textoInvitacionEquipo(c, _nombreEquipoDe(c, codigo), codigo));
               Navigator.pop(dctx);
             },
             icon: const Icon(Icons.share, size: 18),
@@ -1029,8 +1059,20 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     );
   }
 
-  /// Fútbol: un jugador se une a un equipo con el código del capitán.
-  Future<void> _unirmeAEquipo(BuildContext context, Campeonato c) async {
+  /// Nombre del equipo que tiene ese código ('' si no está en la lista).
+  static String _nombreEquipoDe(Campeonato c, String codigo) {
+    final cod = codigo.trim().toUpperCase();
+    for (final p in c.participantes) {
+      if (p.codigo.toUpperCase() == cod) return p.nombre;
+    }
+    return '';
+  }
+
+  /// Fútbol: un jugador se une a un equipo con el código del capitán. Con
+  /// [codigoInicial] (llegó por el enlace del capitán) no se pide escribirlo:
+  /// se confirma "Unirme a «equipo»" y listo.
+  Future<void> _unirmeAEquipo(BuildContext context, Campeonato c,
+      {String? codigoInicial}) async {
     if (!await LoginGoogleSheet.mostrar(context,
         motivo: 'unirte a un equipo')) {
       return;
@@ -1038,7 +1080,36 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     if (!context.mounted) return;
     if (c.exigeDni && !await _gateDni(context, c)) return;
     if (!context.mounted) return;
-    final codigo = TextEditingController();
+    final codigo = TextEditingController(text: codigoInicial ?? '');
+    final inicial = (codigoInicial ?? '').trim().toUpperCase();
+    if (inicial.isNotEmpty) {
+      final nombreEq = _nombreEquipoDe(c, inicial);
+      final yaDentro = appState.usuario != null &&
+          c.participantes.any((p) =>
+              p.codigo.toUpperCase() == inicial &&
+              p.roster.any((r) =>
+                  r.email.toLowerCase() ==
+                  appState.usuario!.email.toLowerCase()));
+      if (nombreEq.isNotEmpty && !yaDentro) {
+        final si = await confirmarPichangol(
+          context,
+          titulo: 'Unirme a «$nombreEq»',
+          mensaje: 'Te invitaron a este equipo en "${c.nombre}". Quedarás en '
+              'el plantel con tu cuenta y tu capitán recibirá el aviso.',
+          textoConfirmar: 'Unirme',
+          icono: Icons.group_add,
+        );
+        if (si != true || !context.mounted) return;
+      }
+      // Código inválido o ya dentro: `unirseAEquipoPorCodigo` da el mensaje.
+      final res = appState.unirseAEquipoPorCodigo(c.id, inicial);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(res.mensaje),
+            backgroundColor: res.ok ? bosque : null));
+      }
+      return;
+    }
     final ok = await showDialog<bool>(
       context: context,
       builder: (dctx) => DialogoPichangol(
@@ -1380,8 +1451,8 @@ class _Participantes extends StatelessWidget {
                       tooltip: 'Compartir',
                       icon: const Icon(Icons.share, color: lima),
                       onPressed: () => WhatsAppLink.compartir(
-                          'Únete a mi equipo en "${c.nombre}" (Pichangol). '
-                          'Código: ${eq.codigo}'),
+                          CampeonatoDetalleScreen.textoInvitacionEquipo(
+                              c, eq.nombre, eq.codigo)),
                     ),
                   ],
                 ),

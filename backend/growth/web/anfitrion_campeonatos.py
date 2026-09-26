@@ -652,7 +652,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
     circuito = dep in catalogos.DEPORTES_CIRCUITO
     ubic = (f"<a class='btn sec' href='https://www.google.com/maps/search/?api=1&query={c['sedeLat']},{c['sedeLng']}' target='_blank' rel='noopener'>📍 Ubicación · cómo llegar</a>"
             if c.get("sedeLat") is not None else "")
-    cfg = {"id": c["id"], "deporte": dep, "formato": fmt, "codigo": c.get("codigo") or "", "enlace": enlace, "temas": catalogos.AFICHE_TEMAS,
+    cfg = {"id": c["id"], "nombre": c.get("nombre") or "", "deporte": dep, "formato": fmt, "codigo": c.get("codigo") or "", "enlace": enlace, "temas": catalogos.AFICHE_TEMAS,
            "variantes": catalogos.AFICHE_VARIANTES, "variante": int(c.get("aficheVariante") or 0), "tema": c.get("aficheTema") or "",
            "fondo": c.get("aficheFondoUrl") or "", "storage": almacen.disponible(), "distancias": L.DISTANCIAS, "estilos": L.ESTILOS,
            "participantes": [{"id": p["id"], "nombre": p.get("nombre"), "email": p.get("email") or "", "contacto": p.get("contacto") or "", "capitanEmail": p.get("capitanEmail") or "",
@@ -709,6 +709,7 @@ function pie(txt){return "<div class='acciones' style='margin-top:16px'><button 
 function err(m){var el=$('modalErr');if(el){el.textContent=m;el.style.display='block'}else pcgToast(m)}
 // código / enlace
 var cod=$('codigo');if(cod)cod.addEventListener('click',function(){navigator.clipboard&&navigator.clipboard.writeText(CFG.codigo).then(function(){pcgToast('Código copiado')})});
+document.addEventListener('click',function(ev){var b=ev.target.closest('[data-copiar-eq]');if(!b)return;navigator.clipboard&&navigator.clipboard.writeText(b.dataset.copiarEq).then(function(){pcgToast('Enlace del equipo copiado')})});
 $('btnEnlace').addEventListener('click',function(){navigator.clipboard&&navigator.clipboard.writeText(CFG.enlace).then(function(){pcgToast('Enlace copiado')})});
 // imágenes
 function comprimir(file,M){return new Promise(function(ok,ko){var img=new Image(),url=URL.createObjectURL(file);img.onload=function(){var k=Math.min(1,M/Math.max(img.width,img.height)),cv=document.createElement('canvas');cv.width=Math.round(img.width*k);cv.height=Math.round(img.height*k);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(url);cv.toBlob(function(b){b?ok(b):ko(new Error('img'))},'image/jpeg',0.86)};img.onerror=function(){ko(new Error('img'))};img.src=url})}
@@ -737,7 +738,9 @@ $('btnAgregar').addEventListener('click',function(){var eq=CFG.deporte==='futbol
 document.addEventListener('click',async function(ev){var q=ev.target.closest('[data-quitar]');if(q){ev.stopPropagation();var pq=CFG.participantes.filter(function(x){return x.id===q.dataset.quitar})[0];if(!await pcgConfirmar({titulo:'Quitar participante',mensaje:'¿Quitas a '+(pq?pq.nombre:'este participante')+' del campeonato?',confirmar:'Quitar',destructivo:true}))return;try{await post('/participante/'+encodeURIComponent(q.dataset.quitar)+'/eliminar',{},'Quitando…');pcgRecargar()}catch(e){pcgToast(e.message)}return}
   var ch=ev.target.closest('.chip.part[data-equipo="1"]');if(ch){var p=CFG.participantes.filter(function(x){return x.id===ch.dataset.pid})[0];if(!p)return;
     var falta=CFG.minJug>0?(p.roster.length>=CFG.minJug?"<span class='pill'>Completo</span>":"<span class='pill' style='background:#FFF1E3;color:#B25E0A'>Faltan "+(CFG.minJug-p.roster.length)+"</span>"):'';
-    modal(p.nombre,"<section><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>Código: "+esc(p.codigo||'—')+"</b>"+falta+"</div><p class='sub' style='margin:6px 0 0'>Capitán: "+esc(p.capitanEmail||'—')+"</p></section><section><b>Plantel ("+p.roster.length+")</b>"+
+    var enlaceEq=p.codigo?CFG.enlace+'?equipo='+encodeURIComponent(p.codigo):'';
+    var invitar=enlaceEq?"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><button type='button' class='btn sec' data-copiar-eq='"+esc(enlaceEq)+"'>🔗 Copiar enlace del equipo</button><a class='btn sec' target='_blank' rel='noopener' href='https://wa.me/?text="+encodeURIComponent('Únete a mi equipo «'+p.nombre+'» en "'+CFG.nombre+'" (Pichangol). Toca y quedas inscrito: '+enlaceEq)+"'>💬 WhatsApp</a></div><p class='sub' style='margin:6px 0 0;font-size:12px'>Quien abra el enlace con la app entra directo al equipo, sin escribir el código.</p>":'';
+    modal(p.nombre,"<section><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>Código: "+esc(p.codigo||'—')+"</b>"+falta+"</div><p class='sub' style='margin:6px 0 0'>Capitán: "+esc(p.capitanEmail||'—')+"</p>"+invitar+"</section><section><b>Plantel ("+p.roster.length+")</b>"+
       (p.roster.map(function(i){return "<div class='marca'><span class='pos'>"+(i.email?'✅':'👤')+"</span><span class='nom'>"+esc(i.nombre)+(i.email&&i.email===p.capitanEmail?" <span class='pill'>Capitán</span>":'')+"</span></div>"}).join('')||"<p class='sub'>Sin jugadores aún. El capitán los agrega desde la app.</p>")+"</section>",null)}});
 var bf=$('btnFixture');if(bf)bf.addEventListener('click',async function(){if(CFG.participantes.length<2){pcgToast('Agrega al menos 2 participantes.');return}
   if(CFG.fixture&&!await pcgConfirmar({titulo:'Regenerar fixture',mensaje:'Se sortea de nuevo y se BORRAN los resultados cargados.',confirmar:'Regenerar',destructivo:true,icono:'🔁'}))return;try{await post('/fixture',{},'Sorteando el fixture…');pcgRecargar()}catch(e){pcgToast(e.message)}});
