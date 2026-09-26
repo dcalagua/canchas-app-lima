@@ -355,9 +355,18 @@ def test_whatsapp_desde_la_web_sin_emojis_de_4_bytes(db, monkeypatch):
     r = cli.get(f"/anfitrion/campeonatos/{cid}")
     assert r.status_code == 200
     import re
-    href = re.search(r"href='(https://wa\.me/\?text=[^']+)'", r.text).group(1)
     import urllib.parse
-    texto = urllib.parse.unquote(href.split("text=", 1)[1])
-    assert "Grupo A" in texto and "Beata Imelda 2026" in texto and "https://pg.test/c/" in texto
-    assert all(ord(ch) <= 0xFFFF for ch in texto), texto
-    assert "%F0%9F" not in href  # ningún emoji de 4 bytes en el enlace
+    # href = ESCRITORIO (solo Latin-1: WhatsApp Windows rompió hasta ⚽ en la
+    # 2.ª captura) · data-wa-movil = móvil con emojis de 2 bytes.
+    m = re.search(r"href='(https://wa\.me/\?text=[^']+)' data-wa-movil='(https://wa\.me/\?text=[^']+)'", r.text)
+    assert m, "el botón de WhatsApp debe salir de ui.boton_whatsapp"
+    pc = urllib.parse.unquote(m.group(1).split("text=", 1)[1])
+    movil = urllib.parse.unquote(m.group(2).split("text=", 1)[1])
+    for texto in (pc, movil):
+        assert "Grupo A" in texto and "Beata Imelda 2026" in texto and "https://pg.test/c/" in texto
+    assert all(ord(ch) <= 0xFF for ch in pc), pc
+    assert "*Pichangol*" in pc and "Grupo A:" in pc.replace("  ", " ")
+    assert all(ord(ch) <= 0xFFFF for ch in movil) and "⚽" in movil and "⭐" in movil
+    assert "%F0%9F" not in m.group(2)
+    assert ui.texto_whatsapp_pc("🏆⚽ *COPA* – hoy…\n👉 https://x.test") == "*COPA* - hoy...\n> https://x.test"
+    assert "data-wa-movil" in ui.JS_NAV

@@ -645,7 +645,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
                  f"{('<div>🥈 ' + e((L.participante(c, sub) or {}).get('nombre', '')) + '</div>') if sub else ''}</div>")
     enlace = _enlace(c)
     texto_wa = _publicidad(c) if (not c.get("cerrado") and not L.fixture_generado(c) and not tiempos) else _resumen(c)
-    wa = ui.enlace_whatsapp(texto_wa)  # texto seguro para WhatsApp Windows
+    boton_wa = ui.boton_whatsapp(texto_wa)  # PC sin emojis · móvil completo (ver ui.boton_whatsapp)
     logo = f"<img src='{e(c['logoUrl'])}' alt=''>" if c.get("logoUrl") else f"<span>{_EMOJI.get(dep, '🏆')}</span>"
     ausp = "".join(f"<div class='foto' data-url='{e(u)}'><img src='{e(u)}' alt=''><div class='acc'><button type='button' class='mini' data-quitar-img='ausp' title='Quitar'>✕</button></div></div>" for u in (c.get("auspiciadoresLogos") or []))
     fotos = "".join(f"<div class='foto' data-url='{e(u)}'><img src='{e(u)}' alt=''><div class='acc'><a class='mini' href='{e(u)}' target='_blank' rel='noopener' title='Ver' style='text-decoration:none;display:flex;align-items:center;justify-content:center'>🔍</a><button type='button' class='mini' data-quitar-img='foto' title='Quitar'>✕</button></div></div>" for u in (c.get("fotos") or []))
@@ -678,7 +678,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
 {podio}
 {("<div class='acciones' style='margin-top:12px'>" + ubic + "</div>") if ubic else ''}
 <div class='panel'><h3>Invitar</h3>{("<div class='codigo' id='codigo' title='Copiar código'>" + e(c['codigo']) + "</div><p class='sub' style='text-align:center;font-size:12.5px'>Código para unirse desde la app · toca para copiar</p>") if c.get('codigo') else ''}
- <div class='acciones' style='flex-wrap:wrap'><a class='btn' href='{wa}' target='_blank' rel='noopener'>💬 WhatsApp</a><button type='button' class='btn sec' id='btnEnlace'>🔗 Copiar enlace</button>
+ <div class='acciones' style='flex-wrap:wrap'>{boton_wa}<button type='button' class='btn sec' id='btnEnlace'>🔗 Copiar enlace</button>
  <a class='btn sec' href='{enlace}/afiche.png' target='_blank' rel='noopener'>🖼️ Ver afiche</a><button type='button' class='btn sec' id='btnFondo'>🎨 Cambiar fondo del afiche</button><a class='btn sec' href='{e(enlace)}' target='_blank' rel='noopener'>🌐 Página pública</a></div></div>
 <div class='panel'><h3>Auspiciadores</h3><p class='sub' style='margin:0'>Logos de tus auspiciadores: salen en el afiche y en la página pública.</p>
  <div class='edit-fotos' id='ausp'>{ausp}</div><div class='acciones' style='margin-top:10px'><label class='btn sec' for='inAusp'>＋ Agregar logo</label><input type='file' id='inAusp' accept='image/*' hidden{'' if almacen.disponible() else ' disabled'}><span class='sub' id='auspMsg' style='margin:0'></span></div></div>

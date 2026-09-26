@@ -645,11 +645,41 @@ def texto_whatsapp(texto: str) -> str:
     return "\n".join(" ".join(l.split(" ")).replace("  ", " ").rstrip() for l in t.split("\n"))
 
 
-def enlace_whatsapp(texto: str, tel: str = "") -> str:
-    """`https://wa.me/[tel]?text=…` con el texto seguro para WhatsApp Windows."""
+# En ESCRITORIO (la captura del director del 26-sep-2026 mostraba "�" incluso
+# en ⚽, que es de 2 bytes) WhatsApp para Windows solo respeta el rango
+# Latin-1: el texto para PC va SIN emojis y con la tipografía simple.
+_WA_PC_TEXTO = {"–": "-", "—": "-", "…": "...", "’": "'", "‘": "'", "“": '"',
+                "”": '"', "✅": "-", "✔": "-", "➡": ">", "👉": ">", "🥇": "1.",
+                "🥈": "2.", "🥉": "3."}
+
+
+def texto_whatsapp_pc(texto: str) -> str:
+    """Solo caracteres Latin-1 (≤ U+00FF): lo único que WhatsApp Windows pinta
+    bien cuando el texto llega por `wa.me`. Conserva *negritas* y saltos."""
+    t = str(texto or "")
+    for k, v in _WA_PC_TEXTO.items():
+        t = t.replace(k, v)
+    t = "".join(ch for ch in t if ord(ch) <= 0xFF)
+    return "\n".join(" ".join(l.split(" ")).replace("  ", " ").strip() for l in t.split("\n"))
+
+
+def enlace_whatsapp(texto: str, tel: str = "", pc: bool = False) -> str:
+    """`https://wa.me/[tel]?text=…`. Móvil: emojis de 2 bytes (`texto_whatsapp`);
+    `pc=True`: solo Latin-1 (`texto_whatsapp_pc`)."""
     import urllib.parse as _up
     digitos = "".join(ch for ch in str(tel or "") if ch.isdigit())
-    return f"https://wa.me/{digitos}?text={_up.quote(texto_whatsapp(texto))}"
+    t = texto_whatsapp_pc(texto) if pc else texto_whatsapp(texto)
+    return f"https://wa.me/{digitos}?text={_up.quote(t)}"
+
+
+def boton_whatsapp(texto: str, etiqueta: str = "💬 WhatsApp", clase: str = "btn",
+                   tel: str = "", extra: str = "") -> str:
+    """Botón de WhatsApp de la web: el `href` es la versión de ESCRITORIO (sin
+    emojis) y `data-wa-movil` la completa; `JS_NAV` cambia al móvil por UA al
+    hacer clic. Así el mensaje nunca llega con "�" en ninguna plataforma."""
+    return (f"<a class='{e(clase)}' href='{e(enlace_whatsapp(texto, tel, pc=True))}' "
+            f"data-wa-movil='{e(enlace_whatsapp(texto, tel))}' target='_blank' "
+            f"rel='noopener'{(' ' + extra) if extra else ''}>{etiqueta}</a>")
 
 
 PELOTA_SVG = (
@@ -854,6 +884,9 @@ def cabecera(*, tabs: str = "", busq: str = "", ses: dict | None = None, volver:
 # Esc), desplegable del buscador y cerrar sesión.
 JS_NAV = r"""
 (function(){
+  // WhatsApp: en móvil se usa el texto con emojis (data-wa-movil); en escritorio queda el href sin emojis (WhatsApp Windows los rompe).
+  var esMovil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+  if(esMovil){ document.addEventListener('click', function(ev){ var a = ev.target.closest && ev.target.closest('a[data-wa-movil]'); if(a) a.setAttribute('href', a.getAttribute('data-wa-movil')); }, true); }
   var b = document.getElementById('btnMenu'), p = document.getElementById('menuPanel');
   if(b && p){
     b.addEventListener('click', function(ev){ ev.stopPropagation(); var on = !p.classList.contains('open'); p.classList.toggle('open', on); b.setAttribute('aria-expanded', on ? 'true' : 'false'); });
