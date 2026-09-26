@@ -171,15 +171,29 @@ class Integrante {
   final String email;
   final String? fotoUrl;
   final int? edad;
+  /// Lo que este jugador PUSO en el pozo del equipo (céntimos). Espejo de
+  /// `pagos/pozos.py` (la fuente de verdad del dinero es el backend); 0 = aún
+  /// no aportó o el torneo es gratis.
+  final int aporteCentimos;
   const Integrante({
     required this.id,
     required this.nombre,
     this.email = '',
     this.fotoUrl,
     this.edad,
+    this.aporteCentimos = 0,
   });
 
   bool get verificado => email.isNotEmpty;
+
+  Integrante copyWith({int? aporteCentimos}) => Integrante(
+        id: id,
+        nombre: nombre,
+        email: email,
+        fotoUrl: fotoUrl,
+        edad: edad,
+        aporteCentimos: aporteCentimos ?? this.aporteCentimos,
+      );
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -187,6 +201,7 @@ class Integrante {
         'email': email,
         if (fotoUrl != null) 'fotoUrl': fotoUrl,
         if (edad != null) 'edad': edad,
+        if (aporteCentimos > 0) 'aporteCentimos': aporteCentimos,
       };
 
   factory Integrante.fromJson(Map<String, dynamic> j) => Integrante(
@@ -195,6 +210,7 @@ class Integrante {
         email: (j['email'] ?? '') as String,
         fotoUrl: j['fotoUrl'] as String?,
         edad: (j['edad'] as num?)?.toInt(),
+        aporteCentimos: (j['aporteCentimos'] as num?)?.toInt() ?? 0,
       );
 }
 
@@ -429,6 +445,11 @@ class Campeonato {
   /// "completo". 0 = sin cupo definido (solo se muestra el conteo, sin marcar
   /// completo/incompleto). No hay tope máximo (pueden sumar suplentes).
   final int minJugadoresEquipo;
+  /// Fútbol: TOPE de plantel (titulares + suplentes). 0 = sin tope. Con costo
+  /// de inscripción, la cuota del equipo se reparte entre este número (ver
+  /// [cuotaJugadorCentimos]). Decisión del director (26-sep-2026): "la
+  /// vaquita del equipo".
+  final int maxJugadoresEquipo;
   /// Formato grupos: cada equipo juega AL MENOS este número de partidos en la
   /// fase de grupos (2 o 3). Decide el tamaño mínimo de grupo (minPartidos+1).
   final int minPartidos;
@@ -483,6 +504,7 @@ class Campeonato {
     this.edadMax,
     this.logoUrl,
     this.minJugadoresEquipo = 0,
+    this.maxJugadoresEquipo = 0,
     this.minPartidos = 2,
     this.premios = '',
     this.auspiciador = '',
@@ -509,6 +531,31 @@ class Campeonato {
   }
 
   bool get fixtureGenerado => partidos.isNotEmpty;
+
+  /// ¿Un jugador aún puede UNIRSE al plantel de un equipo (fútbol)? A
+  /// diferencia de crear equipos o de la inscripción individual, NI el
+  /// fixture generado NI la fecha de "cierre de inscripciones" cierran el
+  /// plantel: ese cierre sirve para sortear (cuántos equipos hay); los
+  /// suplentes entran (y ponen su parte del pozo) hasta que el torneo termine
+  /// o el organizador lo cierre (pedido del director, 26-sep-2026: "me quiero
+  /// inscribir al Kinder-01" con el torneo ya "En juego" y el cierre vencido).
+  /// ESPEJO de `campeonatos_logica.plantel_abierto`.
+  bool get plantelAbierto =>
+      deporte == Deporte.futbol &&
+      !cerrado &&
+      inscripcionAbierta &&
+      !terminado;
+
+  /// Por qué NO se puede unir al plantel ('' = sí se puede). Para que el
+  /// modal del equipo lo diga en vez de esconder el botón en silencio.
+  String motivoPlantelCerrado() {
+    if (deporte != Deporte.futbol) return 'Este torneo no es por equipos.';
+    if (cerrado || terminado) return 'Este campeonato ya terminó.';
+    if (!inscripcionAbierta) {
+      return 'El organizador cerró las inscripciones.';
+    }
+    return '';
+  }
 
   /// Participante por id (o null).
   Participante? participanteDe(String? id) {
@@ -616,6 +663,62 @@ class Campeonato {
   bool equipoCompleto(Participante p) =>
       usaCupoEquipos && p.roster.length >= minJugadoresEquipo;
 
+  // ── Pozo del equipo (cuota repartida entre el plantel) ────────────────────
+  // Espejo de `web/campeonatos_logica.py` y `pagos/pozos.py`.
+  /// ¿La cuota se cobra POR EQUIPO y se reparte? Solo fútbol con costo.
+  bool get tieneCuotaPorEquipo =>
+      deporte == Deporte.futbol && costoInscripcion > 0;
+
+  /// Entre cuántos se reparte: el máximo; si no hay, el mínimo; si no, 0
+  /// (= quien crea el equipo pone la cuota entera).
+  int get cupoReparto => maxJugadoresEquipo > 0
+      ? maxJugadoresEquipo
+      : (minJugadoresEquipo > 0 ? minJugadoresEquipo : 0);
+
+  int get cuotaEquipoCentimos => (costoInscripcion * 100).round();
+
+  /// Parte de cada jugador: cuota ÷ cupo, redondeada HACIA ARRIBA a 0.50.
+  int get cuotaJugadorCentimos {
+    final cuota = cuotaEquipoCentimos;
+    if (cuota <= 0) return 0;
+    final cupo = cupoReparto > 0 ? cupoReparto : 1;
+    return ((cuota / cupo) / 50).ceil() * 50;
+  }
+
+  /// Lo que lleva juntado el equipo (suma de aportes espejados).
+  int pozoCentimos(Participante p) =>
+      p.roster.fold<int>(0, (a, m) => a + m.aporteCentimos);
+
+  int faltantePozo(Participante p) {
+    final f = cuotaEquipoCentimos - pozoCentimos(p);
+    return f > 0 ? f : 0;
+  }
+
+  /// ¿El equipo ya cubrió su cuota (está INSCRITO)? Sin cuota, siempre true.
+  bool pozoCompleto(Participante p) =>
+      !tieneCuotaPorEquipo || pozoCentimos(p) >= cuotaEquipoCentimos;
+
+  /// ¿El plantel llegó al tope? (0 = sin tope).
+  bool equipoLleno(Participante p) =>
+      maxJugadoresEquipo > 0 && p.roster.length >= maxJugadoresEquipo;
+
+  /// Cuánto le toca poner al PRÓXIMO en unirse: su cuota o lo que falte.
+  int aporteSiguiente(Participante? p) {
+    if (!tieneCuotaPorEquipo) return 0;
+    if (p == null) return cuotaJugadorCentimos.clamp(0, cuotaEquipoCentimos);
+    final falta = faltantePozo(p);
+    return falta < cuotaJugadorCentimos ? falta : cuotaJugadorCentimos;
+  }
+
+  /// "S/ 10" / "S/ 14.50" (sin decimales cuando son .00).
+  String fmtMonto(int centimos) {
+    final v = centimos / 100.0;
+    final txt = (v - v.roundToDouble()).abs() < 0.005
+        ? v.round().toString()
+        : v.toStringAsFixed(2);
+    return '$monedaSimbolo $txt';
+  }
+
   Campeonato copyWith({
     String? nombre,
     FormatoTorneo? formato,
@@ -638,6 +741,7 @@ class Campeonato {
     int? edadMax,
     String? logoUrl,
     int? minJugadoresEquipo,
+    int? maxJugadoresEquipo,
     int? minPartidos,
     String? premios,
     String? auspiciador,
@@ -674,6 +778,7 @@ class Campeonato {
         edadMax: edadMax ?? this.edadMax,
         logoUrl: logoUrl ?? this.logoUrl,
         minJugadoresEquipo: minJugadoresEquipo ?? this.minJugadoresEquipo,
+        maxJugadoresEquipo: maxJugadoresEquipo ?? this.maxJugadoresEquipo,
         minPartidos: minPartidos ?? this.minPartidos,
         premios: premios ?? this.premios,
         auspiciador: auspiciador ?? this.auspiciador,
@@ -722,6 +827,7 @@ class Campeonato {
         if (edadMax != null) 'edadMax': edadMax,
         if (logoUrl != null && logoUrl!.isNotEmpty) 'logoUrl': logoUrl,
         if (minJugadoresEquipo > 0) 'minJugadoresEquipo': minJugadoresEquipo,
+        if (maxJugadoresEquipo > 0) 'maxJugadoresEquipo': maxJugadoresEquipo,
         if (formato == FormatoTorneo.grupos) 'minPartidos': minPartidos,
         if (premios.isNotEmpty) 'premios': premios,
         if (auspiciador.isNotEmpty) 'auspiciador': auspiciador,
@@ -778,6 +884,7 @@ class Campeonato {
         edadMax: (j['edadMax'] as num?)?.toInt(),
         logoUrl: j['logoUrl'] as String?,
         minJugadoresEquipo: (j['minJugadoresEquipo'] as num?)?.toInt() ?? 0,
+        maxJugadoresEquipo: (j['maxJugadoresEquipo'] as num?)?.toInt() ?? 0,
         minPartidos: kMinPartidosOpciones.contains((j['minPartidos'] as num?)?.toInt())
             ? (j['minPartidos'] as num).toInt()
             : 2,

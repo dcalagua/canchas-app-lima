@@ -25,7 +25,10 @@ import config
 # Paleta del logo nuevo (la misma del APK).
 _ESMERALDA = "#0E8F67"
 _NAVY = "#0F1B2D"
-_RELEASE = "https://github.com/dcalagua/canchas-app-lima/releases/tag/v0.1.0"
+def _descarga() -> str:
+    """A dónde va quien no tiene la app: Play en PRD, Release en dev/QAS
+    (`config.APP_DOWNLOAD_URL`; función para que los tests lo cambien)."""
+    return config.APP_DOWNLOAD_URL
 
 
 def _esc(s) -> str:
@@ -242,20 +245,36 @@ def _render_tiempos(c: dict) -> str:
     return ''.join(out)
 
 
-def _intent_unirse(campeonato_id: str) -> str:
+def _intent_unirse(campeonato_id: str, equipo: str = "") -> str:
     """URL intent:// de Android: abre la APP en la ficha del campeonato si está
     instalada; si no, cae a la descarga (browser_fallback_url). Es el botón
     'Unirme en la app' — un solo tap para el que ya usa Pichangol, y el que no,
-    queda obligado a descargarla."""
-    fallback = urllib.parse.quote(_RELEASE, safe="")
-    return (f"intent://c/{urllib.parse.quote(campeonato_id, safe='')}"
+    queda obligado a descargarla. Con `equipo` (código del equipo, fútbol) la
+    app abre directo "Unirme al equipo X" sin pedir el código."""
+    fallback = urllib.parse.quote(_descarga(), safe="")
+    q = (f"?equipo={urllib.parse.quote(equipo.strip().upper(), safe='')}"
+         if equipo and equipo.strip() else "")
+    return (f"intent://c/{urllib.parse.quote(campeonato_id, safe='')}{q}"
             f"#Intent;scheme=pichangol;package=pe.ebim.pichangol;"
             f"S.browser_fallback_url={fallback};end")
 
 
+def equipo_por_codigo(c: dict, codigo: str) -> dict | None:
+    """El participante-equipo cuyo `codigo` (6 letras del capitán) coincide."""
+    cod = (codigo or "").strip().upper()
+    if not cod:
+        return None
+    for p in c.get("participantes") or []:
+        if str(p.get("codigo") or "").strip().upper() == cod:
+            return p
+    return None
+
+
 def html_campeonato(c: dict, campeonato_id: str = "",
-                    og_image: str = "") -> str:
-    """La página completa del campeonato (hero + fixture + participantes)."""
+                    og_image: str = "", equipo: str = "") -> str:
+    """La página completa del campeonato (hero + fixture + participantes).
+    `equipo` = código de equipo que viajó en el enlace (`/c/{id}?equipo=`):
+    el CTA pasa a ser "Unirme al equipo X" y la app se abre directo ahí."""
     deporte = _esc(c.get("deporte", ""))
     emo = _EMOJI.get(str(c.get("deporte") or ""), "🏆")
     es_tiempos = c.get("formato") == "tiempos"
@@ -281,18 +300,55 @@ def html_campeonato(c: dict, campeonato_id: str = "",
     como = ("Ábrela y crea tu equipo (o únete con el código del capitán)."
             if c.get("deporte") == "futbol" else "Ábrela y toca “Inscribirme”.")
     inscripcion = ""
-    if c.get("inscripcionAbierta") and not partidos:
+    from web import campeonatos_logica as _L
+    eq = equipo_por_codigo(c, equipo) if c.get("deporte") == "futbol" else None
+    # El enlace del CAPITÁN sigue valiendo con el fixture ya publicado: un
+    # suplente se une al plantel mientras la inscripción siga abierta
+    # (`plantel_abierto`, espejo del app). Crear equipos / inscribirse solo,
+    # en cambio, se cierra al generar el fixture.
+    if (c.get("inscripcionAbierta") and not partidos) or (eq is not None and _L.plantel_abierto(c)):
         costo = c.get("costoInscripcion") or 0
         costo_txt = (f" · {_esc(mon)} {float(costo):.2f}" if costo and costo > 0
                      else " · gratis")
-        intent = _intent_unirse(campeonato_id)
-        inscripcion = (
-            f'<div class="cta"><b>Inscripciones abiertas</b>{costo_txt}<br>'
-            f'<span>{como}</span><br>'
-            f'<a class="mapbtn" style="margin-top:10px" href="{intent}">'
-            f'{emo} Unirme en la app</a><br>' 
-            f'<span style="font-size:12px">Si no tienes Pichangol, el botón '
-            f'te lleva a descargarla.</span></div>')
+        if costo and costo > 0 and c.get("deporte") == "futbol":
+            # Cuota POR EQUIPO repartida entre el plantel (pagos/pozos.py).
+            cj = _L.cuota_jugador_centimos(c)
+            cupo = _L.cupo_reparto(c)
+            costo_txt = (f" · {_esc(mon)} {float(costo):.2f} por equipo"
+                         + (f" · cada jugador pone {_esc(mon)} {_L.fmt_monto(cj)}" if cupo > 0 else ""))
+        if eq is not None:
+            # Enlace del CAPITÁN: un solo toque para entrar a SU equipo.
+            intent = _intent_unirse(campeonato_id, str(eq.get("codigo") or ""))
+            plantel = len(eq.get("roster") or [])
+            cap = str(eq.get("capitanEmail") or "").strip()
+            cap_txt = (f' · capitán {_esc(cap.split("@")[0])}' if cap else "")
+            en_juego = (" El fixture ya está publicado: entras como parte del "
+                        "plantel." if partidos else "")
+            inscripcion = (
+                f'<div class="cta"><b>Te invitaron al equipo '
+                f'«{_esc(str(eq.get("nombre") or ""))}»</b>{costo_txt}<br>'
+                f'<span>{plantel} jugador{"es" if plantel != 1 else ""} en el '
+                f'plantel{cap_txt}. Al tocar, Pichangol te une con tu cuenta; '
+                f'sin escribir códigos.{en_juego}</span><br>'
+                f'<a class="mapbtn" style="margin-top:10px" href="{intent}">'
+                f'{emo} Unirme al equipo en la app</a><br>'
+                f'<span style="font-size:12px">Si no tienes Pichangol, el '
+                f'botón te lleva a descargarla; al volver a abrir este enlace '
+                f'quedas en tu equipo.</span></div>')
+        else:
+            intent = _intent_unirse(campeonato_id)
+            aviso = ""
+            if equipo and equipo.strip() and c.get("deporte") == "futbol":
+                aviso = ('<br><span style="font-size:12px;color:#B25E0A">El '
+                         'código de equipo del enlace ya no es válido: pídele '
+                         'a tu capitán el enlace actualizado.</span>')
+            inscripcion = (
+                f'<div class="cta"><b>Inscripciones abiertas</b>{costo_txt}<br>'
+                f'<span>{como}</span>{aviso}<br>'
+                f'<a class="mapbtn" style="margin-top:10px" href="{intent}">'
+                f'{emo} Unirme en la app</a><br>' 
+                f'<span style="font-size:12px">Si no tienes Pichangol, el botón '
+                f'te lleva a descargarla.</span></div>')
     if not inscripcion:
         intent = _intent_unirse(campeonato_id)
         inscripcion = (
@@ -445,7 +501,7 @@ def html_campeonato(c: dict, campeonato_id: str = "",
   </div>
   <div class="foot">
     Organizado con <b>Pichangol</b> · Reserva, juega, repite.<br>
-    <a href="{_RELEASE}">Descargar la app</a>
+    <a href="{_descarga()}">Descargar la app</a>
   </div>
 </body></html>"""
 

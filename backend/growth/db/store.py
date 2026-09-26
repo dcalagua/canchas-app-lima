@@ -453,6 +453,12 @@ class PagoRegistro:
     promo_centimos: int = 0
 
 
+def es_liquidacion_torneo(p: "PagoRegistro") -> bool:
+    """¿Este ingreso de torneo es de los NUEVOS (por recibir, clave `pozo:`
+    o `torneo:` en `culqi_charge_id`)? Los viejos se acreditaron al saldo."""
+    return p.tipo == "inscripcion_torneo_ingreso" and str(p.culqi_charge_id or "").startswith(("pozo:", "torneo:"))
+
+
 class Stores:
     def __init__(self) -> None:
         self.config: dict[str, str] = dict(CONFIG_DEFAULT)
@@ -477,6 +483,9 @@ class Stores:
         self.retos: list[Reto] = []
         # VENTAS del Marketplace (escrow: retenido hasta que el comprador confirme).
         self.ventas: list[Venta] = []
+        # POZOS DE EQUIPO (cuota de torneo repartida entre el plantel; ver
+        # pagos/pozos.py): {"<campeonato_id>|<equipo_id>": {...}}.
+        self.pozos_equipo: dict[str, dict] = {}
         # Anti-fraude "1 DNI = 1 cuenta": hash(DNI) -> correo verificado. Solo se
         # guarda el HASH (Ley 29733: nunca el número). Si un DNI ya está ligado a
         # otra cuenta, no se puede verificar una segunda.
@@ -768,6 +777,7 @@ class Stores:
         self.pagos = []
         self.retos = []
         self.ventas = []
+        self.pozos_equipo = {}
         self.saldos = {}
         self.saldos_promo = {}
         self.bienvenidas = {}
@@ -831,7 +841,15 @@ class Stores:
         out = []
         for p in self.pagos:
             if p.tipo not in ("liquidacion_online", "liquidacion_full",
-                              "venta_producto", "venta_bodega"):
+                              "venta_producto", "venta_bodega",
+                              "inscripcion_torneo_ingreso"):
+                continue
+            # Ingresos de TORNEO (pozo del equipo / cuota individual): desde
+            # sep-2026 son "por recibir" como una reserva online (decisión del
+            # director: "PCG le debe transferir como a los dueños de cancha").
+            # Los registros VIEJOS (sin clave `pozo:`/`torneo:`) ya se habían
+            # acreditado al saldo del organizador → no se liquidan dos veces.
+            if p.tipo == "inscripcion_torneo_ingreso" and not es_liquidacion_torneo(p):
                 continue
             if p.estado != "aprobado":
                 continue  # reembolsados/anulados no se liquidan
@@ -848,7 +866,9 @@ class Stores:
         dueño). Idempotente: si ya estaba pagada, la devuelve igual."""
         for p in self.pagos:
             if (p.tipo in ("liquidacion_online", "liquidacion_full",
-                           "venta_producto")
+                           "venta_producto", "venta_bodega",
+                           "inscripcion_torneo_ingreso")
+                    and p.estado == "aprobado"  # una anulada no se "paga"
                     and p.culqi_charge_id == reserva_id):
                 if not p.liquidado:
                     p.liquidado = True
@@ -984,6 +1004,7 @@ class Stores:
             "convocatorias": [como_dict(c) for c in self.convocatorias],
             "retos": [como_dict(r) for r in self.retos],
             "ventas": [como_dict(v) for v in self.ventas],
+            "pozos_equipo": {k: dict(v) for k, v in self.pozos_equipo.items()},
             "dni_verificados": dict(self.dni_verificados),
             "inscripciones": [como_dict(i) for i in self.inscripciones],
             "saldos": dict(self.saldos),
@@ -1055,6 +1076,9 @@ class Stores:
         self.convocatorias = [_conv_from(d) for d in data.get("convocatorias", [])]
         self.retos = [_reto_from(d) for d in data.get("retos", [])]
         self.ventas = [_venta_from(d) for d in data.get("ventas", [])]
+        self.pozos_equipo = {
+            str(k): dict(v) for k, v in (data.get("pozos_equipo") or {}).items()
+            if isinstance(v, dict)}
         self.dni_verificados = {
             k: str(v) for k, v in (data.get("dni_verificados") or {}).items()}
         self.inscripciones = [_insc_from(d) for d in data.get("inscripciones", [])]

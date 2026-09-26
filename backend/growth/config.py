@@ -224,6 +224,18 @@ WEB_USUARIOS_PRUEBA = os.getenv("WEB_USUARIOS_PRUEBA", "").strip()
 # Vacía = la ruta responde 404 y el botón intent:// de la página cubre igual.
 ANDROID_CERT_SHA256 = os.getenv("ANDROID_CERT_SHA256", "").strip()
 
+# Ambiente de la torre/backend (QAS / PRD). Lo pone Railway por servicio.
+PICHANGOL_ENTORNO = (os.getenv("PICHANGOL_ENTORNO", "") or "").strip().upper()
+# A dónde mandar a quien NO tiene la app (botón "Abrir/Unirme en la app" de la
+# página del campeonato, pie "Descargar la app"). En PRODUCCIÓN es Play Store;
+# en dev/QAS el Release de GitHub (el APK de pruebas no está en Play).
+# `APP_DOWNLOAD_URL` lo sobrescribe en cualquier ambiente.
+PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=pe.ebim.pichangol"
+GITHUB_RELEASE_URL = "https://github.com/dcalagua/canchas-app-lima/releases/tag/v0.1.0"
+APP_DOWNLOAD_URL = url_limpia(os.getenv("APP_DOWNLOAD_URL", "")) or (
+    PLAY_STORE_URL if PICHANGOL_ENTORNO in ("PRD", "PROD", "PRODUCCION")
+    else GITHUB_RELEASE_URL)
+
 # ── ENTRENADOR VIRTUAL (visión IA sobre el video del golpe) ──────────────────
 # Modelo de visión (frames del clip → informe de coach). Sonnet: juzgar
 # TÉCNICA deportiva en fotogramas le queda grande a un modelo chico (con

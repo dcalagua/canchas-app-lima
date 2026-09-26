@@ -78,6 +78,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   final _edadMax = TextEditingController();
   // Fútbol: mínimo de jugadores por equipo para marcarlo "completo".
   final _minJug = TextEditingController();
+  final _maxJug = TextEditingController();
   // Categoría elegida del combo (label del catálogo) o el sentinel 'otra'
   // (texto libre). null = aún no elige (sin categoría).
   String? _catSel;
@@ -168,6 +169,8 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
       _edadMax.text = e.edadMax?.toString() ?? '';
       _minJug.text =
           e.minJugadoresEquipo > 0 ? e.minJugadoresEquipo.toString() : '';
+      _maxJug.text =
+          e.maxJugadoresEquipo > 0 ? e.maxJugadoresEquipo.toString() : '';
       _logoUrlActual = e.logoUrl;
       _fechasIniciales = e.fechas;
       // Categoría: si coincide con una del catálogo, selecciona ese ítem; si no,
@@ -219,16 +222,64 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   String _fmtFecha(DateTime d) =>
       '${d.day} ${_meses[d.month - 1]} ${d.year}';
 
+  /// Cierre con hora: "26 set 2026 · 09:00". La hora se muestra siempre en
+  /// relámpago (se juega ese mismo día) y, en los demás, solo si no es 00:00.
+  String _fmtCierre(DateTime d) {
+    final conHora = _relampago || d.hour != 0 || d.minute != 0;
+    if (!conHora) return _fmtFecha(d);
+    final hh = d.hour.toString().padLeft(2, '0');
+    final mm = d.minute.toString().padLeft(2, '0');
+    return '${_fmtFecha(d)} · $hh:$mm';
+  }
+
+  /// Día del torneo (relámpago) o inicio del rango, si ya se eligió.
+  DateTime? get _diaJuego => _rango?.start ?? widget.editar?.inicio;
+
+  /// Cierre de inscripciones = DÍA + HORA (pedido del director, 26-sep-2026:
+  /// "si es relámpago debe indicarme una hora para cerrar inscripciones").
+  /// En relámpago el día no puede pasar del día del torneo y la hora es
+  /// obligatoria (a esa hora se cierran las inscripciones y se sortea solo).
   Future<void> _elegirCierre() async {
     final hoy = DateTime.now();
-    final r = await showDatePicker(
+    final hoy0 = DateTime(hoy.year, hoy.month, hoy.day);
+    final juego = _diaJuego;
+    final tope = (_relampago && juego != null && !juego.isBefore(hoy0))
+        ? DateTime(juego.year, juego.month, juego.day)
+        : DateTime(hoy.year + 1, 12, 31);
+    var inicial = _cierreInscripcion ?? (_relampago ? (juego ?? hoy) : hoy);
+    if (inicial.isBefore(hoy0)) inicial = hoy0;
+    if (inicial.isAfter(tope)) inicial = tope;
+    final dia = await showDatePicker(
       context: context,
-      firstDate: DateTime(hoy.year, hoy.month, hoy.day),
-      lastDate: DateTime(hoy.year + 1, 12, 31),
-      initialDate: _cierreInscripcion ?? hoy,
-      helpText: 'Cierre de inscripciones',
+      firstDate: hoy0,
+      lastDate: tope,
+      initialDate: inicial,
+      helpText: _relampago
+          ? 'Día de cierre (el del torneo o antes)'
+          : 'Cierre de inscripciones',
     );
-    if (r != null) setState(() => _cierreInscripcion = r);
+    if (dia == null || !mounted) return;
+    final previa = _cierreInscripcion;
+    final hora = await showTimePicker(
+      context: context,
+      initialTime: previa != null
+          ? TimeOfDay(hour: previa.hour, minute: previa.minute)
+          : const TimeOfDay(hour: 9, minute: 0),
+      helpText: 'Hora de cierre de inscripciones',
+    );
+    if (!mounted) return;
+    if (hora == null) {
+      if (_relampago) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Es relámpago: indica también la hora de cierre.')));
+        return;
+      }
+      setState(() => _cierreInscripcion = dia); // sin hora = ese día 00:00
+      return;
+    }
+    setState(() => _cierreInscripcion =
+        DateTime(dia.year, dia.month, dia.day, hora.hour, hora.minute));
   }
 
   Future<void> _elegirSede() async {
@@ -264,6 +315,27 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
           content: Text('Ponle un nombre al campeonato.')));
       return;
     }
+    // Relámpago = un solo día: el cierre de inscripciones lleva día y HORA
+    // (a esa hora se sortea), y no puede caer después del día del torneo.
+    if (_relampago) {
+      final cierre = _cierreInscripcion;
+      final juego = _diaJuego;
+      String? err;
+      if (cierre == null) {
+        err = 'Es relámpago: indica el día y la hora de cierre de '
+            'inscripciones.';
+      } else if (juego != null &&
+          cierre.isAfter(
+              DateTime(juego.year, juego.month, juego.day, 23, 59))) {
+        err = 'El cierre de inscripciones debe ser el día del torneo '
+            '(${_fmtFecha(juego)}) o antes.';
+      }
+      if (err != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(err)));
+        return;
+      }
+    }
     setState(() => _guardando = true);
     // Fechas: si el usuario eligió un nuevo rango, se usa; si no, conserva las
     // que ya tenía (modo edición) o vacío (creación).
@@ -277,6 +349,11 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
     final minJug = _deporte == Deporte.futbol
         ? (int.tryParse(_minJug.text.trim()) ?? 0)
         : 0;
+    // Tope de plantel (titulares + suplentes): nunca por debajo del mínimo.
+    var maxJug = _deporte == Deporte.futbol
+        ? (int.tryParse(_maxJug.text.trim()) ?? 0)
+        : 0;
+    if (maxJug > 0 && minJug > 0 && maxJug < minJug) maxJug = minJug;
 
     final Campeonato c;
     if (_editando) {
@@ -312,6 +389,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         edadMax: edadMax,
         logoUrl: e.logoUrl,
         minJugadoresEquipo: minJug,
+        maxJugadoresEquipo: maxJug,
         minPartidos: _minPartidos,
         premios: _premios.text.trim(),
         auspiciador: _auspiciador.text.trim(),
@@ -344,6 +422,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         edadMin: edadMin,
         edadMax: edadMax,
         minJugadoresEquipo: minJug,
+        maxJugadoresEquipo: maxJug,
         minPartidos: _minPartidos,
         premios: _premios.text.trim(),
         auspiciador: _auspiciador.text.trim(),
@@ -369,6 +448,31 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
       return false;
     }
     return true;
+  }
+
+  /// Texto de ayuda del tope: cuánto pone cada jugador con el costo actual.
+  String _ayudaCuota() {
+    final costo =
+        double.tryParse(_costo.text.trim().replaceAll(',', '.')) ?? 0;
+    final maxJ = int.tryParse(_maxJug.text.trim()) ?? 0;
+    final minJ = int.tryParse(_minJug.text.trim()) ?? 0;
+    final cupo = maxJ > 0 ? maxJ : minJ;
+    if (costo <= 0) {
+      return 'Tope del plantel. Con costo de inscripción, la cuota del equipo '
+          'se reparte entre este número.';
+    }
+    if (cupo <= 0) {
+      return 'Sin cupo, quien crea el equipo paga la cuota completa. Pon un '
+          'máximo para que se reparta entre los jugadores.';
+    }
+    final centimos = ((costo * 100).round() / cupo / 50).ceil() * 50;
+    final v = centimos / 100.0;
+    final txt = (v - v.roundToDouble()).abs() < 0.005
+        ? v.round().toString()
+        : v.toStringAsFixed(2);
+    return 'Cada jugador pone $_monedaSede $txt al unirse (cuota ÷ $cupo). '
+        'El equipo queda inscrito cuando el pozo cubre la cuota; el último '
+        'paga solo lo que falta.';
   }
 
   @override
@@ -531,12 +635,30 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
             TextField(
               controller: _minJug,
               keyboardType: TextInputType.number,
+              onChanged: (_) => setState(() {}),
               decoration: const InputDecoration(
                 labelText: 'Mínimo de jugadores por equipo (opcional)',
                 hintText: 'ej. 7',
                 helperText: 'Cada equipo aparece "Completo" al llegar a este '
                     'número. Vacío = solo se muestra el conteo.',
                 helperMaxLines: 3,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // LA VAQUITA DEL EQUIPO (decisión del director, 26-sep-2026): con
+            // costo, la cuota del EQUIPO se reparte entre este tope; cada
+            // jugador pone su parte al unirse y el equipo queda inscrito
+            // cuando el pozo la cubre.
+            TextField(
+              controller: _maxJug,
+              keyboardType: TextInputType.number,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText:
+                    'Máximo de jugadores por equipo (titulares + suplentes)',
+                hintText: 'ej. 10',
+                helperText: _ayudaCuota(),
+                helperMaxLines: 4,
               ),
             ),
             const SizedBox(height: 12),
@@ -586,15 +708,29 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
           ),
           const SizedBox(height: 12),
           // Cronograma: cierre de inscripciones (al llegar se sortea el fixture).
+          // Día + HORA; en relámpago la hora es obligatoria.
           _CampoTap(
             icon: Icons.how_to_reg,
-            label: 'Cierre de inscripciones',
+            label: _relampago
+                ? 'Cierre de inscripciones (día y hora)'
+                : 'Cierre de inscripciones',
             valor: _cierreInscripcion == null
-                ? 'Hasta cuándo pueden inscribirse'
-                : _fmtFecha(_cierreInscripcion!),
+                ? (_relampago
+                    ? 'Hasta qué hora del día del torneo se inscriben'
+                    : 'Hasta cuándo pueden inscribirse')
+                : _fmtCierre(_cierreInscripcion!),
             vacio: _cierreInscripcion == null,
             onTap: _elegirCierre,
           ),
+          if (_relampago)
+            const Padding(
+              padding: EdgeInsets.only(top: 4, left: 4),
+              child: Text(
+                  'A esa hora se cierran las inscripciones y se sortea el '
+                  'fixture solo. Los suplentes pueden unirse a su equipo '
+                  'hasta que empiece.',
+                  style: TextStyle(fontSize: 12, color: textoTenue)),
+            ),
           const SizedBox(height: 4),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
@@ -620,8 +756,12 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
           TextField(
             controller: _costo,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            // Refresca la ayuda "cada jugador pone S/ X" del tope de plantel.
+            onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
-                labelText: 'Costo de inscripción (opcional)',
+                labelText: _deporte == Deporte.futbol
+                    ? 'Costo de inscripción por equipo (opcional)'
+                    : 'Costo de inscripción (opcional)',
                 prefixText: '$_monedaSede '),
           ),
           const SizedBox(height: 18),

@@ -2529,9 +2529,10 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         f"<b>{e(sim)} {float(x.get('precio') or 0):.2f}</b></div>" for x in extras)
     lugar = ", ".join(x for x in (c.get("direccion"), _zona(c)) if x)
     base = (config.PUBLIC_BASE_URL or "").rstrip("/")
-    texto_wa = quote(f"Reservé en {c.get('nombre', 'una cancha')} por Pichangol: "
-                     f"{horarios.fecha_larga(filas[0]['fecha'])} {filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}. "
-                     f"Comprobante: {base}/reserva/{ref}")
+    boton_wa = ui.boton_whatsapp(
+        f"Reservé en {c.get('nombre', 'una cancha')} por Pichangol: "
+        f"{horarios.fecha_larga(filas[0]['fecha'])} {filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}. "
+        f"Comprobante: {base}/reserva/{ref}", etiqueta="💬 Compartir", clase="btn sec")
     medio = {"yape": "Yape", "tarjeta": "tarjeta"}.get(str(filas[0].get("medio_pago") or ""), "en línea")
     cuerpo = (
         "<div style='max-width:640px;margin:26px auto 0'>"
@@ -2547,8 +2548,8 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         "<div class='acciones'>"
         f"<a class='btn sec' href='/reserva/{e(ref)}.ics'>📅 Agregar al calendario</a>"
         + (f"<a class='btn sec' href='{_maps(c)}' target='_blank' rel='noopener'>📍 Cómo llegar</a>" if c else "")
-        + f"<a class='btn sec' href='https://wa.me/?text={texto_wa}' target='_blank' rel='noopener'>💬 Compartir</a>"
-        "</div>"
+        + boton_wa
+        + "</div>"
         + (f"<div class='acciones'>{_boton_cancelar(filas, c, ses, 'btn sec')}</div>" if _boton_cancelar(filas, c, ses) else "")
         + f"<div class='estado ok' style='text-align:left'>Cancelación con más de {int(config.WEB_CANCELACION_HORAS)} horas de anticipación: devolución del 100 % al mismo medio de pago. "
         f"Puedes cancelar desde aquí o desde <a href='/mis-reservas'>Mis reservas</a>. Dudas: <a href='mailto:{empresa.datos()['correo']}'>{empresa.datos()['correo']}</a>.</div>"

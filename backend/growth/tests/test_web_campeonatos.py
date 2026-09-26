@@ -48,10 +48,26 @@ class FakeCamps:
     def canchas_para_sede(self):
         return [{"id": "c_lima", "club": "Club Raqueta", "nombre": "Cancha Central", "direccion": "Av. Aviación 123", "lat": -12.09, "lng": -77.0, "barrio": "San Borja"}]
 
+    def campeonato_por_codigo(self, codigo):
+        cod = (codigo or "").upper()
+        for r in self.rows.values():
+            if r.get("_elim"):
+                continue
+            if str(r.get("codigo") or "").upper() == cod:
+                return dict(r), False
+            if any(str(p.get("codigo") or "").upper() == cod for p in (r.get("participantes") or [])):
+                return dict(r), True
+        return None, False
+
+    def campeonatos_donde_participa(self, email):
+        return [dict(r) for k, r in sorted(self.rows.items(), reverse=True)
+                if not r.get("_elim") and (r.get("dueno") or "").lower() != email.lower() and datos.participa_en(r, email)]
+
 
 def _preparar(monkeypatch, pro=True, email="orga@gmail.com"):
     fake = FakeCamps()
-    for fn in ("campeonatos_de_dueno", "campeonato", "campeonato_existe", "guardar_campeonato", "eliminar_campeonato", "canchas_para_sede"):
+    for fn in ("campeonatos_de_dueno", "campeonato", "campeonato_existe", "guardar_campeonato", "eliminar_campeonato", "canchas_para_sede",
+               "campeonato_por_codigo", "campeonatos_donde_participa"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
     monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
     monkeypatch.setattr(config, "SUPABASE_URL", "https://sb.test")
@@ -75,7 +91,7 @@ def test_mis_campeonatos_en_la_web_como_el_app(db, monkeypatch):
     menu = cli.get("/anfitrion").text
     assert "/anfitrion/campeonatos" in menu
     r = cli.get("/anfitrion/campeonatos")
-    assert r.status_code == 200 and "Aún no organizas campeonatos" in r.text and "href='/anfitrion/campeonatos/nuevo'" in r.text
+    assert r.status_code == 200 and "Aún no tienes campeonatos" in r.text and "href='/anfitrion/campeonatos/nuevo'" in r.text
     # Asistente de 3 pasos con los mismos catálogos del app.
     r = cli.get("/anfitrion/campeonatos/nuevo")
     assert r.status_code == 200
@@ -121,7 +137,11 @@ def test_mis_campeonatos_en_la_web_como_el_app(db, monkeypatch):
     assert r.status_code == 404
 
     # ── Fixture de liga: todos contra todos, 6 partidos en 3 jornadas ──
+    # Torneo por equipos CON costo: sin pozos completos, la web pregunta (409)
+    # y el organizador decide generar con todos.
     r = cli.post(f"/anfitrion/campeonatos/{cid}/fixture")
+    assert r.status_code == 409 and r.json()["error"] == "pozos_incompletos" and len(r.json()["equipos"]) == 4
+    r = cli.post(f"/anfitrion/campeonatos/{cid}/fixture", json={"con_todos": True})
     assert r.status_code == 200 and r.json()["partidos"] == 6
     partidos = fake.rows[cid]["partidos"]
     assert {int(p["ronda"]) for p in partidos} == {0, 1, 2}
@@ -329,3 +349,219 @@ def test_enlaces_publicos_sin_espacios_aunque_la_variable_los_traiga(db, monkeyp
     assert f"https://pg.test/c/{cid}" in r.text
     # Ni con espacio literal ni codificado (así salía en QAS: `pichangol.app%20/c/...`).
     assert "pg.test /" not in r.text and "pg.test%20" not in r.text and "pg.test%20/" not in r.text
+
+
+def test_whatsapp_desde_la_web_sin_emojis_de_4_bytes(db, monkeypatch):
+    """Queja del director (26-sep-2026, captura): el resumen compartido desde
+    Mis campeonatos llegaba a WhatsApp Windows con "��" en vez de 🏆 📊 👉.
+    WhatsApp para Windows rompe los caracteres fuera del plano básico que
+    viajan por `wa.me/?text=`; el enlace se arma con `ui.enlace_whatsapp`,
+    que los traduce a emojis de 2 bytes (⭐ ▶ ➡) y nunca deja astrales."""
+    from web import ui
+    seguro = ui.texto_whatsapp("🏆⚽ *COPA*\n📊 Grupo A:\n👉 https://x.test/c/1\n🎾 tenis 🤷")
+    assert seguro == "⭐⚽ *COPA*\n▶ Grupo A:\n➡ https://x.test/c/1\n⭐ tenis"
+    assert all(ord(ch) <= 0xFFFF for ch in seguro)
+    assert ui.enlace_whatsapp("hola ⭐", "+51 999 888 777") == "https://wa.me/51999888777?text=hola%20%E2%AD%90"
+
+    cli = TestClient(app, base_url="https://testserver")
+    fake = _preparar(monkeypatch)
+    _entrar_como(cli, monkeypatch, "orga@gmail.com", "Orga")
+    cid = L.nuevo_id()
+    c = {"id": cid, "dueno": "orga@gmail.com", "nombre": "Beata Imelda 2026", "deporte": "futbol", "formato": "grupos", "minPartidos": 2,
+         "participantes": [{"id": f"p{i}", "nombre": f"Equipo {i}", "contacto": "", "email": ""} for i in range(6)],
+         "partidos": [], "inscripcionAbierta": True, "codigo": "ABC123", "fechas": "", "costoInscripcion": 0}
+    c["partidos"] = L.generar_fixture(c)
+    fake.rows[cid] = c
+    r = cli.get(f"/anfitrion/campeonatos/{cid}")
+    assert r.status_code == 200
+    import re
+    import urllib.parse
+    # href = ESCRITORIO (solo Latin-1: WhatsApp Windows rompió hasta ⚽ en la
+    # 2.ª captura) · data-wa-movil = móvil con emojis de 2 bytes.
+    m = re.search(r"href='(https://wa\.me/\?text=[^']+)' data-wa-movil='(https://wa\.me/\?text=[^']+)'", r.text)
+    assert m, "el botón de WhatsApp debe salir de ui.boton_whatsapp"
+    pc = urllib.parse.unquote(m.group(1).split("text=", 1)[1])
+    movil = urllib.parse.unquote(m.group(2).split("text=", 1)[1])
+    for texto in (pc, movil):
+        assert "Grupo A" in texto and "Beata Imelda 2026" in texto and "https://pg.test/c/" in texto
+    assert all(ord(ch) <= 0xFF for ch in pc), pc
+    assert "*Pichangol*" in pc and "Grupo A:" in pc.replace("  ", " ")
+    assert all(ord(ch) <= 0xFFFF for ch in movil) and "⚽" in movil and "⭐" in movil
+    assert "%F0%9F" not in m.group(2)
+    assert ui.texto_whatsapp_pc("🏆⚽ *COPA* – hoy…\n👉 https://x.test") == "*COPA* - hoy...\n> https://x.test"
+    assert "data-wa-movil" in ui.JS_NAV
+
+
+def test_vaquita_del_equipo_en_la_web(db, monkeypatch):
+    """Pedido del director (26-sep-2026): la cuota es POR EQUIPO y se reparte
+    entre el plantel. Web: máximo de jugadores en el asistente, equipos del
+    organizador con código, chips con el pozo, aviso al generar el fixture con
+    exclusión + devolución, y "cada jugador pone" en publicidad y página pública."""
+    import re
+    import urllib.parse
+    from pagos import pozos as _pz
+    stores.pozos_equipo = {}; stores.pagos = []; stores.saldos = {}
+    cli = TestClient(app, base_url="https://testserver")
+    fake = _preparar(monkeypatch)
+    _entrar_como(cli, monkeypatch, "orga@gmail.com", "Orga")
+    cid = L.nuevo_id()
+    # Asistente: máximo por equipo (nunca por debajo del mínimo).
+    r = cli.post("/anfitrion/campeonatos/guardar", json={"id": cid, "nombre": "Beata 2026", "deporte": "futbol", "formato": "liga",
+                                                        "costo": 100, "minJugadoresEquipo": 7, "maxJugadoresEquipo": 5, "lat": -12.09, "lng": -77.0})
+    assert r.status_code == 200, r.text
+    c = fake.rows[cid]
+    assert c["minJugadoresEquipo"] == 7 and c["maxJugadoresEquipo"] == 7
+    r = cli.post("/anfitrion/campeonatos/guardar", json={"id": cid, "nombre": "Beata 2026", "deporte": "futbol", "formato": "liga",
+                                                        "costo": 100, "minJugadoresEquipo": 7, "maxJugadoresEquipo": 10, "lat": -12.09, "lng": -77.0})
+    c = fake.rows[cid]
+    assert c["maxJugadoresEquipo"] == 10 and L.cuota_jugador_centimos(c) == 1000 and L.cupo_reparto(c) == 10
+    # Los equipos que agrega el organizador nacen con CÓDIGO (enlace de equipo).
+    ids = []
+    for n in ("Kinder 01", "Kinder 02", "PreKinder"):
+        r = cli.post(f"/anfitrion/campeonatos/{cid}/participante", json={"nombre": n}).json()
+        ids.append(r["id"])
+    eqs = fake.rows[cid]["participantes"]
+    assert all(len(p["codigo"]) == 6 and L.es_equipo(p) for p in eqs)
+    # Dos jugadores ponen su parte en Kinder 01; el capitán completa Kinder 02.
+    for em in ("a@x.com", "b@x.com", "capi@x.com"):
+        stores.acreditar(em, 10000)
+    for em in ("a@x.com", "b@x.com"):
+        r = _pz.aportar(email=em, campeonato_id=cid, equipo_id=ids[0], cuota_equipo_soles=100, cupo=10, moneda="PEN",
+                        organizador="orga@gmail.com", campeonato_nombre="Beata 2026", equipo_nombre="Kinder 01", monto_soles=None,
+                        comision_fn=lambda s, m: 500)
+        assert r["ok"] and r["aporte_centimos"] == 1000
+    r = _pz.aportar(email="capi@x.com", campeonato_id=cid, equipo_id=ids[1], cuota_equipo_soles=100, cupo=10, moneda="PEN",
+                    organizador="orga@gmail.com", campeonato_nombre="Beata 2026", equipo_nombre="Kinder 02", monto_soles=100,
+                    comision_fn=lambda s, m: 500)
+    assert r["pozo"]["liquidado"] and stores.saldo_centimos("orga@gmail.com") == 0  # neto por recibir, no saldo
+    assert len(stores.liquidaciones("orga@gmail.com", solo_pendientes=True)) == 1
+    # Detalle: chips con el pozo y CFG con pozos/cuota.
+    r = cli.get(f"/anfitrion/campeonatos/{cid}")
+    assert r.status_code == 200
+    assert "Kinder 01 · 0/10 jug. · S/ 20 de 100" in r.text
+    assert "Kinder 02 · 0/10 jug. · S/ 100 ✅ inscrito" in r.text
+    assert "PreKinder · 0/10 jug. · S/ 0 de 100" in r.text
+    assert '"cuotaJug": 1000' in r.text and '"cuotaEq": 10000' in r.text and '"cupo": 10' in r.text
+    # Publicidad de WhatsApp: cuánto pone cada jugador.
+    assert "Cada jugador pone S/ 10 al unirse a su equipo (hasta 10 por equipo)" in urllib.parse.unquote(
+        re.search(r"data-wa-movil='(https://wa\.me/\?text=[^']+)'", r.text).group(1))
+    # Generar fixture: pregunta por los pozos incompletos; excluirlos devuelve la plata.
+    r = cli.post(f"/anfitrion/campeonatos/{cid}/fixture")
+    assert r.status_code == 409 and {q["nombre"] for q in r.json()["equipos"]} == {"Kinder 01", "PreKinder"}
+    r = cli.post(f"/anfitrion/campeonatos/{cid}/fixture", json={"excluir": [ids[0]]})
+    assert r.status_code == 200 and r.json()["devueltos"] == 2, r.text
+    assert stores.saldo_centimos("a@x.com") == 10000 and stores.saldo_centimos("b@x.com") == 10000
+    assert {p["nombre"] for p in fake.rows[cid]["participantes"]} == {"Kinder 02", "PreKinder"}
+    assert fake.rows[cid]["partidos"]
+    # Quitar un equipo con el neto YA PAGADO por la torre: no hay devolución automática, se avisa.
+    pg = stores.liquidaciones("orga@gmail.com", solo_pendientes=True)[0]
+    stores.marcar_liquidacion_pagada(pg.culqi_charge_id, "yape", "op")
+    r = cli.post(f"/anfitrion/campeonatos/{cid}/participante/{ids[1]}/eliminar").json()
+    assert r["ok"] and "ya se te había liquidado" in r["aviso"]
+    # Página pública: "por equipo · cada jugador pone".
+    from marketing import campeonato_web
+    monkeypatch.setattr(campeonato_web, "obtener_campeonato", lambda _id: dict(fake.rows[cid], partidos=[], inscripcionAbierta=True))
+    r = cli.get(f"/c/{cid}")
+    assert "S/ 100.00 por equipo · cada jugador pone S/ 10" in r.text
+
+
+def test_equipos_viejos_sin_codigo_reciben_enlace_al_abrir_el_detalle(db, monkeypatch):
+    """Caso real (26-sep-2026): "Kinder 01" se creó desde el app antes de que
+    los equipos del organizador nacieran con código → no era `es_equipo`, no
+    tenía enlace y nadie podía unirse. Al abrir el detalle web se le asigna un
+    código único, se guarda, y el modal ya ofrece "Copiar enlace del equipo"."""
+    cli = TestClient(app, base_url="https://testserver")
+    fake = _preparar(monkeypatch)
+    _entrar_como(cli, monkeypatch, "orga@gmail.com", "Orga")
+    cid = L.nuevo_id()
+    fake.rows[cid] = {"id": cid, "dueno": "orga@gmail.com", "nombre": "Beata 2026", "deporte": "futbol", "formato": "liga",
+                      "costoInscripcion": 100, "minJugadoresEquipo": 7, "inscripcionAbierta": True, "moneda": "S/",
+                      "participantes": [{"id": "part_1", "nombre": "Kinder 01", "contacto": "", "email": "", "apoderadoNombre": ""},
+                                        {"id": "part_2", "nombre": "Kinder 02", "codigo": "YAEXIS", "capitanEmail": "", "roster": []}],
+                      "partidos": [{"id": "m0", "aId": "part_1", "bId": "part_2", "ronda": 0}]}
+    assert not L.es_equipo(fake.rows[cid]["participantes"][0])
+    r = cli.get(f"/anfitrion/campeonatos/{cid}")
+    assert r.status_code == 200
+    ps = fake.rows[cid]["participantes"]
+    assert len(ps[0]["codigo"]) == 6 and ps[0]["codigo"] != "YAEXIS" and L.es_equipo(ps[0])
+    assert ps[1]["codigo"] == "YAEXIS"  # el que ya tenía no cambia
+    assert ps[0]["roster"] == [] and ps[0]["capitanEmail"] == ""
+    assert "Kinder 01 · 0 jug. · S/ 0 de 100" in r.text  # ya es equipo (chip con pozo)
+    # Con fixture y la inscripción abierta, el plantel sigue abierto (espejo del app),
+    # incluso con la fecha de cierre de inscripciones ya vencida (esa fecha es para sortear).
+    assert L.plantel_abierto(fake.rows[cid])
+    fake.rows[cid]["inscripcionHasta"] = "2020-01-01T00:00:00.000"
+    assert L.inscripcion_vencida(fake.rows[cid]) and L.plantel_abierto(fake.rows[cid])
+    fake.rows[cid]["cerrado"] = True
+    assert not L.plantel_abierto(fake.rows[cid])
+    fake.rows[cid]["cerrado"] = False
+    fake.rows[cid]["inscripcionAbierta"] = False
+    assert not L.plantel_abierto(fake.rows[cid])
+    # Sin equipos que corregir no se vuelve a guardar.
+    fake.rows[cid]["inscripcionAbierta"] = True
+    assert not L.completar_codigos(fake.rows[cid])
+
+
+def test_relampago_exige_hora_de_cierre_de_inscripciones(db, monkeypatch):
+    """Pedido del director (26-sep-2026): un relámpago se juega en un día, así
+    que el cierre de inscripciones lleva día Y HORA (a esa hora se sortea).
+    Sin hora → error en el paso 3; con hora se guarda `inscripcionHasta` con
+    la hora; el cierre no puede pasar del día del torneo; el detalle y la
+    publicidad muestran la hora. En torneos de varios días la hora es opcional."""
+    cli = TestClient(app, base_url="https://testserver")
+    fake = _preparar(monkeypatch)
+    _entrar_como(cli, monkeypatch, "orga@gmail.com", "Orga")
+    cid = L.nuevo_id()
+    base = {"id": cid, "nombre": "Relámpago Beata", "deporte": "futbol", "formato": "liga", "relampago": True,
+            "desde": "2099-03-07", "hasta": "2099-03-07", "lat": -12.09, "lng": -77.0}
+    r = cli.post("/anfitrion/campeonatos/guardar", json=dict(base, cierre="2099-03-07"))
+    assert r.status_code == 400 and "hora de cierre" in r.json()["error"] and r.json().get("paso") == 3, r.text
+    r = cli.post("/anfitrion/campeonatos/guardar", json=dict(base, cierre="2099-03-08", cierreHora="09:00"))
+    assert r.status_code == 400 and "día del torneo" in r.json()["error"], r.text
+    r = cli.post("/anfitrion/campeonatos/guardar", json=dict(base, cierre="2099-03-07", cierreHora="09:30"))
+    assert r.status_code == 200, r.text
+    assert fake.rows[cid]["inscripcionHasta"].startswith("2099-03-07T09:30")
+    r = cli.get(f"/anfitrion/campeonatos/{cid}")
+    assert "Cierre inscrip.: 7 mar · 09:30" in r.text
+    assert "value='09:30'" in cli.get(f"/anfitrion/campeonatos/{cid}/editar").text
+    import re as _re
+    import urllib.parse as _u
+    wa = _u.unquote(_re.search(r"data-wa-movil='(https://wa\.me/\?text=[^']+)'", r.text).group(1))
+    assert "Inscripciones hasta el 7 mar · 09:30" in wa
+    # Varios días: la hora es opcional (sin hora = 00:00 de ese día, como antes).
+    cid2 = L.nuevo_id()
+    r = cli.post("/anfitrion/campeonatos/guardar", json={"id": cid2, "nombre": "Liga larga", "deporte": "futbol", "formato": "liga",
+                                                        "desde": "2099-03-07", "hasta": "2099-04-07", "cierre": "2099-03-01", "lat": -12.09, "lng": -77.0})
+    assert r.status_code == 200 and fake.rows[cid2]["inscripcionHasta"].startswith("2099-03-01T00:00")
+
+
+def test_web_unirme_con_codigo_y_donde_participo(db, monkeypatch):
+    """Pedido del director (26-sep-2026, captura de /anfitrion/campeonatos vacío):
+    "acá también debería ingresar el código y ver el campeonato, como en el app".
+    Caja "¿Te compartieron un código?" (torneo o equipo) → página pública
+    `/c/{id}` (con `?equipo=` si es código de equipo); código inexistente →
+    aviso; sección "Donde participo" con el rol, como el app."""
+    cli = TestClient(app, base_url="https://testserver")
+    fake = _preparar(monkeypatch)
+    cid = L.nuevo_id()
+    fake.rows[cid] = {"id": cid, "dueno": "orga@gmail.com", "nombre": "Copa Beata", "deporte": "futbol", "formato": "liga", "codigo": "COPA26",
+                      "inscripcionAbierta": True, "partidos": [],
+                      "participantes": [{"id": "p1", "nombre": "Kinder 01", "codigo": "K1NDER", "capitanEmail": "", "roster": [{"nombre": "Juan", "email": "juan@gmail.com"}]}]}
+    _entrar_como(cli, monkeypatch, "juan@gmail.com", "Juan")
+    r = cli.get("/anfitrion/campeonatos")
+    assert r.status_code == 200
+    assert "¿Te compartieron un código?" in r.text and "Ver campeonato" in r.text
+    assert "Donde participo" in r.text and "En Kinder 01" in r.text and f"href='/c/{cid}'" in r.text
+    assert "Aún no tienes campeonatos" in r.text  # no organiza ninguno, pero sí participa
+    r = cli.get("/anfitrion/campeonatos/unirme?codigo=copa26", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/c/{cid}"
+    r = cli.get("/anfitrion/campeonatos/unirme?codigo=k1nder", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/c/{cid}?equipo=K1NDER"
+    r = cli.get("/anfitrion/campeonatos/unirme?codigo=ZZZZZZ", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].endswith("?no_encontrado=1")
+    assert "No encontramos ese código" in cli.get("/anfitrion/campeonatos?no_encontrado=1").text
+    # El organizador ve la caja arriba y "Organizo" con su torneo.
+    _entrar_como(cli, monkeypatch, "orga@gmail.com", "Orga")
+    r = cli.get("/anfitrion/campeonatos")
+    assert "Organizo" in r.text and "Copa Beata" in r.text and "¿Te compartieron un código?" in r.text
+    assert "Donde participo" not in r.text

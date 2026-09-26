@@ -949,6 +949,70 @@ def campeonatos_de_dueno(email: str) -> list[dict]:
         return []
 
 
+def campeonato_por_codigo(codigo: str) -> tuple[dict | None, bool]:
+    """`buscarCampeonato` + `porCodigoEquipo` del app: el código corto del
+    TORNEO (`data->>'codigo'`) o el de un EQUIPO de fútbol (dentro de
+    `participantes`). Devuelve (campeonato, es_codigo_de_equipo)."""
+    cod = (codigo or "").strip().upper()
+    if not pg.habilitado or not cod or len(cod) > 12:
+        return None, False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, academia_id, dueno, data FROM pichangol_campeonatos WHERE upper(data->>'codigo') = %s "
+                        "AND coalesce(eliminado,false) = false LIMIT 1", (cod,))
+            f = cur.fetchone()
+            equipo = False
+            if not f:
+                cur.execute("SELECT id, academia_id, dueno, data FROM pichangol_campeonatos WHERE data->'participantes' @> %s::jsonb "
+                            "AND coalesce(eliminado,false) = false LIMIT 1", (json.dumps([{"codigo": cod}]),))
+                f = cur.fetchone()
+                equipo = f is not None
+            if not f:
+                return None, False
+            d = _json_dict(f[3])
+            d["id"] = f[0]
+            d.setdefault("academiaId", f[1] or "")
+            d.setdefault("dueno", f[2] or "")
+            return d, equipo
+    except Exception:  # noqa: BLE001
+        return None, False
+
+
+def campeonatos_donde_participa(email: str) -> list[dict]:
+    """`campeonatosDondeParticipo` del app: torneos que NO organiza y donde
+    está inscrito, es capitán o juega en un plantel. Prefiltro por texto en la
+    base y regla exacta en Python (espejo del app)."""
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not email:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, academia_id, dueno, data FROM pichangol_campeonatos WHERE lower(data::text) LIKE %s "
+                        "AND lower(coalesce(dueno,'')) <> %s AND coalesce(eliminado,false) = false ORDER BY id DESC LIMIT 200",
+                        ("%" + email + "%", email))
+            out = []
+            for cid, aid, dueno, data in cur.fetchall():
+                d = _json_dict(data)
+                d["id"] = cid
+                d.setdefault("academiaId", aid or "")
+                d.setdefault("dueno", dueno or "")
+                if participa_en(d, email):
+                    out.append(d)
+            return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def participa_en(c: dict, email: str) -> bool:
+    email = (email or "").strip().lower()
+    for p in c.get("participantes") or []:
+        if str(p.get("email") or "").lower() == email or str(p.get("capitanEmail") or "").lower() == email:
+            return True
+        if any(str(i.get("email") or "").lower() == email for i in (p.get("roster") or [])):
+            return True
+    return False
+
+
 def campeonato(campeonato_id: str) -> dict | None:
     if not pg.habilitado or not campeonato_id:
         return None

@@ -15,6 +15,8 @@ La llave secreta vive sólo en el backend. Los POST del APK exigen X-App-Key
 
 from __future__ import annotations
 
+import os
+
 import html as _html
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -25,11 +27,12 @@ from pydantic import BaseModel
 
 import config
 from propiedad import admin_auth
-from db.store import stores
+from db.store import stores, es_liquidacion_torneo
 
 from . import culqi
 from . import libelula
 from . import payphone
+from . import pozos
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
@@ -1508,17 +1511,79 @@ def post_torneo_inscribir(req: TorneoInscribirReq) -> dict:
         tipo="inscripcion_torneo", monto_centimos=cuota, moneda="PEN",
         estado="aprobado", dueno_id=email,
         concepto=req.concepto or "Inscripción a torneo")
-    # Ingreso NETO del profe (su historial lo ve como entrada).
+    # Ingreso NETO del profe: POR RECIBIR (misma cola de liquidaciones que una
+    # reserva online; la torre se lo transfiere), no a su saldo.
     if dueno and dueno != email:
-        stores.acreditar(dueno, neto)
-        stores.registrar_pago(
+        pago = stores.registrar_pago(
             tipo="inscripcion_torneo_ingreso", monto_centimos=cuota, moneda="PEN",
             estado="aprobado", dueno_id=dueno, comision_centimos=comision,
-            concepto=req.concepto or "Inscripción a torneo (ingreso)")
+            concepto=f"🏆 {req.concepto or 'Inscripción a torneo'} · {email} · inscripción individual · {datetime.now(timezone.utc).date().isoformat()}")
+        pago.culqi_charge_id = f"torneo:{pago.id}"
     return {"ok": True, "cuota_centimos": cuota, "comision_centimos": comision,
             "neto_centimos": neto,
             "saldo_centimos": stores.saldo_centimos(email),
             "saldo_soles": stores.saldo_centimos(email) / 100.0}
+
+
+# ─────────────── POZO DEL EQUIPO (cuota de torneo repartida) ──────────────
+class PozoAporteReq(BaseModel):
+    email: str                      # jugador que aporta (de su saldo)
+    campeonato_id: str
+    equipo_id: str
+    cuota_equipo_soles: float       # cuota del EQUIPO (Campeonato.costoInscripcion)
+    cupo: int = 0                   # jugadores entre los que se reparte (máx. o mín.)
+    moneda: str = "PEN"             # ISO o símbolo
+    organizador: str = ""           # correo del organizador (recibe el neto)
+    campeonato_nombre: str = ""
+    equipo_nombre: str = ""
+    monto_soles: float | None = None  # solo en /completar (tope: lo que falta)
+
+
+def _pozo_args(req: PozoAporteReq) -> dict:
+    return dict(email=req.email, campeonato_id=req.campeonato_id.strip(), equipo_id=req.equipo_id.strip(),
+                cuota_equipo_soles=req.cuota_equipo_soles, cupo=req.cupo, moneda=moneda_iso(req.moneda),
+                organizador=req.organizador, campeonato_nombre=req.campeonato_nombre[:80],
+                equipo_nombre=req.equipo_nombre[:80], comision_fn=comision_centimos)
+
+
+@router.post("/torneo/equipo/aportar", dependencies=_APP)
+def post_pozo_aportar(req: PozoAporteReq) -> dict:
+    """Un jugador pone SU PARTE de la cuota del equipo al unirse (cuota ÷ cupo,
+    hacia arriba a 0.50; el último solo lo que falta). Queda retenido en el
+    pozo; al completarse se liquida al organizador (comisión una sola vez)."""
+    return pozos.aportar(**_pozo_args(req), monto_soles=None)
+
+
+@router.post("/torneo/equipo/completar", dependencies=_APP)
+def post_pozo_completar(req: PozoAporteReq) -> dict:
+    """Cualquiera del equipo pone lo que FALTA del pozo (o `monto_soles`, con
+    tope en el faltante) para que el equipo quede inscrito."""
+    st = pozos.de_equipo(req.campeonato_id.strip(), req.equipo_id.strip(), req.cuota_equipo_soles, req.cupo)
+    monto = req.monto_soles if req.monto_soles and req.monto_soles > 0 else st["faltante_centimos"] / 100.0
+    return pozos.aportar(**_pozo_args(req), monto_soles=monto)
+
+
+class PozoDevolverReq(BaseModel):
+    campeonato_id: str
+    equipo_id: str
+    solicitante: str = ""           # debe ser el organizador del pozo
+
+
+@router.post("/torneo/equipo/devolver", dependencies=_APP)
+def post_pozo_devolver(req: PozoDevolverReq) -> dict:
+    """El equipo queda fuera antes de completar: cada jugador recupera su parte."""
+    return pozos.devolver(campeonato_id=req.campeonato_id.strip(), equipo_id=req.equipo_id.strip(),
+                          solicitante=req.solicitante)
+
+
+@router.get("/torneo/pozos/{campeonato_id}", dependencies=_APP)
+def get_pozos_campeonato(campeonato_id: str) -> dict:
+    return {"ok": True, "pozos": pozos.de_campeonato(campeonato_id)}
+
+
+@router.get("/torneo/equipo/{campeonato_id}/{equipo_id}", dependencies=_APP)
+def get_pozo_equipo(campeonato_id: str, equipo_id: str, cuota_equipo_soles: float = 0, cupo: int = 0) -> dict:
+    return {"ok": True, "pozo": pozos.de_equipo(campeonato_id, equipo_id, cuota_equipo_soles, cupo)}
 
 
 @router.post("/comision-reserva", dependencies=_APP)
@@ -2254,11 +2319,19 @@ def _liquidacion_dict(p) -> dict:
     # dueño → neto = bruto. 'venta_bodega' (pago con saldo): SIN comisión por
     # decisión de producto (la bodega es cero comisión) → usa la congelada (0).
     comision = (p.comision_centimos
-                if p.tipo in ("liquidacion_full", "venta_bodega")
+                if p.tipo in ("liquidacion_full", "venta_bodega",
+                              "inscripcion_torneo_ingreso")
                 else comision_centimos(bruto / 100.0, p.moneda))
     neto = bruto - comision
+    # Antigüedad: para que la torre avise lo que lleva días sin pagarse.
+    try:
+        dias = max(0, (datetime.now(timezone.utc) - p.creado_en).days)
+    except Exception:  # noqa: BLE001
+        dias = 0
     return {
         "reserva_id": p.culqi_charge_id,
+        "tipo": p.tipo,
+        "dias": dias,
         "dueno_id": p.dueno_id,
         "concepto": p.concepto or "Reserva online",
         "creado_en": p.creado_en.isoformat(),
@@ -2276,10 +2349,50 @@ def _liquidacion_dict(p) -> dict:
 def get_liquidaciones_pendientes() -> dict:
     """OPERADOR: liquidaciones online PENDIENTES de pagar al dueño (Pichangol le
     debe el neto). Para saber a quién transferir y cuánto. Más antiguas primero."""
-    pend = stores.liquidaciones(solo_pendientes=True)
-    total = sum(_liquidacion_dict(p)["neto_soles"] for p in pend)
-    return {"pendientes": [_liquidacion_dict(p) for p in pend],
-            "total_neto_soles": round(total, 2)}
+    pend = [_liquidacion_dict(p) for p in stores.liquidaciones(solo_pendientes=True)]
+    total = sum(x["neto_soles"] for x in pend)
+    return {"pendientes": pend, "total_neto_soles": round(total, 2),
+            "mas_antigua_dias": max((x["dias"] for x in pend), default=0),
+            "atrasadas": sum(1 for x in pend if x["dias"] >= LIQUIDACION_AVISO_DIAS),
+            "aviso_dias": LIQUIDACION_AVISO_DIAS}
+
+
+# A los N días sin pagar, una liquidación cuenta como ATRASADA: la torre la
+# resalta y el recordatorio diario al operador la incluye (`recordar_
+# liquidaciones_pendientes`). Env `LIQUIDACION_AVISO_DIAS` (default 3).
+LIQUIDACION_AVISO_DIAS = max(1, int(os.getenv("LIQUIDACION_AVISO_DIAS", "3") or 3))
+_ultimo_recordatorio_dia = ""
+
+
+def recordar_liquidaciones_pendientes(ahora_utc: "datetime | None" = None) -> dict:
+    """Recordatorio DIARIO al operador (WhatsApp del admin + línea en logs) de
+    lo que Pichangol debe a dueños y organizadores y lleva ≥ N días sin pagarse.
+    Lo llama el cron de `main.py` cada hora; manda una vez por día (a partir de
+    las 09:00 hora de Lima). Fail-safe. Decisión del director (26-sep-2026):
+    "¿qué pasa si el operador se olvida? tendremos problemas"."""
+    global _ultimo_recordatorio_dia
+    ahora = ahora_utc or datetime.now(timezone.utc)
+    lima = ahora - timedelta(hours=5)
+    hoy = lima.date().isoformat()
+    if lima.hour < 9 or _ultimo_recordatorio_dia == hoy:
+        return {"enviado": False, "motivo": "fuera_de_hora" if lima.hour < 9 else "ya_hoy"}
+    pend = [_liquidacion_dict(p) for p in stores.liquidaciones(solo_pendientes=True)]
+    atrasadas = [x for x in pend if x["dias"] >= LIQUIDACION_AVISO_DIAS]
+    _ultimo_recordatorio_dia = hoy
+    if not atrasadas:
+        return {"enviado": False, "motivo": "sin_atrasadas", "pendientes": len(pend)}
+    total = sum(x["neto_soles"] for x in atrasadas)
+    duenos = len({x["dueno_id"] for x in atrasadas})
+    texto = (f"Pichangol · {len(atrasadas)} liquidación(es) con {LIQUIDACION_AVISO_DIAS}+ días sin pagar "
+             f"(S/ {total:.2f} a {duenos} dueño(s)/organizador(es); la más antigua hace {max(x['dias'] for x in atrasadas)} días). "
+             f"Torre → Liquidaciones.")
+    print(f"[liquidaciones] {texto}", flush=True)
+    try:
+        from propiedad.reclamos import _notificar_admin
+        _notificar_admin(texto)
+    except Exception:  # noqa: BLE001
+        pass
+    return {"enviado": True, "atrasadas": len(atrasadas), "total_soles": round(total, 2)}
 
 
 @router.post("/liquidaciones/{reserva_id}/pagar", dependencies=_ADMIN)
@@ -2371,11 +2484,12 @@ def get_movimientos(dueno_id: str,
     # ingresos por torneo) y salidas (comisión de reserva, servicios, Pichangol
     # Pro, inscripción a torneo). Cada fila lleva su N.º de comprobante (p.id).
     _EGRESOS = ("comision_reserva", "suscripcion", "suscripcion_pro",
-                "inscripcion_torneo", "bodega_pago")
+                "inscripcion_torneo", "bodega_pago", "aporte_equipo")
     # `venta_producto` = venta del marketplace Y canje/compra de BONO de horas:
     # Pichangol cobró al comprador y le debe el NETO al dueño (misma
     # contabilidad que una reserva online). DEBE aparecer en el historial.
     _INCLUIR = ("recarga", "bono_recarga", "bono_bienvenida", "cupon",
+                "aporte_equipo_devolucion",
                 "liquidacion_online", "liquidacion_full",
                 "venta_producto", "venta_bodega",
                 "inscripcion_torneo_ingreso") + _EGRESOS
@@ -2393,7 +2507,9 @@ def get_movimientos(dueno_id: str,
         "suscripcion": "Servicio de marketing",
         "suscripcion_pro": "Pichangol Pro",
         "inscripcion_torneo": "Inscripción a torneo",
-        "inscripcion_torneo_ingreso": "Inscripción a torneo (ingreso)",
+        "inscripcion_torneo_ingreso": "Inscripción a torneo (neto por recibir)",
+        "aporte_equipo": "Mi parte en el equipo (torneo)",
+        "aporte_equipo_devolucion": "Devolución de mi parte (torneo)",
         "liquidacion_online": "Reserva online (neto)",
         "liquidacion_full": "Reserva online (recibes 100%)",
         "venta_producto": "Venta / bono (neto)",
@@ -2409,7 +2525,8 @@ def get_movimientos(dueno_id: str,
         # el APK lo muestra en el estado de cuenta.
         if getattr(p, "medio", None):
             base["medio"] = p.medio
-        if p.tipo in ("recarga", "bono_recarga", "bono_bienvenida", "cupon"):
+        if p.tipo in ("recarga", "bono_recarga", "bono_bienvenida", "cupon",
+                      "aporte_equipo_devolucion"):
             return {**base, "monto_soles": p.monto_centimos / 100.0}
         if p.tipo in _EGRESOS:
             # Egreso de saldo: negativo.
@@ -2429,9 +2546,10 @@ def get_movimientos(dueno_id: str,
                 "bruto_soles": bruto / 100.0,
                 "comision_soles": comision / 100.0,
                 "neto_soles": neto / 100.0,
-                "liquidado": (p.liquidado if p.tipo in
+                "liquidado": (p.liquidado if (p.tipo in
                               ("liquidacion_online", "liquidacion_full",
                                "venta_producto", "venta_bodega")
+                              or es_liquidacion_torneo(p))
                               else True)}
 
     # stores.pagos está en orden de inserción (viejo→nuevo); lo invertimos para

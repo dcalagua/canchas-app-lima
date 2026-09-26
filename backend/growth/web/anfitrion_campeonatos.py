@@ -24,7 +24,7 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Body, Request
 from starlette.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 import config
 import paises
@@ -33,6 +33,7 @@ from web import almacen, catalogos, datos, sesion, ui
 from web import campeonatos_logica as L
 from web.anfitrion import JS_PAGAR, _en_segundo_plano, _sesion_o_entrar
 from web.router import PLAY_URL, e
+from pagos import pozos
 
 router = APIRouter(tags=["web-anfitrion-campeonatos"])
 _LEAFLET = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
@@ -119,6 +120,21 @@ def _fecha_corta(v) -> str:
     return f"{d.day} {L.MESES[d.month - 1]}" if d else ""
 
 
+def _fecha_hora_corta(v) -> str:
+    """Día + hora si la tiene ("26 set · 09:00"); a las 00:00 solo el día."""
+    d = L._dt(v)
+    if not d:
+        return ""
+    base = f"{d.day} {L.MESES[d.month - 1]}"
+    return base if (d.hour == 0 and d.minute == 0) else f"{base} · {d.hour:02d}:{d.minute:02d}"
+
+
+def _hora(v) -> str:
+    """'HH:MM' de un ISO con hora distinta de 00:00; '' si no la tiene."""
+    d = L._dt(v)
+    return "" if (not d or (d.hour == 0 and d.minute == 0)) else f"{d.hour:02d}:{d.minute:02d}"
+
+
 def _estado_pill(c: dict) -> str:
     clave, txt, color = L.estado(c)
     col = {"teal": "background:#E6F4EF;color:#0B7A55", "morado": "background:#EFE9FF;color:#5B3FD8",
@@ -137,12 +153,67 @@ def _tarjeta(c: dict) -> str:
             f"<div class='sub' style='margin:2px 0 6px'>{e(sub)}</div>{_estado_pill(c)}</div><span style='color:var(--tenue);font-size:22px'>›</span></a>")
 
 
+def _rol_en(c: dict, email: str) -> str:
+    """`_rolEn` del app: "Capitán de X" / "En X" / "Inscrito"."""
+    email = (email or "").lower()
+    for p in c.get("participantes") or []:
+        if L.es_equipo(p) and (str(p.get("capitanEmail") or "").lower() == email
+                               or any(str(i.get("email") or "").lower() == email for i in (p.get("roster") or []))):
+            return ("Capitán de " if str(p.get("capitanEmail") or "").lower() == email else "En ") + str(p.get("nombre") or "equipo")
+    return "Inscrito"
+
+
+def _tarjeta_participo(c: dict, email: str) -> str:
+    dep = str(c.get("deporte") or "tenis")
+    sub = f"{_rol_en(c, email)} · {_NOMBRE.get(dep, dep)} · {L.FORMATOS[L.formato_de(c)]}"
+    logo = f"<img src='{e(c['logoUrl'])}' alt=''>" if c.get("logoUrl") else f"<span>{_EMOJI.get(dep, '🏆')}</span>"
+    return (f"<a class='anf-cancha' href='/c/{e(c['id'])}' style='text-decoration:none;color:inherit;align-items:center'>"
+            f"<div class='f'>{logo}</div><div style='flex:1;min-width:0'><b style='font-size:16px'>{e(c.get('nombre') or 'Campeonato')}</b>"
+            f"<div class='sub' style='margin:2px 0 6px'>{e(sub)}</div>{_estado_pill(c)}</div><span style='color:var(--tenue);font-size:22px'>›</span></a>")
+
+
+def _caja_codigo(no_encontrado: bool) -> str:
+    """"Unirme a un campeonato" del app (pedido del director, 26-sep-2026:
+    "acá también debería ingresar el código y ver el campeonato"): código del
+    TORNEO o de tu EQUIPO → página pública `/c/{id}` (con `?equipo=` si es de
+    equipo: desde ahí "Unirme al equipo en la app")."""
+    err = ("<p class='sub' style='color:#B42318;margin:8px 0 0'>No encontramos ese código. Revísalo o pídeselo de nuevo a quien te invitó.</p>"
+           if no_encontrado else "")
+    return (f"<form class='anf-cancha' method='get' action='{BASE}/unirme' style='align-items:center;gap:14px;margin-top:14px'>"
+            "<div class='f' style='background:#EAF7E1'><span>🎟️</span></div><div style='flex:1;min-width:0'><b style='font-size:16px'>¿Te compartieron un código?</b>"
+            "<div class='sub' style='margin:2px 0 8px'>Pega el código del campeonato o el de tu equipo para ver el torneo, como en la app.</div>"
+            "<div style='display:flex;gap:8px;flex-wrap:wrap'><input name='codigo' type='text' maxlength='12' placeholder='Ej.: 4KZ9AB' required "
+            "style='width:180px;text-transform:uppercase;letter-spacing:.12em;font-weight:800'><button type='submit' class='btn'>Ver campeonato</button></div>"
+            f"{err}</div></form>")
+
+
+@router.get(BASE + "/unirme")
+def unirme_por_codigo(request: Request, codigo: str = "") -> RedirectResponse:
+    """Código del torneo → `/c/{id}`; código de equipo (fútbol) → `/c/{id}?equipo=`
+    (la página ofrece "Unirme al equipo en la app"). No existe → vuelve con aviso."""
+    ses, resp = _sesion_o_entrar(request, BASE)
+    if resp is not None:
+        return resp
+    cod = re.sub(r"[^A-Za-z0-9]", "", codigo or "").upper()[:12]
+    c, es_equipo = datos.campeonato_por_codigo(cod) if cod else (None, False)
+    if c is None:
+        return RedirectResponse(f"{BASE}?no_encontrado=1", status_code=303)
+    destino = f"/c/{urllib.parse.quote(str(c['id']))}" + (f"?equipo={urllib.parse.quote(cod)}" if es_equipo else "")
+    return RedirectResponse(destino, status_code=303)
+
+
 @router.get(BASE, response_class=HTMLResponse)
-def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = "") -> HTMLResponse:
+def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = "", no_encontrado: str = "") -> HTMLResponse:
     ses, resp = _sesion_o_entrar(request, BASE)
     if resp is not None:
         return resp
     lista = _mios(ses["email"])
+    participo = datos.campeonatos_donde_participa(ses["email"])
+    caja = _caja_codigo(bool(no_encontrado))
+    sec_participo = ("" if not participo else
+                     "<h2 style='margin:26px 0 8px;font-size:18px'>Donde participo</h2>"
+                     "<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(340px,1fr))'>"
+                     + "".join(_tarjeta_participo(c, ses["email"]) for c in participo) + "</div>")
     aviso = ("<div class='aviso ok' style='margin-top:14px'>✅ Campeonato guardado. Ya se ve en la app y en su página pública.</div>" if guardado
              else "<div class='aviso ok' style='margin-top:14px'>🗑 Campeonato eliminado.</div>" if eliminado else "")
     pro = _pro(ses["email"])
@@ -154,14 +225,16 @@ def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = ""
                  f"<a class='btn' href='{PLAY_URL}' rel='noopener'>Abrir la app</a></section></div></div></div>")
     if not lista:
         cuerpo = (f"<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>{aviso}<div style='max-width:760px;margin:24px auto 0;text-align:center'>"
-                  "<div style='font-size:52px'>🏆</div><h1 class='anf-hola' style='margin-top:8px'>Aún no organizas campeonatos</h1>"
-                  "<p class='sub' style='font-size:16px'>Toca “Organizar” para crear tu torneo (fútbol, tenis, natación…), invitar y que se inscriban.</p>"
-                  f"<div class='acciones' style='margin-top:22px;justify-content:center'>{boton}</div></div>{modal_pro}")
+                  "<div style='font-size:52px'>🏆</div><h1 class='anf-hola' style='margin-top:8px'>Aún no tienes campeonatos</h1>"
+                  "<p class='sub' style='font-size:16px'>¿Te compartieron un código? Pégalo abajo y verás el torneo. ¿Quieres el tuyo? Toca “Organizar” para crear tu torneo (fútbol, tenis, natación…), invitar y que se inscriban.</p>"
+                  f"<div class='acciones' style='margin-top:22px;justify-content:center'>{boton}</div></div>"
+                  f"<div style='max-width:760px;margin:0 auto'>{caja}{sec_participo}</div>{modal_pro}")
         return ui.shell("Mis campeonatos", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mis campeonatos · Modo anfitrión")
     cuerpo = ("<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
               "<div style='display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap'>"
               f"<div><h1 class='anf-hola' style='margin-top:6px'>Mis campeonatos</h1><p class='sub'>{len(lista)} campeonato{'s' if len(lista) != 1 else ''} que organizas. Es lo mismo que ves en la app.</p></div>{boton}</div>"
-              f"{aviso}<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(340px,1fr));margin-top:16px'>{''.join(_tarjeta(c) for c in lista)}</div>{modal_pro}")
+              f"{aviso}{caja}{sec_participo}<h2 style='margin:26px 0 8px;font-size:18px'>Organizo</h2>"
+              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(340px,1fr))'>{''.join(_tarjeta(c) for c in lista)}</div>{modal_pro}")
     return ui.shell("Mis campeonatos", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mis campeonatos · Modo anfitrión")
 
 
@@ -189,7 +262,7 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
     cat_ops = "<option value=''>— Sin categoría —</option>" + "".join(
         f"<option value='{e(lab)}'{' selected' if cat_sel == lab else ''}>{e(_cat_lab(lab, mn, mx))}</option>" for lab, mn, mx in catalogos.CATEGORIAS_CAMPEONATO
     ) + f"<option value='otra'{' selected' if cat_sel == 'otra' else ''}>Otra… (escribir)</option>"
-    inicio, hasta = _dia(c.get("inicio")), _dia(c.get("inscripcionHasta"))
+    inicio, hasta, hasta_hora = _dia(c.get("inicio")), _dia(c.get("inscripcionHasta")), _hora(c.get("inscripcionHasta"))
     fin = _dia(c.get("_fin")) or inicio
     canchas = datos.canchas_para_sede()[:400]
     cfg = {"id": c["id"], "nuevo": nuevo, "deporte": dep, "formato": fmt, "fixture": fix, "logo": c.get("logoUrl") or "", "minPartidos": L.min_partidos(c),
@@ -221,7 +294,9 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
  <div id='minPartBox'{'' if fmt == 'grupos' else ' hidden'}><label>Partidos mínimos por equipo</label>{_chips('minp', [(2, 'Al menos 2'), (3, 'Al menos 3')], L.min_partidos(c), disabled=fix)}
  <p class='sub' style='font-size:12.5px' id='minPartTxt'>Se arman grupos; los 2 primeros de cada grupo pasan a la llave.</p></div>
  <div id='minJugBox'{'' if dep == 'futbol' else ' hidden'}><label for='minJug'>Mínimo de jugadores por equipo <span class='req'>opcional</span></label><input id='minJug' type='number' min='0' max='30' value='{int(c.get('minJugadoresEquipo') or 0) or ''}' placeholder='ej. 7'>
- <p class='sub' style='font-size:12.5px'>Cada equipo aparece "Completo" al llegar a este número. Vacío = solo se muestra el conteo.</p></div>
+ <p class='sub' style='font-size:12.5px'>Cada equipo aparece "Completo" al llegar a este número. Vacío = solo se muestra el conteo.</p>
+ <label for='maxJug'>Máximo de jugadores por equipo (titulares + suplentes) <span class='req'>opcional</span></label><input id='maxJug' type='number' min='0' max='40' value='{int(c.get('maxJugadoresEquipo') or 0) or ''}' placeholder='ej. 10'>
+ <p class='sub' style='font-size:12.5px' id='cuotaJugTxt'>Con costo de inscripción, la cuota del equipo se reparte entre este número: cada jugador pone su parte al unirse y el equipo queda inscrito cuando el pozo la cubre.</p></div>
  <label for='cat'>Categoría <span class='req'>opcional</span></label><select id='cat'>{cat_ops}</select>
  <div id='catOtraBox'{'' if cat_sel == 'otra' else ' hidden'}><label for='catOtra'>Nombre de la categoría</label><input id='catOtra' type='text' maxlength='40' value='{e(cat_txt if cat_sel == 'otra' else '')}' placeholder='Ej. Damas B, Nivel intermedio, Mixto…'></div>
  <div class='pie'><button type='button' class='btn sec' data-ir='1'>Atrás</button><button type='button' class='btn' data-ir='3'>Siguiente</button></div></div>
@@ -230,7 +305,8 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
  <label id='lblFechas'>{'Fecha (relámpago, un día)' if c.get('relampago') else 'Fechas de juego'}</label>
  <div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><input id='desde' type='date' value='{e(inicio)}'><input id='hastaJ' type='date' value='{e(fin)}'{' disabled' if c.get('relampago') else ''}></div>
  {"<p class='sub' style='font-size:12.5px'>Actual: " + e(c.get('fechas')) + "</p>" if c.get('fechas') else ''}
- <label for='cierre'>Cierre de inscripciones <span class='req'>opcional · ese día a las 00:00 se cierran y se sortea solo</span></label><input id='cierre' type='date' value='{e(hasta)}'>
+ <label for='cierre' id='lblCierre'>Cierre de inscripciones <span class='req' id='cierreAyuda'>{'día y hora · a esa hora se cierran y se sortea solo' if c.get('relampago') else 'opcional · día y hora (sin hora = ese día a las 00:00); se sortea solo'}</span></label>
+ <div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><input id='cierre' type='date' value='{e(hasta)}'><input id='cierreHora' type='time' value='{e(hasta_hora)}' placeholder='Hora'></div>
  <label for='sede'>Sede{" <span class='req'>🔎 elige una cancha de Pichangol o búscala en Google Maps</span>" if config.PLACES_API_KEY else " <span class='req'>elige una cancha de Pichangol</span>"}</label>
  <input id='sede' type='text' maxlength='80' value='{e(c.get('sede') or '')}' placeholder='Nombre de la cancha o club' autocomplete='off'><div id='resSede' class='res-busca' hidden></div>
  <div id='mapaSede' class='mapa-sede' style='margin-top:8px;height:220px'></div><div class='sub' id='ubicTxt' style='font-size:12.5px'>{'Sin ubicación: elige una sede para fijar el país y la moneda.' if c.get('sedeLat') is None else f"{float(c['sedeLat']):.5f}, {float(c['sedeLng']):.5f}"}</div>
@@ -267,8 +343,11 @@ pintarFormatos();
 // categoría: del catálogo fija el rango de edad y exige DNI; "otra" = texto
 $('cat').addEventListener('change',function(){var v=this.value;$('catOtraBox').hidden=v!=='otra';var r=CFG.cats[v];if(r){$('edadMin').value=r[0]||'';$('edadMax').value=r[1]||'';if(r[0]||r[1]){$('exigeDni').checked=true;$('edadBox').hidden=false}}});
 $('exigeDni').addEventListener('change',function(){$('edadBox').hidden=!this.checked});
-$('relampago').addEventListener('change',function(){$('hastaJ').disabled=this.checked;$('lblFechas').textContent=this.checked?'Fecha (relámpago, un día)':'Fechas de juego';if(this.checked)$('hastaJ').value=$('desde').value});
-$('desde').addEventListener('change',function(){if($('relampago').checked||!$('hastaJ').value||$('hastaJ').value<this.value)$('hastaJ').value=this.value});
+function topeCierre(){var r=$('relampago').checked,d=$('desde').value;if(r&&d){$('cierre').max=d;if(!$('cierre').value||$('cierre').value>d)$('cierre').value=d}else{$('cierre').removeAttribute('max')}
+  $('cierreAyuda').textContent=r?'día y hora · a esa hora se cierran y se sortea solo':'opcional · día y hora (sin hora = ese día a las 00:00); se sortea solo'}
+$('relampago').addEventListener('change',function(){$('hastaJ').disabled=this.checked;$('lblFechas').textContent=this.checked?'Fecha (relámpago, un día)':'Fechas de juego';if(this.checked)$('hastaJ').value=$('desde').value;topeCierre()});
+$('desde').addEventListener('change',function(){if($('relampago').checked||!$('hastaJ').value||$('hastaJ').value<this.value)$('hastaJ').value=this.value;topeCierre()});
+topeCierre();
 // sede: canchas de Pichangol (como `_SelectorSede`) + Google Maps
 function paisDe(la,ln){var C={PE:[-18.4,-0.03,-81.4,-68.6],EC:[-5.1,1.7,-81.1,-75.1],BO:[-22.95,-9.6,-69.7,-57.4]};for(var k in C){var c=C[k];if(la>=c[0]&&la<=c[1]&&ln>=c[2]&&ln<=c[3])return k}return 'PE'}
 function ponerPunto(la,ln){lat=la;lng=ln;$('ubicTxt').textContent=la.toFixed(5)+', '+ln.toFixed(5);if(mapa){if(marker)marker.setLatLng([la,ln]);else marker=L.marker([la,ln]).addTo(mapa);mapa.setView([la,ln],15)}
@@ -287,7 +366,7 @@ $('inLogo').addEventListener('change',async function(){var f=this.files&&this.fi
 // guardar (misma validación que el app: solo el nombre es obligatorio)
 $('btnGuardar').addEventListener('click',async function(){var err=$('errGuardar');err.style.display='none';if(subiendo>0){pcgToast('Espera a que termine de subir el logo.');return}
   var cat=$('cat').value;if(cat==='otra')cat=$('catOtra').value.trim();
-  var body={id:CFG.id,nombre:$('nombre').value,deporte:dep,formato:fmt,minPartidos:minPart,categoria:cat,minJugadoresEquipo:+$('minJug').value||0,desde:$('desde').value,hasta:$('relampago').checked?$('desde').value:$('hastaJ').value,cierre:$('cierre').value,
+  var body={id:CFG.id,nombre:$('nombre').value,deporte:dep,formato:fmt,minPartidos:minPart,categoria:cat,minJugadoresEquipo:+$('minJug').value||0,maxJugadoresEquipo:+$('maxJug').value||0,desde:$('desde').value,hasta:$('relampago').checked?$('desde').value:$('hastaJ').value,cierre:$('cierre').value,cierreHora:$('cierreHora').value,
     sede:$('sede').value,lat:lat,lng:lng,costo:parseFloat(String($('costo').value).replace(',','.'))||0,relampago:$('relampago').checked,exigeDni:$('exigeDni').checked,edadMin:$('edadMin').value,edadMax:$('edadMax').value,auspiciador:$('ausp').value,premios:$('premios').value,logoUrl:logo};
   this.disabled=true;pcgCargando(CFG.nuevo?'Creando tu campeonato…':'Guardando cambios…');try{var r=await fetch('/anfitrion/campeonatos/guardar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){pcgIr('/anfitrion/campeonatos/'+encodeURIComponent(j.id)+(CFG.nuevo?'?creado=1':'?guardado=1'),'Abriendo tu campeonato…');return}pcgCargando(false);err.textContent=j.error||'No se pudo guardar.';err.style.display='block';if(j.paso)ir(j.paso)}catch(e){pcgCargando(false);err.textContent='No se pudo guardar. Revisa tu conexión.';err.style.display='block'}this.disabled=false});
@@ -359,6 +438,18 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
     relampago = bool(b.get("relampago"))
     if desde and (relampago or not hasta_j or hasta_j < desde):
         hasta_j = desde
+    # Cierre de inscripciones = día + HORA (pedido del director, 26-sep-2026:
+    # "si es relámpago debe indicarme una hora para cerrar inscripciones").
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", str(b.get("cierreHora") or "").strip())
+    cierre_h, cierre_m = (int(m.group(1)), int(m.group(2))) if m else (None, None)
+    if m and not (0 <= cierre_h <= 23 and 0 <= cierre_m <= 59):
+        return None, "Hora de cierre inválida.", 3
+    if relampago:
+        if not cierre or not m:
+            return None, "Es relámpago: indica el día y la hora de cierre de inscripciones.", 3
+        if desde and cierre > desde:
+            return None, f"El cierre de inscripciones debe ser el día del torneo ({desde.day} {L.MESES[desde.month - 1]}) o antes.", 3
+    cierre_dt = datetime(cierre.year, cierre.month, cierre.day, cierre_h or 0, cierre_m or 0) if cierre else None
     if desde:
         fechas = L.fmt_rango(desde, hasta_j)
         inicio = datetime(desde.year, desde.month, desde.day).isoformat(timespec="milliseconds")
@@ -378,6 +469,9 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
             return None
     edad_min, edad_max = (_int(b.get("edadMin")), _int(b.get("edadMax"))) if exige else (None, None)
     min_jug = max(0, _int(b.get("minJugadoresEquipo")) or 0) if dep == "futbol" else 0
+    max_jug = max(0, _int(b.get("maxJugadoresEquipo")) or 0) if dep == "futbol" else 0
+    if max_jug and min_jug and max_jug < min_jug:
+        max_jug = min_jug  # el tope nunca por debajo del mínimo
     min_part = _int(b.get("minPartidos")) if fmt == "grupos" else None
     if fmt == "grupos" and min_part not in L.MIN_PARTIDOS:
         min_part = L.min_partidos(actual or {})
@@ -394,11 +488,11 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
         "nombre": nombre, "deporte": dep, "formato": fmt, "categoria": re.sub(r"\s+", " ", str(b.get("categoria") or "")).strip()[:40],
         "sede": sede, "fechas": fechas, "costoInscripcion": costo, "moneda": moneda, "relampago": relampago, "exigeDni": exige,
         "premios": str(b.get("premios") or "").strip()[:600], "auspiciador": str(b.get("auspiciador") or "").strip().upper()[:60],
-        "minJugadoresEquipo": min_jug, "minPartidos": min_part,
+        "minJugadoresEquipo": min_jug, "maxJugadoresEquipo": max_jug, "minPartidos": min_part,
     })
     if nuevo:
         data.update({"codigo": L.nuevo_codigo(), "inscripcionAbierta": True, "participantes": [], "partidos": [], "cerrado": False})
-    for k, v in (("inicio", inicio), ("inscripcionHasta", datetime(cierre.year, cierre.month, cierre.day).isoformat(timespec="milliseconds") if cierre else None),
+    for k, v in (("inicio", inicio), ("inscripcionHasta", cierre_dt.isoformat(timespec="milliseconds") if cierre_dt else None),
                  ("edadMin", edad_min), ("edadMax", edad_max), ("logoUrl", logo or None)):
         if v is None or v == "":
             data.pop(k, None)
@@ -414,6 +508,8 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
             data.pop(k, None)
     if not data.get("minJugadoresEquipo"):
         data.pop("minJugadoresEquipo", None)
+    if not data.get("maxJugadoresEquipo"):
+        data.pop("maxJugadoresEquipo", None)
     if not data.get("minPartidos"):
         data.pop("minPartidos", None)
     if not data.get("aficheVariante"):
@@ -460,7 +556,15 @@ def _publicidad(c: dict) -> str:
     if c.get("premios"):
         lineas += ["", "🎁 *Premios*:"] + [f"✅ {p.strip()}" for p in str(c["premios"]).splitlines() if p.strip()]
     lineas.append("")
-    lineas.append(f"💰 Inscripción: {mon} {float(c.get('costoInscripcion') or 0):.2f}" if float(c.get("costoInscripcion") or 0) > 0 else "Inscripción *GRATIS*")
+    if float(c.get("costoInscripcion") or 0) > 0:
+        por_eq = " por equipo" if dep == "futbol" else ""
+        lineas.append(f"💰 Inscripción: {mon} {float(c.get('costoInscripcion') or 0):.2f}{por_eq}")
+        if dep == "futbol" and L.cupo_reparto(c) > 0:
+            lineas.append(f"👥 Cada jugador pone {mon} {L.fmt_monto(L.cuota_jugador_centimos(c))} al unirse a su equipo (hasta {L.cupo_reparto(c)} por equipo)")
+    else:
+        lineas.append("Inscripción *GRATIS*")
+    if c.get("inscripcionHasta"):
+        lineas.append(f"🗓️ Inscripciones hasta el {_fecha_hora_corta(c['inscripcionHasta'])}")
     if c.get("auspiciador"):
         lineas.append(f"Gracias a nuestro auspiciador *{c['auspiciador']}*")
     if c.get("codigo"):
@@ -508,13 +612,20 @@ def _participantes_html(c: dict) -> str:
         if L.es_equipo(p):
             n = len(p.get("roster") or [])
             lab = (f"{p.get('nombre')} · {n}/{c.get('minJugadoresEquipo')}" + (" ✅" if L.equipo_completo(c, p) else "")) if L.usa_cupo_equipos(c) else f"{p.get('nombre')} · {n} jug."
+            if c.get("deporte") == "futbol" and L.cuota_equipo_centimos(c) > 0:
+                st = pozos.de_equipo(c["id"], p["id"], float(c.get("costoInscripcion") or 0), L.cupo_reparto(c))
+                mon = _moneda(c)
+                lab = f"{p.get('nombre')} · {n}{('/' + str(L.max_jugadores(c))) if L.max_jugadores(c) else ''} jug. · " + (
+                    f"{mon} {L.fmt_monto(st['cuota_equipo_centimos'])} ✅ inscrito" if st["completo"]
+                    else f"{mon} {L.fmt_monto(st['pozo_centimos'])} de {L.fmt_monto(st['cuota_equipo_centimos'])}")
             icono = "👥"
         elif L.es_menor(p):
             lab, icono = f"{p.get('nombre')} · apod. {p.get('apoderadoNombre')}", "🧒"
         else:
             lab, icono = str(p.get("nombre") or ""), ("✅" if p.get("email") else "👤")
         foto = f"<img src='{e(p['fotoUrl'])}' alt='' style='width:22px;height:22px;border-radius:50%;object-fit:cover'>" if p.get("fotoUrl") else f"<span>{icono}</span>"
-        chips.append(f"<span class='chip part{' ok' if L.es_equipo(p) and L.equipo_completo(c, p) else ''}' data-pid='{e(p['id'])}' data-equipo='{1 if L.es_equipo(p) else 0}'>{foto} {e(lab)}<button type='button' class='x' data-quitar='{e(p['id'])}' title='Quitar'>✕</button></span>")
+        inscrito = L.es_equipo(p) and (L.equipo_completo(c, p) or (c.get("deporte") == "futbol" and L.cuota_equipo_centimos(c) > 0 and pozos.de_equipo(c["id"], p["id"], float(c.get("costoInscripcion") or 0), L.cupo_reparto(c))["completo"]))
+        chips.append(f"<span class='chip part{' ok' if inscrito else ''}' data-pid='{e(p['id'])}' data-equipo='{1 if L.es_equipo(p) else 0}'>{foto} {e(lab)}<button type='button' class='x' data-quitar='{e(p['id'])}' title='Quitar'>✕</button></span>")
     return "".join(chips) or "<div class='anf-vacio'>Aún no hay inscritos. Agrega participantes o comparte el código para que se inscriban desde la app.</div>"
 
 
@@ -613,6 +724,11 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
         from web.router import _no_encontrada
         r = _no_encontrada("Este campeonato no está a tu nombre"); r.status_code = 404
         return r
+    # Equipos viejos sin código (creados antes de que el organizador los
+    # generara con enlace): se les asigna al abrir el detalle, así "Kinder 01"
+    # tiene su enlace de invitación sin borrarlo y volverlo a crear.
+    if L.completar_codigos(c):
+        _guardar(ses, c)
     dep, fmt, mon = str(c.get("deporte") or ""), L.formato_de(c), _moneda(c)
     tiempos = fmt == "tiempos"
     iso = _pais(c)
@@ -631,7 +747,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
         tams = L.armar_grupos(len(c.get("participantes") or []), L.min_partidos(c))
         info.append(f"<span class='chip'>🧩 Grupos + llave · cada equipo juega al menos {L.min_partidos(c)} partidos" + (f" · {len(tams)} grupo{'s' if len(tams) != 1 else ''} de {'/'.join(str(t) for t in tams)}" if tams else " · con menos de 3 equipos se juega solo la final") + "</span>")
     if c.get("inscripcionHasta"):
-        info.append(f"<span class='chip'>🗓️ Cierre inscrip.: {e(_fecha_corta(c['inscripcionHasta']))}</span>")
+        info.append(f"<span class='chip'>🗓️ Cierre inscrip.: {e(_fecha_hora_corta(c['inscripcionHasta']))}</span>")
     if c.get("relampago"):
         info.append("<span class='chip'>⚡ Relámpago</span>")
     if c.get("exigeDni"):
@@ -645,19 +761,22 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
                  f"{('<div>🥈 ' + e((L.participante(c, sub) or {}).get('nombre', '')) + '</div>') if sub else ''}</div>")
     enlace = _enlace(c)
     texto_wa = _publicidad(c) if (not c.get("cerrado") and not L.fixture_generado(c) and not tiempos) else _resumen(c)
-    wa = "https://wa.me/?text=" + urllib.parse.quote(texto_wa)
+    boton_wa = ui.boton_whatsapp(texto_wa)  # PC sin emojis · móvil completo (ver ui.boton_whatsapp)
     logo = f"<img src='{e(c['logoUrl'])}' alt=''>" if c.get("logoUrl") else f"<span>{_EMOJI.get(dep, '🏆')}</span>"
     ausp = "".join(f"<div class='foto' data-url='{e(u)}'><img src='{e(u)}' alt=''><div class='acc'><button type='button' class='mini' data-quitar-img='ausp' title='Quitar'>✕</button></div></div>" for u in (c.get("auspiciadoresLogos") or []))
     fotos = "".join(f"<div class='foto' data-url='{e(u)}'><img src='{e(u)}' alt=''><div class='acc'><a class='mini' href='{e(u)}' target='_blank' rel='noopener' title='Ver' style='text-decoration:none;display:flex;align-items:center;justify-content:center'>🔍</a><button type='button' class='mini' data-quitar-img='foto' title='Quitar'>✕</button></div></div>" for u in (c.get("fotos") or []))
     circuito = dep in catalogos.DEPORTES_CIRCUITO
     ubic = (f"<a class='btn sec' href='https://www.google.com/maps/search/?api=1&query={c['sedeLat']},{c['sedeLng']}' target='_blank' rel='noopener'>📍 Ubicación · cómo llegar</a>"
             if c.get("sedeLat") is not None else "")
-    cfg = {"id": c["id"], "deporte": dep, "formato": fmt, "codigo": c.get("codigo") or "", "enlace": enlace, "temas": catalogos.AFICHE_TEMAS,
+    cfg = {"id": c["id"], "nombre": c.get("nombre") or "", "deporte": dep, "formato": fmt, "codigo": c.get("codigo") or "", "enlace": enlace, "temas": catalogos.AFICHE_TEMAS,
            "variantes": catalogos.AFICHE_VARIANTES, "variante": int(c.get("aficheVariante") or 0), "tema": c.get("aficheTema") or "",
            "fondo": c.get("aficheFondoUrl") or "", "storage": almacen.disponible(), "distancias": L.DISTANCIAS, "estilos": L.ESTILOS,
            "participantes": [{"id": p["id"], "nombre": p.get("nombre"), "email": p.get("email") or "", "contacto": p.get("contacto") or "", "capitanEmail": p.get("capitanEmail") or "",
                               "codigo": p.get("codigo") or "", "roster": p.get("roster") or []} for p in (c.get("participantes") or [])],
-           "minJug": int(c.get("minJugadoresEquipo") or 0), "fixture": L.fixture_generado(c), "arte": _base_url() or ""}
+           "minJug": int(c.get("minJugadoresEquipo") or 0), "maxJug": L.max_jugadores(c), "fixture": L.fixture_generado(c), "arte": _base_url() or "",
+           "cuotaEq": L.cuota_equipo_centimos(c) if dep == "futbol" else 0, "cuotaJug": L.cuota_jugador_centimos(c) if dep == "futbol" else 0,
+           "cupo": L.cupo_reparto(c), "mon": _moneda(c),
+           "pozos": {st["equipo_id"]: st for st in pozos.de_campeonato(c["id"])} if dep == "futbol" and L.cuota_equipo_centimos(c) > 0 else {}}
     cuerpo = f"""
 <style>
 .det{{max-width:920px;margin:0 auto}}.det .panel{{margin-top:14px;padding:18px 20px}}.det h3{{margin:0 0 8px;font-size:17px}}
@@ -678,7 +797,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
 {podio}
 {("<div class='acciones' style='margin-top:12px'>" + ubic + "</div>") if ubic else ''}
 <div class='panel'><h3>Invitar</h3>{("<div class='codigo' id='codigo' title='Copiar código'>" + e(c['codigo']) + "</div><p class='sub' style='text-align:center;font-size:12.5px'>Código para unirse desde la app · toca para copiar</p>") if c.get('codigo') else ''}
- <div class='acciones' style='flex-wrap:wrap'><a class='btn' href='{wa}' target='_blank' rel='noopener'>💬 WhatsApp</a><button type='button' class='btn sec' id='btnEnlace'>🔗 Copiar enlace</button>
+ <div class='acciones' style='flex-wrap:wrap'>{boton_wa}<button type='button' class='btn sec' id='btnEnlace'>🔗 Copiar enlace</button>
  <a class='btn sec' href='{enlace}/afiche.png' target='_blank' rel='noopener'>🖼️ Ver afiche</a><button type='button' class='btn sec' id='btnFondo'>🎨 Cambiar fondo del afiche</button><a class='btn sec' href='{e(enlace)}' target='_blank' rel='noopener'>🌐 Página pública</a></div></div>
 <div class='panel'><h3>Auspiciadores</h3><p class='sub' style='margin:0'>Logos de tus auspiciadores: salen en el afiche y en la página pública.</p>
  <div class='edit-fotos' id='ausp'>{ausp}</div><div class='acciones' style='margin-top:10px'><label class='btn sec' for='inAusp'>＋ Agregar logo</label><input type='file' id='inAusp' accept='image/*' hidden{'' if almacen.disponible() else ' disabled'}><span class='sub' id='auspMsg' style='margin:0'></span></div></div>
@@ -701,7 +820,7 @@ _JS_DETALLE = r"""
 function $(id){return document.getElementById(id)}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;')}
 var B='/anfitrion/campeonatos/'+encodeURIComponent(CFG.id);
-async function post(ruta,body,msg){pcgCargando(msg||'Guardando…',{demora:300});try{var r=await fetch(B+ruta,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});var j=await r.json().catch(function(){return {}});if(!j.ok)throw new Error(j.error||j.mensaje||'No se pudo.');return j}finally{pcgCargando(false)}}
+async function post(ruta,body,msg){pcgCargando(msg||'Guardando…',{demora:300});try{var r=await fetch(B+ruta,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});var j=await r.json().catch(function(){return {}});if(!j.ok){var er=new Error(j.error||j.mensaje||'No se pudo.');if(j.equipos)er.equipos=j.equipos;throw er}return j}finally{pcgCargando(false)}}
 function modal(tit,html,onOk){$('modalTit').textContent=tit;$('modalCuerpo').innerHTML=html;$('modal').classList.add('open');var f=$('modalCuerpo').querySelector('input,select');if(f)setTimeout(function(){f.focus()},60);var ok=$('modalOk');if(ok)ok.onclick=onOk}
 function cerrar(){$('modal').classList.remove('open')}
 $('modalCerrar').addEventListener('click',cerrar);$('modal').addEventListener('click',function(ev){if(ev.target===$('modal'))cerrar()});
@@ -709,6 +828,7 @@ function pie(txt){return "<div class='acciones' style='margin-top:16px'><button 
 function err(m){var el=$('modalErr');if(el){el.textContent=m;el.style.display='block'}else pcgToast(m)}
 // código / enlace
 var cod=$('codigo');if(cod)cod.addEventListener('click',function(){navigator.clipboard&&navigator.clipboard.writeText(CFG.codigo).then(function(){pcgToast('Código copiado')})});
+document.addEventListener('click',function(ev){var b=ev.target.closest('[data-copiar-eq]');if(!b)return;navigator.clipboard&&navigator.clipboard.writeText(b.dataset.copiarEq).then(function(){pcgToast('Enlace del equipo copiado')})});
 $('btnEnlace').addEventListener('click',function(){navigator.clipboard&&navigator.clipboard.writeText(CFG.enlace).then(function(){pcgToast('Enlace copiado')})});
 // imágenes
 function comprimir(file,M){return new Promise(function(ok,ko){var img=new Image(),url=URL.createObjectURL(file);img.onload=function(){var k=Math.min(1,M/Math.max(img.width,img.height)),cv=document.createElement('canvas');cv.width=Math.round(img.width*k);cv.height=Math.round(img.height*k);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(url);cv.toBlob(function(b){b?ok(b):ko(new Error('img'))},'image/jpeg',0.86)};img.onerror=function(){ko(new Error('img'))};img.src=url})}
@@ -734,13 +854,24 @@ $('btnFondo').addEventListener('click',function(){var r=Math.floor(Math.random()
 $('btnAgregar').addEventListener('click',function(){var eq=CFG.deporte==='futbol';
   modal(eq?'Nuevo equipo':'Nuevo participante',"<label>"+(eq?'Nombre del equipo':'Nombre (jugador o pareja "A / B")')+"</label><input id='pNombre' type='text' maxlength='80'><label>WhatsApp <span class='req'>opcional</span></label><input id='pTel' type='text' inputmode='tel' maxlength='20'>"+pie('Agregar'),
     async function(){try{await post('/participante',{nombre:$('pNombre').value,contacto:$('pTel').value});pcgRecargar()}catch(e){err(e.message)}})});
-document.addEventListener('click',async function(ev){var q=ev.target.closest('[data-quitar]');if(q){ev.stopPropagation();var pq=CFG.participantes.filter(function(x){return x.id===q.dataset.quitar})[0];if(!await pcgConfirmar({titulo:'Quitar participante',mensaje:'¿Quitas a '+(pq?pq.nombre:'este participante')+' del campeonato?',confirmar:'Quitar',destructivo:true}))return;try{await post('/participante/'+encodeURIComponent(q.dataset.quitar)+'/eliminar',{},'Quitando…');pcgRecargar()}catch(e){pcgToast(e.message)}return}
+document.addEventListener('click',async function(ev){var q=ev.target.closest('[data-quitar]');if(q){ev.stopPropagation();var pq=CFG.participantes.filter(function(x){return x.id===q.dataset.quitar})[0];if(!await pcgConfirmar({titulo:'Quitar participante',mensaje:'¿Quitas a '+(pq?pq.nombre:'este participante')+' del campeonato?',confirmar:'Quitar',destructivo:true}))return;try{var jq=await post('/participante/'+encodeURIComponent(q.dataset.quitar)+'/eliminar',{},'Quitando…');if(jq.aviso){await pcgAvisar({titulo:'Pozo ya liquidado',mensaje:jq.aviso,icono:'💰'})}pcgRecargar(jq.devueltos?jq.devueltos+' jugador(es) recuperaron su parte':undefined)}catch(e){pcgToast(e.message)}return}
   var ch=ev.target.closest('.chip.part[data-equipo="1"]');if(ch){var p=CFG.participantes.filter(function(x){return x.id===ch.dataset.pid})[0];if(!p)return;
     var falta=CFG.minJug>0?(p.roster.length>=CFG.minJug?"<span class='pill'>Completo</span>":"<span class='pill' style='background:#FFF1E3;color:#B25E0A'>Faltan "+(CFG.minJug-p.roster.length)+"</span>"):'';
-    modal(p.nombre,"<section><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>Código: "+esc(p.codigo||'—')+"</b>"+falta+"</div><p class='sub' style='margin:6px 0 0'>Capitán: "+esc(p.capitanEmail||'—')+"</p></section><section><b>Plantel ("+p.roster.length+")</b>"+
-      (p.roster.map(function(i){return "<div class='marca'><span class='pos'>"+(i.email?'✅':'👤')+"</span><span class='nom'>"+esc(i.nombre)+(i.email&&i.email===p.capitanEmail?" <span class='pill'>Capitán</span>":'')+"</span></div>"}).join('')||"<p class='sub'>Sin jugadores aún. El capitán los agrega desde la app.</p>")+"</section>",null)}});
+    var enlaceEq=p.codigo?CFG.enlace+'?equipo='+encodeURIComponent(p.codigo):'';
+    var invitar=enlaceEq?"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><button type='button' class='btn sec' data-copiar-eq='"+esc(enlaceEq)+"'>🔗 Copiar enlace del equipo</button><a class='btn sec' target='_blank' rel='noopener' href='https://wa.me/?text="+encodeURIComponent('Únete a mi equipo «'+p.nombre+'» en "'+CFG.nombre+'" (Pichangol). Toca y quedas inscrito: '+enlaceEq)+"'>💬 WhatsApp</a></div><p class='sub' style='margin:6px 0 0;font-size:12px'>Quien abra el enlace con la app entra directo al equipo, sin escribir el código"+(CFG.fixture?" (también con el fixture publicado, mientras la inscripción siga abierta)":"")+".</p>":'';
+    var st=CFG.pozos[p.id],pozoHtml='',pago={};
+    if(CFG.cuotaEq>0){var pz=st?st.pozo_centimos:0,tot=CFG.cuotaEq,pct=Math.min(100,Math.round(pz*100/tot)),comp=st?st.completo:false;(st?st.aportes:[]).forEach(function(a){pago[(a.email||'').toLowerCase()]=a.centimos});
+      pozoHtml="<section><b>"+(comp?"✅ Equipo inscrito · pozo completo":"💰 Pozo del equipo")+"</b><div style='height:8px;border-radius:999px;background:#EEF1F4;margin:8px 0 6px;overflow:hidden'><div style='height:100%;width:"+pct+"%;background:"+(comp?'#0B8A3E':'#F28C28')+"'></div></div><p class='sub' style='margin:0'>"+esc(CFG.mon)+" "+fmtC(pz)+" de "+fmtC(tot)+" · cada jugador pone "+esc(CFG.mon)+" "+fmtC(CFG.cuotaJug)+(comp?"":" · faltan "+esc(CFG.mon)+" "+fmtC(tot-pz))+(st&&st.liquidado?" · neto "+esc(CFG.mon)+" "+fmtC(st.neto_centimos)+" por recibir: Pichangol te lo transfiere (Ingresos)":"")+"</p></section>"}
+    modal(p.nombre,"<section><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>Código: "+esc(p.codigo||'—')+"</b>"+falta+"</div><p class='sub' style='margin:6px 0 0'>Capitán: "+esc(p.capitanEmail||'—')+"</p>"+invitar+"</section>"+pozoHtml+"<section><b>Plantel ("+p.roster.length+(CFG.maxJug?"/"+CFG.maxJug:"")+")</b>"+
+      (p.roster.map(function(i){var em=(i.email||'').toLowerCase();return "<div class='marca'><span class='pos'>"+(i.email?'✅':'👤')+"</span><span class='nom'>"+esc(i.nombre)+(i.email&&i.email===p.capitanEmail?" <span class='pill'>Capitán</span>":'')+(CFG.cuotaEq>0?(pago[em]?" <span class='pill'>pagó "+esc(CFG.mon)+" "+fmtC(pago[em])+"</span>":" <span class='pill' style='background:#FFF1E3;color:#B25E0A'>sin pagar</span>"):'')+"</span></div>"}).join('')||"<p class='sub'>Sin jugadores aún. Comparte el enlace del equipo: cada jugador entra"+(CFG.cuotaEq>0?" y pone su parte":"")+" desde la app.</p>")+"</section>",null)}});
+function fmtC(c){var v=(c||0)/100;return Math.abs(v-Math.round(v))<0.005?String(Math.round(v)):v.toFixed(2)}
 var bf=$('btnFixture');if(bf)bf.addEventListener('click',async function(){if(CFG.participantes.length<2){pcgToast('Agrega al menos 2 participantes.');return}
-  if(CFG.fixture&&!await pcgConfirmar({titulo:'Regenerar fixture',mensaje:'Se sortea de nuevo y se BORRAN los resultados cargados.',confirmar:'Regenerar',destructivo:true,icono:'🔁'}))return;try{await post('/fixture',{},'Sorteando el fixture…');pcgRecargar()}catch(e){pcgToast(e.message)}});
+  if(CFG.fixture&&!await pcgConfirmar({titulo:'Regenerar fixture',mensaje:'Se sortea de nuevo y se BORRAN los resultados cargados.',confirmar:'Regenerar',destructivo:true,icono:'🔁'}))return;await sortear({})});
+async function sortear(body){try{var j=await post('/fixture',body,'Sorteando el fixture…');pcgRecargar(j.devueltos?'Fixture listo · '+j.devueltos+' jugador(es) recuperaron su parte':undefined)}catch(e){
+  if(e.equipos){var eq=e.equipos;modal('Equipos con el pozo incompleto',"<p class='sub'>Estos equipos aún no cubren la cuota de "+esc(CFG.mon)+" "+fmtC(CFG.cuotaEq)+":</p>"+eq.map(function(q){return "<div class='marca'><span class='pos'>⏳</span><span class='nom'>"+esc(q.nombre)+" · "+esc(CFG.mon)+" "+fmtC(q.pozo_centimos)+" de "+fmtC(CFG.cuotaEq)+"</span></div>"}).join('')+
+    "<div class='acciones' style='margin-top:16px;flex-wrap:wrap'><button type='button' class='btn' id='fxTodos'>Generar con todos</button><button type='button' class='btn sec' id='fxExcluir'>Excluirlos y devolver sus aportes</button></div><p class='sub' style='font-size:12px;margin-top:8px'>Si los excluyes, cada jugador recupera lo que puso en su saldo Pichangol.</p>",null);
+    $('fxTodos').onclick=function(){cerrar();sortear({con_todos:true})};$('fxExcluir').onclick=async function(){cerrar();if(!await pcgConfirmar({titulo:'Excluir '+eq.length+' equipo(s)',mensaje:'Quedan fuera del torneo y sus jugadores recuperan su parte. ¿Continuar?',confirmar:'Excluir y devolver',destructivo:true,icono:'↩️'}))return;sortear({excluir:eq.map(function(q){return q.id})})};return}
+  pcgToast(e.message)}}
 // resultado
 document.addEventListener('click',function(ev){var t=ev.target.closest('.partido.clic');if(!t)return;
   modal('Cargar resultado',"<div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><div><label>"+esc(t.dataset.a)+"</label><input id='mA' type='number' min='0' inputmode='numeric' value='"+esc(t.dataset.ma)+"'></div><div><label>"+esc(t.dataset.b)+"</label><input id='mB' type='number' min='0' inputmode='numeric' value='"+esc(t.dataset.mb)+"'></div></div>"+pie('Guardar'),
@@ -873,6 +1004,11 @@ def agregar_participante(request: Request, cid: str, b: dict | None = Body(None)
         return _err("Escribe el nombre.")
     p = {"id": f"part_{int(time.time() * 1_000_000)}", "nombre": nombre, "contacto": re.sub(r"[^\d+ ]", "", str(b.get("contacto") or ""))[:20],
          "email": str(b.get("email") or "").strip().lower()[:120], "apoderadoNombre": ""}
+    if c.get("deporte") == "futbol":
+        # Los equipos que crea el ORGANIZADOR también reciben código y enlace:
+        # así "Kinder 01" se llena por el enlace de equipo (pedido del director,
+        # 26-sep-2026); el capitán queda vacío hasta que alguien lo asuma.
+        p.update({"codigo": L.nuevo_codigo(), "capitanEmail": "", "roster": []})
     c["participantes"] = list(c.get("participantes") or []) + [p]
     if not _guardar(ses, c):
         return _err("No pudimos guardar.", 503)
@@ -885,28 +1021,72 @@ def eliminar_participante(request: Request, cid: str, pid: str) -> JSONResponse:
     if err is not None:
         return err
     antes = len(c.get("participantes") or [])
+    quitado = L.participante(c, pid)
     c["participantes"] = [p for p in (c.get("participantes") or []) if p.get("id") != pid]
     if len(c["participantes"]) == antes:
         return _err("Participante no encontrado.", 404)
     if not _guardar(ses, c):
         return _err("No pudimos guardar.", 503)
-    return _ok(c)
+    dev = _devolver_pozo(ses, c, quitado)
+    return _ok(c, **dev)
+
+
+def _devolver_pozo(ses: dict, c: dict, p: dict | None) -> dict:
+    """Al sacar un EQUIPO con pozo sin completar, cada jugador recupera su
+    parte (`pozos.devolver`). Si ya se liquidó al organizador, se avisa."""
+    if not p or not L.es_equipo(p) or L.cuota_equipo_centimos(c) <= 0:
+        return {}
+    r = pozos.devolver(campeonato_id=c["id"], equipo_id=p["id"], solicitante=ses["email"])
+    if r.get("ok"):
+        return {"devueltos": int(r.get("devueltos") or 0)}
+    if r.get("error") == "ya_liquidado":
+        return {"devueltos": 0, "aviso": f"El pozo de {p.get('nombre')} ya se te había liquidado: la devolución a sus jugadores queda de tu lado."}
+    return {}
+
+
+def _equipos_sin_pozo(c: dict) -> list[dict]:
+    """Equipos cuyo pozo aún no cubre la cuota (torneo por equipos con costo)."""
+    if c.get("deporte") != "futbol" or L.cuota_equipo_centimos(c) <= 0:
+        return []
+    out = []
+    for p in c.get("participantes") or []:
+        if not L.es_equipo(p):
+            continue
+        st = pozos.de_equipo(c["id"], p["id"], float(c.get("costoInscripcion") or 0), L.cupo_reparto(c))
+        if not st["completo"]:
+            out.append({"id": p["id"], "nombre": p.get("nombre"), "pozo_centimos": st["pozo_centimos"],
+                        "faltante_centimos": st["faltante_centimos"]})
+    return out
 
 
 @router.post(BASE + "/{cid}/fixture")
-def generar_fixture(request: Request, cid: str) -> JSONResponse:
-    """`generarFixture`: (re)genera y BORRA los resultados. No aplica a tiempos."""
+def generar_fixture(request: Request, cid: str, b: dict | None = Body(None)) -> JSONResponse:
+    """`generarFixture`: (re)genera y BORRA los resultados. No aplica a tiempos.
+    Con cuota por equipo: `excluir` = ids de equipos con pozo incompleto que
+    quedan fuera (sus jugadores recuperan su parte); sin `excluir` ni
+    `con_todos`, si hay pozos incompletos responde `pozos_incompletos` para
+    que la web pregunte."""
     ses, c, err = _mio_json(request, cid)
     if err is not None:
         return err
     if L.formato_de(c) == "tiempos":
         return _err("Un torneo por tiempos no tiene fixture: agrega pruebas.")
+    b = b if isinstance(b, dict) else {}
+    incompletos = _equipos_sin_pozo(c)
+    if incompletos and not b.get("con_todos") and not isinstance(b.get("excluir"), list):
+        return JSONResponse({"ok": False, "error": "pozos_incompletos", "equipos": incompletos}, status_code=409)
+    devueltos = 0
+    if isinstance(b.get("excluir"), list) and b["excluir"]:
+        ids = {str(x) for x in b["excluir"]}
+        for p in [p for p in (c.get("participantes") or []) if p.get("id") in ids]:
+            devueltos += int(_devolver_pozo(ses, c, p).get("devueltos") or 0)
+        c["participantes"] = [p for p in (c.get("participantes") or []) if p.get("id") not in ids]
     if len(c.get("participantes") or []) < 2:
         return _err("Agrega al menos 2 participantes.")
     c["partidos"] = L.generar_fixture(c)
     if not _guardar(ses, c):
         return _err("No pudimos guardar.", 503)
-    return _ok(c, partidos=len(c["partidos"]))
+    return _ok(c, partidos=len(c["partidos"]), devueltos=devueltos)
 
 
 @router.post(BASE + "/{cid}/resultado")

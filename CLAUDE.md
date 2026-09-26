@@ -918,6 +918,178 @@ para la API del APK.
   usarlo), `Campeonato.minPartidos`, widget `_Grupos`, `_Liga`/`_Llave` con
   subconjunto. Test `test_grupos_garantiza_minimo_de_partidos_y_llave_cruzada`
   (garantía para n = min+1 … 40).
+- **ENLACE DEL CAPITÁN + DESCARGA A PLAY + APP LINKS (pedido del director,
+  26-sep-2026: "¿es viable que el que recibe el link por WhatsApp se
+  inscriba en un equipo?" → sí, y se hicieron los 3 puntos):** (1) **Enlace
+  de equipo (fútbol):** `/c/{id}?equipo=CODIGO`. La página pública
+  (`campeonato_web.html_campeonato(equipo=)`, `equipo_por_codigo`) muestra
+  "Te invitaron al equipo «X»" + botón "Unirme al equipo en la app" cuyo
+  `intent://c/{id}?equipo=…` lleva el código; código inexistente → CTA
+  normal + aviso; en deportes sin equipos se ignora. El APK
+  (`EnlacesService.codigoEquipoDe` → `CampeonatoDetalleScreen.
+  unirseConEnlace`) abre la ficha y, tras login/DNI, confirma "Unirme a «X»"
+  y lo mete al plantel con `unirseAEquipoPorCodigo` (sin escribir el
+  código). El capitán lo comparte desde el app (`textoInvitacionEquipo`:
+  texto + enlace + código, en "¡Equipo creado!" y en la tarjeta del equipo)
+  y el organizador desde la web (modal del equipo en Mis campeonatos:
+  "🔗 Copiar enlace del equipo" + WhatsApp). (2) **Descarga por ambiente:**
+  `config.APP_DOWNLOAD_URL` = Play Store si `PICHANGOL_ENTORNO` es PRD,
+  Release de GitHub en dev/QAS (`APP_DOWNLOAD_URL` env lo fuerza); lo usan
+  el `browser_fallback_url` del intent y el pie "Descargar la app"
+  (`campeonato_web._descarga()`). (3) **Android App Links:**
+  `ANDROID_CERT_SHA256` ya está en Railway QAS y PRD con la huella del
+  keystore del CI (`21:E5:AD:A0:…:EC:28`, la que imprime el paso "Verificar
+  firma del APK"); `/.well-known/assetlinks.json` acepta huellas con o sin
+  dos puntos (`_huella_con_dos_puntos`) y varias por coma. **PENDIENTE del
+  director:** agregar a esa variable (coma) las SHA-256 de las llaves de
+  firma de Play (Play Console → Firma de apps: la actual, la poscuántica y la
+  ANTERIOR rotada) para que el link de WhatsApp abra la app instalada desde
+  Play sin pasar por el navegador; sin eso el botón intent:// cubre igual.
+  Solo Android: en iPhone (sin app iOS) se queda en la web. Tests
+  `test_enlace_del_capitan_une_directo_al_equipo`,
+  `test_descarga_va_a_play_en_produccion`,
+  `test_assetlinks_acepta_huella_sin_dos_puntos`.
+- **WHATSAPP DESDE LA WEB SIN "��" (queja del director, 26-sep-2026,
+  captura de un resumen compartido desde Mis campeonatos):** WhatsApp para
+  WINDOWS rompe los emojis de 4 bytes (🏆 📊 👉 📍 🎁 💰 📲…) que viajan por
+  `wa.me/?text=` y los pinta como "��"; los de 2 bytes (⚽ ⭐ ✅ ➡ ⚑ ✨ ▶) sí
+  llegan. Regla: TODO enlace de WhatsApp que arme la web pasa por
+  `ui.enlace_whatsapp(texto, tel="")` (usa `ui.texto_whatsapp`, que traduce
+  con `_WA_EMOJI_SEGURO` y quita cualquier astral sin traducción). Ya lo usan
+  Mis campeonatos (publicidad/resumen) y el comprobante de reserva. El APK
+  comparte desde el teléfono y no tiene el problema: su texto queda igual.
+  Test `test_whatsapp_desde_la_web_sin_emojis_de_4_bytes`.
+- **LA VAQUITA DEL EQUIPO = cuota de torneo POR EQUIPO repartida entre el
+  plantel (decisión del director, 26-sep-2026: "el campeonato es 100 soles
+  por equipo… con 3 suplentes serían 100/10 y eso paga cada usuario"):**
+  `pagos/pozos.py` (fuente de verdad del dinero, `stores.pozos_equipo` en
+  el snapshot, clave `<campeonato_id>|<equipo_id>`) + endpoints `POST
+  /pagos/torneo/equipo/aportar|completar|devolver`, `GET /pagos/torneo/
+  pozos/{camp}` y `/pagos/torneo/equipo/{camp}/{equipo}`. Reglas: (1)
+  `Campeonato.maxJugadoresEquipo` (nuevo, fútbol; tope de plantel, nunca
+  < mínimo) define el CUPO de reparto (máximo → mínimo → 0 = quien crea
+  paga entera); (2) cuota por jugador = cuota ÷ cupo redondeada HACIA
+  ARRIBA a 0.50 (`pozos.cuota_jugador_centimos` = `Campeonato.
+  cuotaJugadorCentimos` = `L.cuota_jugador_centimos`); (3) cada jugador
+  pone su parte de su SALDO al unirse (el capitán al crear); queda
+  RETENIDA (pago `aporte_equipo`, egreso en su billetera); el último paga
+  solo lo que falta; los que entran con el pozo lleno no pagan; (4)
+  cualquiera del plantel puede COMPLETAR el faltante; (5) al cubrirse la
+  cuota se cobra la comisión UNA sola vez sobre la cuota del EQUIPO
+  (`comision_centimos(cuota, moneda)`, nunca por aporte: el mínimo de S/ 2
+  se comería el 20 % de cada S/ 10) y el NETO se acredita al organizador
+  (`inscripcion_torneo_ingreso`); (6) si el equipo queda fuera ANTES de
+  completar (quitar equipo o "Excluir y devolver" al generar el fixture),
+  `devolver` regresa cada parte a cada jugador (`aporte_equipo_devolucion`);
+  ya liquidado → `ya_liquidado` y la devolución queda de lado del
+  organizador (aviso en app y web). El JSON del campeonato espeja
+  `Integrante.aporteCentimos` solo para mostrar. **App:** `_aportarPozo`
+  (falta saldo → Recargar), "Crear mi equipo · pones S/ 10" (paga ANTES de
+  crear, id `eq_<µs>` generado en la pantalla), `_confirmarYUnirme` (código
+  o enlace: valida lleno/repetido, confirma con la parte, cobra, une),
+  `_PozoEquipo` (barra + faltante) y "Completar S/ X" en la tarjeta del
+  equipo, chips "N/10 jug. · S/ 60 de 100" / "✅", `_quitar` y `_generar`
+  con devolución; `agregarParticipante` del ORGANIZADOR en fútbol crea el
+  equipo CON código (así "Kinder 01" se llena por el enlace); `unirse`
+  rechaza plantel lleno. **Web:** asistente con máximo, chips y modal con
+  pozo/aportes por jugador, `POST /fixture` responde 409
+  `pozos_incompletos` → modal "Generar con todos / Excluirlos y devolver"
+  (`{con_todos}` / `{excluir:[ids]}`), quitar equipo devuelve; publicidad y
+  página pública dicen "cada jugador pone S/ 10". Tests
+  `test_pozo_equipo.py`, `test_vaquita_del_equipo_en_la_web`. Pendiente:
+  la cuota individual (`/torneo/inscribir`) sigue en PEN.
+  **EL NETO DEL TORNEO ES "POR RECIBIR", NO SALDO (decisión del director,
+  26-sep-2026: "PCG le debe transferir de manera automática, así como hace
+  con los dueños de cancha; ¿qué pasa si el operador se olvida?"):** antes
+  `pozos._liquidar` y `/torneo/inscribir` hacían `stores.acreditar(org,
+  neto)` (saldo dentro de la app, fuera de toda cola de pago). Ahora el
+  ingreso `inscripcion_torneo_ingreso` nace con `culqi_charge_id =
+  pozo:<camp>|<equipo>` (o `torneo:<pago_id>` en la cuota individual),
+  `liquidado=False`, y entra en `stores.liquidaciones()` → la MISMA cola
+  que las reservas online y ventas: torre `/admin` → Liquidaciones (agrupa
+  "🏆 Torneo · Equipo"), billetera del APK "Por recibir" (el parser mapea
+  el tipo a `TipoMovimiento.liquidacion`), web Ingresos, `GET
+  /pagos/por-recibir/{email}`; el operador transfiere y marca pagado con
+  `POST /pagos/liquidaciones/{clave}/pagar`. `es_liquidacion_torneo(p)`
+  distingue los NUEVOS de los registros viejos (sin clave) que ya se
+  acreditaron al saldo: esos no se liquidan dos veces. `devolver` con el
+  neto pendiente (aún no pagado) ANULA la liquidación (`estado=anulado`) y
+  devuelve a los jugadores; solo si la torre ya pagó responde
+  `ya_liquidado`; `marcar_liquidacion_pagada` ignora anuladas. **Anti
+  olvido:** `_liquidacion_dict` trae `dias`; `/pagos/liquidaciones/
+  pendientes` suma `atrasadas`, `mas_antigua_dias`, `aviso_dias`
+  (`LIQUIDACION_AVISO_DIAS`, env, 3); la torre pinta banner rojo, "hace N
+  días" por fila y el KPI "N atrasados"; el cron `_iniciar_cron_
+  liquidaciones` (cada hora) llama `recordar_liquidaciones_pendientes()`,
+  que una vez al día desde las 09:00 de Lima avisa por WhatsApp al admin
+  (`PICHANGOL_ADMIN_WHATSAPP` vía `reclamos._notificar_admin`) y en logs
+  `[liquidaciones]` mientras haya atrasadas. NO existe transferencia
+  bancaria automática (Culqi no ofrece payouts): la cola + el recordatorio
+  son el mecanismo, igual que para las canchas. Tests actualizados en
+  `test_pozo_equipo.py` (+ `test_recordatorio_diario_de_liquidaciones_
+  atrasadas`), `test_pagos.py`, `test_web_campeonatos.py`.
+- **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
+  VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
+  Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el
+  PLANTEL: `Campeonato.plantelAbierto` (app) = `campeonatos_logica.
+  plantel_abierto` (web) = fútbol ∧ !cerrado ∧ inscripcionAbierta ∧
+  !terminado. **La fecha "Cierre de inscripciones" (`inscripcionHasta`)
+  TAMPOCO cierra el plantel** (2.ª queja, 26-sep-2026: "no puedo
+  inscribirme a un equipo" con el cierre ya vencido y el fixture
+  auto-sorteado por `autoSortearVencidos`): esa fecha es para sortear
+  (cuántos equipos hay); los suplentes entran hasta que el torneo termine o
+  el organizador lo cierre. El modal del equipo DICE por qué no se puede
+  unir (`motivoPlantelCerrado`: organizador con la misma cuenta / cerrado /
+  plantel lleno / sin código) en vez de esconder el botón. **CIERRE DE
+  INSCRIPCIONES = DÍA + HORA (pedido del director, 26-sep-2026: "si es
+  relámpago debe indicarme una hora"):** `inscripcionHasta` guarda la hora;
+  el asistente del app (`_elegirCierre`: date picker → time picker) y el web
+  (`#cierre` + `#cierreHora`, body `cierreHora`) la piden. En RELÁMPAGO es
+  OBLIGATORIA y el día no puede pasar del día del torneo (error en el paso
+  3 / snack en el app); en torneos de varios días es opcional (sin hora =
+  00:00 de ese día, como antes). La hora se muestra en la ficha del app
+  (`_fmtDiaHora`), en el detalle web (`_fecha_hora_corta`) y en la
+  publicidad de WhatsApp ("Inscripciones hasta el 7 mar · 09:30"). Test
+  `test_relampago_exige_hora_de_cierre_de_inscripciones`. Un suplente se une (y pone su parte del pozo) por
+  código, por enlace del capitán o TOCANDO EL EQUIPO en la lista de la ficha
+  (modal del equipo → "Unirme · pones S/ X"); la página pública `/c/{id}?
+  equipo=` sigue mostrando "Te invitaron al equipo" con fixture. Lo que SÍ se
+  cierra con el fixture: crear equipos nuevos e inscripción individual
+  (`puedeInscribirse`). `_confirmarYUnirme` valida `plantelAbierto` ANTES de
+  cobrar (nunca se debita sin poder unirse). (2) Fútbol: TODO participante es
+  un equipo con CÓDIGO. Los creados por el organizador antes del build 1380
+  (p. ej. "Kinder 01") no tenían código ni eran `esEquipo`/`es_equipo` → nadie
+  podía unirse. `AppState.completarCodigosEquipos` (el ORGANIZADOR al abrir la
+  ficha, post-frame) y `L.completar_codigos` (al abrir el detalle web) les
+  asignan uno único y guardan; el organizador ve el código/compartir en el
+  modal del equipo (antes solo el capitán). (3) "Unirme a un campeonato"
+  acepta también el CÓDIGO DE EQUIPO: `CampeonatosRepo.porCodigoEquipo`
+  (jsonb `data->participantes cs [{"codigo":…}]`, como String: postgrest-dart
+  codifica una List con llaves de array) → abre la ficha y dispara
+  `unirseConEnlace`. Tests `test_enlace_del_equipo_sigue_valiendo_con_el_
+  fixture_publicado`, `test_equipos_viejos_sin_codigo_reciben_enlace_al_abrir_
+  el_detalle`. **ENTRADA DEL JUGADOR (queja del director, 26-sep-2026:
+  "tengo el código pero solo me sale Organizar"):** "Unirme a un campeonato"
+  (`UnirseCampeonato.mostrar`) solo vivía en "Liga de tenis Pichangol" (Perfil,
+  solo con `usaCircuito`) y en la pantalla de campeonatos de una academia.
+  Ahora `MisCampeonatosScreen` es de AMBOS roles: ícono QR en la barra,
+  tarjeta "Unirme a un campeonato" arriba, sección "Donde participo"
+  (`AppState.campeonatosDondeParticipo`: inscrito / capitán / en un plantel,
+  sin organizar; tarjeta con rol "En Kinder 01") y "Organizo"; el vacío
+  ofrece "Tengo un código · Unirme" además de Organizar. Perfil tiene el ítem
+  "Campeonatos" → esa pantalla para cualquier jugador (fútbol incluido).
+  **WEB igual (captura del director, 26-sep-2026: "acá también debería
+  ingresar el código y ver el campeonato, como en el app"):** en
+  `/anfitrion/campeonatos` la caja "¿Te compartieron un código?" (`_caja_
+  codigo`) → `GET /anfitrion/campeonatos/unirme?codigo=` →
+  `datos.campeonato_por_codigo` (código del TORNEO `data->>'codigo'` o de un
+  EQUIPO por contención jsonb en `participantes`) → 303 a la página pública
+  `/c/{id}` (con `?equipo=COD` si era de equipo: ahí "Unirme al equipo en la
+  app"; la web no cobra la parte); inexistente → `?no_encontrado=1` con
+  aviso. Sección "Donde participo" (`datos.campeonatos_donde_participa`:
+  prefiltro `data::text LIKE %email%` + `participa_en`; tarjeta con rol
+  `_rol_en` → `/c/{id}`) y "Organizo". El vacío dice "Aún no tienes
+  campeonatos". Test `test_web_unirme_con_codigo_y_donde_participo`.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en
@@ -1130,6 +1302,17 @@ off → redeploy inmediato en cada push). URL pública:
     página oficial de Facebook). Solo backend/web. En PRD cada operador
     enrola su app autenticadora en su primer ingreso (secreto propio de PRD,
     distinto al de QAS). Emergencia: `ADMIN_2FA=0` en `pg-backend-prd`.
+    **Pase del 25-sep-2026 (autorizado: "Pasar a prd"):** `prd` = merge
+    `6fa2b83` (Mis campeonatos web, formato "Grupos + eliminatoria",
+    persistencia fuera de la request, modales + preloader, acceso de
+    revisión para Culqi, enlaces sin espacios). Sin SQL ni Edge. CAMBIÓ
+    `lib/` → APK/AAB de PRD por `workflow_dispatch` (`ref=prd`,
+    `entorno=prod`). Variables en `pg-backend-prd`: `WEB_USUARIOS_PRUEBA`
+    como REFERENCIA a QAS (`${{pg-backend.WEB_USUARIOS_PRUEBA}}`; retirarla
+    cuando Culqi termine la revisión), `LANDING_BASE_URL` y
+    `PUBLIC_BASE_URL` reescritas limpias a `https://www.pichangol.app`.
+    OJO: un APK anterior a este pase pierde `fase/grupo` al guardar un
+    campeonato de grupos → actualizar el APK antes de usar ese formato.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,

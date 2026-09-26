@@ -87,6 +87,38 @@ def equipo_completo(c: dict, p: dict) -> bool:
     return usa_cupo_equipos(c) and len(p.get("roster") or []) >= int(c.get("minJugadoresEquipo") or 0)
 
 
+# ── Pozo del equipo (cuota repartida entre el plantel, ver pagos/pozos.py) ──
+def max_jugadores(c: dict) -> int:
+    """Tope de plantel (titulares + suplentes). 0 = sin tope."""
+    return int(c.get("maxJugadoresEquipo") or 0) if c.get("deporte") == "futbol" else 0
+
+
+def cupo_reparto(c: dict) -> int:
+    """Entre cuántos se reparte la cuota del equipo: el máximo; si no hay, el
+    mínimo; si no hay ninguno, 0 (= la cuota entera la pone quien crea)."""
+    return max_jugadores(c) or int(c.get("minJugadoresEquipo") or 0)
+
+
+def cuota_equipo_centimos(c: dict) -> int:
+    return int(round(float(c.get("costoInscripcion") or 0) * 100))
+
+
+def cuota_jugador_centimos(c: dict) -> int:
+    """`Campeonato.cuotaJugadorCentimos` del app: cuota ÷ cupo, hacia arriba a 0.50."""
+    from pagos import pozos
+    return pozos.cuota_jugador_centimos(cuota_equipo_centimos(c), cupo_reparto(c))
+
+
+def equipo_lleno(c: dict, p: dict) -> bool:
+    m = max_jugadores(c)
+    return m > 0 and len(p.get("roster") or []) >= m
+
+
+def fmt_monto(centimos: int) -> str:
+    v = centimos / 100.0
+    return f"{v:.0f}" if abs(v - round(v)) < 0.005 else f"{v:.2f}"
+
+
 def participante(c: dict, pid) -> dict | None:
     return next((p for p in (c.get("participantes") or []) if p.get("id") == pid), None)
 
@@ -381,6 +413,45 @@ def fixture_generado(c: dict) -> bool:
 def inscripcion_vencida(c: dict) -> bool:
     h = _dt(c.get("inscripcionHasta"))
     return h is not None and datetime.now() > h
+
+
+def plantel_abierto(c: dict) -> bool:
+    """¿Un jugador aún puede UNIRSE al plantel de un equipo (fútbol)? ESPEJO de
+    `Campeonato.plantelAbierto` del app. A diferencia de crear equipos o de la
+    inscripción individual, el fixture ya generado NO cierra el plantel: un
+    suplente entra (y pone su parte) mientras la inscripción siga abierta y el
+    torneo no haya terminado (pedido del director, 26-sep-2026: "me quiero
+    inscribir al Kinder-01" con el torneo ya "En juego")."""
+    # OJO: la fecha de cierre de inscripciones (`inscripcionHasta`) tampoco
+    # cierra el plantel: sirve para el sorteo; los suplentes entran hasta que
+    # el torneo termine o el organizador lo cierre.
+    return (c.get("deporte") == "futbol" and not c.get("cerrado")
+            and bool(c.get("inscripcionAbierta")) and not terminado(c))
+
+
+def completar_codigos(c: dict) -> bool:
+    """Fútbol: TODO participante es un equipo y debe tener CÓDIGO (enlace de
+    invitación). Los que creó el organizador antes de que existiera el código
+    (p. ej. "Kinder 01" del build < 1380) no eran ni siquiera `es_equipo` y
+    nadie podía unirse. Les asigna uno (único dentro del torneo) y devuelve
+    True si cambió algo, para que el llamador guarde. ESPEJO de
+    `AppState.completarCodigosEquipos`."""
+    if c.get("deporte") != "futbol":
+        return False
+    usados = {str(p.get("codigo") or "").upper() for p in (c.get("participantes") or []) if p.get("codigo")}
+    cambio = False
+    for p in c.get("participantes") or []:
+        if p.get("codigo"):
+            continue
+        cod = nuevo_codigo()
+        while cod.upper() in usados:
+            cod = nuevo_codigo()
+        usados.add(cod.upper())
+        p["codigo"] = cod
+        p.setdefault("capitanEmail", "")
+        p.setdefault("roster", [])
+        cambio = True
+    return cambio
 
 
 def terminado(c: dict) -> bool:
