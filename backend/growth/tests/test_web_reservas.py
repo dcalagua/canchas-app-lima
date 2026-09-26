@@ -1799,3 +1799,103 @@ def test_acceso_de_revision_con_usuario_y_clave_para_culqi(db, monkeypatch):
                                         "nombre": "Revisor Culqi", "celular": "999888777", "email": "otra@x.com"}).json()
     assert j["ok"], j
     assert db.reservas[j["ids"][0]]["usuario"] == "revision@pichangol.app"
+
+
+def test_carrito_de_matricula_familiar_un_solo_pago(db, monkeypatch):
+    """Pedido del director (26-sep-2026, "Si haz ese carrito"): en la ficha de
+    la academia agrego a mi esposa (Bola Verde), a mi hijo (Bola Naranja) y a
+    mí, cada uno con su programa y su forma de pago, y PAGO UNA SOLA VEZ. El
+    servidor recalcula cada total con el descuento familiar EN SECUENCIA
+    (1.º completo, 2.º −H2, 3.º+ −H3), hace UN cargo, crea una matrícula por
+    persona con el mismo N.º de operación, registra la contabilidad una vez
+    por el total y las suscripciones mes a mes reusan la tarjeta de la 1.ª."""
+    from web import academia as wa
+    import pagos.router as pr
+    from db.store import stores
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
+    db.academias["ac_c"] = {"nombre": "Academia Carrito", "deporte": "tenis", "dueno": "profe@gmail.com", "sedeClub": "Club X", "zona": "Surco",
+                            "lat": -12.1, "lng": -77.0, "whatsapp": "999888777", "descuentoPrepago": 10, "mesesMinPrepago": 3,
+                            "descuentoHermano2": 10, "descuentoHermano3": 20,
+                            "planes": [{"id": "adultos", "nombre": "Adultos · 2x/sem", "programa": "Adultos", "precioMes": 120, "frecuenciaSemana": 2},
+                                       {"id": "verde", "nombre": "Bola Verde · 2x/sem", "programa": "Bola Verde", "precioMes": 100, "frecuenciaSemana": 2},
+                                       {"id": "naranja", "nombre": "Bola Naranja · 2x/sem", "programa": "Bola Naranja", "precioMes": 150, "frecuenciaSemana": 2}]}
+    cli = TestClient(app, base_url="https://testserver")
+    html = cli.get("/academia/ac_c").text
+    for t in ("¿Matriculas a más personas?", "id='btnAgregar'", "Guardar a esta persona y agregar otra", '"fam"', "/web/matricular-varios", "id='nPersonas'", ".cart-it"):
+        assert t in html, t
+    # Sin sesión no se cobra nada.
+    personas = [{"plan_id": "adultos", "nombre": "Dennis Calagua", "celular": "999888777", "quien": "yo", "cantidad": 6, "mes_a_mes": True},
+                {"plan_id": "verde", "nombre": "María López", "celular": "988777666", "quien": "familiar", "email_persona": "maria@gmail.com", "cantidad": 2, "mes_a_mes": True},
+                {"plan_id": "naranja", "nombre": "Lucas Calagua", "celular": "999888777", "quien": "hijo", "edad": 9, "cantidad": 1}]
+    assert cli.post("/web/matricular-varios", json={"academia_id": "ac_c", "token": "t", "personas": personas}).json()["error"] == "sesion_requerida"
+    _entrar_como(cli, monkeypatch, "dennis@gmail.com", nombre="Dennis")
+    assert cli.get("/web/academia/ac_c/descuento-familiar").json()["fam"] == {"familiar": True, "previas": 0, "previasHijos": 0, "h2": 10.0, "h3": 20.0}
+    cargos, pushes, conta, susc = [], [], [], []
+    susc_real = pr.post_suscripcion_alumno
+    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: cargos.append(kw) or {"ok": True, "charge_id": "chr_fam_1"})
+    monkeypatch.setattr(pr, "_aviso_push_usuario", lambda *a, **k: pushes.append((a, k)))
+    monkeypatch.setattr(pr, "post_matricula", lambda req: conta.append(req) or {"ok": True})
+    monkeypatch.setattr(pr, "post_suscripcion_alumno", lambda req: susc.append(req) or {"ok": True})
+    # Validación por persona ANTES de cobrar: dice cuál falla.
+    mal = [dict(personas[0]), dict(personas[2], edad=None)]
+    r = cli.post("/web/matricular-varios", json={"academia_id": "ac_c", "token": "t", "personas": mal}).json()
+    assert r["error"] == "edad" and r["persona"] == 1 and r["mensaje"].startswith("Persona 2: ")
+    r = cli.post("/web/matricular-varios", json={"academia_id": "ac_c", "token": "t", "personas": [personas[0], dict(personas[1], nombre="dennis calagua")]}).json()
+    assert r["error"] == "repetida" and not cargos
+    assert cli.post("/web/matricular-varios", json={"academia_id": "ac_c", "token": "t", "personas": []}).json()["error"] == "vacio"
+    # Yo (1.º, mes a mes 6 meses: 120) + esposa (2.ª, −10 %, mes a mes: 90) + hijo (3.º, −20 %: 120) = 330 en UN cargo.
+    r = cli.post("/web/matricular-varios", json={"academia_id": "ac_c", "token": "tkn_fam", "medio": "yape", "personas": personas}).json()
+    assert r["ok"] and r["total"] == 330 and len(cargos) == 1 and cargos[0]["monto_centimos"] == 33000 and cargos[0]["descripcion"] == "Matrícula Academia Carrito · 3 personas"
+    ids = r["alumno_ids"]
+    assert len(ids) == 3 and r["url"] == f"/academia/ac_c/matriculas?ids={','.join(ids)}" and r["charge_id"] == "chr_fam_1"
+    ms = [db.matriculas[-3], db.matriculas[-2], db.matriculas[-1]]
+    assert [m["id"] for m in ms] == ids and len(set(ids)) == 3
+    assert [m["nombre"] for m in ms] == ["Dennis Calagua", "María López", "Lucas Calagua"]
+    assert [m["ordenHermano"] for m in ms] == [1, 2, 3] and [m["pagoWeb"]["dtoFamiliar"] for m in ms] == [0, 10, 20]
+    assert [m["pagoWeb"]["monto"] for m in ms] == [120, 90, 120] and all(m["email"] == "dennis@gmail.com" and m["canal"] == "web" for m in ms)
+    assert all(c["operacionId"] == "chr_fam_1" for m in ms for c in m["cuotas"] if c.get("pagada"))
+    assert ms[1]["parentesco"] == "familiar" and ms[1]["emailAlumno"] == "maria@gmail.com" and ms[1]["cuotas"][0]["monto"] == 90 and len(ms[1]["cuotas"]) == 2
+    assert ms[2]["parentesco"] == "hijo" and ms[2]["apoderadoNombre"] == "Dennis" and ms[2]["cuotas"][0]["monto"] == 120
+    # Contabilidad UNA vez por el total; el cobro web queda ligado a las 3 matrículas.
+    assert len(conta) == 1 and conta[0].monto_soles == 330 and conta[0].matricula_id == "chr_fam_1" and conta[0].academia_id == "ac_c"
+    pago = next(p for p in stores.pagos if p.tipo == "cobro_web" and p.culqi_charge_id == "chr_fam_1")
+    assert pago.monto_centimos == 33000 and pago.concepto == "matricula:" + ",".join(ids)
+    # Suscripciones mes a mes: la 1.ª con el token, la 2.ª reusa la tarjeta de la 1.ª (un tkn_ se usa una vez).
+    assert [s.alumno_id for s in susc] == ids[:2] and susc[0].reusar_tarjeta_de == "" and susc[1].reusar_tarjeta_de == ids[0]
+    assert susc[0].monto_soles == 120 and susc[0].cobros_restantes == 5 and susc[1].monto_soles == 90 and susc[1].cobros_restantes == 1
+    # Un solo push al profe con los tres.
+    assert len(pushes) == 1 and pushes[0][0][1] == "3 alumnos nuevos 🎓" and "María López (Bola Verde · 2x/sem)" in pushes[0][0][2] and "S/ 330.00" in pushes[0][0][2]
+    # Comprobante familiar: los tres, descuentos y un solo N.º de operación.
+    comp = cli.get(r["url"]).text
+    for t in ("¡Matrícula familiar registrada!", "3 personas ya son alumnos", "Dennis Calagua", "María López", "Lucas Calagua", "S/ 330.00", "chr_fam_1",
+              "Descuento familiar −10 % (2.º de tu familia)", "Descuento familiar −20 % (3.º o más de tu familia)", "wa.me/51999888777"):
+        assert t in comp, t
+    # Ahora esta cuenta ya paga 3 aquí: el siguiente sería el 4.º (−20 %).
+    fam = cli.get("/web/academia/ac_c/descuento-familiar").json()
+    assert fam["fam"]["previas"] == 3 and fam["fam"]["previasHijos"] == 1 and fam["dtoFam"]["hijo"] == {"orden": 4, "pct": 20.0}
+    # Privacidad: otro no lo ve; el familiar con su correo ve SOLO su comprobante.
+    _entrar_como(cli, monkeypatch, "otro@gmail.com")
+    assert "Esta matrícula es privada" in cli.get(r["url"]).text
+    _entrar_como(cli, monkeypatch, "maria@gmail.com", nombre="María")
+    mio = cli.get(r["url"]).text
+    assert "¡Matrícula registrada!" in mio and "María López" in mio and "Lucas Calagua" not in mio
+    # Una sola persona sigue por /web/matricular con su comprobante individual (misma lógica).
+    _entrar_como(cli, monkeypatch, "dennis@gmail.com", nombre="Dennis")
+    r1 = cli.post("/web/matricular-varios", json={"academia_id": "ac_c", "token": "t", "personas": [{"plan_id": "naranja", "nombre": "Mateo", "celular": "999888777", "quien": "hijo", "edad": 6}]}).json()
+    assert r1["ok"] and r1["url"].startswith("/academia/ac_c/matricula/al_") and cargos[-1]["monto_centimos"] == 12000 and db.matriculas[-1]["ordenHermano"] == 4
+    # Cargo rechazado → nada se guarda.
+    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: {"ok": False, "error": "rechazada"})
+    n = len(db.matriculas)
+    assert cli.post("/web/matricular-varios", json={"academia_id": "ac_c", "token": "t", "personas": personas[:2]}).json()["error"] == "cargo_rechazado" and len(db.matriculas) == n
+    # El endpoint real de suscripción REUSA la tarjeta (crd_) de la 1.ª persona en vez de gastar el token otra vez.
+    monkeypatch.setattr(culqi, "disponible", lambda: True)
+    cards = []
+    monkeypatch.setattr(culqi, "crear_customer", lambda **kw: {"ok": True, "customer_id": "cus_1"})
+    monkeypatch.setattr(culqi, "crear_card", lambda **kw: cards.append(kw) or {"ok": True, "card_id": "crd_fam", "marca": "visa", "ultimos4": "4242"})
+    susc_real(pr.SuscripcionAlumnoReq(alumno_id="al_p1", academia_id="ac_c", email="dennis@gmail.com", token="tkn_x", monto_soles=120))
+    susc_real(pr.SuscripcionAlumnoReq(alumno_id="al_p2", academia_id="ac_c", email="dennis@gmail.com", token="tkn_x", monto_soles=90, reusar_tarjeta_de="al_p1"))
+    assert len(cards) == 1 and stores.suscripciones_alumno["al_p2"]["card_id"] == "crd_fam" and stores.suscripciones_alumno["al_p2"]["ultimos4"] == "4242"
+    # Otra cuenta no puede colgarse de esa tarjeta.
+    susc_real(pr.SuscripcionAlumnoReq(alumno_id="al_p3", academia_id="ac_c", email="otra@gmail.com", token="tkn_y", monto_soles=90, reusar_tarjeta_de="al_p1"))
+    assert len(cards) == 2

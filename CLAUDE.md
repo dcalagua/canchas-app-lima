@@ -1049,6 +1049,53 @@ para la API del APK.
   son el mecanismo, igual que para las canchas. Tests actualizados en
   `test_pozo_equipo.py` (+ `test_recordatorio_diario_de_liquidaciones_
   atrasadas`), `test_pagos.py`, `test_web_campeonatos.py`.
+- **CUENTA DE COBRO + LIQUIDACIÓN POR LOTE (BCP) (pedido del director,
+  26-sep-2026, tras el primer cobro live: "¿hay forma de transferirle al
+  dueño automático o desde la torre?"; "arranca con 1 y 2, el banco es
+  BCP"):** Culqi cobra pero NO dispersa (sin payouts en Perú) y Yape no tiene
+  API para empresas: la plata sale de la cuenta empresa de EBIM en el BCP.
+  `backend/growth/pagos/cuentas_cobro.py`. (1) **Cuenta de cobro**
+  (`stores.cuentas_cobro[email]`, snapshot): dónde recibe cada dueño/
+  organizador/academia. PE → Yape / Plin (celular 9 dígitos) o banco del
+  catálogo (`BANCOS`) + n.º de cuenta + **CCI 20 dígitos** (obligatorio si el
+  banco no es BCP) + titular + DNI/CE/RUC; BO y EC → banco + cuenta + titular
+  + CI/cédula/RUC. Todo por SELECCIÓN (tipo, banco, tipo de cuenta,
+  documento); solo números y titular se escriben. Validación única en el
+  backend (`validar`): `POST/GET/DELETE /pagos/cuenta-cobro[/{email}]` (app,
+  `X-App-Key` + auth por usuario si `PAGOS_AUTH_USUARIO=1`), `GET
+  /pagos/cuenta-cobro/catalogo` (público), web `POST /anfitrion/cuenta-cobro`
+  (sesión). APK: tarjeta en **Mi billetera** ("Recibes tus liquidaciones en …"
+  o aviso ámbar "Registra tu cuenta de cobro" si hay plata por recibir) →
+  `widgets/cuenta_cobro_sheet.dart` (país = `paisBilletera`, catálogo del
+  backend, prellena nombre y DNI verificado); web: tarjeta "Cuenta de cobro"
+  en Modo anfitrión → Ingresos (`_tarjeta_cuenta_cobro`, `_JS_CUENTA_COBRO`).
+  (2) **Lote de liquidación** (torre `/admin` → Liquidaciones → "📦 Liquidar
+  por lote (BCP)"; `stores.lotes_liquidacion`, últimos 60): `POST
+  /pagos/liquidaciones/lote/preparar {moneda, umbral_soles}` agrupa TODO lo
+  pendiente por dueño (`armar_lote`) y clasifica: `archivo` (cuenta bancaria
+  peruana → entra al TXT), `manual` (Yape/Plin u otro país: el operador paga
+  a mano), `sin_cuenta`, `bajo_umbral` (se acumula; chips Sin mínimo / 20 /
+  50 / 100, default 50). `GET …/lote/{id}/telecredito.txt` = planilla de
+  **pagos masivos de Telecrédito Web** (`archivo_telecredito`: cabecera 112 +
+  detalle 225 caracteres de ancho fijo, tablas `_CABECERA`/`_DETALLE`;
+  cuenta BCP → tipo C/A con su número, otro banco → tipo B con el CCI;
+  moneda 0001; doc 1 DNI / 4 CE / 6 RUC; sin tildes ni eñes; CRLF), exige la
+  **cuenta BCP de CARGO de EBIM** (`POST …/config-bcp`, `stores.config[
+  liq_bcp_cuenta|liq_bcp_tipo]`, por ambiente). `GET …/detalle.csv` =
+  respaldo universal con TODAS las filas. `POST …/lote/{id}/pagado
+  {referencia, incluir_manuales}` marca cada liquidación del lote como pagada
+  (`transferencia`, o `yape` para las manuales si se marcó la casilla) con la
+  misma referencia; idempotente. `GET /pagos/liquidaciones/pendientes` ahora
+  trae `moneda` por fila, `cuentas` (resumen por dueño: etiqueta, canal,
+  `cuenta_pago` para "⧉ Copiar"), `bcp` y `lotes`. **OJO TXT:** la estructura
+  es la del formato clásico "Pago a proveedores" de Telecrédito; no se pudo
+  descargar el instructivo oficial desde el entorno de desarrollo → la PRIMERA
+  carga en Telecrédito es la validación (el banco rechaza con el campo exacto
+  y no mueve nada hasta firmar la planilla); cualquier ajuste es una fila de
+  la tabla. Las interbancarias (CCI) tienen comisión del banco: por eso el
+  umbral. Backlog: dispersión por API (dLocal / Kushki / API BCP) sobre esta
+  misma base = botón "Transferir" real; "Retirar" a pedido del dueño. Tests
+  `tests/test_cuentas_cobro.py`.
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
   VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
   Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el
@@ -1149,6 +1196,50 @@ para la API del APK.
   <correo>" y "N.º de la familia". Etiquetas del tarifario: "2.º de la
   familia −10 %" (o "hermano" si es solo hijos). Test
   `test_matricula_familiar_un_pagador_varias_personas`.
+- **CARRITO DE MATRÍCULA (pedido del director, 26-sep-2026: "quiero
+  matricularme con mi esposa en bola verde, mi hijo en bola naranja y yo
+  pago todo" → "Si haz ese carrito"):** en la ficha de la academia (app y
+  web) se agregan VARIAS personas de la familia, cada una con su programa,
+  sede, quién es (yo / hijo / familiar) y forma de pago (mes a mes o
+  adelantado × cantidad), se ve el total con los descuentos y se PAGA UNA
+  SOLA VEZ. **Descuento familiar EN SECUENCIA:** la 1.ª del carrito sigue a
+  las matrículas que YA paga esa cuenta, la 2.ª cuenta también a la 1.ª, etc.
+  (1.º completo, 2.º −H2, 3.º+ −H3, respetando `descuentoFamiliar`); si se
+  quita a alguien las siguientes se reacomodan. Lo calcula SIEMPRE el
+  servidor en la web; el navegador/app solo lo muestran. **Web**
+  (`web/academia.py`): paso 5 "¿Matriculas a más personas?" + botón
+  "➕ Guardar a esta persona y agregar otra" (`#btnAgregar`; el formulario
+  se vacía para la siguiente, "Para mí" queda deshabilitado si ya va el
+  titular), el resumen lista `.cart-it` por persona con ✕ y "Persona N (en
+  edición)", botón "Pagar S/ X · N personas"; `cfg.fam` (`_fam_base`:
+  previas, previasHijos, familiar, h2, h3; también en
+  `/web/academia/{id}/descuento-familiar`) para el orden en secuencia en el
+  JS (`ordenPara`). `POST /web/matricular-varios {academia_id, token, medio,
+  personas:[PersonaReq…]}` (máx. 8) → `_preparar_personas` (valida TODO
+  antes de cobrar, error con `persona` = índice y prefijo "Persona N:",
+  nombre repetido → `repetida`) → `_cobrar_y_matricular`: UN
+  `culqi.crear_cargo` por la suma ("Matrícula X · N personas"), una fila
+  por persona (`_fila_matricula`, ids `al_<µs+k>`, mismo `operacionId`),
+  `post_matricula` UNA vez por el total (comisión sobre lo cobrado),
+  `registrar_pago(cobro_web, concepto matricula:<id1>,<id2>…)`,
+  suscripción mes a mes por persona y UN push al dueño ("N alumnos nuevos
+  🎓"). `/web/matricular` (una persona) ahora pasa por el mismo camino.
+  Comprobante familiar `GET /academia/{id}/matriculas?ids=a,b,c` (solo el
+  pagador; un familiar con correo propio ve solo el suyo). **Un `tkn_` de
+  Culqi se usa una vez:** `SuscripcionAlumnoReq.reusar_tarjeta_de` (alumno
+  de la 1.ª suscripción, misma cuenta) hace que la 2.ª persona mes a mes
+  reuse la `crd_` guardada en vez de gastar el token otra vez (app:
+  `crearSuscripcionAlumno(reusarTarjetaDe:)`, se esperan en orden). **App**
+  (`academia_detalle_screen.dart`): `_CarritoMatricula` (ChangeNotifier en
+  `_PlanesSectionState`), la hoja `_HojaDatosAlumno(carrito:)` muestra "Ya
+  llevas N personas (S/ X)", calcula el orden con `_pseudoAlumnos` del
+  carrito, botón secundario "Agregar otra persona (pago después, todo
+  junto)" (`_DatosMatricula.agregarOtra`) y primario "Pagar todo · S/ X · N
+  personas"; `_CarritoCard` bajo los planes (filas con ✕, total, "Pagar
+  todo"); `_pagarMatriculas` = UN `PagoTarjeta.cobrar`, `registrarMatricula`
+  una vez por el total, `appState.matricular` por persona con el mismo
+  `operacionId` (`_recalcularCarrito` + `_totalMatricula`, espejo de
+  `_total` web). Test `test_carrito_de_matricula_familiar_un_solo_pago`.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en
@@ -1384,6 +1475,13 @@ off → redeploy inmediato en cada push). URL pública:
     `lib/` → APK/AAB de PRD = run 1388 (`workflow_dispatch`, `ref=prd`,
     `entorno=prod`). OJO: un APK anterior no ve "Unirme" con el fixture
     publicado ni el ingreso de torneo como "por recibir" → actualizar.
+    **Pase del 26-sep-2026 (2.º, autorizado: "Pasa a PRD"):** `prd` = merge
+    `46ec72b` (grupos armados a mano en formato grupos, fecha real en el
+    historial de reservas, pago familiar en academias: "Para otra persona",
+    "Mi familia · un solo pago" y descuento familiar por orden). Sin SQL ni
+    Edge; sin variables nuevas. CAMBIÓ `lib/` → APK/AAB de PRD por
+    `workflow_dispatch` (`ref=prd`, `entorno=prod`). OJO: un APK anterior no
+    tiene "Para otra persona" ni la tarjeta "Mi familia" → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,

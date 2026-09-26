@@ -15,6 +15,7 @@ import 'pago_sheet.dart';
 import 'recargar_saldo_screen.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/cuenta_cobro_sheet.dart';
 import '../widgets/ilustracion_pichangol.dart';
 
 /// Cuenta del club: saldo prepago (modelo inDrive), recargas y movimientos.
@@ -32,6 +33,10 @@ class _CuentaScreenState extends State<CuentaScreen> {
   List<Map<String, dynamic>> _recargasQrPend = const [];
   // Promo vigente del bono de recarga (banner). null = sin promo.
   Map<String, dynamic>? _promoBono;
+  // CUENTA DE COBRO (dónde recibe sus liquidaciones): resumen del backend.
+  // null = aún no cargó; {'tiene': false} = no registrada.
+  Map<String, dynamic>? _cuentaCobro;
+  Map<String, dynamic>? _cuentaCobroDatos;
 
   @override
   void initState() {
@@ -42,6 +47,7 @@ class _CuentaScreenState extends State<CuentaScreen> {
     // reiniciar la app. Antes (StatelessWidget) no re-sincronizaba nunca.
     appState.flushContabilidad().then((_) => appState.sincronizarSaldo());
     _cargarRecargasQr();
+    _cargarCuentaCobro();
     PagosService.promos().then((p) {
       final b = p?['bono_recarga'];
       if (mounted && b is Map && (b['activo'] ?? false) == true) {
@@ -115,6 +121,30 @@ class _CuentaScreenState extends State<CuentaScreen> {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text(msj)));
     }
+  }
+
+  Future<void> _cargarCuentaCobro() async {
+    final e = (appState.usuario?.email ?? '').toLowerCase();
+    if (e.isEmpty) return;
+    final r = await PagosService.cuentaCobro(e);
+    if (!mounted || r == null) return;
+    setState(() {
+      _cuentaCobro = Map<String, dynamic>.from((r['resumen'] as Map?) ?? {});
+      _cuentaCobroDatos = r['cuenta'] is Map
+          ? Map<String, dynamic>.from(r['cuenta'] as Map)
+          : null;
+    });
+  }
+
+  Future<void> _editarCuentaCobro() async {
+    final res = await CuentaCobroSheet.mostrar(context,
+        pais: appState.paisBilletera, actual: _cuentaCobroDatos);
+    if (res == null || !mounted) return;
+    setState(() => _cuentaCobro = res);
+    _cargarCuentaCobro();
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        backgroundColor: pino,
+        content: Text('Cuenta de cobro guardada ✓')));
   }
 
   Future<void> _cargarRecargasQr() async {
@@ -251,6 +281,79 @@ class _CuentaScreenState extends State<CuentaScreen> {
                           style: t.titleMedium?.copyWith(
                               color: teal, fontWeight: FontWeight.w800)),
                     ],
+                  ),
+                );
+              }),
+              // CUENTA DE COBRO: a dónde se transfieren las liquidaciones.
+              // Sin cuenta y con plata por recibir, el aviso es ámbar.
+              Builder(builder: (context) {
+                if (!appState.logueado) return const SizedBox.shrink();
+                final c = _cuentaCobro;
+                final tiene = c?['tiene'] == true;
+                final porRecibir = appState.movimientos
+                    .where((m) =>
+                        m.tipo == TipoMovimiento.liquidacion && !m.liquidado)
+                    .fold<int>(0, (a, m) => a + m.monto);
+                final urgente = !tiene && porRecibir > 0;
+                return Container(
+                  margin: const EdgeInsets.only(top: 12),
+                  decoration: BoxDecoration(
+                    color: urgente
+                        ? estadoWarnBg
+                        : Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                        color: urgente ? estadoWarnFg.withOpacity(0.4) : trazo),
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: _editarCuentaCobro,
+                    child: Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Row(
+                        children: [
+                          Icon(
+                              tiene
+                                  ? (c?['tipo'] == 'banco'
+                                      ? Icons.account_balance_outlined
+                                      : Icons.phone_android_outlined)
+                                  : Icons.add_card_outlined,
+                              color: urgente ? estadoWarnFg : lima),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                    tiene
+                                        ? 'Recibes tus liquidaciones en'
+                                        : (c == null
+                                            ? 'Cuenta de cobro'
+                                            : 'Registra tu cuenta de cobro'),
+                                    style: t.bodySmall?.copyWith(
+                                        color: textoTenue,
+                                        fontWeight: FontWeight.w600)),
+                                Text(
+                                    tiene
+                                        ? (c?['etiqueta'] as String? ?? '')
+                                        : (c == null
+                                            ? 'Cargando…'
+                                            : (urgente
+                                                ? 'Tienes plata por recibir y aún no sabemos dónde transferirte.'
+                                                : 'Yape, Plin o cuenta bancaria: a dónde te transferimos.')),
+                                    style: t.bodyMedium?.copyWith(
+                                        fontWeight: FontWeight.w700,
+                                        color: urgente ? estadoWarnFg : null,
+                                        height: 1.25)),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Icon(Icons.chevron_right,
+                              color: urgente ? estadoWarnFg : textoTenue),
+                        ],
+                      ),
+                    ),
                   ),
                 );
               }),

@@ -629,11 +629,15 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
     """"Ingresos" de Airbnb: la billetera del dueño tal cual el backend (saldo,
     regalo, por recibir, liquidaciones pagadas y últimos movimientos)."""
     from pagos.router import _liquidacion_dict
+    from pagos import cuentas_cobro as _cc
     ses, canchas, resp = _contexto(request, "/anfitrion/ingresos")
     if resp is not None:
         return resp
     email = ses["email"]
     sim = _moneda_de(canchas[0])[0] if canchas else "S/"
+    pais_iso = _pais_de(canchas[0]) if canchas else "PE"
+    cuenta = stores.cuenta_cobro(email)
+    res_cta = _cc.resumen(cuenta)
     saldo = stores.saldo_centimos(email) / 100.0
     promo = stores.saldo_promo_centimos(email) / 100.0
     liqs = [_liquidacion_dict(p) | {"liquidado": p.liquidado, "liquidado_en": p.liquidado_en.isoformat() if p.liquidado_en else "", "medio": p.medio or ""}
@@ -658,13 +662,112 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
         + (f"<div class='kpi'><small>Saldo de regalo 🎁</small><b>{e(sim)} {promo:.2f}</b><small>cubre comisiones</small></div>" if promo > 0 else "")
         + "</div>"
         f"<p style='margin-top:14px'><a class='btn sec' href='{PLAY_URL}' rel='noopener' style='padding:10px 16px;font-size:14px'>Recargar saldo en la app</a></p>"
-        "<h2 style='margin-top:28px'>Por recibir</h2>"
+        + _tarjeta_cuenta_cobro(cuenta, res_cta, pais_iso, ses, por_recibir > 0)
+        + "<h2 style='margin-top:28px'>Por recibir</h2>"
         + ("".join(fila_liq(x) for x in pend) if pend else "<div class='anf-vacio'>Nada pendiente. Cuando un jugador pague en línea, el neto aparece aquí.</div>")
         + "<h2 style='margin-top:28px'>Liquidaciones pagadas</h2>"
         + ("".join(fila_liq(x) for x in pagadas) if pagadas else "<div class='anf-vacio'>Aún no te hemos transferido liquidaciones.</div>")
         + "<h2 style='margin-top:28px'>Últimos movimientos</h2>"
         + ("".join(fila_mov(p) for p in movs) if movs else "<div class='anf-vacio'>Sin movimientos todavía.</div>"))
-    return ui.shell("Ingresos", cuerpo, nav=_cabecera("ingresos", ses), sesion=ses, ancho=True, titulo_tab="Ingresos · Modo anfitrión")
+    return ui.shell("Ingresos", cuerpo + f"<script>window.__cc={json.dumps({'catalogo': _cc.catalogo(), 'pais': pais_iso, 'cuenta': cuenta or {}, 'nombre': ses.get('nombre') or ''}, ensure_ascii=False)};</script><script>{_JS_CUENTA_COBRO}</script>",
+                    nav=_cabecera("ingresos", ses), sesion=ses, ancho=True, titulo_tab="Ingresos · Modo anfitrión")
+
+
+def _tarjeta_cuenta_cobro(cuenta: dict | None, res: dict, pais_iso: str, ses: dict, hay_pendiente: bool) -> str:
+    """"Cuenta de cobro": dónde le transferimos sus liquidaciones. Igual que en
+    la billetera del app (pedido del director, 26-sep-2026). Todo por
+    selección (tipo, banco, documento); solo números y titular se escriben."""
+    if cuenta:
+        estado = (f"<div class='cc-actual'><span class='ico'>{'🏦' if cuenta.get('tipo') == 'banco' else '📱'}</span>"
+                  f"<div><b>{e(res['etiqueta'])}</b><small>Aquí te transferimos lo que recibes por reservas, ventas y torneos."
+                  f"{' Los pagos por Yape/Plin los hacemos a mano; con cuenta bancaria entras al lote automático del banco.' if res.get('canal') == 'manual' and pais_iso == 'PE' else ''}</small></div>"
+                  "<button type='button' class='btn sec' id='ccEditar'>Cambiar</button></div>")
+    else:
+        estado = ("<div class='cc-actual sin'><span class='ico'>⚠️</span><div><b>Aún no registraste dónde cobrar</b>"
+                  f"<small>{'Ya tienes plata por recibir: ' if hay_pendiente else ''}Regístrala para que Pichangol pueda transferirte."
+                  "</small></div><button type='button' class='btn' id='ccEditar'>Registrar cuenta</button></div>")
+    return (f"<section class='panel' id='cuentaCobro' style='margin-top:18px'><h2 style='margin-top:0'>Cuenta de cobro</h2>{estado}"
+            "<form id='ccForm' hidden style='margin-top:14px'>"
+            "<label>¿Cómo quieres recibir tu plata?</label><div class='chips' id='ccTipo'></div>"
+            "<div id='ccBancoBox' hidden><label>Banco</label><div class='chips' id='ccBanco'></div>"
+            "<label>Tipo de cuenta</label><div class='chips' id='ccTipoCta'></div></div>"
+            "<label for='ccNumero' id='ccNumeroLbl'>Número</label><input id='ccNumero' inputmode='numeric' autocomplete='off' maxlength='24'>"
+            "<div id='ccCciBox' hidden><label for='ccCci'>CCI <span class='req'>código interbancario de 20 dígitos · en tu app del banco</span></label><input id='ccCci' inputmode='numeric' autocomplete='off' maxlength='26'></div>"
+            "<label for='ccTitular'>Titular <span class='req'>tal como figura en la cuenta</span></label><input id='ccTitular' maxlength='80' autocomplete='name'>"
+            "<label>Documento del titular</label><div class='chips' id='ccDoc'></div>"
+            "<input id='ccDocNum' inputmode='numeric' autocomplete='off' maxlength='15' placeholder='Número de documento' style='margin-top:6px'>"
+            "<div class='err' id='ccErr' style='display:none'></div>"
+            "<div class='acciones' style='margin-top:12px'><button type='submit' class='btn' id='ccGuardar'>Guardar cuenta de cobro</button>"
+            "<button type='button' class='btn sec' id='ccCancelar'>Cancelar</button></div>"
+            "<p class='sub' style='font-size:12.5px;margin-top:10px'>Solo la usamos para transferirte. Nunca se muestra a jugadores.</p>"
+            "</form></section>"
+            "<style>.cc-actual{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--gris);border-radius:14px;padding:12px 14px}"
+            ".cc-actual .ico{font-size:22px}.cc-actual>div{flex:1;min-width:200px}.cc-actual small{display:block;color:var(--tenue);font-weight:600;margin-top:2px}"
+            ".cc-actual.sin{background:#FFF3D6}#ccForm label{margin-top:12px}</style>")
+
+
+_JS_CUENTA_COBRO = r"""
+(function(){
+  var C = window.__cc, cat = C.catalogo[C.pais] || C.catalogo.PE, $ = function(id){ return document.getElementById(id); };
+  var st = { tipo: (C.cuenta.tipo) || cat.tipos[0].codigo, banco: C.cuenta.banco || '', tipo_cuenta: C.cuenta.tipo_cuenta || 'ahorros', doc: C.cuenta.doc_tipo || cat.documentos[0].codigo };
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function chips(id, ops, sel, on){ var el = $(id); el.innerHTML = ops.map(function(o){ return "<button type='button' class='chip" + (o.codigo === sel ? ' sel' : '') + "' data-v='" + esc(o.codigo) + "'>" + esc(o.nombre) + '</button>'; }).join('');
+    el.querySelectorAll('.chip').forEach(function(b){ b.addEventListener('click', function(){ on(b.dataset.v); pintar(); }); }); }
+  function pintar(){
+    chips('ccTipo', cat.tipos, st.tipo, function(v){ st.tipo = v; });
+    var banco = st.tipo === 'banco';
+    $('ccBancoBox').hidden = !banco;
+    if(banco){ chips('ccBanco', cat.bancos, st.banco, function(v){ st.banco = v; }); chips('ccTipoCta', cat.tipos_cuenta, st.tipo_cuenta, function(v){ st.tipo_cuenta = v; }); }
+    $('ccNumeroLbl').textContent = banco ? 'Número de cuenta' : ('Celular de ' + (st.tipo === 'plin' ? 'Plin' : 'Yape') + ' (' + cat.tel_longitud + ' dígitos)');
+    $('ccCciBox').hidden = !(banco && cat.cci && st.banco !== 'BCP');
+    chips('ccDoc', cat.documentos, st.doc, function(v){ st.doc = v; });
+  }
+  var form = $('ccForm'), btn = $('ccEditar');
+  function abrir(){ form.hidden = false; $('ccNumero').value = C.cuenta.numero || ''; $('ccCci').value = C.cuenta.cci || ''; $('ccTitular').value = C.cuenta.titular || C.nombre || ''; $('ccDocNum').value = C.cuenta.doc_numero || ''; pintar(); form.scrollIntoView({behavior:'smooth', block:'center'}); }
+  if(btn) btn.addEventListener('click', abrir);
+  $('ccCancelar').addEventListener('click', function(){ form.hidden = true; });
+  form.addEventListener('submit', function(ev){
+    ev.preventDefault(); var err = $('ccErr'); err.style.display = 'none';
+    var body = { pais: C.pais, tipo: st.tipo, banco: st.banco, tipo_cuenta: st.tipo_cuenta, numero: $('ccNumero').value, cci: $('ccCci').value, titular: $('ccTitular').value, doc_tipo: st.doc, doc_numero: $('ccDocNum').value };
+    var b = $('ccGuardar'); b.disabled = true; if(window.pcgCargando) pcgCargando('Guardando…', {demora: 300});
+    fetch('/anfitrion/cuenta-cobro', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
+      .then(function(r){ return r.json(); })
+      .then(function(j){ if(window.pcgCargando) pcgCargando(false); b.disabled = false;
+        if(j.ok){ if(window.pcgIr) pcgIr('/anfitrion/ingresos#cuentaCobro', 'Guardado ✓'); else location.reload(); return; }
+        err.textContent = j.error || 'No se pudo guardar.'; err.style.display = 'block';
+        var campo = {numero:'ccNumero', cci:'ccCci', titular:'ccTitular', doc_numero:'ccDocNum'}[j.campo]; if(campo && $(campo)) $(campo).focus(); })
+      .catch(function(){ if(window.pcgCargando) pcgCargando(false); b.disabled = false; err.textContent = 'No se pudo guardar. Revisa tu conexión.'; err.style.display = 'block'; });
+  });
+})();
+"""
+
+
+@router.post("/anfitrion/cuenta-cobro")
+async def guardar_cuenta_cobro(request: Request) -> JSONResponse:
+    try:
+        _cuerpo_json = await request.json()
+    except Exception:  # noqa: BLE001
+        _cuerpo_json = _JSON_INVALIDO
+    return await run_in_threadpool(_guardar_cuenta_cobro, request, _cuerpo_json)
+
+
+def _guardar_cuenta_cobro(request: Request, _cuerpo_json) -> JSONResponse:
+    """Misma validación que `POST /pagos/cuenta-cobro` del app; el correo es
+    el de la sesión de Google (nadie edita la cuenta de otro)."""
+    from pagos import cuentas_cobro as _cc
+    ses = sesion.de_request(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
+    try:
+        body = _leer_json(_cuerpo_json)
+    except Exception:  # noqa: BLE001
+        return JSONResponse({"ok": False, "error": "Datos inválidos."}, status_code=400)
+    cuenta, err, campo = _cc.validar(body if isinstance(body, dict) else {})
+    if cuenta is None:
+        return JSONResponse({"ok": False, "error": err, "campo": campo})
+    c = stores.guardar_cuenta_cobro(ses["email"], cuenta)
+    print(f"[cuenta-cobro] {ses['email']} (web) → {_cc.resumen(c)['etiqueta']}", flush=True)
+    return JSONResponse({"ok": True, "resumen": _cc.resumen(c)})
 
 
 def _fila_cancha_local(c: dict) -> str:

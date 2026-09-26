@@ -518,6 +518,12 @@ class Stores:
         # creado_en, usados: [emails]}}. Un canje por usuario por cupón; el
         # operador los crea/desactiva en la torre.
         self.cupones: dict[str, dict] = {}
+        # CUENTA DE COBRO de cada dueño/organizador/academia (dónde recibe sus
+        # liquidaciones: Yape/Plin o banco+CCI, por país) y LOTES de liquidación
+        # (archivo Telecrédito BCP + "marcar lote pagado"). Ver
+        # `pagos/cuentas_cobro.py`. email → cuenta; lista de lotes (últimos 60).
+        self.cuentas_cobro: dict[str, dict] = {}
+        self.lotes_liquidacion: list[dict] = []
         # SUSCRIPCIONES a servicios de marketing (landing/redes/presencia). Clave
         # "{academia_id}:{servicio}" -> dict con estado y próximo cobro. Se debita
         # del saldo del dueño cada mes (mismo saldo prepago de Culqi).
@@ -878,6 +884,29 @@ class Stores:
                 return p
         return None
 
+    # --- cuenta de cobro + lotes de liquidación ---
+    def cuenta_cobro(self, email: str) -> dict | None:
+        c = self.cuentas_cobro.get((email or "").strip().lower())
+        return dict(c) if c else None
+
+    def guardar_cuenta_cobro(self, email: str, cuenta: dict) -> dict:
+        e = (email or "").strip().lower()
+        c = dict(cuenta, email=e, actualizado_en=ahora().isoformat())
+        self.cuentas_cobro[e] = c
+        return dict(c)
+
+    def borrar_cuenta_cobro(self, email: str) -> bool:
+        return self.cuentas_cobro.pop((email or "").strip().lower(), None) is not None
+
+    def guardar_lote(self, lote: dict) -> dict:
+        self.lotes_liquidacion = [l for l in self.lotes_liquidacion if l.get("id") != lote.get("id")]
+        self.lotes_liquidacion.append(dict(lote))
+        self.lotes_liquidacion = self.lotes_liquidacion[-60:]
+        return dict(lote)
+
+    def lote(self, lote_id: str) -> dict | None:
+        return next((dict(l) for l in self.lotes_liquidacion if l.get("id") == lote_id), None)
+
     # --- vistas / impresiones de destacados (métrica de impacto del boost) ---
     def registrar_vista(self, id_: str, dia: str | None = None, n: int = 1) -> None:
         """Suma [n] impresiones a [id_] (dueno_id o academia_id) en [dia]
@@ -1043,6 +1072,8 @@ class Stores:
             "ranking_snapshot": dict(self.ranking_snapshot),
             "recargas_qr": [dict(r) for r in self.recargas_qr],
             "cupones": {k: dict(v) for k, v in self.cupones.items()},
+            "cuentas_cobro": {k: dict(v) for k, v in self.cuentas_cobro.items()},
+            "lotes_liquidacion": [dict(l) for l in self.lotes_liquidacion[-60:]],
         }
 
     def load_state(self, data: dict) -> None:
@@ -1140,6 +1171,9 @@ class Stores:
         }
         self.ranking_snapshot = dict(data.get("ranking_snapshot") or {})
         self.recargas_qr = [dict(r) for r in data.get("recargas_qr", [])]
+        self.cuentas_cobro = {
+            k: dict(v) for k, v in (data.get("cuentas_cobro") or {}).items()}
+        self.lotes_liquidacion = [dict(l) for l in (data.get("lotes_liquidacion") or [])]
         self.cupones = {
             k: dict(v) for k, v in (data.get("cupones") or {}).items()
         }
