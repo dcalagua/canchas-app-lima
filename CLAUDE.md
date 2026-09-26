@@ -949,6 +949,16 @@ para la API del APK.
   `test_enlace_del_capitan_une_directo_al_equipo`,
   `test_descarga_va_a_play_en_produccion`,
   `test_assetlinks_acepta_huella_sin_dos_puntos`.
+- **WHATSAPP DESDE LA WEB SIN "��" (queja del director, 26-sep-2026,
+  captura de un resumen compartido desde Mis campeonatos):** WhatsApp para
+  WINDOWS rompe los emojis de 4 bytes (🏆 📊 👉 📍 🎁 💰 📲…) que viajan por
+  `wa.me/?text=` y los pinta como "��"; los de 2 bytes (⚽ ⭐ ✅ ➡ ⚑ ✨ ▶) sí
+  llegan. Regla: TODO enlace de WhatsApp que arme la web pasa por
+  `ui.enlace_whatsapp(texto, tel="")` (usa `ui.texto_whatsapp`, que traduce
+  con `_WA_EMOJI_SEGURO` y quita cualquier astral sin traducción). Ya lo usan
+  Mis campeonatos (publicidad/resumen) y el comprobante de reserva. El APK
+  comparte desde el teléfono y no tiene el problema: su texto queda igual.
+  Test `test_whatsapp_desde_la_web_sin_emojis_de_4_bytes`.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en

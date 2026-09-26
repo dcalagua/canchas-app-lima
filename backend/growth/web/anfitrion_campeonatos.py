@@ -645,7 +645,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
                  f"{('<div>🥈 ' + e((L.participante(c, sub) or {}).get('nombre', '')) + '</div>') if sub else ''}</div>")
     enlace = _enlace(c)
     texto_wa = _publicidad(c) if (not c.get("cerrado") and not L.fixture_generado(c) and not tiempos) else _resumen(c)
-    wa = "https://wa.me/?text=" + urllib.parse.quote(texto_wa)
+    wa = ui.enlace_whatsapp(texto_wa)  # texto seguro para WhatsApp Windows
     logo = f"<img src='{e(c['logoUrl'])}' alt=''>" if c.get("logoUrl") else f"<span>{_EMOJI.get(dep, '🏆')}</span>"
     ausp = "".join(f"<div class='foto' data-url='{e(u)}'><img src='{e(u)}' alt=''><div class='acc'><button type='button' class='mini' data-quitar-img='ausp' title='Quitar'>✕</button></div></div>" for u in (c.get("auspiciadoresLogos") or []))
     fotos = "".join(f"<div class='foto' data-url='{e(u)}'><img src='{e(u)}' alt=''><div class='acc'><a class='mini' href='{e(u)}' target='_blank' rel='noopener' title='Ver' style='text-decoration:none;display:flex;align-items:center;justify-content:center'>🔍</a><button type='button' class='mini' data-quitar-img='foto' title='Quitar'>✕</button></div></div>" for u in (c.get("fotos") or []))

@@ -614,6 +614,44 @@ def e(s) -> str:
     return _html.escape(str(s if s is not None else ""), quote=True)
 
 
+# ── WhatsApp desde la web ────────────────────────────────────────────────────
+# WhatsApp para WINDOWS rompe los caracteres fuera del plano básico (emojis de
+# 4 bytes: 🏆 📊 👉 📍 🎁 💰 📲 📅 🏁 🔗 💪…) cuando el texto llega por un
+# enlace `wa.me/?text=`: los muestra como "��" (queja del director,
+# 26-sep-2026, captura de un resumen compartido desde Mis campeonatos). Los
+# emojis de 2 bytes (⚽ ⭐ ✅ ➡ ⚑ ✨ ⚔ ⚡ ☎ ✔ ▶) sí llegan bien en todos lados.
+# Regla: todo enlace de WhatsApp que arme la WEB pasa por `enlace_whatsapp`,
+# que traduce los emojis astrales a un equivalente básico y quita los que no
+# tienen traducción (nunca "�"). El APK comparte desde el teléfono y no tiene
+# este problema, así que su texto queda como está.
+_WA_EMOJI_SEGURO = {
+    "🏆": "⭐", "🥇": "⭐", "🥈": "✨", "🥉": "✨", "🎁": "✨", "🎉": "✨",
+    "👉": "➡", "📲": "➡", "🔗": "➡", "📊": "▶", "📋": "▶", "🏊": "▶",
+    "📍": "⚑", "🏁": "⚑", "📅": "⌚", "🗓": "⌚", "⏱": "⏱", "💰": "$",
+    "💪": "✊", "🙌": "✊", "🔥": "⚡", "💬": "✉", "📞": "☎", "📱": "☎",
+    "🎾": "⭐", "🏀": "⭐", "🏐": "⭐", "🏓": "⭐", "🥅": "⭐", "🎯": "⭐",
+    "⚔️": "⚔", "⚽️": "⚽",
+}
+
+
+def texto_whatsapp(texto: str) -> str:
+    """El mismo texto sin caracteres fuera del plano básico (ver arriba)."""
+    t = str(texto or "")
+    for k, v in _WA_EMOJI_SEGURO.items():
+        t = t.replace(k, v)
+    # Selector de variante (FE0F) suelto y cualquier astral sin traducción.
+    t = "".join(ch for ch in t if ord(ch) <= 0xFFFF and ch != "\ufe0f")
+    # Espacios dobles que dejan los emojis quitados, sin tocar los saltos.
+    return "\n".join(" ".join(l.split(" ")).replace("  ", " ").rstrip() for l in t.split("\n"))
+
+
+def enlace_whatsapp(texto: str, tel: str = "") -> str:
+    """`https://wa.me/[tel]?text=…` con el texto seguro para WhatsApp Windows."""
+    import urllib.parse as _up
+    digitos = "".join(ch for ch in str(tel or "") if ch.isdigit())
+    return f"https://wa.me/{digitos}?text={_up.quote(texto_whatsapp(texto))}"
+
+
 PELOTA_SVG = (
     "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='12' cy='12' r='10' fill='#0E8F67'/>"
     "<path fill='#fff' d='M12 6.2l3.3 2.4-1.3 3.9H10l-1.3-3.9L12 6.2z'/>"

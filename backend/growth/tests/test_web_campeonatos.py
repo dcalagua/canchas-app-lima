@@ -329,3 +329,35 @@ def test_enlaces_publicos_sin_espacios_aunque_la_variable_los_traiga(db, monkeyp
     assert f"https://pg.test/c/{cid}" in r.text
     # Ni con espacio literal ni codificado (así salía en QAS: `pichangol.app%20/c/...`).
     assert "pg.test /" not in r.text and "pg.test%20" not in r.text and "pg.test%20/" not in r.text
+
+
+def test_whatsapp_desde_la_web_sin_emojis_de_4_bytes(db, monkeypatch):
+    """Queja del director (26-sep-2026, captura): el resumen compartido desde
+    Mis campeonatos llegaba a WhatsApp Windows con "��" en vez de 🏆 📊 👉.
+    WhatsApp para Windows rompe los caracteres fuera del plano básico que
+    viajan por `wa.me/?text=`; el enlace se arma con `ui.enlace_whatsapp`,
+    que los traduce a emojis de 2 bytes (⭐ ▶ ➡) y nunca deja astrales."""
+    from web import ui
+    seguro = ui.texto_whatsapp("🏆⚽ *COPA*\n📊 Grupo A:\n👉 https://x.test/c/1\n🎾 tenis 🤷")
+    assert seguro == "⭐⚽ *COPA*\n▶ Grupo A:\n➡ https://x.test/c/1\n⭐ tenis"
+    assert all(ord(ch) <= 0xFFFF for ch in seguro)
+    assert ui.enlace_whatsapp("hola ⭐", "+51 999 888 777") == "https://wa.me/51999888777?text=hola%20%E2%AD%90"
+
+    cli = TestClient(app, base_url="https://testserver")
+    fake = _preparar(monkeypatch)
+    _entrar_como(cli, monkeypatch, "orga@gmail.com", "Orga")
+    cid = L.nuevo_id()
+    c = {"id": cid, "dueno": "orga@gmail.com", "nombre": "Beata Imelda 2026", "deporte": "futbol", "formato": "grupos", "minPartidos": 2,
+         "participantes": [{"id": f"p{i}", "nombre": f"Equipo {i}", "contacto": "", "email": ""} for i in range(6)],
+         "partidos": [], "inscripcionAbierta": True, "codigo": "ABC123", "fechas": "", "costoInscripcion": 0}
+    c["partidos"] = L.generar_fixture(c)
+    fake.rows[cid] = c
+    r = cli.get(f"/anfitrion/campeonatos/{cid}")
+    assert r.status_code == 200
+    import re
+    href = re.search(r"href='(https://wa\.me/\?text=[^']+)'", r.text).group(1)
+    import urllib.parse
+    texto = urllib.parse.unquote(href.split("text=", 1)[1])
+    assert "Grupo A" in texto and "Beata Imelda 2026" in texto and "https://pg.test/c/" in texto
+    assert all(ord(ch) <= 0xFFFF for ch in texto), texto
+    assert "%F0%9F" not in href  # ningún emoji de 4 bytes en el enlace
