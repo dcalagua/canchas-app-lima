@@ -1021,7 +1021,16 @@ para la API del APK.
   codifica una List con llaves de array) → abre la ficha y dispara
   `unirseConEnlace`. Tests `test_enlace_del_equipo_sigue_valiendo_con_el_
   fixture_publicado`, `test_equipos_viejos_sin_codigo_reciben_enlace_al_abrir_
-  el_detalle`.
+  el_detalle`. **ENTRADA DEL JUGADOR (queja del director, 26-sep-2026:
+  "tengo el código pero solo me sale Organizar"):** "Unirme a un campeonato"
+  (`UnirseCampeonato.mostrar`) solo vivía en "Liga de tenis Pichangol" (Perfil,
+  solo con `usaCircuito`) y en la pantalla de campeonatos de una academia.
+  Ahora `MisCampeonatosScreen` es de AMBOS roles: ícono QR en la barra,
+  tarjeta "Unirme a un campeonato" arriba, sección "Donde participo"
+  (`AppState.campeonatosDondeParticipo`: inscrito / capitán / en un plantel,
+  sin organizar; tarjeta con rol "En Kinder 01") y "Organizo"; el vacío
+  ofrece "Tengo un código · Unirme" además de Organizar. Perfil tiene el ítem
+  "Campeonatos" → esa pantalla para cualquier jugador (fútbol incluido).
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en

@@ -25,6 +25,7 @@ import 'anfitrion_screen.dart';
 import 'login_google_sheet.dart';
 import 'cuenta_screen.dart';
 import 'circuito_screen.dart';
+import 'mis_campeonatos_screen.dart';
 import 'editar_perfil_screen.dart';
 
 /// Pestaña PERFIL del jugador, rediseñada al UI/UX de Airbnb:
@@ -180,9 +181,18 @@ class PerfilScreen extends StatelessWidget {
               onTap: () => Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const EntrenadorScreen())),
             ),
+          // Campeonatos para CUALQUIER jugador (fútbol incluido): unirse con
+          // código/enlace, ver los torneos donde participa u organizar. Antes
+          // la única entrada estaba dentro de la Liga de tenis.
+          _ItemAirbnb(
+            icono: Icons.emoji_events_outlined,
+            titulo: 'Campeonatos',
+            onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const MisCampeonatosScreen())),
+          ),
           if (appState.usaCircuito)
             _ItemAirbnb(
-              icono: Icons.emoji_events_outlined,
+              icono: Icons.sports_tennis,
               titulo: 'Liga de tenis Pichangol',
               badge: appState.retosPendientes,
               onTap: () => Navigator.of(context)

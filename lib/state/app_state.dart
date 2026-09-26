@@ -2682,6 +2682,25 @@ class AppState extends ChangeNotifier {
       ..sort((a, b) => b.id.compareTo(a.id)); // recientes primero (id con ts)
   }
 
+  /// Campeonatos en los que PARTICIPO como jugador (inscrito, apoderado de un
+  /// hijo, capitán o en el plantel de un equipo) y que NO organizo. Es la
+  /// otra mitad de "Mis campeonatos": un jugador que entró por código o
+  /// enlace vuelve a encontrar su torneo aquí (queja del director,
+  /// 26-sep-2026: "solo me sale Organizar").
+  List<Campeonato> get campeonatosDondeParticipo {
+    final email = (usuario?.email ?? '').trim().toLowerCase();
+    if (email.isEmpty) return const <Campeonato>[];
+    return campeonatos
+        .where((c) =>
+            c.dueno.trim().toLowerCase() != email &&
+            c.participantes.any((p) =>
+                p.email.toLowerCase() == email ||
+                p.capitanEmail.toLowerCase() == email ||
+                p.roster.any((i) => i.email.toLowerCase() == email)))
+        .toList()
+      ..sort((a, b) => b.id.compareTo(a.id));
+  }
+
   Campeonato? campeonatoPorId(String id) {
     for (final c in campeonatos) {
       if (c.id == id) return c;
