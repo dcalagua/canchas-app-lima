@@ -1096,6 +1096,30 @@ para la API del APK.
   umbral. Backlog: dispersión por API (dLocal / Kushki / API BCP) sobre esta
   misma base = botón "Transferir" real; "Retirar" a pedido del dueño. Tests
   `tests/test_cuentas_cobro.py`.
+  **TARIFA DE LA PASARELA + MARGEN REAL (pregunta del director, 26-sep-2026:
+  "si pagué 15, ¿por qué al dueño le tocan 13? ¿cuánto me descuenta Culqi y
+  cuál es mi comisión?"):** los S/ 2 son la comisión de Pichangol (5 % con
+  mínimo S/ 2); Culqi cobra APARTE a EBIM y el dueño no la ve. Ahora la torre
+  lo estima: `pagos/tarifas_pasarela.py` (una tarifa por pasarela = por
+  moneda: PEN → Culqi con tarjeta/Yape distintas, USD → PayPhone, BOB →
+  Libélula; `% por cobro + fijo` × `(1 + IGV/IVA)`; claves
+  `tarifa_<pasarela>_<medio>_pct|fijo` y `tarifa_<pasarela>_impuesto_pct` en
+  `stores.config`, defaults = tarifa publicada de Culqi 3.44 % + S/ 0.30 +
+  IGV 18 %; PayPhone/Libélula en 0 = "sin configurar, no se descuenta").
+  `costo_centimos(monto, moneda, medio, tipo)` devuelve 0 para lo pagado con
+  SALDO (bodega, torneo: la pasarela ya se pagó al recargar). Torre → Cobros
+  → **"💳 Tarifas de pasarela"** (`GET/POST /pagos/tarifas-pasarela`,
+  admin; `cargarTarifas`/`guardarTarifas`/`simularTarifa`): formulario por
+  pasarela + **simulador** (bruto → pasarela → comisión → margen → neto, en
+  rojo si el margen es negativo). **Liquidaciones** muestra chips "Pasarela
+  −S/ x" y "Margen Pichangol S/ y" (global, por local y por fila;
+  `_liquidacion_dict` trae `pasarela_soles`, `margen_soles`, `medio`;
+  `/liquidaciones/pendientes` suma `total_pasarela_soles`,
+  `total_margen_soles`, `tarifas`). Es una ESTIMACIÓN contable con la tarifa
+  contratada, no mueve plata: el número exacto está en el panel de Culqi.
+  Con S/ 15: pasarela ≈ S/ 0.96, comisión S/ 2, margen ≈ S/ 1.04 → en
+  reservas chicas el mínimo de S/ 2 apenas cubre a Culqi (sugerido: subir el
+  mínimo o cargo por servicio al jugador). Test `tests/test_tarifas_pasarela.py`.
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
   VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
   Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el
