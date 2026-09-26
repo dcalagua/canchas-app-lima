@@ -341,6 +341,9 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   late String? _logoUrl = widget.academia?.logoUrl;
   Uint8List? _logoNueva; // logo recién elegido (aún sin subir)
   bool _guardando = false;
+  /// Descuento del 2.º/3.º: a TODA la familia bajo un mismo pagador (default,
+  /// decisión del director 26-sep-2026) o SOLO entre hijos.
+  late bool _dtoFamiliar = widget.academia?.descuentoFamiliar ?? true;
 
   // Feed propio: fotos ya guardadas (URLs) + fotos nuevas por subir.
   late final List<String> _fotos = [...(widget.academia?.fotos ?? const [])];
@@ -914,6 +917,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 0,
         descuentoHermano2: _pct(_dtoHermano2),
         descuentoHermano3: _pct(_dtoHermano3),
+        descuentoFamiliar: _dtoFamiliar,
         descuentoPrepago: _pct(_dtoPrepago),
         mesesMinPrepago:
             (int.tryParse(_mesesMinPrepago.text.trim()) ?? 3).clamp(1, 36),
@@ -1438,17 +1442,51 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
           _seccionPlegable(
             titulo: 'Descuentos (opcional)',
             subtitulo:
-                'Se aplican al inscribir. Hermano y prepago se suman. Vacío = sin '
+                'Se aplican al inscribir. Familiar y prepago se suman. Vacío = sin '
                 'descuento.',
             abierta: (widget.academia?.descuentoHermano2 ?? 0) > 0 ||
                 (widget.academia?.descuentoHermano3 ?? 0) > 0 ||
                 (widget.academia?.descuentoPrepago ?? 0) > 0,
             hijos: [
+              const Text('El descuento familiar aplica a',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Toda la familia'),
+                    selected: _dtoFamiliar,
+                    selectedColor: lima,
+                    onSelected: (_) => setState(() => _dtoFamiliar = true),
+                  ),
+                  ChoiceChip(
+                    label: const Text('Solo hijos'),
+                    selected: !_dtoFamiliar,
+                    selectedColor: lima,
+                    onSelected: (_) => setState(() => _dtoFamiliar = false),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                  _dtoFamiliar
+                      ? 'Si un mismo titular paga varias matrículas (él, su pareja, '
+                          'sus hijos), la 2.ª y la 3.ª llevan descuento.'
+                      : 'Solo cuentan los hijos del mismo apoderado: la 2.ª y la '
+                          '3.ª matrícula de hijos llevan descuento.',
+                  style: const TextStyle(color: textoTenue, fontSize: 11.5)),
+              const SizedBox(height: 10),
               Row(
                 children: [
-                  Expanded(child: _campoPct(_dtoHermano2, '2º hermano')),
+                  Expanded(
+                      child: _campoPct(_dtoHermano2,
+                          _dtoFamiliar ? '2º de la familia' : '2º hijo')),
                   const SizedBox(width: 10),
-                  Expanded(child: _campoPct(_dtoHermano3, '3º hermano +')),
+                  Expanded(
+                      child: _campoPct(_dtoHermano3,
+                          _dtoFamiliar ? '3º de la familia +' : '3º hijo +')),
                 ],
               ),
               const SizedBox(height: 10),

@@ -1111,6 +1111,44 @@ para la API del APK.
   prefiltro `data::text LIKE %email%` + `participa_en`; tarjeta con rol
   `_rol_en` → `/c/{id}`) y "Organizo". El vacío dice "Aún no tienes
   campeonatos". Test `test_web_unirme_con_codigo_y_donde_participo`.
+- **PAGO FAMILIAR EN ACADEMIAS (pedido del director, 26-sep-2026: "yo pago
+  la academia de tenis de mi esposa, de mis hijos y mi propia mensualidad,
+  hago un solo pago por ellos"; "Sí, familiar, implementa los tres puntos"):**
+  (1) **"Para otra persona"** = otro ADULTO de la familia (esposa, pareja,
+  hermano) que el titular matricula y paga: `Alumno.parentesco`
+  (`'' | 'hijo' | 'familiar'`, JSON `parentesco`) + `Alumno.emailAlumno`
+  (correo propio OPCIONAL: con él la persona ve sus clases y pagos en SU
+  app; `Alumno.administradaPor(correo)`, `AppState.misMatriculas` y
+  `MatriculasRepo.deAlumno` con `.or('email.eq.x,data->>emailAlumno.eq.x')`;
+  el comprobante web también lo ve). Sin apoderado ni foto del titular
+  (`fotoUrl` solo si el alumno ES el titular). Tercer chip en la hoja de
+  matrícula del app (`_HojaDatosAlumno`, `_quien`) y de la web
+  (`data-quien='familiar'`, `#emailPersonaBox`; body `quien` +
+  `email_persona`; `es_hijo` sigue valiendo para clientes viejos). (2)
+  **"Mi familia · un solo pago"** (`mis_clases_screen._MiFamilia`): cuando
+  hay cuotas pendientes de 2+ personas que pago yo (misma moneda), una
+  tarjeta arriba las agrupa por persona con casillas y UN solo
+  `PagoTarjeta.cobrar`; luego `PagosService.registrarMatricula` POR
+  ACADEMIA (cada una congela su comisión y recibe su neto) y todas las
+  cuotas quedan con el mismo `operacionId` (`_pagarFamilia`). (3)
+  **Descuento familiar AUTOMÁTICO por orden:** `Academia.descuentoFamiliar`
+  (bool, default true; chips "Toda la familia / Solo hijos" en el editor
+  del app y de la web) decide quién cuenta; `Academia.ordenFamiliarPara(
+  alumnos, emailPagador, parentescoNuevo:)` = `web/academia.py::
+  orden_familiar(a, previas, parentesco)` (ESPEJO) cuenta las matrículas
+  que YA paga esa cuenta en la academia (`datos.matriculas_de_pagador`) →
+  1.º sin descuento, 2.º `descuentoHermano2`, 3.º+ `descuentoHermano3`
+  (`dto_familiar_pct`); en "Solo hijos" solo cuentan los hijos y solo
+  descuenta un hijo. Aditivo al prepago (`_pctTotal` / `_total(...,
+  dto_fam)`), también en mes a mes y en el débito automático (la cuota se
+  guarda con el precio descontado y el concepto lleva " (−10% familiar)";
+  `ordenHermano` guarda el orden; web `pagoWeb.dtoFamiliar`). El orden lo
+  calcula SIEMPRE el servidor en `/web/matricular`; el JS lo pide en
+  `GET /web/academia/{id}/descuento-familiar` (`C.dtoFam[quien]`) al
+  iniciar sesión. Alumnos del anfitrión web muestra "Familiar · paga
+  <correo>" y "N.º de la familia". Etiquetas del tarifario: "2.º de la
+  familia −10 %" (o "hermano" si es solo hijos). Test
+  `test_matricula_familiar_un_pagador_varias_personas`.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en

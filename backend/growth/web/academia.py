@@ -102,18 +102,64 @@ def _plan_total(p: dict) -> float:
     return p["precioMes"] if p["tipo"] == "porClase" else p["precioMes"] * (p["meses"] or 1)
 
 
-def _total(a: dict, p: dict, cantidad: int, mes_a_mes: bool) -> tuple[float, float, int]:
+def orden_familiar(a: dict, previas: list[dict], parentesco_nuevo: str = "") -> int:
+    """ORDEN del próximo matriculado por el mismo pagador (1 = primero, 2 =
+    segundo, 3 = tercero o más). `descuentoFamiliar` (default True, decisión
+    del director 26-sep-2026): cuentan TODOS los que paga el titular (él, su
+    pareja, sus hijos); en False solo los hijos y solo si el nuevo es hijo.
+    ESPEJO de `Academia.ordenFamiliarPara`."""
+    familiar = a.get("descuentoFamiliar", True) is not False
+    if not familiar and parentesco_nuevo != "hijo":
+        return 1
+    n = sum(1 for m in previas if familiar or (m.get("parentesco") == "hijo"))
+    return n + 1
+
+
+def dto_familiar_pct(a: dict, orden: int) -> float:
+    """`Academia.descuentoHermanoPct`: 2.º → descuentoHermano2, 3.º+ → descuentoHermano3."""
+    if orden >= 3:
+        return float(a.get("descuentoHermano3") or 0)
+    if orden == 2:
+        return float(a.get("descuentoHermano2") or 0)
+    return 0.0
+
+
+def _parentesco(quien: str, es_hijo: bool) -> str:
+    """'' (yo) · 'hijo' · 'familiar'. `es_hijo` viene de clientes viejos."""
+    q = (quien or "").strip().lower()
+    if q in ("hijo", "familiar"):
+        return q
+    return "hijo" if es_hijo else ""
+
+
+def _dto_fam_por_quien(a: dict, email: str) -> dict:
+    """Para el JS de la ficha: orden y % que le tocaría a la sesión según a
+    quién matricule (`C.dtoFam[quien] = {orden, pct}`)."""
+    previas = datos.matriculas_de_pagador(a.get("id") or "", email) if email else []
+    out = {}
+    for quien in ("yo", "hijo", "familiar"):
+        orden = orden_familiar(a, previas, _parentesco(quien, False))
+        out[quien] = {"orden": orden, "pct": dto_familiar_pct(a, orden)}
+    return out
+
+
+def _total(a: dict, p: dict, cantidad: int, mes_a_mes: bool, dto_fam: float = 0.0) -> tuple[float, float, int]:
     """Lo que se cobra AHORA y el ahorro, como `_HojaDatosAlumno._total`:
-    mes a mes = 1 mes; adelantado = total × cantidad − descuento prepago si
-    cantidad ≥ meses mínimos. Devuelve (total, ahorro, cantidad normalizada)."""
+    mes a mes = 1 mes (con el descuento familiar); adelantado = total ×
+    cantidad − descuentos (prepago si cantidad ≥ meses mínimos + familiar,
+    aditivos como `Academia.descuentoTotalPct`). Devuelve (total, ahorro, n)."""
     n = max(1, min(int(cantidad or 1), 12))
     mes_a_mes = bool(mes_a_mes) and p["tipo"] == "mensual"
+    dto_fam = max(0.0, min(100.0, float(dto_fam or 0)))
     if mes_a_mes:
-        return round(_plan_total(p), 2), 0.0, n
+        base = _plan_total(p)
+        ahorro = round(base * dto_fam / 100.0, 2)
+        return round(base - ahorro, 2), ahorro, n
     sin_dto = _plan_total(p) * n
     dto = float(a.get("descuentoPrepago") or 0)
     mmin = int(a.get("mesesMinPrepago") or 3)
-    ahorro = round(sin_dto * dto / 100.0, 2) if (dto > 0 and n >= mmin) else 0.0
+    pct = min(100.0, (dto if (dto > 0 and n >= mmin) else 0.0) + dto_fam)
+    ahorro = round(sin_dto * pct / 100.0, 2) if pct > 0 else 0.0
     return round(sin_dto - ahorro, 2), ahorro, n
 
 
@@ -181,10 +227,11 @@ def _tarifario(a: dict, sim: str, puede: bool) -> str:
                      f"<div class='tp'><b>{e(sim)} {p['precioMes']:.0f}</b> <span class='sub' style='margin:0'>{unidad}</span>{inv}</div>{boton}</div>")
         html += "</div>"
     reglas = []
+    fam = "de la familia" if a.get("descuentoFamiliar", True) is not False else "hermano"
     if float(a.get("descuentoHermano2") or 0) > 0:
-        reglas.append(f"2.º hermano −{float(a['descuentoHermano2']):.0f} %")
+        reglas.append(f"2.º {fam} −{float(a['descuentoHermano2']):.0f} %")
     if float(a.get("descuentoHermano3") or 0) > 0:
-        reglas.append(f"3.º hermano −{float(a['descuentoHermano3']):.0f} %")
+        reglas.append(f"3.º {fam} −{float(a['descuentoHermano3']):.0f} %")
     if float(a.get("descuentoPrepago") or 0) > 0:
         reglas.append(f"pago adelantado de {int(a.get('mesesMinPrepago') or 3)}+ meses −{float(a['descuentoPrepago']):.0f} %")
     if reglas:
@@ -264,13 +311,15 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
         "<div class='paso' style='margin-top:0'><span>1</span> Elige tu programa</div>"
         "<div class='sub' id='planElegido'>Toca «Matricularme» en el tarifario de arriba.</div>"
         "<div class='paso'><span>2</span> ¿Para quién es?</div>"
-        "<div class='chips'><button type='button' class='chip sel' data-quien='yo'>Para mí</button><button type='button' class='chip' data-quien='hijo'>Para mi hijo(a)</button></div>"
+        "<div class='chips'><button type='button' class='chip sel' data-quien='yo'>Para mí</button><button type='button' class='chip' data-quien='hijo'>Para mi hijo(a)</button><button type='button' class='chip' data-quien='familiar'>Para otra persona</button></div>"
+        "<div class='sub' id='dtoFamBox' hidden style='margin-top:8px;color:#0B7A55'></div>"
         f"<div class='paso'><span>3</span> Tus datos</div>{login}"
         f"<div id='datosBox'{datos_box_ini}>{quien}"
         "<div class='row'><div><label for='nombre' id='lblNombre'>Nombre del alumno</label>"
         f"<input id='nombre' autocomplete='name' maxlength='80' placeholder='Como en tu documento' value='{e((ses or {}).get('nombre', ''))}'></div>"
         "<div><label for='celular'>Celular de contacto</label><input id='celular' inputmode='tel' autocomplete='tel' maxlength='20' placeholder='9 dígitos'></div></div>"
-        "<div id='edadBox' hidden><label for='edad'>Edad del hijo(a)</label><input id='edad' type='number' min='2' max='17' inputmode='numeric' style='max-width:140px'></div></div>"
+        "<div id='edadBox' hidden><label for='edad'>Edad del hijo(a)</label><input id='edad' type='number' min='2' max='17' inputmode='numeric' style='max-width:140px'></div>"
+        "<div id='emailPersonaBox' hidden><label for='emailPersona'>Su correo de Google <span class='req'>opcional · verá sus clases y pagos en su propia app</span></label><input id='emailPersona' type='email' autocomplete='off' maxlength='120' placeholder='correo@gmail.com'></div></div>"
         "<div class='paso'><span>4</span> ¿Cómo pagas?</div>"
         "<div class='chips' id='modo'><button type='button' class='chip' data-modo='mes'>Mes a mes</button><button type='button' class='chip sel' data-modo='adelantado'>Adelantado</button></div>"
         "<div id='cantBox' style='margin-top:10px'><label id='lblCant'>¿Cuántos meses?</label><div class='chips' id='cant'>"
@@ -289,6 +338,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
         "<button class='btn' id='btnPagarBarra' disabled>Elige un programa</button></div>")
     cfg = json.dumps({"id": academia_id, "moneda": sim, "pk": config.CULQI_PUBLIC_KEY, "planes": _planes(a),
                       "descuentoPrepago": float(a.get("descuentoPrepago") or 0), "mesesMinPrepago": int(a.get("mesesMinPrepago") or 3),
+                      "dtoFam": _dto_fam_por_quien(a, (ses or {}).get("email") or ""),
                       "lat": a.get("lat"), "lng": a.get("lng"), "nombre": a.get("nombre"),
                       "login": sesion.activo(), "sesion": ses}, ensure_ascii=False)
     cuerpo = (f"<div style='padding-top:22px'>{ficha}</div>{tarifario}{panel}"
@@ -306,12 +356,15 @@ _JS_ACADEMIA = r"""
   function fmt(v){ return C.moneda + ' ' + (Math.round(v * 100) / 100).toFixed(2); }
   var st = { plan: null, quien: 'yo', modo: 'adelantado', n: 1 };
   function planTotal(p){ return p.tipo === 'porClase' ? p.precioMes : p.precioMes * (p.meses || 1); }
+  function famInfo(){ return (C.sesion && C.dtoFam && C.dtoFam[st.quien]) ? C.dtoFam[st.quien] : {orden: 1, pct: 0}; }
+  function famPct(){ return famInfo().pct || 0; }
   function calc(){
     var p = st.plan; if(!p) return null;
     var mesAMes = st.modo === 'mes' && p.tipo === 'mensual';
-    if(mesAMes) return { total: planTotal(p), ahorro: 0, mesAMes: true, n: st.n };
-    var sin = planTotal(p) * st.n, ahorro = (C.descuentoPrepago > 0 && st.n >= C.mesesMinPrepago) ? sin * C.descuentoPrepago / 100 : 0;
-    return { total: sin - ahorro, ahorro: ahorro, mesAMes: false, n: st.n };
+    var fam = famPct(), prep = (C.descuentoPrepago > 0 && st.n >= C.mesesMinPrepago && !mesAMes) ? C.descuentoPrepago : 0;
+    if(mesAMes){ var b = planTotal(p), af = b * fam / 100; return { total: b - af, ahorro: af, ahorroFam: af, ahorroPrep: 0, mesAMes: true, n: st.n }; }
+    var sin = planTotal(p) * st.n, pct = Math.min(100, prep + fam);
+    return { total: sin - sin * pct / 100, ahorro: sin * pct / 100, ahorroFam: sin * fam / 100, ahorroPrep: sin * prep / 100, mesAMes: false, n: st.n };
   }
   function unidad(p){ return p.tipo === 'porClase' ? (st.n === 1 ? 'clase' : 'clases') : (p.tipo === 'prepago' ? (st.n === 1 ? 'paquete' : 'paquetes') : (st.n === 1 ? 'mes' : 'meses')); }
   function pintar(){
@@ -323,13 +376,18 @@ _JS_ACADEMIA = r"""
     $('lblCant').textContent = !p ? '¿Cuántos meses?' : (p.tipo === 'porClase' ? '¿Cuántas clases pagarás?' : (p.tipo === 'prepago' ? '¿Cuántos paquetes de ' + p.meses + ' meses?' : (st.modo === 'mes' ? '¿Por cuántos meses te comprometes?' : '¿Cuántos meses adelantas?')));
     document.querySelectorAll('#modo .chip').forEach(function(b){ b.classList.toggle('sel', b.dataset.modo === st.modo); });
     document.querySelectorAll('#cant .chip').forEach(function(b){ b.classList.toggle('sel', +b.dataset.n === st.n); });
-    $('lblNombre').textContent = st.quien === 'hijo' ? 'Nombre del hijo(a)' : 'Nombre del alumno';
+    $('lblNombre').textContent = st.quien === 'hijo' ? 'Nombre del hijo(a)' : (st.quien === 'familiar' ? 'Nombre de la persona' : 'Nombre del alumno');
     $('edadBox').hidden = st.quien !== 'hijo';
+    $('emailPersonaBox').hidden = st.quien !== 'familiar';
+    var fi = famInfo(), fb = $('dtoFamBox');
+    fb.hidden = !(fi.pct > 0);
+    if(fi.pct > 0) fb.textContent = '🎉 Descuento familiar: ' + (fi.orden === 2 ? '2.º' : '3.º o más') + ' de tu familia en esta academia → −' + fi.pct + ' %.';
     if(!p || !r){ $('lineas').innerHTML = '<div class="sub">Sin programa elegido.</div>'; $('tot').textContent = '—'; $('totBarra').textContent = '—'; $('notaModo').textContent = '';
       ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = true; $(id).textContent = 'Elige un programa'; }); return; }
     var lineas = '<div class="linea"><span>' + esc(p.nombre) + '</span><span>' + fmt(planTotal(p)) + '</span></div>';
     if(!r.mesAMes && st.n > 1) lineas += '<div class="linea"><span>× ' + st.n + ' ' + unidad(p) + '</span><span>' + fmt(planTotal(p) * st.n) + '</span></div>';
-    if(r.ahorro > 0) lineas += '<div class="linea"><span>Descuento por adelantar (−' + C.descuentoPrepago + ' %)</span><span>−' + fmt(r.ahorro) + '</span></div>';
+    if(r.ahorroPrep > 0) lineas += '<div class="linea"><span>Descuento por adelantar (−' + C.descuentoPrepago + ' %)</span><span>−' + fmt(r.ahorroPrep) + '</span></div>';
+    if(r.ahorroFam > 0) lineas += '<div class="linea"><span>Descuento familiar (−' + famPct() + ' %)</span><span>−' + fmt(r.ahorroFam) + '</span></div>';
     $('lineas').innerHTML = lineas;
     $('tot').textContent = fmt(r.total); $('totBarra').textContent = fmt(r.total);
     $('notaModo').textContent = r.mesAMes ? ('Hoy pagas 1 mes; los ' + (st.n - 1) + ' siguientes se cobran mes a mes a la misma tarjeta.') : (st.n > 1 ? 'Pago adelantado: quedas al día ' + st.n + ' ' + unidad(p) + '.' : '');
@@ -340,7 +398,7 @@ _JS_ACADEMIA = r"""
     st.plan = (C.planes || []).filter(function(p){ return p.id === b.dataset.plan; })[0] || null; st.n = 1; pintar();
     var m = $('matricula'); if(m) m.scrollIntoView({behavior: 'smooth', block: 'start'});
   });
-  document.querySelectorAll('[data-quien]').forEach(function(b){ b.addEventListener('click', function(){ st.quien = b.dataset.quien; document.querySelectorAll('[data-quien]').forEach(function(x){ x.classList.toggle('sel', x === b); }); if(st.quien === 'hijo' && $('nombre').value === ((C.sesion || {}).nombre || '')) $('nombre').value = ''; pintar(); }); });
+  document.querySelectorAll('[data-quien]').forEach(function(b){ b.addEventListener('click', function(){ st.quien = b.dataset.quien; document.querySelectorAll('[data-quien]').forEach(function(x){ x.classList.toggle('sel', x === b); }); if(st.quien !== 'yo' && $('nombre').value === ((C.sesion || {}).nombre || '')) $('nombre').value = ''; pintar(); }); });
   document.querySelectorAll('#modo .chip').forEach(function(b){ b.addEventListener('click', function(){ st.modo = b.dataset.modo; pintar(); }); });
   document.querySelectorAll('#cant .chip').forEach(function(b){ b.addEventListener('click', function(){ st.n = +b.dataset.n; pintar(); }); });
   function mostrarError(m){ var el = $('err'); el.textContent = m; el.style.display = 'block'; el.scrollIntoView({behavior: 'smooth', block: 'center'}); }
@@ -350,11 +408,17 @@ _JS_ACADEMIA = r"""
     var lb = $('loginBox'), db = $('datosBox'); if(lb) lb.style.display = 'none'; if(db) db.style.display = '';
     if($('nombre') && !$('nombre').value && st.quien === 'yo') $('nombre').value = u.nombre || '';
     if(db && !$('quien')){ db.insertAdjacentHTML('afterbegin', '<div class="quien" id="quien">' + (u.foto ? '<img src="' + esc(u.foto) + '" alt="">' : '') + '<div><b>' + esc(u.nombre || u.email) + '</b><div class="m">' + esc(u.email) + '</div></div><button type="button" class="btn sec" onclick="cerrarSesion()">Cambiar cuenta</button></div>'); }
+    // El descuento familiar depende de lo que YA paga esta cuenta: se consulta al entrar.
+    fetch('/web/academia/' + encodeURIComponent(C.id) + '/descuento-familiar').then(function(x){ return x.json(); }).then(function(d){ if(d && d.dtoFam){ C.dtoFam = d.dtoFam; pintar(); } }).catch(function(){});
+    pintar();
   };
   function validar(){
     if(!st.plan) return 'Elige un programa en el tarifario.';
     if(C.login && !C.sesion) return 'Inicia sesión con Google para matricularte.';
-    if($('nombre').value.trim().length < 3) return st.quien === 'hijo' ? 'Escribe el nombre de tu hijo(a).' : 'Escribe el nombre del alumno.';
+    if($('nombre').value.trim().length < 3) return st.quien === 'hijo' ? 'Escribe el nombre de tu hijo(a).' : (st.quien === 'familiar' ? 'Escribe el nombre de la persona.' : 'Escribe el nombre del alumno.');
+    var ep = st.quien === 'familiar' ? $('emailPersona').value.trim() : '';
+    if(ep && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ep)) return 'Ese correo no se ve bien. Puedes dejarlo vacío.';
+    if(ep && C.sesion && ep.toLowerCase() === String(C.sesion.email || '').toLowerCase()) return 'Ese es tu propio correo: elige «Para mí».';
     if($('celular').value.replace(/\D/g, '').length < 8) return 'Escribe un celular de contacto.';
     if(st.quien === 'hijo' && !(+$('edad').value >= 2 && +$('edad').value <= 17)) return 'Indica la edad de tu hijo(a) (2 a 17).';
     return '';
@@ -377,6 +441,7 @@ _JS_ACADEMIA = r"""
         fetch('/web/matricular', {method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({academia_id: C.id, plan_id: st.plan.id, nombre: $('nombre').value.trim(), celular: $('celular').value.trim(),
                                 es_hijo: st.quien === 'hijo', edad: st.quien === 'hijo' ? +$('edad').value : null, cantidad: st.n,
+                                quien: st.quien, email_persona: st.quien === 'familiar' ? $('emailPersona').value.trim() : '',
                                 mes_a_mes: st.modo === 'mes', token: token, medio: medio})})
           .then(function(x){ return x.json(); })
           .then(function(p){
@@ -413,6 +478,19 @@ class MatricularReq(BaseModel):
     mes_a_mes: bool = False
     token: str
     medio: str = "tarjeta"
+    quien: str = ""  # '' | 'yo' | 'hijo' | 'familiar' (otro adulto de la familia)
+    email_persona: str = ""  # correo propio del familiar (opcional)
+
+
+@router.get("/web/academia/{academia_id}/descuento-familiar")
+def descuento_familiar(academia_id: str, request: Request = None) -> dict:
+    """Orden y % del descuento familiar que le toca a la sesión en esta
+    academia según a quién matricule (lo pide el JS al iniciar sesión)."""
+    ses = sesion.de_request(request) if sesion.activo() else None
+    a = datos.academia(academia_id)
+    if not a:
+        return {"ok": False, "dtoFam": None}
+    return {"ok": True, "dtoFam": _dto_fam_por_quien(a, (ses or {}).get("email") or "")}
 
 
 def _mes_nombre(d: datetime) -> str:
@@ -455,12 +533,26 @@ def matricular(req: MatricularReq, request: Request = None) -> dict:
         return {"ok": False, "error": "nombre", "mensaje": "Escribe el nombre del alumno."}
     if len(celular) < 8:
         return {"ok": False, "error": "celular", "mensaje": "Escribe un celular de contacto."}
-    if req.es_hijo and not (req.edad and 2 <= int(req.edad) <= 17):
+    parentesco = _parentesco(req.quien, req.es_hijo)
+    es_hijo = parentesco == "hijo"
+    if es_hijo and not (req.edad and 2 <= int(req.edad) <= 17):
         return {"ok": False, "error": "edad", "mensaje": "Indica la edad de tu hijo(a)."}
-    total, ahorro, n = _total(a, plan, req.cantidad, req.mes_a_mes)
-    mes_a_mes = bool(req.mes_a_mes) and plan["tipo"] == "mensual"
     email = (ses["email"] if ses else "").strip().lower()
+    email_persona = (req.email_persona or "").strip().lower()[:120] if parentesco == "familiar" else ""
+    if email_persona and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email_persona):
+        return {"ok": False, "error": "email_persona", "mensaje": "El correo de la persona no se ve bien. Puedes dejarlo vacío."}
+    if email_persona and email and email_persona == email:
+        return {"ok": False, "error": "email_persona", "mensaje": "Ese es tu propio correo: elige «Para mí»."}
+    # Descuento familiar (punto 3 del pedido del director, 26-sep-2026): el
+    # orden se calcula en el SERVIDOR con lo que ya paga esta cuenta aquí.
+    previas = datos.matriculas_de_pagador(req.academia_id, email) if email else []
+    orden = orden_familiar(a, previas, parentesco)
+    dto_fam = dto_familiar_pct(a, orden)
+    total, ahorro, n = _total(a, plan, req.cantidad, req.mes_a_mes, dto_fam)
+    mes_a_mes = bool(req.mes_a_mes) and plan["tipo"] == "mensual"
     titular = (ses or {}).get("nombre") or "Apoderado"
+    nota_dto = f" (−{dto_fam:.0f}% familiar)" if dto_fam > 0 else ""
+    precio_mes = round(float(plan["precioMes"]) * (1 - dto_fam / 100.0), 2)  # la cuota queda con el descuento, como el app
     concepto = f"Matrícula {a['nombre']} · {plan['nombre']}"
     monto_c = int(round(total * 100))
     cargo = culqi.crear_cargo(token=req.token.strip(), monto_centimos=monto_c, email=email or "sin-correo@pichangol.app",
@@ -476,11 +568,15 @@ def matricular(req: MatricularReq, request: Request = None) -> dict:
     ahora = datetime.now()
     us = int(time.time() * 1_000_000)
     alumno_id = f"al_{us}"
-    es_menor = bool(req.es_hijo)
+    es_menor = es_hijo
     alumno = {"id": alumno_id, "academiaId": req.academia_id, "nombre": nombre, "whatsapp": "" if es_menor else celular,
               "email": email, "apoderadoNombre": titular.strip() if es_menor else "", "apoderadoWhatsapp": celular if es_menor else "",
-              "esSocioSede": True, "ordenHermano": 1, "sedeId": ""}
-    if (ses or {}).get("foto") and not es_menor:
+              "esSocioSede": True, "ordenHermano": orden, "sedeId": ""}
+    if parentesco:
+        alumno["parentesco"] = parentesco
+    if email_persona:
+        alumno["emailAlumno"] = email_persona
+    if (ses or {}).get("foto") and not parentesco:  # la foto del titular solo si el alumno ES el titular
         alumno["fotoUrl"] = ses["foto"]
     if es_menor and req.edad:
         alumno["edad"] = int(req.edad)
@@ -497,7 +593,7 @@ def matricular(req: MatricularReq, request: Request = None) -> dict:
             venc = _sumar_meses(ahora, i)
             pagada = i < pagadas_n
             c = {"id": f"cu_{us}_{i}", "academiaId": req.academia_id, "alumnoId": alumno_id,
-                 "concepto": f"{plan['nombre']} · {_mes_nombre(venc)}", "monto": plan["precioMes"], "vencimiento": venc.isoformat(), "pagada": pagada}
+                 "concepto": f"{plan['nombre']} · {_mes_nombre(venc)}{nota_dto}", "monto": precio_mes, "vencimiento": venc.isoformat(), "pagada": pagada}
             if pagada:
                 c["fechaPago"] = ahora.isoformat()
                 c["operacionId"] = charge_id
@@ -507,7 +603,7 @@ def matricular(req: MatricularReq, request: Request = None) -> dict:
     # Lo COBRADO hoy (con descuento) se guarda aparte: las cuotas llevan el precio
     # de lista como en el app; el comprobante muestra lo que salió de la tarjeta.
     data = dict(alumno, cuotas=cuotas, canal="web",
-                pagoWeb={"monto": float(total), "ahorro": float(ahorro), "operacion": charge_id,
+                pagoWeb={"monto": float(total), "ahorro": float(ahorro), "operacion": charge_id, "dtoFamiliar": float(dto_fam),
                          "medio": "yape" if req.medio == "yape" else "tarjeta", "fecha": ahora.isoformat()})
     if not datos.insertar_matricula(alumno_id, req.academia_id, email, data):
         # El cobro ya se hizo: se avisa con el N.º de operación para atenderlo a mano.
@@ -531,7 +627,7 @@ def matricular(req: MatricularReq, request: Request = None) -> dict:
         try:
             from pagos.router import SuscripcionAlumnoReq, post_suscripcion_alumno
             post_suscripcion_alumno(SuscripcionAlumnoReq(alumno_id=alumno_id, academia_id=req.academia_id, email=email, token=req.token.strip(),
-                                                         monto_soles=float(plan["precioMes"]), nombre=titular, pais=_iso(a).lower(),
+                                                         monto_soles=float(precio_mes), nombre=titular, pais=_iso(a).lower(),
                                                          concepto=concepto, cobros_restantes=max(0, n - 1)))
         except Exception as ex:  # noqa: BLE001
             print(f"[matricula-web] suscripción no creada ({alumno_id}): {ex}", flush=True)
@@ -556,7 +652,8 @@ def comprobante_matricula(request: Request, academia_id: str, alumno_id: str) ->
     if not a or not m or m.get("academiaId") != academia_id:
         return _no_encontrada("Matrícula no encontrada")
     email = (m.get("email") or "").strip().lower()
-    if sesion.activo() and (not ses or ses["email"].strip().lower() != email):
+    email_alumno = (m.get("emailAlumno") or "").strip().lower()
+    if sesion.activo() and (not ses or ses["email"].strip().lower() not in {x for x in (email, email_alumno) if x}):
         volver = f"/academia/{academia_id}/matricula/{alumno_id}"
         return ui.shell("Matrícula", ("<div class='panel' style='text-align:center;margin-top:24px'><h1>Esta matrícula es privada</h1>"
                                       "<p class='sub'>Inicia sesión con la cuenta de Google con la que te matriculaste.</p>"
@@ -575,7 +672,8 @@ def comprobante_matricula(request: Request, academia_id: str, alumno_id: str) ->
     cuerpo = ("<div class='panel' style='margin-top:24px'><div class='check-ok'>✓</div><h1 style='text-align:center'>¡Matrícula registrada!</h1>"
               f"<p class='sub' style='text-align:center'>{e(m.get('nombre'))} ya es alumno de <b>{e(a['nombre'])}</b>. El profe lo ve en su lista y tú en la app (Mis academias).</p>"
               f"<ul class='datos'>{filas}</ul>"
-              + (f"<p class='sub' style='font-size:13px'>Descuento por pago adelantado: −{e(sim)} {ahorro:.2f}</p>" if ahorro > 0 else "")
+              + (f"<p class='sub' style='font-size:13px'>{'Descuentos (adelanto + familiar)' if (float(pw.get('dtoFamiliar') or 0) > 0 and ahorro > 0) else 'Descuento por pago adelantado'}: −{e(sim)} {ahorro:.2f}</p>" if ahorro > 0 else "")
+              + (f"<p class='sub' style='font-size:13px'>🎉 Descuento familiar aplicado: −{float(pw.get('dtoFamiliar') or 0):.0f} % ({'2.º' if int(m.get('ordenHermano') or 1) == 2 else '3.º o más'} de tu familia en esta academia).</p>" if float(pw.get('dtoFamiliar') or 0) > 0 else "")
               + f"<div class='total'><span>Pagado hoy</span><span>{e(sim)} {total:.2f}</span></div>"
               + (f"<p class='sub' style='font-size:12.5px'>N.º de operación: {e(op)}</p>" if op else "")
               + "<div class='acciones' style='margin-top:14px'>"

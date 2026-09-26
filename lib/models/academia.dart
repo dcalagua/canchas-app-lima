@@ -123,6 +123,10 @@ class Academia {
   final double descuentoHermano2;
   final double descuentoHermano3;
   final double descuentoPrepago;
+  /// ¿El descuento del 2.º/3.º aplica a TODA la familia bajo un mismo pagador
+  /// (titular, pareja e hijos) o SOLO entre hijos? Decisión del director
+  /// (26-sep-2026): familiar por defecto. Ver `Alumno.parentesco`.
+  final bool descuentoFamiliar;
   /// Desde cuántos MESES adelantados aplica [descuentoPrepago]. CONFIGURABLE por
   /// el profe (default 3): al pagar N ≥ este umbral de golpe, se aplica el
   /// descuento de prepago. Si es 1, cualquier pago adelantado ya descuenta.
@@ -175,6 +179,7 @@ class Academia {
     this.descuentoHermano2 = 0,
     this.descuentoHermano3 = 0,
     this.descuentoPrepago = 0,
+    this.descuentoFamiliar = true,
     this.mesesMinPrepago = 3,
     this.landingUrl = '',
     this.retribucionClubPct = 0,
@@ -249,6 +254,26 @@ class Academia {
     if (orden >= 3) return descuentoHermano3;
     if (orden == 2) return descuentoHermano2;
     return 0;
+  }
+
+  /// ORDEN familiar del próximo matriculado por [emailPagador] en esta
+  /// academia, dado [alumnos] (todos los conocidos): 1 = primero (sin
+  /// descuento), 2 = segundo, 3 = tercero o más. Con [descuentoFamiliar]
+  /// cuentan todos los que paga el mismo titular (él, su pareja, sus hijos);
+  /// si no, solo los hijos y solo si el nuevo también es hijo. ESPEJO de
+  /// `web/academia.py::orden_familiar`.
+  int ordenFamiliarPara(List<Alumno> alumnos, String emailPagador,
+      {String parentescoNuevo = ''}) {
+    final e = emailPagador.trim().toLowerCase();
+    if (e.isEmpty) return 1;
+    if (!descuentoFamiliar && parentescoNuevo != 'hijo') return 1;
+    var n = 0;
+    for (final a in alumnos) {
+      if (a.academiaId != id || a.email.trim().toLowerCase() != e) continue;
+      if (!descuentoFamiliar && a.parentesco != 'hijo') continue;
+      n++;
+    }
+    return n + 1;
   }
 
   /// % total de descuento aplicable (hermano + prepago), aditivo, tope 100.
@@ -354,6 +379,7 @@ class Academia {
     double? descuentoHermano2,
     double? descuentoHermano3,
     double? descuentoPrepago,
+    bool? descuentoFamiliar,
     int? mesesMinPrepago,
     String? landingUrl,
     double? retribucionClubPct,
@@ -382,6 +408,7 @@ class Academia {
         descuentoHermano2: descuentoHermano2 ?? this.descuentoHermano2,
         descuentoHermano3: descuentoHermano3 ?? this.descuentoHermano3,
         descuentoPrepago: descuentoPrepago ?? this.descuentoPrepago,
+        descuentoFamiliar: descuentoFamiliar ?? this.descuentoFamiliar,
         mesesMinPrepago: mesesMinPrepago ?? this.mesesMinPrepago,
         landingUrl: landingUrl ?? this.landingUrl,
         retribucionClubPct: retribucionClubPct ?? this.retribucionClubPct,
@@ -412,6 +439,7 @@ class Academia {
         'descuentoHermano2': descuentoHermano2,
         'descuentoHermano3': descuentoHermano3,
         'descuentoPrepago': descuentoPrepago,
+        'descuentoFamiliar': descuentoFamiliar,
         'mesesMinPrepago': mesesMinPrepago,
         'landingUrl': landingUrl,
         'retribucionClubPct': retribucionClubPct,
@@ -450,6 +478,7 @@ class Academia {
         descuentoHermano2: ((j['descuentoHermano2'] ?? 0) as num).toDouble(),
         descuentoHermano3: ((j['descuentoHermano3'] ?? 0) as num).toDouble(),
         descuentoPrepago: ((j['descuentoPrepago'] ?? 0) as num).toDouble(),
+        descuentoFamiliar: (j['descuentoFamiliar'] ?? true) as bool,
         mesesMinPrepago: ((j['mesesMinPrepago'] ?? 3) as num).toInt(),
         landingUrl: (j['landingUrl'] ?? '') as String,
         retribucionClubPct:
@@ -826,6 +855,15 @@ class Alumno {
   /// SEDE (local) donde entrena el alumno, en academias multi-sede. Vacío = la
   /// sede única/principal. Ver `Academia.sedes`.
   final String sedeId;
+  /// QUIÉN es respecto del titular que paga ([email]): '' = el propio titular,
+  /// 'hijo' = hijo(a) menor (con apoderado), 'familiar' = OTRO ADULTO de la
+  /// familia (esposa, pareja, hermano) que el titular matricula y paga
+  /// (pedido del director, 26-sep-2026: "pago la academia de mi esposa, de mis
+  /// hijos y la mía"). Define el orden del descuento familiar.
+  final String parentesco;
+  /// Correo PROPIO del familiar adulto (opcional): con él, la persona ve sus
+  /// clases y pagos en SU app aunque las pague el titular.
+  final String emailAlumno;
 
   const Alumno({
     required this.id,
@@ -840,6 +878,8 @@ class Alumno {
     this.esSocioSede = true,
     this.ordenHermano = 1,
     this.sedeId = '',
+    this.parentesco = '',
+    this.emailAlumno = '',
   });
 
   /// ¿Es un alumno que usa la app (se unió con código)?
@@ -847,6 +887,18 @@ class Alumno {
 
   /// ¿Es un menor representado por un apoderado?
   bool get esMenor => apoderadoNombre.isNotEmpty;
+
+  /// ¿Es otro adulto de la familia que matriculó y paga el titular?
+  bool get esFamiliar => parentesco == 'familiar';
+
+  /// ¿[correo] puede ver/pagar esta matrícula? El titular que paga y, si se
+  /// registró, el propio familiar.
+  bool administradaPor(String correo) {
+    final c = correo.trim().toLowerCase();
+    if (c.isEmpty) return false;
+    return email.trim().toLowerCase() == c ||
+        emailAlumno.trim().toLowerCase() == c;
+  }
 
   /// WhatsApp para contactarlo/recordar pagos: el del apoderado si es menor.
   String get whatsappContacto =>
@@ -865,6 +917,8 @@ class Alumno {
         'esSocioSede': esSocioSede,
         'ordenHermano': ordenHermano,
         'sedeId': sedeId,
+        if (parentesco.isNotEmpty) 'parentesco': parentesco,
+        if (emailAlumno.isNotEmpty) 'emailAlumno': emailAlumno,
       };
 
   factory Alumno.fromJson(Map<String, dynamic> j) => Alumno(
@@ -880,6 +934,8 @@ class Alumno {
         esSocioSede: (j['esSocioSede'] ?? true) as bool,
         ordenHermano: ((j['ordenHermano'] ?? 1) as num).toInt(),
         sedeId: (j['sedeId'] ?? '') as String,
+        parentesco: (j['parentesco'] ?? '') as String,
+        emailAlumno: (j['emailAlumno'] ?? '') as String,
       );
 }
 

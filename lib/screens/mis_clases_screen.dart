@@ -51,17 +51,104 @@ class MisClasesScreen extends StatelessWidget {
                   'únete con el código de tu profe.',
             );
           }
+          final familia = _pendientesFamilia(matriculas);
           return ListView(
             // Regla app: contenido centrado (ancho máx) en pantallas anchas.
             padding: EdgeInsets.fromLTRB(
                 ladoTablet(context, 16, 760), 14, ladoTablet(context, 16, 760), 30),
             children: [
+              // "Mi familia · un solo pago" (pedido del director, 26-sep-2026:
+              // "pago la academia de mi esposa, de mis hijos y la mía, hago un
+              // solo pago por ellos"): una tarjeta por moneda cuando hay
+              // cuotas pendientes de 2+ personas que pago yo.
+              for (final grupo in familia)
+                _MiFamilia(
+                  key: ValueKey('fam_${grupo.moneda}'),
+                  items: grupo.items,
+                  moneda: grupo.moneda,
+                  onPagar: (sel) => _pagarFamilia(context, sel, grupo.moneda),
+                ),
               for (final al in matriculas) _cardMatricula(context, al),
             ],
           );
         },
       ),
     );
+  }
+
+  /// Cuotas PENDIENTES de todas mis matrículas, agrupadas por moneda, solo si
+  /// en esa moneda hay 2+ personas por pagar (si es una sola, basta la tarjeta
+  /// de su matrícula).
+  List<_GrupoFamilia> _pendientesFamilia(List<Alumno> matriculas) {
+    final porMoneda = <String, List<_CuotaFamilia>>{};
+    for (final al in matriculas) {
+      final academia = appState.academias
+          .cast<Academia?>()
+          .firstWhere((a) => a?.id == al.academiaId, orElse: () => null);
+      if (academia == null) continue;
+      final mon = academia.monedaSimbolo;
+      final pend = appState.cuotasDeAlumno(al.id).where((c) => !c.pagada).toList()
+        ..sort((a, b) => a.vencimiento.compareTo(b.vencimiento));
+      for (final c in pend) {
+        porMoneda
+            .putIfAbsent(mon, () => [])
+            .add(_CuotaFamilia(cuota: c, alumno: al, academia: academia));
+      }
+    }
+    final out = <_GrupoFamilia>[];
+    for (final e in porMoneda.entries) {
+      final personas = e.value.map((x) => x.alumno.id).toSet();
+      if (personas.length < 2) continue;
+      out.add(_GrupoFamilia(moneda: e.key, items: e.value));
+    }
+    return out;
+  }
+
+  /// UN SOLO cobro por las cuotas de varias personas / academias (misma
+  /// moneda). Luego se registra el cobro digital POR ACADEMIA (cada una
+  /// congela su comisión y recibe su neto) y se marcan pagadas con el mismo
+  /// N.º de operación.
+  Future<void> _pagarFamilia(
+      BuildContext context, List<_CuotaFamilia> sel, String mon) async {
+    if (sel.isEmpty) return;
+    final total = sel.fold<double>(0, (s, x) => s + x.cuota.monto);
+    if (total <= 0) return;
+    final personas = sel.map((x) => x.alumno.id).toSet().length;
+    String? operacionId;
+    final pagado = await PagoTarjeta.cobrar(
+      context,
+      monto: total,
+      concepto: '${sel.length} cuota${sel.length == 1 ? '' : 's'} · '
+          '$personas persona${personas == 1 ? '' : 's'} · Mi familia',
+      email: appState.usuario?.email ?? '',
+      moneda: mon,
+      onOperacion: (o) => operacionId = o,
+    );
+    if (!pagado) return;
+    final porAcademia = <String, List<_CuotaFamilia>>{};
+    for (final x in sel) {
+      porAcademia.putIfAbsent(x.academia.id, () => []).add(x);
+    }
+    final marca = DateTime.now().microsecondsSinceEpoch;
+    for (final e in porAcademia.entries) {
+      final ac = e.value.first.academia;
+      final sub = e.value.fold<double>(0, (s, x) => s + x.cuota.monto);
+      PagosService.registrarMatricula(
+        academiaId: ac.id,
+        montoSoles: sub,
+        matriculaId: 'cuo_${ac.id}_$marca',
+        pais: ac.pais.iso,
+        concepto: 'Cuotas ${ac.nombre} · pago familiar',
+      );
+    }
+    for (final x in sel) {
+      appState.marcarCuotaPagada(x.cuota.id, operacionId: operacionId ?? '');
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('${sel.length} cuotas de $personas personas pagadas '
+              'en un solo pago. ¡Gracias!')));
+    }
   }
 
   Widget _cardMatricula(BuildContext context, Alumno al) {
@@ -110,7 +197,10 @@ class MisClasesScreen extends StatelessWidget {
                               color: bosque,
                               fontWeight: FontWeight.w800,
                               fontSize: 16)),
-                      Text('Alumno: ${al.nombre}',
+                      Text(
+                          'Alumno: ${al.nombre}'
+                          '${al.esFamiliar ? ' · familiar' : (al.esMenor ? ' · hijo(a)' : '')}'
+                          '${al.ordenHermano > 1 ? ' · ${al.ordenHermano}.º de la familia' : ''}',
                           style: const TextStyle(
                               color: textoTenue, fontSize: 12.5)),
                     ],
@@ -618,6 +708,236 @@ class _ProximosPagosState extends State<_ProximosPagos> {
           ),
         ),
       ],
+    );
+  }
+}
+
+
+/// Una cuota pendiente con su alumno y academia (para el pago familiar).
+class _CuotaFamilia {
+  const _CuotaFamilia(
+      {required this.cuota, required this.alumno, required this.academia});
+  final Cuota cuota;
+  final Alumno alumno;
+  final Academia academia;
+}
+
+class _GrupoFamilia {
+  const _GrupoFamilia({required this.moneda, required this.items});
+  final String moneda;
+  final List<_CuotaFamilia> items;
+}
+
+/// Tarjeta "Mi familia · un solo pago": cuotas pendientes de TODAS las personas
+/// que pago (yo, mi pareja, mis hijos) en TODAS las academias, agrupadas por
+/// persona, con casillas y un solo botón de pago. Estilo Airbnb.
+class _MiFamilia extends StatefulWidget {
+  const _MiFamilia(
+      {super.key,
+      required this.items,
+      required this.moneda,
+      required this.onPagar});
+  final List<_CuotaFamilia> items;
+  final String moneda;
+  final Future<void> Function(List<_CuotaFamilia>) onPagar;
+
+  @override
+  State<_MiFamilia> createState() => _MiFamiliaState();
+}
+
+class _MiFamiliaState extends State<_MiFamilia> {
+  static const _meses = [
+    'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+    'jul', 'ago', 'set', 'oct', 'nov', 'dic'
+  ];
+  late Set<String> _sel;
+  bool _pagando = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _sel = widget.items.map((x) => x.cuota.id).toSet();
+  }
+
+  @override
+  void didUpdateWidget(_MiFamilia old) {
+    super.didUpdateWidget(old);
+    final ids = widget.items.map((x) => x.cuota.id).toSet();
+    final nuevas = ids.difference(old.items.map((x) => x.cuota.id).toSet());
+    _sel
+      ..retainWhere(ids.contains)
+      ..addAll(nuevas);
+  }
+
+  String _fecha(DateTime d) => '${d.day} ${_meses[d.month - 1]} ${d.year}';
+
+  List<_CuotaFamilia> get _seleccion =>
+      widget.items.where((x) => _sel.contains(x.cuota.id)).toList();
+
+  double get _totalSel =>
+      _seleccion.fold(0, (s, x) => s + x.cuota.monto);
+
+  Future<void> _pagar() async {
+    final sel = _seleccion;
+    if (sel.isEmpty || _pagando) return;
+    setState(() => _pagando = true);
+    await widget.onPagar(sel);
+    if (mounted) setState(() => _pagando = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Agrupado por persona (en el orden en que llegan).
+    final porPersona = <String, List<_CuotaFamilia>>{};
+    for (final x in widget.items) {
+      porPersona.putIfAbsent(x.alumno.id, () => []).add(x);
+    }
+    final personasSel = _seleccion.map((x) => x.alumno.id).toSet().length;
+    final mon = widget.moneda;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: trazo),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0F000000), blurRadius: 10, offset: Offset(0, 3)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              color: limaSuave,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12)),
+                  alignment: Alignment.center,
+                  child: const Text('👨‍👩‍👧', style: TextStyle(fontSize: 22)),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Mi familia · un solo pago',
+                          style: TextStyle(
+                              color: bosque,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16)),
+                      Text(
+                          '${porPersona.length} personas · ${widget.items.length} '
+                          'cuotas pendientes. Paga todo junto con una sola tarjeta.',
+                          style: const TextStyle(
+                              color: textoTenue, fontSize: 12.5)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final e in porPersona.entries) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                      '${e.value.first.alumno.nombre}'
+                      '${e.value.first.alumno.esFamiliar ? ' · familiar' : (e.value.first.alumno.esMenor ? ' · hijo(a)' : '')}'
+                      ' · ${e.value.first.academia.nombre}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 13)),
+                  for (final x in e.value)
+                    InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => setState(() {
+                        if (!_sel.remove(x.cuota.id)) _sel.add(x.cuota.id);
+                      }),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          children: [
+                            Checkbox(
+                              value: _sel.contains(x.cuota.id),
+                              activeColor: lima,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              visualDensity: VisualDensity.compact,
+                              onChanged: (v) => setState(() {
+                                if (v == true) {
+                                  _sel.add(x.cuota.id);
+                                } else {
+                                  _sel.remove(x.cuota.id);
+                                }
+                              }),
+                            ),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(x.cuota.concepto,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.w600)),
+                                  Text('Vence ${_fecha(x.cuota.vencimiento)}',
+                                      style: const TextStyle(
+                                          color: textoTenue, fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text('$mon ${x.cuota.monto.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: clayOscuro)),
+                          ],
+                        ),
+                      ),
+                    ),
+                ],
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: lima,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12)),
+                    onPressed: (_sel.isEmpty || _pagando) ? null : _pagar,
+                    child: Text(
+                        _pagando
+                            ? 'Procesando…'
+                            : 'Pagar todo · $mon ${_totalSel.toStringAsFixed(2)}'
+                                '${personasSel > 1 ? ' ($personasSel personas)' : ''}',
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                    'Un solo cargo a tu tarjeta o Yape; cada academia recibe lo '
+                    'suyo y todas las cuotas quedan con el mismo N.º de operación.',
+                    style: TextStyle(color: textoTenue, fontSize: 11.5)),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
