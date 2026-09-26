@@ -1078,6 +1078,18 @@ para la API del APK.
   sin organizar; tarjeta con rol "En Kinder 01") y "Organizo"; el vacío
   ofrece "Tengo un código · Unirme" además de Organizar. Perfil tiene el ítem
   "Campeonatos" → esa pantalla para cualquier jugador (fútbol incluido).
+  **WEB igual (captura del director, 26-sep-2026: "acá también debería
+  ingresar el código y ver el campeonato, como en el app"):** en
+  `/anfitrion/campeonatos` la caja "¿Te compartieron un código?" (`_caja_
+  codigo`) → `GET /anfitrion/campeonatos/unirme?codigo=` →
+  `datos.campeonato_por_codigo` (código del TORNEO `data->>'codigo'` o de un
+  EQUIPO por contención jsonb en `participantes`) → 303 a la página pública
+  `/c/{id}` (con `?equipo=COD` si era de equipo: ahí "Unirme al equipo en la
+  app"; la web no cobra la parte); inexistente → `?no_encontrado=1` con
+  aviso. Sección "Donde participo" (`datos.campeonatos_donde_participa`:
+  prefiltro `data::text LIKE %email%` + `participa_en`; tarjeta con rol
+  `_rol_en` → `/c/{id}`) y "Organizo". El vacío dice "Aún no tienes
+  campeonatos". Test `test_web_unirme_con_codigo_y_donde_participo`.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en

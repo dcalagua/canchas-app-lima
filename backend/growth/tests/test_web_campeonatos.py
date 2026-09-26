@@ -48,10 +48,26 @@ class FakeCamps:
     def canchas_para_sede(self):
         return [{"id": "c_lima", "club": "Club Raqueta", "nombre": "Cancha Central", "direccion": "Av. Aviación 123", "lat": -12.09, "lng": -77.0, "barrio": "San Borja"}]
 
+    def campeonato_por_codigo(self, codigo):
+        cod = (codigo or "").upper()
+        for r in self.rows.values():
+            if r.get("_elim"):
+                continue
+            if str(r.get("codigo") or "").upper() == cod:
+                return dict(r), False
+            if any(str(p.get("codigo") or "").upper() == cod for p in (r.get("participantes") or [])):
+                return dict(r), True
+        return None, False
+
+    def campeonatos_donde_participa(self, email):
+        return [dict(r) for k, r in sorted(self.rows.items(), reverse=True)
+                if not r.get("_elim") and (r.get("dueno") or "").lower() != email.lower() and datos.participa_en(r, email)]
+
 
 def _preparar(monkeypatch, pro=True, email="orga@gmail.com"):
     fake = FakeCamps()
-    for fn in ("campeonatos_de_dueno", "campeonato", "campeonato_existe", "guardar_campeonato", "eliminar_campeonato", "canchas_para_sede"):
+    for fn in ("campeonatos_de_dueno", "campeonato", "campeonato_existe", "guardar_campeonato", "eliminar_campeonato", "canchas_para_sede",
+               "campeonato_por_codigo", "campeonatos_donde_participa"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
     monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
     monkeypatch.setattr(config, "SUPABASE_URL", "https://sb.test")
@@ -75,7 +91,7 @@ def test_mis_campeonatos_en_la_web_como_el_app(db, monkeypatch):
     menu = cli.get("/anfitrion").text
     assert "/anfitrion/campeonatos" in menu
     r = cli.get("/anfitrion/campeonatos")
-    assert r.status_code == 200 and "Aún no organizas campeonatos" in r.text and "href='/anfitrion/campeonatos/nuevo'" in r.text
+    assert r.status_code == 200 and "Aún no tienes campeonatos" in r.text and "href='/anfitrion/campeonatos/nuevo'" in r.text
     # Asistente de 3 pasos con los mismos catálogos del app.
     r = cli.get("/anfitrion/campeonatos/nuevo")
     assert r.status_code == 200
@@ -517,3 +533,35 @@ def test_relampago_exige_hora_de_cierre_de_inscripciones(db, monkeypatch):
     r = cli.post("/anfitrion/campeonatos/guardar", json={"id": cid2, "nombre": "Liga larga", "deporte": "futbol", "formato": "liga",
                                                         "desde": "2099-03-07", "hasta": "2099-04-07", "cierre": "2099-03-01", "lat": -12.09, "lng": -77.0})
     assert r.status_code == 200 and fake.rows[cid2]["inscripcionHasta"].startswith("2099-03-01T00:00")
+
+
+def test_web_unirme_con_codigo_y_donde_participo(db, monkeypatch):
+    """Pedido del director (26-sep-2026, captura de /anfitrion/campeonatos vacío):
+    "acá también debería ingresar el código y ver el campeonato, como en el app".
+    Caja "¿Te compartieron un código?" (torneo o equipo) → página pública
+    `/c/{id}` (con `?equipo=` si es código de equipo); código inexistente →
+    aviso; sección "Donde participo" con el rol, como el app."""
+    cli = TestClient(app, base_url="https://testserver")
+    fake = _preparar(monkeypatch)
+    cid = L.nuevo_id()
+    fake.rows[cid] = {"id": cid, "dueno": "orga@gmail.com", "nombre": "Copa Beata", "deporte": "futbol", "formato": "liga", "codigo": "COPA26",
+                      "inscripcionAbierta": True, "partidos": [],
+                      "participantes": [{"id": "p1", "nombre": "Kinder 01", "codigo": "K1NDER", "capitanEmail": "", "roster": [{"nombre": "Juan", "email": "juan@gmail.com"}]}]}
+    _entrar_como(cli, monkeypatch, "juan@gmail.com", "Juan")
+    r = cli.get("/anfitrion/campeonatos")
+    assert r.status_code == 200
+    assert "¿Te compartieron un código?" in r.text and "Ver campeonato" in r.text
+    assert "Donde participo" in r.text and "En Kinder 01" in r.text and f"href='/c/{cid}'" in r.text
+    assert "Aún no tienes campeonatos" in r.text  # no organiza ninguno, pero sí participa
+    r = cli.get("/anfitrion/campeonatos/unirme?codigo=copa26", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/c/{cid}"
+    r = cli.get("/anfitrion/campeonatos/unirme?codigo=k1nder", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"] == f"/c/{cid}?equipo=K1NDER"
+    r = cli.get("/anfitrion/campeonatos/unirme?codigo=ZZZZZZ", follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].endswith("?no_encontrado=1")
+    assert "No encontramos ese código" in cli.get("/anfitrion/campeonatos?no_encontrado=1").text
+    # El organizador ve la caja arriba y "Organizo" con su torneo.
+    _entrar_como(cli, monkeypatch, "orga@gmail.com", "Orga")
+    r = cli.get("/anfitrion/campeonatos")
+    assert "Organizo" in r.text and "Copa Beata" in r.text and "¿Te compartieron un código?" in r.text
+    assert "Donde participo" not in r.text

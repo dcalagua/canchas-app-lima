@@ -24,7 +24,7 @@ from datetime import date, datetime
 
 from fastapi import APIRouter, Body, Request
 from starlette.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 import config
 import paises
@@ -153,12 +153,67 @@ def _tarjeta(c: dict) -> str:
             f"<div class='sub' style='margin:2px 0 6px'>{e(sub)}</div>{_estado_pill(c)}</div><span style='color:var(--tenue);font-size:22px'>›</span></a>")
 
 
+def _rol_en(c: dict, email: str) -> str:
+    """`_rolEn` del app: "Capitán de X" / "En X" / "Inscrito"."""
+    email = (email or "").lower()
+    for p in c.get("participantes") or []:
+        if L.es_equipo(p) and (str(p.get("capitanEmail") or "").lower() == email
+                               or any(str(i.get("email") or "").lower() == email for i in (p.get("roster") or []))):
+            return ("Capitán de " if str(p.get("capitanEmail") or "").lower() == email else "En ") + str(p.get("nombre") or "equipo")
+    return "Inscrito"
+
+
+def _tarjeta_participo(c: dict, email: str) -> str:
+    dep = str(c.get("deporte") or "tenis")
+    sub = f"{_rol_en(c, email)} · {_NOMBRE.get(dep, dep)} · {L.FORMATOS[L.formato_de(c)]}"
+    logo = f"<img src='{e(c['logoUrl'])}' alt=''>" if c.get("logoUrl") else f"<span>{_EMOJI.get(dep, '🏆')}</span>"
+    return (f"<a class='anf-cancha' href='/c/{e(c['id'])}' style='text-decoration:none;color:inherit;align-items:center'>"
+            f"<div class='f'>{logo}</div><div style='flex:1;min-width:0'><b style='font-size:16px'>{e(c.get('nombre') or 'Campeonato')}</b>"
+            f"<div class='sub' style='margin:2px 0 6px'>{e(sub)}</div>{_estado_pill(c)}</div><span style='color:var(--tenue);font-size:22px'>›</span></a>")
+
+
+def _caja_codigo(no_encontrado: bool) -> str:
+    """"Unirme a un campeonato" del app (pedido del director, 26-sep-2026:
+    "acá también debería ingresar el código y ver el campeonato"): código del
+    TORNEO o de tu EQUIPO → página pública `/c/{id}` (con `?equipo=` si es de
+    equipo: desde ahí "Unirme al equipo en la app")."""
+    err = ("<p class='sub' style='color:#B42318;margin:8px 0 0'>No encontramos ese código. Revísalo o pídeselo de nuevo a quien te invitó.</p>"
+           if no_encontrado else "")
+    return (f"<form class='anf-cancha' method='get' action='{BASE}/unirme' style='align-items:center;gap:14px;margin-top:14px'>"
+            "<div class='f' style='background:#EAF7E1'><span>🎟️</span></div><div style='flex:1;min-width:0'><b style='font-size:16px'>¿Te compartieron un código?</b>"
+            "<div class='sub' style='margin:2px 0 8px'>Pega el código del campeonato o el de tu equipo para ver el torneo, como en la app.</div>"
+            "<div style='display:flex;gap:8px;flex-wrap:wrap'><input name='codigo' type='text' maxlength='12' placeholder='Ej.: 4KZ9AB' required "
+            "style='width:180px;text-transform:uppercase;letter-spacing:.12em;font-weight:800'><button type='submit' class='btn'>Ver campeonato</button></div>"
+            f"{err}</div></form>")
+
+
+@router.get(BASE + "/unirme")
+def unirme_por_codigo(request: Request, codigo: str = "") -> RedirectResponse:
+    """Código del torneo → `/c/{id}`; código de equipo (fútbol) → `/c/{id}?equipo=`
+    (la página ofrece "Unirme al equipo en la app"). No existe → vuelve con aviso."""
+    ses, resp = _sesion_o_entrar(request, BASE)
+    if resp is not None:
+        return resp
+    cod = re.sub(r"[^A-Za-z0-9]", "", codigo or "").upper()[:12]
+    c, es_equipo = datos.campeonato_por_codigo(cod) if cod else (None, False)
+    if c is None:
+        return RedirectResponse(f"{BASE}?no_encontrado=1", status_code=303)
+    destino = f"/c/{urllib.parse.quote(str(c['id']))}" + (f"?equipo={urllib.parse.quote(cod)}" if es_equipo else "")
+    return RedirectResponse(destino, status_code=303)
+
+
 @router.get(BASE, response_class=HTMLResponse)
-def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = "") -> HTMLResponse:
+def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = "", no_encontrado: str = "") -> HTMLResponse:
     ses, resp = _sesion_o_entrar(request, BASE)
     if resp is not None:
         return resp
     lista = _mios(ses["email"])
+    participo = datos.campeonatos_donde_participa(ses["email"])
+    caja = _caja_codigo(bool(no_encontrado))
+    sec_participo = ("" if not participo else
+                     "<h2 style='margin:26px 0 8px;font-size:18px'>Donde participo</h2>"
+                     "<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(340px,1fr))'>"
+                     + "".join(_tarjeta_participo(c, ses["email"]) for c in participo) + "</div>")
     aviso = ("<div class='aviso ok' style='margin-top:14px'>✅ Campeonato guardado. Ya se ve en la app y en su página pública.</div>" if guardado
              else "<div class='aviso ok' style='margin-top:14px'>🗑 Campeonato eliminado.</div>" if eliminado else "")
     pro = _pro(ses["email"])
@@ -170,14 +225,16 @@ def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = ""
                  f"<a class='btn' href='{PLAY_URL}' rel='noopener'>Abrir la app</a></section></div></div></div>")
     if not lista:
         cuerpo = (f"<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>{aviso}<div style='max-width:760px;margin:24px auto 0;text-align:center'>"
-                  "<div style='font-size:52px'>🏆</div><h1 class='anf-hola' style='margin-top:8px'>Aún no organizas campeonatos</h1>"
-                  "<p class='sub' style='font-size:16px'>Toca “Organizar” para crear tu torneo (fútbol, tenis, natación…), invitar y que se inscriban.</p>"
-                  f"<div class='acciones' style='margin-top:22px;justify-content:center'>{boton}</div></div>{modal_pro}")
+                  "<div style='font-size:52px'>🏆</div><h1 class='anf-hola' style='margin-top:8px'>Aún no tienes campeonatos</h1>"
+                  "<p class='sub' style='font-size:16px'>¿Te compartieron un código? Pégalo abajo y verás el torneo. ¿Quieres el tuyo? Toca “Organizar” para crear tu torneo (fútbol, tenis, natación…), invitar y que se inscriban.</p>"
+                  f"<div class='acciones' style='margin-top:22px;justify-content:center'>{boton}</div></div>"
+                  f"<div style='max-width:760px;margin:0 auto'>{caja}{sec_participo}</div>{modal_pro}")
         return ui.shell("Mis campeonatos", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mis campeonatos · Modo anfitrión")
     cuerpo = ("<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
               "<div style='display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap'>"
               f"<div><h1 class='anf-hola' style='margin-top:6px'>Mis campeonatos</h1><p class='sub'>{len(lista)} campeonato{'s' if len(lista) != 1 else ''} que organizas. Es lo mismo que ves en la app.</p></div>{boton}</div>"
-              f"{aviso}<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(340px,1fr));margin-top:16px'>{''.join(_tarjeta(c) for c in lista)}</div>{modal_pro}")
+              f"{aviso}{caja}{sec_participo}<h2 style='margin:26px 0 8px;font-size:18px'>Organizo</h2>"
+              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(340px,1fr))'>{''.join(_tarjeta(c) for c in lista)}</div>{modal_pro}")
     return ui.shell("Mis campeonatos", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mis campeonatos · Modo anfitrión")
 
 
