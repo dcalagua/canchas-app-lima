@@ -444,3 +444,34 @@ def test_vaquita_del_equipo_en_la_web(db, monkeypatch):
     monkeypatch.setattr(campeonato_web, "obtener_campeonato", lambda _id: dict(fake.rows[cid], partidos=[], inscripcionAbierta=True))
     r = cli.get(f"/c/{cid}")
     assert "S/ 100.00 por equipo · cada jugador pone S/ 10" in r.text
+
+
+def test_equipos_viejos_sin_codigo_reciben_enlace_al_abrir_el_detalle(db, monkeypatch):
+    """Caso real (26-sep-2026): "Kinder 01" se creó desde el app antes de que
+    los equipos del organizador nacieran con código → no era `es_equipo`, no
+    tenía enlace y nadie podía unirse. Al abrir el detalle web se le asigna un
+    código único, se guarda, y el modal ya ofrece "Copiar enlace del equipo"."""
+    cli = TestClient(app, base_url="https://testserver")
+    fake = _preparar(monkeypatch)
+    _entrar_como(cli, monkeypatch, "orga@gmail.com", "Orga")
+    cid = L.nuevo_id()
+    fake.rows[cid] = {"id": cid, "dueno": "orga@gmail.com", "nombre": "Beata 2026", "deporte": "futbol", "formato": "liga",
+                      "costoInscripcion": 100, "minJugadoresEquipo": 7, "inscripcionAbierta": True, "moneda": "S/",
+                      "participantes": [{"id": "part_1", "nombre": "Kinder 01", "contacto": "", "email": "", "apoderadoNombre": ""},
+                                        {"id": "part_2", "nombre": "Kinder 02", "codigo": "YAEXIS", "capitanEmail": "", "roster": []}],
+                      "partidos": [{"id": "m0", "aId": "part_1", "bId": "part_2", "ronda": 0}]}
+    assert not L.es_equipo(fake.rows[cid]["participantes"][0])
+    r = cli.get(f"/anfitrion/campeonatos/{cid}")
+    assert r.status_code == 200
+    ps = fake.rows[cid]["participantes"]
+    assert len(ps[0]["codigo"]) == 6 and ps[0]["codigo"] != "YAEXIS" and L.es_equipo(ps[0])
+    assert ps[1]["codigo"] == "YAEXIS"  # el que ya tenía no cambia
+    assert ps[0]["roster"] == [] and ps[0]["capitanEmail"] == ""
+    assert "Kinder 01 · 0 jug. · S/ 0 de 100" in r.text  # ya es equipo (chip con pozo)
+    # Con fixture y la inscripción abierta, el plantel sigue abierto (espejo del app).
+    assert L.plantel_abierto(fake.rows[cid])
+    fake.rows[cid]["inscripcionAbierta"] = False
+    assert not L.plantel_abierto(fake.rows[cid])
+    # Sin equipos que corregir no se vuelve a guardar.
+    fake.rows[cid]["inscripcionAbierta"] = True
+    assert not L.completar_codigos(fake.rows[cid])

@@ -532,6 +532,18 @@ class Campeonato {
 
   bool get fixtureGenerado => partidos.isNotEmpty;
 
+  /// ¿Un jugador aún puede UNIRSE al plantel de un equipo (fútbol)? A
+  /// diferencia de crear equipos o de la inscripción individual, el fixture
+  /// ya generado NO cierra el plantel: un suplente entra (y pone su parte)
+  /// mientras la inscripción siga abierta y no haya vencido (pedido del
+  /// director, 26-sep-2026: "me quiero inscribir al Kinder-01" con el torneo
+  /// ya "En juego"). ESPEJO de `campeonatos_logica.plantel_abierto`.
+  bool get plantelAbierto =>
+      deporte == Deporte.futbol &&
+      !cerrado &&
+      inscripcionAbierta &&
+      !inscripcionVencida;
+
   /// Participante por id (o null).
   Participante? participanteDe(String? id) {
     if (id == null) return null;

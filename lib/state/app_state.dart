@@ -3088,6 +3088,43 @@ class AppState extends ChangeNotifier {
     return base.substring(base.length - 6);
   }
 
+  /// Fútbol: TODO participante es un equipo y debe tener CÓDIGO (enlace de
+  /// invitación). Los que creó el organizador antes de que existiera el
+  /// código (p. ej. "Kinder 01", build < 1380) no eran ni `esEquipo` y nadie
+  /// podía unirse. El ORGANIZADOR, al abrir la ficha, les asigna uno (único
+  /// en el torneo) y se guarda en la nube. Devuelve cuántos se corrigieron.
+  /// ESPEJO de `campeonatos_logica.completar_codigos` (la web hace lo mismo).
+  int completarCodigosEquipos(String campId) {
+    final c = campeonatoPorId(campId);
+    final u = usuario;
+    if (c == null || u == null || c.deporte != Deporte.futbol) return 0;
+    if (c.dueno.toLowerCase() != u.email.toLowerCase()) return 0;
+    final usados = {
+      for (final p in c.participantes)
+        if (p.codigo.isNotEmpty) p.codigo.toUpperCase()
+    };
+    var n = 0;
+    final parts = [
+      for (final p in c.participantes)
+        if (p.codigo.isNotEmpty)
+          p
+        else
+          () {
+            var cod = _nuevoCodigoEquipo();
+            var intentos = 0;
+            while (usados.contains(cod) && intentos++ < 50) {
+              cod = _nuevoCodigoEquipo();
+            }
+            usados.add(cod);
+            n++;
+            return p.copyWith(codigo: cod);
+          }(),
+    ];
+    if (n == 0) return 0;
+    guardarCampeonato(c.copyWith(participantes: parts));
+    return n;
+  }
+
   /// Crea un EQUIPO (fútbol) con el usuario como CAPITÁN y un CÓDIGO para que sus
   /// jugadores se auto-inscriban al plantel. Devuelve el código a compartir.
   ({bool ok, String mensaje, String codigo, String equipoId})
@@ -3169,7 +3206,9 @@ class AppState extends ChangeNotifier {
     if (u == null) return (ok: false, mensaje: 'Inicia sesión.');
     final c = campeonatoPorId(campId);
     if (c == null) return (ok: false, mensaje: 'Campeonato no encontrado.');
-    if (c.fixtureGenerado || c.inscripcionVencida) {
+    // El fixture generado NO cierra el plantel (un suplente entra mientras la
+    // inscripción siga abierta): solo la fecha límite o el organizador.
+    if (!c.plantelAbierto) {
       return (ok: false, mensaje: 'Las inscripciones cerraron.');
     }
     final cod = codigo.trim().toUpperCase();

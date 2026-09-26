@@ -634,6 +634,11 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
         from web.router import _no_encontrada
         r = _no_encontrada("Este campeonato no está a tu nombre"); r.status_code = 404
         return r
+    # Equipos viejos sin código (creados antes de que el organizador los
+    # generara con enlace): se les asigna al abrir el detalle, así "Kinder 01"
+    # tiene su enlace de invitación sin borrarlo y volverlo a crear.
+    if L.completar_codigos(c):
+        _guardar(ses, c)
     dep, fmt, mon = str(c.get("deporte") or ""), L.formato_de(c), _moneda(c)
     tiempos = fmt == "tiempos"
     iso = _pais(c)
@@ -763,7 +768,7 @@ document.addEventListener('click',async function(ev){var q=ev.target.closest('[d
   var ch=ev.target.closest('.chip.part[data-equipo="1"]');if(ch){var p=CFG.participantes.filter(function(x){return x.id===ch.dataset.pid})[0];if(!p)return;
     var falta=CFG.minJug>0?(p.roster.length>=CFG.minJug?"<span class='pill'>Completo</span>":"<span class='pill' style='background:#FFF1E3;color:#B25E0A'>Faltan "+(CFG.minJug-p.roster.length)+"</span>"):'';
     var enlaceEq=p.codigo?CFG.enlace+'?equipo='+encodeURIComponent(p.codigo):'';
-    var invitar=enlaceEq?"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><button type='button' class='btn sec' data-copiar-eq='"+esc(enlaceEq)+"'>🔗 Copiar enlace del equipo</button><a class='btn sec' target='_blank' rel='noopener' href='https://wa.me/?text="+encodeURIComponent('Únete a mi equipo «'+p.nombre+'» en "'+CFG.nombre+'" (Pichangol). Toca y quedas inscrito: '+enlaceEq)+"'>💬 WhatsApp</a></div><p class='sub' style='margin:6px 0 0;font-size:12px'>Quien abra el enlace con la app entra directo al equipo, sin escribir el código.</p>":'';
+    var invitar=enlaceEq?"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><button type='button' class='btn sec' data-copiar-eq='"+esc(enlaceEq)+"'>🔗 Copiar enlace del equipo</button><a class='btn sec' target='_blank' rel='noopener' href='https://wa.me/?text="+encodeURIComponent('Únete a mi equipo «'+p.nombre+'» en "'+CFG.nombre+'" (Pichangol). Toca y quedas inscrito: '+enlaceEq)+"'>💬 WhatsApp</a></div><p class='sub' style='margin:6px 0 0;font-size:12px'>Quien abra el enlace con la app entra directo al equipo, sin escribir el código"+(CFG.fixture?" (también con el fixture publicado, mientras la inscripción siga abierta)":"")+".</p>":'';
     var st=CFG.pozos[p.id],pozoHtml='',pago={};
     if(CFG.cuotaEq>0){var pz=st?st.pozo_centimos:0,tot=CFG.cuotaEq,pct=Math.min(100,Math.round(pz*100/tot)),comp=st?st.completo:false;(st?st.aportes:[]).forEach(function(a){pago[(a.email||'').toLowerCase()]=a.centimos});
       pozoHtml="<section><b>"+(comp?"✅ Equipo inscrito · pozo completo":"💰 Pozo del equipo")+"</b><div style='height:8px;border-radius:999px;background:#EEF1F4;margin:8px 0 6px;overflow:hidden'><div style='height:100%;width:"+pct+"%;background:"+(comp?'#0B8A3E':'#F28C28')+"'></div></div><p class='sub' style='margin:0'>"+esc(CFG.mon)+" "+fmtC(pz)+" de "+fmtC(tot)+" · cada jugador pone "+esc(CFG.mon)+" "+fmtC(CFG.cuotaJug)+(comp?"":" · faltan "+esc(CFG.mon)+" "+fmtC(tot-pz))+(st&&st.liquidado?" · ya acreditado en tu billetera (neto "+esc(CFG.mon)+" "+fmtC(st.neto_centimos)+")":"")+"</p></section>"}

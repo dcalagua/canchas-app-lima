@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart' show FileOptions;
@@ -62,6 +63,33 @@ class CampeonatosRepo {
           .from(_tabla)
           .select()
           .eq('data->>codigo', cod)
+          .neq('eliminado', true)
+          .limit(1);
+      final lista = rows as List;
+      if (lista.isEmpty) return null;
+      return Campeonato.fromJson(
+          Map<String, dynamic>.from((lista.first as Map)['data'] as Map));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Campeonato que contiene un EQUIPO con ese código (fútbol). El código de
+  /// equipo lo comparte el capitán; quien lo pega en "Unirme a un campeonato"
+  /// llega al torneo y directo a su equipo (pedido del director, 26-sep-2026:
+  /// "¿dónde meto ese código de equipo?"). Busca en `data->participantes`
+  /// con contención jsonb. null si no hay / sin red.
+  static Future<Campeonato?> porCodigoEquipo(String codigo) async {
+    final cod = codigo.trim().toUpperCase();
+    if (!SupabaseService.disponible || cod.isEmpty) return null;
+    try {
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .select()
+          // Como String: postgrest-dart codifica una List con llaves de
+          // ARRAY (`cs.{…}`), que no vale para jsonb; el JSON textual sí
+          // (`cs.[{"codigo":"X"}]`).
+          .contains('data->participantes', jsonEncode([{'codigo': cod}]))
           .neq('eliminado', true)
           .limit(1);
       final lista = rows as List;

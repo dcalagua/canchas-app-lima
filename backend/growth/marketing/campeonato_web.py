@@ -300,14 +300,18 @@ def html_campeonato(c: dict, campeonato_id: str = "",
     como = ("Ábrela y crea tu equipo (o únete con el código del capitán)."
             if c.get("deporte") == "futbol" else "Ábrela y toca “Inscribirme”.")
     inscripcion = ""
+    from web import campeonatos_logica as _L
     eq = equipo_por_codigo(c, equipo) if c.get("deporte") == "futbol" else None
-    if c.get("inscripcionAbierta") and not partidos:
+    # El enlace del CAPITÁN sigue valiendo con el fixture ya publicado: un
+    # suplente se une al plantel mientras la inscripción siga abierta
+    # (`plantel_abierto`, espejo del app). Crear equipos / inscribirse solo,
+    # en cambio, se cierra al generar el fixture.
+    if (c.get("inscripcionAbierta") and not partidos) or (eq is not None and _L.plantel_abierto(c)):
         costo = c.get("costoInscripcion") or 0
         costo_txt = (f" · {_esc(mon)} {float(costo):.2f}" if costo and costo > 0
                      else " · gratis")
         if costo and costo > 0 and c.get("deporte") == "futbol":
             # Cuota POR EQUIPO repartida entre el plantel (pagos/pozos.py).
-            from web import campeonatos_logica as _L
             cj = _L.cuota_jugador_centimos(c)
             cupo = _L.cupo_reparto(c)
             costo_txt = (f" · {_esc(mon)} {float(costo):.2f} por equipo"
@@ -318,12 +322,14 @@ def html_campeonato(c: dict, campeonato_id: str = "",
             plantel = len(eq.get("roster") or [])
             cap = str(eq.get("capitanEmail") or "").strip()
             cap_txt = (f' · capitán {_esc(cap.split("@")[0])}' if cap else "")
+            en_juego = (" El fixture ya está publicado: entras como parte del "
+                        "plantel." if partidos else "")
             inscripcion = (
                 f'<div class="cta"><b>Te invitaron al equipo '
                 f'«{_esc(str(eq.get("nombre") or ""))}»</b>{costo_txt}<br>'
                 f'<span>{plantel} jugador{"es" if plantel != 1 else ""} en el '
                 f'plantel{cap_txt}. Al tocar, Pichangol te une con tu cuenta; '
-                f'sin escribir códigos.</span><br>'
+                f'sin escribir códigos.{en_juego}</span><br>'
                 f'<a class="mapbtn" style="margin-top:10px" href="{intent}">'
                 f'{emo} Unirme al equipo en la app</a><br>'
                 f'<span style="font-size:12px">Si no tienes Pichangol, el '

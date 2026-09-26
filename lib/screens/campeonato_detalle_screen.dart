@@ -169,6 +169,19 @@ class CampeonatoDetalleScreen extends StatelessWidget {
               c.inscripcionAbierta &&
               !c.fixtureGenerado &&
               !c.inscripcionVencida; // cerró el plazo de inscripción
+          // Fútbol: UNIRSE al plantel de un equipo sigue abierto aunque el
+          // fixture ya esté publicado (suplentes), mientras la inscripción no
+          // cierre (`plantelAbierto`). Crear equipos sí se cierra con el fixture.
+          final puedeUnirseAEquipo = !esDueno && !yaInscrito && c.plantelAbierto;
+          if (esDueno &&
+              c.deporte.name == 'futbol' &&
+              c.participantes.any((p) => p.codigo.isEmpty)) {
+            // Equipos viejos sin código (creados antes del enlace de equipo):
+            // el organizador les da uno al abrir la ficha, así "Kinder 01"
+            // tiene enlace de invitación sin borrarlo y volverlo a crear.
+            WidgetsBinding.instance.addPostFrameCallback(
+                (_) => appState.completarCodigosEquipos(c.id));
+          }
           return ListView(
             // Regla app: contenido centrado (ancho máx) en pantallas anchas.
             padding: EdgeInsets.fromLTRB(
@@ -234,6 +247,30 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                 const SizedBox(height: 10),
                 const Text('Las inscripciones cerraron. Espera el fixture.',
                     style: TextStyle(color: textoTenue, fontSize: 12.5)),
+              ],
+              // Fixture publicado pero plantel abierto: se puede entrar a un
+              // equipo (con código o tocando el equipo en la lista).
+              if (puedeUnirseAEquipo && c.fixtureGenerado) ...[
+                const SizedBox(height: 12),
+                Text(
+                    c.tieneCuotaPorEquipo
+                        ? 'El fixture ya está publicado, pero aún puedes '
+                            'unirte al plantel de un equipo: toca el equipo o '
+                            'usa el código de tu capitán. Pones tu parte: '
+                            '${c.fmtMonto(c.cuotaJugadorCentimos)}.'
+                        : 'El fixture ya está publicado, pero aún puedes '
+                            'unirte al plantel de un equipo: toca el equipo o '
+                            'usa el código de tu capitán.',
+                    style: const TextStyle(color: textoTenue, fontSize: 12.5)),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _unirmeAEquipo(context, c),
+                    icon: const Icon(Icons.login),
+                    label: const Text('Unirme a un equipo (código)'),
+                  ),
+                ),
               ],
               // YA INSCRITO: aviso claro en lugar del botón (pedido del
               // director). Dice bajo qué nombre/equipo participa.
@@ -1235,6 +1272,12 @@ class CampeonatoDetalleScreen extends StatelessWidget {
       avisar('Código no válido. Pídeselo a tu capitán.');
       return;
     }
+    // Antes de cobrar la parte: el plantel debe seguir abierto (fecha límite
+    // / inscripción cerrada). Así nunca se debita sin poder unirse.
+    if (!c.plantelAbierto) {
+      avisar('Las inscripciones de "${c.nombre}" ya cerraron.');
+      return;
+    }
     if (eq.roster.any((r) => r.email.toLowerCase() == yo)) {
       avisar('Ya estás en "${eq.nombre}".', ok: true);
       return;
@@ -1636,6 +1679,17 @@ class _Participantes extends StatelessWidget {
       BuildContext context, Campeonato c, Participante eq) async {
     final yo = (appState.usuario?.email ?? '').toLowerCase();
     final soyCapitan = eq.capitanEmail.toLowerCase() == yo;
+    final soyDelPlantel =
+        yo.isNotEmpty && eq.roster.any((r) => r.email.toLowerCase() == yo);
+    // Un jugador que NO está en este equipo puede unirse desde aquí (tocó
+    // "Kinder 01" en la lista): mismo flujo que el código/enlace del capitán.
+    // Vale aunque el fixture ya esté publicado (`plantelAbierto`).
+    final puedoUnirme = !esDueno &&
+        !soyDelPlantel &&
+        !soyCapitan &&
+        eq.codigo.isNotEmpty &&
+        c.plantelAbierto &&
+        !c.equipoLleno(eq);
     await showDialog<void>(
       context: context,
       builder: (dctx) => DialogoPichangol(
@@ -1646,7 +1700,9 @@ class _Participantes extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (soyCapitan && eq.codigo.isNotEmpty) ...[
+              // El código lo ve el CAPITÁN y también el ORGANIZADOR (que creó
+              // el equipo y lo comparte para que se llene).
+              if ((soyCapitan || esDueno) && eq.codigo.isNotEmpty) ...[
                 const Text('Código del equipo (compártelo):',
                     style: TextStyle(color: textoTenue, fontSize: 12.5)),
                 Row(
@@ -1734,6 +1790,18 @@ class _Participantes extends StatelessWidget {
           ),
         ),
         acciones: [
+          if (puedoUnirme)
+            FilledButton.icon(
+              onPressed: () {
+                Navigator.pop(dctx);
+                CampeonatoDetalleScreen(campeonatoId: c.id)
+                    ._unirmeAEquipo(context, c, codigoInicial: eq.codigo);
+              },
+              icon: const Icon(Icons.group_add, size: 18),
+              label: Text(c.aporteSiguiente(eq) > 0
+                  ? 'Unirme · pones ${c.fmtMonto(c.aporteSiguiente(eq))}'
+                  : 'Unirme a este equipo'),
+            ),
           // Completar lo que falta: cualquiera del plantel (o el capitán).
           if (c.tieneCuotaPorEquipo &&
               !c.pozoCompleto(eq) &&

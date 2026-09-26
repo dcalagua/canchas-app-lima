@@ -415,6 +415,42 @@ def inscripcion_vencida(c: dict) -> bool:
     return h is not None and datetime.now() > h
 
 
+def plantel_abierto(c: dict) -> bool:
+    """¿Un jugador aún puede UNIRSE al plantel de un equipo (fútbol)? ESPEJO de
+    `Campeonato.plantelAbierto` del app. A diferencia de crear equipos o de la
+    inscripción individual, el fixture ya generado NO cierra el plantel: un
+    suplente entra (y pone su parte) mientras la inscripción siga abierta y no
+    haya vencido (pedido del director, 26-sep-2026: "me quiero inscribir al
+    Kinder-01" con el torneo ya "En juego")."""
+    return (c.get("deporte") == "futbol" and not c.get("cerrado")
+            and bool(c.get("inscripcionAbierta")) and not inscripcion_vencida(c))
+
+
+def completar_codigos(c: dict) -> bool:
+    """Fútbol: TODO participante es un equipo y debe tener CÓDIGO (enlace de
+    invitación). Los que creó el organizador antes de que existiera el código
+    (p. ej. "Kinder 01" del build < 1380) no eran ni siquiera `es_equipo` y
+    nadie podía unirse. Les asigna uno (único dentro del torneo) y devuelve
+    True si cambió algo, para que el llamador guarde. ESPEJO de
+    `AppState.completarCodigosEquipos`."""
+    if c.get("deporte") != "futbol":
+        return False
+    usados = {str(p.get("codigo") or "").upper() for p in (c.get("participantes") or []) if p.get("codigo")}
+    cambio = False
+    for p in c.get("participantes") or []:
+        if p.get("codigo"):
+            continue
+        cod = nuevo_codigo()
+        while cod.upper() in usados:
+            cod = nuevo_codigo()
+        usados.add(cod.upper())
+        p["codigo"] = cod
+        p.setdefault("capitanEmail", "")
+        p.setdefault("roster", [])
+        cambio = True
+    return cambio
+
+
 def terminado(c: dict) -> bool:
     if c.get("cerrado"):
         return True

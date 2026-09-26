@@ -167,3 +167,32 @@ def test_assetlinks_acepta_huella_sin_dos_puntos(monkeypatch):
     h = j[0]["target"]["sha256_cert_fingerprints"]
     assert h[0].startswith("21:E5:AD:A0:") and h[0].endswith(":EC:28") and h[0].count(":") == 31
     assert h[1] == "AA:BB"
+
+
+def test_enlace_del_equipo_sigue_valiendo_con_el_fixture_publicado(monkeypatch):
+    """Pedido del director (26-sep-2026, "me quiero inscribir al Kinder-01" con
+    el torneo ya "En juego"): el fixture generado NO cierra el plantel. Con el
+    enlace del capitán y la inscripción abierta, el CTA sigue siendo "Unirme al
+    equipo"; sin código (crear equipo) ya solo se ofrece seguir el torneo."""
+    data = {"nombre": "Copa Beata", "deporte": "futbol", "formato": "liga",
+            "inscripcionAbierta": True, "costoInscripcion": 100,
+            "minJugadoresEquipo": 7, "maxJugadoresEquipo": 10,
+            "partidos": [{"id": "m0", "aId": "p1", "bId": "p2", "ronda": 0}],
+            "participantes": [{"id": "p1", "nombre": "Kinder 01", "codigo": "K1NDER",
+                               "capitanEmail": "", "roster": []},
+                              {"id": "p2", "nombre": "Kinder 02", "codigo": "K2NDER",
+                               "capitanEmail": "", "roster": []}]}
+    monkeypatch.setattr(campeonato_web, "obtener_campeonato", lambda _id: data)
+    r = client.get("/c/camp_9?equipo=K1NDER")
+    assert r.status_code == 200
+    assert "Te invitaron al equipo «Kinder 01»" in r.text
+    assert "cada jugador pone S/ 10" in r.text
+    assert "El fixture ya está publicado: entras como parte del plantel." in r.text
+    assert "intent://c/camp_9?equipo=K1NDER#Intent;scheme=pichangol" in r.text
+    # Sin código de equipo: con fixture no se crean equipos nuevos.
+    r = client.get("/c/camp_9")
+    assert "Sigue el torneo en Pichangol" in r.text and "<b>Inscripciones abiertas</b>" not in r.text
+    # Inscripción cerrada por el organizador → tampoco por enlace.
+    data["inscripcionAbierta"] = False
+    r = client.get("/c/camp_9?equipo=K1NDER")
+    assert "Te invitaron" not in r.text and "Sigue el torneo en Pichangol" in r.text

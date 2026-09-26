@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../data/campeonatos_repo.dart';
 import '../models/campeonato.dart';
 
 import '../state/app_state.dart';
@@ -69,6 +70,18 @@ class _UnirseSheetState extends State<_UnirseSheet> {
       _abrir(c);
       return;
     }
+    // 1-bis. ¿Es el CÓDIGO DE UN EQUIPO (fútbol)? El capitán comparte el
+    //    código de su equipo; aquí sirve igual: abre el torneo y ofrece
+    //    unirse a ese equipo (con su parte de la cuota si aplica).
+    if (!texto.contains('://') && texto.length <= 8) {
+      final ce = await CampeonatosRepo.porCodigoEquipo(texto);
+      if (!mounted) return;
+      if (ce != null) {
+        setState(() => _buscando = false);
+        _abrir(ce, equipo: texto.toUpperCase());
+        return;
+      }
+    }
     // 2. Por NOMBRE (contiene): lista para elegir. Incluye torneos pasados —
     //    su ficha muestra ganadores, tabla y la galería de fotos.
     final lista = await appState.buscarCampeonatosPorNombre(texto);
@@ -83,11 +96,20 @@ class _UnirseSheetState extends State<_UnirseSheet> {
     });
   }
 
-  void _abrir(Campeonato c) {
+  void _abrir(Campeonato c, {String equipo = ''}) {
     appState.agregarCampeonatoCache(c);
-    Navigator.of(context).pop(); // cierra la hoja
-    Navigator.of(context).push(MaterialPageRoute(
+    final nav = Navigator.of(context);
+    nav.pop(); // cierra la hoja
+    nav.push(MaterialPageRoute(
         builder: (_) => CampeonatoDetalleScreen(campeonatoId: c.id)));
+    if (equipo.isEmpty) return;
+    // Código de equipo: con la ficha abierta, mismo flujo que el enlace del
+    // capitán (login → confirmación "Unirme a «X»" → pago de la parte).
+    Future.delayed(const Duration(milliseconds: 450), () {
+      final ctx = nav.overlay?.context;
+      if (ctx == null || !ctx.mounted) return;
+      CampeonatoDetalleScreen.unirseConEnlace(ctx, c, equipo);
+    });
   }
 
   @override
@@ -110,9 +132,9 @@ class _UnirseSheetState extends State<_UnirseSheet> {
           ),
           const SizedBox(height: 6),
           Text(
-              'Pega el enlace o código que te compartieron, o busca el torneo '
-              'por su nombre (también campeonatos pasados: verás ganadores, '
-              'tabla y fotos).',
+              'Pega el enlace o código que te compartieron (el del torneo o '
+              'el de tu equipo), o busca el torneo por su nombre (también '
+              'campeonatos pasados: verás ganadores, tabla y fotos).',
               style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
           const SizedBox(height: 14),
           TextField(

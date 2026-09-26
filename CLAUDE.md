@@ -998,6 +998,30 @@ para la API del APK.
   página pública dicen "cada jugador pone S/ 10". Tests
   `test_pozo_equipo.py`, `test_vaquita_del_equipo_en_la_web`. Pendiente:
   la cuota individual (`/torneo/inscribir`) sigue en PEN.
+- **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
+  VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
+  Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el
+  PLANTEL: `Campeonato.plantelAbierto` (app) = `campeonatos_logica.
+  plantel_abierto` (web) = fútbol ∧ !cerrado ∧ inscripcionAbierta ∧
+  !inscripcionVencida. Un suplente se une (y pone su parte del pozo) por
+  código, por enlace del capitán o TOCANDO EL EQUIPO en la lista de la ficha
+  (modal del equipo → "Unirme · pones S/ X"); la página pública `/c/{id}?
+  equipo=` sigue mostrando "Te invitaron al equipo" con fixture. Lo que SÍ se
+  cierra con el fixture: crear equipos nuevos e inscripción individual
+  (`puedeInscribirse`). `_confirmarYUnirme` valida `plantelAbierto` ANTES de
+  cobrar (nunca se debita sin poder unirse). (2) Fútbol: TODO participante es
+  un equipo con CÓDIGO. Los creados por el organizador antes del build 1380
+  (p. ej. "Kinder 01") no tenían código ni eran `esEquipo`/`es_equipo` → nadie
+  podía unirse. `AppState.completarCodigosEquipos` (el ORGANIZADOR al abrir la
+  ficha, post-frame) y `L.completar_codigos` (al abrir el detalle web) les
+  asignan uno único y guardan; el organizador ve el código/compartir en el
+  modal del equipo (antes solo el capitán). (3) "Unirme a un campeonato"
+  acepta también el CÓDIGO DE EQUIPO: `CampeonatosRepo.porCodigoEquipo`
+  (jsonb `data->participantes cs [{"codigo":…}]`, como String: postgrest-dart
+  codifica una List con llaves de array) → abre la ficha y dispara
+  `unirseConEnlace`. Tests `test_enlace_del_equipo_sigue_valiendo_con_el_
+  fixture_publicado`, `test_equipos_viejos_sin_codigo_reciben_enlace_al_abrir_
+  el_detalle`.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en
