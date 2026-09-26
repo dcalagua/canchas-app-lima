@@ -1514,6 +1514,12 @@ off → redeploy inmediato en cada push). URL pública:
     Liquidaciones → Liquidar por lote). CAMBIÓ `lib/` → APK/AAB de PRD por
     `workflow_dispatch` (`ref=prd`, `entorno=prod`). OJO: un APK anterior no
     tiene el carrito ni la tarjeta "Cuenta de cobro" → actualizar.
+    **Pase del 26-sep-2026 (4.º, autorizado: "Pasa a PRD"):** `prd` = merge
+    `f243640` (tarifa de la pasarela configurable en la torre + margen real
+    por cobro en Liquidaciones). Solo backend/torre: sin SQL, sin Edge, sin
+    APK, sin variables. Pendiente del director en la torre de PRD: poner la
+    tarifa contratada real de Culqi (tarjeta y Yape) en Cobros → Tarifas de
+    pasarela; hasta entonces usa la publicada de referencia.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
