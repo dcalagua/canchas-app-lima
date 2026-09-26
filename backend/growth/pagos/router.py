@@ -30,6 +30,7 @@ from db.store import stores
 from . import culqi
 from . import libelula
 from . import payphone
+from . import pozos
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
@@ -1521,6 +1522,67 @@ def post_torneo_inscribir(req: TorneoInscribirReq) -> dict:
             "saldo_soles": stores.saldo_centimos(email) / 100.0}
 
 
+# ─────────────── POZO DEL EQUIPO (cuota de torneo repartida) ──────────────
+class PozoAporteReq(BaseModel):
+    email: str                      # jugador que aporta (de su saldo)
+    campeonato_id: str
+    equipo_id: str
+    cuota_equipo_soles: float       # cuota del EQUIPO (Campeonato.costoInscripcion)
+    cupo: int = 0                   # jugadores entre los que se reparte (máx. o mín.)
+    moneda: str = "PEN"             # ISO o símbolo
+    organizador: str = ""           # correo del organizador (recibe el neto)
+    campeonato_nombre: str = ""
+    equipo_nombre: str = ""
+    monto_soles: float | None = None  # solo en /completar (tope: lo que falta)
+
+
+def _pozo_args(req: PozoAporteReq) -> dict:
+    return dict(email=req.email, campeonato_id=req.campeonato_id.strip(), equipo_id=req.equipo_id.strip(),
+                cuota_equipo_soles=req.cuota_equipo_soles, cupo=req.cupo, moneda=moneda_iso(req.moneda),
+                organizador=req.organizador, campeonato_nombre=req.campeonato_nombre[:80],
+                equipo_nombre=req.equipo_nombre[:80], comision_fn=comision_centimos)
+
+
+@router.post("/torneo/equipo/aportar", dependencies=_APP)
+def post_pozo_aportar(req: PozoAporteReq) -> dict:
+    """Un jugador pone SU PARTE de la cuota del equipo al unirse (cuota ÷ cupo,
+    hacia arriba a 0.50; el último solo lo que falta). Queda retenido en el
+    pozo; al completarse se liquida al organizador (comisión una sola vez)."""
+    return pozos.aportar(**_pozo_args(req), monto_soles=None)
+
+
+@router.post("/torneo/equipo/completar", dependencies=_APP)
+def post_pozo_completar(req: PozoAporteReq) -> dict:
+    """Cualquiera del equipo pone lo que FALTA del pozo (o `monto_soles`, con
+    tope en el faltante) para que el equipo quede inscrito."""
+    st = pozos.de_equipo(req.campeonato_id.strip(), req.equipo_id.strip(), req.cuota_equipo_soles, req.cupo)
+    monto = req.monto_soles if req.monto_soles and req.monto_soles > 0 else st["faltante_centimos"] / 100.0
+    return pozos.aportar(**_pozo_args(req), monto_soles=monto)
+
+
+class PozoDevolverReq(BaseModel):
+    campeonato_id: str
+    equipo_id: str
+    solicitante: str = ""           # debe ser el organizador del pozo
+
+
+@router.post("/torneo/equipo/devolver", dependencies=_APP)
+def post_pozo_devolver(req: PozoDevolverReq) -> dict:
+    """El equipo queda fuera antes de completar: cada jugador recupera su parte."""
+    return pozos.devolver(campeonato_id=req.campeonato_id.strip(), equipo_id=req.equipo_id.strip(),
+                          solicitante=req.solicitante)
+
+
+@router.get("/torneo/pozos/{campeonato_id}", dependencies=_APP)
+def get_pozos_campeonato(campeonato_id: str) -> dict:
+    return {"ok": True, "pozos": pozos.de_campeonato(campeonato_id)}
+
+
+@router.get("/torneo/equipo/{campeonato_id}/{equipo_id}", dependencies=_APP)
+def get_pozo_equipo(campeonato_id: str, equipo_id: str, cuota_equipo_soles: float = 0, cupo: int = 0) -> dict:
+    return {"ok": True, "pozo": pozos.de_equipo(campeonato_id, equipo_id, cuota_equipo_soles, cupo)}
+
+
 @router.post("/comision-reserva", dependencies=_APP)
 def post_comision_reserva(req: ComisionReservaReq) -> dict:
     """Descuenta la comisión de Pichangol del SALDO del dueño cuando entra una
@@ -2371,11 +2433,12 @@ def get_movimientos(dueno_id: str,
     # ingresos por torneo) y salidas (comisión de reserva, servicios, Pichangol
     # Pro, inscripción a torneo). Cada fila lleva su N.º de comprobante (p.id).
     _EGRESOS = ("comision_reserva", "suscripcion", "suscripcion_pro",
-                "inscripcion_torneo", "bodega_pago")
+                "inscripcion_torneo", "bodega_pago", "aporte_equipo")
     # `venta_producto` = venta del marketplace Y canje/compra de BONO de horas:
     # Pichangol cobró al comprador y le debe el NETO al dueño (misma
     # contabilidad que una reserva online). DEBE aparecer en el historial.
     _INCLUIR = ("recarga", "bono_recarga", "bono_bienvenida", "cupon",
+                "aporte_equipo_devolucion",
                 "liquidacion_online", "liquidacion_full",
                 "venta_producto", "venta_bodega",
                 "inscripcion_torneo_ingreso") + _EGRESOS
@@ -2394,6 +2457,8 @@ def get_movimientos(dueno_id: str,
         "suscripcion_pro": "Pichangol Pro",
         "inscripcion_torneo": "Inscripción a torneo",
         "inscripcion_torneo_ingreso": "Inscripción a torneo (ingreso)",
+        "aporte_equipo": "Mi parte en el equipo (torneo)",
+        "aporte_equipo_devolucion": "Devolución de mi parte (torneo)",
         "liquidacion_online": "Reserva online (neto)",
         "liquidacion_full": "Reserva online (recibes 100%)",
         "venta_producto": "Venta / bono (neto)",
@@ -2409,7 +2474,8 @@ def get_movimientos(dueno_id: str,
         # el APK lo muestra en el estado de cuenta.
         if getattr(p, "medio", None):
             base["medio"] = p.medio
-        if p.tipo in ("recarga", "bono_recarga", "bono_bienvenida", "cupon"):
+        if p.tipo in ("recarga", "bono_recarga", "bono_bienvenida", "cupon",
+                      "aporte_equipo_devolucion"):
             return {**base, "monto_soles": p.monto_centimos / 100.0}
         if p.tipo in _EGRESOS:
             # Egreso de saldo: negativo.

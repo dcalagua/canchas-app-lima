@@ -121,7 +121,11 @@ def test_mis_campeonatos_en_la_web_como_el_app(db, monkeypatch):
     assert r.status_code == 404
 
     # ── Fixture de liga: todos contra todos, 6 partidos en 3 jornadas ──
+    # Torneo por equipos CON costo: sin pozos completos, la web pregunta (409)
+    # y el organizador decide generar con todos.
     r = cli.post(f"/anfitrion/campeonatos/{cid}/fixture")
+    assert r.status_code == 409 and r.json()["error"] == "pozos_incompletos" and len(r.json()["equipos"]) == 4
+    r = cli.post(f"/anfitrion/campeonatos/{cid}/fixture", json={"con_todos": True})
     assert r.status_code == 200 and r.json()["partidos"] == 6
     partidos = fake.rows[cid]["partidos"]
     assert {int(p["ronda"]) for p in partidos} == {0, 1, 2}
@@ -370,3 +374,73 @@ def test_whatsapp_desde_la_web_sin_emojis_de_4_bytes(db, monkeypatch):
     assert "%F0%9F" not in m.group(2)
     assert ui.texto_whatsapp_pc("🏆⚽ *COPA* – hoy…\n👉 https://x.test") == "*COPA* - hoy...\n> https://x.test"
     assert "data-wa-movil" in ui.JS_NAV
+
+
+def test_vaquita_del_equipo_en_la_web(db, monkeypatch):
+    """Pedido del director (26-sep-2026): la cuota es POR EQUIPO y se reparte
+    entre el plantel. Web: máximo de jugadores en el asistente, equipos del
+    organizador con código, chips con el pozo, aviso al generar el fixture con
+    exclusión + devolución, y "cada jugador pone" en publicidad y página pública."""
+    import re
+    import urllib.parse
+    from pagos import pozos as _pz
+    stores.pozos_equipo = {}; stores.pagos = []; stores.saldos = {}
+    cli = TestClient(app, base_url="https://testserver")
+    fake = _preparar(monkeypatch)
+    _entrar_como(cli, monkeypatch, "orga@gmail.com", "Orga")
+    cid = L.nuevo_id()
+    # Asistente: máximo por equipo (nunca por debajo del mínimo).
+    r = cli.post("/anfitrion/campeonatos/guardar", json={"id": cid, "nombre": "Beata 2026", "deporte": "futbol", "formato": "liga",
+                                                        "costo": 100, "minJugadoresEquipo": 7, "maxJugadoresEquipo": 5, "lat": -12.09, "lng": -77.0})
+    assert r.status_code == 200, r.text
+    c = fake.rows[cid]
+    assert c["minJugadoresEquipo"] == 7 and c["maxJugadoresEquipo"] == 7
+    r = cli.post("/anfitrion/campeonatos/guardar", json={"id": cid, "nombre": "Beata 2026", "deporte": "futbol", "formato": "liga",
+                                                        "costo": 100, "minJugadoresEquipo": 7, "maxJugadoresEquipo": 10, "lat": -12.09, "lng": -77.0})
+    c = fake.rows[cid]
+    assert c["maxJugadoresEquipo"] == 10 and L.cuota_jugador_centimos(c) == 1000 and L.cupo_reparto(c) == 10
+    # Los equipos que agrega el organizador nacen con CÓDIGO (enlace de equipo).
+    ids = []
+    for n in ("Kinder 01", "Kinder 02", "PreKinder"):
+        r = cli.post(f"/anfitrion/campeonatos/{cid}/participante", json={"nombre": n}).json()
+        ids.append(r["id"])
+    eqs = fake.rows[cid]["participantes"]
+    assert all(len(p["codigo"]) == 6 and L.es_equipo(p) for p in eqs)
+    # Dos jugadores ponen su parte en Kinder 01; el capitán completa Kinder 02.
+    for em in ("a@x.com", "b@x.com", "capi@x.com"):
+        stores.acreditar(em, 10000)
+    for em in ("a@x.com", "b@x.com"):
+        r = _pz.aportar(email=em, campeonato_id=cid, equipo_id=ids[0], cuota_equipo_soles=100, cupo=10, moneda="PEN",
+                        organizador="orga@gmail.com", campeonato_nombre="Beata 2026", equipo_nombre="Kinder 01", monto_soles=None,
+                        comision_fn=lambda s, m: 500)
+        assert r["ok"] and r["aporte_centimos"] == 1000
+    r = _pz.aportar(email="capi@x.com", campeonato_id=cid, equipo_id=ids[1], cuota_equipo_soles=100, cupo=10, moneda="PEN",
+                    organizador="orga@gmail.com", campeonato_nombre="Beata 2026", equipo_nombre="Kinder 02", monto_soles=100,
+                    comision_fn=lambda s, m: 500)
+    assert r["pozo"]["liquidado"] and stores.saldo_centimos("orga@gmail.com") == 9500
+    # Detalle: chips con el pozo y CFG con pozos/cuota.
+    r = cli.get(f"/anfitrion/campeonatos/{cid}")
+    assert r.status_code == 200
+    assert "Kinder 01 · 0/10 jug. · S/ 20 de 100" in r.text
+    assert "Kinder 02 · 0/10 jug. · S/ 100 ✅ inscrito" in r.text
+    assert "PreKinder · 0/10 jug. · S/ 0 de 100" in r.text
+    assert '"cuotaJug": 1000' in r.text and '"cuotaEq": 10000' in r.text and '"cupo": 10' in r.text
+    # Publicidad de WhatsApp: cuánto pone cada jugador.
+    assert "Cada jugador pone S/ 10 al unirse a su equipo (hasta 10 por equipo)" in urllib.parse.unquote(
+        re.search(r"data-wa-movil='(https://wa\.me/\?text=[^']+)'", r.text).group(1))
+    # Generar fixture: pregunta por los pozos incompletos; excluirlos devuelve la plata.
+    r = cli.post(f"/anfitrion/campeonatos/{cid}/fixture")
+    assert r.status_code == 409 and {q["nombre"] for q in r.json()["equipos"]} == {"Kinder 01", "PreKinder"}
+    r = cli.post(f"/anfitrion/campeonatos/{cid}/fixture", json={"excluir": [ids[0]]})
+    assert r.status_code == 200 and r.json()["devueltos"] == 2, r.text
+    assert stores.saldo_centimos("a@x.com") == 10000 and stores.saldo_centimos("b@x.com") == 10000
+    assert {p["nombre"] for p in fake.rows[cid]["participantes"]} == {"Kinder 02", "PreKinder"}
+    assert fake.rows[cid]["partidos"]
+    # Quitar un equipo ya liquidado: no hay devolución automática, se avisa.
+    r = cli.post(f"/anfitrion/campeonatos/{cid}/participante/{ids[1]}/eliminar").json()
+    assert r["ok"] and "ya se te había liquidado" in r["aviso"]
+    # Página pública: "por equipo · cada jugador pone".
+    from marketing import campeonato_web
+    monkeypatch.setattr(campeonato_web, "obtener_campeonato", lambda _id: dict(fake.rows[cid], partidos=[], inscripcionAbierta=True))
+    r = cli.get(f"/c/{cid}")
+    assert "S/ 100.00 por equipo · cada jugador pone S/ 10" in r.text

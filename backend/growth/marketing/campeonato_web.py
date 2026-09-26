@@ -305,6 +305,13 @@ def html_campeonato(c: dict, campeonato_id: str = "",
         costo = c.get("costoInscripcion") or 0
         costo_txt = (f" · {_esc(mon)} {float(costo):.2f}" if costo and costo > 0
                      else " · gratis")
+        if costo and costo > 0 and c.get("deporte") == "futbol":
+            # Cuota POR EQUIPO repartida entre el plantel (pagos/pozos.py).
+            from web import campeonatos_logica as _L
+            cj = _L.cuota_jugador_centimos(c)
+            cupo = _L.cupo_reparto(c)
+            costo_txt = (f" · {_esc(mon)} {float(costo):.2f} por equipo"
+                         + (f" · cada jugador pone {_esc(mon)} {_L.fmt_monto(cj)}" if cupo > 0 else ""))
         if eq is not None:
             # Enlace del CAPITÁN: un solo toque para entrar a SU equipo.
             intent = _intent_unirse(campeonato_id, str(eq.get("codigo") or ""))

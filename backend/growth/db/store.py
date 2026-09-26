@@ -477,6 +477,9 @@ class Stores:
         self.retos: list[Reto] = []
         # VENTAS del Marketplace (escrow: retenido hasta que el comprador confirme).
         self.ventas: list[Venta] = []
+        # POZOS DE EQUIPO (cuota de torneo repartida entre el plantel; ver
+        # pagos/pozos.py): {"<campeonato_id>|<equipo_id>": {...}}.
+        self.pozos_equipo: dict[str, dict] = {}
         # Anti-fraude "1 DNI = 1 cuenta": hash(DNI) -> correo verificado. Solo se
         # guarda el HASH (Ley 29733: nunca el número). Si un DNI ya está ligado a
         # otra cuenta, no se puede verificar una segunda.
@@ -768,6 +771,7 @@ class Stores:
         self.pagos = []
         self.retos = []
         self.ventas = []
+        self.pozos_equipo = {}
         self.saldos = {}
         self.saldos_promo = {}
         self.bienvenidas = {}
@@ -984,6 +988,7 @@ class Stores:
             "convocatorias": [como_dict(c) for c in self.convocatorias],
             "retos": [como_dict(r) for r in self.retos],
             "ventas": [como_dict(v) for v in self.ventas],
+            "pozos_equipo": {k: dict(v) for k, v in self.pozos_equipo.items()},
             "dni_verificados": dict(self.dni_verificados),
             "inscripciones": [como_dict(i) for i in self.inscripciones],
             "saldos": dict(self.saldos),
@@ -1055,6 +1060,9 @@ class Stores:
         self.convocatorias = [_conv_from(d) for d in data.get("convocatorias", [])]
         self.retos = [_reto_from(d) for d in data.get("retos", [])]
         self.ventas = [_venta_from(d) for d in data.get("ventas", [])]
+        self.pozos_equipo = {
+            str(k): dict(v) for k, v in (data.get("pozos_equipo") or {}).items()
+            if isinstance(v, dict)}
         self.dni_verificados = {
             k: str(v) for k, v in (data.get("dni_verificados") or {}).items()}
         self.inscripciones = [_insc_from(d) for d in data.get("inscripciones", [])]

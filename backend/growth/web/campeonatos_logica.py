@@ -87,6 +87,38 @@ def equipo_completo(c: dict, p: dict) -> bool:
     return usa_cupo_equipos(c) and len(p.get("roster") or []) >= int(c.get("minJugadoresEquipo") or 0)
 
 
+# ── Pozo del equipo (cuota repartida entre el plantel, ver pagos/pozos.py) ──
+def max_jugadores(c: dict) -> int:
+    """Tope de plantel (titulares + suplentes). 0 = sin tope."""
+    return int(c.get("maxJugadoresEquipo") or 0) if c.get("deporte") == "futbol" else 0
+
+
+def cupo_reparto(c: dict) -> int:
+    """Entre cuántos se reparte la cuota del equipo: el máximo; si no hay, el
+    mínimo; si no hay ninguno, 0 (= la cuota entera la pone quien crea)."""
+    return max_jugadores(c) or int(c.get("minJugadoresEquipo") or 0)
+
+
+def cuota_equipo_centimos(c: dict) -> int:
+    return int(round(float(c.get("costoInscripcion") or 0) * 100))
+
+
+def cuota_jugador_centimos(c: dict) -> int:
+    """`Campeonato.cuotaJugadorCentimos` del app: cuota ÷ cupo, hacia arriba a 0.50."""
+    from pagos import pozos
+    return pozos.cuota_jugador_centimos(cuota_equipo_centimos(c), cupo_reparto(c))
+
+
+def equipo_lleno(c: dict, p: dict) -> bool:
+    m = max_jugadores(c)
+    return m > 0 and len(p.get("roster") or []) >= m
+
+
+def fmt_monto(centimos: int) -> str:
+    v = centimos / 100.0
+    return f"{v:.0f}" if abs(v - round(v)) < 0.005 else f"{v:.2f}"
+
+
 def participante(c: dict, pid) -> dict | None:
     return next((p for p in (c.get("participantes") or []) if p.get("id") == pid), None)
 

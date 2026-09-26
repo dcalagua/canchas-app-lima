@@ -33,6 +33,7 @@ from web import almacen, catalogos, datos, sesion, ui
 from web import campeonatos_logica as L
 from web.anfitrion import JS_PAGAR, _en_segundo_plano, _sesion_o_entrar
 from web.router import PLAY_URL, e
+from pagos import pozos
 
 router = APIRouter(tags=["web-anfitrion-campeonatos"])
 _LEAFLET = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
@@ -221,7 +222,9 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
  <div id='minPartBox'{'' if fmt == 'grupos' else ' hidden'}><label>Partidos mínimos por equipo</label>{_chips('minp', [(2, 'Al menos 2'), (3, 'Al menos 3')], L.min_partidos(c), disabled=fix)}
  <p class='sub' style='font-size:12.5px' id='minPartTxt'>Se arman grupos; los 2 primeros de cada grupo pasan a la llave.</p></div>
  <div id='minJugBox'{'' if dep == 'futbol' else ' hidden'}><label for='minJug'>Mínimo de jugadores por equipo <span class='req'>opcional</span></label><input id='minJug' type='number' min='0' max='30' value='{int(c.get('minJugadoresEquipo') or 0) or ''}' placeholder='ej. 7'>
- <p class='sub' style='font-size:12.5px'>Cada equipo aparece "Completo" al llegar a este número. Vacío = solo se muestra el conteo.</p></div>
+ <p class='sub' style='font-size:12.5px'>Cada equipo aparece "Completo" al llegar a este número. Vacío = solo se muestra el conteo.</p>
+ <label for='maxJug'>Máximo de jugadores por equipo (titulares + suplentes) <span class='req'>opcional</span></label><input id='maxJug' type='number' min='0' max='40' value='{int(c.get('maxJugadoresEquipo') or 0) or ''}' placeholder='ej. 10'>
+ <p class='sub' style='font-size:12.5px' id='cuotaJugTxt'>Con costo de inscripción, la cuota del equipo se reparte entre este número: cada jugador pone su parte al unirse y el equipo queda inscrito cuando el pozo la cubre.</p></div>
  <label for='cat'>Categoría <span class='req'>opcional</span></label><select id='cat'>{cat_ops}</select>
  <div id='catOtraBox'{'' if cat_sel == 'otra' else ' hidden'}><label for='catOtra'>Nombre de la categoría</label><input id='catOtra' type='text' maxlength='40' value='{e(cat_txt if cat_sel == 'otra' else '')}' placeholder='Ej. Damas B, Nivel intermedio, Mixto…'></div>
  <div class='pie'><button type='button' class='btn sec' data-ir='1'>Atrás</button><button type='button' class='btn' data-ir='3'>Siguiente</button></div></div>
@@ -287,7 +290,7 @@ $('inLogo').addEventListener('change',async function(){var f=this.files&&this.fi
 // guardar (misma validación que el app: solo el nombre es obligatorio)
 $('btnGuardar').addEventListener('click',async function(){var err=$('errGuardar');err.style.display='none';if(subiendo>0){pcgToast('Espera a que termine de subir el logo.');return}
   var cat=$('cat').value;if(cat==='otra')cat=$('catOtra').value.trim();
-  var body={id:CFG.id,nombre:$('nombre').value,deporte:dep,formato:fmt,minPartidos:minPart,categoria:cat,minJugadoresEquipo:+$('minJug').value||0,desde:$('desde').value,hasta:$('relampago').checked?$('desde').value:$('hastaJ').value,cierre:$('cierre').value,
+  var body={id:CFG.id,nombre:$('nombre').value,deporte:dep,formato:fmt,minPartidos:minPart,categoria:cat,minJugadoresEquipo:+$('minJug').value||0,maxJugadoresEquipo:+$('maxJug').value||0,desde:$('desde').value,hasta:$('relampago').checked?$('desde').value:$('hastaJ').value,cierre:$('cierre').value,
     sede:$('sede').value,lat:lat,lng:lng,costo:parseFloat(String($('costo').value).replace(',','.'))||0,relampago:$('relampago').checked,exigeDni:$('exigeDni').checked,edadMin:$('edadMin').value,edadMax:$('edadMax').value,auspiciador:$('ausp').value,premios:$('premios').value,logoUrl:logo};
   this.disabled=true;pcgCargando(CFG.nuevo?'Creando tu campeonato…':'Guardando cambios…');try{var r=await fetch('/anfitrion/campeonatos/guardar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){pcgIr('/anfitrion/campeonatos/'+encodeURIComponent(j.id)+(CFG.nuevo?'?creado=1':'?guardado=1'),'Abriendo tu campeonato…');return}pcgCargando(false);err.textContent=j.error||'No se pudo guardar.';err.style.display='block';if(j.paso)ir(j.paso)}catch(e){pcgCargando(false);err.textContent='No se pudo guardar. Revisa tu conexión.';err.style.display='block'}this.disabled=false});
@@ -378,6 +381,9 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
             return None
     edad_min, edad_max = (_int(b.get("edadMin")), _int(b.get("edadMax"))) if exige else (None, None)
     min_jug = max(0, _int(b.get("minJugadoresEquipo")) or 0) if dep == "futbol" else 0
+    max_jug = max(0, _int(b.get("maxJugadoresEquipo")) or 0) if dep == "futbol" else 0
+    if max_jug and min_jug and max_jug < min_jug:
+        max_jug = min_jug  # el tope nunca por debajo del mínimo
     min_part = _int(b.get("minPartidos")) if fmt == "grupos" else None
     if fmt == "grupos" and min_part not in L.MIN_PARTIDOS:
         min_part = L.min_partidos(actual or {})
@@ -394,7 +400,7 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
         "nombre": nombre, "deporte": dep, "formato": fmt, "categoria": re.sub(r"\s+", " ", str(b.get("categoria") or "")).strip()[:40],
         "sede": sede, "fechas": fechas, "costoInscripcion": costo, "moneda": moneda, "relampago": relampago, "exigeDni": exige,
         "premios": str(b.get("premios") or "").strip()[:600], "auspiciador": str(b.get("auspiciador") or "").strip().upper()[:60],
-        "minJugadoresEquipo": min_jug, "minPartidos": min_part,
+        "minJugadoresEquipo": min_jug, "maxJugadoresEquipo": max_jug, "minPartidos": min_part,
     })
     if nuevo:
         data.update({"codigo": L.nuevo_codigo(), "inscripcionAbierta": True, "participantes": [], "partidos": [], "cerrado": False})
@@ -414,6 +420,8 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
             data.pop(k, None)
     if not data.get("minJugadoresEquipo"):
         data.pop("minJugadoresEquipo", None)
+    if not data.get("maxJugadoresEquipo"):
+        data.pop("maxJugadoresEquipo", None)
     if not data.get("minPartidos"):
         data.pop("minPartidos", None)
     if not data.get("aficheVariante"):
@@ -460,7 +468,13 @@ def _publicidad(c: dict) -> str:
     if c.get("premios"):
         lineas += ["", "🎁 *Premios*:"] + [f"✅ {p.strip()}" for p in str(c["premios"]).splitlines() if p.strip()]
     lineas.append("")
-    lineas.append(f"💰 Inscripción: {mon} {float(c.get('costoInscripcion') or 0):.2f}" if float(c.get("costoInscripcion") or 0) > 0 else "Inscripción *GRATIS*")
+    if float(c.get("costoInscripcion") or 0) > 0:
+        por_eq = " por equipo" if dep == "futbol" else ""
+        lineas.append(f"💰 Inscripción: {mon} {float(c.get('costoInscripcion') or 0):.2f}{por_eq}")
+        if dep == "futbol" and L.cupo_reparto(c) > 0:
+            lineas.append(f"👥 Cada jugador pone {mon} {L.fmt_monto(L.cuota_jugador_centimos(c))} al unirse a su equipo (hasta {L.cupo_reparto(c)} por equipo)")
+    else:
+        lineas.append("Inscripción *GRATIS*")
     if c.get("auspiciador"):
         lineas.append(f"Gracias a nuestro auspiciador *{c['auspiciador']}*")
     if c.get("codigo"):
@@ -508,13 +522,20 @@ def _participantes_html(c: dict) -> str:
         if L.es_equipo(p):
             n = len(p.get("roster") or [])
             lab = (f"{p.get('nombre')} · {n}/{c.get('minJugadoresEquipo')}" + (" ✅" if L.equipo_completo(c, p) else "")) if L.usa_cupo_equipos(c) else f"{p.get('nombre')} · {n} jug."
+            if c.get("deporte") == "futbol" and L.cuota_equipo_centimos(c) > 0:
+                st = pozos.de_equipo(c["id"], p["id"], float(c.get("costoInscripcion") or 0), L.cupo_reparto(c))
+                mon = _moneda(c)
+                lab = f"{p.get('nombre')} · {n}{('/' + str(L.max_jugadores(c))) if L.max_jugadores(c) else ''} jug. · " + (
+                    f"{mon} {L.fmt_monto(st['cuota_equipo_centimos'])} ✅ inscrito" if st["completo"]
+                    else f"{mon} {L.fmt_monto(st['pozo_centimos'])} de {L.fmt_monto(st['cuota_equipo_centimos'])}")
             icono = "👥"
         elif L.es_menor(p):
             lab, icono = f"{p.get('nombre')} · apod. {p.get('apoderadoNombre')}", "🧒"
         else:
             lab, icono = str(p.get("nombre") or ""), ("✅" if p.get("email") else "👤")
         foto = f"<img src='{e(p['fotoUrl'])}' alt='' style='width:22px;height:22px;border-radius:50%;object-fit:cover'>" if p.get("fotoUrl") else f"<span>{icono}</span>"
-        chips.append(f"<span class='chip part{' ok' if L.es_equipo(p) and L.equipo_completo(c, p) else ''}' data-pid='{e(p['id'])}' data-equipo='{1 if L.es_equipo(p) else 0}'>{foto} {e(lab)}<button type='button' class='x' data-quitar='{e(p['id'])}' title='Quitar'>✕</button></span>")
+        inscrito = L.es_equipo(p) and (L.equipo_completo(c, p) or (c.get("deporte") == "futbol" and L.cuota_equipo_centimos(c) > 0 and pozos.de_equipo(c["id"], p["id"], float(c.get("costoInscripcion") or 0), L.cupo_reparto(c))["completo"]))
+        chips.append(f"<span class='chip part{' ok' if inscrito else ''}' data-pid='{e(p['id'])}' data-equipo='{1 if L.es_equipo(p) else 0}'>{foto} {e(lab)}<button type='button' class='x' data-quitar='{e(p['id'])}' title='Quitar'>✕</button></span>")
     return "".join(chips) or "<div class='anf-vacio'>Aún no hay inscritos. Agrega participantes o comparte el código para que se inscriban desde la app.</div>"
 
 
@@ -657,7 +678,10 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
            "fondo": c.get("aficheFondoUrl") or "", "storage": almacen.disponible(), "distancias": L.DISTANCIAS, "estilos": L.ESTILOS,
            "participantes": [{"id": p["id"], "nombre": p.get("nombre"), "email": p.get("email") or "", "contacto": p.get("contacto") or "", "capitanEmail": p.get("capitanEmail") or "",
                               "codigo": p.get("codigo") or "", "roster": p.get("roster") or []} for p in (c.get("participantes") or [])],
-           "minJug": int(c.get("minJugadoresEquipo") or 0), "fixture": L.fixture_generado(c), "arte": _base_url() or ""}
+           "minJug": int(c.get("minJugadoresEquipo") or 0), "maxJug": L.max_jugadores(c), "fixture": L.fixture_generado(c), "arte": _base_url() or "",
+           "cuotaEq": L.cuota_equipo_centimos(c) if dep == "futbol" else 0, "cuotaJug": L.cuota_jugador_centimos(c) if dep == "futbol" else 0,
+           "cupo": L.cupo_reparto(c), "mon": _moneda(c),
+           "pozos": {st["equipo_id"]: st for st in pozos.de_campeonato(c["id"])} if dep == "futbol" and L.cuota_equipo_centimos(c) > 0 else {}}
     cuerpo = f"""
 <style>
 .det{{max-width:920px;margin:0 auto}}.det .panel{{margin-top:14px;padding:18px 20px}}.det h3{{margin:0 0 8px;font-size:17px}}
@@ -701,7 +725,7 @@ _JS_DETALLE = r"""
 function $(id){return document.getElementById(id)}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;')}
 var B='/anfitrion/campeonatos/'+encodeURIComponent(CFG.id);
-async function post(ruta,body,msg){pcgCargando(msg||'Guardando…',{demora:300});try{var r=await fetch(B+ruta,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});var j=await r.json().catch(function(){return {}});if(!j.ok)throw new Error(j.error||j.mensaje||'No se pudo.');return j}finally{pcgCargando(false)}}
+async function post(ruta,body,msg){pcgCargando(msg||'Guardando…',{demora:300});try{var r=await fetch(B+ruta,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});var j=await r.json().catch(function(){return {}});if(!j.ok){var er=new Error(j.error||j.mensaje||'No se pudo.');if(j.equipos)er.equipos=j.equipos;throw er}return j}finally{pcgCargando(false)}}
 function modal(tit,html,onOk){$('modalTit').textContent=tit;$('modalCuerpo').innerHTML=html;$('modal').classList.add('open');var f=$('modalCuerpo').querySelector('input,select');if(f)setTimeout(function(){f.focus()},60);var ok=$('modalOk');if(ok)ok.onclick=onOk}
 function cerrar(){$('modal').classList.remove('open')}
 $('modalCerrar').addEventListener('click',cerrar);$('modal').addEventListener('click',function(ev){if(ev.target===$('modal'))cerrar()});
@@ -735,15 +759,24 @@ $('btnFondo').addEventListener('click',function(){var r=Math.floor(Math.random()
 $('btnAgregar').addEventListener('click',function(){var eq=CFG.deporte==='futbol';
   modal(eq?'Nuevo equipo':'Nuevo participante',"<label>"+(eq?'Nombre del equipo':'Nombre (jugador o pareja "A / B")')+"</label><input id='pNombre' type='text' maxlength='80'><label>WhatsApp <span class='req'>opcional</span></label><input id='pTel' type='text' inputmode='tel' maxlength='20'>"+pie('Agregar'),
     async function(){try{await post('/participante',{nombre:$('pNombre').value,contacto:$('pTel').value});pcgRecargar()}catch(e){err(e.message)}})});
-document.addEventListener('click',async function(ev){var q=ev.target.closest('[data-quitar]');if(q){ev.stopPropagation();var pq=CFG.participantes.filter(function(x){return x.id===q.dataset.quitar})[0];if(!await pcgConfirmar({titulo:'Quitar participante',mensaje:'¿Quitas a '+(pq?pq.nombre:'este participante')+' del campeonato?',confirmar:'Quitar',destructivo:true}))return;try{await post('/participante/'+encodeURIComponent(q.dataset.quitar)+'/eliminar',{},'Quitando…');pcgRecargar()}catch(e){pcgToast(e.message)}return}
+document.addEventListener('click',async function(ev){var q=ev.target.closest('[data-quitar]');if(q){ev.stopPropagation();var pq=CFG.participantes.filter(function(x){return x.id===q.dataset.quitar})[0];if(!await pcgConfirmar({titulo:'Quitar participante',mensaje:'¿Quitas a '+(pq?pq.nombre:'este participante')+' del campeonato?',confirmar:'Quitar',destructivo:true}))return;try{var jq=await post('/participante/'+encodeURIComponent(q.dataset.quitar)+'/eliminar',{},'Quitando…');if(jq.aviso){await pcgAvisar({titulo:'Pozo ya liquidado',mensaje:jq.aviso,icono:'💰'})}pcgRecargar(jq.devueltos?jq.devueltos+' jugador(es) recuperaron su parte':undefined)}catch(e){pcgToast(e.message)}return}
   var ch=ev.target.closest('.chip.part[data-equipo="1"]');if(ch){var p=CFG.participantes.filter(function(x){return x.id===ch.dataset.pid})[0];if(!p)return;
     var falta=CFG.minJug>0?(p.roster.length>=CFG.minJug?"<span class='pill'>Completo</span>":"<span class='pill' style='background:#FFF1E3;color:#B25E0A'>Faltan "+(CFG.minJug-p.roster.length)+"</span>"):'';
     var enlaceEq=p.codigo?CFG.enlace+'?equipo='+encodeURIComponent(p.codigo):'';
     var invitar=enlaceEq?"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><button type='button' class='btn sec' data-copiar-eq='"+esc(enlaceEq)+"'>🔗 Copiar enlace del equipo</button><a class='btn sec' target='_blank' rel='noopener' href='https://wa.me/?text="+encodeURIComponent('Únete a mi equipo «'+p.nombre+'» en "'+CFG.nombre+'" (Pichangol). Toca y quedas inscrito: '+enlaceEq)+"'>💬 WhatsApp</a></div><p class='sub' style='margin:6px 0 0;font-size:12px'>Quien abra el enlace con la app entra directo al equipo, sin escribir el código.</p>":'';
-    modal(p.nombre,"<section><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>Código: "+esc(p.codigo||'—')+"</b>"+falta+"</div><p class='sub' style='margin:6px 0 0'>Capitán: "+esc(p.capitanEmail||'—')+"</p>"+invitar+"</section><section><b>Plantel ("+p.roster.length+")</b>"+
-      (p.roster.map(function(i){return "<div class='marca'><span class='pos'>"+(i.email?'✅':'👤')+"</span><span class='nom'>"+esc(i.nombre)+(i.email&&i.email===p.capitanEmail?" <span class='pill'>Capitán</span>":'')+"</span></div>"}).join('')||"<p class='sub'>Sin jugadores aún. El capitán los agrega desde la app.</p>")+"</section>",null)}});
+    var st=CFG.pozos[p.id],pozoHtml='',pago={};
+    if(CFG.cuotaEq>0){var pz=st?st.pozo_centimos:0,tot=CFG.cuotaEq,pct=Math.min(100,Math.round(pz*100/tot)),comp=st?st.completo:false;(st?st.aportes:[]).forEach(function(a){pago[(a.email||'').toLowerCase()]=a.centimos});
+      pozoHtml="<section><b>"+(comp?"✅ Equipo inscrito · pozo completo":"💰 Pozo del equipo")+"</b><div style='height:8px;border-radius:999px;background:#EEF1F4;margin:8px 0 6px;overflow:hidden'><div style='height:100%;width:"+pct+"%;background:"+(comp?'#0B8A3E':'#F28C28')+"'></div></div><p class='sub' style='margin:0'>"+esc(CFG.mon)+" "+fmtC(pz)+" de "+fmtC(tot)+" · cada jugador pone "+esc(CFG.mon)+" "+fmtC(CFG.cuotaJug)+(comp?"":" · faltan "+esc(CFG.mon)+" "+fmtC(tot-pz))+(st&&st.liquidado?" · ya acreditado en tu billetera (neto "+esc(CFG.mon)+" "+fmtC(st.neto_centimos)+")":"")+"</p></section>"}
+    modal(p.nombre,"<section><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>Código: "+esc(p.codigo||'—')+"</b>"+falta+"</div><p class='sub' style='margin:6px 0 0'>Capitán: "+esc(p.capitanEmail||'—')+"</p>"+invitar+"</section>"+pozoHtml+"<section><b>Plantel ("+p.roster.length+(CFG.maxJug?"/"+CFG.maxJug:"")+")</b>"+
+      (p.roster.map(function(i){var em=(i.email||'').toLowerCase();return "<div class='marca'><span class='pos'>"+(i.email?'✅':'👤')+"</span><span class='nom'>"+esc(i.nombre)+(i.email&&i.email===p.capitanEmail?" <span class='pill'>Capitán</span>":'')+(CFG.cuotaEq>0?(pago[em]?" <span class='pill'>pagó "+esc(CFG.mon)+" "+fmtC(pago[em])+"</span>":" <span class='pill' style='background:#FFF1E3;color:#B25E0A'>sin pagar</span>"):'')+"</span></div>"}).join('')||"<p class='sub'>Sin jugadores aún. Comparte el enlace del equipo: cada jugador entra"+(CFG.cuotaEq>0?" y pone su parte":"")+" desde la app.</p>")+"</section>",null)}});
+function fmtC(c){var v=(c||0)/100;return Math.abs(v-Math.round(v))<0.005?String(Math.round(v)):v.toFixed(2)}
 var bf=$('btnFixture');if(bf)bf.addEventListener('click',async function(){if(CFG.participantes.length<2){pcgToast('Agrega al menos 2 participantes.');return}
-  if(CFG.fixture&&!await pcgConfirmar({titulo:'Regenerar fixture',mensaje:'Se sortea de nuevo y se BORRAN los resultados cargados.',confirmar:'Regenerar',destructivo:true,icono:'🔁'}))return;try{await post('/fixture',{},'Sorteando el fixture…');pcgRecargar()}catch(e){pcgToast(e.message)}});
+  if(CFG.fixture&&!await pcgConfirmar({titulo:'Regenerar fixture',mensaje:'Se sortea de nuevo y se BORRAN los resultados cargados.',confirmar:'Regenerar',destructivo:true,icono:'🔁'}))return;await sortear({})});
+async function sortear(body){try{var j=await post('/fixture',body,'Sorteando el fixture…');pcgRecargar(j.devueltos?'Fixture listo · '+j.devueltos+' jugador(es) recuperaron su parte':undefined)}catch(e){
+  if(e.equipos){var eq=e.equipos;modal('Equipos con el pozo incompleto',"<p class='sub'>Estos equipos aún no cubren la cuota de "+esc(CFG.mon)+" "+fmtC(CFG.cuotaEq)+":</p>"+eq.map(function(q){return "<div class='marca'><span class='pos'>⏳</span><span class='nom'>"+esc(q.nombre)+" · "+esc(CFG.mon)+" "+fmtC(q.pozo_centimos)+" de "+fmtC(CFG.cuotaEq)+"</span></div>"}).join('')+
+    "<div class='acciones' style='margin-top:16px;flex-wrap:wrap'><button type='button' class='btn' id='fxTodos'>Generar con todos</button><button type='button' class='btn sec' id='fxExcluir'>Excluirlos y devolver sus aportes</button></div><p class='sub' style='font-size:12px;margin-top:8px'>Si los excluyes, cada jugador recupera lo que puso en su saldo Pichangol.</p>",null);
+    $('fxTodos').onclick=function(){cerrar();sortear({con_todos:true})};$('fxExcluir').onclick=async function(){cerrar();if(!await pcgConfirmar({titulo:'Excluir '+eq.length+' equipo(s)',mensaje:'Quedan fuera del torneo y sus jugadores recuperan su parte. ¿Continuar?',confirmar:'Excluir y devolver',destructivo:true,icono:'↩️'}))return;sortear({excluir:eq.map(function(q){return q.id})})};return}
+  pcgToast(e.message)}}
 // resultado
 document.addEventListener('click',function(ev){var t=ev.target.closest('.partido.clic');if(!t)return;
   modal('Cargar resultado',"<div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><div><label>"+esc(t.dataset.a)+"</label><input id='mA' type='number' min='0' inputmode='numeric' value='"+esc(t.dataset.ma)+"'></div><div><label>"+esc(t.dataset.b)+"</label><input id='mB' type='number' min='0' inputmode='numeric' value='"+esc(t.dataset.mb)+"'></div></div>"+pie('Guardar'),
@@ -876,6 +909,11 @@ def agregar_participante(request: Request, cid: str, b: dict | None = Body(None)
         return _err("Escribe el nombre.")
     p = {"id": f"part_{int(time.time() * 1_000_000)}", "nombre": nombre, "contacto": re.sub(r"[^\d+ ]", "", str(b.get("contacto") or ""))[:20],
          "email": str(b.get("email") or "").strip().lower()[:120], "apoderadoNombre": ""}
+    if c.get("deporte") == "futbol":
+        # Los equipos que crea el ORGANIZADOR también reciben código y enlace:
+        # así "Kinder 01" se llena por el enlace de equipo (pedido del director,
+        # 26-sep-2026); el capitán queda vacío hasta que alguien lo asuma.
+        p.update({"codigo": L.nuevo_codigo(), "capitanEmail": "", "roster": []})
     c["participantes"] = list(c.get("participantes") or []) + [p]
     if not _guardar(ses, c):
         return _err("No pudimos guardar.", 503)
@@ -888,28 +926,72 @@ def eliminar_participante(request: Request, cid: str, pid: str) -> JSONResponse:
     if err is not None:
         return err
     antes = len(c.get("participantes") or [])
+    quitado = L.participante(c, pid)
     c["participantes"] = [p for p in (c.get("participantes") or []) if p.get("id") != pid]
     if len(c["participantes"]) == antes:
         return _err("Participante no encontrado.", 404)
     if not _guardar(ses, c):
         return _err("No pudimos guardar.", 503)
-    return _ok(c)
+    dev = _devolver_pozo(ses, c, quitado)
+    return _ok(c, **dev)
+
+
+def _devolver_pozo(ses: dict, c: dict, p: dict | None) -> dict:
+    """Al sacar un EQUIPO con pozo sin completar, cada jugador recupera su
+    parte (`pozos.devolver`). Si ya se liquidó al organizador, se avisa."""
+    if not p or not L.es_equipo(p) or L.cuota_equipo_centimos(c) <= 0:
+        return {}
+    r = pozos.devolver(campeonato_id=c["id"], equipo_id=p["id"], solicitante=ses["email"])
+    if r.get("ok"):
+        return {"devueltos": int(r.get("devueltos") or 0)}
+    if r.get("error") == "ya_liquidado":
+        return {"devueltos": 0, "aviso": f"El pozo de {p.get('nombre')} ya se te había liquidado: la devolución a sus jugadores queda de tu lado."}
+    return {}
+
+
+def _equipos_sin_pozo(c: dict) -> list[dict]:
+    """Equipos cuyo pozo aún no cubre la cuota (torneo por equipos con costo)."""
+    if c.get("deporte") != "futbol" or L.cuota_equipo_centimos(c) <= 0:
+        return []
+    out = []
+    for p in c.get("participantes") or []:
+        if not L.es_equipo(p):
+            continue
+        st = pozos.de_equipo(c["id"], p["id"], float(c.get("costoInscripcion") or 0), L.cupo_reparto(c))
+        if not st["completo"]:
+            out.append({"id": p["id"], "nombre": p.get("nombre"), "pozo_centimos": st["pozo_centimos"],
+                        "faltante_centimos": st["faltante_centimos"]})
+    return out
 
 
 @router.post(BASE + "/{cid}/fixture")
-def generar_fixture(request: Request, cid: str) -> JSONResponse:
-    """`generarFixture`: (re)genera y BORRA los resultados. No aplica a tiempos."""
+def generar_fixture(request: Request, cid: str, b: dict | None = Body(None)) -> JSONResponse:
+    """`generarFixture`: (re)genera y BORRA los resultados. No aplica a tiempos.
+    Con cuota por equipo: `excluir` = ids de equipos con pozo incompleto que
+    quedan fuera (sus jugadores recuperan su parte); sin `excluir` ni
+    `con_todos`, si hay pozos incompletos responde `pozos_incompletos` para
+    que la web pregunte."""
     ses, c, err = _mio_json(request, cid)
     if err is not None:
         return err
     if L.formato_de(c) == "tiempos":
         return _err("Un torneo por tiempos no tiene fixture: agrega pruebas.")
+    b = b if isinstance(b, dict) else {}
+    incompletos = _equipos_sin_pozo(c)
+    if incompletos and not b.get("con_todos") and not isinstance(b.get("excluir"), list):
+        return JSONResponse({"ok": False, "error": "pozos_incompletos", "equipos": incompletos}, status_code=409)
+    devueltos = 0
+    if isinstance(b.get("excluir"), list) and b["excluir"]:
+        ids = {str(x) for x in b["excluir"]}
+        for p in [p for p in (c.get("participantes") or []) if p.get("id") in ids]:
+            devueltos += int(_devolver_pozo(ses, c, p).get("devueltos") or 0)
+        c["participantes"] = [p for p in (c.get("participantes") or []) if p.get("id") not in ids]
     if len(c.get("participantes") or []) < 2:
         return _err("Agrega al menos 2 participantes.")
     c["partidos"] = L.generar_fixture(c)
     if not _guardar(ses, c):
         return _err("No pudimos guardar.", 503)
-    return _ok(c, partidos=len(c["partidos"]))
+    return _ok(c, partidos=len(c["partidos"]), devueltos=devueltos)
 
 
 @router.post(BASE + "/{cid}/resultado")
