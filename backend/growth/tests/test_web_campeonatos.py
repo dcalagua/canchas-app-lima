@@ -481,3 +481,36 @@ def test_equipos_viejos_sin_codigo_reciben_enlace_al_abrir_el_detalle(db, monkey
     # Sin equipos que corregir no se vuelve a guardar.
     fake.rows[cid]["inscripcionAbierta"] = True
     assert not L.completar_codigos(fake.rows[cid])
+
+
+def test_relampago_exige_hora_de_cierre_de_inscripciones(db, monkeypatch):
+    """Pedido del director (26-sep-2026): un relámpago se juega en un día, así
+    que el cierre de inscripciones lleva día Y HORA (a esa hora se sortea).
+    Sin hora → error en el paso 3; con hora se guarda `inscripcionHasta` con
+    la hora; el cierre no puede pasar del día del torneo; el detalle y la
+    publicidad muestran la hora. En torneos de varios días la hora es opcional."""
+    cli = TestClient(app, base_url="https://testserver")
+    fake = _preparar(monkeypatch)
+    _entrar_como(cli, monkeypatch, "orga@gmail.com", "Orga")
+    cid = L.nuevo_id()
+    base = {"id": cid, "nombre": "Relámpago Beata", "deporte": "futbol", "formato": "liga", "relampago": True,
+            "desde": "2099-03-07", "hasta": "2099-03-07", "lat": -12.09, "lng": -77.0}
+    r = cli.post("/anfitrion/campeonatos/guardar", json=dict(base, cierre="2099-03-07"))
+    assert r.status_code == 400 and "hora de cierre" in r.json()["error"] and r.json().get("paso") == 3, r.text
+    r = cli.post("/anfitrion/campeonatos/guardar", json=dict(base, cierre="2099-03-08", cierreHora="09:00"))
+    assert r.status_code == 400 and "día del torneo" in r.json()["error"], r.text
+    r = cli.post("/anfitrion/campeonatos/guardar", json=dict(base, cierre="2099-03-07", cierreHora="09:30"))
+    assert r.status_code == 200, r.text
+    assert fake.rows[cid]["inscripcionHasta"].startswith("2099-03-07T09:30")
+    r = cli.get(f"/anfitrion/campeonatos/{cid}")
+    assert "Cierre inscrip.: 7 mar · 09:30" in r.text
+    assert "value='09:30'" in cli.get(f"/anfitrion/campeonatos/{cid}/editar").text
+    import re as _re
+    import urllib.parse as _u
+    wa = _u.unquote(_re.search(r"data-wa-movil='(https://wa\.me/\?text=[^']+)'", r.text).group(1))
+    assert "Inscripciones hasta el 7 mar · 09:30" in wa
+    # Varios días: la hora es opcional (sin hora = 00:00 de ese día, como antes).
+    cid2 = L.nuevo_id()
+    r = cli.post("/anfitrion/campeonatos/guardar", json={"id": cid2, "nombre": "Liga larga", "deporte": "futbol", "formato": "liga",
+                                                        "desde": "2099-03-07", "hasta": "2099-04-07", "cierre": "2099-03-01", "lat": -12.09, "lng": -77.0})
+    assert r.status_code == 200 and fake.rows[cid2]["inscripcionHasta"].startswith("2099-03-01T00:00")

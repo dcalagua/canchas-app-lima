@@ -120,6 +120,21 @@ def _fecha_corta(v) -> str:
     return f"{d.day} {L.MESES[d.month - 1]}" if d else ""
 
 
+def _fecha_hora_corta(v) -> str:
+    """Día + hora si la tiene ("26 set · 09:00"); a las 00:00 solo el día."""
+    d = L._dt(v)
+    if not d:
+        return ""
+    base = f"{d.day} {L.MESES[d.month - 1]}"
+    return base if (d.hour == 0 and d.minute == 0) else f"{base} · {d.hour:02d}:{d.minute:02d}"
+
+
+def _hora(v) -> str:
+    """'HH:MM' de un ISO con hora distinta de 00:00; '' si no la tiene."""
+    d = L._dt(v)
+    return "" if (not d or (d.hour == 0 and d.minute == 0)) else f"{d.hour:02d}:{d.minute:02d}"
+
+
 def _estado_pill(c: dict) -> str:
     clave, txt, color = L.estado(c)
     col = {"teal": "background:#E6F4EF;color:#0B7A55", "morado": "background:#EFE9FF;color:#5B3FD8",
@@ -190,7 +205,7 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
     cat_ops = "<option value=''>— Sin categoría —</option>" + "".join(
         f"<option value='{e(lab)}'{' selected' if cat_sel == lab else ''}>{e(_cat_lab(lab, mn, mx))}</option>" for lab, mn, mx in catalogos.CATEGORIAS_CAMPEONATO
     ) + f"<option value='otra'{' selected' if cat_sel == 'otra' else ''}>Otra… (escribir)</option>"
-    inicio, hasta = _dia(c.get("inicio")), _dia(c.get("inscripcionHasta"))
+    inicio, hasta, hasta_hora = _dia(c.get("inicio")), _dia(c.get("inscripcionHasta")), _hora(c.get("inscripcionHasta"))
     fin = _dia(c.get("_fin")) or inicio
     canchas = datos.canchas_para_sede()[:400]
     cfg = {"id": c["id"], "nuevo": nuevo, "deporte": dep, "formato": fmt, "fixture": fix, "logo": c.get("logoUrl") or "", "minPartidos": L.min_partidos(c),
@@ -233,7 +248,8 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
  <label id='lblFechas'>{'Fecha (relámpago, un día)' if c.get('relampago') else 'Fechas de juego'}</label>
  <div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><input id='desde' type='date' value='{e(inicio)}'><input id='hastaJ' type='date' value='{e(fin)}'{' disabled' if c.get('relampago') else ''}></div>
  {"<p class='sub' style='font-size:12.5px'>Actual: " + e(c.get('fechas')) + "</p>" if c.get('fechas') else ''}
- <label for='cierre'>Cierre de inscripciones <span class='req'>opcional · ese día a las 00:00 se cierran y se sortea solo</span></label><input id='cierre' type='date' value='{e(hasta)}'>
+ <label for='cierre' id='lblCierre'>Cierre de inscripciones <span class='req' id='cierreAyuda'>{'día y hora · a esa hora se cierran y se sortea solo' if c.get('relampago') else 'opcional · día y hora (sin hora = ese día a las 00:00); se sortea solo'}</span></label>
+ <div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><input id='cierre' type='date' value='{e(hasta)}'><input id='cierreHora' type='time' value='{e(hasta_hora)}' placeholder='Hora'></div>
  <label for='sede'>Sede{" <span class='req'>🔎 elige una cancha de Pichangol o búscala en Google Maps</span>" if config.PLACES_API_KEY else " <span class='req'>elige una cancha de Pichangol</span>"}</label>
  <input id='sede' type='text' maxlength='80' value='{e(c.get('sede') or '')}' placeholder='Nombre de la cancha o club' autocomplete='off'><div id='resSede' class='res-busca' hidden></div>
  <div id='mapaSede' class='mapa-sede' style='margin-top:8px;height:220px'></div><div class='sub' id='ubicTxt' style='font-size:12.5px'>{'Sin ubicación: elige una sede para fijar el país y la moneda.' if c.get('sedeLat') is None else f"{float(c['sedeLat']):.5f}, {float(c['sedeLng']):.5f}"}</div>
@@ -270,8 +286,11 @@ pintarFormatos();
 // categoría: del catálogo fija el rango de edad y exige DNI; "otra" = texto
 $('cat').addEventListener('change',function(){var v=this.value;$('catOtraBox').hidden=v!=='otra';var r=CFG.cats[v];if(r){$('edadMin').value=r[0]||'';$('edadMax').value=r[1]||'';if(r[0]||r[1]){$('exigeDni').checked=true;$('edadBox').hidden=false}}});
 $('exigeDni').addEventListener('change',function(){$('edadBox').hidden=!this.checked});
-$('relampago').addEventListener('change',function(){$('hastaJ').disabled=this.checked;$('lblFechas').textContent=this.checked?'Fecha (relámpago, un día)':'Fechas de juego';if(this.checked)$('hastaJ').value=$('desde').value});
-$('desde').addEventListener('change',function(){if($('relampago').checked||!$('hastaJ').value||$('hastaJ').value<this.value)$('hastaJ').value=this.value});
+function topeCierre(){var r=$('relampago').checked,d=$('desde').value;if(r&&d){$('cierre').max=d;if(!$('cierre').value||$('cierre').value>d)$('cierre').value=d}else{$('cierre').removeAttribute('max')}
+  $('cierreAyuda').textContent=r?'día y hora · a esa hora se cierran y se sortea solo':'opcional · día y hora (sin hora = ese día a las 00:00); se sortea solo'}
+$('relampago').addEventListener('change',function(){$('hastaJ').disabled=this.checked;$('lblFechas').textContent=this.checked?'Fecha (relámpago, un día)':'Fechas de juego';if(this.checked)$('hastaJ').value=$('desde').value;topeCierre()});
+$('desde').addEventListener('change',function(){if($('relampago').checked||!$('hastaJ').value||$('hastaJ').value<this.value)$('hastaJ').value=this.value;topeCierre()});
+topeCierre();
 // sede: canchas de Pichangol (como `_SelectorSede`) + Google Maps
 function paisDe(la,ln){var C={PE:[-18.4,-0.03,-81.4,-68.6],EC:[-5.1,1.7,-81.1,-75.1],BO:[-22.95,-9.6,-69.7,-57.4]};for(var k in C){var c=C[k];if(la>=c[0]&&la<=c[1]&&ln>=c[2]&&ln<=c[3])return k}return 'PE'}
 function ponerPunto(la,ln){lat=la;lng=ln;$('ubicTxt').textContent=la.toFixed(5)+', '+ln.toFixed(5);if(mapa){if(marker)marker.setLatLng([la,ln]);else marker=L.marker([la,ln]).addTo(mapa);mapa.setView([la,ln],15)}
@@ -290,7 +309,7 @@ $('inLogo').addEventListener('change',async function(){var f=this.files&&this.fi
 // guardar (misma validación que el app: solo el nombre es obligatorio)
 $('btnGuardar').addEventListener('click',async function(){var err=$('errGuardar');err.style.display='none';if(subiendo>0){pcgToast('Espera a que termine de subir el logo.');return}
   var cat=$('cat').value;if(cat==='otra')cat=$('catOtra').value.trim();
-  var body={id:CFG.id,nombre:$('nombre').value,deporte:dep,formato:fmt,minPartidos:minPart,categoria:cat,minJugadoresEquipo:+$('minJug').value||0,maxJugadoresEquipo:+$('maxJug').value||0,desde:$('desde').value,hasta:$('relampago').checked?$('desde').value:$('hastaJ').value,cierre:$('cierre').value,
+  var body={id:CFG.id,nombre:$('nombre').value,deporte:dep,formato:fmt,minPartidos:minPart,categoria:cat,minJugadoresEquipo:+$('minJug').value||0,maxJugadoresEquipo:+$('maxJug').value||0,desde:$('desde').value,hasta:$('relampago').checked?$('desde').value:$('hastaJ').value,cierre:$('cierre').value,cierreHora:$('cierreHora').value,
     sede:$('sede').value,lat:lat,lng:lng,costo:parseFloat(String($('costo').value).replace(',','.'))||0,relampago:$('relampago').checked,exigeDni:$('exigeDni').checked,edadMin:$('edadMin').value,edadMax:$('edadMax').value,auspiciador:$('ausp').value,premios:$('premios').value,logoUrl:logo};
   this.disabled=true;pcgCargando(CFG.nuevo?'Creando tu campeonato…':'Guardando cambios…');try{var r=await fetch('/anfitrion/campeonatos/guardar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){pcgIr('/anfitrion/campeonatos/'+encodeURIComponent(j.id)+(CFG.nuevo?'?creado=1':'?guardado=1'),'Abriendo tu campeonato…');return}pcgCargando(false);err.textContent=j.error||'No se pudo guardar.';err.style.display='block';if(j.paso)ir(j.paso)}catch(e){pcgCargando(false);err.textContent='No se pudo guardar. Revisa tu conexión.';err.style.display='block'}this.disabled=false});
@@ -362,6 +381,18 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
     relampago = bool(b.get("relampago"))
     if desde and (relampago or not hasta_j or hasta_j < desde):
         hasta_j = desde
+    # Cierre de inscripciones = día + HORA (pedido del director, 26-sep-2026:
+    # "si es relámpago debe indicarme una hora para cerrar inscripciones").
+    m = re.fullmatch(r"(\d{1,2}):(\d{2})", str(b.get("cierreHora") or "").strip())
+    cierre_h, cierre_m = (int(m.group(1)), int(m.group(2))) if m else (None, None)
+    if m and not (0 <= cierre_h <= 23 and 0 <= cierre_m <= 59):
+        return None, "Hora de cierre inválida.", 3
+    if relampago:
+        if not cierre or not m:
+            return None, "Es relámpago: indica el día y la hora de cierre de inscripciones.", 3
+        if desde and cierre > desde:
+            return None, f"El cierre de inscripciones debe ser el día del torneo ({desde.day} {L.MESES[desde.month - 1]}) o antes.", 3
+    cierre_dt = datetime(cierre.year, cierre.month, cierre.day, cierre_h or 0, cierre_m or 0) if cierre else None
     if desde:
         fechas = L.fmt_rango(desde, hasta_j)
         inicio = datetime(desde.year, desde.month, desde.day).isoformat(timespec="milliseconds")
@@ -404,7 +435,7 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
     })
     if nuevo:
         data.update({"codigo": L.nuevo_codigo(), "inscripcionAbierta": True, "participantes": [], "partidos": [], "cerrado": False})
-    for k, v in (("inicio", inicio), ("inscripcionHasta", datetime(cierre.year, cierre.month, cierre.day).isoformat(timespec="milliseconds") if cierre else None),
+    for k, v in (("inicio", inicio), ("inscripcionHasta", cierre_dt.isoformat(timespec="milliseconds") if cierre_dt else None),
                  ("edadMin", edad_min), ("edadMax", edad_max), ("logoUrl", logo or None)):
         if v is None or v == "":
             data.pop(k, None)
@@ -475,6 +506,8 @@ def _publicidad(c: dict) -> str:
             lineas.append(f"👥 Cada jugador pone {mon} {L.fmt_monto(L.cuota_jugador_centimos(c))} al unirse a su equipo (hasta {L.cupo_reparto(c)} por equipo)")
     else:
         lineas.append("Inscripción *GRATIS*")
+    if c.get("inscripcionHasta"):
+        lineas.append(f"🗓️ Inscripciones hasta el {_fecha_hora_corta(c['inscripcionHasta'])}")
     if c.get("auspiciador"):
         lineas.append(f"Gracias a nuestro auspiciador *{c['auspiciador']}*")
     if c.get("codigo"):
@@ -657,7 +690,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
         tams = L.armar_grupos(len(c.get("participantes") or []), L.min_partidos(c))
         info.append(f"<span class='chip'>🧩 Grupos + llave · cada equipo juega al menos {L.min_partidos(c)} partidos" + (f" · {len(tams)} grupo{'s' if len(tams) != 1 else ''} de {'/'.join(str(t) for t in tams)}" if tams else " · con menos de 3 equipos se juega solo la final") + "</span>")
     if c.get("inscripcionHasta"):
-        info.append(f"<span class='chip'>🗓️ Cierre inscrip.: {e(_fecha_corta(c['inscripcionHasta']))}</span>")
+        info.append(f"<span class='chip'>🗓️ Cierre inscrip.: {e(_fecha_hora_corta(c['inscripcionHasta']))}</span>")
     if c.get("relampago"):
         info.append("<span class='chip'>⚡ Relámpago</span>")
     if c.get("exigeDni"):

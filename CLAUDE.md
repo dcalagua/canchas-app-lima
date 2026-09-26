@@ -1010,7 +1010,17 @@ para la API del APK.
   (cuántos equipos hay); los suplentes entran hasta que el torneo termine o
   el organizador lo cierre. El modal del equipo DICE por qué no se puede
   unir (`motivoPlantelCerrado`: organizador con la misma cuenta / cerrado /
-  plantel lleno / sin código) en vez de esconder el botón. Un suplente se une (y pone su parte del pozo) por
+  plantel lleno / sin código) en vez de esconder el botón. **CIERRE DE
+  INSCRIPCIONES = DÍA + HORA (pedido del director, 26-sep-2026: "si es
+  relámpago debe indicarme una hora"):** `inscripcionHasta` guarda la hora;
+  el asistente del app (`_elegirCierre`: date picker → time picker) y el web
+  (`#cierre` + `#cierreHora`, body `cierreHora`) la piden. En RELÁMPAGO es
+  OBLIGATORIA y el día no puede pasar del día del torneo (error en el paso
+  3 / snack en el app); en torneos de varios días es opcional (sin hora =
+  00:00 de ese día, como antes). La hora se muestra en la ficha del app
+  (`_fmtDiaHora`), en el detalle web (`_fecha_hora_corta`) y en la
+  publicidad de WhatsApp ("Inscripciones hasta el 7 mar · 09:30"). Test
+  `test_relampago_exige_hora_de_cierre_de_inscripciones`. Un suplente se une (y pone su parte del pozo) por
   código, por enlace del capitán o TOCANDO EL EQUIPO en la lista de la ficha
   (modal del equipo → "Unirme · pones S/ X"); la página pública `/c/{id}?
   equipo=` sigue mostrando "Te invitaron al equipo" con fixture. Lo que SÍ se

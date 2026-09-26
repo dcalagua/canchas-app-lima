@@ -232,7 +232,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                   children: [
                     if (c.inscripcionHasta != null)
                       _ChipInfo('🗓️ Cierre inscrip.: '
-                          '${_fmtDia(c.inscripcionHasta!)}'),
+                          '${_fmtDiaHora(c.inscripcionHasta!)}'),
                     if (c.relampago) const _ChipInfo('⚡ Relámpago'),
                     if (c.exigeDni) _ChipInfo('🪪 Exige $docIdActual'),
                     if (c.edadMin != null || c.edadMax != null)
@@ -542,6 +542,14 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     'jul', 'ago', 'set', 'oct', 'nov', 'dic'
   ];
   static String _fmtDia(DateTime d) => '${d.day} ${_meses[d.month - 1]}';
+
+  /// Día + hora si la tiene ("26 set · 09:00"); los cierres viejos a 00:00
+  /// siguen mostrando solo el día.
+  static String _fmtDiaHora(DateTime d) {
+    if (d.hour == 0 && d.minute == 0) return _fmtDia(d);
+    return '${_fmtDia(d)} · ${d.hour.toString().padLeft(2, '0')}:'
+        '${d.minute.toString().padLeft(2, '0')}';
+  }
 
   /// Calcula la edad actual desde una fecha de nacimiento en texto (Factiliza
   /// suele dar dd/mm/yyyy; también acepta yyyy-mm-dd). null si no se puede.

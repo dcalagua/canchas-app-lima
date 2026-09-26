@@ -222,16 +222,64 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
   String _fmtFecha(DateTime d) =>
       '${d.day} ${_meses[d.month - 1]} ${d.year}';
 
+  /// Cierre con hora: "26 set 2026 · 09:00". La hora se muestra siempre en
+  /// relámpago (se juega ese mismo día) y, en los demás, solo si no es 00:00.
+  String _fmtCierre(DateTime d) {
+    final conHora = _relampago || d.hour != 0 || d.minute != 0;
+    if (!conHora) return _fmtFecha(d);
+    final hh = d.hour.toString().padLeft(2, '0');
+    final mm = d.minute.toString().padLeft(2, '0');
+    return '${_fmtFecha(d)} · $hh:$mm';
+  }
+
+  /// Día del torneo (relámpago) o inicio del rango, si ya se eligió.
+  DateTime? get _diaJuego => _rango?.start ?? widget.editar?.inicio;
+
+  /// Cierre de inscripciones = DÍA + HORA (pedido del director, 26-sep-2026:
+  /// "si es relámpago debe indicarme una hora para cerrar inscripciones").
+  /// En relámpago el día no puede pasar del día del torneo y la hora es
+  /// obligatoria (a esa hora se cierran las inscripciones y se sortea solo).
   Future<void> _elegirCierre() async {
     final hoy = DateTime.now();
-    final r = await showDatePicker(
+    final hoy0 = DateTime(hoy.year, hoy.month, hoy.day);
+    final juego = _diaJuego;
+    final tope = (_relampago && juego != null && !juego.isBefore(hoy0))
+        ? DateTime(juego.year, juego.month, juego.day)
+        : DateTime(hoy.year + 1, 12, 31);
+    var inicial = _cierreInscripcion ?? (_relampago ? (juego ?? hoy) : hoy);
+    if (inicial.isBefore(hoy0)) inicial = hoy0;
+    if (inicial.isAfter(tope)) inicial = tope;
+    final dia = await showDatePicker(
       context: context,
-      firstDate: DateTime(hoy.year, hoy.month, hoy.day),
-      lastDate: DateTime(hoy.year + 1, 12, 31),
-      initialDate: _cierreInscripcion ?? hoy,
-      helpText: 'Cierre de inscripciones',
+      firstDate: hoy0,
+      lastDate: tope,
+      initialDate: inicial,
+      helpText: _relampago
+          ? 'Día de cierre (el del torneo o antes)'
+          : 'Cierre de inscripciones',
     );
-    if (r != null) setState(() => _cierreInscripcion = r);
+    if (dia == null || !mounted) return;
+    final previa = _cierreInscripcion;
+    final hora = await showTimePicker(
+      context: context,
+      initialTime: previa != null
+          ? TimeOfDay(hour: previa.hour, minute: previa.minute)
+          : const TimeOfDay(hour: 9, minute: 0),
+      helpText: 'Hora de cierre de inscripciones',
+    );
+    if (!mounted) return;
+    if (hora == null) {
+      if (_relampago) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Es relámpago: indica también la hora de cierre.')));
+        return;
+      }
+      setState(() => _cierreInscripcion = dia); // sin hora = ese día 00:00
+      return;
+    }
+    setState(() => _cierreInscripcion =
+        DateTime(dia.year, dia.month, dia.day, hora.hour, hora.minute));
   }
 
   Future<void> _elegirSede() async {
@@ -266,6 +314,27 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('Ponle un nombre al campeonato.')));
       return;
+    }
+    // Relámpago = un solo día: el cierre de inscripciones lleva día y HORA
+    // (a esa hora se sortea), y no puede caer después del día del torneo.
+    if (_relampago) {
+      final cierre = _cierreInscripcion;
+      final juego = _diaJuego;
+      String? err;
+      if (cierre == null) {
+        err = 'Es relámpago: indica el día y la hora de cierre de '
+            'inscripciones.';
+      } else if (juego != null &&
+          cierre.isAfter(
+              DateTime(juego.year, juego.month, juego.day, 23, 59))) {
+        err = 'El cierre de inscripciones debe ser el día del torneo '
+            '(${_fmtFecha(juego)}) o antes.';
+      }
+      if (err != null) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(err)));
+        return;
+      }
     }
     setState(() => _guardando = true);
     // Fechas: si el usuario eligió un nuevo rango, se usa; si no, conserva las
@@ -639,15 +708,29 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
           ),
           const SizedBox(height: 12),
           // Cronograma: cierre de inscripciones (al llegar se sortea el fixture).
+          // Día + HORA; en relámpago la hora es obligatoria.
           _CampoTap(
             icon: Icons.how_to_reg,
-            label: 'Cierre de inscripciones',
+            label: _relampago
+                ? 'Cierre de inscripciones (día y hora)'
+                : 'Cierre de inscripciones',
             valor: _cierreInscripcion == null
-                ? 'Hasta cuándo pueden inscribirse'
-                : _fmtFecha(_cierreInscripcion!),
+                ? (_relampago
+                    ? 'Hasta qué hora del día del torneo se inscriben'
+                    : 'Hasta cuándo pueden inscribirse')
+                : _fmtCierre(_cierreInscripcion!),
             vacio: _cierreInscripcion == null,
             onTap: _elegirCierre,
           ),
+          if (_relampago)
+            const Padding(
+              padding: EdgeInsets.only(top: 4, left: 4),
+              child: Text(
+                  'A esa hora se cierran las inscripciones y se sortea el '
+                  'fixture solo. Los suplentes pueden unirse a su equipo '
+                  'hasta que empiece.',
+                  style: TextStyle(fontSize: 12, color: textoTenue)),
+            ),
           const SizedBox(height: 4),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
