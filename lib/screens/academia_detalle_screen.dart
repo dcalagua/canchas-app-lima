@@ -573,6 +573,15 @@ class _PlanesSection extends StatefulWidget {
 
 class _PlanesSectionState extends State<_PlanesSection> {
   String? _prog; // clave del programa elegido
+  // CARRITO DE MATRÍCULA (pedido del director, 26-sep-2026): varias personas de
+  // la familia, cada una con su programa, en UN solo pago.
+  final _carrito = _CarritoMatricula();
+
+  @override
+  void dispose() {
+    _carrito.dispose();
+    super.dispose();
+  }
 
   /// Horarios (por sede) publicados para un programa. Empareja por el sufijo
   /// `|programa` de la clave `sedeId|programa`, sin depender del id de sede.
@@ -630,9 +639,13 @@ class _PlanesSectionState extends State<_PlanesSection> {
         _TarjetaPlan(
             academia: academia,
             plan: p,
+            carrito: _carrito,
             tituloOverride: entrada.key.isEmpty ? null : p.frecuenciaLabel),
     ];
   }
+
+  Widget _tarjetaCarrito() =>
+      _CarritoCard(academia: widget.academia, carrito: _carrito);
 
   @override
   Widget build(BuildContext context) {
@@ -642,7 +655,7 @@ class _PlanesSectionState extends State<_PlanesSection> {
     if (grupos.length <= 1) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [for (final g in grupos) ..._grupo(g)],
+        children: [for (final g in grupos) ..._grupo(g), _tarjetaCarrito()],
       );
     }
 
@@ -676,7 +689,372 @@ class _PlanesSectionState extends State<_PlanesSection> {
         ),
         const SizedBox(height: 14),
         ..._grupo(sel),
+        _tarjetaCarrito(),
       ],
+    );
+  }
+}
+
+/// Carrito de matrícula: personas guardadas (aún sin pagar) de esta academia.
+class _CarritoMatricula extends ChangeNotifier {
+  final List<_DatosMatricula> items = [];
+  bool get vacio => items.isEmpty;
+  void agregar(_DatosMatricula d) {
+    items.add(d);
+    notifyListeners();
+  }
+
+  void quitar(int i) {
+    if (i < 0 || i >= items.length) return;
+    items.removeAt(i);
+    notifyListeners();
+  }
+
+  void limpiar() {
+    items.clear();
+    notifyListeners();
+  }
+}
+
+/// Lo que se cobra AHORA por una persona (ESPEJO de `web/academia.py::_total`
+/// y de `_HojaDatosAlumnoState._total`): mes a mes = 1 mes con el descuento
+/// familiar; adelantado = total × cantidad − (prepago si aplica + familiar).
+double _totalMatricula(Academia a, Plan plan, String sedeId, int cantidad,
+    bool mesAMes, double dtoFam) {
+  final planTotal = a.totalPlanEnSede(plan, sedeId);
+  final esMesAMes = mesAMes && plan.tipo == TipoPlan.mensual;
+  if (esMesAMes) return planTotal * (1 - dtoFam / 100);
+  final n = cantidad < 1 ? 1 : cantidad;
+  final sin = planTotal * n;
+  final prep = (a.descuentoPrepago > 0 && n >= a.mesesMinPrepago)
+      ? a.descuentoPrepago
+      : 0.0;
+  final pct = (prep + dtoFam).clamp(0, 100).toDouble();
+  return sin - sin * pct / 100;
+}
+
+/// Alumnos "fantasma" del carrito para contar el orden familiar de la
+/// siguiente persona (la 2.ª del carrito cuenta a la 1.ª, etc.).
+List<Alumno> _pseudoAlumnos(Academia a, Iterable<_DatosMatricula> items) {
+  final email = appState.usuario?.email ?? '';
+  return [
+    for (final it in items)
+      Alumno(
+          id: 'carrito',
+          academiaId: a.id,
+          nombre: it.nombre,
+          email: email,
+          parentesco: it.parentesco),
+  ];
+}
+
+/// Recalcula orden, % familiar y total de cada persona EN SECUENCIA (las
+/// matrículas que ya pago + las anteriores del carrito). Si quito a alguien,
+/// las siguientes se reacomodan solas. ESPEJO de `_preparar_personas` (web).
+List<_DatosMatricula> _recalcularCarrito(
+    Academia a, List<_DatosMatricula> items) {
+  final email = appState.usuario?.email ?? '';
+  final previos = <Alumno>[...appState.alumnos];
+  final out = <_DatosMatricula>[];
+  for (final it in items) {
+    final orden =
+        a.ordenFamiliarPara(previos, email, parentescoNuevo: it.parentesco);
+    final dto = a.descuentoHermanoPct(orden);
+    out.add(it.copyWith(
+        orden: orden,
+        dtoFamiliarPct: dto,
+        total: _totalMatricula(
+            a, it.plan, it.sedeId, it.cantidad, it.mesAMes, dto)));
+    previos.addAll(_pseudoAlumnos(a, [it]));
+  }
+  return out;
+}
+
+String _quienTexto(String parentesco) => switch (parentesco) {
+      'hijo' => 'Mi hijo(a)',
+      'familiar' => 'Familiar',
+      _ => 'Yo',
+    };
+
+/// UN solo cobro por todas las personas de [itemsIn] y una matrícula por
+/// persona con el mismo N.º de operación (como `_cobrar_y_matricular` en la
+/// web): la contabilidad se registra una vez por el total; las suscripciones
+/// mes a mes reusan la tarjeta de la 1.ª (un token de Culqi se usa una vez).
+/// Devuelve true si se pagó y matriculó.
+Future<bool> _pagarMatriculas(
+    BuildContext context, Academia academia, List<_DatosMatricula> itemsIn) async {
+  if (itemsIn.isEmpty) return false;
+  final items = _recalcularCarrito(academia, itemsIn);
+  final total = double.parse(
+      items.fold<double>(0, (s, x) => s + x.total).toStringAsFixed(2));
+  final varios = items.length > 1;
+  final concepto = varios
+      ? 'Matrícula ${academia.nombre} · ${items.length} personas'
+      : 'Matrícula ${academia.nombre} · ${items.first.plan.nombre}';
+  final email = appState.usuario?.email ?? '';
+  // Pago del total a cobrar AHORA (mes a mes = 1 mes por persona; adelantado =
+  // N meses con descuento si aplica). Capturamos el token para el débito
+  // automático.
+  String? tokenUsado;
+  String? operacionId;
+  final pagado = await PagoTarjeta.cobrar(
+    context,
+    monto: total,
+    concepto: concepto,
+    email: email,
+    moneda: academia.monedaSimbolo,
+    onToken: (t) => tokenUsado = t,
+    onOperacion: (o) => operacionId = o,
+  );
+  if (!pagado) return false;
+
+  // Registra el COBRO DIGITAL en el backend UNA vez por el total: congela la
+  // comisión "tipo POS" del país y deja el neto como "por recibir" de la
+  // academia (best-effort; no bloquea la matrícula si falla la red).
+  PagosService.registrarMatricula(
+    academiaId: academia.id,
+    montoSoles: total,
+    matriculaId: 'mat_${academia.id}_${DateTime.now().microsecondsSinceEpoch}',
+    pais: academia.pais.iso,
+    concepto: concepto,
+  );
+
+  String? primeraSuscripcion;
+  final resumen = <String>[];
+  for (final d in items) {
+    final esHijo = d.parentesco == 'hijo';
+    // Precio mensual y total del plan EN LA SEDE elegida (multi-sede con
+    // tarifas por local) y con el DESCUENTO FAMILIAR (2.º/3.º de la familia):
+    // así las cuotas pendientes y el débito automático cobran el precio correcto.
+    final factorFam = 1 - d.dtoFamiliarPct / 100;
+    final precioMesSede = academia.precioMesEnSede(d.plan, d.sedeId) * factorFam;
+    final totalPlanSede = academia.totalPlanEnSede(d.plan, d.sedeId) * factorFam;
+    final notaDto = d.dtoFamiliarPct > 0
+        ? ' (−${d.dtoFamiliarPct.toStringAsFixed(0)}% familiar)'
+        : '';
+    // Mes a mes: crea las N cuotas del compromiso con solo la 1.ª pagada (las
+    // demás quedan pendientes con su fecha). Adelantado: todas pagadas.
+    final alumno = appState.matricular(
+      academiaId: academia.id,
+      nombre: d.nombre,
+      whatsapp: d.whatsapp,
+      plan: d.plan,
+      cantidad: d.cantidad,
+      mesesPagados: d.mesAMes ? 1 : null,
+      autoDebito: d.mesAMes,
+      // Si es para un hijo(a): el titular de la cuenta es el apoderado.
+      apoderadoNombre: esHijo ? (appState.usuario?.nombre ?? 'Apoderado') : '',
+      apoderadoWhatsapp: esHijo ? d.whatsapp : '',
+      edad: esHijo ? d.edad : null,
+      operacionId: operacionId ?? '',
+      sedeId: d.sedeId,
+      precioMesOverride: precioMesSede,
+      parentesco: d.parentesco,
+      emailAlumno: d.emailAlumno,
+      ordenHermano: d.orden,
+      notaDescuento: notaDto,
+    );
+    resumen.add('${d.nombre} (${d.plan.nombre})');
+    // Mes a mes: activa el débito automático de los meses restantes con la
+    // tarjeta usada. cobrosRestantes = meses comprometidos − el 1.º ya pagado.
+    // Se espera en orden: la 2.ª persona reusa la tarjeta que guardó la 1.ª.
+    if (d.mesAMes && tokenUsado != null) {
+      final r = await PagosService.crearSuscripcionAlumno(
+        alumnoId: alumno.id,
+        academiaId: academia.id,
+        email: email,
+        token: tokenUsado!,
+        montoSoles: totalPlanSede,
+        nombre: d.nombre,
+        pais: academia.pais.iso,
+        concepto: 'Mensualidad ${academia.nombre} · ${d.plan.nombre}',
+        cobrosRestantes: d.cantidad - 1,
+        reusarTarjetaDe: primeraSuscripcion ?? '',
+      );
+      if (primeraSuscripcion == null && r['ok'] == true) {
+        primeraSuscripcion = alumno.id;
+      }
+    }
+  }
+
+  if (!context.mounted) return true;
+  final mesAMesNombres =
+      items.where((d) => d.mesAMes).map((d) => d.nombre).toList();
+  final String mensaje;
+  if (varios) {
+    mensaje = 'Un solo pago de ${academia.monedaSimbolo} ${total.toStringAsFixed(2)} '
+        'y ya están inscritos en ${academia.nombre}: ${resumen.join(', ')}.'
+        '${mesAMesNombres.isEmpty ? '' : ' Los meses siguientes de ${mesAMesNombres.join(', ')} se debitan automático a la misma tarjeta.'}';
+  } else {
+    final d = items.first;
+    mensaje = d.mesAMes
+        ? 'Ya estás inscrito en ${academia.nombre} (${d.plan.nombre}). '
+            'Se debitará ${academia.monedaSimbolo} ${(academia.totalPlanEnSede(d.plan, d.sedeId) * (1 - d.dtoFamiliarPct / 100)).toStringAsFixed(2)} '
+            'automático cada mes; puedes cancelar cuando quieras.'
+        : 'Ya estás inscrito en ${academia.nombre} (${d.plan.nombre}). '
+            'Te contactarán por WhatsApp para coordinar tus horarios.';
+  }
+  await showDialog<void>(
+    context: context,
+    builder: (_) => DialogoPichangol(
+      titulo: varios ? '¡Matrícula familiar lista!' : '¡Matrícula lista!',
+      icono: Icons.check_circle,
+      mensaje: mensaje,
+      acciones: [
+        if (academia.whatsapp.isNotEmpty)
+          TextButton.icon(
+            onPressed: () {
+              WhatsAppLink.abrir(
+                  academia.whatsapp,
+                  varios
+                      ? 'Hola, acabo de matricular a ${items.map((d) => d.nombre).join(', ')} en ${academia.nombre} por Pichangol.'
+                      : 'Hola, acabo de matricularme en ${academia.nombre} (${items.first.plan.nombre}) por Pichangol. Soy ${items.first.nombre}.');
+              Navigator.of(context).pop();
+            },
+            icon: const Icon(Icons.chat, color: lima),
+            label: const Text('Avisar al profe'),
+          ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+              backgroundColor: lima,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Listo',
+              style: TextStyle(fontWeight: FontWeight.w800)),
+        ),
+      ],
+    ),
+  );
+  // Tras confirmar, lleva al titular a "Mis clases y pagos": ahí ve cada
+  // matrícula, el comprobante y el cronograma de cuotas.
+  if (!context.mounted) return true;
+  Navigator.of(context)
+      .push(MaterialPageRoute(builder: (_) => const MisClasesScreen()));
+  return true;
+}
+
+/// Tarjeta del carrito bajo los planes: quién va, con qué programa, el total
+/// con los descuentos por orden y "Pagar todo". Se oculta si está vacío.
+class _CarritoCard extends StatelessWidget {
+  const _CarritoCard({required this.academia, required this.carrito});
+  final Academia academia;
+  final _CarritoMatricula carrito;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: carrito,
+      builder: (context, _) {
+        if (carrito.vacio) return const SizedBox.shrink();
+        final items = _recalcularCarrito(academia, carrito.items);
+        final total = items.fold<double>(0, (s, x) => s + x.total);
+        final mon = academia.monedaSimbolo;
+        return Container(
+          margin: const EdgeInsets.only(top: 6, bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: limaSuave,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: lima.withOpacity(0.5)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.family_restroom, color: bosque),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                        'Tu matrícula · ${items.length} '
+                        '${items.length == 1 ? 'persona' : 'personas'}',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            color: bosque)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                  'Toca «Matricularme» en otro programa para agregar a alguien más. Pagas todo en un solo cobro.',
+                  style: TextStyle(color: textoTenue, fontSize: 12.5)),
+              const SizedBox(height: 10),
+              for (var i = 0; i < items.length; i++)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+                  decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: trazo)),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                                '${items[i].nombre} · ${_quienTexto(items[i].parentesco)}',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w800, fontSize: 14)),
+                            Text(
+                                '${items[i].plan.nombre} · '
+                                '${items[i].mesAMes ? 'mes a mes' : '${items[i].cantidad} ${items[i].cantidad == 1 ? 'mes' : 'meses'} adelantado${items[i].cantidad == 1 ? '' : 's'}'}'
+                                '${items[i].dtoFamiliarPct > 0 ? ' · −${items[i].dtoFamiliarPct.toStringAsFixed(0)}% familiar' : ''}',
+                                style: const TextStyle(
+                                    color: textoTenue, fontSize: 12.5)),
+                          ],
+                        ),
+                      ),
+                      Text('$mon ${items[i].total.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w800, color: bosque)),
+                      IconButton(
+                        tooltip: 'Quitar a ${items[i].nombre}',
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => carrito.quitar(i),
+                      ),
+                    ],
+                  ),
+                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Pagas hoy',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  Text('$mon ${total.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 18,
+                          color: bosque)),
+                ],
+              ),
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: lima,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 13)),
+                  onPressed: () async {
+                    final ok = await _pagarMatriculas(
+                        context, academia, List.of(carrito.items));
+                    if (ok) carrito.limpiar();
+                  },
+                  child: Text(
+                      'Pagar todo · $mon ${total.toStringAsFixed(2)}',
+                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -684,9 +1062,13 @@ class _PlanesSectionState extends State<_PlanesSection> {
 /// Tarjeta de un plan con su botón "Matricularme".
 class _TarjetaPlan extends StatelessWidget {
   const _TarjetaPlan(
-      {required this.academia, required this.plan, this.tituloOverride});
+      {required this.academia,
+      required this.plan,
+      required this.carrito,
+      this.tituloOverride});
   final Academia academia;
   final Plan plan;
+  final _CarritoMatricula carrito;
   // Título compacto cuando la tarjeta ya va bajo un encabezado de programa
   // (ej. "4x/sem"); si es null usa el nombre completo del plan.
   final String? tituloOverride;
@@ -779,7 +1161,9 @@ class _TarjetaPlan extends StatelessWidget {
       return;
     }
     if (!context.mounted) return;
-    // 1) Datos del alumno + MODO (mes a mes / adelantado) + cantidad + total.
+    // 1) Datos de la persona + MODO (mes a mes / adelantado) + cantidad + total.
+    //    La hoja conoce el carrito: calcula el orden familiar en secuencia y
+    //    ofrece "Agregar otra persona" (pedido del director, 26-sep-2026).
     final datos = await showModalBottomSheet<_DatosMatricula>(
       context: context,
       isScrollControlled: true,
@@ -799,137 +1183,24 @@ class _TarjetaPlan extends StatelessWidget {
         mesesMinPrepago: academia.mesesMinPrepago,
         sedes: academia.sedes,
         preciosSede: academia.preciosSede,
+        carrito: List.of(carrito.items),
       ),
     );
     if (datos == null) return;
-    final nombre = datos.nombre;
-    final whatsapp = datos.whatsapp;
-    final cantidad = datos.cantidad;
-    final mesAMes = datos.mesAMes;
-    final totalAhora = datos.total;
-    final esHijo = datos.parentesco == 'hijo';
-    final edad = datos.edad;
-    final sedeId = datos.sedeId;
-    final monto = totalAhora.round();
-    // Precio mensual y total del plan EN LA SEDE elegida (multi-sede con tarifas
-    // por local) y con el DESCUENTO FAMILIAR (2.º/3.º de la familia): así las
-    // cuotas pendientes y el débito automático cobran el precio correcto.
-    final factorFam = 1 - datos.dtoFamiliarPct / 100;
-    final precioMesSede = academia.precioMesEnSede(plan, sedeId) * factorFam;
-    final totalPlanSede = academia.totalPlanEnSede(plan, sedeId) * factorFam;
-    final notaDto = datos.dtoFamiliarPct > 0
-        ? ' (−${datos.dtoFamiliarPct.toStringAsFixed(0)}% familiar)'
-        : '';
-
-    // 2) Pago del total a cobrar AHORA (mes a mes = 1 mes; adelantado = N meses
-    // con descuento si aplica). Capturamos el token para el débito automático.
-    if (!context.mounted) return;
-    String? tokenUsado;
-    String? operacionId;
-    final pagado = await PagoTarjeta.cobrar(
-      context,
-      monto: monto,
-      concepto: 'Matrícula ${academia.nombre} · ${plan.nombre}',
-      email: appState.usuario?.email ?? '',
-      moneda: academia.monedaSimbolo,
-      onToken: (t) => tokenUsado = t,
-      onOperacion: (o) => operacionId = o,
-    );
-    if (!pagado) return;
-
-    // 2b) Registra el COBRO DIGITAL en el backend: congela la comisión "tipo POS"
-    // del país y deja el neto como "por recibir" de la academia (best-effort; no
-    // bloquea la matrícula si falla la red).
-    PagosService.registrarMatricula(
-      academiaId: academia.id,
-      montoSoles: monto.toDouble(),
-      matriculaId: 'mat_${academia.id}_${DateTime.now().microsecondsSinceEpoch}',
-      pais: academia.pais.iso,
-      concepto: 'Matrícula ${academia.nombre} · ${plan.nombre}',
-    );
-
-    // 3) Registra la matrícula. Mes a mes: crea las N cuotas del compromiso con
-    // solo la 1.ª pagada (las demás quedan pendientes con su fecha). Adelantado:
-    // todas pagadas.
-    final alumno = appState.matricular(
-      academiaId: academia.id,
-      nombre: nombre,
-      whatsapp: whatsapp,
-      plan: plan,
-      cantidad: cantidad,
-      mesesPagados: mesAMes ? 1 : null,
-      autoDebito: mesAMes,
-      // Si es para un hijo(a): el titular de la cuenta es el apoderado.
-      apoderadoNombre: esHijo ? (appState.usuario?.nombre ?? 'Apoderado') : '',
-      apoderadoWhatsapp: esHijo ? whatsapp : '',
-      edad: esHijo ? edad : null,
-      operacionId: operacionId ?? '',
-      sedeId: sedeId,
-      precioMesOverride: precioMesSede,
-      parentesco: datos.parentesco,
-      emailAlumno: datos.emailAlumno,
-      ordenHermano: datos.orden,
-      notaDescuento: notaDto,
-    );
-
-    // 3b) Mes a mes: activa el débito automático de los meses restantes con la
-    // tarjeta usada. cobrosRestantes = meses comprometidos − el 1.º ya pagado.
-    if (mesAMes && tokenUsado != null) {
-      PagosService.crearSuscripcionAlumno(
-        alumnoId: alumno.id,
-        academiaId: academia.id,
-        email: appState.usuario?.email ?? '',
-        token: tokenUsado!,
-        montoSoles: totalPlanSede,
-        nombre: nombre,
-        pais: academia.pais.iso,
-        concepto: 'Mensualidad ${academia.nombre} · ${plan.nombre}',
-        cobrosRestantes: cantidad - 1,
-      );
+    if (datos.agregarOtra) {
+      // Queda guardada; el titular elige el programa de la siguiente persona.
+      carrito.agregar(datos);
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              '${datos.nombre} quedó en tu matrícula. Ahora elige el programa de la siguiente persona.')));
+      return;
     }
-
     if (!context.mounted) return;
-    await showDialog<void>(
-      context: context,
-      builder: (_) => DialogoPichangol(
-        titulo: '¡Matrícula lista!',
-        icono: Icons.check_circle,
-        mensaje: mesAMes
-            ? 'Ya estás inscrito en ${academia.nombre} (${plan.nombre}). '
-                'Se debitará ${academia.monedaSimbolo} ${totalPlanSede.toStringAsFixed(2)} '
-                'automático cada mes; puedes cancelar cuando quieras.'
-            : 'Ya estás inscrito en ${academia.nombre} (${plan.nombre}). '
-                'Te contactarán por WhatsApp para coordinar tus horarios.',
-        acciones: [
-          if (academia.whatsapp.isNotEmpty)
-            TextButton.icon(
-              onPressed: () {
-                WhatsAppLink.abrir(academia.whatsapp,
-                    'Hola, acabo de matricularme en ${academia.nombre} (${plan.nombre}) por Pichangol. Soy $nombre.');
-                Navigator.of(context).pop();
-              },
-              icon: const Icon(Icons.chat, color: lima),
-              label: const Text('Avisar al profe'),
-            ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: lima,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Listo',
-                style: TextStyle(fontWeight: FontWeight.w800)),
-          ),
-        ],
-      ),
-    );
-    // Tras confirmar, lleva al alumno a "Mis clases y pagos": ahí ve su
-    // matrícula, el comprobante y el cronograma de cuotas.
-    if (!context.mounted) return;
-    Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const MisClasesScreen()));
+    // 2) UN solo pago por el carrito + esta persona; una matrícula por cada una.
+    final ok =
+        await _pagarMatriculas(context, academia, [...carrito.items, datos]);
+    if (ok) carrito.limpiar();
   }
 }
 
@@ -938,6 +1209,7 @@ class _TarjetaPlan extends StatelessWidget {
 /// Lo que devuelve la hoja de matrícula.
 class _DatosMatricula {
   const _DatosMatricula({
+    required this.plan,
     required this.nombre,
     required this.whatsapp,
     required this.cantidad,
@@ -949,7 +1221,10 @@ class _DatosMatricula {
     required this.emailAlumno,
     required this.orden,
     required this.dtoFamiliarPct,
+    this.agregarOtra = false,
   });
+  final Plan plan; // programa elegido para esta persona
+  final bool agregarOtra; // true = "Agregar otra persona" (va al carrito, aún sin pagar)
   final String nombre;
   final String whatsapp;
   final int cantidad; // meses comprometidos (mes a mes) o adelantados
@@ -961,6 +1236,24 @@ class _DatosMatricula {
   final String emailAlumno; // correo propio del familiar (opcional)
   final int orden; // orden del descuento familiar (1 = primero)
   final double dtoFamiliarPct; // % aplicado por ser 2.º/3.º de la familia
+
+  _DatosMatricula copyWith(
+          {int? orden, double? dtoFamiliarPct, double? total, bool? agregarOtra}) =>
+      _DatosMatricula(
+        plan: plan,
+        nombre: nombre,
+        whatsapp: whatsapp,
+        cantidad: cantidad,
+        mesAMes: mesAMes,
+        total: total ?? this.total,
+        parentesco: parentesco,
+        edad: edad,
+        sedeId: sedeId,
+        emailAlumno: emailAlumno,
+        orden: orden ?? this.orden,
+        dtoFamiliarPct: dtoFamiliarPct ?? this.dtoFamiliarPct,
+        agregarOtra: agregarOtra ?? this.agregarOtra,
+      );
 }
 
 class _HojaDatosAlumno extends StatefulWidget {
@@ -976,8 +1269,12 @@ class _HojaDatosAlumno extends StatefulWidget {
     this.mesesMinPrepago = 3,
     this.sedes = const [],
     this.preciosSede = const {},
+    this.carrito = const [],
   });
   final String nombreInicial;
+  // Personas YA guardadas en el carrito (para el orden familiar en secuencia,
+  // el total acumulado y no repetir "Para mí").
+  final List<_DatosMatricula> carrito;
   final String academia;
   final Academia academiaObj; // descuento familiar (orden del pagador)
   final String? logoUrl;
@@ -1010,8 +1307,12 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
   // DESCUENTO FAMILIAR: orden del próximo matriculado por este pagador en la
   // academia (yo 1.º, esposa 2.º, hijo 3.º…) y su % (config de la academia).
   int get _orden => widget.academiaObj.ordenFamiliarPara(
-      appState.alumnos, appState.usuario?.email ?? '',
+      [...appState.alumnos, ..._pseudoAlumnos(widget.academiaObj, widget.carrito)],
+      appState.usuario?.email ?? '',
       parentescoNuevo: _quien);
+  bool get _yoYaEnCarrito => widget.carrito.any((d) => d.parentesco == '');
+  double get _totalCarrito => _recalcularCarrito(widget.academiaObj, widget.carrito)
+      .fold<double>(0, (s, x) => s + x.total);
   double get _dtoFamiliar => widget.academiaObj.descuentoHermanoPct(_orden);
   String? _error; // mensaje de validación inline (visible)
   // Sede elegida (academias multi-sede): por defecto la primera.
@@ -1076,7 +1377,58 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
   @override
   void initState() {
     super.initState();
-    _nombre.text = widget.nombreInicial; // "Para mí": prellena el nombre del titular
+    if (_yoYaEnCarrito) {
+      // El titular ya está en el carrito: la siguiente persona es otra.
+      _quien = 'hijo';
+    } else {
+      _nombre.text = widget.nombreInicial; // "Para mí": prellena el nombre del titular
+    }
+  }
+
+  _DatosMatricula? _armar({required bool agregarOtra}) {
+    final n = _nombre.text.trim();
+    final w = _whatsapp.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (n.isEmpty) {
+      setState(() => _error = 'Escribe el nombre del alumno.');
+      return null;
+    }
+    if (widget.carrito.any((d) => d.nombre.toLowerCase() == n.toLowerCase())) {
+      setState(() => _error =
+          '$n ya está en tu matrícula. Cada persona va una sola vez.');
+      return null;
+    }
+    if (w.length < 9) {
+      setState(
+          () => _error = 'Pon un WhatsApp de contacto válido (9 dígitos).');
+      return null;
+    }
+    final em = _emailAlumno.text.trim().toLowerCase();
+    if (_esFamiliar && em.isNotEmpty && !em.contains('@')) {
+      setState(() => _error = 'El correo no parece válido.');
+      return null;
+    }
+    if (_esFamiliar &&
+        em.isNotEmpty &&
+        em == (appState.usuario?.email ?? '').trim().toLowerCase()) {
+      setState(() => _error = 'Ese es tu propio correo: elige «Para mí».');
+      return null;
+    }
+    setState(() => _error = null);
+    return _DatosMatricula(
+      plan: _plan,
+      nombre: n,
+      whatsapp: _whatsapp.text.trim(),
+      cantidad: _cantidad,
+      mesAMes: _mesAMes,
+      total: _total,
+      parentesco: _quien,
+      edad: int.tryParse(_edad.text.trim()),
+      sedeId: _sedeId ?? '',
+      emailAlumno: _esFamiliar ? em : '',
+      orden: _orden,
+      dtoFamiliarPct: _dtoFamiliar,
+      agregarOtra: agregarOtra,
+    );
   }
 
   @override
@@ -1113,20 +1465,50 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
           const SizedBox(height: 4),
           Text('Plan: ${_plan.nombre}',
               style: const TextStyle(color: textoTenue, fontSize: 13)),
+          if (widget.carrito.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                  color: limaSuave, borderRadius: BorderRadius.circular(12)),
+              child: Row(
+                children: [
+                  const Icon(Icons.family_restroom, size: 18, color: bosque),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                        'Ya llevas ${widget.carrito.length} '
+                        '${widget.carrito.length == 1 ? 'persona' : 'personas'} '
+                        '(${widget.moneda} ${_totalCarrito.toStringAsFixed(2)}). '
+                        'Esta será la persona ${widget.carrito.length + 1}: todo se paga en un solo cobro.',
+                        style: const TextStyle(fontSize: 12.5, color: bosque)),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           // ¿Para quién es la matrícula? Con la misma cuenta puedes inscribir a
           // varias personas (tú + tus hijos); cada una es un alumno aparte.
           Row(
             children: [
               Expanded(
-                child: _ChipModo(
-                  titulo: 'Para mí',
-                  subtitulo: 'Soy yo quien entrena',
-                  activo: _quien == '',
-                  onTap: () => setState(() {
-                    _quien = '';
-                    _nombre.text = widget.nombreInicial;
-                  }),
+                child: IgnorePointer(
+                  ignoring: _yoYaEnCarrito,
+                  child: Opacity(
+                    opacity: _yoYaEnCarrito ? 0.45 : 1,
+                    child: _ChipModo(
+                      titulo: 'Para mí',
+                      subtitulo: _yoYaEnCarrito
+                          ? 'Ya estás en tu matrícula'
+                          : 'Soy yo quien entrena',
+                      activo: _quien == '',
+                      onTap: () => setState(() {
+                        _quien = '';
+                        _nombre.text = widget.nombreInicial;
+                      }),
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),
@@ -1380,40 +1762,37 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 14)),
               onPressed: () {
-                final n = _nombre.text.trim();
-                final w = _whatsapp.text.replaceAll(RegExp(r'[^0-9]'), '');
-                if (n.isEmpty) {
-                  setState(() => _error = 'Escribe el nombre del alumno.');
-                  return;
-                }
-                if (w.length < 9) {
-                  setState(() =>
-                      _error = 'Pon un WhatsApp de contacto válido (9 dígitos).');
-                  return;
-                }
-                final em = _emailAlumno.text.trim().toLowerCase();
-                if (_esFamiliar && em.isNotEmpty && !em.contains('@')) {
-                  setState(() => _error = 'El correo no parece válido.');
-                  return;
-                }
-                setState(() => _error = null);
-                Navigator.of(context).pop(_DatosMatricula(
-                  nombre: n,
-                  whatsapp: _whatsapp.text.trim(),
-                  cantidad: _cantidad,
-                  mesAMes: _mesAMes,
-                  total: _total,
-                  parentesco: _quien,
-                  edad: int.tryParse(_edad.text.trim()),
-                  sedeId: _sedeId ?? '',
-                  emailAlumno: _esFamiliar ? em : '',
-                  orden: _orden,
-                  dtoFamiliarPct: _dtoFamiliar,
-                ));
+                final d = _armar(agregarOtra: false);
+                if (d != null) Navigator.of(context).pop(d);
               },
-              child: Text(_mesAMes
-                  ? 'Pagar 1.er mes ${widget.moneda} ${_total.toStringAsFixed(2)}'
-                  : 'Pagar ${widget.moneda} ${_total.toStringAsFixed(2)}'),
+              child: Text(widget.carrito.isNotEmpty
+                  ? 'Pagar todo · ${widget.moneda} ${(_totalCarrito + _total).toStringAsFixed(2)} · ${widget.carrito.length + 1} personas'
+                  : _mesAMes
+                      ? 'Pagar 1.er mes ${widget.moneda} ${_total.toStringAsFixed(2)}'
+                      : 'Pagar ${widget.moneda} ${_total.toStringAsFixed(2)}'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          // CARRITO: guarda a esta persona y vuelve a los programas para la
+          // siguiente (pareja, hijos…). Todo se paga después en un solo cobro.
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                  foregroundColor: bosque,
+                  side: const BorderSide(color: trazo),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14))),
+              onPressed: widget.carrito.length >= 7
+                  ? null
+                  : () {
+                      final d = _armar(agregarOtra: true);
+                      if (d != null) Navigator.of(context).pop(d);
+                    },
+              icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
+              label: const Text('Agregar otra persona (pago después, todo junto)',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
             ),
           ),
         ],

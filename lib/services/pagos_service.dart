@@ -962,6 +962,9 @@ class PagosService {
     String pais = 'pe',
     String? concepto,
     int? cobrosRestantes,
+    // CARRITO FAMILIAR: un tkn_ se usa una vez; la 2.ª persona mes a mes reusa
+    // la tarjeta que guardó la suscripción del alumno [reusarTarjetaDe].
+    String reusarTarjetaDe = '',
   }) async {
     if (!disponible) return {'ok': false, 'error': 'Pagos no disponibles.'};
     try {
@@ -978,6 +981,7 @@ class PagosService {
           'pais': pais,
           if (concepto != null) 'concepto': concepto,
           if (cobrosRestantes != null) 'cobros_restantes': cobrosRestantes,
+          if (reusarTarjetaDe.isNotEmpty) 'reusar_tarjeta_de': reusarTarjetaDe,
         }),
       ).timeout(const Duration(seconds: 30));
       final j = jsonDecode(r.body) as Map<String, dynamic>;

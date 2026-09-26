@@ -2117,6 +2117,11 @@ class SuscripcionAlumnoReq(BaseModel):
     # Cobros AUTOMÁTICOS restantes (meses comprometidos menos el 1.º ya pagado).
     # None = indefinido (cobra hasta que el alumno cancele).
     cobros_restantes: int | None = None
+    # CARRITO FAMILIAR (26-sep-2026): un `tkn_` de Culqi se usa UNA vez. Cuando el
+    # titular matricula a varias personas mes a mes con un solo pago, la 1.ª
+    # suscripción convierte el token en tarjeta (crd_) y las siguientes REUSAN
+    # esa tarjeta indicando el alumno_id de la primera (misma cuenta pagadora).
+    reusar_tarjeta_de: str = ""
 
 
 def _suscripcion_alumno_publica(s: dict | None) -> dict:
@@ -2149,7 +2154,10 @@ def post_suscripcion_alumno(req: SuscripcionAlumnoReq) -> dict:
         raise HTTPException(status_code=503, detail="pagos_no_configurados")
     # El token puede venir como tarjeta guardada (crd_) —se usa tal cual— o como
     # token temporal (tkn_) que hay que convertir en tarjeta permanente (crd_).
-    if req.token.startswith("crd_"):
+    previa = stores.suscripciones_alumno.get(req.reusar_tarjeta_de or "") if req.reusar_tarjeta_de else None
+    if previa and previa.get("card_id") and (previa.get("email") or "").strip().lower() == (req.email or "").strip().lower():
+        card_id, marca, ultimos4 = previa["card_id"], previa.get("marca", ""), previa.get("ultimos4", "")
+    elif req.token.startswith("crd_"):
         card_id, marca, ultimos4 = req.token, "", ""
     else:
         key = f"al:{req.alumno_id}"

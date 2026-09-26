@@ -1196,6 +1196,50 @@ para la API del APK.
   <correo>" y "N.º de la familia". Etiquetas del tarifario: "2.º de la
   familia −10 %" (o "hermano" si es solo hijos). Test
   `test_matricula_familiar_un_pagador_varias_personas`.
+- **CARRITO DE MATRÍCULA (pedido del director, 26-sep-2026: "quiero
+  matricularme con mi esposa en bola verde, mi hijo en bola naranja y yo
+  pago todo" → "Si haz ese carrito"):** en la ficha de la academia (app y
+  web) se agregan VARIAS personas de la familia, cada una con su programa,
+  sede, quién es (yo / hijo / familiar) y forma de pago (mes a mes o
+  adelantado × cantidad), se ve el total con los descuentos y se PAGA UNA
+  SOLA VEZ. **Descuento familiar EN SECUENCIA:** la 1.ª del carrito sigue a
+  las matrículas que YA paga esa cuenta, la 2.ª cuenta también a la 1.ª, etc.
+  (1.º completo, 2.º −H2, 3.º+ −H3, respetando `descuentoFamiliar`); si se
+  quita a alguien las siguientes se reacomodan. Lo calcula SIEMPRE el
+  servidor en la web; el navegador/app solo lo muestran. **Web**
+  (`web/academia.py`): paso 5 "¿Matriculas a más personas?" + botón
+  "➕ Guardar a esta persona y agregar otra" (`#btnAgregar`; el formulario
+  se vacía para la siguiente, "Para mí" queda deshabilitado si ya va el
+  titular), el resumen lista `.cart-it` por persona con ✕ y "Persona N (en
+  edición)", botón "Pagar S/ X · N personas"; `cfg.fam` (`_fam_base`:
+  previas, previasHijos, familiar, h2, h3; también en
+  `/web/academia/{id}/descuento-familiar`) para el orden en secuencia en el
+  JS (`ordenPara`). `POST /web/matricular-varios {academia_id, token, medio,
+  personas:[PersonaReq…]}` (máx. 8) → `_preparar_personas` (valida TODO
+  antes de cobrar, error con `persona` = índice y prefijo "Persona N:",
+  nombre repetido → `repetida`) → `_cobrar_y_matricular`: UN
+  `culqi.crear_cargo` por la suma ("Matrícula X · N personas"), una fila
+  por persona (`_fila_matricula`, ids `al_<µs+k>`, mismo `operacionId`),
+  `post_matricula` UNA vez por el total (comisión sobre lo cobrado),
+  `registrar_pago(cobro_web, concepto matricula:<id1>,<id2>…)`,
+  suscripción mes a mes por persona y UN push al dueño ("N alumnos nuevos
+  🎓"). `/web/matricular` (una persona) ahora pasa por el mismo camino.
+  Comprobante familiar `GET /academia/{id}/matriculas?ids=a,b,c` (solo el
+  pagador; un familiar con correo propio ve solo el suyo). **Un `tkn_` de
+  Culqi se usa una vez:** `SuscripcionAlumnoReq.reusar_tarjeta_de` (alumno
+  de la 1.ª suscripción, misma cuenta) hace que la 2.ª persona mes a mes
+  reuse la `crd_` guardada en vez de gastar el token otra vez (app:
+  `crearSuscripcionAlumno(reusarTarjetaDe:)`, se esperan en orden). **App**
+  (`academia_detalle_screen.dart`): `_CarritoMatricula` (ChangeNotifier en
+  `_PlanesSectionState`), la hoja `_HojaDatosAlumno(carrito:)` muestra "Ya
+  llevas N personas (S/ X)", calcula el orden con `_pseudoAlumnos` del
+  carrito, botón secundario "Agregar otra persona (pago después, todo
+  junto)" (`_DatosMatricula.agregarOtra`) y primario "Pagar todo · S/ X · N
+  personas"; `_CarritoCard` bajo los planes (filas con ✕, total, "Pagar
+  todo"); `_pagarMatriculas` = UN `PagoTarjeta.cobrar`, `registrarMatricula`
+  una vez por el total, `appState.matricular` por persona con el mismo
+  `operacionId` (`_recalcularCarrito` + `_totalMatricula`, espejo de
+  `_total` web). Test `test_carrito_de_matricula_familiar_un_solo_pago`.
 - **FICHA DE RESERVA (sep-2026, pedidos del director):** "Cómo llegar" abre
   el mapa DENTRO de la ficha (Leaflet + OpenStreetMap en `#mapaFicha`, con
   enlaces "Abrir en Google Maps" e "Indicaciones paso a paso" debajo), no en
