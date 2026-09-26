@@ -375,7 +375,7 @@ def test_pro_renovar_vencidas_sin_saldo_no_renueva():
 
 def test_torneo_inscribir_cobra_saldo_y_acredita_neto_al_profe():
     # Jugador con S/30 se inscribe a un torneo de S/20 → paga de su saldo, el
-    # profe recibe el neto (20 - comisión) en su billetera.
+    # profe queda con el neto (20 - comisión) POR RECIBIR (la torre se lo paga).
     client.post("/pagos/recarga", json={
         "token": "t", "dueno_id": "jug@x.com", "email": "jug@x.com",
         "monto_soles": 30})
@@ -384,8 +384,12 @@ def test_torneo_inscribir_cobra_saldo_y_acredita_neto_al_profe():
         "cuota_soles": 20}).json()
     assert r["ok"] is True
     assert stores.saldo_centimos("jug@x.com") == 1000  # 30 - 20
-    # comisión de 20 = 5% = 1.00 → mínimo 2.00 → neto 18.00
-    assert stores.saldo_centimos("profe@x.com") == 1800
+    # comisión de 20 = 5% = 1.00 → mínimo 2.00 → neto 18.00 POR RECIBIR (misma
+    # cola de liquidaciones que una reserva online; NO va al saldo del profe).
+    assert stores.saldo_centimos("profe@x.com") == 0
+    pend = stores.liquidaciones("profe@x.com", solo_pendientes=True)
+    assert len(pend) == 1 and pend[0].culqi_charge_id.startswith("torneo:")
+    assert client.get("/pagos/por-recibir/profe@x.com").json()["por_recibir_soles"] == 18.0
     assert any(p.tipo == "inscripcion_torneo" for p in stores.pagos)
 
 

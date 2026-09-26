@@ -4344,7 +4344,7 @@ function mostrarPane(btn, pane){
 }
 
 // ── Dashboard (Resumen): KPIs que se llenan conforme cargan las secciones ──
-const kpi = {reclamosPend:null, activas:null, liqTotal:null, liqN:null, disputas:null};
+const kpi = {reclamosPend:null, activas:null, liqTotal:null, liqN:null, liqAtras:0, liqDias:0, disputas:null};
 
 function renderResumen(){
   const box = document.getElementById('kpis');
@@ -4364,7 +4364,7 @@ function renderResumen(){
     <button class="kpi" onclick="mostrarSeccion('liquidaciones')">
       <div class="ki" style="background:#E3F2EF">💸</div>
       <div class="kv">${kpi.liqTotal===null?'…':'S/ '+kpi.liqTotal}</div>
-      <div class="kl">${kpi.liqN===null?'Por liquidar a dueños':(kpi.liqN===1?'1 pago pendiente':kpi.liqN+' pagos pendientes')}</div>
+      <div class="kl">${kpi.liqN===null?'Por liquidar a dueños':(kpi.liqN===1?'1 pago pendiente':kpi.liqN+' pagos pendientes')}${kpi.liqAtras?` · <b style="color:#B42318">${kpi.liqAtras} atrasado${kpi.liqAtras===1?'':'s'}</b>`:''}</div>
     </button>
     <button class="kpi" onclick="mostrarSeccion('disputas')">
       <div class="ki" style="background:#FBE2E2">⚖️</div>
@@ -4800,7 +4800,8 @@ async function cargarLiquidaciones(){
     if(!r.ok){ box.innerHTML=''; return; }
     const j = await r.json();
     const pend = j.pendientes||[];
-    kpi.liqTotal = j.total_neto_soles||0; kpi.liqN = pend.length; renderResumen();
+    kpi.liqTotal = j.total_neto_soles||0; kpi.liqN = pend.length; kpi.liqAtras = j.atrasadas||0; kpi.liqDias = j.mas_antigua_dias||0; renderResumen();
+    const AVISO = j.aviso_dias||3;
     if(!pend.length){
       box.innerHTML = `<div class="card" style="text-align:center;padding:44px 20px">
         <div style="font-size:36px">🎉</div>
@@ -4844,9 +4845,9 @@ async function cargarLiquidaciones(){
       const chipsCancha = [...porCancha.entries()].map(([c,x])=>
         `<span class="liq-cancha">${esc(c)} · ${x.n} ${x.n===1?'reserva':'reservas'} · neto ${S(x.neto)}</span>`).join('');
       const filas = g.items.map(p=>`
-        <div class="liq-row">
+        <div class="liq-row"${(p.dias||0)>=AVISO?' style="border-left:3px solid #F04438;padding-left:10px"':''}>
           <div style="min-width:0">
-            <div class="liq-dueno">${esc(canchaDe(p))}</div>
+            <div class="liq-dueno">${esc(canchaDe(p))}${(p.dias||0)>=AVISO?` <span style="color:#B42318;font-size:12px;font-weight:800">· hace ${p.dias} días</span>`:''}</div>
             <div class="liq-det">${esc(restoDe(p))} · ${fmtFecha(p.creado_en)}</div>
           </div>
           <div class="liq-der">
@@ -4872,11 +4873,16 @@ async function cargarLiquidaciones(){
       </div>`;
     }).join('');
 
-    box.innerHTML = `
+    const atras = pend.filter(p=>(p.dias||0)>=AVISO);
+    const banner = atras.length ? `<div class="card" style="border-left:4px solid #F04438;background:#FFF4F2;padding:12px 16px;margin-bottom:12px">
+        <b style="color:#B42318">⏰ ${atras.length} ${atras.length===1?'liquidación lleva':'liquidaciones llevan'} ${AVISO}+ días sin pagar</b>
+        <span style="color:var(--muted);font-size:13px"> · ${S(atras.reduce((a,p)=>a+(p.neto_soles||0),0))} · la más antigua hace ${j.mas_antigua_dias||0} días. Pichangol le debe esta plata a dueños y organizadores: transfiere y marca pagado. El recordatorio diario por WhatsApp sigue hasta que quede en cero.</span>
+      </div>` : '';
+    box.innerHTML = `${banner}
       <div class="liq-head">
         <div>
           <div class="liq-total">${S(gNeto)}</div>
-          <div class="liq-sub">${pend.length===1?'1 pago pendiente':pend.length+' pagos pendientes'} · transfiere el neto (Yape/banco) y márcalo</div>
+          <div class="liq-sub">${pend.length===1?'1 pago pendiente':pend.length+' pagos pendientes'} · reservas online, ventas y torneos (🏆) · transfiere el neto (Yape/banco) y márcalo</div>
           <div class="liq-resumen">
             <span class="liq-mini">Bruto cobrado ${S(gBruto)}</span>
             <span class="liq-mini liq-mini-pcg">Comisión Pichangol ${S(gCom)}</span>

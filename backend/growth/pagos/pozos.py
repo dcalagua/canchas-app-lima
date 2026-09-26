@@ -7,9 +7,11 @@ cada jugador pone su parte AL UNIRSE (100 / 10 = S/ 10, redondeado hacia
 arriba a 0.50); el dinero queda RETENIDO en Pichangol en el pozo del equipo;
 el equipo queda INSCRITO cuando el pozo cubre la cuota (el último paga solo lo
 que falta; quien quiera puede "completar lo que falta"); recién ahí se cobra
-la comisión UNA sola vez sobre la cuota del equipo y el neto se acredita al
-organizador. Si el equipo queda fuera antes de completarse, cada jugador
-recupera su parte en su saldo. Todo es saldo→saldo (billetera única).
+la comisión UNA sola vez sobre la cuota del equipo y el neto queda POR
+RECIBIR para el organizador (misma cola de liquidaciones que las reservas
+online: la torre le transfiere y lo marca pagado). Si el equipo queda fuera
+antes de completarse (o antes de que se le pague), cada jugador recupera su
+parte en su saldo.
 
 Fuente de verdad del dinero: `stores.pozos_equipo` (snapshot). El JSON del
 campeonato (app/web) solo espeja los aportes para mostrarlos.
@@ -80,7 +82,12 @@ def estado(p: dict | None, cuota_equipo_centimos: int = 0, cupo: int = 0) -> dic
 
 def _liquidar(p: dict, comision_fn) -> None:
     """El pozo cubrió la cuota: comisión UNA vez sobre la cuota del equipo y el
-    NETO al organizador (billetera). Idempotente."""
+    NETO queda POR RECIBIR para el organizador — la MISMA cola de
+    liquidaciones que una reserva online (torre → Liquidaciones, billetera
+    "Por recibir", web Ingresos), NO su saldo (decisión del director,
+    26-sep-2026: "PCG le debe transferir como a los dueños de cancha").
+    `culqi_charge_id` = `pozo:<camp>|<equipo>` es la clave con la que el
+    operador la marca pagada. Idempotente."""
     if p.get("liquidado"):
         return
     cuota = int(p["cuota_equipo_centimos"])
@@ -88,15 +95,36 @@ def _liquidar(p: dict, comision_fn) -> None:
     comision = min(cuota, int(comision_fn(cuota / 100.0, moneda)))
     neto = max(0, cuota - comision)
     org = (p.get("organizador") or "").strip().lower()
+    pago_id = None
     if org:
-        stores.acreditar(org, neto)
-        stores.registrar_pago(
+        pago = stores.registrar_pago(
             tipo="inscripcion_torneo_ingreso", monto_centimos=cuota, moneda=moneda,
             estado="aprobado", dueno_id=org, comision_centimos=comision,
-            concepto=f"Inscripción de {p.get('equipo_nombre') or 'equipo'} · {p.get('campeonato_nombre') or 'torneo'} (pozo completo)")
+            culqi_charge_id=f"pozo:{clave(p['campeonato_id'], p['equipo_id'])}",
+            # "Torneo · Equipo · detalle · fecha": la torre agrupa por el 1.º y
+            # el 2.º campo (como Local · Cancha en las reservas).
+            concepto=f"🏆 {p.get('campeonato_nombre') or 'Torneo'} · {p.get('equipo_nombre') or 'Equipo'} · inscripción del equipo (pozo completo) · {_ahora()[:10]}")
+        pago_id = pago.id
     p.update({"liquidado": True, "liquidado_en": _ahora(),
-              "comision_centimos": comision, "neto_centimos": neto})
-    print(f"[pozo] liquidado {p.get('campeonato_id')}/{p.get('equipo_id')}: cuota {cuota} comisión {comision} neto {neto} → {org}", flush=True)
+              "comision_centimos": comision, "neto_centimos": neto,
+              "liquidacion_pago_id": pago_id})
+    print(f"[pozo] liquidado {p.get('campeonato_id')}/{p.get('equipo_id')}: cuota {cuota} comisión {comision} neto {neto} por recibir → {org}", flush=True)
+
+
+def _pago_liquidacion(p: dict):
+    pid = p.get("liquidacion_pago_id")
+    if pid is None:
+        return None
+    for pg in stores.pagos:
+        if pg.id == pid:
+            return pg
+    return None
+
+
+def liquidacion_pagada(p: dict) -> bool:
+    """¿Pichangol YA le transfirió al organizador el neto de este pozo?"""
+    pg = _pago_liquidacion(p)
+    return bool(pg and pg.liquidado)
 
 
 def aportar(*, email: str, campeonato_id: str, equipo_id: str, cuota_equipo_soles: float,
@@ -167,8 +195,9 @@ def aportar(*, email: str, campeonato_id: str, equipo_id: str, cuota_equipo_sole
 def devolver(*, campeonato_id: str, equipo_id: str, solicitante: str) -> dict:
     """El equipo queda fuera antes de completarse: cada jugador recupera su
     parte en su saldo. Solo el organizador del pozo (o quien lo creó sin
-    organizador). Si ya se liquidó al organizador, no hay devolución
-    automática (`ya_liquidado`): la resuelve el organizador."""
+    organizador). Con el neto "por recibir" aún NO pagado se anula la
+    liquidación y se devuelve igual; si Pichangol ya se lo transfirió, no hay
+    devolución automática (`ya_liquidado`): la resuelve el organizador."""
     p = _pozo(campeonato_id, equipo_id)
     if p is None:
         return {"ok": True, "devueltos": 0, "pozo": estado(None)}
@@ -176,10 +205,18 @@ def devolver(*, campeonato_id: str, equipo_id: str, solicitante: str) -> dict:
     org = (p.get("organizador") or "").strip().lower()
     if org and sol != org:
         return {"ok": False, "error": "solo_organizador"}
-    if p.get("liquidado"):
-        return {"ok": False, "error": "ya_liquidado", "pozo": estado(p)}
     if p.get("devuelto"):
         return {"ok": True, "devueltos": 0, "pozo": estado(p)}
+    if p.get("liquidado"):
+        # Ya está "por recibir": si Pichangol AÚN NO se lo transfirió al
+        # organizador, se ANULA esa liquidación y los jugadores recuperan su
+        # parte; si ya se pagó, la devolución queda de lado del organizador.
+        if liquidacion_pagada(p):
+            return {"ok": False, "error": "ya_liquidado", "pozo": estado(p)}
+        pg = _pago_liquidacion(p)
+        if pg is not None:
+            pg.estado = "anulado"
+        p.update({"liquidado": False, "anulado_en": _ahora()})
     n = 0
     for email, a in list((p.get("aportes") or {}).items()):
         c = int(a.get("centimos") or 0)

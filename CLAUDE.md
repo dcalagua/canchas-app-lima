@@ -998,6 +998,36 @@ para la API del APK.
   página pública dicen "cada jugador pone S/ 10". Tests
   `test_pozo_equipo.py`, `test_vaquita_del_equipo_en_la_web`. Pendiente:
   la cuota individual (`/torneo/inscribir`) sigue en PEN.
+  **EL NETO DEL TORNEO ES "POR RECIBIR", NO SALDO (decisión del director,
+  26-sep-2026: "PCG le debe transferir de manera automática, así como hace
+  con los dueños de cancha; ¿qué pasa si el operador se olvida?"):** antes
+  `pozos._liquidar` y `/torneo/inscribir` hacían `stores.acreditar(org,
+  neto)` (saldo dentro de la app, fuera de toda cola de pago). Ahora el
+  ingreso `inscripcion_torneo_ingreso` nace con `culqi_charge_id =
+  pozo:<camp>|<equipo>` (o `torneo:<pago_id>` en la cuota individual),
+  `liquidado=False`, y entra en `stores.liquidaciones()` → la MISMA cola
+  que las reservas online y ventas: torre `/admin` → Liquidaciones (agrupa
+  "🏆 Torneo · Equipo"), billetera del APK "Por recibir" (el parser mapea
+  el tipo a `TipoMovimiento.liquidacion`), web Ingresos, `GET
+  /pagos/por-recibir/{email}`; el operador transfiere y marca pagado con
+  `POST /pagos/liquidaciones/{clave}/pagar`. `es_liquidacion_torneo(p)`
+  distingue los NUEVOS de los registros viejos (sin clave) que ya se
+  acreditaron al saldo: esos no se liquidan dos veces. `devolver` con el
+  neto pendiente (aún no pagado) ANULA la liquidación (`estado=anulado`) y
+  devuelve a los jugadores; solo si la torre ya pagó responde
+  `ya_liquidado`; `marcar_liquidacion_pagada` ignora anuladas. **Anti
+  olvido:** `_liquidacion_dict` trae `dias`; `/pagos/liquidaciones/
+  pendientes` suma `atrasadas`, `mas_antigua_dias`, `aviso_dias`
+  (`LIQUIDACION_AVISO_DIAS`, env, 3); la torre pinta banner rojo, "hace N
+  días" por fila y el KPI "N atrasados"; el cron `_iniciar_cron_
+  liquidaciones` (cada hora) llama `recordar_liquidaciones_pendientes()`,
+  que una vez al día desde las 09:00 de Lima avisa por WhatsApp al admin
+  (`PICHANGOL_ADMIN_WHATSAPP` vía `reclamos._notificar_admin`) y en logs
+  `[liquidaciones]` mientras haya atrasadas. NO existe transferencia
+  bancaria automática (Culqi no ofrece payouts): la cola + el recordatorio
+  son el mecanismo, igual que para las canchas. Tests actualizados en
+  `test_pozo_equipo.py` (+ `test_recordatorio_diario_de_liquidaciones_
+  atrasadas`), `test_pagos.py`, `test_web_campeonatos.py`.
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
   VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
   Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el

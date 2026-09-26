@@ -453,6 +453,12 @@ class PagoRegistro:
     promo_centimos: int = 0
 
 
+def es_liquidacion_torneo(p: "PagoRegistro") -> bool:
+    """¿Este ingreso de torneo es de los NUEVOS (por recibir, clave `pozo:`
+    o `torneo:` en `culqi_charge_id`)? Los viejos se acreditaron al saldo."""
+    return p.tipo == "inscripcion_torneo_ingreso" and str(p.culqi_charge_id or "").startswith(("pozo:", "torneo:"))
+
+
 class Stores:
     def __init__(self) -> None:
         self.config: dict[str, str] = dict(CONFIG_DEFAULT)
@@ -835,7 +841,15 @@ class Stores:
         out = []
         for p in self.pagos:
             if p.tipo not in ("liquidacion_online", "liquidacion_full",
-                              "venta_producto", "venta_bodega"):
+                              "venta_producto", "venta_bodega",
+                              "inscripcion_torneo_ingreso"):
+                continue
+            # Ingresos de TORNEO (pozo del equipo / cuota individual): desde
+            # sep-2026 son "por recibir" como una reserva online (decisión del
+            # director: "PCG le debe transferir como a los dueños de cancha").
+            # Los registros VIEJOS (sin clave `pozo:`/`torneo:`) ya se habían
+            # acreditado al saldo del organizador → no se liquidan dos veces.
+            if p.tipo == "inscripcion_torneo_ingreso" and not es_liquidacion_torneo(p):
                 continue
             if p.estado != "aprobado":
                 continue  # reembolsados/anulados no se liquidan
@@ -852,7 +866,9 @@ class Stores:
         dueño). Idempotente: si ya estaba pagada, la devuelve igual."""
         for p in self.pagos:
             if (p.tipo in ("liquidacion_online", "liquidacion_full",
-                           "venta_producto")
+                           "venta_producto", "venta_bodega",
+                           "inscripcion_torneo_ingreso")
+                    and p.estado == "aprobado"  # una anulada no se "paga"
                     and p.culqi_charge_id == reserva_id):
                 if not p.liquidado:
                     p.liquidado = True

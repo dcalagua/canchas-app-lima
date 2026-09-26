@@ -208,6 +208,26 @@ async def _iniciar_cron_agente_redes() -> None:
 
 
 @app.on_event("startup")
+async def _iniciar_cron_liquidaciones() -> None:
+    """RECORDATORIO de liquidaciones ATRASADAS (dueños de cancha y organizadores
+    de torneo): cada hora revisa y, una vez al día desde las 09:00 de Lima,
+    avisa al operador por WhatsApp y en los logs lo que lleva ≥ N días sin
+    pagarse. Decisión del director (26-sep-2026): "¿qué pasa si el operador se
+    olvida? tendremos problemas". Fail-safe."""
+    async def _loop() -> None:
+        await asyncio.sleep(120)
+        while True:
+            try:
+                from pagos.router import recordar_liquidaciones_pendientes
+                recordar_liquidaciones_pendientes()
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(3600)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
 async def _iniciar_cron_storage() -> None:
     """RECOLECTOR DE BASURA del Storage: cada N horas borra los archivos que
     quedaron sin dueño. El APK ya borra en caliente al eliminar una cancha, un

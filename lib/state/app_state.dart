@@ -6510,9 +6510,16 @@ class AppState extends ChangeNotifier {
             'suscripcion_pro' ||
             'inscripcion_torneo' =>
               TipoMovimiento.consumo,
-            'liquidacion_online' || 'liquidacion_full' || 'venta_producto' =>
+            'liquidacion_online' ||
+            'liquidacion_full' ||
+            'venta_producto' ||
+            // Ingreso de torneo (pozo del equipo / cuota individual): neto POR
+            // RECIBIR como una reserva online; Pichangol lo transfiere. Los
+            // registros viejos (ya acreditados al saldo) llegan con
+            // liquidado=true y se ven como recibidos.
+            'inscripcion_torneo_ingreso' =>
               TipoMovimiento.liquidacion,
-            _ => TipoMovimiento.recarga, // recarga, inscripcion_torneo_ingreso
+            _ => TipoMovimiento.recarga, // recarga, bonos, cupones
           };
           final sim = monedaSaldoSimbolo;
           final com = (m['comision_soles'] as num?)?.toDouble() ?? 0;
@@ -6531,6 +6538,9 @@ class AppState extends ChangeNotifier {
             concepto = concepto.isEmpty
                 ? 'Reserva online · recibes 100%'
                 : '$concepto · recibes 100%';
+          } else if (tipoStr == 'inscripcion_torneo_ingreso') {
+            fuente = 'transaccion';
+            if (concepto.isEmpty) concepto = 'Inscripción a torneo';
           } else if (tipoStr == 'venta_producto') {
             // Venta del marketplace o bono de horas: Pichangol cobró al comprador
             // y te debe el neto (por recibir). El concepto ya dice qué fue

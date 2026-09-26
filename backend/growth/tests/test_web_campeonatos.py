@@ -417,7 +417,8 @@ def test_vaquita_del_equipo_en_la_web(db, monkeypatch):
     r = _pz.aportar(email="capi@x.com", campeonato_id=cid, equipo_id=ids[1], cuota_equipo_soles=100, cupo=10, moneda="PEN",
                     organizador="orga@gmail.com", campeonato_nombre="Beata 2026", equipo_nombre="Kinder 02", monto_soles=100,
                     comision_fn=lambda s, m: 500)
-    assert r["pozo"]["liquidado"] and stores.saldo_centimos("orga@gmail.com") == 9500
+    assert r["pozo"]["liquidado"] and stores.saldo_centimos("orga@gmail.com") == 0  # neto por recibir, no saldo
+    assert len(stores.liquidaciones("orga@gmail.com", solo_pendientes=True)) == 1
     # Detalle: chips con el pozo y CFG con pozos/cuota.
     r = cli.get(f"/anfitrion/campeonatos/{cid}")
     assert r.status_code == 200
@@ -436,7 +437,9 @@ def test_vaquita_del_equipo_en_la_web(db, monkeypatch):
     assert stores.saldo_centimos("a@x.com") == 10000 and stores.saldo_centimos("b@x.com") == 10000
     assert {p["nombre"] for p in fake.rows[cid]["participantes"]} == {"Kinder 02", "PreKinder"}
     assert fake.rows[cid]["partidos"]
-    # Quitar un equipo ya liquidado: no hay devolución automática, se avisa.
+    # Quitar un equipo con el neto YA PAGADO por la torre: no hay devolución automática, se avisa.
+    pg = stores.liquidaciones("orga@gmail.com", solo_pendientes=True)[0]
+    stores.marcar_liquidacion_pagada(pg.culqi_charge_id, "yape", "op")
     r = cli.post(f"/anfitrion/campeonatos/{cid}/participante/{ids[1]}/eliminar").json()
     assert r["ok"] and "ya se te había liquidado" in r["aviso"]
     # Página pública: "por equipo · cada jugador pone".
