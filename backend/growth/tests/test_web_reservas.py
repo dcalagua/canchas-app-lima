@@ -2193,3 +2193,19 @@ def test_cancelacion_desde_el_app_con_la_misma_politica(db, monkeypatch):
         assert cli.post("/pagos/reserva/cancelar", json={"ref": "nada", "email": "ana@gmail.com"}).json()["error"] == "sin_reserva"
     finally:
         stores.config["cargo_activo_reservas"] = "0"
+
+
+def test_yape_es_la_pestana_principal_del_checkout_web(db, monkeypatch):
+    """Pedido del director (27-sep-2026, captura del checkout de la academia):
+    "que Yape salga como pantalla principal y no la de pagar con tarjeta". El
+    Checkout v4 de Culqi muestra los métodos en el orden declarado en
+    `paymentMethods` y abre el primero: Yape va antes que tarjeta en la
+    reserva y en la matrícula (igual que el APK, Yape por defecto en PE)."""
+    monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
+    db.academias["ac_y"] = {"nombre": "Academia Yape", "deporte": "tenis", "dueno": "profe@gmail.com", "sedeClub": "Club",
+                            "lat": -12.09, "lng": -77.03, "planes": [{"id": "p1", "nombre": "Plan", "precioMes": 300, "modalidad": "mensual"}]}
+    cli = TestClient(app, base_url="https://testserver")
+    for url in ("/reservar/c_lima", "/academia/ac_y"):
+        html = cli.get(url).text
+        i_y, i_t = html.find("paymentMethods: { yape: true, tarjeta: true"), html.find("paymentMethods: { tarjeta: true")
+        assert i_y > 0 and i_t < 0, url

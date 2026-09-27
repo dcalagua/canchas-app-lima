@@ -574,7 +574,7 @@ _JS_ACADEMIA = r"""
     Culqi.publicKey = C.pk;
     Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: montoC });
     Culqi.options({ lang: 'es', installments: false,
-      paymentMethods: { tarjeta: true, yape: true, bancaMovil: false, agente: false, billetera: false, cuotealo: false },
+      paymentMethods: { yape: true, tarjeta: true, bancaMovil: false, agente: false, billetera: false, cuotealo: false }, // Yape PRIMERO (pedido del director, 27-sep-2026): Checkout v4 pinta los métodos en el orden declarado y abre el primero
       style: { logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
     window.culqi = function(){
       if(Culqi.token){
