@@ -1570,6 +1570,17 @@ off → redeploy inmediato en cada push). URL pública:
     APK, sin variables. Pendiente del director en la torre de PRD: poner la
     tarifa contratada real de Culqi (tarjeta y Yape) en Cobros → Tarifas de
     pasarela; hasta entonces usa la publicada de referencia.
+    **Pase del 27-sep-2026 (autorizado: "Pasa a PRD"):** `prd` = merge
+    `883a681` (comisión REAL de Culqi leída de la API y ligada a cada
+    liquidación con fuente ✓ real / est. / saldo, tarifa de tarjeta
+    observada 6.05 % en ambos defaults, el APK manda el N.º de operación
+    del cargo con cada liquidación y matrícula; acceso de revisión
+    retirado). Sin SQL ni Edge; sin variables nuevas. CAMBIÓ `lib/` →
+    APK/AAB de PRD por `workflow_dispatch` (`ref=prd`, `entorno=prod`). En
+    la torre de PRD → Cobros → Tarifas de pasarela, "Sincerar con Culqi
+    ahora" lee el fee real del primer cobro live de S/ 15 (Culqi lo publica
+    ~12 h después del pago). OJO: un APK anterior liga el cargo por
+    inferencia (mismo monto ±20 min), no por `charge_id` → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
