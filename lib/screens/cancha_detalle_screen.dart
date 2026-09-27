@@ -5,6 +5,8 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
+import '../models/cargo_servicio.dart';
+import '../widgets/cargo_servicio_info.dart';
 import '../widgets/chat_burbuja.dart';
 import '../widgets/court_lines.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
@@ -80,6 +82,19 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     // El efectivo (pago en la cancha) SOLO se ofrece si el dueño tiene saldo:
     // así PCG cobra su comisión de ese saldo. Sin saldo, el jugador paga online.
     final efectivo = !exigeSena && appState.esDestacada(cancha);
+    // CARGO POR SERVICIO Pichangol (fase 3): solo si se paga EN LÍNEA (todo o
+    // la seña). Lo cotiza el backend; con la línea apagada es 0.
+    CotizacionCargo? cargo;
+    if (exigeSena || !efectivo) {
+      final baseCobro = exigeSena ? senaMonto.toDouble() : total;
+      cargo = await CargoServicio.cotizar(
+          linea: 'reservas',
+          moneda: cancha.monedaSimbolo,
+          baseCentimos: (baseCobro * 100).round(),
+          deporte: cancha.deporte.name);
+      if (!mounted) return;
+    }
+    final cargoSoles = (cargo?.hayCargo ?? false) ? cargo!.cargo : 0.0;
     final confirmar = await showDialog<bool>(
       context: context,
       builder: (ctx) => DialogoPichangol(
@@ -93,10 +108,22 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
             const SizedBox(height: 8),
             Text('$_dia · $hora a ${cancha.horaFinDe(hora)}'),
             const SizedBox(height: 8),
-            Text('Total: ${cancha.monedaSimbolo} ${total.toStringAsFixed(2)}',
+            Text(
+                cargoSoles > 0
+                    ? '${exigeSena ? 'Seña' : 'Reserva'}: ${cancha.monedaSimbolo} ${(exigeSena ? senaMonto.toDouble() : total).toStringAsFixed(2)}'
+                    : 'Total: ${cancha.monedaSimbolo} ${total.toStringAsFixed(2)}',
                 style: TextStyle(
                     color: Theme.of(ctx).colorScheme.primary,
                     fontWeight: FontWeight.w700)),
+            if (cargoSoles > 0) ...[
+              FilaCargoServicio(
+                  cot: cargo, simbolo: cancha.monedaSimbolo, compacta: true),
+              Text(
+                  'Pagas hoy: ${cancha.monedaSimbolo} ${((exigeSena ? senaMonto.toDouble() : total) + cargoSoles).toStringAsFixed(2)}',
+                  style: TextStyle(
+                      color: Theme.of(ctx).colorScheme.primary,
+                      fontWeight: FontWeight.w800)),
+            ],
             const SizedBox(height: 8),
             Text(
               exigeSena
@@ -177,8 +204,9 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     if (exigeSena) {
       final pagado = await PagoTarjeta.cobrar(
         context,
-        monto: senaMonto,
-        concepto: 'Seña · ${cancha.nombre} · $_dia $hora',
+        monto: senaMonto + cargoSoles,
+        concepto: 'Seña · ${cancha.nombre} · $_dia $hora'
+            '${cargoSoles > 0 ? ' + cargo por servicio' : ''}',
         email: appState.usuario?.email ?? '',
         moneda: cancha.monedaSimbolo,
         onOperacion: (o) => operacion = o,
@@ -197,8 +225,9 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     } else if (!efectivo) {
       final pagado = await PagoTarjeta.cobrar(
         context,
-        monto: total,
-        concepto: 'Reserva · ${cancha.nombre} · $_dia $hora',
+        monto: total + cargoSoles,
+        concepto: 'Reserva · ${cancha.nombre} · $_dia $hora'
+            '${cargoSoles > 0 ? ' + cargo por servicio' : ''}',
         email: appState.usuario?.email ?? '',
         moneda: cancha.monedaSimbolo,
         onOperacion: (o) => operacion = o,
@@ -233,7 +262,8 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
         medioPago: medioPago,
         sena: exigeSena ? senaMonto : 0,
         operacionId: operacion,
-        asegurada: asegurada);
+        asegurada: asegurada,
+        cargo: (exigeSena || !efectivo) ? cargo : null);
     if (!mounted) return;
 
     if (res == ResultadoReserva.ocupado) {

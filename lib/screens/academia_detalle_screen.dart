@@ -3,6 +3,8 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/academia.dart';
+import '../models/cargo_servicio.dart';
+import '../widgets/cargo_servicio_info.dart';
 import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
@@ -699,6 +701,8 @@ class _PlanesSectionState extends State<_PlanesSection> {
 class _CarritoMatricula extends ChangeNotifier {
   final List<_DatosMatricula> items = [];
   bool get vacio => items.isEmpty;
+  // Cotización del cargo por servicio de todo el carrito (repinta al llegar).
+  late final CotizadorCargo cotizador = CotizadorCargo(notifyListeners);
   void agregar(_DatosMatricula d) {
     items.add(d);
     notifyListeners();
@@ -792,6 +796,17 @@ Future<bool> _pagarMatriculas(
       ? 'Matrícula ${academia.nombre} · ${items.length} personas'
       : 'Matrícula ${academia.nombre} · ${items.first.plan.nombre}';
   final email = appState.usuario?.email ?? '';
+  // CARGO POR SERVICIO Pichangol (fase 3): UNA cotización sobre la suma del
+  // carrito (a más personas, menos por cabeza). Lo cobrado = matrículas +
+  // cargo; la academia recibe sobre las matrículas. Apagado → 0.
+  final cot = await CargoServicio.cotizar(
+      linea: 'academias',
+      moneda: academia.monedaSimbolo,
+      baseCentimos: (total * 100).round(),
+      deporte: academia.deporte.name,
+      partes: items.map((x) => (x.total * 100).round()).toList());
+  if (!context.mounted) return false;
+  final cargoSoles = cot.hayCargo ? cot.cargo : 0.0;
   // Pago del total a cobrar AHORA (mes a mes = 1 mes por persona; adelantado =
   // N meses con descuento si aplica). Capturamos el token para el débito
   // automático.
@@ -799,8 +814,8 @@ Future<bool> _pagarMatriculas(
   String? operacionId;
   final pagado = await PagoTarjeta.cobrar(
     context,
-    monto: total,
-    concepto: concepto,
+    monto: total + cargoSoles,
+    concepto: '$concepto${cargoSoles > 0 ? ' + cargo por servicio' : ''}',
     email: email,
     moneda: academia.monedaSimbolo,
     onToken: (t) => tokenUsado = t,
@@ -818,11 +833,15 @@ Future<bool> _pagarMatriculas(
     pais: academia.pais.iso,
     concepto: concepto,
     chargeId: operacionId ?? '',
+    cargoServicioCentimos: cot.cargoCentimos,
+    cargoDesglose: cot.desgloseJson,
+    cargoAjusteCentimos: cot.ajusteCentimos,
   );
 
   String? primeraSuscripcion;
   final resumen = <String>[];
-  for (final d in items) {
+  for (var k = 0; k < items.length; k++) {
+    final d = items[k];
     final esHijo = d.parentesco == 'hijo';
     // Precio mensual y total del plan EN LA SEDE elegida (multi-sede con
     // tarifas por local) y con el DESCUENTO FAMILIAR (2.º/3.º de la familia):
@@ -854,6 +873,9 @@ Future<bool> _pagarMatriculas(
       emailAlumno: d.emailAlumno,
       ordenHermano: d.orden,
       notaDescuento: notaDto,
+      // El cargo fue UNO por todo el pago: queda en la 1.ª persona.
+      cargoServicio: k == 0 ? cargoSoles : 0,
+      cargoPersonas: items.length,
     );
     resumen.add('${d.nombre} (${d.plan.nombre})');
     // Mes a mes: activa el débito automático de los meses restantes con la
@@ -953,6 +975,14 @@ class _CarritoCard extends StatelessWidget {
         final items = _recalcularCarrito(academia, carrito.items);
         final total = items.fold<double>(0, (s, x) => s + x.total);
         final mon = academia.monedaSimbolo;
+        // Cargo por servicio de todo el carrito (una cotización, con ahorro).
+        final cot = carrito.cotizador.para(
+            linea: 'academias',
+            moneda: mon,
+            baseCentimos: (total * 100).round(),
+            deporte: academia.deporte.name,
+            partes: items.map((x) => (x.total * 100).round()).toList());
+        final cargo = (cot?.hayCargo ?? false) ? cot!.cargo : 0.0;
         return Container(
           margin: const EdgeInsets.only(top: 6, bottom: 10),
           padding: const EdgeInsets.all(14),
@@ -1022,12 +1052,20 @@ class _CarritoCard extends StatelessWidget {
                     ],
                   ),
                 ),
+              if (cargo > 0)
+                FilaCargoServicio(
+                    cot: cot,
+                    simbolo: mon,
+                    compacta: true,
+                    nota: (cot!.ahorroCentimos > 0)
+                        ? '🎉 Ahorras $mon ${cot.ahorro.toStringAsFixed(2)} en el cargo por pagar en familia (un solo cobro).'
+                        : null),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('Pagas hoy',
                       style: TextStyle(fontWeight: FontWeight.w700)),
-                  Text('$mon ${total.toStringAsFixed(2)}',
+                  Text('$mon ${(total + cargo).toStringAsFixed(2)}',
                       style: const TextStyle(
                           fontWeight: FontWeight.w800,
                           fontSize: 18,
@@ -1048,7 +1086,7 @@ class _CarritoCard extends StatelessWidget {
                     if (ok) carrito.limpiar();
                   },
                   child: Text(
-                      'Pagar todo · $mon ${total.toStringAsFixed(2)}',
+                      'Pagar todo · $mon ${(total + cargo).toStringAsFixed(2)}',
                       style: const TextStyle(fontWeight: FontWeight.w800)),
                 ),
               ),
@@ -1315,6 +1353,22 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
   double get _totalCarrito => _recalcularCarrito(widget.academiaObj, widget.carrito)
       .fold<double>(0, (s, x) => s + x.total);
   double get _dtoFamiliar => widget.academiaObj.descuentoHermanoPct(_orden);
+  // CARGO POR SERVICIO Pichangol sobre TODO el pago (carrito + esta persona):
+  // se pinta al instante y se corrige cuando responde el servidor.
+  late final CotizadorCargo _cotizador = CotizadorCargo(() {
+    if (mounted) setState(() {});
+  });
+  CotizacionCargo? get _cot => _cotizador.para(
+      linea: 'academias',
+      moneda: widget.moneda,
+      baseCentimos: ((_totalCarrito + _total) * 100).round(),
+      deporte: widget.academiaObj.deporte.name,
+      partes: [
+        ..._recalcularCarrito(widget.academiaObj, widget.carrito)
+            .map((x) => (x.total * 100).round()),
+        (_total * 100).round(),
+      ]);
+  double get _cargo => (_cot?.hayCargo ?? false) ? _cot!.cargo : 0.0;
   String? _error; // mensaje de validación inline (visible)
   // Sede elegida (academias multi-sede): por defecto la primera.
   late String? _sedeId =
@@ -1735,6 +1789,25 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                   const Text('Se cobra automático de tu tarjeta. Cancela cuando quieras.',
                       style: TextStyle(color: textoTenue, fontSize: 12.5)),
                 ],
+                if (_cargo > 0) ...[
+                  const SizedBox(height: 6),
+                  FilaCargoServicio(
+                      cot: _cot,
+                      simbolo: widget.moneda,
+                      compacta: true,
+                      nota: (_cot!.ahorroCentimos > 0)
+                          ? '🎉 Ahorras ${widget.moneda} ${_cot!.ahorro.toStringAsFixed(2)} en el cargo por pagar en familia (un solo cobro).'
+                          : (_mesAMes
+                              ? 'Se cobra solo hoy, con este pago; los meses siguientes llevan el suyo.'
+                              : null)),
+                  Text(
+                      'Total hoy: ${widget.moneda} ${(_totalCarrito + _total + _cargo).toStringAsFixed(2)}'
+                      '${widget.carrito.isNotEmpty ? ' · ${widget.carrito.length + 1} personas' : ''}',
+                      style: const TextStyle(
+                          color: bosque,
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14)),
+                ],
               ],
             ),
           ),
@@ -1767,10 +1840,10 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                 if (d != null) Navigator.of(context).pop(d);
               },
               child: Text(widget.carrito.isNotEmpty
-                  ? 'Pagar todo · ${widget.moneda} ${(_totalCarrito + _total).toStringAsFixed(2)} · ${widget.carrito.length + 1} personas'
+                  ? 'Pagar todo · ${widget.moneda} ${(_totalCarrito + _total + _cargo).toStringAsFixed(2)} · ${widget.carrito.length + 1} personas'
                   : _mesAMes
-                      ? 'Pagar 1.er mes ${widget.moneda} ${_total.toStringAsFixed(2)}'
-                      : 'Pagar ${widget.moneda} ${_total.toStringAsFixed(2)}'),
+                      ? 'Pagar 1.er mes ${widget.moneda} ${(_total + _cargo).toStringAsFixed(2)}'
+                      : 'Pagar ${widget.moneda} ${(_total + _cargo).toStringAsFixed(2)}'),
             ),
           ),
           const SizedBox(height: 8),

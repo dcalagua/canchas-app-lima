@@ -29,6 +29,7 @@ import '../data/perfiles_repo.dart';
 import '../data/puntos_repo.dart';
 import '../data/bodega_repo.dart';
 import '../models/bodega.dart';
+import '../models/cargo_servicio.dart';
 import '../data/bloqueos_repo.dart';
 import '../data/descuentos_repo.dart';
 import '../data/referidos_repo.dart';
@@ -1170,7 +1171,9 @@ class AppState extends ChangeNotifier {
       required String reservaId,
       required String etiqueta,
       String medio = '',
-      String chargeId = ''}) {
+      String chargeId = '',
+      // Cargo por servicio que pagó el jugador (solo en la 1.ª hora del bloque).
+      CotizacionCargo? cargo}) {
     if (cancha.dueno.isEmpty) return null;
     // Moneda de la CANCHA (país de sus coordenadas): decide el mínimo de la
     // comisión en el backend (S/ 2 · \$ 0.50 · Bs 3).
@@ -1193,6 +1196,12 @@ class AppState extends ChangeNotifier {
           'medio': medio, 'moneda': moneda,
           // Cargo de Culqi: la torre lee de ahí la comisión real de la pasarela.
           'charge_id': chargeId,
+          // Cargo por servicio (fase 3): céntimos + desglose congelado + ajuste.
+          if (cargo != null && cargo.hayCargo) ...{
+            'cargo_centimos': cargo.cargoCentimos,
+            'cargo_desglose': cargo.desgloseJson,
+            'cargo_ajuste': cargo.ajusteCentimos,
+          },
         };
       case 'sena':
         return {
@@ -1200,6 +1209,11 @@ class AppState extends ChangeNotifier {
           'monto': sena.toDouble(), 'reserva_id': reservaId,
           'concepto': 'Seña · $etiqueta', 'online': true,
           'medio': 'sena', 'moneda': moneda, 'charge_id': chargeId,
+          if (cargo != null && cargo.hayCargo) ...{
+            'cargo_centimos': cargo.cargoCentimos,
+            'cargo_desglose': cargo.desgloseJson,
+            'cargo_ajuste': cargo.ajusteCentimos,
+          },
         };
       default:
         return null;
@@ -1240,7 +1254,10 @@ class AppState extends ChangeNotifier {
               concepto: (e['concepto'] ?? '').toString(),
               medio: (e['medio'] ?? '').toString(),
               moneda: (e['moneda'] ?? '').toString(),
-              chargeId: (e['charge_id'] ?? '').toString());
+              chargeId: (e['charge_id'] ?? '').toString(),
+              cargoServicioCentimos: (e['cargo_centimos'] as num?)?.round() ?? 0,
+              cargoDesglose: Reserva.listaMapas(e['cargo_desglose']),
+              cargoAjusteCentimos: (e['cargo_ajuste'] as num?)?.round() ?? 0);
         }
         quitar = r != null; // 200 (ok o duplicada) → listo
       }
@@ -4338,6 +4355,9 @@ class AppState extends ChangeNotifier {
     String emailAlumno = '', // correo propio del familiar (opcional)
     int ordenHermano = 1, // orden del descuento familiar (1 = sin descuento)
     String notaDescuento = '', // "(−10%)" en el concepto de las cuotas
+    // Cargo por servicio pagado en este pago (una vez; en la 1.ª cuota pagada).
+    double cargoServicio = 0,
+    int cargoPersonas = 1,
   }) {
     final n = cantidad < 1 ? 1 : cantidad;
     // Precio mensual/por-clase efectivo: el de la sede si vino, si no el del plan.
@@ -4377,6 +4397,8 @@ class AppState extends ChangeNotifier {
         pagada: true,
         fechaPago: hoy,
         operacionId: operacionId,
+        cargoServicio: cargoServicio,
+        cargoPersonas: cargoPersonas,
       ));
     } else {
       final meses = (plan.tipo == TipoPlan.mensual ? 1 : plan.meses) * n;
@@ -4398,6 +4420,8 @@ class AppState extends ChangeNotifier {
           fechaPago: pagada ? hoy : null,
           autoDebito: autoDebito,
           operacionId: pagada ? operacionId : '',
+          cargoServicio: (i == 0 && pagada) ? cargoServicio : 0,
+          cargoPersonas: (i == 0 && pagada) ? cargoPersonas : 1,
         ));
       }
     }
@@ -4427,7 +4451,11 @@ class AppState extends ChangeNotifier {
   }
 
   void marcarCuotaPagada(String cuotaId,
-      {bool pagada = true, String operacionId = ''}) {
+      {bool pagada = true,
+      String operacionId = '',
+      // Cargo por servicio del pago que cubrió esta cuota (solo en la 1.ª).
+      double cargoServicio = 0,
+      int cargoPersonas = 1}) {
     final i = cuotas.indexWhere((c) => c.id == cuotaId);
     if (i < 0) return;
     final alumnoId = cuotas[i].alumnoId;
@@ -4435,7 +4463,9 @@ class AppState extends ChangeNotifier {
         ? cuotas[i].copyWith(
             pagada: true,
             fechaPago: DateTime.now(),
-            operacionId: operacionId.isEmpty ? null : operacionId)
+            operacionId: operacionId.isEmpty ? null : operacionId,
+            cargoServicio: cargoServicio > 0 ? cargoServicio : null,
+            cargoPersonas: cargoServicio > 0 ? cargoPersonas : null)
         : cuotas[i].copyWith(pagada: false, limpiarFechaPago: true);
     notifyListeners();
     _persistirDatos();
@@ -7157,8 +7187,18 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Cargo por servicio al cliente (`GET /config/cargo-servicio`): flags por
+  /// línea, regla y textos. Cache-first + refresco en silencio (como el
+  /// catálogo de servicios extra). Con la línea apagada el checkout no cambia.
+  Future<void> cargarCargoServicio() async {
+    try {
+      if (await CargoServicio.cargar()) notifyListeners();
+    } catch (_) {}
+  }
+
   Future<void> cargarCanalComunicacion() async {
     cargarCatalogoServicios(); // best-effort, en paralelo
+    cargarCargoServicio(); // best-effort, en paralelo
     final j = await GrowthService.configPublica();
     if (j == null) return;
     var cambio = false;
@@ -7641,7 +7681,11 @@ class AppState extends ChangeNotifier {
       String operacionId = '',
       // Slot YA ASEGURADO en Supabase ANTES de cobrar (flujo online/seña):
       // se reusa su id y NO se re-inserta; solo se estampan pago y detalles.
-      Reserva? asegurada}) async {
+      Reserva? asegurada,
+      // CARGO POR SERVICIO que pagó el jugador por este pago (fase 3): queda
+      // en la fila (comprobante) y viaja con la liquidación. Solo en la 1.ª
+      // hora del bloque (el multi-hora lo pasa una vez, como los extras).
+      CotizacionCargo? cargo}) async {
     final pagoAdelantado = cobro == 'online' || cobro == 'sena';
     final notaReembolso = pagoAdelantado
         ? ' Tu pago quedó registrado para reembolso.'
@@ -7704,6 +7748,11 @@ class AppState extends ChangeNotifier {
       moneda: cancha.monedaSimbolo, // moneda de la cancha (Perú S/, Bolivia Bs…)
       extras: extras, // servicios extra elegidos (árbitro/pelotero…)
       grupoReservaId: grupoReservaId, // agrupa las horas de una reserva multi-hora
+      cargoServicio:
+          (cargo != null && cargo.hayCargo && pagoAdelantado) ? cargo.cargo : 0,
+      cargoDesglose: (cargo != null && cargo.hayCargo && pagoAdelantado)
+          ? cargo.desgloseJson
+          : const [],
     );
 
     // Fuente de verdad anti-doble-reserva: Supabase con
@@ -7764,7 +7813,8 @@ class AppState extends ChangeNotifier {
             ? '$lugar · $diaLabel $hora'
             : '$lugar · $quien · $diaLabel $hora',
         medio: reserva.medioPago,
-        chargeId: operacionId);
+        chargeId: operacionId,
+        cargo: cargo);
     if (res == ResultadoReserva.ok) {
       if (accion != null) _encolarConta(accion);
       // Reserva CONFIRMADA en el servidor → avisa al dueño (push dedicado).
@@ -7845,7 +7895,9 @@ class AppState extends ChangeNotifier {
       String operacionId = '',
       // Bloque YA ASEGURADO en Supabase antes de cobrar (flujo online/seña):
       // se confirman esas mismas filas (id/grupo) en vez de insertar nuevas.
-      List<Reserva>? aseguradas}) async {
+      List<Reserva>? aseguradas,
+      // Cargo por servicio del pago (una sola vez por bloque, en la 1.ª hora).
+      CotizacionCargo? cargo}) async {
     if (horas.isEmpty) return ResultadoReserva.error;
     final ordenadas = [...horas]..sort();
     // Datos del BLOQUE para los avisos al jugador (un solo aviso por bloque).
@@ -7916,6 +7968,7 @@ class AppState extends ChangeNotifier {
         asegurada: (aseguradas ?? const [])
             .cast<Reserva?>()
             .firstWhere((r) => r!.horaInicio == h, orElse: () => null),
+        cargo: i == 0 ? cargo : null,
       );
       if (res == ResultadoReserva.ocupado) {
         _avisarJugadorReserva(

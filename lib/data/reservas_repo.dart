@@ -52,6 +52,9 @@ class ReservasRepo {
     // Orden: fila completa → sin extras/moneda/deporte → SOLO lo esencial.
     final intentos = <Map<String, dynamic>>[
       _toRow(r),
+      // Columnas del cargo por servicio (SQL supabase_reservas_cargo.sql):
+      // si aún no existen, la reserva entra igual sin ellas.
+      if (r.cargoServicio > 0) _toRow(r, conCargo: false),
       _toRow(r, conDeporte: false),
       _toRowCore(r),
     ];
@@ -139,6 +142,16 @@ class ReservasRepo {
           .eq('id', r.id);
     } catch (_) {
       try {
+        if (r.cargoServicio > 0) {
+          // Sin las columnas del cargo (SQL pendiente) → sin ellas.
+          await SupabaseService.client
+              .from(_tabla)
+              .update(_toRow(r, conCargo: false))
+              .eq('id', r.id);
+          return;
+        }
+      } catch (_) {}
+      try {
         await SupabaseService.client
             .from(_tabla)
             .update(_toRow(r, conDeporte: false))
@@ -147,7 +160,9 @@ class ReservasRepo {
     }
   }
 
-  static Map<String, dynamic> _toRow(Reserva r, {bool conDeporte = true}) => {
+  static Map<String, dynamic> _toRow(Reserva r,
+          {bool conDeporte = true, bool conCargo = true}) =>
+      {
         'id': r.id,
         'cancha_id': r.canchaId,
         'jugador': r.jugador,
@@ -177,6 +192,11 @@ class ReservasRepo {
         // Medio de pago (trazabilidad): yape/tarjeta/efectivo/sena/manual.
         // Mismo guard: no rompe si aún no se corrió el ALTER en Supabase.
         if (conDeporte && r.medioPago.isNotEmpty) 'medio_pago': r.medioPago,
+        // Cargo por servicio (fase 3): columnas nuevas, solo si hubo cargo.
+        if (conDeporte && conCargo && r.cargoServicio > 0)
+          'cargo_servicio': r.cargoServicio,
+        if (conDeporte && conCargo && r.cargoServicio > 0)
+          'cargo_desglose': r.cargoDesglose,
       };
 
   static Reserva _fromRow(Map<String, dynamic> r) => Reserva(
@@ -200,6 +220,8 @@ class ReservasRepo {
         telefono: (r['telefono'] ?? '') as String,
         grupoReservaId: (r['grupo_reserva_id'] ?? '') as String,
         medioPago: (r['medio_pago'] ?? '') as String,
+        cargoServicio: ((r['cargo_servicio'] ?? 0) as num).toDouble(),
+        cargoDesglose: Reserva.listaMapas(r['cargo_desglose']),
       );
 
   static EstadoReserva _estado(String? s) {

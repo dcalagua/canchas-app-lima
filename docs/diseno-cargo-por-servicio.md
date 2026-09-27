@@ -349,5 +349,43 @@ contempla (`cargo_activo_marketplace|torneos`) para encenderlos después.
   devoluciones):** la cancelación web sigue devolviendo el 100 % del cargo
   de Culqi (`cobro.monto_centimos`, ahora precio + cargo); con la política
   aprobada se devolverá el precio y el cargo solo a saldo.
-- Fases 3 (APK), 4 (mes a mes agrupado, devoluciones con la política
-  aprobada, `/legal/devoluciones`, KPI) y 5 (encendido): pendientes.
+- **Fase 3 (APK) HECHA el 27-sep-2026, apagada por flag:**
+  `lib/models/cargo_servicio.dart` (`CargoServicio`: config cache-first de
+  `GET /config/cargo-servicio` en SharedPreferences `cargo_servicio_config`,
+  cargada en `AppState.cargarCargoServicio()` junto al catálogo de servicios;
+  `cotizar()` = `POST /pagos/cotizar` con caché por base → si no responde,
+  regla visible en local `cargoCentimosLocal` + `_desgloseLocal` (sin red de
+  seguridad); `CotizacionCargo`, `ComponenteCargo`, `repartir`) +
+  `lib/widgets/cargo_servicio_info.dart` (`FilaCargoServicio` con ⓘ,
+  `mostrarDesgloseCargo` en `DialogoPichangol`, `CotizadorCargo` para cotizar
+  desde `build()` sin parpadeo). **Reserva:** `_ResumenReserva` de
+  `club_detalle` muestra "Reserva [+ servicios] / Cargo por servicio ⓘ / Total
+  a pagar" sobre lo que se paga EN LÍNEA (total con extras y puntos, o la
+  seña; el efectivo no lleva cargo y la nota lo dice), botones con el total;
+  `ResumenResultado.cargo`; `_reservar` re-cotiza si la base cambió, cobra
+  `base + cargo` en `PagoTarjeta.cobrar` y pasa `cargo:` a
+  `agregarReservasJugadorMulti` → `agregarReservaJugador(cargo:)` guarda
+  `Reserva.cargoServicio/cargoDesglose` (1.ª hora) y `_accionContable` lo
+  mete en la liquidación (`cargo_centimos/desglose/ajuste` → `PagosService.
+  liquidacionOnline(cargoServicioCentimos:…)`); `cancha_detalle` (una hora)
+  igual, con la línea en el diálogo de confirmación. `ReservasRepo` escribe
+  `cargo_servicio`/`cargo_desglose` (SQL `docs/piloto/supabase_reservas_
+  cargo.sql`) con reintento sin esas columnas si aún no existen; la web las
+  lee/escribe solo si existen (`datos.col_cargo_disponible`). **Academia:**
+  `_HojaDatosAlumno` y `_CarritoCard` cotizan sobre carrito + persona
+  (partes por persona → "Ahorras X"), `_pagarMatriculas` cobra `total +
+  cargo`, manda el cargo en `registrarMatricula` y lo deja en la 1.ª cuota
+  pagada de la 1.ª persona (`Cuota.cargoServicio/cargoPersonas`,
+  `AppState.matricular(cargoServicio:, cargoPersonas:)`); `_MiFamilia` y
+  `_pagarCuotas` igual (`marcarCuotaPagada(cargoServicio:)`; con varias
+  academias el cargo se reparte proporcional con `CargoServicio.repartir`).
+  **Comprobantes:** Mis reservas (pase: "Cargo por servicio · toca para ver
+  qué incluye" + "Total pagado"), Mis pagos (`Reserva.totalPagado`),
+  comprobante de cuota en Mis clases; el comprobante web `/reserva/{id}` lee
+  el cargo de la fila si no hay `cobro_web` (reserva pagada desde el app).
+  Con el flag apagado nada cambia (cotización inactiva, sin línea, mismos
+  montos). Pendiente menor: el botón "Pagar S/ X" de `_ProximosPagos` (una
+  cuota suelta) muestra el monto sin cargo; el total con cargo se ve en la
+  hoja de Culqi antes de confirmar.
+- Fases 4 (mes a mes agrupado, devoluciones con la política aprobada,
+  `/legal/devoluciones`, KPI) y 5 (encendido QAS → PRD): pendientes.

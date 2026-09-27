@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../models/models.dart';
+import '../models/cargo_servicio.dart';
+import '../widgets/cargo_servicio_info.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
@@ -85,6 +87,12 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
         extras: p.extras,
         telefono: p.telefono,
         grupoReservaId: p.grupoReservaId,
+        medioPago: p.medioPago,
+        // Cargo por servicio: va en la 1.ª hora del bloque; se suma por si acaso.
+        cargoServicio: grupo.fold<double>(0, (a, r) => a + r.cargoServicio),
+        cargoDesglose: grupo
+            .map((r) => r.cargoDesglose)
+            .firstWhere((d) => d.isNotEmpty, orElse: () => const []),
       ));
     }
     return salida;
@@ -682,6 +690,27 @@ void _mostrarPase(BuildContext context, Reserva reserva, Cancha? cancha) {
                   'Precio',
                   '${reserva.monedaSimbolo}${reserva.precio} · '
                   '${reserva.pagado ? 'pagado ✓' : reserva.sena > 0 ? 'seña pagada, resto en la cancha' : 'pagas en la cancha'}'),
+              // Cargo por servicio Pichangol (si lo pagó): línea aparte, total
+              // pagado y el desglose con un toque, como en el comprobante web.
+              if (reserva.cargoServicio > 0) ...[
+                InkWell(
+                  onTap: () => mostrarDesgloseCargo(
+                      context,
+                      CotizacionCargo.congelada(
+                          linea: 'reservas',
+                          moneda: reserva.monedaSimbolo,
+                          baseSoles: reserva.totalConExtras,
+                          cargoSoles: reserva.cargoServicio,
+                          desglose: reserva.cargoDesglose),
+                      simbolo: reserva.monedaSimbolo),
+                  child: _PaseFila(
+                      Icons.verified_user_outlined,
+                      'Cargo por servicio',
+                      '${reserva.monedaSimbolo}${reserva.cargoServicio.toStringAsFixed(2)} · toca para ver qué incluye'),
+                ),
+                _PaseFila(Icons.receipt_long_outlined, 'Total pagado',
+                    '${reserva.monedaSimbolo}${reserva.totalPagado.toStringAsFixed(2)}'),
+              ],
               // Puntos de ESTA reserva: acreditados si ya está pagada; si es
               // efectivo sin marcar, el jugador sabe cuántos están en juego.
               if (reserva.traidaPorApp &&

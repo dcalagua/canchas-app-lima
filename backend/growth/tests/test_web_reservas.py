@@ -73,10 +73,12 @@ class FakeDB:
             self.reservas[f["id"]] = dict(f)
         return ""
 
-    def confirmar_reservas(self, ids, medio):
+    def confirmar_reservas(self, ids, medio, cargo_soles=0.0, cargo_desglose=None):
         for i in ids:
             if i in self.reservas:
                 self.reservas[i].update(estado="confirmada", pagado=True, medio_pago=medio)
+        if cargo_soles and ids and ids[0] in self.reservas:
+            self.reservas[ids[0]].update(cargo_servicio=cargo_soles, cargo_desglose=list(cargo_desglose or []))
         return True
 
     def borrar_reservas(self, ids):
@@ -1952,6 +1954,7 @@ def test_cargo_por_servicio_en_la_web_reserva_y_matricula(db, monkeypatch):
         # Libro: el cobro lleva el cargo congelado; la liquidación al dueño va sobre el PRECIO (150) con el cargo aparte.
         cobro = next(x for x in reversed(stores.pagos) if x.tipo == "cobro_web" and x.concepto == f"web:{j['grupo']}")
         assert cobro.monto_centimos == 15750 and cobro.cargo_servicio_centimos == 750 and len(cobro.cargo_desglose) == 3
+        assert db.reservas[j["ids"][0]]["cargo_servicio"] == 7.5 and len(db.reservas[j["ids"][0]]["cargo_desglose"]) == 3
         liq = stores.pago_por_charge(j["ids"][0])
         assert liq.monto_centimos == 15000 and liq.cargo_servicio_centimos == 750 and liq.cargo_desglose[0]["clave"] == "pago_protegido"
         d = pr._liquidacion_dict(liq)

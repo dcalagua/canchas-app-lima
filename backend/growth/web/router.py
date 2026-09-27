@@ -2143,7 +2143,7 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
                 "mensaje": "El pago fue rechazado por tu banco o billetera. No se te cobró nada y el "
                            "horario quedó libre para que lo intentes de nuevo." + (f" ({msg[:80]})" if msg else "")}
     medio = "yape" if req.medio == "yape" else "tarjeta"
-    datos.confirmar_reservas(req.ids, medio)
+    datos.confirmar_reservas(req.ids, medio, cot.cargo_centimos / 100.0, list(cot.desglose or []))
     try:
         # El cargo queda en el libro (tipo cobro_web) ligado a la reserva/grupo:
         # es lo que permite REEMBOLSAR desde la web al cancelar.
@@ -2603,6 +2603,21 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
     # Cargo por servicio cobrado (congelado en el libro con su desglose).
     cobro = _cobro_web(_ref_de(filas))
     cargo_c = int(getattr(cobro, "cargo_servicio_centimos", 0) or 0) if cobro else 0
+    desglose_guardado = list(getattr(cobro, "cargo_desglose", None) or []) if cobro else []
+    if cargo_c <= 0:
+        # Reserva pagada desde el APP: el cargo viene en la fila (columnas
+        # `cargo_servicio`/`cargo_desglose`, SQL supabase_reservas_cargo.sql).
+        try:
+            cargo_c = int(round(float(filas[0].get("cargo_servicio") or 0) * 100))
+        except (TypeError, ValueError):
+            cargo_c = 0
+        raw = filas[0].get("cargo_desglose")
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except ValueError:
+                raw = []
+        desglose_guardado = list(raw or []) if isinstance(raw, list) else []
     pagado = total + cargo_c / 100.0
     extras = [x for f in filas for x in (f.get("extras") or [])]
     lineas = "".join(
@@ -2618,7 +2633,7 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
     if cargo_c > 0:
         _s, _iso_c = _moneda_de(c) if c else (sim, _cs.moneda_iso(sim))
         detalle_cargo = ("<details style='margin-top:8px;text-align:left'><summary class='sub' style='cursor:pointer;font-size:13px'>Qué incluye el cargo por servicio</summary>"
-                         f"{ui.desglose_cargo_html(getattr(cobro, 'cargo_desglose', None) or [], sim, _cs.regla_texto(_iso_c))}</details>")
+                         f"{ui.desglose_cargo_html(desglose_guardado, sim, _cs.regla_texto(_iso_c))}</details>")
     lugar = ", ".join(x for x in (c.get("direccion"), _zona(c)) if x)
     base = (config.PUBLIC_BASE_URL or "").rstrip("/")
     boton_wa = ui.boton_whatsapp(

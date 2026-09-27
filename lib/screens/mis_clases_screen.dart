@@ -4,6 +4,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
 import '../models/academia.dart';
+import '../models/cargo_servicio.dart';
+import '../widgets/cargo_servicio_info.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -114,12 +116,27 @@ class MisClasesScreen extends StatelessWidget {
     final total = sel.fold<double>(0, (s, x) => s + x.cuota.monto);
     if (total <= 0) return;
     final personas = sel.map((x) => x.alumno.id).toSet().length;
+    // CARGO POR SERVICIO Pichangol (fase 3): UNA cotización sobre todo el pago
+    // familiar (partes = lo de cada persona → "ahorras X"). Apagado → 0.
+    final porPersona = <String, int>{};
+    for (final x in sel) {
+      porPersona[x.alumno.id] =
+          (porPersona[x.alumno.id] ?? 0) + (x.cuota.monto * 100).round();
+    }
+    final cot = await CargoServicio.cotizar(
+        linea: 'academias',
+        moneda: mon,
+        baseCentimos: (total * 100).round(),
+        partes: porPersona.values.toList());
+    if (!context.mounted) return;
+    final cargoSoles = cot.hayCargo ? cot.cargo : 0.0;
     String? operacionId;
     final pagado = await PagoTarjeta.cobrar(
       context,
-      monto: total,
+      monto: total + cargoSoles,
       concepto: '${sel.length} cuota${sel.length == 1 ? '' : 's'} · '
-          '$personas persona${personas == 1 ? '' : 's'} · Mi familia',
+          '$personas persona${personas == 1 ? '' : 's'} · Mi familia'
+          '${cargoSoles > 0 ? ' + cargo por servicio' : ''}',
       email: appState.usuario?.email ?? '',
       moneda: mon,
       onOperacion: (o) => operacionId = o,
@@ -130,6 +147,13 @@ class MisClasesScreen extends StatelessWidget {
       porAcademia.putIfAbsent(x.academia.id, () => []).add(x);
     }
     final marca = DateTime.now().microsecondsSinceEpoch;
+    // El cargo se reparte entre las academias en proporción a lo pagado a
+    // cada una (queda en la fila de su matrícula; es ingreso de Pichangol).
+    final subs = porAcademia.values
+        .map((l) => l.fold<int>(0, (s, x) => s + (x.cuota.monto * 100).round()))
+        .toList();
+    final reparto = CargoServicio.repartir(cot.cargoCentimos, subs);
+    var k = 0;
     for (final e in porAcademia.entries) {
       final ac = e.value.first.academia;
       final sub = e.value.fold<double>(0, (s, x) => s + x.cuota.monto);
@@ -140,10 +164,20 @@ class MisClasesScreen extends StatelessWidget {
         pais: ac.pais.iso,
         chargeId: operacionId ?? '',
         concepto: 'Cuotas ${ac.nombre} · pago familiar',
+        cargoServicioCentimos: reparto[k],
+        cargoDesglose: k == 0 ? cot.desgloseJson : const [],
+        cargoAjusteCentimos: k == 0 ? cot.ajusteCentimos : 0,
       );
+      k++;
     }
+    var primera = true;
     for (final x in sel) {
-      appState.marcarCuotaPagada(x.cuota.id, operacionId: operacionId ?? '');
+      appState.marcarCuotaPagada(x.cuota.id,
+          operacionId: operacionId ?? '',
+          // El cargo fue UNO por todo el pago: queda en la 1.ª cuota.
+          cargoServicio: primera ? cargoSoles : 0,
+          cargoPersonas: personas);
+      primera = false;
     }
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -261,13 +295,22 @@ class MisClasesScreen extends StatelessWidget {
     if (cuotas.isEmpty) return;
     final total = cuotas.fold<double>(0, (s, c) => s + c.monto);
     if (total <= 0) return;
+    // Cargo por servicio Pichangol sobre este pago (apagado → 0).
+    final cot = await CargoServicio.cotizar(
+        linea: 'academias',
+        moneda: mon,
+        baseCentimos: (total * 100).round(),
+        deporte: ac.deporte.name);
+    if (!context.mounted) return;
+    final cargoSoles = cot.hayCargo ? cot.cargo : 0.0;
     String? operacionId;
     final pagado = await PagoTarjeta.cobrar(
       context,
-      monto: total,
-      concepto: cuotas.length == 1
-          ? cuotas.first.concepto
-          : '${cuotas.length} cuotas · ${ac.nombre}',
+      monto: total + cargoSoles,
+      concepto: (cuotas.length == 1
+              ? cuotas.first.concepto
+              : '${cuotas.length} cuotas · ${ac.nombre}') +
+          (cargoSoles > 0 ? ' + cargo por servicio' : ''),
       email: appState.usuario?.email ?? '',
       moneda: mon,
       onOperacion: (o) => operacionId = o,
@@ -282,9 +325,16 @@ class MisClasesScreen extends StatelessWidget {
       chargeId: operacionId ?? '',
       concepto:
           cuotas.length == 1 ? cuotas.first.concepto : 'Cuotas ${ac.nombre}',
+      cargoServicioCentimos: cot.cargoCentimos,
+      cargoDesglose: cot.desgloseJson,
+      cargoAjusteCentimos: cot.ajusteCentimos,
     );
+    var primera = true;
     for (final c in cuotas) {
-      appState.marcarCuotaPagada(c.id, operacionId: operacionId ?? '');
+      appState.marcarCuotaPagada(c.id,
+          operacionId: operacionId ?? '',
+          cargoServicio: primera ? cargoSoles : 0);
+      primera = false;
     }
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -371,7 +421,18 @@ class MisClasesScreen extends StatelessWidget {
               _lineaComp('N.º operación', c.operacionId),
             const Divider(height: 20),
             _lineaComp('Monto', '$mon ${c.monto.toStringAsFixed(2)}',
-                fuerte: true),
+                fuerte: c.cargoServicio <= 0),
+            if (c.cargoServicio > 0) ...[
+              _lineaComp('Cargo por servicio Pichangol',
+                  '$mon ${c.cargoServicio.toStringAsFixed(2)}'),
+              if (c.cargoPersonas > 1)
+                Text(
+                    'Un solo cargo por las ${c.cargoPersonas} personas de ese pago.',
+                    style: const TextStyle(color: textoTenue, fontSize: 12)),
+              _lineaComp('Total pagado',
+                  '$mon ${(c.monto + c.cargoServicio).toStringAsFixed(2)}',
+                  fuerte: true),
+            ],
             const SizedBox(height: 10),
             const Text('Pago procesado por Pichangol.',
                 style: TextStyle(color: textoTenue, fontSize: 12)),
@@ -779,6 +840,25 @@ class _MiFamiliaState extends State<_MiFamilia> {
   double get _totalSel =>
       _seleccion.fold(0, (s, x) => s + x.cuota.monto);
 
+  // Cargo por servicio Pichangol sobre lo seleccionado (un solo pago familiar).
+  late final CotizadorCargo _cotizador = CotizadorCargo(() {
+    if (mounted) setState(() {});
+  });
+  CotizacionCargo? get _cot {
+    final porPersona = <String, int>{};
+    for (final x in _seleccion) {
+      porPersona[x.alumno.id] =
+          (porPersona[x.alumno.id] ?? 0) + (x.cuota.monto * 100).round();
+    }
+    return _cotizador.para(
+        linea: 'academias',
+        moneda: widget.moneda,
+        baseCentimos: (_totalSel * 100).round(),
+        partes: porPersona.values.toList());
+  }
+
+  double get _cargo => (_cot?.hayCargo ?? false) ? _cot!.cargo : 0.0;
+
   Future<void> _pagar() async {
     final sel = _seleccion;
     if (sel.isEmpty || _pagando) return;
@@ -913,6 +993,16 @@ class _MiFamiliaState extends State<_MiFamilia> {
                       ),
                     ),
                 ],
+                if (_cargo > 0) ...[
+                  const SizedBox(height: 6),
+                  FilaCargoServicio(
+                      cot: _cot,
+                      simbolo: mon,
+                      compacta: true,
+                      nota: (_cot!.ahorroCentimos > 0)
+                          ? '🎉 Ahorras $mon ${_cot!.ahorro.toStringAsFixed(2)} en el cargo por pagar en familia (un solo cobro).'
+                          : null),
+                ],
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
@@ -925,7 +1015,7 @@ class _MiFamiliaState extends State<_MiFamilia> {
                     child: Text(
                         _pagando
                             ? 'Procesando…'
-                            : 'Pagar todo · $mon ${_totalSel.toStringAsFixed(2)}'
+                            : 'Pagar todo · $mon ${(_totalSel + _cargo).toStringAsFixed(2)}'
                                 '${personasSel > 1 ? ' ($personasSel personas)' : ''}',
                         style: const TextStyle(fontWeight: FontWeight.w800)),
                   ),

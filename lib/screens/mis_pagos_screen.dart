@@ -79,7 +79,8 @@ class _MisPagosScreenState extends State<MisPagosScreen> {
         titulo: 'Reserva · $lugar',
         sub: cuando,
         moneda: r.monedaSimbolo,
-        monto: r.esBono ? 0 : r.totalConExtras,
+        // Precio + extras + cargo por servicio (si lo pagó): lo que salió del bolsillo.
+        monto: r.esBono ? 0 : r.totalPagado,
         cubiertoConBono: r.esBono,
         pendiente: !r.esBono && !r.pagado,
       ));

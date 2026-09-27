@@ -2527,7 +2527,7 @@ antes del corte.
 ## Pendientes / backlog
 
 - **CARGO POR SERVICIO + MODELO DE COMISIONES (diseño aprobado,
-  27-sep-2026; FASES 1 backend y 2 web HECHAS, fases 3-5 pendientes):**
+  27-sep-2026; FASES 1 backend, 2 web y 3 APK HECHAS, fases 4-5 pendientes):**
   `docs/diseno-cargo-por-servicio.md` (decisiones del director en § 7,
   estado en § 8). Dos lados como Airbnb: comisión 5 % mín S/ 2 a quien
   recibe (reservas y academias) + cargo por servicio al cliente 5 % hasta
@@ -2566,7 +2566,27 @@ antes del corte.
   Test `test_cargo_por_servicio_en_la_web_reserva_y_matricula`. OJO fase 4:
   la cancelación web aún devuelve el 100 % del cargo de Culqi (precio +
   cargo); con la política aprobada se devolverá el precio y el cargo solo a
-  saldo.
+  saldo. **Fase 3 (APK, hecha 27-sep-2026):** `lib/models/cargo_servicio.dart`
+  (`CargoServicio.cargar()` cache-first de `GET /config/cargo-servicio`,
+  `cotizar()` = `POST /pagos/cotizar` con caché → respaldo regla local sin
+  red de seguridad; `CotizacionCargo`) + `widgets/cargo_servicio_info.dart`
+  (`FilaCargoServicio` ⓘ, `mostrarDesgloseCargo`, `CotizadorCargo` para
+  cotizar desde `build()`). Reserva (`club_detalle._ResumenReserva` +
+  `_reservar`, `cancha_detalle`): cargo SOLO sobre lo pagado en línea (total
+  o seña; efectivo no lleva), `PagoTarjeta.cobrar(base + cargo)`,
+  `agregarReservasJugadorMulti(cargo:)` → `Reserva.cargoServicio/
+  cargoDesglose` (1.ª hora; columnas `cargo_servicio`/`cargo_desglose` de
+  `pichangol_reservas`, SQL `docs/piloto/supabase_reservas_cargo.sql`, el
+  repo reintenta sin ellas si faltan) y `_accionContable` → `liquidacionOnline
+  (cargoServicioCentimos:…)`. Academia (`_HojaDatosAlumno`, `_CarritoCard`,
+  `_pagarMatriculas`, `_MiFamilia`, `_pagarCuotas`): una cotización sobre
+  todo el pago con `partes` por persona ("Ahorras X"), `registrarMatricula
+  (cargoServicioCentimos:…)`, `Cuota.cargoServicio/cargoPersonas` en la 1.ª
+  cuota pagada (`matricular(cargoServicio:)`, `marcarCuotaPagada(
+  cargoServicio:)`; varias academias → `CargoServicio.repartir`).
+  Comprobantes: pase de Mis reservas, Mis pagos (`Reserva.totalPagado`),
+  comprobante de cuota; el web `/reserva/{id}` lee el cargo de la fila si no
+  hay `cobro_web`. Con el flag apagado el APK no cotiza ni pinta nada.
 
 - **Community Manager AUTÓNOMO (servicio estrella, ingreso recurrente):** la
   visión del director NO es "generar posts para que el dueño publique a mano"

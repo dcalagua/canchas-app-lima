@@ -430,6 +430,11 @@ class PagosService {
     // Cargo de Culqi (chr_) con el que pagó el jugador: la torre lee de ahí la
     // comisión REAL de la pasarela (sincerada, 27-sep-2026).
     String chargeId = '',
+    // CARGO POR SERVICIO que pagó el jugador además del precio (fase 3): va EN
+    // la fila de la liquidación (céntimos + desglose congelado + ajuste).
+    int cargoServicioCentimos = 0,
+    List<Map<String, dynamic>> cargoDesglose = const [],
+    int cargoAjusteCentimos = 0,
   }) async {
     if (!disponible || duenoId.isEmpty) return null;
     try {
@@ -445,6 +450,11 @@ class PagosService {
               if (medio.isNotEmpty) 'medio': medio,
               if (moneda.isNotEmpty) 'moneda': moneda,
               if (chargeId.isNotEmpty) 'charge_id': chargeId,
+              if (cargoServicioCentimos > 0)
+                'cargo_servicio_centimos': cargoServicioCentimos,
+              if (cargoServicioCentimos > 0) 'cargo_desglose': cargoDesglose,
+              if (cargoAjusteCentimos > 0)
+                'cargo_ajuste_centimos': cargoAjusteCentimos,
             }),
           )
           .timeout(const Duration(seconds: 15));
@@ -1139,6 +1149,10 @@ class PagosService {
     required String pais,
     String? concepto,
     String chargeId = '', // cargo de Culqi del pago (comisión real de la pasarela)
+    // Cargo por servicio que pagó el alumno además de la matrícula (fase 3).
+    int cargoServicioCentimos = 0,
+    List<Map<String, dynamic>> cargoDesglose = const [],
+    int cargoAjusteCentimos = 0,
   }) async {
     if (!disponible) return null;
     try {
@@ -1153,8 +1167,45 @@ class PagosService {
                 'pais': pais,
                 if (concepto != null) 'concepto': concepto,
                 if (chargeId.isNotEmpty) 'charge_id': chargeId,
+                if (cargoServicioCentimos > 0)
+                  'cargo_servicio_centimos': cargoServicioCentimos,
+                if (cargoServicioCentimos > 0) 'cargo_desglose': cargoDesglose,
+                if (cargoAjusteCentimos > 0)
+                  'cargo_ajuste_centimos': cargoAjusteCentimos,
               }))
           .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// CARGO POR SERVICIO: cotización del backend (`POST /pagos/cotizar`, la
+  /// misma regla que usa al registrar la contabilidad + red de seguridad con
+  /// la tarifa real de la pasarela). [baseCentimos] = lo que paga por el
+  /// servicio antes del cargo; [partes] = bases por persona (carrito) para el
+  /// "ahorras X". Null si no respondió (el APK cae a la regla local).
+  static Future<Map<String, dynamic>?> cotizarCargo({
+    required String linea,
+    required String moneda,
+    required int baseCentimos,
+    String deporte = '',
+    List<int> partes = const [],
+  }) async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/cotizar'),
+              headers: _appHeaders(json: true),
+              body: jsonEncode({
+                'linea': linea,
+                'moneda': moneda,
+                'base_centimos': baseCentimos,
+                if (deporte.isNotEmpty) 'deporte': deporte,
+                if (partes.isNotEmpty) 'partes': partes,
+              }))
+          .timeout(const Duration(seconds: 8));
       if (r.statusCode != 200) return null;
       return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
     } catch (_) {
