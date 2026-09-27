@@ -35,6 +35,7 @@ from . import payphone
 from . import pozos
 from . import cuentas_cobro as _cc
 from . import tarifas_pasarela as _tp
+from . import cargo_servicio as _cs
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
@@ -233,6 +234,16 @@ class CobroReq(BaseModel):
     pais: str = ""
 
 
+def _cargo_kw(req) -> dict:
+    """kwargs de `registrar_pago` con el CARGO POR SERVICIO que trae la
+    request (0 si el cliente no lo mandó)."""
+    c = max(int(getattr(req, "cargo_servicio_centimos", 0) or 0), 0)
+    d = getattr(req, "cargo_desglose", None) or []
+    return {"cargo_servicio_centimos": c,
+            "cargo_desglose": ([dict(x) for x in d if isinstance(x, dict)][:8] if c else None),
+            "cargo_ajuste_centimos": max(int(getattr(req, "cargo_ajuste_centimos", 0) or 0), 0) if c else 0}
+
+
 def _cliente_de(email: str, req=None) -> dict:
     """Ficha del pagador para `culqi.crear_cargo(cliente=)`: lo que trae la
     request (nombre, apellido, telefono, direccion, ciudad, pais) se recuerda
@@ -261,6 +272,12 @@ class LiquidacionOnlineReq(BaseModel):
     # Cargo de Culqi (`chr_…`) con el que pagó el jugador: liga la liquidación
     # con la comisión REAL de la pasarela (sincerada después). Vacío = APK viejo.
     charge_id: str = ""
+    # CARGO POR SERVICIO que pagó el cliente además del precio (27-sep-2026,
+    # `pagos/cargo_servicio.py`): céntimos, desglose congelado y ajuste de la
+    # red de seguridad. 0/vacío = APK/web sin cargo (o línea apagada).
+    cargo_servicio_centimos: int = 0
+    cargo_desglose: list = []
+    cargo_ajuste_centimos: int = 0
 
 
 class VentaProductoReq(BaseModel):
@@ -1734,7 +1751,7 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
             culqi_charge_id=f"{req.reserva_id}_com", promo_centimos=promo_usado,
             concepto=f"Comisión · {req.concepto or 'Reserva online'}{sufijo}")
         stores.registrar_pago(
-            tipo="liquidacion_full", cargo_id=(req.charge_id.strip() or None), monto_centimos=bruto, moneda=iso,
+            tipo="liquidacion_full", cargo_id=(req.charge_id.strip() or None), monto_centimos=bruto, moneda=iso, **_cargo_kw(req),
             estado="aprobado", dueno_id=req.dueno_id,
             culqi_charge_id=req.reserva_id,
             concepto=req.concepto or "Reserva online",
@@ -1746,7 +1763,7 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
 
     # Sin saldo suficiente → comisión de la transacción (neto), como antes.
     stores.registrar_pago(
-        tipo="liquidacion_online", cargo_id=(req.charge_id.strip() or None), monto_centimos=bruto, moneda=iso,
+        tipo="liquidacion_online", cargo_id=(req.charge_id.strip() or None), monto_centimos=bruto, moneda=iso, **_cargo_kw(req),
         estado="aprobado", dueno_id=req.dueno_id,
         culqi_charge_id=req.reserva_id,
         concepto=req.concepto or "Reserva online",
@@ -2330,6 +2347,12 @@ class MatriculaReq(BaseModel):
     pais: str = "pe"
     concepto: str | None = None
     charge_id: str = ""       # cargo de Culqi del pago (comisión real de la pasarela)
+    # CARGO POR SERVICIO que pagó el cliente además del precio (27-sep-2026,
+    # `pagos/cargo_servicio.py`): céntimos, desglose congelado y ajuste de la
+    # red de seguridad. 0/vacío = APK/web sin cargo (o línea apagada).
+    cargo_servicio_centimos: int = 0
+    cargo_desglose: list = []
+    cargo_ajuste_centimos: int = 0
 
 
 @router.get("/comision-matricula")
@@ -2358,7 +2381,7 @@ def post_matricula(req: MatriculaReq) -> dict:
         tipo="matricula_online", monto_centimos=bruto, moneda="PEN",
         estado="aprobado", dueno_id=req.academia_id,
         culqi_charge_id=req.matricula_id, comision_centimos=comision,
-        cargo_id=(req.charge_id.strip() or None),
+        cargo_id=(req.charge_id.strip() or None), **_cargo_kw(req),
         concepto=req.concepto or "Matrícula (cobro digital)")
     return {"ok": True, "duplicada": False, "bruto_centimos": bruto,
             "comision_centimos": comision, "neto_centimos": bruto - comision,
@@ -2410,6 +2433,12 @@ def _liquidacion_dict(p) -> dict:
     # Costo estimado de la PASARELA (Culqi/PayPhone/Libélula) y margen real de
     # Pichangol = comisión − pasarela (tarifa configurable en la torre).
     pasarela, pasarela_fuente = _tp.costo_para(p)
+    # CARGO POR SERVICIO que pagó el cliente (ingreso de Pichangol además de la
+    # comisión). Culqi cobró sobre precio + cargo: si la pasarela es ESTIMADA
+    # se recalcula sobre el total cobrado.
+    cargo = int(getattr(p, "cargo_servicio_centimos", 0) or 0)
+    if cargo and pasarela_fuente == "estimado":
+        pasarela = _tp.costo_centimos(bruto + cargo, moneda_iso(p.moneda), p.medio, p.tipo)
     # Antigüedad: para que la torre avise lo que lleva días sin pagarse.
     try:
         dias = max(0, (datetime.now(timezone.utc) - p.creado_en).days)
@@ -2428,7 +2457,9 @@ def _liquidacion_dict(p) -> dict:
         "neto_soles": neto / 100.0,
         "pasarela_soles": pasarela / 100.0,
         "pasarela_fuente": pasarela_fuente,  # real (Culqi) | estimado (tarifa) | saldo
-        "margen_soles": (comision - pasarela) / 100.0,
+        "cargo_servicio_soles": cargo / 100.0,
+        "ingreso_pcg_soles": (comision + cargo) / 100.0,
+        "margen_soles": (comision + cargo - pasarela) / 100.0,
         "medio": p.medio or "",
         "liquidado": p.liquidado,
         "liquidado_en": p.liquidado_en.isoformat() if p.liquidado_en else None,
@@ -2448,12 +2479,81 @@ def get_liquidaciones_pendientes() -> dict:
     cuentas = {d: _cc.resumen(stores.cuenta_cobro(d)) for d in {x["dueno_id"] for x in pend if x["dueno_id"]}}
     return {"pendientes": pend, "total_neto_soles": round(total, 2),
             "total_pasarela_soles": round(sum(x["pasarela_soles"] for x in pend), 2),
+            "total_cargo_soles": round(sum(x["cargo_servicio_soles"] for x in pend), 2),
             "total_margen_soles": round(sum(x["margen_soles"] for x in pend), 2),
             "tarifas": _tp.leer(),
             "mas_antigua_dias": max((x["dias"] for x in pend), default=0),
             "atrasadas": sum(1 for x in pend if x["dias"] >= LIQUIDACION_AVISO_DIAS),
             "aviso_dias": LIQUIDACION_AVISO_DIAS, "cuentas": cuentas,
             "bcp": _config_bcp(), "lotes": _lotes_resumen()}
+
+
+# --- CARGO POR SERVICIO al cliente (27-sep-2026, `pagos/cargo_servicio.py`) ---
+class CotizarReq(BaseModel):
+    linea: str = "reservas"        # reservas | academias | marketplace | torneos
+    moneda: str = "PEN"            # ISO o símbolo
+    base_centimos: int = 0         # lo que paga por el servicio ANTES del cargo
+    medio: str = ""                # yape | tarjeta (para la red de seguridad)
+    deporte: str = ""              # textos del desglose por deporte
+    comision_centimos: int | None = None  # si el cliente ya la sabe; si no, se calcula
+    partes: list[int] = []         # carrito: bases por persona (para "ahorras X")
+
+
+@router.post("/cotizar", dependencies=_APP)
+def post_cotizar(req: CotizarReq) -> dict:
+    """APK y web piden la cotización del CARGO POR SERVICIO para pintar el
+    checkout (línea, total, desglose ⓘ, ahorro por pagar junto). El backend
+    la recalcula al registrar la contabilidad: aquí solo se muestra."""
+    iso = moneda_iso(req.moneda)
+    base = max(int(req.base_centimos or 0), 0)
+    if req.comision_centimos is not None:
+        com = max(int(req.comision_centimos), 0)
+    elif req.linea == "academias":
+        com = int(round(base * _comision_matricula_pct(_pais_de_moneda(iso)) / 100.0))
+    else:
+        com = comision_centimos(base / 100.0, iso) if base > 0 else 0
+    cot = _cs.cotizar(linea=req.linea, moneda=iso, base_centimos=base, medio=(req.medio or None),
+                      deporte=req.deporte, comision_centimos=com, partes=[int(x) for x in req.partes or []])
+    if cot.ajuste_seguridad_centimos:
+        print(f"[cargo] {cot.linea} base={base} cargo={cot.cargo_centimos} ajuste={cot.ajuste_seguridad_centimos} "
+              f"medio={req.medio or '-'} moneda={iso}", flush=True)
+    return {"ok": True, **cot.dict()}
+
+
+def _pais_de_moneda(iso: str) -> str:
+    return {"PEN": "pe", "USD": "ec", "BOB": "bo"}.get(iso, "pe")
+
+
+def _cargo_simulacion(monto: float, moneda: str, medio: str, linea: str) -> dict:
+    iso = moneda_iso(moneda)
+    base = _soles_a_centimos(monto)
+    com = (int(round(base * _comision_matricula_pct(_pais_de_moneda(iso)) / 100.0)) if linea == "academias"
+           else comision_centimos(monto, iso))
+    cot = _cs.cotizar(linea=linea, moneda=iso, base_centimos=base, medio=medio, comision_centimos=com, forzar_activo=True)
+    pasarela = _tp.costo_centimos(cot.total_centimos, iso, medio, _cs._tipo_de(linea))
+    return {"linea": linea, "moneda": iso, "simbolo": cot.simbolo, "medio": medio, "base_soles": base / 100.0,
+            "cargo_soles": cot.cargo_centimos / 100.0, "ajuste_soles": cot.ajuste_seguridad_centimos / 100.0,
+            "total_soles": cot.total_centimos / 100.0, "comision_soles": com / 100.0,
+            "recibe_soles": (base - com) / 100.0, "pasarela_soles": pasarela / 100.0,
+            "ingreso_pcg_soles": (com + cot.cargo_centimos) / 100.0,
+            "margen_soles": (com + cot.cargo_centimos - pasarela) / 100.0, "regla": cot.regla, "desglose": cot.desglose}
+
+
+@router.get("/cargo-servicio/config", dependencies=_ADMIN)
+def get_cargo_servicio_config(monto: float = 300.0, moneda: str = "PEN", medio: str = "tarjeta",
+                              linea: str = "academias") -> dict:
+    """TORRE: parámetros por moneda, flags por línea, textos del desglose,
+    simulación y KPI de operaciones sin cargo (APK viejo)."""
+    return {"config": _cs.publico(), "simulacion": _cargo_simulacion(monto, moneda, medio, linea),
+            "sin_cargo": _cs.sin_cargo_recientes(), "lineas": list(_cs.LINEAS)}
+
+
+@router.post("/cargo-servicio/config", dependencies=_ADMIN)
+def post_cargo_servicio_config(body: dict = Body(...)) -> dict:
+    ok, err = _cs.validar_y_guardar(body or {})
+    if not ok:
+        raise HTTPException(status_code=400, detail=err)
+    return {"ok": True, "config": _cs.publico()}
 
 
 @router.get("/tarifas-pasarela", dependencies=_ADMIN)

@@ -44,6 +44,14 @@ CONFIG_DEFAULT: dict[str, str] = {
     "tarifa_culqi_impuesto_pct": "18",
     "tarifa_payphone_tarjeta_pct": "0", "tarifa_payphone_tarjeta_fijo": "0", "tarifa_payphone_impuesto_pct": "0",
     "tarifa_libelula_tarjeta_pct": "0", "tarifa_libelula_tarjeta_fijo": "0", "tarifa_libelula_impuesto_pct": "0",
+    # CARGO POR SERVICIO al cliente (pagos/cargo_servicio.py, 27-sep-2026):
+    # % base hasta el tramo + % excedente, mínimo, y margen mínimo de la red de
+    # seguridad, por moneda; flags por línea (arranca APAGADO en todos lados).
+    # DEBEN coincidir con cargo_servicio.PARAMS_DEFAULT (test lo exige).
+    "cargo_PEN_pct": "5", "cargo_PEN_min": "2", "cargo_PEN_tramo": "500", "cargo_PEN_pct_exc": "2", "cargo_PEN_margen_min": "2",
+    "cargo_USD_pct": "5", "cargo_USD_min": "0.5", "cargo_USD_tramo": "140", "cargo_USD_pct_exc": "2", "cargo_USD_margen_min": "0.5",
+    "cargo_BOB_pct": "5", "cargo_BOB_min": "3", "cargo_BOB_tramo": "1000", "cargo_BOB_pct_exc": "2", "cargo_BOB_margen_min": "3",
+    "cargo_activo_reservas": "0", "cargo_activo_academias": "0", "cargo_activo_marketplace": "0", "cargo_activo_torneos": "0",
     # DATOS DE LA EMPRESA (razón social, RUC, dirección, correo, horario) que
     # salen en la portada, el pie de la web, las páginas legales y el Libro de
     # Reclamaciones. Editables desde la torre (Comunicación → "Datos de la
@@ -473,6 +481,15 @@ class PagoRegistro:
     # el jugador pagó, para leer su comisión real. Lo manda el APK/web al
     # registrar la contabilidad (`charge_id`); para filas viejas se infiere.
     cargo_id: str | None = None
+    # CARGO POR SERVICIO al cliente (27-sep-2026, `pagos/cargo_servicio.py`):
+    # en la fila de la liquidación/matrícula, lo que el jugador/alumno pagó
+    # ADEMÁS del precio como "Cargo por servicio Pichangol" (céntimos), su
+    # desglose congelado (lista de {clave, nombre, pct, detalle, monto_centimos})
+    # y cuánto de ese cargo puso la red de seguridad. Ingreso de Pichangol:
+    # margen = comisión + cargo − pasarela. 0 = APK/web sin cargo (o apagado).
+    cargo_servicio_centimos: int = 0
+    cargo_desglose: list | None = None
+    cargo_ajuste_centimos: int = 0
 
 
 def es_liquidacion_torneo(p: "PagoRegistro") -> bool:
@@ -624,6 +641,9 @@ class Stores:
         # `version` sube en cada cambio (el APK lo cachea por versión).
         self.servicios_extra: dict[str, dict] = {}
         self.servicios_extra_version: int = 1
+        # Textos del desglose del CARGO POR SERVICIO (torre → `pagos/
+        # cargo_servicio.py`); vacío = defaults del módulo.
+        self.cargo_servicio_textos: dict = {}
         # Sugerencias de dueños ("mi local ofrece X"): las atiende el operador.
         self.sugerencias_servicios: list[dict] = []
         # Publicaciones hechas en la PÁGINA de Facebook de Pichangol desde la torre.
@@ -821,6 +841,7 @@ class Stores:
         self.metodos = {}
         self.customers = {}
         self.clientes_pago = {}
+        self.cargo_servicio_textos = {}
         self.vistas = {}
         self.membresias_pro = {}
         self.jugadores_circuito = {}
@@ -1127,6 +1148,7 @@ class Stores:
             "musica_marca": [dict(x) for x in self.musica_marca],
             "servicios_extra": {k: dict(v) for k, v in self.servicios_extra.items()},
             "servicios_extra_version": int(self.servicios_extra_version),
+            "cargo_servicio_textos": dict(self.cargo_servicio_textos or {}),
             "sugerencias_servicios": [dict(r) for r in self.sugerencias_servicios],
             "jugadores_circuito": {
                 k: dict(v) for k, v in self.jugadores_circuito.items()},
@@ -1228,6 +1250,7 @@ class Stores:
         self.musica_marca = [dict(x) for x in (data.get("musica_marca") or [])]
         self.servicios_extra = {k: dict(v) for k, v in (data.get("servicios_extra") or {}).items()}
         self.servicios_extra_version = int(data.get("servicios_extra_version") or 1)
+        self.cargo_servicio_textos = dict(data.get("cargo_servicio_textos") or {})
         self.sugerencias_servicios = [dict(r) for r in (data.get("sugerencias_servicios") or [])]
         self.jugadores_circuito = {
             k: dict(v) for k, v in (data.get("jugadores_circuito") or {}).items()
@@ -1428,7 +1451,10 @@ def _pago_from(d: dict) -> PagoRegistro:
         referencia_liquidacion=d.get("referencia_liquidacion"),
         medio=d.get("medio"), promo_centimos=int(d.get("promo_centimos", 0) or 0),
         pasarela_centimos=(int(d["pasarela_centimos"]) if d.get("pasarela_centimos") is not None else None),
-        pasarela_en=_dt(d.get("pasarela_en")), cargo_id=d.get("cargo_id") or None)
+        pasarela_en=_dt(d.get("pasarela_en")), cargo_id=d.get("cargo_id") or None,
+        cargo_servicio_centimos=int(d.get("cargo_servicio_centimos", 0) or 0),
+        cargo_desglose=(list(d["cargo_desglose"]) if isinstance(d.get("cargo_desglose"), list) else None),
+        cargo_ajuste_centimos=int(d.get("cargo_ajuste_centimos", 0) or 0))
 
 
 def _insc_from(d: dict) -> Inscripcion:

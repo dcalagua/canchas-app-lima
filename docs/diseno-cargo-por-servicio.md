@@ -270,11 +270,49 @@ simulador (base → cargo → total → pasarela → margen, con Yape y tarjeta)
 Marketplace y torneos quedan con la comisión actual; el módulo ya los
 contempla (`cargo_activo_marketplace|torneos`) para encenderlos después.
 
-## 7. Decisiones pendientes del director antes de la fase 1
+## 7. Decisiones del director (27-sep-2026)
 
-1. Confirmar el mínimo de S/ 2 en la comisión de academias (hoy no lo tiene).
-2. Confirmar que en reembolsos del 100 % se devuelve también el cargo.
-3. Confirmar que Yape sea el medio por defecto en el checkout en Perú (baja
-   el costo de pasarela a la mitad; el jugador puede cambiar a tarjeta).
-4. Tarifa negociada con Culqi: cualquier baja mejora el margen sin tocar
-   nada de lo anterior; los parámetros de la torre ya la recogen.
+1. **Mínimo de S/ 2 en la comisión de academias: SÍ** ("ok dale"). Recomendación
+   que lo sustenta: una sola regla para las dos líneas (menos código, un solo
+   simulador, una sola explicación al dueño); solo afecta cobros menores de
+   S/ 40 (clase suelta, cuota chica), donde el 5 % no cubre ni el fijo de
+   Culqi; y evita que una academia "pruebe" con montos de S/ 5.
+2. **Reembolsos:** el director pide una política que reconozca que Culqi ya
+   cobró su comisión (Culqi NO devuelve su comisión al reembolsar; confirmar
+   en el contrato). Recomendación (pendiente de su visto bueno, se implementa
+   en la fase 4):
+   - **Devolución a SALDO Pichangol: 100 %, incluido el cargo por servicio.**
+     No hay reembolso a Culqi, así que no cuesta nada, y la plata se queda en
+     el sistema. Es la opción que el checkout de cancelación ofrece PRIMERO.
+   - **Devolución a la tarjeta / Yape (vía Culqi):** se devuelve el precio de
+     la cancha o academia; el **cargo por servicio no se devuelve** (cubre lo
+     que Culqi ya cobró). Igual que la tarifa de servicio de Airbnb.
+   - **Cancela el dueño o la academia (culpa del anfitrión):** el cliente
+     recupera el 100 % incluido el cargo, por el medio que elija; el costo de
+     la pasarela de esa devolución se descuenta al anfitrión en su siguiente
+     liquidación (como la penalidad por cancelación de Airbnb).
+   - **Arrepentimiento:** dentro de 1 hora del pago y con más de 24 h para el
+     turno o la clase, 100 % incluido el cargo, por cualquier medio.
+   - **Tarde** (< `WEB_CANCELACION_HORAS`, o clase ya iniciada): sin
+     devolución, como hoy.
+   Todo esto se escribe en `/legal/devoluciones` y en la pantalla de cancelar
+   antes de confirmar.
+3. **Yape por defecto en el checkout en Perú: SÍ.** El jugador puede cambiar a
+   tarjeta. Baja el costo de pasarela a la mitad.
+4. **Tarifa de Culqi: no se negocia.** Los parámetros de la torre quedan con
+   la observada (6.05 %); la red de seguridad protege el margen.
+
+## 8. Estado de implementación
+
+- **Fase 1 (backend) HECHA el 27-sep-2026, apagada por flag:**
+  `pagos/cargo_servicio.py`, `GET /config/cargo-servicio`, `POST
+  /pagos/cotizar`, campos `cargo_servicio_centimos / cargo_desglose /
+  cargo_ajuste_centimos` en `LiquidacionOnlineReq`, `MatriculaReq` y en la
+  fila del libro (el cargo va EN la fila de la liquidación o matrícula, no
+  como registro aparte, para no contar dos veces), `_liquidacion_dict` con
+  `cargo_servicio_soles`, `ingreso_pcg_soles` y margen = comisión + cargo −
+  pasarela (la estimada se recalcula sobre precio + cargo), torre → Cobros →
+  "🧾 Cargo por servicio" (flags por línea, regla por moneda, textos del
+  desglose por línea y deporte, simulador, KPI "sin cargo"), tests
+  `tests/test_cargo_servicio.py`.
+- Fases 2 a 5: pendientes.

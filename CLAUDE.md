@@ -2526,14 +2526,29 @@ antes del corte.
 
 ## Pendientes / backlog
 
-- **CARGO POR SERVICIO + MODELO DE COMISIONES (diseño aprobado en sesión,
-  27-sep-2026; NO implementado):** `docs/diseno-cargo-por-servicio.md`. Dos
-  lados como Airbnb: comisión 5 % mín S/ 2 a quien recibe (reservas y
-  academias) + cargo por servicio al cliente 5 % hasta S/ 500 + 2 % del
-  excedente (mín S/ 2), Pichangol absorbe la pasarela, red de seguridad de
-  margen mínimo con la tarifa real de Culqi, desglose ⓘ con textos por
-  deporte en la torre, mes a mes agrupado por familia. Fases 1-5 en el doc;
-  arranca APAGADO por flag en ambos ambientes.
+- **CARGO POR SERVICIO + MODELO DE COMISIONES (diseño aprobado,
+  27-sep-2026; FASE 1 backend HECHA, fases 2-5 pendientes):**
+  `docs/diseno-cargo-por-servicio.md` (decisiones del director en § 7,
+  estado en § 8). Dos lados como Airbnb: comisión 5 % mín S/ 2 a quien
+  recibe (reservas y academias) + cargo por servicio al cliente 5 % hasta
+  S/ 500 + 2 % del excedente (mín S/ 2), Pichangol absorbe la pasarela,
+  red de seguridad de margen mínimo con la tarifa real de Culqi, desglose
+  ⓘ con textos por deporte en la torre, mes a mes agrupado por familia,
+  Yape por defecto en PE. **Fase 1:** `pagos/cargo_servicio.py`
+  (`cotizar`, `cargo_centimos`, `red_de_seguridad`, `desglose`,
+  `publico`, `validar_y_guardar`, `sin_cargo_recientes`; params
+  `cargo_<PEN|USD|BOB>_pct|min|tramo|pct_exc|margen_min` y flags
+  `cargo_activo_<linea>` en `stores.config` con espejo en `CONFIG_DEFAULT`
+  —test lo exige—; textos en `stores.cargo_servicio_textos`), `GET
+  /config/cargo-servicio` (público), `POST /pagos/cotizar` (X-App-Key),
+  `GET/POST /pagos/cargo-servicio/config` (admin), campos
+  `cargo_servicio_centimos/cargo_desglose/cargo_ajuste_centimos` en
+  `LiquidacionOnlineReq`, `MatriculaReq` y `PagoRegistro` (EN la fila de la
+  liquidación/matrícula, no registro aparte), `_liquidacion_dict` con
+  `cargo_servicio_soles`, `ingreso_pcg_soles` y `margen = comisión + cargo −
+  pasarela` (estimada sobre precio + cargo), torre → Cobros → "🧾 Cargo por
+  servicio". Arranca APAGADO por flag en ambos ambientes. Test
+  `tests/test_cargo_servicio.py`.
 
 - **Community Manager AUTÓNOMO (servicio estrella, ingreso recurrente):** la
   visión del director NO es "generar posts para que el dueño publique a mano"
