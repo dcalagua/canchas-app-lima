@@ -2526,6 +2526,15 @@ antes del corte.
 
 ## Pendientes / backlog
 
+- **CARGO POR SERVICIO + MODELO DE COMISIONES (diseño aprobado en sesión,
+  27-sep-2026; NO implementado):** `docs/diseno-cargo-por-servicio.md`. Dos
+  lados como Airbnb: comisión 5 % mín S/ 2 a quien recibe (reservas y
+  academias) + cargo por servicio al cliente 5 % hasta S/ 500 + 2 % del
+  excedente (mín S/ 2), Pichangol absorbe la pasarela, red de seguridad de
+  margen mínimo con la tarifa real de Culqi, desglose ⓘ con textos por
+  deporte en la torre, mes a mes agrupado por familia. Fases 1-5 en el doc;
+  arranca APAGADO por flag en ambos ambientes.
+
 - **Community Manager AUTÓNOMO (servicio estrella, ingreso recurrente):** la
   visión del director NO es "generar posts para que el dueño publique a mano"
   (eso ya existe, `community_manager_screen.dart` + `backend/growth/marketing/`).
