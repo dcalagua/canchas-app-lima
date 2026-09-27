@@ -2548,9 +2548,15 @@ antes del corte.
   S/ 500 + 2 % del excedente (mín S/ 2), Pichangol absorbe la pasarela,
   red de seguridad de margen mínimo con la tarifa real de Culqi, desglose
   ⓘ con textos por deporte en la torre, mes a mes agrupado por familia,
-  Yape por defecto en PE (APK: `pago_tarjeta_sheet`; WEB: `yape` va PRIMERO
-  en `paymentMethods` del Checkout v4 en reserva y matrícula, pedido del
-  director 27-sep-2026; test `test_yape_es_la_pestana_principal_del_checkout_web`). **Fase 1:** `pagos/cargo_servicio.py`
+  Yape por defecto en PE (APK: `pago_tarjeta_sheet`; WEB, pedido del
+  director 27-sep-2026 "que Yape salga como pantalla principal": el Checkout
+  v4 de Culqi abre SIEMPRE en Tarjeta aunque `paymentMethods` liste Yape
+  primero —probado en QAS—, así que el medio se elige en NUESTRA página con
+  `ui.selector_medio_pago()` (chips Yape · Recomendado / Tarjeta en el
+  resumen, Yape preseleccionado) + `ui.medio_pago_mini()` (chip en la barra
+  fija móvil, alterna al tocar) sincronizados por `pcgMedioPago()` en
+  `JS_NAV`, y Culqi se abre SOLO con ese método; test
+  `test_yape_es_la_pestana_principal_del_checkout_web`). **Fase 1:** `pagos/cargo_servicio.py`
   (`cotizar`, `cargo_centimos`, `red_de_seguridad`, `desglose`,
   `publico`, `validar_y_guardar`, `sin_cargo_recientes`; params
   `cargo_<PEN|USD|BOB>_pct|min|tramo|pct_exc|margen_min` y flags

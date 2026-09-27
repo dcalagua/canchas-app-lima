@@ -180,6 +180,8 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .mc{display:inline-block;width:34px;height:21px;position:relative}.mc i{position:absolute;top:0;width:21px;height:21px;border-radius:50%}
 .mc i:first-child{left:0;background:#EB001B}.mc i:last-child{left:13px;background:#F79E1B;opacity:.92}
 .candado{display:inline-flex;align-items:center;gap:6px;background:var(--noche);color:#fff;font-size:12px;font-weight:700;padding:6px 10px;border-radius:10px}
+.medio-pago .mp-t{font-weight:800;font-size:14px;margin-bottom:8px}.medio-pago .chip{padding:9px 12px}.medio-pago .chip small{font-size:11px;font-weight:800;color:var(--esmeralda)}
+.mp-mini{display:inline-flex;align-items:center;gap:6px;background:var(--blanco);border:1px solid var(--trazo);border-radius:999px;padding:6px 10px;cursor:pointer;font:inherit;flex:none}.mp-mini b{color:var(--gris);font-weight:700}
 /* hero ficha */
 .galeria{display:grid;grid-template-columns:2fr 1fr;grid-template-rows:170px 170px;gap:8px;border-radius:var(--r-lg);overflow:hidden}
 .galeria img,.galeria .sinfoto{width:100%;height:100%;object-fit:cover;aspect-ratio:auto}
@@ -746,6 +748,28 @@ def marcas_pago() -> str:
             "<span class='candado'>🔒 Pago seguro · Culqi</span></div>")
 
 
+def selector_medio_pago() -> str:
+    """Selector del MEDIO DE PAGO antes de abrir el Checkout de Culqi (pedido
+    del director, 27-sep-2026: "que Yape salga como pantalla principal y no la
+    de pagar con tarjeta"). El Checkout v4 abre SIEMPRE en Tarjeta aunque
+    `paymentMethods` liste Yape primero (probado en QAS), así que el medio se
+    elige AQUÍ — Yape preseleccionado, como en el APK — y el checkout se abre
+    SOLO con ese método (así Yape ES la pantalla principal). `pcgMedioPago()`
+    (JS_NAV) devuelve 'yape' | 'tarjeta'; `medio_pago_mini()` es el atajo de
+    la barra fija en móvil, sincronizado con este selector."""
+    return ("<div class='medio-pago' id='medioPago'><div class='mp-t'>¿Cómo quieres pagar?</div><div class='chips'>"
+            "<button type='button' class='chip sel' data-medio='yape'><span class='yape'>Yape</span> Yape <small>Recomendado</small></button>"
+            "<button type='button' class='chip' data-medio='tarjeta'><span class='visa'>VISA</span><span class='mc'><i></i><i></i></span> Tarjeta</button>"
+            "</div><div class='sub' style='font-size:12px;margin-top:8px'>🔒 Pago seguro · Culqi</div></div>")
+
+
+def medio_pago_mini() -> str:
+    """Chip chico para la barra fija de móvil: muestra el medio elegido (Yape
+    por defecto) y al tocarlo alterna Yape ↔ tarjeta (sincronizado con
+    `selector_medio_pago`)."""
+    return "<button type='button' class='mp-mini' id='medioPagoMini' data-medio='yape' aria-label='Cambiar medio de pago'></button>"
+
+
 _FLAGS = {
     "PE": "<svg class='flag' viewBox='0 0 3 2'><rect width='3' height='2' fill='#D91023'/><rect x='1' width='1' height='2' fill='#fff'/></svg>",
     "EC": "<svg class='flag' viewBox='0 0 4 2'><rect width='4' height='2' fill='#FFD100'/><rect y='1' width='4' height='.5' fill='#0057B8'/><rect y='1.5' width='4' height='.5' fill='#D91023'/></svg>",
@@ -927,6 +951,20 @@ def cabecera(*, tabs: str = "", busq: str = "", ses: dict | None = None, volver:
 # Esc), desplegable del buscador y cerrar sesión.
 JS_NAV = r"""
 (function(){
+  // Medio de pago del checkout web (Yape por defecto, pedido del director 27-sep-2026):
+  // `pcgMedioPago()` → 'yape' | 'tarjeta'. El selector (#medioPago) y el chip de la barra
+  // fija (#medioPagoMini) se sincronizan; Culqi se abre SOLO con el método elegido.
+  function mpSet(m){
+    document.querySelectorAll('#medioPago [data-medio]').forEach(function(x){ x.classList.toggle('sel', x.dataset.medio === m); });
+    var mini = document.getElementById('medioPagoMini');
+    if(mini){ mini.dataset.medio = m; mini.innerHTML = (m === 'yape' ? "<span class='yape'>Yape</span>" : "<span class='visa'>VISA</span><span class='mc'><i></i><i></i></span>") + ' <b>&#8250;</b>'; mini.title = 'Pagas con ' + (m === 'yape' ? 'Yape' : 'tarjeta') + ' · toca para cambiar'; }
+  }
+  document.addEventListener('click', function(ev){
+    var b = ev.target.closest && ev.target.closest('#medioPago [data-medio]'); if(b){ mpSet(b.dataset.medio); return; }
+    var mini = ev.target.closest && ev.target.closest('#medioPagoMini'); if(mini){ mpSet(mini.dataset.medio === 'yape' ? 'tarjeta' : 'yape'); }
+  });
+  window.pcgMedioPago = function(){ var s = document.querySelector('#medioPago [data-medio].sel'); return s ? s.dataset.medio : 'yape'; };
+  document.addEventListener('DOMContentLoaded', function(){ if(document.getElementById('medioPagoMini')) mpSet(window.pcgMedioPago()); });
   // WhatsApp: en móvil se usa el texto con emojis (data-wa-movil); en escritorio queda el href sin emojis (WhatsApp Windows los rompe).
   var esMovil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
   if(esMovil){ document.addEventListener('click', function(ev){ var a = ev.target.closest && ev.target.closest('a[data-wa-movil]'); if(a) a.setAttribute('href', a.getAttribute('data-wa-movil')); }, true); }
