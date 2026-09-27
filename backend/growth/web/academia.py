@@ -334,13 +334,13 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
         f"<div class='sub' style='margin-bottom:10px'>{e(a['nombre'])}</div><div id='lineas'><div class='sub'>Sin programa elegido.</div></div>"
         "<div class='total'><span>Pagas hoy</span><span id='tot'>—</span></div>"
         "<div class='sub' id='notaModo' style='font-size:12.5px;margin-top:6px'></div>"
+        f"<div style='margin-top:14px'>{ui.selector_medio_pago()}</div>"
         "<div style='margin-top:14px'><button class='btn lg' id='btnPagar' disabled>Elige un programa</button></div>"
-        f"<div style='margin-top:14px'>{ui.marcas_pago()}</div>"
         "<div class='sub' style='font-size:12.5px;margin-top:12px'>Al pagar, la matrícula queda registrada en la academia y en tu app (Mis academias). "
         f"Dudas: <a href='mailto:{e(empresa.valores()['empresa_correo'])}'>{e(empresa.valores()['empresa_correo'])}</a>.</div>"
         "</div></aside></div>"
         "<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0'>Pagas hoy</div><div class='t' id='totBarra'>—</div></div>"
-        "<button class='btn' id='btnPagarBarra' disabled>Elige un programa</button></div>")
+        f"{ui.medio_pago_mini()}<button class='btn' id='btnPagarBarra' disabled>Elige un programa</button></div>")
     cfg = json.dumps({"id": academia_id, "moneda": sim, "pk": config.CULQI_PUBLIC_KEY, "planes": _planes(a),
                       "descuentoPrepago": float(a.get("descuentoPrepago") or 0), "mesesMinPrepago": int(a.get("mesesMinPrepago") or 3),
                       "dtoFam": _dto_fam_por_quien(a, (ses or {}).get("email") or ""), "fam": _fam_base(a, (ses or {}).get("email") or ""),
@@ -573,8 +573,11 @@ _JS_ACADEMIA = r"""
     var montoC = Math.round(total * 100) + (cg ? cg.cargo_centimos : 0);
     Culqi.publicKey = C.pk;
     Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: montoC });
+    // El medio se elige en la página (Yape por defecto) y Culqi se abre SOLO con ese método:
+    // el Checkout v4 siempre abría en Tarjeta aunque Yape fuera primero (pedido del director, 27-sep-2026).
+    var m = window.pcgMedioPago ? pcgMedioPago() : 'yape';
     Culqi.options({ lang: 'es', installments: false,
-      paymentMethods: { yape: true, tarjeta: true, bancaMovil: false, agente: false, billetera: false, cuotealo: false }, // Yape PRIMERO (pedido del director, 27-sep-2026): Checkout v4 pinta los métodos en el orden declarado y abre el primero
+      paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false },
       style: { logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
     window.culqi = function(){
       if(Culqi.token){

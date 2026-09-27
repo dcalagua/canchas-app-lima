@@ -1606,6 +1606,20 @@ off → redeploy inmediato en cada push). URL pública:
     ahora" lee el fee real del primer cobro live de S/ 15 (Culqi lo publica
     ~12 h después del pago). OJO: un APK anterior liga el cargo por
     inferencia (mismo monto ±20 min), no por `charge_id` → actualizar.
+    **Pase del 27-sep-2026 (2.º, autorizado: "3. ok" tras "Dale, terminando
+    el 1"):** `prd` = merge `9dc479b` (cargo por servicio fases 1-4 en
+    backend/torre/web/APK, política de devoluciones con cancelación desde la
+    web, desde el anfitrión y desde el APP, mes a mes agrupado por familia,
+    Yape primero en el APK y en el checkout web). SQL
+    `docs/piloto/supabase_reservas_cargo.sql` APLICADO en PCG-PRD vía
+    `apply_migration` (`pichangol_reservas_cargo_servicio`). Sin Edge ni
+    variables nuevas. CAMBIÓ `lib/` → APK/AAB de PRD = run 1422
+    (`workflow_dispatch`, `ref=prd`, `entorno=prod`). **Los flags
+    `cargo_activo_reservas|academias` siguen APAGADOS en QAS y PRD**: se
+    encienden en la torre → Cobros → "🧾 Cargo por servicio" cuando el
+    director lo decida (primero QAS). OJO: un APK anterior cancela una
+    reserva pagada en línea sin pasar por la política (borra la fila y deja
+    el reembolso al operador) → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -2534,9 +2548,15 @@ antes del corte.
   S/ 500 + 2 % del excedente (mín S/ 2), Pichangol absorbe la pasarela,
   red de seguridad de margen mínimo con la tarifa real de Culqi, desglose
   ⓘ con textos por deporte en la torre, mes a mes agrupado por familia,
-  Yape por defecto en PE (APK: `pago_tarjeta_sheet`; WEB: `yape` va PRIMERO
-  en `paymentMethods` del Checkout v4 en reserva y matrícula, pedido del
-  director 27-sep-2026; test `test_yape_es_la_pestana_principal_del_checkout_web`). **Fase 1:** `pagos/cargo_servicio.py`
+  Yape por defecto en PE (APK: `pago_tarjeta_sheet`; WEB, pedido del
+  director 27-sep-2026 "que Yape salga como pantalla principal": el Checkout
+  v4 de Culqi abre SIEMPRE en Tarjeta aunque `paymentMethods` liste Yape
+  primero —probado en QAS—, así que el medio se elige en NUESTRA página con
+  `ui.selector_medio_pago()` (chips Yape · Recomendado / Tarjeta en el
+  resumen, Yape preseleccionado) + `ui.medio_pago_mini()` (chip en la barra
+  fija móvil, alterna al tocar) sincronizados por `pcgMedioPago()` en
+  `JS_NAV`, y Culqi se abre SOLO con ese método; test
+  `test_yape_es_la_pestana_principal_del_checkout_web`). **Fase 1:** `pagos/cargo_servicio.py`
   (`cotizar`, `cargo_centimos`, `red_de_seguridad`, `desglose`,
   `publico`, `validar_y_guardar`, `sin_cargo_recientes`; params
   `cargo_<PEN|USD|BOB>_pct|min|tramo|pct_exc|margen_min` y flags

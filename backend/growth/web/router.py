@@ -1634,8 +1634,11 @@ _JS_RESERVA = r"""
         if(!C.pk){ mostrarError('El pago en línea no está disponible por ahora.'); liberar(); pintarResumen(); return; }
         Culqi.publicKey = C.pk;
         Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: j.total_centimos });
+        // El medio se elige en la página (Yape por defecto) y Culqi se abre SOLO con ese método:
+        // el Checkout v4 siempre abría en Tarjeta aunque Yape fuera primero (pedido del director, 27-sep-2026).
+        var m = window.pcgMedioPago ? pcgMedioPago() : 'yape';
         Culqi.options({ lang: 'es', installments: false,
-          paymentMethods: { yape: true, tarjeta: true, bancaMovil: false, agente: false, billetera: false, cuotealo: false }, // Yape PRIMERO (pedido del director, 27-sep-2026): Checkout v4 pinta los métodos en el orden declarado y abre el primero
+          paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false },
           style: { logo: C.logo, bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
         window.culqi = function(){
           if(Culqi.token){
@@ -1914,13 +1917,13 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
         f"<div class='sub' style='margin-bottom:10px'>{e(c['nombre'])}{(' · ' + e(c.get('club'))) if c.get('club') else ''}</div>"
         "<div id='lineas'></div>"
         "<div class='total'><span>Total</span><span id='tot'></span></div>"
+        f"<div style='margin-top:14px'>{ui.selector_medio_pago()}</div>"
         "<div style='margin-top:14px'><button class='btn lg' id='btnPagar' disabled>Elige un horario</button></div>"
-        f"<div style='margin-top:14px'>{ui.marcas_pago()}</div>"
         "<div class='sub' style='font-size:12.5px;margin-top:12px'>Reserva confirmada al instante; el local la ve en su agenda. "
         "Cancelación con más de 6 horas de anticipación: devolución del 100 %. <a href='/#devoluciones'>Ver política</a>.</div>"
         "</div></aside></div>"
         "<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0'>Total</div><div class='t' id='totBarra'></div></div>"
-        "<button class='btn' id='btnPagarBarra' disabled>Elige un horario</button></div>"
+        f"{ui.medio_pago_mini()}<button class='btn' id='btnPagarBarra' disabled>Elige un horario</button></div>"
         f"<script>window.__cancha={cfg};var CORREO_SOPORTE={json.dumps(empresa.valores()['empresa_correo'])};</script>"
         "<script src='https://checkout.culqi.com/js/v4'></script>"
         f"<script>{sesion.JS_SESION if sesion.activo() else ''}{_JS_RESERVA}</script>")
