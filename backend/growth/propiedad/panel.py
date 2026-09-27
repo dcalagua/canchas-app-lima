@@ -1792,6 +1792,15 @@ def get_servicios_extra_publico() -> dict:
     return _se.publico()
 
 
+@router.get("/config/cargo-servicio")
+def get_cargo_servicio_publico() -> dict:
+    """PÚBLICO: parámetros, flags por línea y textos del CARGO POR SERVICIO
+    (APK cache-first + web). Con la línea apagada el checkout no muestra la
+    línea; la cotización exacta se pide a `POST /pagos/cotizar`."""
+    from pagos import cargo_servicio as _cs
+    return _cs.publico()
+
+
 @router.get("/config/canal")
 def get_canal_publico() -> dict:
     """PÚBLICO: el APK lee el canal de comunicación para decidir si muestra el
@@ -2438,6 +2447,10 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">💳</span>
             <span class="md-txt"><b>Tarifas de pasarela</b><small>Lo que cobra Culqi / PayPhone / Libélula · margen real</small></span>
           </button>
+          <button class="md-item" data-pane="cargoPanel" onclick="mostrarPane(this,'cargoPanel');cargarCargoServicio()">
+            <span class="md-ico">🧾</span>
+            <span class="md-txt"><b>Cargo por servicio</b><small>Lo que paga el cliente además del precio · desglose ⓘ · encendido por línea</small></span>
+          </button>
           <button class="md-item" data-pane="reclamacionesPanel" onclick="mostrarPane(this,'reclamacionesPanel');cargarReclamaciones()">
             <span class="md-ico">📕</span>
             <span class="md-txt"><b>Libro de Reclamaciones</b><small>INDECOPI · responder en 15 días hábiles</small></span>
@@ -2457,6 +2470,7 @@ _HTML = r"""<!DOCTYPE html>
           <div class="md-pane" id="recargasQr" style="display:none"></div>
           <div class="md-pane" id="promosPanel" style="display:none"></div>
           <div class="md-pane" id="tarifasPanel" style="display:none"></div>
+          <div class="md-pane" id="cargoPanel" style="display:none"></div>
           <div class="md-pane" id="reclamacionesPanel" style="display:none"></div>
           <div class="md-pane" id="cancelacionesPanel" style="display:none"></div>
         </div>
@@ -4535,7 +4549,7 @@ async function cargarCancelacionesWeb(){
     const j = await r.json();
     const cs = j.cancelaciones||[];
     const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    const ETQ = {reembolsado:['Reembolso Culqi hecho','#1F6E49'], reembolsado_manual:['Devuelto a mano','#1F6E49'], manual:['Devolver a mano (pagó en el app)','#946200'],
+    const ETQ = {reembolsado:['Reembolso Culqi hecho','#1F6E49'], saldo:['Devuelto a su saldo Pichangol','#1F6E49'], reembolsado_manual:['Devuelto a mano','#1F6E49'], manual:['Devolver a mano (pagó en el app)','#946200'],
                  fallo:['Culqi rechazó el reembolso: devolver a mano','#C0392B'], sin_reembolso:['Sin devolución (< 6 h)','#667'], no_aplica:['Pagaba en la cancha · sin costo','#667']};
     const mon = c => (c.moneda||'S/')+' '+Number(c.monto||0).toFixed(2);
     if(!cs.length){ box.innerHTML = '<div class="card">Sin cancelaciones desde la web todavía. Se registran cuando un jugador cancela en <code>/mis-reservas</code> o en su comprobante.</div>'; return; }
@@ -4842,6 +4856,140 @@ async function guardarTarifas(){
   else { let d=''; try{ d=(await r.json()).detail||''; }catch(e){} msg.textContent = d || 'Valores inválidos.'; }
 }
 
+
+// --- Cargo por servicio al cliente (Cobros → 🧾 Cargo por servicio) --------
+let cargoCfg = null;
+const CS_LINEAS = {reservas:'Reservas de cancha', academias:'Academias', marketplace:'Marketplace', torneos:'Torneos'};
+async function cargarCargoServicio(){
+  const box = document.getElementById('cargoPanel');
+  if(!box) return;
+  box.innerHTML = '<div class="card">Cargando…</div>';
+  try{
+    const r = await fetch('/pagos/cargo-servicio/config',{headers:headers(), cache:'no-store'});
+    if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
+    const j = await r.json(); cargoCfg = j.config;
+    const inp = (id, v, step, w) => `<input id="${id}" type="number" min="0" step="${step}" value="${v}" style="width:${w||88}px;padding:8px;border-radius:10px;border:1px solid var(--border)">`;
+    const sc = j.sin_cargo || {};
+    const flags = Object.entries(CS_LINEAS).map(([l,n])=>`
+      <label style="display:flex;gap:8px;align-items:center;padding:8px 12px;border:1px solid var(--border);border-radius:12px;font-weight:700;font-size:13px">
+        <input type="checkbox" id="cs_act_${l}" ${cargoCfg.activo[l]?'checked':''} style="width:auto"> ${n}
+        ${cargoCfg.activo[l] && (sc[l]||0)>0 ? `<span class="liq-tag" title="Cobros en línea de los últimos 30 días que llegaron SIN cargo (APK viejo)">${sc[l]} sin cargo</span>`:''}
+      </label>`).join('');
+    const monedas = Object.entries(cargoCfg.monedas).map(([m,p])=>`
+      <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap;padding:8px 10px;border:1px solid var(--border);border-radius:12px">
+        <div style="font-weight:800;min-width:70px">${esc(p.simbolo)} · ${m}</div>
+        <label style="font-size:12px">% base<br>${inp('cs_'+m+'_pct', p.pct, '0.1', 70)}</label>
+        <label style="font-size:12px">hasta (${esc(p.simbolo)})<br>${inp('cs_'+m+'_tramo', p.tramo, '1', 80)}</label>
+        <label style="font-size:12px">% excedente<br>${inp('cs_'+m+'_pct_exc', p.pct_exc, '0.1', 70)}</label>
+        <label style="font-size:12px">mínimo (${esc(p.simbolo)})<br>${inp('cs_'+m+'_min', p.min, '0.5', 70)}</label>
+        <label style="font-size:12px" title="Red de seguridad: si comisión + cargo no cubre la pasarela + este margen, el cargo sube solo">margen mín. (${esc(p.simbolo)})<br>${inp('cs_'+m+'_margen_min', p.margen_min, '0.5', 70)}</label>
+      </div>`).join('');
+    const textos = ['reservas','academias'].map(l=>{
+      const t = cargoCfg.textos[l] || {componentes:[], por_deporte:{}};
+      const comps = (t.componentes||[]).map((c,i)=>`
+        <div style="display:grid;grid-template-columns:180px 70px 1fr;gap:8px;align-items:start;margin-bottom:6px" data-cs-comp="${l}">
+          <input data-k="nombre" value="${esc(c.nombre||'')}" placeholder="Nombre" style="padding:8px;border-radius:10px;border:1px solid var(--border)">
+          <input data-k="pct" type="number" step="0.5" min="0" value="${c.pct||0}" title="Peso referencial (%)" style="padding:8px;border-radius:10px;border:1px solid var(--border)">
+          <input data-k="detalle" value="${esc(c.detalle||'')}" placeholder="Qué cubre" style="padding:8px;border-radius:10px;border:1px solid var(--border)">
+          <input data-k="clave" type="hidden" value="${esc(c.clave||'')}">
+        </div>`).join('');
+      const dep = Object.entries(t.por_deporte||{}).map(([d,x])=>`
+        <div style="display:grid;grid-template-columns:110px 180px 1fr;gap:8px;margin-bottom:6px" data-cs-dep="${l}">
+          <input data-k="deporte" value="${esc(d)}" readonly style="padding:8px;border-radius:10px;border:1px solid var(--border);background:#F6F7F9">
+          <input data-k="nombre" value="${esc(x.nombre||'')}" style="padding:8px;border-radius:10px;border:1px solid var(--border)">
+          <input data-k="detalle" value="${esc(x.detalle||'')}" style="padding:8px;border-radius:10px;border:1px solid var(--border)">
+        </div>`).join('');
+      return `<div class="card" style="margin-bottom:12px">
+        <div style="font-weight:800;font-size:15px;margin-bottom:4px">ⓘ Desglose que ve el cliente · ${CS_LINEAS[l]}</div>
+        <div style="color:#667;font-size:12.5px;margin-bottom:8px">Describe SOLO lo que Pichangol entrega (nunca mantenimiento ni servicios del local: eso son servicios extra del dueño). Los pesos son referenciales; el cliente paga el total. Se congela en cada pago.</div>
+        <div style="font-size:12px;color:#667;display:grid;grid-template-columns:180px 70px 1fr;gap:8px;margin-bottom:4px"><b>Componente</b><b>Peso %</b><b>Qué cubre</b></div>
+        ${comps}
+        <div style="font-weight:700;font-size:13px;margin:10px 0 4px">Texto del último componente por deporte</div>
+        ${dep || '<div style="color:#889;font-size:12.5px">Sin variantes por deporte.</div>'}
+      </div>`;
+    }).join('');
+    box.innerHTML = `
+      <div class="card" style="margin-bottom:12px;background:#F4FBF7">
+        <div style="font-weight:800;font-size:15px;margin-bottom:4px">Dos lados, como Airbnb</div>
+        <div style="color:#667;font-size:12.5px">Quien RECIBE paga la comisión de siempre (5 % con mínimo). Quien PAGA ve una línea aparte <b>"Cargo por servicio Pichangol"</b>:
+          <b>${esc(cargoCfg.regla.PEN)}</b>. Pichangol absorbe la pasarela: <b>margen = comisión + cargo − pasarela</b>.
+          Una sola regla para reservas y academias; un pago = un cargo (pagar en familia sale más barato que por separado).
+          Si la línea está APAGADA, el checkout no muestra la línea y todo sigue como hoy.</div>
+      </div>
+      <div class="card" style="margin-bottom:12px">
+        <div style="font-weight:800;font-size:15px;margin-bottom:8px">Encendido por línea</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">${flags}</div>
+        <div style="color:#667;font-size:12.5px;margin-top:8px">Un APK anterior sigue cobrando sin cargo: el contador "sin cargo" mide cuánto se está dejando de cobrar. La web aplica el cargo al instante.</div>
+      </div>
+      <div class="card" style="margin-bottom:12px">
+        <div style="font-weight:800;font-size:15px;margin-bottom:8px">Regla por moneda</div>
+        <div style="display:flex;flex-direction:column;gap:8px">${monedas}</div>
+      </div>
+      ${textos}
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+        <button class="btn-ap" onclick="guardarCargoServicio()">Guardar cargo por servicio</button>
+        <span id="cs_msg" style="font-size:12.5px;color:#667"></span>
+      </div>
+      <div class="card">
+        <div style="font-weight:800;font-size:15px;margin-bottom:6px">🧮 Simulador de un cobro con cargo</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
+          <label style="font-size:12px">Línea<br><select id="cs_sim_linea" style="padding:8px;border-radius:10px;border:1px solid var(--border)">
+            ${Object.entries(CS_LINEAS).map(([l,n])=>`<option value="${l}"${j.simulacion.linea===l?' selected':''}>${n}</option>`).join('')}</select></label>
+          <label style="font-size:12px">Monto<br>${inp('cs_sim_monto', j.simulacion.base_soles, '0.5', 100)}</label>
+          <label style="font-size:12px">Moneda<br><select id="cs_sim_mon" style="padding:8px;border-radius:10px;border:1px solid var(--border)">
+            <option value="PEN">S/ · Perú</option><option value="USD">$ · Ecuador</option><option value="BOB">Bs · Bolivia</option></select></label>
+          <label style="font-size:12px">Medio<br><select id="cs_sim_medio" style="padding:8px;border-radius:10px;border:1px solid var(--border)">
+            <option value="tarjeta">Tarjeta</option><option value="yape">Yape</option></select></label>
+          <button class="btn-rc" onclick="simularCargo()">Calcular</button>
+        </div>
+        <div id="cs_sim_out">${cargoSimHtml(j.simulacion)}</div>
+      </div>`;
+  }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
+}
+function cargoSimHtml(x){
+  const S = n => x.simbolo + ' ' + (Math.round(n*100)/100).toFixed(2);
+  const neg = x.margen_soles < 0;
+  return `<div class="liq-resumen" style="gap:8px">
+      <span class="liq-mini">Precio ${S(x.base_soles)}</span>
+      <span class="liq-mini liq-mini-pcg">+ Cargo por servicio ${S(x.cargo_soles)}${x.ajuste_soles>0?' (incl. '+S(x.ajuste_soles)+' de la red de seguridad)':''}</span>
+      <span class="liq-mini" style="font-weight:800">Paga el cliente ${S(x.total_soles)}</span>
+      <span class="liq-mini liq-mini-neto">Recibe el dueño/academia ${S(x.recibe_soles)}</span>
+      <span class="liq-mini liq-mini-pcg">Comisión ${S(x.comision_soles)}</span>
+      <span class="liq-mini" style="background:#FFF4E5;color:#7A4B00">Pasarela (${x.medio}) −${S(x.pasarela_soles)}</span>
+      <span class="liq-mini" style="background:${neg?'#FDE8E8':'#E6F7EE'};color:${neg?'#B3261E':'#0B7A55'};font-weight:800">Margen Pichangol ${S(x.margen_soles)}</span>
+    </div>
+    <div style="color:#667;font-size:12.5px;margin-top:8px">Regla: ${esc(x.regla)}. Desglose ⓘ: ${(x.desglose||[]).map(d=>esc(d.nombre)+' '+S(d.monto_centimos/100)).join(' · ')}.${neg?' <b style="color:#B3261E">Con esta tarifa de pasarela pierdes plata en este monto.</b>':''}</div>`;
+}
+async function simularCargo(){
+  const q = new URLSearchParams({monto: document.getElementById('cs_sim_monto').value||0, moneda: document.getElementById('cs_sim_mon').value,
+    medio: document.getElementById('cs_sim_medio').value, linea: document.getElementById('cs_sim_linea').value});
+  const r = await fetch('/pagos/cargo-servicio/config?'+q.toString(),{headers:headers(), cache:'no-store'});
+  if(!r.ok) return;
+  const j = await r.json();
+  document.getElementById('cs_sim_out').innerHTML = cargoSimHtml(j.simulacion);
+}
+async function guardarCargoServicio(){
+  if(!cargoCfg) return;
+  const body = {activo:{}, monedas:{}, textos:{}};
+  for(const l of Object.keys(CS_LINEAS)){ const el = document.getElementById('cs_act_'+l); if(el) body.activo[l] = el.checked; }
+  for(const m of Object.keys(cargoCfg.monedas)){
+    body.monedas[m] = {};
+    for(const k of ['pct','tramo','pct_exc','min','margen_min']){ const el = document.getElementById('cs_'+m+'_'+k); if(el) body.monedas[m][k] = Number(el.value||0); }
+  }
+  for(const l of ['reservas','academias']){
+    const comps = [...document.querySelectorAll(`[data-cs-comp="${l}"]`)].map(row=>({
+      clave: row.querySelector('[data-k="clave"]').value, nombre: row.querySelector('[data-k="nombre"]').value,
+      pct: Number(row.querySelector('[data-k="pct"]').value||0), detalle: row.querySelector('[data-k="detalle"]').value}));
+    const dep = {};
+    for(const row of document.querySelectorAll(`[data-cs-dep="${l}"]`)) dep[row.querySelector('[data-k="deporte"]').value] = {nombre: row.querySelector('[data-k="nombre"]').value, detalle: row.querySelector('[data-k="detalle"]').value};
+    body.textos[l] = {componentes: comps, por_deporte: dep};
+  }
+  const msg = document.getElementById('cs_msg'); msg.textContent = 'Guardando…';
+  const r = await fetch('/pagos/cargo-servicio/config',{method:'POST',headers:headers(),body:JSON.stringify(body)});
+  if(r.ok){ toast('Cargo por servicio guardado ✓'); cargarCargoServicio(); }
+  else { let d=''; try{ d=(await r.json()).detail||''; }catch(e){} msg.textContent = d || 'Valores inválidos.'; }
+}
+
 // --- Identidad (DNI): revocar la verificación 1 DNI = 1 cuenta ------------------
 async function cargarDni(){
   const box = document.getElementById('dniPanel');
@@ -4972,10 +5120,10 @@ async function cargarLiquidaciones(){
     const S = n => 'S/ ' + (Math.round(n*100)/100).toFixed(2);
 
     // Totales GLOBALES (lo que realmente le toca a Pichangol = la comisión).
-    let gBruto=0, gCom=0, gNeto=0, gPas=0, gMar=0;
+    let gBruto=0, gCom=0, gNeto=0, gPas=0, gMar=0, gCargo=0;
     const grupos = new Map(); // "local||dueño" → {local, dueno, items}
     for(const p of pend){
-      gBruto += p.bruto_soles||0; gCom += p.comision_soles||0; gNeto += p.neto_soles||0; gPas += p.pasarela_soles||0; gMar += p.margen_soles||0;
+      gBruto += p.bruto_soles||0; gCom += p.comision_soles||0; gNeto += p.neto_soles||0; gPas += p.pasarela_soles||0; gMar += p.margen_soles||0; gCargo += p.cargo_servicio_soles||0;
       const k = localDe(p) + '||' + (p.dueno_id||'');
       if(!grupos.has(k)) grupos.set(k, {local: localDe(p), dueno: p.dueno_id||'—', items: []});
       grupos.get(k).items.push(p);
@@ -5004,7 +5152,7 @@ async function cargarLiquidaciones(){
           </div>
           <div class="liq-der">
             <div class="liq-monto" title="Bruto ${S(p.bruto_soles||0)} − comisión Pichangol ${S(p.comision_soles||0)} · pasarela ${S(p.pasarela_soles||0)}${p.medio?' ('+esc(p.medio)+')':''} · margen ${S(p.margen_soles||0)}">${S(p.neto_soles||0)}</div>
-            <div class="liq-det" style="font-size:11.5px">pasarela −${S(p.pasarela_soles||0)} <span title="${p.pasarela_fuente==='real'?'Comisión real leída de Culqi':(p.pasarela_fuente==='saldo'?'Pagado con saldo: la pasarela se pagó al recargar':'Estimada con la tarifa configurada; Culqi la publica ~12 h después')}" style="color:${p.pasarela_fuente==='real'?'#0B7A55':'#98A2B3'}">${p.pasarela_fuente==='real'?'✓ real':(p.pasarela_fuente==='saldo'?'saldo':'est.')}</span> · margen <b style="color:${(p.margen_soles||0)<0?'#B3261E':'#0B7A55'}">${S(p.margen_soles||0)}</b></div>
+            <div class="liq-det" style="font-size:11.5px">${(p.cargo_servicio_soles||0)>0?`cargo por servicio ${S(p.cargo_servicio_soles)} · `:''}pasarela −${S(p.pasarela_soles||0)} <span title="${p.pasarela_fuente==='real'?'Comisión real leída de Culqi':(p.pasarela_fuente==='saldo'?'Pagado con saldo: la pasarela se pagó al recargar':'Estimada con la tarifa configurada; Culqi la publica ~12 h después')}" style="color:${p.pasarela_fuente==='real'?'#0B7A55':'#98A2B3'}">${p.pasarela_fuente==='real'?'✓ real':(p.pasarela_fuente==='saldo'?'saldo':'est.')}</span> · margen <b style="color:${(p.margen_soles||0)<0?'#B3261E':'#0B7A55'}">${S(p.margen_soles||0)}</b></div>
             <button class="liq-btn" onclick="pagarLiquidacion('${esc(p.reserva_id)}','${S(p.neto_soles||0)}')">Marcar pagado</button>
           </div>
         </div>`).join('');
@@ -5048,8 +5196,9 @@ async function cargarLiquidaciones(){
           <div class="liq-resumen">
             <span class="liq-mini">Bruto cobrado ${S(gBruto)}</span>
             <span class="liq-mini liq-mini-pcg">Comisión Pichangol ${S(gCom)}</span>
+            ${gCargo>0?`<span class="liq-mini liq-mini-pcg" title="Cargo por servicio que pagaron los clientes además del precio (Cobros → Cargo por servicio)">Cargo por servicio ${S(gCargo)}</span>`:''}
             <span class="liq-mini" style="background:#FFF4E5;color:#7A4B00" title="Estimado con la tarifa configurada en Cobros → Tarifas de pasarela">Pasarela −${S(gPas)}</span>
-            <span class="liq-mini" style="background:${gMar<0?'#FDE8E8':'#E6F7EE'};color:${gMar<0?'#B3261E':'#0B7A55'}" title="Comisión − pasarela">Margen Pichangol ${S(gMar)}</span>
+            <span class="liq-mini" style="background:${gMar<0?'#FDE8E8':'#E6F7EE'};color:${gMar<0?'#B3261E':'#0B7A55'}" title="Comisión + cargo por servicio − pasarela">Margen Pichangol ${S(gMar)}</span>
             <span class="liq-mini liq-mini-neto">Neto a dueños ${S(gNeto)}</span>
           </div>
         </div>

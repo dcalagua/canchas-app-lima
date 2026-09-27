@@ -749,6 +749,13 @@ class Reserva {
   final String moneda; // símbolo de moneda de la cancha al reservar ('' = 'S/')
   final List<ServicioExtra> extras; // servicios extra elegidos al reservar
   final String telefono; // teléfono del cliente (solo en reservas manuales del dueño)
+  /// CARGO POR SERVICIO Pichangol que pagó el jugador ADEMÁS del precio (fase
+  /// 3, sep-2026): va en la PRIMERA hora del bloque (como los extras), en la
+  /// moneda de la reserva. 0 = sin cargo (línea apagada, pago en la cancha,
+  /// reserva manual o anterior). [cargoDesglose] = componentes congelados al
+  /// pagar ([{clave, nombre, pct, detalle, monto_centimos}]) para el comprobante.
+  final double cargoServicio;
+  final List<Map<String, dynamic>> cargoDesglose;
   // Agrupa las horas de UNA reserva de varias horas seguidas (18:00–20:00 = 2
   // Reservas con el mismo grupo). '' = reserva suelta de una sola hora (legado).
   final String grupoReservaId;
@@ -761,6 +768,10 @@ class Reserva {
 
   /// Total que paga el jugador: precio de la cancha + servicios extra.
   double get totalConExtras => precio + extrasTotal;
+
+  /// Lo que SALIÓ del bolsillo del jugador en esta fila: precio + extras +
+  /// cargo por servicio (si lo hubo). Es lo que muestran los comprobantes.
+  double get totalPagado => totalConExtras + cargoServicio;
 
   /// La reserva se pagó CANJEANDO un bono de horas prepagadas: el dinero ya
   /// entró (una sola vez) al COMPRAR el bono, no aquí. Por eso NO cuenta como
@@ -813,6 +824,8 @@ class Reserva {
     this.telefono = '',
     this.grupoReservaId = '',
     this.medioPago = '',
+    this.cargoServicio = 0,
+    this.cargoDesglose = const [],
   });
 
   Reserva copyWith({EstadoReserva? estado, bool? pagado, String? medioPago}) =>
@@ -837,6 +850,8 @@ class Reserva {
         telefono: telefono,
         grupoReservaId: grupoReservaId,
         medioPago: medioPago ?? this.medioPago,
+        cargoServicio: cargoServicio,
+        cargoDesglose: cargoDesglose,
       );
 
   Map<String, dynamic> toJson() => {
@@ -860,7 +875,18 @@ class Reserva {
         'telefono': telefono,
         'grupoReservaId': grupoReservaId,
         'medioPago': medioPago,
+        if (cargoServicio > 0) 'cargoServicio': cargoServicio,
+        if (cargoServicio > 0) 'cargoDesglose': cargoDesglose,
       };
+
+  /// Lista de mapas tolerante (JSON local o jsonb de Supabase).
+  static List<Map<String, dynamic>> listaMapas(dynamic raw) {
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((m) => Map<String, dynamic>.from(m))
+        .toList();
+  }
 
   factory Reserva.fromJson(Map<String, dynamic> j) => Reserva(
         id: j['id'] as String,
@@ -883,6 +909,8 @@ class Reserva {
         telefono: (j['telefono'] ?? '') as String,
         grupoReservaId: (j['grupoReservaId'] ?? '') as String,
         medioPago: (j['medioPago'] ?? '') as String,
+        cargoServicio: ((j['cargoServicio'] ?? 0) as num).toDouble(),
+        cargoDesglose: listaMapas(j['cargoDesglose']),
       );
 }
 

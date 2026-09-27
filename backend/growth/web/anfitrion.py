@@ -402,6 +402,7 @@ function abrir(td){cel=td;modo=td.dataset.t;err('');['calLibre','calBloqueado','
     var a='';if(r.telefono)a+="<a class='btn sec' href='https://wa.me/"+r.telefono.replace(/\D/g,'')+"' target='_blank' rel='noopener'>💬 WhatsApp</a>";
     if(!r.pagado)a+="<button type='button' class='btn' data-pagar='"+r.id+"' data-v='1'>✅ Marcar pagada</button>";else if(!online)a+="<button type='button' class='btn sec' data-pagar='"+r.id+"' data-v='0'>↩ Marcar por cobrar</button>";
     if(r.medio==='manual'&&!td.classList.contains('pasado'))a+="<button type='button' class='btn sec' id='rQuitar' style='color:var(--rojo)'>🗑 Quitar reserva</button>";
+    if(online&&!td.classList.contains('pasado'))a+="<button type='button' class='btn sec' id='rCancelar' style='color:var(--rojo)'>↩ Cancelar y devolver al jugador</button>";
     $('rAcc').innerHTML=a}
   M.classList.add('open')}
 function cerrar(){M.classList.remove('open');cel=null}
@@ -420,6 +421,8 @@ $('calSi').addEventListener('click',async function(){if(!cel)return;var b=this;b
     else j=await post('/anfitrion/reserva-manual',{cancha_id:CAL.cancha,fecha:cel.dataset.b,hora:cel.dataset.h,nombre:$('mNom').value,telefono:$('mTel').value,email:$('mEm').value,precio:parseFloat($('mPre').value),pagado:$('mPag').checked});
     if(j.ok){location.reload();return} err(j.mensaje||j.error||'No se pudo guardar.')}
   catch(e){err('No se pudo guardar. Revisa tu conexión.')} b.disabled=false});
+document.addEventListener('click',async function(ev){var q=ev.target.closest('#rCancelar');if(!q||!cel)return;if(!await pcgConfirmar({titulo:'Cancelar la reserva del jugador',mensaje:'Se le devuelve el 100 % de lo que pagó (cargo por servicio incluido) a su medio de pago y el turno queda libre. El costo de la pasarela de esa devolución se descuenta de tu próxima liquidación.',confirmar:'Cancelar y devolver',destructivo:true}))return;q.disabled=true;pcgCargando('Cancelando y devolviendo…');
+  try{var j=await post('/anfitrion/reserva/'+encodeURIComponent(cel.dataset.rid)+'/cancelar',{});if(j.ok){pcgRecargar();return}pcgCargando(false);err(j.mensaje||j.error||'No se pudo cancelar.')}catch(e){pcgCargando(false);err('No se pudo cancelar.')}q.disabled=false});
 document.addEventListener('click',async function(ev){var q=ev.target.closest('#rQuitar');if(!q||!cel)return;if(!await pcgConfirmar({titulo:'Quitar reserva manual',mensaje:'El turno vuelve a quedar libre en tu calendario.',confirmar:'Quitar',destructivo:true}))return;q.disabled=true;pcgCargando('Quitando la reserva…');
   try{var j=await post('/anfitrion/reserva/'+encodeURIComponent(cel.dataset.rid)+'/quitar',{});if(j.ok){pcgRecargar();return}pcgCargando(false);err(j.error||'No se pudo quitar.')}catch(e){pcgCargando(false);err('No se pudo quitar.')}q.disabled=false});
 })();
@@ -624,6 +627,44 @@ def _quitar_reserva_manual(request: Request, res_id: str) -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+@router.post("/anfitrion/reserva/{res_id}/cancelar")
+async def cancelar_reserva_anfitrion(request: Request, res_id: str) -> JSONResponse:
+    return await run_in_threadpool(_cancelar_reserva_anfitrion, request, res_id)
+
+
+def _cancelar_reserva_anfitrion(request: Request, res_id: str) -> JSONResponse:
+    """El DUEÑO cancela una reserva pagada en línea (política fase 4,
+    "cancela el anfitrión"): el jugador recupera el 100 % incluido el cargo
+    por servicio a su medio de pago, la liquidación del dueño se revierte y el
+    costo de pasarela de la devolución queda como deuda suya para la siguiente
+    liquidación. Las manuales se quitan con "Quitar reserva"."""
+    ses, canchas = _canchas_sesion(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
+    ids = [x["id"] for x in canchas]
+    r = datos.reserva_de_dueno(res_id, ids)
+    if r is None:
+        return JSONResponse({"ok": False, "error": "Reserva no encontrada."}, status_code=404)
+    if str(r.get("medio_pago") or "") == "manual":
+        return JSONResponse({"ok": False, "error": "Las reservas manuales se quitan con «Quitar reserva»."}, status_code=400)
+    grupo = str(r.get("grupo_reserva_id") or "").strip()
+    filas = datos.reservas_por_grupo(grupo) if grupo else [r]
+    filas = sorted([f for f in filas if str(f.get("cancha_id")) in ids], key=lambda x: (str(x.get("fecha")), str(x.get("hora_inicio"))))
+    if not filas:
+        return JSONResponse({"ok": False, "error": "Reserva no encontrada."}, status_code=404)
+    c = next((x for x in canchas if x["id"] == r.get("cancha_id")), None)
+    jugador = str(r.get("usuario") or "").strip().lower()
+    if not jugador:
+        # Sin correo del jugador no hay a quién devolver: solo se libera.
+        if not datos.eliminar_reservas([str(f["id"]) for f in filas]):
+            return JSONResponse({"ok": False, "error": "No pudimos liberar el horario."}, status_code=503)
+        return JSONResponse({"ok": True, "reembolso": "no_aplica"})
+    from web.router import _cancelar_reserva
+    j = _cancelar_reserva(filas, c, jugador, medio="original", cancela_anfitrion=True, quien=ses["email"])
+    print(f"[anfitrion-web] {ses['email']} canceló {res_id} → {j.get('reembolso')}", flush=True)
+    return JSONResponse(j, status_code=200 if j.get("ok") else 400)
+
+
 @router.get("/anfitrion/ingresos", response_class=HTMLResponse)
 def pagina_ingresos(request: Request) -> HTMLResponse:
     """"Ingresos" de Airbnb: la billetera del dueño tal cual el backend (saldo,
@@ -649,7 +690,7 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
     def fila_liq(x: dict) -> str:
         return (f"<div class='mov'><div><b>{e(x['concepto'])}</b><small>{e(x['creado_en'][:10])}{(' · pagada ' + e(x['liquidado_en'][:10])) if x.get('liquidado') else ''}"
                 f"{(' · ' + e(x['medio'])) if x.get('medio') else ''}</small></div>"
-                f"<div style='text-align:right'><b>{e(sim)} {x['neto_soles']:.2f}</b><small>bruto {x['bruto_soles']:.2f} · comisión {x['comision_soles']:.2f}</small></div></div>")
+                f"<div style='text-align:right'><b>{e(sim)} {x['neto_soles']:.2f}</b><small>bruto {x['bruto_soles']:.2f} · comisión {x['comision_soles']:.2f}{(' · cargo por servicio del jugador ' + format(x.get('cargo_servicio_soles') or 0, '.2f')) if x.get('cargo_servicio_soles') else ''}</small></div></div>")
     def fila_mov(p) -> str:
         signo = "+" if p.tipo in ("recarga", "bono_recarga", "bono_bienvenida", "cupon") else ("−" if p.tipo in ("comision_reserva", "comision_efectivo", "pro", "suscripcion") else "")
         return (f"<div class='mov'><div><b>{e(p.concepto or p.tipo)}</b><small>{e(p.tipo)} · {e(p.creado_en.isoformat()[:10])} · {e(p.estado)}</small></div>"
@@ -663,6 +704,7 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
         + "</div>"
         f"<p style='margin-top:14px'><a class='btn sec' href='{PLAY_URL}' rel='noopener' style='padding:10px 16px;font-size:14px'>Recargar saldo en la app</a></p>"
         + _tarjeta_cuenta_cobro(cuenta, res_cta, pais_iso, ses, por_recibir > 0)
+        + ui.tarjeta_comision('reservas', sim, {'PE': 'PEN', 'EC': 'USD', 'BO': 'BOB'}.get(pais_iso, 'PEN'))
         + "<h2 style='margin-top:28px'>Por recibir</h2>"
         + ("".join(fila_liq(x) for x in pend) if pend else "<div class='anf-vacio'>Nada pendiente. Cuando un jugador pague en línea, el neto aparece aquí.</div>")
         + "<h2 style='margin-top:28px'>Liquidaciones pagadas</h2>"

@@ -35,6 +35,7 @@ from . import payphone
 from . import pozos
 from . import cuentas_cobro as _cc
 from . import tarifas_pasarela as _tp
+from . import cargo_servicio as _cs
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
@@ -188,6 +189,15 @@ class RecargaReq(BaseModel):
     dueno_id: str              # a quién se le acredita el saldo (correo del dueño)
     email: str                 # correo del pagador (lo exige Culqi)
     monto_soles: float
+    # Datos del pagador para el antifraude de Culqi (lo que el APK sepa: nombre
+    # de Google / verificado, celular del perfil, país). Vacíos = se completa
+    # con la ficha ya conocida del correo o con el propio correo.
+    nombre: str = ""
+    apellido: str = ""
+    telefono: str = ""
+    direccion: str = ""
+    ciudad: str = ""
+    pais: str = ""
 
 
 class FeeReq(BaseModel):
@@ -196,6 +206,15 @@ class FeeReq(BaseModel):
     monto_soles: float         # la comisión a cobrar (la calcula el APK o aquí)
     concepto: str = "Fee de reserva Pichangol"
     reserva_id: str | None = None
+    # Datos del pagador para el antifraude de Culqi (lo que el APK sepa: nombre
+    # de Google / verificado, celular del perfil, país). Vacíos = se completa
+    # con la ficha ya conocida del correo o con el propio correo.
+    nombre: str = ""
+    apellido: str = ""
+    telefono: str = ""
+    direccion: str = ""
+    ciudad: str = ""
+    pais: str = ""
 
 
 class CobroReq(BaseModel):
@@ -204,6 +223,33 @@ class CobroReq(BaseModel):
     monto_soles: float
     concepto: str = "Pago Pichangol"
     tipo: str = "cobro"        # reserva | academia | cobro
+    # Datos del pagador para el antifraude de Culqi (lo que el APK sepa: nombre
+    # de Google / verificado, celular del perfil, país). Vacíos = se completa
+    # con la ficha ya conocida del correo o con el propio correo.
+    nombre: str = ""
+    apellido: str = ""
+    telefono: str = ""
+    direccion: str = ""
+    ciudad: str = ""
+    pais: str = ""
+
+
+def _cargo_kw(req) -> dict:
+    """kwargs de `registrar_pago` con el CARGO POR SERVICIO que trae la
+    request (0 si el cliente no lo mandó)."""
+    c = max(int(getattr(req, "cargo_servicio_centimos", 0) or 0), 0)
+    d = getattr(req, "cargo_desglose", None) or []
+    return {"cargo_servicio_centimos": c,
+            "cargo_desglose": ([dict(x) for x in d if isinstance(x, dict)][:8] if c else None),
+            "cargo_ajuste_centimos": max(int(getattr(req, "cargo_ajuste_centimos", 0) or 0), 0) if c else 0}
+
+
+def _cliente_de(email: str, req=None) -> dict:
+    """Ficha del pagador para `culqi.crear_cargo(cliente=)`: lo que trae la
+    request (nombre, apellido, telefono, direccion, ciudad, pais) se recuerda
+    en `stores.clientes_pago` y se completa con lo ya conocido del correo."""
+    campos = {k: getattr(req, k, "") for k in stores.CAMPOS_CLIENTE} if req is not None else {}
+    return stores.cliente_de(email, **campos)
 
 
 class ComisionReservaReq(BaseModel):
@@ -226,6 +272,12 @@ class LiquidacionOnlineReq(BaseModel):
     # Cargo de Culqi (`chr_…`) con el que pagó el jugador: liga la liquidación
     # con la comisión REAL de la pasarela (sincerada después). Vacío = APK viejo.
     charge_id: str = ""
+    # CARGO POR SERVICIO que pagó el cliente además del precio (27-sep-2026,
+    # `pagos/cargo_servicio.py`): céntimos, desglose congelado y ajuste de la
+    # red de seguridad. 0/vacío = APK/web sin cargo (o línea apagada).
+    cargo_servicio_centimos: int = 0
+    cargo_desglose: list = []
+    cargo_ajuste_centimos: int = 0
 
 
 class VentaProductoReq(BaseModel):
@@ -1699,7 +1751,7 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
             culqi_charge_id=f"{req.reserva_id}_com", promo_centimos=promo_usado,
             concepto=f"Comisión · {req.concepto or 'Reserva online'}{sufijo}")
         stores.registrar_pago(
-            tipo="liquidacion_full", cargo_id=(req.charge_id.strip() or None), monto_centimos=bruto, moneda=iso,
+            tipo="liquidacion_full", cargo_id=(req.charge_id.strip() or None), monto_centimos=bruto, moneda=iso, **_cargo_kw(req),
             estado="aprobado", dueno_id=req.dueno_id,
             culqi_charge_id=req.reserva_id,
             concepto=req.concepto or "Reserva online",
@@ -1711,7 +1763,7 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
 
     # Sin saldo suficiente → comisión de la transacción (neto), como antes.
     stores.registrar_pago(
-        tipo="liquidacion_online", cargo_id=(req.charge_id.strip() or None), monto_centimos=bruto, moneda=iso,
+        tipo="liquidacion_online", cargo_id=(req.charge_id.strip() or None), monto_centimos=bruto, moneda=iso, **_cargo_kw(req),
         estado="aprobado", dueno_id=req.dueno_id,
         culqi_charge_id=req.reserva_id,
         concepto=req.concepto or "Reserva online",
@@ -2031,7 +2083,8 @@ def procesar_renovaciones() -> dict:
             r = culqi.crear_cargo(
                 token=metodo["card_id"], monto_centimos=monto,
                 email=metodo.get("email") or "", descripcion=concepto,
-                metadata={"tipo": "suscripcion", "academia_id": aca})
+                metadata={"tipo": "suscripcion", "academia_id": aca},
+                cliente=_cliente_de(metodo.get("email") or ""))
             if r.get("ok"):
                 stores.registrar_pago(
                     tipo="suscripcion", monto_centimos=monto, moneda="PEN",
@@ -2083,6 +2136,7 @@ def set_metodo_suscripcion(req: MetodoSuscripcionReq) -> dict:
     if not culqi.disponible():
         raise HTTPException(status_code=503, detail="pagos_no_configurados")
     key = f"aca:{req.academia_id}"
+    stores.recordar_cliente(req.email, nombre=req.nombre, apellido=req.apellido)
     cus = stores.customers.get(key)
     if not cus:
         rc = culqi.crear_customer(email=req.email, nombre=req.nombre,
@@ -2179,6 +2233,8 @@ def post_suscripcion_alumno(req: SuscripcionAlumnoReq) -> dict:
             return {"ok": False, "error": rcard.get("error", "no_se_pudo_guardar_tarjeta")}
         card_id, marca, ultimos4 = rcard["card_id"], rcard["marca"], rcard["ultimos4"]
     ahora = datetime.now(timezone.utc)
+    stores.recordar_cliente(req.email, nombre=req.nombre, apellido=req.apellido,
+                            pais=(req.pais or "").upper())
     stores.suscripciones_alumno[req.alumno_id] = {
         "alumno_id": req.alumno_id, "academia_id": req.academia_id,
         "email": req.email, "card_id": card_id,
@@ -2210,6 +2266,7 @@ def procesar_renovaciones_alumnos() -> dict:
     academia como 'por recibir'. Fail-safe. La usa el cron interno."""
     ahora = datetime.now(timezone.utc)
     cobradas = pendientes = 0
+    vencidas: list[dict] = []
     for s in stores.suscripciones_alumno.values():
         if s.get("estado") not in ("activa", "pendiente_pago"):
             continue
@@ -2224,22 +2281,60 @@ def procesar_renovaciones_alumnos() -> dict:
             s["estado"] = "pendiente_pago"
             pendientes += 1
             continue
-        monto = s.get("monto_centimos", 0)
-        aca = s.get("academia_id")
-        concepto = s.get("concepto") or "Mensualidad"
+        vencidas.append(s)
+    # MES A MES AGRUPADO POR FAMILIA (fase 4 del cargo por servicio): las
+    # mensualidades vencidas de la MISMA cuenta y la MISMA tarjeta se cobran
+    # en UN solo cargo (a más personas, menos cargo por cabeza: una sola
+    # cotización con `partes`). Si Culqi rechaza, el grupo entero queda
+    # pendiente (no hay cobro parcial). Con la línea apagada el cargo es 0 y
+    # solo cambia que el pago familiar es uno.
+    grupos: dict[tuple, list[dict]] = {}
+    for s in vencidas:
+        grupos.setdefault(((s.get("email") or "").strip().lower(), str(s.get("card_id"))), []).append(s)
+    for (email, card), grupo in grupos.items():
+        montos = [int(x.get("monto_centimos", 0) or 0) for x in grupo]
+        base = sum(montos)
+        cot = cotizacion_para("academias", "PEN", base, medio=None,
+                              deporte="", partes=(montos if len(grupo) > 1 else None))
+        if len(grupo) == 1:
+            concepto = grupo[0].get("concepto") or "Mensualidad"
+        else:
+            concepto = f"{len(grupo)} mensualidades · pago familiar"
         r = culqi.crear_cargo(
-            token=s["card_id"], monto_centimos=monto,
-            email=s.get("email") or "", descripcion=concepto,
-            metadata={"tipo": "mensualidad_alumno", "academia_id": aca,
-                      "alumno_id": s.get("alumno_id")})
-        if r.get("ok"):
+            token=card, monto_centimos=cot.total_centimos,
+            email=email, descripcion=(concepto + (" + cargo por servicio" if cot.cargo_centimos else ""))[:80],
+            metadata={"tipo": "mensualidad_alumno", "academia_id": grupo[0].get("academia_id"),
+                      "alumno_id": grupo[0].get("alumno_id"), "alumnos": len(grupo),
+                      "cargo_servicio_centimos": cot.cargo_centimos},
+            cliente=_cliente_de(email))
+        if not r.get("ok"):
+            for s in grupo:
+                s["estado"] = "pendiente_pago"
+                pendientes += 1
+            continue
+        charge_id = str(r.get("charge_id") or "")
+        reparto = _cs.repartir(cot.cargo_centimos, montos)
+        for k, s in enumerate(grupo):
+            monto = montos[k]
+            aca = s.get("academia_id")
             pct = _comision_matricula_pct(s.get("pais"))
             comision = int(round(monto * pct / 100.0))
+            conc = (s.get("concepto") or "Mensualidad") + " (mes a mes)"
+            if len(grupo) > 1:
+                conc += f" · pago familiar {k + 1}/{len(grupo)}"
+            if reparto[k]:
+                conc += f" · cargo por servicio S/ {reparto[k] / 100.0:.2f}"
             stores.registrar_pago(
                 tipo="matricula_online", monto_centimos=monto, moneda="PEN",
                 estado="aprobado", dueno_id=aca,
-                culqi_charge_id=r.get("charge_id"), comision_centimos=comision,
-                concepto=concepto + " (mes a mes)")
+                # La 1.ª fila lleva el chr_ real (sinceramiento con Culqi); las
+                # demás un sufijo para no chocar en `pago_por_charge`.
+                culqi_charge_id=charge_id if k == 0 else f"{charge_id}#{k}",
+                cargo_id=charge_id or None, comision_centimos=comision,
+                cargo_servicio_centimos=reparto[k],
+                cargo_desglose=(list(cot.desglose) if (k == 0 and cot.desglose) else None),
+                cargo_ajuste_centimos=(cot.ajuste_seguridad_centimos if k == 0 else 0),
+                concepto=conc)
             s["ultimo_cobro"] = ahora.isoformat()
             s["proximo_cobro"] = _mas_un_mes(ahora).isoformat()
             s["cobros_hechos"] = int(s.get("cobros_hechos", 0)) + 1
@@ -2253,9 +2348,9 @@ def procesar_renovaciones_alumnos() -> dict:
             else:
                 s["estado"] = "activa"
             cobradas += 1
-        else:
-            s["estado"] = "pendiente_pago"
-            pendientes += 1
+        if cot.cargo_centimos or len(grupo) > 1:
+            print(f"[mes-a-mes] {email} {len(grupo)} mensualidad(es) base={base} cargo={cot.cargo_centimos} "
+                  f"total={cot.total_centimos} charge={charge_id}", flush=True)
     return {"ok": True, "cobradas": cobradas, "pendientes": pendientes}
 
 
@@ -2290,6 +2385,12 @@ class MatriculaReq(BaseModel):
     pais: str = "pe"
     concepto: str | None = None
     charge_id: str = ""       # cargo de Culqi del pago (comisión real de la pasarela)
+    # CARGO POR SERVICIO que pagó el cliente además del precio (27-sep-2026,
+    # `pagos/cargo_servicio.py`): céntimos, desglose congelado y ajuste de la
+    # red de seguridad. 0/vacío = APK/web sin cargo (o línea apagada).
+    cargo_servicio_centimos: int = 0
+    cargo_desglose: list = []
+    cargo_ajuste_centimos: int = 0
 
 
 @router.get("/comision-matricula")
@@ -2318,7 +2419,7 @@ def post_matricula(req: MatriculaReq) -> dict:
         tipo="matricula_online", monto_centimos=bruto, moneda="PEN",
         estado="aprobado", dueno_id=req.academia_id,
         culqi_charge_id=req.matricula_id, comision_centimos=comision,
-        cargo_id=(req.charge_id.strip() or None),
+        cargo_id=(req.charge_id.strip() or None), **_cargo_kw(req),
         concepto=req.concepto or "Matrícula (cobro digital)")
     return {"ok": True, "duplicada": False, "bruto_centimos": bruto,
             "comision_centimos": comision, "neto_centimos": bruto - comision,
@@ -2370,6 +2471,12 @@ def _liquidacion_dict(p) -> dict:
     # Costo estimado de la PASARELA (Culqi/PayPhone/Libélula) y margen real de
     # Pichangol = comisión − pasarela (tarifa configurable en la torre).
     pasarela, pasarela_fuente = _tp.costo_para(p)
+    # CARGO POR SERVICIO que pagó el cliente (ingreso de Pichangol además de la
+    # comisión). Culqi cobró sobre precio + cargo: si la pasarela es ESTIMADA
+    # se recalcula sobre el total cobrado.
+    cargo = int(getattr(p, "cargo_servicio_centimos", 0) or 0)
+    if cargo and pasarela_fuente == "estimado":
+        pasarela = _tp.costo_centimos(bruto + cargo, moneda_iso(p.moneda), p.medio, p.tipo)
     # Antigüedad: para que la torre avise lo que lleva días sin pagarse.
     try:
         dias = max(0, (datetime.now(timezone.utc) - p.creado_en).days)
@@ -2388,7 +2495,9 @@ def _liquidacion_dict(p) -> dict:
         "neto_soles": neto / 100.0,
         "pasarela_soles": pasarela / 100.0,
         "pasarela_fuente": pasarela_fuente,  # real (Culqi) | estimado (tarifa) | saldo
-        "margen_soles": (comision - pasarela) / 100.0,
+        "cargo_servicio_soles": cargo / 100.0,
+        "ingreso_pcg_soles": (comision + cargo) / 100.0,
+        "margen_soles": (comision + cargo - pasarela) / 100.0,
         "medio": p.medio or "",
         "liquidado": p.liquidado,
         "liquidado_en": p.liquidado_en.isoformat() if p.liquidado_en else None,
@@ -2408,12 +2517,98 @@ def get_liquidaciones_pendientes() -> dict:
     cuentas = {d: _cc.resumen(stores.cuenta_cobro(d)) for d in {x["dueno_id"] for x in pend if x["dueno_id"]}}
     return {"pendientes": pend, "total_neto_soles": round(total, 2),
             "total_pasarela_soles": round(sum(x["pasarela_soles"] for x in pend), 2),
+            "total_cargo_soles": round(sum(x["cargo_servicio_soles"] for x in pend), 2),
             "total_margen_soles": round(sum(x["margen_soles"] for x in pend), 2),
             "tarifas": _tp.leer(),
             "mas_antigua_dias": max((x["dias"] for x in pend), default=0),
             "atrasadas": sum(1 for x in pend if x["dias"] >= LIQUIDACION_AVISO_DIAS),
             "aviso_dias": LIQUIDACION_AVISO_DIAS, "cuentas": cuentas,
             "bcp": _config_bcp(), "lotes": _lotes_resumen()}
+
+
+# --- CARGO POR SERVICIO al cliente (27-sep-2026, `pagos/cargo_servicio.py`) ---
+class CotizarReq(BaseModel):
+    linea: str = "reservas"        # reservas | academias | marketplace | torneos
+    moneda: str = "PEN"            # ISO o símbolo
+    base_centimos: int = 0         # lo que paga por el servicio ANTES del cargo
+    medio: str = ""                # yape | tarjeta (para la red de seguridad)
+    deporte: str = ""              # textos del desglose por deporte
+    comision_centimos: int | None = None  # si el cliente ya la sabe; si no, se calcula
+    partes: list[int] = []         # carrito: bases por persona (para "ahorras X")
+
+
+@router.post("/cotizar", dependencies=_APP)
+def post_cotizar(req: CotizarReq) -> dict:
+    """APK y web piden la cotización del CARGO POR SERVICIO para pintar el
+    checkout (línea, total, desglose ⓘ, ahorro por pagar junto). El backend
+    la recalcula al registrar la contabilidad: aquí solo se muestra."""
+    cot = cotizacion_para(req.linea, req.moneda, req.base_centimos, medio=req.medio, deporte=req.deporte,
+                          partes=req.partes, comision_centimos=req.comision_centimos)
+    return {"ok": True, **cot.dict()}
+
+
+def comision_de_linea(linea: str, base_centimos: int, iso: str) -> int:
+    """Comisión de quien RECIBE según la línea: reservas/torneos/marketplace =
+    `comision_centimos` (5 % con mínimo por moneda); academias = % de matrícula
+    del país. Es la que entra a la red de seguridad del cargo."""
+    base = max(int(base_centimos or 0), 0)
+    if base <= 0:
+        return 0
+    if linea == "academias":
+        return int(round(base * _comision_matricula_pct(_pais_de_moneda(iso)) / 100.0))
+    return comision_centimos(base / 100.0, iso)
+
+
+def cotizacion_para(linea: str, moneda: str, base_centimos: int, *, medio: str | None = None, deporte: str = "",
+                    partes: list | None = None, comision_centimos: int | None = None) -> "_cs.Cotizacion":
+    """Cotización del CARGO POR SERVICIO para una línea (la misma que usa el
+    APK vía `/pagos/cotizar` y la web vía `/web/cotizar` y al COBRAR). La
+    comisión del receptor se calcula aquí salvo que venga dada."""
+    iso = moneda_iso(moneda)
+    base = max(int(base_centimos or 0), 0)
+    com = max(int(comision_centimos), 0) if comision_centimos is not None else comision_de_linea(linea, base, iso)
+    cot = _cs.cotizar(linea=linea, moneda=iso, base_centimos=base, medio=(medio or None), deporte=deporte or "",
+                      comision_centimos=com, partes=[int(x) for x in (partes or []) if str(x).strip()])
+    if cot.ajuste_seguridad_centimos:
+        print(f"[cargo] {cot.linea} base={base} cargo={cot.cargo_centimos} ajuste={cot.ajuste_seguridad_centimos} "
+              f"medio={medio or '-'} moneda={iso}", flush=True)
+    return cot
+
+
+def _pais_de_moneda(iso: str) -> str:
+    return {"PEN": "pe", "USD": "ec", "BOB": "bo"}.get(iso, "pe")
+
+
+def _cargo_simulacion(monto: float, moneda: str, medio: str, linea: str) -> dict:
+    iso = moneda_iso(moneda)
+    base = _soles_a_centimos(monto)
+    com = (int(round(base * _comision_matricula_pct(_pais_de_moneda(iso)) / 100.0)) if linea == "academias"
+           else comision_centimos(monto, iso))
+    cot = _cs.cotizar(linea=linea, moneda=iso, base_centimos=base, medio=medio, comision_centimos=com, forzar_activo=True)
+    pasarela = _tp.costo_centimos(cot.total_centimos, iso, medio, _cs._tipo_de(linea))
+    return {"linea": linea, "moneda": iso, "simbolo": cot.simbolo, "medio": medio, "base_soles": base / 100.0,
+            "cargo_soles": cot.cargo_centimos / 100.0, "ajuste_soles": cot.ajuste_seguridad_centimos / 100.0,
+            "total_soles": cot.total_centimos / 100.0, "comision_soles": com / 100.0,
+            "recibe_soles": (base - com) / 100.0, "pasarela_soles": pasarela / 100.0,
+            "ingreso_pcg_soles": (com + cot.cargo_centimos) / 100.0,
+            "margen_soles": (com + cot.cargo_centimos - pasarela) / 100.0, "regla": cot.regla, "desglose": cot.desglose}
+
+
+@router.get("/cargo-servicio/config", dependencies=_ADMIN)
+def get_cargo_servicio_config(monto: float = 300.0, moneda: str = "PEN", medio: str = "tarjeta",
+                              linea: str = "academias") -> dict:
+    """TORRE: parámetros por moneda, flags por línea, textos del desglose,
+    simulación y KPI de operaciones sin cargo (APK viejo)."""
+    return {"config": _cs.publico(), "simulacion": _cargo_simulacion(monto, moneda, medio, linea),
+            "sin_cargo": _cs.sin_cargo_recientes(), "lineas": list(_cs.LINEAS)}
+
+
+@router.post("/cargo-servicio/config", dependencies=_ADMIN)
+def post_cargo_servicio_config(body: dict = Body(...)) -> dict:
+    ok, err = _cs.validar_y_guardar(body or {})
+    if not ok:
+        raise HTTPException(status_code=400, detail=err)
+    return {"ok": True, "config": _cs.publico()}
 
 
 @router.get("/tarifas-pasarela", dependencies=_ADMIN)
@@ -2726,7 +2921,7 @@ def get_movimientos(dueno_id: str,
     # Pichangol cobró al comprador y le debe el NETO al dueño (misma
     # contabilidad que una reserva online). DEBE aparecer en el historial.
     _INCLUIR = ("recarga", "bono_recarga", "bono_bienvenida", "cupon",
-                "aporte_equipo_devolucion",
+                "aporte_equipo_devolucion", "devolucion_saldo",
                 "liquidacion_online", "liquidacion_full",
                 "venta_producto", "venta_bodega",
                 "inscripcion_torneo_ingreso") + _EGRESOS
@@ -2747,6 +2942,7 @@ def get_movimientos(dueno_id: str,
         "inscripcion_torneo_ingreso": "Inscripción a torneo (neto por recibir)",
         "aporte_equipo": "Mi parte en el equipo (torneo)",
         "aporte_equipo_devolucion": "Devolución de mi parte (torneo)",
+        "devolucion_saldo": "Devolución a tu saldo (reserva cancelada)",
         "liquidacion_online": "Reserva online (neto)",
         "liquidacion_full": "Reserva online (recibes 100%)",
         "venta_producto": "Venta / bono (neto)",
@@ -2763,7 +2959,7 @@ def get_movimientos(dueno_id: str,
         if getattr(p, "medio", None):
             base["medio"] = p.medio
         if p.tipo in ("recarga", "bono_recarga", "bono_bienvenida", "cupon",
-                      "aporte_equipo_devolucion"):
+                      "aporte_equipo_devolucion", "devolucion_saldo"):
             return {**base, "monto_soles": p.monto_centimos / 100.0}
         if p.tipo in _EGRESOS:
             # Egreso de saldo: negativo.
@@ -2810,6 +3006,7 @@ def post_cobrar(req: CobroReq) -> dict:
         monto_centimos=centimos,
         email=req.email,
         descripcion=req.concepto,
+        cliente=_cliente_de(req.email, req),
     )
     if not r["ok"]:
         return {
@@ -2840,6 +3037,8 @@ def post_metodo(req: MetodoReq) -> dict:
     marca + últimos 4 (nunca el número completo)."""
     if not culqi.disponible():
         raise HTTPException(status_code=503, detail="pagos_no_configurados")
+    stores.recordar_cliente(req.email, nombre=req.nombre, apellido=req.apellido,
+                            telefono=req.telefono)
     cus = stores.customers.get(req.user_id)
     if not cus:
         rc = culqi.crear_customer(
@@ -2889,6 +3088,7 @@ def post_recarga(req: RecargaReq) -> dict:
         descripcion="Recarga Pichangol",
         # Sin metadata por ahora: la recarga acredita de forma síncrona (no
         # depende del webhook). Se aísla un posible parameter_error de Culqi.
+        cliente=_cliente_de(req.email, req),
     )
     if not r["ok"]:
         stores.registrar_pago(
@@ -2940,6 +3140,7 @@ def post_fee(req: FeeReq) -> dict:
         email=req.email,
         descripcion=req.concepto,
         metadata={"tipo": "fee_reserva", "reserva_id": req.reserva_id or ""},
+        cliente=_cliente_de(req.email, req),
     )
     if not r["ok"]:
         return {"ok": False, "error": r.get("error", "cargo_rechazado")}
@@ -2999,3 +3200,53 @@ async def post_webhook(request: Request, t: str | None = None) -> dict:
             estado="aprobado", culqi_charge_id=charge_id,
             concepto="Confirmado por webhook")
     return {"ok": True}
+
+
+# --- Cancelación de reservas desde el APK (política de devoluciones) ------
+# El jugador cancela desde "Mis reservas" del app una reserva PAGADA EN LÍNEA
+# (app o web). Es la MISMA regla y el mismo motor que la web (`web/router.py::
+# estado_cancelacion` + `_cancelar_reserva`, `pagos/devoluciones.py`): a saldo
+# 100 % con cargo al instante; al medio original el precio (el cargo solo en
+# arrepentimiento); tarde = sin devolución. La devolución al medio original sale
+# por Culqi con el cargo ligado a la liquidación (`cargo_id`); sin él, manual.
+class CancelarReservaAppReq(BaseModel):
+    ref: str                 # grupo `grp_…` o id de un turno suelto
+    email: str               # correo del jugador (dueño de la reserva)
+    medio: str = "original"  # saldo | original
+
+
+def _filas_y_cancha_de_ref(ref: str):
+    from web import router as _web  # perezoso: evita el ciclo web ↔ pagos
+    from web import datos as _datos
+    filas = _web._filas_de_ref(ref)
+    c = _datos.cancha(filas[0]["cancha_id"]) if filas else None
+    return _web, filas, c
+
+
+@router.get("/reserva/cancelacion/{ref}", dependencies=_APP)
+def get_cancelacion_reserva(ref: str, email: str = "",
+                            x_user_token: str | None = Header(default=None)) -> dict:
+    """Qué pasa si el jugador cancela AHORA: si puede, horas que faltan, si
+    hay devolución y las OPCIONES (a saldo / al medio original) con montos y
+    notas, para que el app las muestre ANTES de confirmar. Solo lee."""
+    email = (email or "").strip().lower()
+    if not email:
+        return {"puede": False, "motivo": "sin_usuario"}
+    _require_usuario(email, x_user_token)
+    _web, filas, c = _filas_y_cancha_de_ref(ref)
+    return _web.estado_cancelacion(filas, c, email)
+
+
+@router.post("/reserva/cancelar", dependencies=_APP)
+def post_cancelar_reserva(req: CancelarReservaAppReq,
+                          x_user_token: str | None = Header(default=None)) -> dict:
+    """Cancela la reserva del jugador y devuelve según la política. Libera el
+    horario en `pichangol_reservas` (el app luego quita la copia local), revierte
+    la liquidación del dueño y avisa por push al dueño y al jugador. El
+    middleware persiste el snapshot."""
+    email = (req.email or "").strip().lower()
+    if not email:
+        return {"ok": False, "error": "sin_usuario", "mensaje": "Inicia sesión para cancelar."}
+    _require_usuario(email, x_user_token)
+    _web, filas, c = _filas_y_cancha_de_ref(req.ref)
+    return _web._cancelar_reserva(filas, c, email, medio=req.medio, quien=email)

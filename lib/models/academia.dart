@@ -957,6 +957,12 @@ class Cuota {
   /// los cobros que hizo el backend). Las cuotas normales (contado, clase suelta)
   /// van en false y no se auto-marcan.
   final bool autoDebito;
+  /// CARGO POR SERVICIO Pichangol que pagó el alumno/apoderado en el pago que
+  /// cubrió esta cuota (fase 3, sep-2026). Va UNA sola vez por pago: en la
+  /// primera cuota pagada; si el pago cubrió a varias personas (carrito / Mi
+  /// familia), [cargoPersonas] > 1 y el comprobante lo explica. 0 = sin cargo.
+  final double cargoServicio;
+  final int cargoPersonas;
 
   const Cuota({
     required this.id,
@@ -969,6 +975,8 @@ class Cuota {
     this.fechaPago,
     this.autoDebito = false,
     this.operacionId = '',
+    this.cargoServicio = 0,
+    this.cargoPersonas = 1,
   });
 
   /// Vencida = no pagada y ya pasó su fecha de vencimiento.
@@ -979,7 +987,9 @@ class Cuota {
           {bool? pagada,
           DateTime? fechaPago,
           bool limpiarFechaPago = false,
-          String? operacionId}) =>
+          String? operacionId,
+          double? cargoServicio,
+          int? cargoPersonas}) =>
       Cuota(
         id: id,
         academiaId: academiaId,
@@ -991,6 +1001,8 @@ class Cuota {
         fechaPago: limpiarFechaPago ? null : (fechaPago ?? this.fechaPago),
         autoDebito: autoDebito,
         operacionId: operacionId ?? this.operacionId,
+        cargoServicio: cargoServicio ?? this.cargoServicio,
+        cargoPersonas: cargoPersonas ?? this.cargoPersonas,
       );
 
   Map<String, dynamic> toJson() => {
@@ -1004,6 +1016,8 @@ class Cuota {
         if (fechaPago != null) 'fechaPago': fechaPago!.toIso8601String(),
         if (autoDebito) 'autoDebito': true,
         if (operacionId.isNotEmpty) 'operacionId': operacionId,
+        if (cargoServicio > 0) 'cargoServicio': cargoServicio,
+        if (cargoServicio > 0 && cargoPersonas > 1) 'cargoPersonas': cargoPersonas,
       };
 
   factory Cuota.fromJson(Map<String, dynamic> j) => Cuota(
@@ -1021,6 +1035,8 @@ class Cuota {
             : null,
         autoDebito: (j['autoDebito'] ?? false) as bool,
         operacionId: (j['operacionId'] ?? '') as String,
+        cargoServicio: ((j['cargoServicio'] ?? 0) as num).toDouble(),
+        cargoPersonas: ((j['cargoPersonas'] ?? 1) as num).toInt(),
       );
 }
 

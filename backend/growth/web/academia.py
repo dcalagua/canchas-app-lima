@@ -37,6 +37,7 @@ from pydantic import BaseModel
 import config
 import empresa
 from pagos import culqi
+from pagos import cargo_servicio as _cs
 from paises import moneda_de_pais, pais_de_coordenadas, simbolo_de_moneda
 from web import catalogos, datos, sesion, ui
 from web.router import (PLAY_URL, _RED_SVG, _deporte, _maps, _no_encontrada, _pago_web_disponible,
@@ -344,6 +345,8 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
                       "descuentoPrepago": float(a.get("descuentoPrepago") or 0), "mesesMinPrepago": int(a.get("mesesMinPrepago") or 3),
                       "dtoFam": _dto_fam_por_quien(a, (ses or {}).get("email") or ""), "fam": _fam_base(a, (ses or {}).get("email") or ""),
                       "lat": a.get("lat"), "lng": a.get("lng"), "nombre": a.get("nombre"),
+                      # Cargo por servicio (fase 2): con el flag apagado el JS no cotiza ni pinta la línea.
+                      "cargo": _cs.activo("academias"), "deporte": str(a.get("deporte") or ""),
                       "login": sesion.activo(), "sesion": ses}, ensure_ascii=False)
     cuerpo = (f"<div style='padding-top:22px'>{ficha}</div>{tarifario}{panel}"
               f"<script>window.__academia={cfg};</script><script src='https://checkout.culqi.com/js/v4'></script>"
@@ -410,6 +413,36 @@ _JS_ACADEMIA = r"""
   function unidad(p){ return unidadDe(p, st.n); }
   function modoTxt(it){ return it.r.mesAMes ? ('mes a mes · ' + it.n + ' ' + unidadDe(it.plan, it.n)) : (it.n + ' ' + unidadDe(it.plan, it.n) + (it.n > 1 ? ' adelantados' : '')); }
   function yaVaYo(){ return st.carrito.some(function(it){ return it.parentesco === ''; }); }
+  // CARGO POR SERVICIO Pichangol (fase 2, sep-2026): lo cotiza el servidor
+  // (`/web/cotizar`, misma regla que al cobrar) sobre la SUMA del carrito; con
+  // varias personas devuelve el ahorro frente a pagar por separado.
+  var cotT = null, cotCache = {};
+  function partesDe(r){ var ps = st.carrito.map(function(it){ return Math.round(it.r.total * 100); }); if(r) ps.push(Math.round(r.total * 100)); return ps; }
+  function cotizar(t, partes){
+    if(!C.cargo || t <= 0) return null;
+    var base = Math.round(t * 100), k = base + '|' + partes.join('.');
+    if(cotCache[k]) return cotCache[k];
+    if(cotT) clearTimeout(cotT);
+    cotT = setTimeout(function(){
+      fetch('/web/cotizar?linea=academias&moneda=' + encodeURIComponent(C.moneda) + '&base=' + base + '&deporte=' + encodeURIComponent(C.deporte || '') + '&partes=' + partes.join(','))
+        .then(function(r){ return r.json(); })
+        .then(function(j){ if(j && j.ok){ cotCache[k] = j; pintar(); } })
+        .catch(function(){});
+    }, 150);
+    return null;
+  }
+  var BTN_INFO = '<button type="button" id="btnCargoInfo" aria-label="Qué incluye el cargo por servicio" style="border:1px solid var(--trazo);background:#fff;color:var(--tinta);border-radius:50%;width:20px;height:20px;line-height:18px;font-size:12px;cursor:pointer;padding:0;margin-left:4px;vertical-align:middle;display:inline-block">ⓘ</button>';
+  var cotUlt = null;
+  function htmlDesglose(c){
+    var h = '<div style="text-align:left;display:grid;gap:8px">';
+    (c.desglose || []).forEach(function(x){ h += '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;border-bottom:1px solid #eee;padding:6px 0"><div><b>' + esc(x.nombre) + '</b><div style="color:#717171;font-size:12.5px">' + esc(x.detalle) + '</div></div><span style="white-space:nowrap;font-weight:700">' + fmt(x.monto_centimos / 100) + '</span></div>'; });
+    h += '<div style="color:#717171;font-size:12px;margin-top:4px">' + esc(c.regla) + '. Un solo cargo por todo el pago: a más personas, menos pagas por cada una. El precio del programa va completo a la academia, menos su comisión.</div></div>';
+    return h;
+  }
+  document.addEventListener('click', function(ev){
+    var b = ev.target && ev.target.closest ? ev.target.closest('#btnCargoInfo') : null;
+    if(b && cotUlt && window.pcgAvisar) pcgAvisar({titulo: cotUlt.titulo || 'Cargo por servicio Pichangol', html: htmlDesglose(cotUlt), confirmar: 'Entendido', icono: '🛡️'});
+  });
   function pintar(){
     var p = st.plan, r = calc(), nCar = st.carrito.length, sumaCar = totalCarrito();
     document.querySelectorAll('.tarifa-fila').forEach(function(f){ f.classList.toggle('sel', !!p && f.dataset.plan === p.id); });
@@ -444,9 +477,16 @@ _JS_ACADEMIA = r"""
     }
     if(!lineas){ $('lineas').innerHTML = '<div class="sub">Sin programa elegido.</div>'; $('tot').textContent = '—'; $('totBarra').textContent = '—'; $('notaModo').textContent = '';
       ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = true; $(id).textContent = 'Elige un programa'; }); return; }
-    $('lineas').innerHTML = lineas;
     var total = sumaCar + (r ? r.total : 0), personas = nCar + (p ? 1 : 0);
-    $('tot').textContent = fmt(total); $('totBarra').textContent = fmt(total);
+    var cg = cotizar(total, partesDe(r)), cargo = (cg && cg.activo && cg.cargo_centimos > 0) ? cg.cargo_centimos / 100 : 0;
+    cotUlt = cg;
+    if(C.cargo){
+      lineas += '<div class="linea" id="lineaCargo"><span>Cargo por servicio Pichangol ' + BTN_INFO + '</span><span>' + (cg ? fmt(cargo) : '…') + '</span></div>';
+      if(cg && cg.ahorro_centimos > 0) lineas += '<div class="linea" id="lineaAhorro"><span class="ok">🎉 Ahorras ' + fmt(cg.ahorro_centimos / 100) + ' en el cargo por pagar en familia (un solo cobro)</span></div>';
+    }
+    $('lineas').innerHTML = lineas;
+    var totalPagar = total + cargo;
+    $('tot').textContent = fmt(totalPagar); $('totBarra').textContent = fmt(totalPagar);
     var mesAMesNombres = st.carrito.filter(function(it){ return it.r.mesAMes; }).map(function(it){ return it.nombre; });
     if(r && r.mesAMes) mesAMesNombres.push($('nombre').value.trim() || 'esta persona');
     var nota = '';
@@ -455,7 +495,7 @@ _JS_ACADEMIA = r"""
     else if(mesAMesNombres.length) nota = 'Un solo cobro hoy. Los meses siguientes de ' + mesAMesNombres.join(', ') + ' se cobran mes a mes a la misma tarjeta.';
     else nota = 'Un solo cobro por las ' + personas + ' personas.';
     $('notaModo').textContent = nota;
-    ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = false; $(id).textContent = 'Pagar ' + fmt(total) + (personas > 1 ? ' · ' + personas + ' personas' : ''); });
+    ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = false; $(id).textContent = 'Pagar ' + fmt(totalPagar) + (personas > 1 ? ' · ' + personas + ' personas' : ''); });
   }
   document.addEventListener('click', function(ev){
     var q = ev.target.closest('.quitar');
@@ -525,10 +565,16 @@ _JS_ACADEMIA = r"""
     if(!personas.length){ mostrarError('Elige un programa en el tarifario.'); window.scrollTo({top: 0, behavior: 'smooth'}); return; }
     if(!C.pk){ mostrarError('El pago en línea no está disponible por ahora.'); return; }
     var total = totalCarrito() + (st.plan ? calc().total : 0);
+    // El monto que ve Culqi = base + cargo por servicio cotizado por el servidor
+    // (que lo recalcula al cobrar). Si la cotización aún no llegó, se espera.
+    var cg = cotizar(total, partesDe(st.plan ? calc() : null));
+    if(C.cargo && !cg){ pagar.intentos = (pagar.intentos || 0) + 1; if(pagar.intentos > 24){ pagar.intentos = 0; mostrarError('No pudimos calcular el total. Recarga la página e inténtalo de nuevo.'); return; } setTimeout(pagar, 250); return; }
+    pagar.intentos = 0;
+    var montoC = Math.round(total * 100) + (cg ? cg.cargo_centimos : 0);
     Culqi.publicKey = C.pk;
-    Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: Math.round(total * 100) });
+    Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: montoC });
     Culqi.options({ lang: 'es', installments: false,
-      paymentMethods: { tarjeta: true, yape: true, bancaMovil: false, agente: false, billetera: false, cuotealo: false },
+      paymentMethods: { yape: true, tarjeta: true, bancaMovil: false, agente: false, billetera: false, cuotealo: false }, // Yape PRIMERO (pedido del director, 27-sep-2026): Checkout v4 pinta los métodos en el orden declarado y abre el primero
       style: { logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
     window.culqi = function(){
       if(Culqi.token){
@@ -697,7 +743,8 @@ def _preparar_personas(a: dict, email: str, personas: list[PersonaReq]) -> tuple
     return items, None
 
 
-def _fila_matricula(a: dict, ses: dict | None, email: str, it: dict, charge_id: str, medio: str, ahora: datetime, us: int) -> tuple[str, dict]:
+def _fila_matricula(a: dict, ses: dict | None, email: str, it: dict, charge_id: str, medio: str, ahora: datetime, us: int,
+                    cargo: dict | None = None) -> tuple[str, dict]:
     """La fila de `pichangol_matriculas` EXACTAMENTE como `AppState.matricular`
     (el profe la ve en su app): `Alumno.toJson` + `cuotas` + extras web."""
     plan, n = it["plan"], it["n"]
@@ -741,7 +788,7 @@ def _fila_matricula(a: dict, ses: dict | None, email: str, it: dict, charge_id: 
     # de lista como en el app; el comprobante muestra lo que salió de la tarjeta.
     data = dict(alumno, cuotas=cuotas, canal="web",
                 pagoWeb={"monto": float(it["total"]), "ahorro": float(it["ahorro"]), "operacion": charge_id, "dtoFamiliar": float(it["dto_fam"]),
-                         "medio": "yape" if medio == "yape" else "tarjeta", "fecha": ahora.isoformat()})
+                         "medio": "yape" if medio == "yape" else "tarjeta", "fecha": ahora.isoformat(), **(cargo or {})})
     return alumno_id, data
 
 
@@ -754,13 +801,30 @@ def _cobrar_y_matricular(a: dict, ses: dict | None, token: str, medio: str, item
     email = (ses["email"] if ses else "").strip().lower()
     total = round(sum(float(it["total"]) for it in items), 2)
     monto_c = sum(int(round(float(it["total"]) * 100)) for it in items)
+    # Cargo por servicio (fase 2): UNA cotización sobre la suma del carrito
+    # (a más personas, menos por cabeza); lo cobrado = matrículas + cargo. La
+    # academia recibe sobre las matrículas; el cargo es ingreso de Pichangol.
+    from pagos.router import cotizacion_para
+    cot = cotizacion_para("academias", iso, monto_c, medio=None, deporte=str(a.get("deporte") or ""),
+                          partes=[int(round(float(it["total"]) * 100)) for it in items])
+    monto_cobro = cot.total_centimos
+    info_cargo = ({"cargo": cot.cargo_centimos / 100.0, "cargoDesglose": list(cot.desglose or []), "cargoRegla": cot.regla,
+                   "cargoPersonas": len(items), "cargoAhorro": cot.ahorro_centimos / 100.0} if cot.cargo_centimos > 0 else None)
     if len(items) == 1:
         concepto = f"Matrícula {a['nombre']} · {items[0]['plan']['nombre']}"
     else:
         concepto = f"Matrícula {a['nombre']} · {len(items)} personas"
-    cargo = culqi.crear_cargo(token=token.strip(), monto_centimos=monto_c, email=email or "sin-correo@pichangol.app",
-                              descripcion=concepto[:80], moneda=iso,
-                              metadata={"canal": "web", "academia_id": a["id"], "plan_id": items[0]["plan"]["id"], "personas": len(items)})
+    # Antifraude de Culqi: el PAGADOR es la cuenta de Google (nombre real); el
+    # celular sale de la persona "yo" del carrito o, si no va, de la primera.
+    titular = next((it for it in items if not it.get("parentesco")), items[0])
+    from db.store import stores as _st
+    cliente = _st.cliente_de(email, nombre=((ses or {}).get("nombre") or titular.get("nombre") or ""),
+                             telefono=str(titular.get("celular") or ""),
+                             pais=str(_iso(a) or "").upper())
+    cargo = culqi.crear_cargo(token=token.strip(), monto_centimos=monto_cobro, email=email or "sin-correo@pichangol.app",
+                              descripcion=concepto[:80], moneda=iso, cliente=cliente,
+                              metadata={"canal": "web", "academia_id": a["id"], "plan_id": items[0]["plan"]["id"], "personas": len(items),
+                                        "cargo_servicio_centimos": cot.cargo_centimos})
     if not cargo.get("ok"):
         msg = str(cargo.get("error") or "")
         return {"ok": False, "error": "cargo_rechazado",
@@ -772,7 +836,7 @@ def _cobrar_y_matricular(a: dict, ses: dict | None, token: str, medio: str, item
     guardadas: list[tuple[str, dict]] = []
     fallidas: list[str] = []
     for k, it in enumerate(items):
-        alumno_id, data = _fila_matricula(a, ses, email, it, charge_id, medio, ahora, base_us + k)
+        alumno_id, data = _fila_matricula(a, ses, email, it, charge_id, medio, ahora, base_us + k, cargo=info_cargo)
         if datos.insertar_matricula(alumno_id, a["id"], email, data):
             guardadas.append((alumno_id, it))
         else:
@@ -786,13 +850,17 @@ def _cobrar_y_matricular(a: dict, ses: dict | None, token: str, medio: str, item
     try:
         from pagos.router import MatriculaReq, post_matricula
         post_matricula(MatriculaReq(academia_id=a["id"], monto_soles=float(total), matricula_id=charge_id or guardadas[0][0],
-                                    pais=_iso(a).lower(), concepto=concepto, charge_id=charge_id))
+                                    pais=_iso(a).lower(), concepto=concepto, charge_id=charge_id,
+                                    cargo_servicio_centimos=cot.cargo_centimos, cargo_desglose=list(cot.desglose or []),
+                                    cargo_ajuste_centimos=cot.ajuste_seguridad_centimos))
     except Exception as ex:  # noqa: BLE001 — la contabilidad nunca deshace un cobro
         print(f"[matricula-web] contabilidad falló: {ex}", flush=True)
     try:
         from db.store import stores as _st
-        _st.registrar_pago(tipo="cobro_web", monto_centimos=monto_c, moneda=iso, estado="aprobado", culqi_charge_id=charge_id,
-                           email=email, medio="yape" if medio == "yape" else "tarjeta", concepto="matricula:" + ",".join(aid for aid, _ in guardadas))
+        _st.registrar_pago(tipo="cobro_web", monto_centimos=monto_cobro, moneda=iso, estado="aprobado", culqi_charge_id=charge_id,
+                           email=email, medio="yape" if medio == "yape" else "tarjeta", concepto="matricula:" + ",".join(aid for aid, _ in guardadas),
+                           cargo_servicio_centimos=cot.cargo_centimos, cargo_desglose=(list(cot.desglose) if cot.desglose else None),
+                           cargo_ajuste_centimos=cot.ajuste_seguridad_centimos)
     except Exception:  # noqa: BLE001
         pass
     titular = (ses or {}).get("nombre") or "Apoderado"
@@ -906,6 +974,8 @@ def comprobante_matricula(request: Request, academia_id: str, alumno_id: str) ->
     pw = m.get("pagoWeb") if isinstance(m.get("pagoWeb"), dict) else {}
     total = float(pw.get("monto") or 0) or sum(float(c.get("monto") or 0) for c in pagadas)
     ahorro = float(pw.get("ahorro") or 0)
+    cargo_html, total_pagado = _cargo_comprobante(pw, sim, individual=True)
+    total_pagado += total
     filas = "".join(
         f"<li>{'✅' if c.get('pagada') else '⏳'} <span>{e(c.get('concepto'))} · {e(sim)} {float(c.get('monto') or 0):.2f}"
         f"{' · pagada' if c.get('pagada') else ' · vence ' + e(str(c.get('vencimiento'))[:10])}</span></li>" for c in cuotas)
@@ -916,12 +986,33 @@ def comprobante_matricula(request: Request, academia_id: str, alumno_id: str) ->
               f"<ul class='datos'>{filas}</ul>"
               + (f"<p class='sub' style='font-size:13px'>{'Descuentos (adelanto + familiar)' if (float(pw.get('dtoFamiliar') or 0) > 0 and ahorro > 0) else 'Descuento por pago adelantado'}: −{e(sim)} {ahorro:.2f}</p>" if ahorro > 0 else "")
               + (f"<p class='sub' style='font-size:13px'>🎉 Descuento familiar aplicado: −{float(pw.get('dtoFamiliar') or 0):.0f} % ({'2.º' if int(m.get('ordenHermano') or 1) == 2 else '3.º o más'} de tu familia en esta academia).</p>" if float(pw.get('dtoFamiliar') or 0) > 0 else "")
-              + f"<div class='total'><span>Pagado hoy</span><span>{e(sim)} {total:.2f}</span></div>"
+              + cargo_html
+              + f"<div class='total'><span>Pagado hoy</span><span>{e(sim)} {total_pagado:.2f}</span></div>"
               + (f"<p class='sub' style='font-size:12.5px'>N.º de operación: {e(op)}</p>" if op else "")
               + "<div class='acciones' style='margin-top:14px'>"
               + (f"<a class='btn' href='https://wa.me/{tel}?text=Hola,%20acabo%20de%20matricular%20a%20{e(m.get('nombre', ''))}%20por%20Pichangol' target='_blank' rel='noopener'>💬 Escribir a la academia</a>" if tel else "")
               + f"<a class='btn sec' href='/academia/{e(academia_id)}'>Ver la academia</a><a class='btn sec' href='{PLAY_URL}'>Abrir en la app</a></div></div>")
     return ui.shell("Matrícula registrada", cuerpo, sesion=ses)
+
+
+def _cargo_comprobante(pw: dict, sim: str, *, individual: bool) -> tuple[str, float]:
+    """Línea + desglose del CARGO POR SERVICIO en el comprobante. Devuelve el
+    HTML y cuánto sumar a "Pagado hoy": en el comprobante individual de una
+    matrícula pagada EN FAMILIA el cargo fue uno solo por todo el pago, así que
+    se explica pero no se suma a la parte de esa persona."""
+    cargo = float(pw.get("cargo") or 0)
+    if cargo <= 0:
+        return "", 0.0
+    personas = int(pw.get("cargoPersonas") or 1)
+    if individual and personas > 1:
+        return (f"<p class='sub' style='font-size:13px'>El cargo por servicio Pichangol ({e(sim)} {cargo:.2f}) se pagó una sola vez "
+                f"por las {personas} personas de la familia; lo ves en el comprobante familiar.</p>"), 0.0
+    ahorro = float(pw.get("cargoAhorro") or 0)
+    html = (f"<div class='linea'><span>Cargo por servicio Pichangol</span><span>{e(sim)} {cargo:.2f}</span></div>"
+            + (f"<p class='sub' style='font-size:13px;color:#0B7A55'>🎉 Ahorraste {e(sim)} {ahorro:.2f} en el cargo por pagar en familia (un solo cobro).</p>" if ahorro > 0 else "")
+            + "<details style='margin-top:6px'><summary class='sub' style='cursor:pointer;font-size:13px'>Qué incluye el cargo por servicio</summary>"
+            + ui.desglose_cargo_html(pw.get("cargoDesglose") or [], sim, str(pw.get("cargoRegla") or "")) + "</details>")
+    return html, cargo
 
 
 # ── comprobante FAMILIAR (carrito: varias personas en un solo pago) ───────────
@@ -970,6 +1061,8 @@ def comprobante_matriculas(request: Request, academia_id: str, ids: str = "") ->
         bloques += (f"<div class='cart-it' style='margin-top:12px'><div class='ci-t'><div><b>{e(m.get('nombre'))}</b> <span class='sub'>{quien}</span>"
                     + (f"<div class='sub' style='color:#0B7A55'>🎉 Descuento familiar −{dto:.0f} % ({'2.º' if int(m.get('ordenHermano') or 1) == 2 else '3.º o más'} de tu familia)</div>" if dto > 0 else "")
                     + f"</div><div class='ci-d'><b>{e(sim)} {t:.2f}</b></div></div><ul class='datos' style='margin-top:8px'>{filas}</ul></div>")
+    pw0 = ms[0].get("pagoWeb") if isinstance(ms[0].get("pagoWeb"), dict) else {}
+    cargo_html, cargo_fam = _cargo_comprobante(pw0, sim, individual=False)
     nombres = ", ".join(str(m.get("nombre") or "") for m in ms)
     tel = _wa(a)
     wa = ui.enlace_whatsapp(f"Hola, acabo de matricular a {nombres} en {a['nombre']} por Pichangol.", tel) if tel else ""
@@ -978,7 +1071,8 @@ def comprobante_matriculas(request: Request, academia_id: str, ids: str = "") ->
               "<div class='estado' id='avisoMat' style='display:none;background:#FFF4E5;color:#7A4B00'></div>"
               f"{bloques}"
               + (f"<p class='sub' style='font-size:13px;margin-top:10px'>Descuentos aplicados en total: −{e(sim)} {ahorro:.2f}</p>" if ahorro > 0 else "")
-              + f"<div class='total'><span>Pagado hoy</span><span>{e(sim)} {total:.2f}</span></div>"
+              + cargo_html
+              + f"<div class='total'><span>Pagado hoy</span><span>{e(sim)} {total + cargo_fam:.2f}</span></div>"
               + (f"<p class='sub' style='font-size:12.5px'>N.º de operación: {e(op)}</p>" if op else "")
               + "<div class='acciones' style='margin-top:14px'>"
               + (f"<a class='btn' href='{wa}' target='_blank' rel='noopener'>💬 Escribir a la academia</a>" if tel else "")

@@ -342,12 +342,12 @@ def reserva_de_dueno(res_id: str, cancha_ids: list[str]) -> dict | None:
         return None
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute(f"SELECT {', '.join(_COLS_RES)} FROM pichangol_reservas WHERE id = %s AND cancha_id = ANY(%s)",
+            cur.execute(f"SELECT {', '.join(_cols_res())} FROM pichangol_reservas WHERE id = %s AND cancha_id = ANY(%s)",
                         (res_id, cancha_ids))
             f = cur.fetchone()
             if not f:
                 return None
-            d = pg._fila_a_dict(_COLS_RES, f)
+            d = pg._fila_a_dict(_cols_res(), f)
             d["extras"] = _json_list(d.get("extras"))
             d["precio"] = int(round(float(d.get("precio") or 0)))
             return d
@@ -395,13 +395,13 @@ def reservas_de_canchas(ids: list[str], desde: str, hasta: str) -> list[dict]:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
-                f"SELECT {', '.join(_COLS_RES)} FROM pichangol_reservas "
+                f"SELECT {', '.join(_cols_res())} FROM pichangol_reservas "
                 "WHERE cancha_id = ANY(%s) AND fecha BETWEEN %s AND %s "
                 "AND NOT (coalesce(estado,'') = 'nueva' AND NOT coalesce(pagado,false)) "
                 "AND coalesce(estado,'') <> 'cancelada' ORDER BY fecha, hora_inicio", (ids, desde, hasta))
             out = []
             for f in cur.fetchall():
-                d = pg._fila_a_dict(_COLS_RES, f)
+                d = pg._fila_a_dict(_cols_res(), f)
                 d["extras"] = _json_list(d.get("extras"))
                 d["precio"] = int(round(float(d.get("precio") or 0)))
                 out.append(d)
@@ -555,7 +555,9 @@ def insertar_reservas(filas: list[dict]) -> str:
         return "error"
 
 
-def confirmar_reservas(ids: list[str], medio_pago: str) -> bool:
+def confirmar_reservas(ids: list[str], medio_pago: str, cargo_soles: float = 0.0, cargo_desglose: list | None = None) -> bool:
+    """Confirma el bloque pagado. El CARGO POR SERVICIO (si lo hubo) queda en la
+    PRIMERA fila del bloque (como los extras), si la base tiene las columnas."""
     if not pg.habilitado or not ids:
         return False
     try:
@@ -563,6 +565,9 @@ def confirmar_reservas(ids: list[str], medio_pago: str) -> bool:
             cur.execute(
                 "UPDATE pichangol_reservas SET estado = 'confirmada', pagado = true, "
                 "medio_pago = %s WHERE id = ANY(%s)", (medio_pago, ids))
+            if cargo_soles and cargo_soles > 0 and col_cargo_disponible():
+                cur.execute("UPDATE pichangol_reservas SET cargo_servicio = %s, cargo_desglose = %s WHERE id = %s",
+                            (round(float(cargo_soles), 2), json.dumps(cargo_desglose or []), ids[0]))
             conn.commit()
             return True
     except Exception:  # noqa: BLE001
@@ -585,6 +590,31 @@ def borrar_reservas(ids: list[str]) -> bool:
 _COLS_RES = ["id", "cancha_id", "jugador", "fecha", "dia", "hora_inicio", "hora_fin",
              "estado", "precio", "sena", "pagado", "usuario", "moneda", "extras",
              "telefono", "grupo_reserva_id", "medio_pago"]
+# Columnas del cargo por servicio (SQL `docs/piloto/supabase_reservas_cargo.sql`).
+# Se leen/escriben solo si existen en esta base (chequeo cacheado): así la web
+# no se rompe en un ambiente donde el SQL aún no corrió.
+_COLS_CARGO = ["cargo_servicio", "cargo_desglose"]
+_col_cargo_cache: dict = {}
+
+
+def col_cargo_disponible() -> bool:
+    if "ok" in _col_cargo_cache:
+        return _col_cargo_cache["ok"]
+    if not pg.habilitado:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' "
+                        "AND table_name = 'pichangol_reservas' AND column_name = ANY(%s)", (_COLS_CARGO,))
+            ok = int(cur.fetchone()[0]) == len(_COLS_CARGO)
+    except Exception:  # noqa: BLE001
+        return False  # sin cachear: se reintenta en la siguiente
+    _col_cargo_cache["ok"] = ok
+    return ok
+
+
+def _cols_res() -> list[str]:
+    return _COLS_RES + (_COLS_CARGO if col_cargo_disponible() else [])
 
 
 def eliminar_reservas(ids: list[str]) -> bool:
@@ -607,11 +637,11 @@ def reservas_de(ids: list[str]) -> list[dict]:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
-                f"SELECT {', '.join(_COLS_RES)} FROM pichangol_reservas "
+                f"SELECT {', '.join(_cols_res())} FROM pichangol_reservas "
                 "WHERE id = ANY(%s) ORDER BY fecha, hora_inicio", (ids,))
             out = []
             for f in cur.fetchall():
-                d = pg._fila_a_dict(_COLS_RES, f)
+                d = pg._fila_a_dict(_cols_res(), f)
                 d["extras"] = _json_list(d.get("extras"))
                 d["precio"] = int(round(float(d.get("precio") or 0)))
                 out.append(d)
@@ -630,12 +660,12 @@ def reservas_de_usuario(email: str, limite: int = 200) -> list[dict]:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
-                f"SELECT {', '.join(_COLS_RES)} FROM pichangol_reservas "
+                f"SELECT {', '.join(_cols_res())} FROM pichangol_reservas "
                 "WHERE lower(usuario) = %s AND NOT (coalesce(estado,'') = 'nueva' AND NOT coalesce(pagado,false)) "
                 "ORDER BY fecha DESC, hora_inicio DESC LIMIT %s", (email, limite))
             out = []
             for f in cur.fetchall():
-                d = pg._fila_a_dict(_COLS_RES, f)
+                d = pg._fila_a_dict(_cols_res(), f)
                 d["extras"] = _json_list(d.get("extras"))
                 d["precio"] = int(round(float(d.get("precio") or 0)))
                 out.append(d)
@@ -650,11 +680,11 @@ def reservas_por_grupo(grupo: str) -> list[dict]:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
-                f"SELECT {', '.join(_COLS_RES)} FROM pichangol_reservas "
+                f"SELECT {', '.join(_cols_res())} FROM pichangol_reservas "
                 "WHERE grupo_reserva_id = %s ORDER BY fecha, hora_inicio", (grupo,))
             out = []
             for f in cur.fetchall():
-                d = pg._fila_a_dict(_COLS_RES, f)
+                d = pg._fila_a_dict(_cols_res(), f)
                 d["extras"] = _json_list(d.get("extras"))
                 d["precio"] = int(round(float(d.get("precio") or 0)))
                 out.append(d)

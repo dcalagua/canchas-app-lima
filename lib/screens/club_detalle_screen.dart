@@ -20,6 +20,8 @@ import '../widgets/cargando_pichangol.dart';
 import '../widgets/court_lines.dart';
 import '../widgets/candado_pro.dart';
 import '../widgets/dialogo_pichangol.dart';
+import '../models/cargo_servicio.dart';
+import '../widgets/cargo_servicio_info.dart';
 import '../widgets/marca.dart';
 import 'bonos_dueno_screen.dart';
 import 'pedir_bodega_screen.dart';
@@ -643,14 +645,33 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // N.º de operación del cargo (chr_ de Culqi): viaja con la liquidación
     // para que la torre lea la comisión REAL de la pasarela.
     var operacion = '';
+    // CARGO POR SERVICIO (fase 3): la cotización del resumen debe calzar con
+    // lo que se cobra; si cambió la base (o no llegó), se vuelve a cotizar
+    // ANTES de cobrar. Con la línea apagada es 0 y no cambia nada.
+    CotizacionCargo? cargo = r.cargo;
+    if (pagoOnline || esSena) {
+      final baseCobro = pagoOnline ? total - descuentoPuntos : senaMonto.toDouble();
+      final baseC = (baseCobro * 100).round();
+      if (CargoServicio.activo('reservas') &&
+          (cargo == null || cargo.baseCentimos != baseC)) {
+        cargo = await CargoServicio.cotizar(
+            linea: 'reservas',
+            moneda: mon,
+            baseCentimos: baseC,
+            deporte: _deporteEfectivo.name);
+        if (!mounted) return;
+      }
+    }
+    final cargoSoles = (cargo?.hayCargo ?? false) ? cargo!.cargo : 0.0;
     if (metodo == 'online') {
       // Pago con tarjeta/Yape (Culqi/Libélula). Si cancela o falla, se libera
       // el horario asegurado y no se reserva.
       final pagado = await PagoTarjeta.cobrar(
         context,
-        monto: total - descuentoPuntos,
+        monto: total - descuentoPuntos + cargoSoles,
         concepto: 'Reserva · ${_cancha.nombre} · $_dia $etiqueta'
-            '${canjea ? ' (−S/3 puntos)' : ''}',
+            '${canjea ? ' (−S/3 puntos)' : ''}'
+            '${cargoSoles > 0 ? ' + cargo por servicio' : ''}',
         email: appState.usuario?.email ?? '',
         moneda: mon,
         onOperacion: (o) => operacion = o,
@@ -670,8 +691,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       // El jugador ADELANTA la seña (del total). El resto lo paga en la cancha.
       final pagado = await PagoTarjeta.cobrar(
         context,
-        monto: senaMonto,
-        concepto: 'Seña · ${_cancha.nombre} · $_dia $etiqueta',
+        monto: senaMonto + cargoSoles,
+        concepto: 'Seña · ${_cancha.nombre} · $_dia $etiqueta'
+            '${cargoSoles > 0 ? ' + cargo por servicio' : ''}',
         email: appState.usuario?.email ?? '',
         moneda: mon,
         onOperacion: (o) => operacion = o,
@@ -705,7 +727,8 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     : 'online')
                 : (metodo == 'bono' ? 'bono' : 'efectivo'),
         conSena: esSena,
-        aseguradas: aseguradas);
+        aseguradas: aseguradas,
+        cargo: (pagoOnline || esSena) ? cargo : null);
     if (!mounted) return;
     if (res == ResultadoReserva.ocupado) {
       setState(() => _slots.clear()); // libera selección; la grilla se refresca
@@ -1630,6 +1653,9 @@ typedef ResumenResultado = ({
   String metodo,
   List<ServicioExtra> extras,
   bool usarPuntos,
+  // Cargo por servicio cotizado para el método elegido (null si no aplica:
+  // pago en la cancha, bono o línea apagada).
+  CotizacionCargo? cargo,
 });
 
 /// Ícono para un servicio extra según su clave.
@@ -1730,8 +1756,63 @@ class _ResumenReservaState extends State<_ResumenReserva> {
       cancha.monedaSimbolo == 'S/' &&
       _totalFinal > 3.0;
 
-  void _cerrar(String metodo) => Navigator.of(context)
-      .pop((metodo: metodo, extras: _elegidos, usarPuntos: _usarPuntos));
+  // CARGO POR SERVICIO Pichangol (fase 3): cotizado por el backend sobre lo
+  // que se paga EN LÍNEA (total con extras y puntos, o la seña). Se pinta al
+  // instante con la regla local/caché y se corrige cuando responde el servidor.
+  CotizacionCargo? _cot; // pago de todo en línea
+  CotizacionCargo? _cotSena; // solo la seña
+  bool get _cargoAplica =>
+      CargoServicio.activo('reservas') && !_soloEfectivo;
+  int get _baseOnlineCentimos =>
+      ((_usarPuntos ? _totalFinal - 3.0 : _totalFinal) * 100).round();
+  double get _cargoOnline => (_cot?.hayCargo ?? false) ? _cot!.cargo : 0.0;
+  double get _cargoSena =>
+      (_cotSena?.hayCargo ?? false) ? _cotSena!.cargo : 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _refrescarCargo();
+  }
+
+  void _refrescarCargo() {
+    if (!_cargoAplica) {
+      _cot = null;
+      _cotSena = null;
+      return;
+    }
+    final mon = cancha.monedaSimbolo;
+    final dep = widget.deporte.name;
+    final base = _baseOnlineCentimos;
+    _cot = CargoServicio.inmediata(
+        linea: 'reservas', moneda: mon, baseCentimos: base, deporte: dep);
+    CargoServicio.cotizar(
+            linea: 'reservas', moneda: mon, baseCentimos: base, deporte: dep)
+        .then((c) {
+      if (mounted && _baseOnlineCentimos == base) setState(() => _cot = c);
+    });
+    if (_exigeSena) {
+      final bs = _senaMonto * 100;
+      _cotSena = CargoServicio.inmediata(
+          linea: 'reservas', moneda: mon, baseCentimos: bs, deporte: dep);
+      CargoServicio.cotizar(
+              linea: 'reservas', moneda: mon, baseCentimos: bs, deporte: dep)
+          .then((c) {
+        if (mounted && _senaMonto * 100 == bs) setState(() => _cotSena = c);
+      });
+    }
+  }
+
+  void _cerrar(String metodo) => Navigator.of(context).pop((
+        metodo: metodo,
+        extras: _elegidos,
+        usarPuntos: _usarPuntos,
+        cargo: metodo == 'online'
+            ? _cot
+            : metodo == 'sena'
+                ? _cotSena
+                : null,
+      ));
 
   @override
   Widget build(BuildContext context) {
@@ -1788,15 +1869,42 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                   marcado: _sel.contains(s.clave),
                   cantidad: _cant[s.clave] ?? 1,
                   turnos: widget.nSlots <= 0 ? 1 : widget.nSlots,
-                  onCantidad: (n) => setState(() => _cant[s.clave] = n),
-                  onTap: () => setState(() => _sel.contains(s.clave)
-                      ? _sel.remove(s.clave)
-                      : _sel.add(s.clave)),
+                  onCantidad: (n) => setState(() {
+                    _cant[s.clave] = n;
+                    _refrescarCargo();
+                  }),
+                  onTap: () => setState(() {
+                    _sel.contains(s.clave)
+                        ? _sel.remove(s.clave)
+                        : _sel.add(s.clave);
+                    _refrescarCargo();
+                  }),
                 ),
             ],
             const SizedBox(height: 8),
             Divider(color: trazo),
             const SizedBox(height: 4),
+            // Cargo por servicio Pichangol (solo pagando en línea): línea
+            // aparte con ⓘ, como en la web. Con la línea apagada no aparece.
+            if (_cargoAplica && (_cot?.hayCargo ?? false)) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('Reserva${_elegidos.isNotEmpty ? ' + servicios' : ''}',
+                        style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                  ),
+                  Text(
+                      '$mon ${(_usarPuntos ? _totalFinal - 3.0 : _totalFinal).toStringAsFixed(2)}',
+                      style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                ],
+              ),
+              FilaCargoServicio(
+                  cot: _cot,
+                  simbolo: mon,
+                  nota: (!_exigeSena && widget.permiteEfectivo)
+                      ? 'Solo si pagas en línea; en la cancha pagas el precio.'
+                      : null),
+            ],
             Row(
               children: [
                 Expanded(
@@ -1805,7 +1913,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                           t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
                 ),
                 Text(
-                    '$mon ${(_usarPuntos ? _totalFinal - 3.0 : _totalFinal).toStringAsFixed(2)}',
+                    '$mon ${((_usarPuntos ? _totalFinal - 3.0 : _totalFinal) + (_cargoAplica ? _cargoOnline : 0)).toStringAsFixed(2)}',
                     style: t.headlineSmall?.copyWith(
                         fontWeight: FontWeight.w800, color: cs.primary)),
               ],
@@ -1837,7 +1945,10 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                     Switch(
                       value: _usarPuntos,
                       activeColor: pino,
-                      onChanged: (v) => setState(() => _usarPuntos = v),
+                      onChanged: (v) => setState(() {
+                        _usarPuntos = v;
+                        _refrescarCargo();
+                      }),
                     ),
                   ],
                 ),
@@ -1992,7 +2103,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                 icon: const Icon(Icons.lock, size: 18),
                 label: Text(
                     _exigeSena
-                        ? 'Pagar seña $mon ${_senaMonto.toDouble().toStringAsFixed(2)} y reservar'
+                        ? 'Pagar seña $mon ${(_senaMonto + (_cargoAplica ? _cargoSena : 0)).toStringAsFixed(2)} y reservar'
                         : 'Pagar ahora (Yape / Tarjeta)',
                     style: const TextStyle(
                         fontWeight: FontWeight.w800, fontSize: 15)),
@@ -2011,7 +2122,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                   onPressed: () => _cerrar('online'),
                   icon: const Icon(Icons.credit_card, size: 18),
                   label: Text(
-                      'Pagar todo ahora ($mon ${_totalFinal.toStringAsFixed(2)})',
+                      'Pagar todo ahora ($mon ${((_usarPuntos ? _totalFinal - 3.0 : _totalFinal) + (_cargoAplica ? _cargoOnline : 0)).toStringAsFixed(2)})',
                       style: const TextStyle(
                           fontWeight: FontWeight.w800, fontSize: 14)),
                 ),

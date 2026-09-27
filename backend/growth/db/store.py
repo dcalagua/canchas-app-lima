@@ -44,6 +44,14 @@ CONFIG_DEFAULT: dict[str, str] = {
     "tarifa_culqi_impuesto_pct": "18",
     "tarifa_payphone_tarjeta_pct": "0", "tarifa_payphone_tarjeta_fijo": "0", "tarifa_payphone_impuesto_pct": "0",
     "tarifa_libelula_tarjeta_pct": "0", "tarifa_libelula_tarjeta_fijo": "0", "tarifa_libelula_impuesto_pct": "0",
+    # CARGO POR SERVICIO al cliente (pagos/cargo_servicio.py, 27-sep-2026):
+    # % base hasta el tramo + % excedente, mínimo, y margen mínimo de la red de
+    # seguridad, por moneda; flags por línea (arranca APAGADO en todos lados).
+    # DEBEN coincidir con cargo_servicio.PARAMS_DEFAULT (test lo exige).
+    "cargo_PEN_pct": "5", "cargo_PEN_min": "2", "cargo_PEN_tramo": "500", "cargo_PEN_pct_exc": "2", "cargo_PEN_margen_min": "2",
+    "cargo_USD_pct": "5", "cargo_USD_min": "0.5", "cargo_USD_tramo": "140", "cargo_USD_pct_exc": "2", "cargo_USD_margen_min": "0.5",
+    "cargo_BOB_pct": "5", "cargo_BOB_min": "3", "cargo_BOB_tramo": "1000", "cargo_BOB_pct_exc": "2", "cargo_BOB_margen_min": "3",
+    "cargo_activo_reservas": "0", "cargo_activo_academias": "0", "cargo_activo_marketplace": "0", "cargo_activo_torneos": "0",
     # DATOS DE LA EMPRESA (razón social, RUC, dirección, correo, horario) que
     # salen en la portada, el pie de la web, las páginas legales y el Libro de
     # Reclamaciones. Editables desde la torre (Comunicación → "Datos de la
@@ -473,6 +481,15 @@ class PagoRegistro:
     # el jugador pagó, para leer su comisión real. Lo manda el APK/web al
     # registrar la contabilidad (`charge_id`); para filas viejas se infiere.
     cargo_id: str | None = None
+    # CARGO POR SERVICIO al cliente (27-sep-2026, `pagos/cargo_servicio.py`):
+    # en la fila de la liquidación/matrícula, lo que el jugador/alumno pagó
+    # ADEMÁS del precio como "Cargo por servicio Pichangol" (céntimos), su
+    # desglose congelado (lista de {clave, nombre, pct, detalle, monto_centimos})
+    # y cuánto de ese cargo puso la red de seguridad. Ingreso de Pichangol:
+    # margen = comisión + cargo − pasarela. 0 = APK/web sin cargo (o apagado).
+    cargo_servicio_centimos: int = 0
+    cargo_desglose: list | None = None
+    cargo_ajuste_centimos: int = 0
 
 
 def es_liquidacion_torneo(p: "PagoRegistro") -> bool:
@@ -580,6 +597,12 @@ class Stores:
         # Métodos de pago guardados (One Click). NO se guarda la tarjeta, sólo el
         # token permanente de Culqi (crd_...) + marca y últimos 4 para mostrar.
         self.customers: dict[str, str] = {}       # user_id -> cus_id de Culqi
+        # FICHA DEL CLIENTE para el antifraude de la pasarela (27-sep-2026):
+        # correo → {nombre, apellido, telefono, direccion, ciudad, pais,
+        # actualizado}. Se completa con lo que mandan el APK y la web en cada
+        # cobro/tarjeta y se reusa en los cobros AUTOMÁTICOS (renovaciones,
+        # mensualidades), donde ya no hay nadie escribiendo su nombre.
+        self.clientes_pago: dict[str, dict] = {}
         self.metodos: dict[str, list[dict]] = {}  # user_id -> [{id, marca, ultimos4, creado_en}]
         # Tarjeta de DÉBITO AUTOMÁTICO por academia para las suscripciones: al
         # renovar, si no hay saldo, se cobra a esta tarjeta guardada (crd_ de
@@ -618,6 +641,9 @@ class Stores:
         # `version` sube en cada cambio (el APK lo cachea por versión).
         self.servicios_extra: dict[str, dict] = {}
         self.servicios_extra_version: int = 1
+        # Textos del desglose del CARGO POR SERVICIO (torre → `pagos/
+        # cargo_servicio.py`); vacío = defaults del módulo.
+        self.cargo_servicio_textos: dict = {}
         # Sugerencias de dueños ("mi local ofrece X"): las atiende el operador.
         self.sugerencias_servicios: list[dict] = []
         # Publicaciones hechas en la PÁGINA de Facebook de Pichangol desde la torre.
@@ -814,6 +840,8 @@ class Stores:
         self.metodo_suscripcion = {}
         self.metodos = {}
         self.customers = {}
+        self.clientes_pago = {}
+        self.cargo_servicio_textos = {}
         self.vistas = {}
         self.membresias_pro = {}
         self.jugadores_circuito = {}
@@ -907,6 +935,37 @@ class Stores:
         return None
 
     # --- cuenta de cobro + lotes de liquidación ---
+    # --- Ficha del cliente para el antifraude de la pasarela ---------------
+    CAMPOS_CLIENTE = ("nombre", "apellido", "telefono", "direccion", "ciudad", "pais")
+
+    def recordar_cliente(self, email: str, **campos) -> dict:
+        """Guarda/actualiza lo que sabemos del pagador (solo campos NO vacíos;
+        nunca borra un dato previo con uno vacío). Devuelve la ficha."""
+        e = (email or "").strip().lower()
+        if not e:
+            return {}
+        ficha = dict(self.clientes_pago.get(e) or {})
+        cambio = False
+        for k in self.CAMPOS_CLIENTE:
+            v = str(campos.get(k) or "").strip()
+            if v and ficha.get(k) != v:
+                ficha[k] = v[:100]
+                cambio = True
+        if cambio or e not in self.clientes_pago:
+            ficha["actualizado"] = datetime.now(timezone.utc).isoformat()
+            self.clientes_pago[e] = ficha
+        return ficha
+
+    def cliente_de(self, email: str, **campos) -> dict:
+        """Ficha para `culqi.crear_cargo(cliente=)`: lo que llega en la request
+        (si trae algo, se recuerda) completado con lo ya conocido del correo."""
+        e = (email or "").strip().lower()
+        base = dict(self.clientes_pago.get(e) or {}) if e else {}
+        nuevos = {k: v for k, v in campos.items() if k in self.CAMPOS_CLIENTE and str(v or "").strip()}
+        if nuevos:
+            base = dict(self.recordar_cliente(e, **nuevos))
+        return {k: base.get(k, "") for k in self.CAMPOS_CLIENTE}
+
     def cuenta_cobro(self, email: str) -> dict | None:
         c = self.cuentas_cobro.get((email or "").strip().lower())
         return dict(c) if c else None
@@ -1069,6 +1128,7 @@ class Stores:
             "conexiones_redes": {k: dict(v) for k, v in self.conexiones_redes.items()},
             "vistas": {k: dict(v) for k, v in self.vistas.items()},
             "customers": dict(self.customers),
+            "clientes_pago": {k: dict(v) for k, v in self.clientes_pago.items()},
             "metodos": {k: list(v) for k, v in self.metodos.items()},
             "metodo_suscripcion": {k: dict(v) for k, v in self.metodo_suscripcion.items()},
             "suscripciones_alumno": {
@@ -1088,6 +1148,7 @@ class Stores:
             "musica_marca": [dict(x) for x in self.musica_marca],
             "servicios_extra": {k: dict(v) for k, v in self.servicios_extra.items()},
             "servicios_extra_version": int(self.servicios_extra_version),
+            "cargo_servicio_textos": dict(self.cargo_servicio_textos or {}),
             "sugerencias_servicios": [dict(r) for r in self.sugerencias_servicios],
             "jugadores_circuito": {
                 k: dict(v) for k, v in self.jugadores_circuito.items()},
@@ -1159,6 +1220,8 @@ class Stores:
             for k, v in (data.get("vistas") or {}).items()
         }
         self.customers = dict(data.get("customers") or {})
+        self.clientes_pago = {
+            k: dict(v) for k, v in (data.get("clientes_pago") or {}).items()}
         self.metodos = {
             k: list(v) for k, v in (data.get("metodos") or {}).items()
         }
@@ -1187,6 +1250,7 @@ class Stores:
         self.musica_marca = [dict(x) for x in (data.get("musica_marca") or [])]
         self.servicios_extra = {k: dict(v) for k, v in (data.get("servicios_extra") or {}).items()}
         self.servicios_extra_version = int(data.get("servicios_extra_version") or 1)
+        self.cargo_servicio_textos = dict(data.get("cargo_servicio_textos") or {})
         self.sugerencias_servicios = [dict(r) for r in (data.get("sugerencias_servicios") or [])]
         self.jugadores_circuito = {
             k: dict(v) for k, v in (data.get("jugadores_circuito") or {}).items()
@@ -1387,7 +1451,10 @@ def _pago_from(d: dict) -> PagoRegistro:
         referencia_liquidacion=d.get("referencia_liquidacion"),
         medio=d.get("medio"), promo_centimos=int(d.get("promo_centimos", 0) or 0),
         pasarela_centimos=(int(d["pasarela_centimos"]) if d.get("pasarela_centimos") is not None else None),
-        pasarela_en=_dt(d.get("pasarela_en")), cargo_id=d.get("cargo_id") or None)
+        pasarela_en=_dt(d.get("pasarela_en")), cargo_id=d.get("cargo_id") or None,
+        cargo_servicio_centimos=int(d.get("cargo_servicio_centimos", 0) or 0),
+        cargo_desglose=(list(d["cargo_desglose"]) if isinstance(d.get("cargo_desglose"), list) else None),
+        cargo_ajuste_centimos=int(d.get("cargo_ajuste_centimos", 0) or 0))
 
 
 def _insc_from(d: dict) -> Inscripcion:

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../state/app_state.dart';
 import 'auth_service.dart';
 
 /// Cliente de PAGOS (Culqi, modelo inDrive). Dos capas:
@@ -123,6 +124,20 @@ class PagosService {
   }
 
   // --- 3) Cobro en nuestro backend (crea el cargo con la sk) ---------------
+  /// Datos del PAGADOR que viajan con cada cobro para el antifraude de la
+  /// pasarela (queja del director, 27-sep-2026: el panel de Culqi mostraba
+  /// "first_last_name" y sin teléfono). Nombre de la cuenta de Google, celular
+  /// del perfil y país de la billetera; el backend los recuerda por correo y
+  /// los reusa en los cobros automáticos. Nada de esto es texto libre nuevo.
+  static Map<String, dynamic> datosCliente() {
+    final u = appState.usuario;
+    return {
+      'nombre': (u?.nombre ?? '').trim(),
+      'telefono': appState.miCelular,
+      'pais': appState.paisBilletera.iso,
+    };
+  }
+
   /// Recarga el saldo prepago del dueño. Devuelve {ok, saldoSoles} o {ok:false}.
   static Future<Map<String, dynamic>> recargar({
     required String token,
@@ -142,6 +157,7 @@ class PagosService {
           'dueno_id': duenoId,
           'email': email,
           'monto_soles': montoSoles,
+          ...datosCliente(),
         }),
       ).timeout(const Duration(seconds: 40));
       Map<String, dynamic> j = {};
@@ -191,6 +207,7 @@ class PagosService {
           'monto_soles': montoSoles,
           'concepto': concepto,
           'tipo': tipo,
+          ...datosCliente(),
         }),
       ).timeout(const Duration(seconds: 40));
       Map<String, dynamic> j = {};
@@ -350,6 +367,7 @@ class PagosService {
           'monto_soles': montoSoles,
           'concepto': concepto,
           'reserva_id': reservaId,
+          ...datosCliente(),
         }),
       ).timeout(const Duration(seconds: 25));
       final j = jsonDecode(r.body) as Map<String, dynamic>;
@@ -412,6 +430,11 @@ class PagosService {
     // Cargo de Culqi (chr_) con el que pagó el jugador: la torre lee de ahí la
     // comisión REAL de la pasarela (sincerada, 27-sep-2026).
     String chargeId = '',
+    // CARGO POR SERVICIO que pagó el jugador además del precio (fase 3): va EN
+    // la fila de la liquidación (céntimos + desglose congelado + ajuste).
+    int cargoServicioCentimos = 0,
+    List<Map<String, dynamic>> cargoDesglose = const [],
+    int cargoAjusteCentimos = 0,
   }) async {
     if (!disponible || duenoId.isEmpty) return null;
     try {
@@ -427,6 +450,11 @@ class PagosService {
               if (medio.isNotEmpty) 'medio': medio,
               if (moneda.isNotEmpty) 'moneda': moneda,
               if (chargeId.isNotEmpty) 'charge_id': chargeId,
+              if (cargoServicioCentimos > 0)
+                'cargo_servicio_centimos': cargoServicioCentimos,
+              if (cargoServicioCentimos > 0) 'cargo_desglose': cargoDesglose,
+              if (cargoAjusteCentimos > 0)
+                'cargo_ajuste_centimos': cargoAjusteCentimos,
             }),
           )
           .timeout(const Duration(seconds: 15));
@@ -521,6 +549,7 @@ class PagosService {
           'email': email,
           'nombre': nombre,
           'apellido': apellido,
+          'telefono': appState.miCelular,
         }),
       ).timeout(const Duration(seconds: 25));
       final j = jsonDecode(r.body) as Map<String, dynamic>;
@@ -1120,6 +1149,10 @@ class PagosService {
     required String pais,
     String? concepto,
     String chargeId = '', // cargo de Culqi del pago (comisión real de la pasarela)
+    // Cargo por servicio que pagó el alumno además de la matrícula (fase 3).
+    int cargoServicioCentimos = 0,
+    List<Map<String, dynamic>> cargoDesglose = const [],
+    int cargoAjusteCentimos = 0,
   }) async {
     if (!disponible) return null;
     try {
@@ -1134,8 +1167,45 @@ class PagosService {
                 'pais': pais,
                 if (concepto != null) 'concepto': concepto,
                 if (chargeId.isNotEmpty) 'charge_id': chargeId,
+                if (cargoServicioCentimos > 0)
+                  'cargo_servicio_centimos': cargoServicioCentimos,
+                if (cargoServicioCentimos > 0) 'cargo_desglose': cargoDesglose,
+                if (cargoAjusteCentimos > 0)
+                  'cargo_ajuste_centimos': cargoAjusteCentimos,
               }))
           .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// CARGO POR SERVICIO: cotización del backend (`POST /pagos/cotizar`, la
+  /// misma regla que usa al registrar la contabilidad + red de seguridad con
+  /// la tarifa real de la pasarela). [baseCentimos] = lo que paga por el
+  /// servicio antes del cargo; [partes] = bases por persona (carrito) para el
+  /// "ahorras X". Null si no respondió (el APK cae a la regla local).
+  static Future<Map<String, dynamic>?> cotizarCargo({
+    required String linea,
+    required String moneda,
+    required int baseCentimos,
+    String deporte = '',
+    List<int> partes = const [],
+  }) async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/cotizar'),
+              headers: _appHeaders(json: true),
+              body: jsonEncode({
+                'linea': linea,
+                'moneda': moneda,
+                'base_centimos': baseCentimos,
+                if (deporte.isNotEmpty) 'deporte': deporte,
+                if (partes.isNotEmpty) 'partes': partes,
+              }))
+          .timeout(const Duration(seconds: 8));
       if (r.statusCode != 200) return null;
       return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
     } catch (_) {
@@ -1456,6 +1526,53 @@ class PagosService {
                 if (concepto != null) 'concepto': concepto,
               }))
           .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // --- Cancelación de reservas pagadas en línea (política de devoluciones) --
+  /// Qué pasa si el jugador cancela AHORA una reserva pagada en línea: si
+  /// puede, horas que faltan, si hay devolución y las OPCIONES (a saldo / al
+  /// medio original) con montos y notas. Es la misma política que la web
+  /// (`pagos/devoluciones.py`). null = sin red (con plata en juego NO se
+  /// cancela a ciegas).
+  static Future<Map<String, dynamic>?> estadoCancelacionReserva(
+      String ref, String email) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse(
+              '$_baseUrl/pagos/reserva/cancelacion/${Uri.encodeComponent(ref)}')
+          .replace(queryParameters: {'email': email});
+      final r = await http
+          .get(uri, headers: await _headersUsuario())
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Cancela en el backend una reserva pagada en línea y devuelve según la
+  /// política: [medio] 'saldo' (100 % con cargo a la billetera, al instante)
+  /// u 'original' (el precio a la tarjeta/Yape vía Culqi). El backend libera
+  /// el horario, revierte la liquidación del dueño y avisa por push a ambos.
+  /// Devuelve el JSON ({ok, reembolso, monto_devuelto, …}) o null sin red.
+  static Future<Map<String, dynamic>?> cancelarReservaOnline({
+    required String ref,
+    required String email,
+    required String medio,
+  }) async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/reserva/cancelar'),
+              headers: await _headersUsuario(json: true),
+              body: jsonEncode({'ref': ref, 'email': email, 'medio': medio}))
+          .timeout(const Duration(seconds: 25));
       if (r.statusCode != 200) return null;
       return jsonDecode(r.body) as Map<String, dynamic>;
     } catch (_) {

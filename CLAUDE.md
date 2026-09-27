@@ -1169,6 +1169,31 @@ para la API del APK.
   también lo manda desde la reserva de una sola hora (`cancha_detalle` →
   `agregarReservaJugador(operacionId:)`). Test
   `tests/test_tarifas_pasarela.py`.
+- **DATOS REALES DEL CLIENTE EN CADA CARGO DE CULQI (queja del director,
+  27-sep-2026, captura del panel de Culqi: "Datos del cliente" con
+  `first_last_name` y sin teléfono):** los cargos no llevaban
+  `antifraud_details`. Ahora `culqi.crear_cargo(cliente=)` SIEMPRE lo manda
+  (`culqi.datos_cliente`: nombre partido en nombre/apellidos con
+  `partir_nombre` —"Dennis Calagua Ruiz" → Dennis / Calagua Ruiz—, celular
+  solo dígitos 5-15, ciudad y país —por `pais` o por la moneda: PEN→PE/Lima,
+  USD→EC/Quito, BOB→BO/La Paz—, dirección "Ciudad - ISO" si no hay; sin
+  nombre alguno usa la parte local del correo; todo con los largos mínimos
+  de Culqi). **Ficha del cliente** `stores.clientes_pago[correo]` (snapshot;
+  `recordar_cliente` solo pisa con datos NO vacíos, `cliente_de` mezcla lo
+  de la request con lo conocido): la llenan `/pagos/cobrar`, `/recarga`,
+  `/fee-reserva` (campos opcionales `nombre, apellido, telefono, direccion,
+  ciudad, pais` en `CobroReq/RecargaReq/FeeReq`, `_cliente_de`),
+  `/pagos/metodos`, la tarjeta de suscripción de academia y la suscripción
+  del alumno; los cobros AUTOMÁTICOS (renovaciones Pro/servicios y
+  mensualidades) la reusan. **APK:** `PagosService.datosCliente()` (nombre
+  de la cuenta de Google, `appState.miCelular`, `paisBilletera.iso`) viaja
+  en cobrar/recargar/feeReserva; `guardarMetodo` manda también el celular.
+  **Web:** `/web/pagar` manda nombre de Google (o el de la reserva), celular
+  de la reserva y país de la cancha; `/web/matricular(-varios)` manda el
+  nombre de Google del PAGADOR (no el del hijo) y el celular de la persona
+  "yo" del carrito (o la primera). Tests
+  `test_cargo_lleva_los_datos_reales_del_cliente_para_culqi` + asserts en
+  `test_reserva_web_completa` y `test_ficha_de_academia…`.
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
   VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
   Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el
@@ -1570,6 +1595,17 @@ off → redeploy inmediato en cada push). URL pública:
     APK, sin variables. Pendiente del director en la torre de PRD: poner la
     tarifa contratada real de Culqi (tarjeta y Yape) en Cobros → Tarifas de
     pasarela; hasta entonces usa la publicada de referencia.
+    **Pase del 27-sep-2026 (autorizado: "Pasa a PRD"):** `prd` = merge
+    `883a681` (comisión REAL de Culqi leída de la API y ligada a cada
+    liquidación con fuente ✓ real / est. / saldo, tarifa de tarjeta
+    observada 6.05 % en ambos defaults, el APK manda el N.º de operación
+    del cargo con cada liquidación y matrícula; acceso de revisión
+    retirado). Sin SQL ni Edge; sin variables nuevas. CAMBIÓ `lib/` →
+    APK/AAB de PRD por `workflow_dispatch` (`ref=prd`, `entorno=prod`). En
+    la torre de PRD → Cobros → Tarifas de pasarela, "Sincerar con Culqi
+    ahora" lee el fee real del primer cobro live de S/ 15 (Culqi lo publica
+    ~12 h después del pago). OJO: un APK anterior liga el cargo por
+    inferencia (mismo monto ±20 min), no por `charge_id` → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -2489,6 +2525,99 @@ antes del corte.
   dev/QAS.
 
 ## Pendientes / backlog
+
+- **CARGO POR SERVICIO + MODELO DE COMISIONES (diseño aprobado,
+  27-sep-2026; FASES 1 a 4 HECHAS, fase 5 = encendido pendiente):**
+  `docs/diseno-cargo-por-servicio.md` (decisiones del director en § 7,
+  estado en § 8). Dos lados como Airbnb: comisión 5 % mín S/ 2 a quien
+  recibe (reservas y academias) + cargo por servicio al cliente 5 % hasta
+  S/ 500 + 2 % del excedente (mín S/ 2), Pichangol absorbe la pasarela,
+  red de seguridad de margen mínimo con la tarifa real de Culqi, desglose
+  ⓘ con textos por deporte en la torre, mes a mes agrupado por familia,
+  Yape por defecto en PE (APK: `pago_tarjeta_sheet`; WEB: `yape` va PRIMERO
+  en `paymentMethods` del Checkout v4 en reserva y matrícula, pedido del
+  director 27-sep-2026; test `test_yape_es_la_pestana_principal_del_checkout_web`). **Fase 1:** `pagos/cargo_servicio.py`
+  (`cotizar`, `cargo_centimos`, `red_de_seguridad`, `desglose`,
+  `publico`, `validar_y_guardar`, `sin_cargo_recientes`; params
+  `cargo_<PEN|USD|BOB>_pct|min|tramo|pct_exc|margen_min` y flags
+  `cargo_activo_<linea>` en `stores.config` con espejo en `CONFIG_DEFAULT`
+  —test lo exige—; textos en `stores.cargo_servicio_textos`), `GET
+  /config/cargo-servicio` (público), `POST /pagos/cotizar` (X-App-Key),
+  `GET/POST /pagos/cargo-servicio/config` (admin), campos
+  `cargo_servicio_centimos/cargo_desglose/cargo_ajuste_centimos` en
+  `LiquidacionOnlineReq`, `MatriculaReq` y `PagoRegistro` (EN la fila de la
+  liquidación/matrícula, no registro aparte), `_liquidacion_dict` con
+  `cargo_servicio_soles`, `ingreso_pcg_soles` y `margen = comisión + cargo −
+  pasarela` (estimada sobre precio + cargo), torre → Cobros → "🧾 Cargo por
+  servicio". Arranca APAGADO por flag en ambos ambientes. Test
+  `tests/test_cargo_servicio.py`. **Fase 2 (web, hecha 27-sep-2026):** `GET
+  /web/cotizar` (público, céntimos; usa `pagos.router.cotizacion_para`);
+  reserva: `_cotizacion_reserva` = misma cotización en `/web/asegurar`
+  (`total_centimos` = precio + cargo, `cargo`) y en `/web/pagar` (cobra el
+  total, cargo + desglose en el `cobro_web` y en `LiquidacionOnlineReq`; el
+  dueño recibe sobre el PRECIO); JS con línea "Cargo por servicio Pichangol
+  ⓘ" (`pcgAvisar({html})`, `ui.py` acepta `html`), total y botón con cargo;
+  academia: una cotización sobre la SUMA del carrito con `partes` → línea +
+  "Ahorras S/ X pagando en familia", `pagar()` espera la cotización antes de
+  abrir Culqi, `_cobrar_y_matricular` guarda `pagoWeb.cargo/cargoDesglose/
+  cargoRegla/cargoPersonas/cargoAhorro`; comprobantes de reserva y matrícula
+  (individual y familiar) con la línea, "Pagado hoy" y `<details>` "Qué
+  incluye" (`ui.desglose_cargo_html`); tarjeta "Tu comisión Pichangol
+  incluye" (`ui.tarjeta_comision`) en Ingresos y Mi academia; términos 3-bis.
+  Con el flag apagado NADA cambia (cfg `cargo:false` → el JS no cotiza).
+  Test `test_cargo_por_servicio_en_la_web_reserva_y_matricula`. OJO fase 4:
+  la cancelación web aún devuelve el 100 % del cargo de Culqi (precio +
+  cargo); con la política aprobada se devolverá el precio y el cargo solo a
+  saldo. **Fase 3 (APK, hecha 27-sep-2026):** `lib/models/cargo_servicio.dart`
+  (`CargoServicio.cargar()` cache-first de `GET /config/cargo-servicio`,
+  `cotizar()` = `POST /pagos/cotizar` con caché → respaldo regla local sin
+  red de seguridad; `CotizacionCargo`) + `widgets/cargo_servicio_info.dart`
+  (`FilaCargoServicio` ⓘ, `mostrarDesgloseCargo`, `CotizadorCargo` para
+  cotizar desde `build()`). Reserva (`club_detalle._ResumenReserva` +
+  `_reservar`, `cancha_detalle`): cargo SOLO sobre lo pagado en línea (total
+  o seña; efectivo no lleva), `PagoTarjeta.cobrar(base + cargo)`,
+  `agregarReservasJugadorMulti(cargo:)` → `Reserva.cargoServicio/
+  cargoDesglose` (1.ª hora; columnas `cargo_servicio`/`cargo_desglose` de
+  `pichangol_reservas`, SQL `docs/piloto/supabase_reservas_cargo.sql`, el
+  repo reintenta sin ellas si faltan) y `_accionContable` → `liquidacionOnline
+  (cargoServicioCentimos:…)`. Academia (`_HojaDatosAlumno`, `_CarritoCard`,
+  `_pagarMatriculas`, `_MiFamilia`, `_pagarCuotas`): una cotización sobre
+  todo el pago con `partes` por persona ("Ahorras X"), `registrarMatricula
+  (cargoServicioCentimos:…)`, `Cuota.cargoServicio/cargoPersonas` en la 1.ª
+  cuota pagada (`matricular(cargoServicio:)`, `marcarCuotaPagada(
+  cargoServicio:)`; varias academias → `CargoServicio.repartir`).
+  Comprobantes: pase de Mis reservas, Mis pagos (`Reserva.totalPagado`),
+  comprobante de cuota; el web `/reserva/{id}` lee el cargo de la fila si no
+  hay `cobro_web`. Con el flag apagado el APK no cotiza ni pinta nada.
+  **Fase 4 (hecha 27-sep-2026):** POLÍTICA DE DEVOLUCIONES
+  (`pagos/devoluciones.py`, aprobada por el director): a SALDO 100 % con
+  cargo al instante (`stores.acreditar` + `PagoRegistro devolucion_saldo`,
+  `cobro_web` → `devuelto_saldo`); al medio ORIGINAL solo el precio (el
+  cargo cubre lo que Culqi ya cobró); ARREPENTIMIENTO (≤ 1 h del pago y
+  > 24 h para el turno, envs `ARREPENTIMIENTO_HORAS`/`_MIN_HORAS_TURNO`) y
+  CANCELA EL ANFITRIÓN = 100 % con cargo; TARDE = sin devolución.
+  `estado_cancelacion(..., cancela_anfitrion)` trae `politica` y
+  `_cancelar_reserva(filas, c, email, medio=, cancela_anfitrion=, quien=)`
+  es el único que mueve plata; `POST /web/cancelar {ref, medio}` (modal con
+  radios saldo/original, `data-opciones`) y `POST
+  /anfitrion/reserva/{id}/cancelar` (botón "↩ Cancelar y devolver al
+  jugador" en el calendario web; costo de pasarela → `ajuste_cancelacion`
+  del dueño). `/legal/devoluciones` reescrito. MES A MES AGRUPADO:
+  `procesar_renovaciones_alumnos` cobra en UN cargo las vencidas de la misma
+  `(email, card_id)` con una cotización (`partes`) y reparte el cargo
+  (`cargo_servicio.repartir`) en cada `matricula_online` (`chr_` real en la
+  1.ª, `chr_#k` en las demás, `cargo_id` en todas); rechazo → grupo entero
+  `pendiente_pago`. Yape por defecto en PE (`pago_tarjeta_sheet`). Tests
+  `test_politica_de_devoluciones_con_cargo_por_servicio`,
+  `test_mes_a_mes_agrupado_por_familia`. **CANCELAR DESDE EL APP con la
+  misma política (27-sep-2026):** `GET /pagos/reserva/cancelacion/{ref}` +
+  `POST /pagos/reserva/cancelar {ref, email, medio}` (X-App-Key) reusan el
+  motor web; `_cargo_app` halla el `chr_` de un pago hecho EN EL APP desde la
+  liquidación (`cargo_id` / inferencia) → reembolso Culqi directo, sin él
+  `manual`; APK `mis_reservas_screen._cancelarPagadaEnLinea` + hoja
+  `_HojaCancelarOnline`, `AppState.cancelarReserva(r, enNube: false)`. Test
+  `test_cancelacion_desde_el_app_con_la_misma_politica`. Falta solo la fase 5
+  (encender en QAS y, con "pasa a PRD", en producción).
 
 - **Community Manager AUTÓNOMO (servicio estrella, ingreso recurrente):** la
   visión del director NO es "generar posts para que el dueño publique a mano"
