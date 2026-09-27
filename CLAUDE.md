@@ -412,6 +412,13 @@ para la API del APK.
   firmada que Google (`nombre` "Cuenta de revisión"), así el revisor
   reserva/paga/ve el comprobante como un cliente. Vacía → la opción no
   existe. Test `test_acceso_de_revision_con_usuario_y_clave_para_culqi`.
+  **RETIRADO el 27-sep-2026 (director: "ya no necesito acceso revisor,
+  Culqi ya me dio las llaves live"):** `WEB_USUARIOS_PRUEBA` quedó VACÍA en
+  Railway QAS y PRD (la de PRD era referencia a QAS); el código sigue por si
+  Culqi/INDECOPI vuelven a pedir un usuario de prueba: basta volver a poner
+  la variable, sin publicar código. OJO: `yoshi28012007@gmail.com` es la
+  cuenta PERSONAL del director para OPERAR la torre (`ADMIN_PANEL_USUARIOS`,
+  con 2 pasos enrolados en PRD): NO es la cuenta de revisión, no quitarla.
 - **Paleta = la del LOGO oficial (sep-2026):** `ui.py` TOKENS: verde
   `#0B8A3E` (CTA), verde oscuro `#067A38`, lima `#7CB518`, naranja `#F28C28`
   (corazón de favorito), azul noche `#0A1B3D` (texto), fondo blanco `#FFFFFF`. El
@@ -1117,9 +1124,51 @@ para la API del APK.
   `/liquidaciones/pendientes` suma `total_pasarela_soles`,
   `total_margen_soles`, `tarifas`). Es una ESTIMACIÓN contable con la tarifa
   contratada, no mueve plata: el número exacto está en el panel de Culqi.
-  Con S/ 15: pasarela ≈ S/ 0.96, comisión S/ 2, margen ≈ S/ 1.04 → en
-  reservas chicas el mínimo de S/ 2 apenas cubre a Culqi (sugerido: subir el
-  mínimo o cargo por servicio al jugador). Test `tests/test_tarifas_pasarela.py`.
+  **COMISIÓN REAL SINCERADA CON CULQI (27-sep-2026, el director mostró el
+  panel de Culqi del cobro de S/ 15: comisión emisor 0.38 + comisión Culqi
+  0.83 = 1.21 antes de IGV, abono 13.79; "sincerar los montos y comisiones
+  que ganará PCG"):** la estimación se quedaba corta (0.96). Ahora (1) la
+  tarifa de referencia de TARJETA es lo observado: 6.05 % + S/ 0.30 + IGV
+  (Culqi lo desglosa en "emisor", que varía por tarjeta, + "Culqi"; se
+  modela como un solo %); Yape sigue en 3.44 % hasta observar un cobro; (2)
+  **la torre lee de la API de Culqi la comisión REAL de cada cargo**:
+  `culqi.comision_real(charge_id)` toma `net_amount`/`total_fee` del objeto
+  cargo (Culqi los completa ~12 h después del pago; prefiere `monto −
+  net_amount`, que incluye IGV) y `tarifas_pasarela.sincerar()` la guarda en
+  `PagoRegistro.pasarela_centimos` (+ `pasarela_en`) de la fila del CARGO
+  (`culqi_charge_id` = `chr_…`: tipos `reserva|academia|cobro` de
+  `/pagos/cobrar`, `cobro_web`, `venta_producto`, `matricula_online` web…);
+  corre en el cron horario de `main.py` (`asyncio.to_thread`, reintento por
+  cargo cada 4 h, últimos 15 días, máx. 40 consultas) y con el botón "🔄
+  Sincerar con Culqi ahora" (`POST /pagos/tarifas-pasarela/sincerar`). (3)
+  **Enlace cargo ↔ liquidación:** `PagoRegistro.cargo_id` (nuevo) se llena
+  con `charge_id` en `LiquidacionOnlineReq`, `MatriculaReq` y
+  `VentaProductoReq` (la web lo manda; el APK desde este build:
+  `PagoTarjeta.cobrar(onOperacion:)` → `agregarReservasJugadorMulti(
+  operacionId:)` → acción contable `charge_id` → `liquidacionOnline(
+  chargeId:)`; `registrarMatricula(chargeId:)` en la ficha de academia y en
+  Mi familia; las ventas ya usan el `chr_` como `venta_id`). Para filas
+  viejas/APKs viejos `tarifas_pasarela.cargo_de(p)` INFIERE el cargo (único
+  `chr_` del mismo monto y moneda a ±20 min, no ligado a otra fila) y guarda
+  el enlace. `costo_para(p)` → (céntimos, `real|estimado|saldo`);
+  `_liquidacion_dict` trae `pasarela_fuente` y la torre pinta "✓ real" /
+  "est." / "saldo" en cada fila. (4) `observado()` = por medio (tarjeta/
+  Yape): n, bruto, lo que Culqi se quedó, % efectivo y `pct_sugerido` (el %
+  que calza con el fijo e IGV configurados); tarjeta "📊 Lo que Culqi cobró
+  de verdad" en el pane con "Usar en la tarifa" (`usarObservada`). Los
+  campos viajan en el snapshot. **Pendiente de verificar con el primer cobro
+  live:** que `total_fee`/`net_amount` vengan en la respuesta de Culqi (la
+  documentación no era accesible desde el entorno de desarrollo); cada
+  lectura deja `[tarifa] chr_… Culqi cobró X de Y (neto Z) detalle=…` en los
+  logs de Railway. Con S/ 15: estimado S/ 1.42, comisión S/ 2, margen ≈ S/
+  0.58 → en reservas chicas el mínimo de S/ 2 apenas cubre a Culqi
+  (sugerido: subir el mínimo o cargo por servicio al jugador). **OJO
+  defaults:** `stores.config` nace de `CONFIG_DEFAULT` (`db/store.py`) y
+  PISA a `tarifas_pasarela.DEFAULTS` en los snapshots reales → al cambiar
+  una tarifa por defecto hay que tocar AMBOS (el test lo exige). El APK
+  también lo manda desde la reserva de una sola hora (`cancha_detalle` →
+  `agregarReservaJugador(operacionId:)`). Test
+  `tests/test_tarifas_pasarela.py`.
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
   VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
   Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el
@@ -1484,7 +1533,8 @@ off → redeploy inmediato en cada push). URL pública:
     `entorno=prod`). Variables en `pg-backend-prd`: `WEB_USUARIOS_PRUEBA`
     como REFERENCIA a QAS (`${{pg-backend.WEB_USUARIOS_PRUEBA}}`; retirarla
     cuando Culqi termine la revisión), `LANDING_BASE_URL` y
-    `PUBLIC_BASE_URL` reescritas limpias a `https://www.pichangol.app`.
+    `PUBLIC_BASE_URL` reescritas limpias a `https://www.pichangol.app`
+    (`WEB_USUARIOS_PRUEBA` se vació en ambos ambientes el 27-sep-2026).
     OJO: un APK anterior a este pase pierde `fase/grupo` al guardar un
     campeonato de grupos → actualizar el APK antes de usar ese formato.
     **Pase del 26-sep-2026 (autorizado: "Pasa a PRD"):** `prd` = merge
@@ -1514,6 +1564,12 @@ off → redeploy inmediato en cada push). URL pública:
     Liquidaciones → Liquidar por lote). CAMBIÓ `lib/` → APK/AAB de PRD por
     `workflow_dispatch` (`ref=prd`, `entorno=prod`). OJO: un APK anterior no
     tiene el carrito ni la tarjeta "Cuenta de cobro" → actualizar.
+    **Pase del 26-sep-2026 (4.º, autorizado: "Pasa a PRD"):** `prd` = merge
+    `f243640` (tarifa de la pasarela configurable en la torre + margen real
+    por cobro en Liquidaciones). Solo backend/torre: sin SQL, sin Edge, sin
+    APK, sin variables. Pendiente del director en la torre de PRD: poner la
+    tarifa contratada real de Culqi (tarjeta y Yape) en Cobros → Tarifas de
+    pasarela; hasta entonces usa la publicada de referencia.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,

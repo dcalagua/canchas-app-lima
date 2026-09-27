@@ -640,6 +640,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       }
       aseguradas = tomadas;
     }
+    // N.º de operación del cargo (chr_ de Culqi): viaja con la liquidación
+    // para que la torre lea la comisión REAL de la pasarela.
+    var operacion = '';
     if (metodo == 'online') {
       // Pago con tarjeta/Yape (Culqi/Libélula). Si cancela o falla, se libera
       // el horario asegurado y no se reserva.
@@ -650,6 +653,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
             '${canjea ? ' (−S/3 puntos)' : ''}',
         email: appState.usuario?.email ?? '',
         moneda: mon,
+        onOperacion: (o) => operacion = o,
       );
       if (!pagado) {
         await appState.liberarBloqueAsegurado(aseguradas!);
@@ -670,6 +674,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         concepto: 'Seña · ${_cancha.nombre} · $_dia $etiqueta',
         email: appState.usuario?.email ?? '',
         moneda: mon,
+        onOperacion: (o) => operacion = o,
       );
       if (!pagado) {
         await appState.liberarBloqueAsegurado(aseguradas!);
@@ -691,6 +696,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         _cancha, _fechaIso, _dia, slots,
         deporte: _deporteEfectivo, extras: extras,
         cobro: metodo == 'cancha' ? 'efectivo' : metodo,
+        operacionId: operacion,
         medioPago: esSena
             ? 'sena'
             : pagoOnline

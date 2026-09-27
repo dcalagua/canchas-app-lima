@@ -204,4 +204,48 @@ def obtener_cargo(charge_id: str) -> dict:
         "monto_centimos": int(data.get("amount") or 0),
         "metadata": data.get("metadata") or {},
         "raw": data,
+        **_fees_de(data),
     }
+
+
+def _entero(v) -> int:
+    try:
+        return int(round(float(v or 0)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _fees_de(data: dict) -> dict:
+    """Lo que Culqi informa de SU comisión en el objeto del cargo: `total_fee`
+    (comisión, en céntimos), `net_amount` (lo que abona) y `fee_details`.
+    Culqi los completa DESPUÉS de crear el cargo (su panel avisa "el cálculo
+    real de las comisiones y el IGV se mostrará en ~12 h"), por eso se
+    re-consulta más tarde (`comision_real`)."""
+    fd = data.get("fee_details") if isinstance(data.get("fee_details"), dict) else {}
+    return {"total_fee_centimos": _entero(data.get("total_fee")),
+            "net_amount_centimos": _entero(data.get("net_amount")),
+            "fee_details": fd}
+
+
+def comision_real(charge_id: str) -> dict:
+    """Comisión REAL de la pasarela por un cargo, tomada de Culqi (no
+    estimada). Devuelve {ok, conocida, pasarela_centimos, neto_centimos,
+    monto_centimos, detalle}. `conocida=False` = Culqi aún no la calculó
+    (reintentar más tarde). Preferimos `monto − net_amount` (incluye IGV y
+    redondeos de Culqi: es lo que de verdad falta en el abono); si solo
+    viene `total_fee`, se usa ese."""
+    info = obtener_cargo(charge_id)
+    if not info.get("ok"):
+        return {"ok": False, "error": info.get("error"), "conocida": False}
+    monto = int(info.get("monto_centimos") or 0)
+    neto = int(info.get("net_amount_centimos") or 0)
+    fee = int(info.get("total_fee_centimos") or 0)
+    if monto > 0 and 0 < neto < monto:
+        pas = monto - neto
+    elif fee > 0:
+        pas = fee
+    else:
+        return {"ok": True, "conocida": False, "monto_centimos": monto, "pasarela_centimos": 0, "neto_centimos": 0,
+                "detalle": info.get("fee_details") or {}}
+    return {"ok": True, "conocida": True, "monto_centimos": monto, "pasarela_centimos": pas, "neto_centimos": monto - pas,
+            "detalle": info.get("fee_details") or {}}

@@ -4752,6 +4752,7 @@ async function cargarTarifas(){
         <button class="btn-ap" onclick="guardarTarifas()">Guardar tarifas</button>
         <span id="tp_msg" style="font-size:12.5px;color:#667"></span>
       </div>
+      ${observadoHtml(j.observado)}
       <div class="card">
         <div style="font-weight:800;font-size:15px;margin-bottom:6px">🧮 Simulador de un cobro</div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:10px">
@@ -4767,6 +4768,47 @@ async function cargarTarifas(){
         <div id="sim_out">${simHtml(j.simulacion)}</div>
       </div>`;
   }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
+}
+// Lo que Culqi cobró DE VERDAD (leído de la API por cargo, ~12 h después del
+// pago): por medio, con el % que habría que poner en la tarifa para calzar.
+let tarifasObs = null;
+function observadoHtml(ob){
+  tarifasObs = ob || {medios:{}};
+  const S = n => 'S/ ' + (Math.round(n*100)/100).toFixed(2);
+  const m = tarifasObs.medios || {};
+  const filas = Object.entries(m).map(([k,v])=>`
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:8px 0;border-top:1px solid var(--border)">
+      <b style="min-width:64px">${k==='yape'?'Yape':'Tarjeta'}</b>
+      <span style="color:#667;font-size:13px">${v.n} ${v.n===1?'cobro':'cobros'} · bruto ${S(v.bruto_soles)} · Culqi se quedó ${S(v.pasarela_soles)} (${v.efectivo_pct}% efectivo)</span>
+      <span class="liq-tag ok">sugerido ${v.pct_sugerido}% + fijo</span>
+      <button class="btn-rc" onclick="usarObservada('${k}', ${v.pct_sugerido})">Usar en la tarifa</button>
+    </div>`).join('');
+  const cuando = tarifasObs.sincerado_en ? ('Última lectura: ' + fmtFecha(tarifasObs.sincerado_en)) : 'Aún no se ha leído ningún cobro.';
+  return `<div class="card" style="margin-bottom:14px">
+    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
+      <div style="font-weight:800;font-size:15px">📊 Lo que Culqi cobró de verdad</div>
+      <button class="btn-rc" id="tp_sinc" onclick="sincerarTarifas()">🔄 Sincerar con Culqi ahora</button>
+    </div>
+    <div style="color:#667;font-size:12.5px;margin:4px 0 6px">La torre lee de la API de Culqi la comisión real de cada cobro (Culqi la publica unas 12 h después del pago) y la usa en Liquidaciones en vez de la estimación. Cada hora se revisa solo; con este botón lo haces ahora. ${cuando}</div>
+    ${filas || '<div style="color:#889;font-size:13px">Todavía no hay cobros con comisión real leída. Los cobros de las últimas horas aparecen cuando Culqi termina de calcularla.</div>'}
+    <div id="tp_sinc_msg" style="font-size:12.5px;color:#667;margin-top:6px"></div>
+  </div>`;
+}
+async function sincerarTarifas(){
+  const b = document.getElementById('tp_sinc'); if(b){ b.disabled = true; b.textContent = 'Leyendo Culqi…'; }
+  try{
+    const r = await fetch('/pagos/tarifas-pasarela/sincerar',{method:'POST',headers:headers()});
+    if(!r.ok){ toast('No se pudo leer Culqi.'); return; }
+    const j = await r.json(), x = j.resultado||{};
+    toast(x.disponible === false ? 'Culqi no está configurado en este ambiente.' : `Culqi: ${x.consultados||0} consultados · ${x.actualizados||0} con comisión real · ${x.pendientes||0} aún sin calcular`);
+    cargarTarifas();
+  }finally{ if(b){ b.disabled = false; b.textContent = '🔄 Sincerar con Culqi ahora'; } }
+}
+function usarObservada(medio, pct){
+  const el = document.getElementById('tp_culqi_' + medio + '_pct'); if(!el) return;
+  el.value = pct; el.focus();
+  const msg = document.getElementById('tp_msg'); if(msg) msg.textContent = 'Tarifa de ' + (medio==='yape'?'Yape':'tarjeta') + ' puesta en ' + pct + '% (lo observado). Pulsa "Guardar tarifas".';
+  el.scrollIntoView({behavior:'smooth', block:'center'});
 }
 function simHtml(x){
   const S = n => x.simbolo + ' ' + (Math.round(n*100)/100).toFixed(2);
@@ -4962,7 +5004,7 @@ async function cargarLiquidaciones(){
           </div>
           <div class="liq-der">
             <div class="liq-monto" title="Bruto ${S(p.bruto_soles||0)} − comisión Pichangol ${S(p.comision_soles||0)} · pasarela ${S(p.pasarela_soles||0)}${p.medio?' ('+esc(p.medio)+')':''} · margen ${S(p.margen_soles||0)}">${S(p.neto_soles||0)}</div>
-            <div class="liq-det" style="font-size:11.5px">pasarela −${S(p.pasarela_soles||0)} · margen <b style="color:${(p.margen_soles||0)<0?'#B3261E':'#0B7A55'}">${S(p.margen_soles||0)}</b></div>
+            <div class="liq-det" style="font-size:11.5px">pasarela −${S(p.pasarela_soles||0)} <span title="${p.pasarela_fuente==='real'?'Comisión real leída de Culqi':(p.pasarela_fuente==='saldo'?'Pagado con saldo: la pasarela se pagó al recargar':'Estimada con la tarifa configurada; Culqi la publica ~12 h después')}" style="color:${p.pasarela_fuente==='real'?'#0B7A55':'#98A2B3'}">${p.pasarela_fuente==='real'?'✓ real':(p.pasarela_fuente==='saldo'?'saldo':'est.')}</span> · margen <b style="color:${(p.margen_soles||0)<0?'#B3261E':'#0B7A55'}">${S(p.margen_soles||0)}</b></div>
             <button class="liq-btn" onclick="pagarLiquidacion('${esc(p.reserva_id)}','${S(p.neto_soles||0)}')">Marcar pagado</button>
           </div>
         </div>`).join('');

@@ -138,6 +138,7 @@ class MisClasesScreen extends StatelessWidget {
         montoSoles: sub,
         matriculaId: 'cuo_${ac.id}_$marca',
         pais: ac.pais.iso,
+        chargeId: operacionId ?? '',
         concepto: 'Cuotas ${ac.nombre} · pago familiar',
       );
     }
@@ -278,6 +279,7 @@ class MisClasesScreen extends StatelessWidget {
       montoSoles: total,
       matriculaId: 'cuo_${ac.id}_${DateTime.now().microsecondsSinceEpoch}',
       pais: ac.pais.iso,
+      chargeId: operacionId ?? '',
       concepto:
           cuotas.length == 1 ? cuotas.first.concepto : 'Cuotas ${ac.nombre}',
     );

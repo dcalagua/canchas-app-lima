@@ -2081,7 +2081,7 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
             post_liquidacion_online(LiquidacionOnlineReq(
                 dueno_id=dueno, monto_soles=float(total), reserva_id=filas[0]["id"],
                 concepto=f"Reserva web · {c.get('nombre', '')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}",
-                medio=medio, moneda=iso))
+                medio=medio, moneda=iso, charge_id=str(cargo.get("charge_id") or "")))
             rango = f"{filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"
             _aviso_push_usuario(
                 dueno, "Nueva reserva 📅",

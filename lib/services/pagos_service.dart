@@ -409,6 +409,9 @@ class PagosService {
     String? concepto,
     String medio = '', // yape | tarjeta | sena (estado de cuenta del dueño)
     String moneda = '', // ISO/símbolo de la cancha; vacío = PEN en el backend
+    // Cargo de Culqi (chr_) con el que pagó el jugador: la torre lee de ahí la
+    // comisión REAL de la pasarela (sincerada, 27-sep-2026).
+    String chargeId = '',
   }) async {
     if (!disponible || duenoId.isEmpty) return null;
     try {
@@ -423,6 +426,7 @@ class PagosService {
               if (concepto != null) 'concepto': concepto,
               if (medio.isNotEmpty) 'medio': medio,
               if (moneda.isNotEmpty) 'moneda': moneda,
+              if (chargeId.isNotEmpty) 'charge_id': chargeId,
             }),
           )
           .timeout(const Duration(seconds: 15));
@@ -1115,6 +1119,7 @@ class PagosService {
     required String matriculaId,
     required String pais,
     String? concepto,
+    String chargeId = '', // cargo de Culqi del pago (comisión real de la pasarela)
   }) async {
     if (!disponible) return null;
     try {
@@ -1128,6 +1133,7 @@ class PagosService {
                 'matricula_id': matriculaId,
                 'pais': pais,
                 if (concepto != null) 'concepto': concepto,
+                if (chargeId.isNotEmpty) 'charge_id': chargeId,
               }))
           .timeout(const Duration(seconds: 15));
       if (r.statusCode != 200) return null;
