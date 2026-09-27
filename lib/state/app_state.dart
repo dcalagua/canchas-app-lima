@@ -7636,6 +7636,9 @@ class AppState extends ChangeNotifier {
       bool notificarDueno = true,
       // El multi-hora avisa UNA vez por el bloque completo (abajo), no por hora.
       bool avisarJugador = true,
+      // N.º de operación (cargo chr_ de Culqi) del pago online/seña: viaja con
+      // la liquidación para que la torre lea la comisión REAL de la pasarela.
+      String operacionId = '',
       // Slot YA ASEGURADO en Supabase ANTES de cobrar (flujo online/seña):
       // se reusa su id y NO se re-inserta; solo se estampan pago y detalles.
       Reserva? asegurada}) async {
@@ -7909,6 +7912,7 @@ class AppState extends ChangeNotifier {
         notificarDueno: false,
         // El aviso al JUGADOR también va una sola vez por el bloque (abajo).
         avisarJugador: false,
+        operacionId: operacionId,
         asegurada: (aseguradas ?? const [])
             .cast<Reserva?>()
             .firstWhere((r) => r!.horaInicio == h, orElse: () => null),

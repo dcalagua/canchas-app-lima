@@ -18,6 +18,11 @@ def _cli(monkeypatch):
 
 
 def test_costo_de_culqi_y_margen_sobre_una_reserva_de_15(monkeypatch):
+    # En un snapshot REAL `stores.config` nace de CONFIG_DEFAULT (store.py) y pisa a
+    # tarifas_pasarela.DEFAULTS: ambos deben decir lo mismo o la observada no aplica.
+    from db.store import CONFIG_DEFAULT
+    for k, v in tp.DEFAULTS.items():
+        assert CONFIG_DEFAULT.get(k) == v, f"CONFIG_DEFAULT[{k}]={CONFIG_DEFAULT.get(k)!r} ≠ DEFAULTS {v!r}"
     for k in list(stores.config):
         if k.startswith("tarifa_"):
             del stores.config[k]

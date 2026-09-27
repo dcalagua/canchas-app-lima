@@ -36,7 +36,10 @@ CONFIG_DEFAULT: dict[str, str] = {
     # Pichangol por cobro): porcentaje + fijo + impuesto sobre la tarifa,
     # editable en la torre → Cobros → "Tarifas de pasarela"; con esto la torre
     # muestra el MARGEN real (comisión − pasarela). Ver pagos/tarifas_pasarela.py.
-    "tarifa_culqi_tarjeta_pct": "3.44", "tarifa_culqi_tarjeta_fijo": "0.30",
+    # Tarjeta = tarifa OBSERVADA en el primer cobro live (26-sep-2026: 6.05 % +
+    # S/ 0.30 + IGV); Yape sigue con la publicada. DEBEN coincidir con
+    # pagos/tarifas_pasarela.DEFAULTS (este dict pisa a aquel en snapshots reales).
+    "tarifa_culqi_tarjeta_pct": "6.05", "tarifa_culqi_tarjeta_fijo": "0.30",
     "tarifa_culqi_yape_pct": "3.44", "tarifa_culqi_yape_fijo": "0.30",
     "tarifa_culqi_impuesto_pct": "18",
     "tarifa_payphone_tarjeta_pct": "0", "tarifa_payphone_tarjeta_fijo": "0", "tarifa_payphone_impuesto_pct": "0",

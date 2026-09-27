@@ -171,6 +171,9 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     // Con seña → cobra la seña; sin saldo del dueño → el jugador paga TODO online
     // ANTES de reservar (ahí queda la comisión de PCG). Si cancela o falla el
     // pago, se libera el horario asegurado y no se reserva.
+    // N.º de operación del cargo (chr_ de Culqi): viaja con la liquidación para
+    // que la torre lea la comisión REAL de la pasarela de ese cobro.
+    var operacion = '';
     if (exigeSena) {
       final pagado = await PagoTarjeta.cobrar(
         context,
@@ -178,6 +181,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
         concepto: 'Seña · ${cancha.nombre} · $_dia $hora',
         email: appState.usuario?.email ?? '',
         moneda: cancha.monedaSimbolo,
+        onOperacion: (o) => operacion = o,
       );
       if (!pagado) {
         await appState.liberarBloqueAsegurado([asegurada!]);
@@ -197,6 +201,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
         concepto: 'Reserva · ${cancha.nombre} · $_dia $hora',
         email: appState.usuario?.email ?? '',
         moneda: cancha.monedaSimbolo,
+        onOperacion: (o) => operacion = o,
       );
       if (!pagado) {
         await appState.liberarBloqueAsegurado([asegurada!]);
@@ -227,6 +232,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
         cobro: exigeSena ? 'sena' : (efectivo ? 'efectivo' : 'online'),
         medioPago: medioPago,
         sena: exigeSena ? senaMonto : 0,
+        operacionId: operacion,
         asegurada: asegurada);
     if (!mounted) return;
 
