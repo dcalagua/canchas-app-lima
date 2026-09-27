@@ -2504,20 +2504,37 @@ def post_cotizar(req: CotizarReq) -> dict:
     """APK y web piden la cotización del CARGO POR SERVICIO para pintar el
     checkout (línea, total, desglose ⓘ, ahorro por pagar junto). El backend
     la recalcula al registrar la contabilidad: aquí solo se muestra."""
-    iso = moneda_iso(req.moneda)
-    base = max(int(req.base_centimos or 0), 0)
-    if req.comision_centimos is not None:
-        com = max(int(req.comision_centimos), 0)
-    elif req.linea == "academias":
-        com = int(round(base * _comision_matricula_pct(_pais_de_moneda(iso)) / 100.0))
-    else:
-        com = comision_centimos(base / 100.0, iso) if base > 0 else 0
-    cot = _cs.cotizar(linea=req.linea, moneda=iso, base_centimos=base, medio=(req.medio or None),
-                      deporte=req.deporte, comision_centimos=com, partes=[int(x) for x in req.partes or []])
+    cot = cotizacion_para(req.linea, req.moneda, req.base_centimos, medio=req.medio, deporte=req.deporte,
+                          partes=req.partes, comision_centimos=req.comision_centimos)
+    return {"ok": True, **cot.dict()}
+
+
+def comision_de_linea(linea: str, base_centimos: int, iso: str) -> int:
+    """Comisión de quien RECIBE según la línea: reservas/torneos/marketplace =
+    `comision_centimos` (5 % con mínimo por moneda); academias = % de matrícula
+    del país. Es la que entra a la red de seguridad del cargo."""
+    base = max(int(base_centimos or 0), 0)
+    if base <= 0:
+        return 0
+    if linea == "academias":
+        return int(round(base * _comision_matricula_pct(_pais_de_moneda(iso)) / 100.0))
+    return comision_centimos(base / 100.0, iso)
+
+
+def cotizacion_para(linea: str, moneda: str, base_centimos: int, *, medio: str | None = None, deporte: str = "",
+                    partes: list | None = None, comision_centimos: int | None = None) -> "_cs.Cotizacion":
+    """Cotización del CARGO POR SERVICIO para una línea (la misma que usa el
+    APK vía `/pagos/cotizar` y la web vía `/web/cotizar` y al COBRAR). La
+    comisión del receptor se calcula aquí salvo que venga dada."""
+    iso = moneda_iso(moneda)
+    base = max(int(base_centimos or 0), 0)
+    com = max(int(comision_centimos), 0) if comision_centimos is not None else comision_de_linea(linea, base, iso)
+    cot = _cs.cotizar(linea=linea, moneda=iso, base_centimos=base, medio=(medio or None), deporte=deporte or "",
+                      comision_centimos=com, partes=[int(x) for x in (partes or []) if str(x).strip()])
     if cot.ajuste_seguridad_centimos:
         print(f"[cargo] {cot.linea} base={base} cargo={cot.cargo_centimos} ajuste={cot.ajuste_seguridad_centimos} "
-              f"medio={req.medio or '-'} moneda={iso}", flush=True)
-    return {"ok": True, **cot.dict()}
+              f"medio={medio or '-'} moneda={iso}", flush=True)
+    return cot
 
 
 def _pais_de_moneda(iso: str) -> str:

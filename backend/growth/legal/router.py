@@ -363,6 +363,11 @@ def terminos() -> str:
       <li>Desde la web puedes <b>reservar canchas</b> y <b>matricularte en academias</b>
       con tu cuenta de Google. El <b>precio</b>, la moneda, los extras y el total se
       muestran antes de confirmar; no hay cargos ocultos.</li>
+      <li>Cuando está habilitado, el total incluye un <b>Cargo por servicio Pichangol</b>
+      que se muestra como línea aparte antes de pagar, con su regla de cálculo y el
+      detalle (ⓘ) de lo que cubre: pago protegido, reserva o matrícula gestionada en
+      línea y beneficios de la plataforma. El precio de la cancha o de la academia se
+      muestra sin ese cargo y es lo que recibe el anfitrión, menos su comisión.</li>
       <li>El pago en línea se procesa con <b>Culqi</b> (tarjetas Visa/Mastercard y
       Yape) en un formulario seguro (HTTPS). Pichangol no almacena los datos de tu
       tarjeta.</li>

@@ -649,7 +649,7 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
     def fila_liq(x: dict) -> str:
         return (f"<div class='mov'><div><b>{e(x['concepto'])}</b><small>{e(x['creado_en'][:10])}{(' · pagada ' + e(x['liquidado_en'][:10])) if x.get('liquidado') else ''}"
                 f"{(' · ' + e(x['medio'])) if x.get('medio') else ''}</small></div>"
-                f"<div style='text-align:right'><b>{e(sim)} {x['neto_soles']:.2f}</b><small>bruto {x['bruto_soles']:.2f} · comisión {x['comision_soles']:.2f}</small></div></div>")
+                f"<div style='text-align:right'><b>{e(sim)} {x['neto_soles']:.2f}</b><small>bruto {x['bruto_soles']:.2f} · comisión {x['comision_soles']:.2f}{(' · cargo por servicio del jugador ' + format(x.get('cargo_servicio_soles') or 0, '.2f')) if x.get('cargo_servicio_soles') else ''}</small></div></div>")
     def fila_mov(p) -> str:
         signo = "+" if p.tipo in ("recarga", "bono_recarga", "bono_bienvenida", "cupon") else ("−" if p.tipo in ("comision_reserva", "comision_efectivo", "pro", "suscripcion") else "")
         return (f"<div class='mov'><div><b>{e(p.concepto or p.tipo)}</b><small>{e(p.tipo)} · {e(p.creado_en.isoformat()[:10])} · {e(p.estado)}</small></div>"
@@ -663,6 +663,7 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
         + "</div>"
         f"<p style='margin-top:14px'><a class='btn sec' href='{PLAY_URL}' rel='noopener' style='padding:10px 16px;font-size:14px'>Recargar saldo en la app</a></p>"
         + _tarjeta_cuenta_cobro(cuenta, res_cta, pais_iso, ses, por_recibir > 0)
+        + ui.tarjeta_comision('reservas', sim, {'PE': 'PEN', 'EC': 'USD', 'BO': 'BOB'}.get(pais_iso, 'PEN'))
         + "<h2 style='margin-top:28px'>Por recibir</h2>"
         + ("".join(fila_liq(x) for x in pend) if pend else "<div class='anf-vacio'>Nada pendiente. Cuando un jugador pague en línea, el neto aparece aquí.</div>")
         + "<h2 style='margin-top:28px'>Liquidaciones pagadas</h2>"

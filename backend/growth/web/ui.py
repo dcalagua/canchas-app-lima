@@ -697,6 +697,49 @@ def wordmark(tam: int = 22, href: str = "/") -> str:
             "<img src='/static/brand/logo_pin.png' alt=''><span>Pichangol</span></a>")
 
 
+def tarjeta_comision(linea: str, simbolo: str = "S/", iso: str = "PEN") -> str:
+    """Tarjeta para el ANFITRIÓN (Ingresos, Mi academia): qué incluye la
+    comisión de Pichangol, con los textos configurables de la torre
+    (`cargo_servicio.textos()["comision"]`). Es informativa: no cambia
+    montos. Ligada al cargo por servicio del cliente solo en el texto."""
+    from pagos import cargo_servicio as _cs
+    import config as _cfg
+    comps = (_cs.textos().get("comision") or {}).get(linea) or []
+    if not comps:
+        return ""
+    if linea == "academias":
+        try:
+            from pagos.router import _comision_matricula_pct, _pais_de_moneda
+            pct = _comision_matricula_pct(_pais_de_moneda(iso))
+        except Exception:  # noqa: BLE001
+            pct = _cfg.COMISION_PORC
+        regla = f"{pct:g} % de cada matrícula pagada en línea"
+    else:
+        regla = f"{_cfg.COMISION_PORC:g} % de cada reserva pagada en línea, mínimo {simbolo} {_cfg.comision_min(iso):.2f}"
+    filas = "".join(
+        f"<div class='com-fila'><b>{e(c.get('nombre'))}</b><span>{e(c.get('detalle'))}</span></div>" for c in comps)
+    return (f"<div class='panel com-card' style='margin-top:18px'><h3 style='margin:0 0 4px'>Tu comisión Pichangol incluye</h3>"
+            f"<div class='sub' style='font-size:13px'>{e(regla)}. El jugador o alumno paga aparte el cargo por servicio de la "
+            f"plataforma; a ti te llega el precio completo menos esta comisión.</div>"
+            f"<div class='com-lista'>{filas}</div></div>"
+            "<style>.com-lista{display:grid;gap:10px;margin-top:12px}.com-fila{display:grid;gap:2px;padding:10px 12px;border:1px solid var(--trazo);border-radius:12px}"
+            ".com-fila span{color:var(--tenue);font-size:13px}@media(min-width:760px){.com-lista{grid-template-columns:repeat(3,minmax(0,1fr))}}</style>")
+
+
+def desglose_cargo_html(desglose: list, simbolo: str, regla: str = "") -> str:
+    """Detalle del cargo por servicio (comprobantes y ⓘ): una fila por
+    componente con su parte del monto."""
+    filas = "".join(
+        f"<div class='cg-fila'><div><b>{e(x.get('nombre'))}</b><div class='sub' style='font-size:12.5px'>{e(x.get('detalle'))}</div></div>"
+        f"<span>{e(simbolo)} {int(x.get('monto_centimos') or 0) / 100.0:.2f}</span></div>" for x in (desglose or []) if isinstance(x, dict))
+    if not filas:
+        return ""
+    return (f"<div class='cg-desglose'>{filas}"
+            + (f"<div class='sub' style='font-size:12px;margin-top:6px'>Regla: {e(regla)}.</div>" if regla else "") + "</div>"
+            "<style>.cg-desglose{display:grid;gap:8px;text-align:left}.cg-fila{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--trazo)}"
+            ".cg-fila>span{white-space:nowrap;font-weight:700}</style>")
+
+
 def marcas_pago() -> str:
     return ("<div class='marcas'><span class='yape'>Yape</span><span class='visa'>VISA</span>"
             "<span class='mc'><i></i><i></i></span>"
@@ -908,7 +951,7 @@ JS_NAV = r"""
     d.innerHTML = "<div class='caja'><div class='ico' id='pcgDlgIco'></div><h3 id='pcgDlgTit'></h3><p id='pcgDlgMsg'></p><button type='button' class='btn' id='pcgDlgOk'></button><button type='button' class='txt' id='pcgDlgNo'></button></div>";
     document.body.appendChild(d); return d; }
   function abrirDlg(o, conCancelar){ return new Promise(function(res){ var d = dlg(), ok = d.querySelector('#pcgDlgOk'), no = d.querySelector('#pcgDlgNo'), ico = d.querySelector('#pcgDlgIco');
-    d.querySelector('#pcgDlgTit').textContent = o.titulo || (conCancelar ? '¿Seguro?' : 'Aviso'); d.querySelector('#pcgDlgMsg').textContent = o.mensaje || '';
+    d.querySelector('#pcgDlgTit').textContent = o.titulo || (conCancelar ? '¿Seguro?' : 'Aviso'); var msgEl = d.querySelector('#pcgDlgMsg'); if(o.html){ msgEl.innerHTML = o.html; } else { msgEl.textContent = o.mensaje || ''; }
     ico.textContent = o.icono || (o.destructivo ? '🗑' : (conCancelar ? '❓' : 'ℹ️')); ico.classList.toggle('mal', !!o.destructivo);
     ok.textContent = o.confirmar || (conCancelar ? 'Sí, continuar' : 'Entendido'); ok.classList.toggle('mal', !!o.destructivo); no.textContent = o.cancelar || 'Cancelar'; no.style.display = conCancelar ? '' : 'none';
     function fin(v){ d.classList.remove('open'); ok.onclick = no.onclick = d.onclick = null; document.removeEventListener('keydown', esc); res(v); }

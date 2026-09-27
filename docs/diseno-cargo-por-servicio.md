@@ -315,4 +315,39 @@ contempla (`cargo_activo_marketplace|torneos`) para encenderlos después.
   "🧾 Cargo por servicio" (flags por línea, regla por moneda, textos del
   desglose por línea y deporte, simulador, KPI "sin cargo"), tests
   `tests/test_cargo_servicio.py`.
-- Fases 2 a 5: pendientes.
+- **Fase 2 (web) HECHA el 27-sep-2026, apagada por flag:** `GET
+  /web/cotizar?linea&moneda&base&deporte&partes` (público, céntimos; espejo
+  de `/pagos/cotizar`; comparte `pagos.router.cotizacion_para` /
+  `comision_de_linea`, que también usa el APK). **Reserva**
+  (`web/router.py`): `_cotizacion_reserva` = la MISMA cotización al asegurar y
+  al cobrar (tarifa de tarjeta como peor caso en la red de seguridad, así lo
+  mostrado nunca es menor que lo cobrado); `/web/asegurar` devuelve
+  `total_centimos` = precio + cargo, `cargo_centimos` y `cargo` (cotización
+  completa); `/web/pagar` cobra ese total, guarda el cargo y su desglose en el
+  `cobro_web` y lo pasa a `LiquidacionOnlineReq` (el dueño sigue recibiendo
+  sobre el PRECIO). JS: línea "Cargo por servicio Pichangol ⓘ" en el resumen
+  (`cotizar()` con rebote de 150 ms y caché por base+deporte; ⓘ abre
+  `pcgAvisar({html})` con el desglose y la regla; `ui.py` ahora acepta
+  `html` en el modal), total y botón "Reservar y pagar" con cargo; con
+  `cfg.cargo=false` no se cotiza ni se pinta nada. **Academia**
+  (`web/academia.py`): una cotización sobre la SUMA del carrito con `partes`
+  (una por persona) → línea del cargo + "🎉 Ahorras S/ X en el cargo por
+  pagar en familia"; `pagar()` espera la cotización antes de abrir Culqi con
+  `base + cargo`; `_cobrar_y_matricular` recalcula, cobra el total, pasa el
+  cargo a `MatriculaReq` y al `cobro_web`, y guarda en `pagoWeb` de cada
+  fila `cargo`, `cargoDesglose`, `cargoRegla`, `cargoPersonas`,
+  `cargoAhorro`. **Comprobantes**: reserva (`/reserva/{ref}`, desde el
+  `cobro_web`), matrícula individual y familiar muestran la línea, "Pagado
+  hoy" con cargo y `<details>` "Qué incluye" (`ui.desglose_cargo_html`); el
+  comprobante individual de una matrícula pagada en familia explica que el
+  cargo fue uno solo y no lo suma. **Anfitrión**: tarjeta "Tu comisión
+  Pichangol incluye" (`ui.tarjeta_comision`, textos `comision` de la torre)
+  en Ingresos y en Mi academia; cada liquidación de Ingresos muestra "cargo
+  por servicio del jugador". **Términos** `/legal/terminos` 3-bis declaran
+  la línea. Test `test_cargo_por_servicio_en_la_web_reserva_y_matricula`;
+  Playwright a 1200 y 390 px. **Pendiente de la fase 4 (política de
+  devoluciones):** la cancelación web sigue devolviendo el 100 % del cargo
+  de Culqi (`cobro.monto_centimos`, ahora precio + cargo); con la política
+  aprobada se devolverá el precio y el cargo solo a saldo.
+- Fases 3 (APK), 4 (mes a mes agrupado, devoluciones con la política
+  aprobada, `/legal/devoluciones`, KPI) y 5 (encendido): pendientes.

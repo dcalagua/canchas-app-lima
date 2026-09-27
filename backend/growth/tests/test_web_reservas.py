@@ -1905,3 +1905,107 @@ def test_carrito_de_matricula_familiar_un_solo_pago(db, monkeypatch):
     # Otra cuenta no puede colgarse de esa tarjeta.
     susc_real(pr.SuscripcionAlumnoReq(alumno_id="al_p3", academia_id="ac_c", email="otra@gmail.com", token="tkn_y", monto_soles=90, reusar_tarjeta_de="al_p1"))
     assert len(cards) == 2
+
+
+def test_cargo_por_servicio_en_la_web_reserva_y_matricula(db, monkeypatch):
+    """Fase 2 del cargo por servicio (diseño aprobado 27-sep-2026): con el flag
+    ENCENDIDO la reserva web y la matrícula web cobran precio + cargo (5 % hasta
+    S/ 500 + 2 % del excedente, mín S/ 2), el cargo queda congelado en el libro
+    (`cobro_web` + liquidación/matrícula) con su desglose, los comprobantes lo
+    muestran y `/web/cotizar` lo cotiza para el checkout. Con el flag APAGADO
+    (default) nada cambia: los otros tests de este archivo lo cubren."""
+    from pagos import cargo_servicio as _cs
+    import pagos.router as pr
+    monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
+    cargos, pushes = [], []
+    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: (cargos.append(kw) or {"ok": True, "charge_id": f"chr_cs_{len(cargos)}"}))
+    monkeypatch.setattr(pr, "_aviso_push_usuario", lambda *a, **k: pushes.append((a, k)))
+    stores.saldos.pop("dueno@x.com", None)
+    # Apagado: la ficha no cotiza, /web/cotizar responde inactivo y total = base.
+    assert '"cargo": false' in client.get("/reservar/c_lima").text
+    q = client.get("/web/cotizar?linea=reservas&moneda=S/&base=15000&deporte=futbol").json()
+    assert q["ok"] and q["activo"] is False and q["cargo_centimos"] == 0 and q["total_centimos"] == 15000
+    # Encendido para reservas y academias.
+    stores.config["cargo_activo_reservas"] = "1"
+    stores.config["cargo_activo_academias"] = "1"
+    try:
+        html = client.get("/reservar/c_lima").text
+        assert '"cargo": true' in html and "Cargo por servicio Pichangol" in html and "/web/cotizar" in html
+        q = client.get("/web/cotizar?linea=reservas&moneda=S/&base=15000&deporte=futbol").json()
+        assert q["activo"] and q["cargo_centimos"] == 750 and q["total_centimos"] == 15750 and len(q["desglose"]) == 3
+        assert q["desglose"][-1]["nombre"] == "Tu equipo y tu partido" and sum(x["monto_centimos"] for x in q["desglose"]) == 750
+        assert "5 % sobre los primeros S/ 500" in q["regla"]
+        # Base 30 → mínimo S/ 2, pero la RED DE SEGURIDAD lo sube a S/ 3: comisión 2 + cargo 2 = 4 no cubre
+        # la tarifa de tarjeta (6.05 % + 0.30 + IGV sobre 32 ≈ 2.64) más el margen mínimo de S/ 2. 850 → 25 + 7 = 32.
+        q30 = client.get("/web/cotizar?linea=reservas&moneda=PEN&base=3000").json()
+        assert q30["cargo_centimos"] == 300 and q30["ajuste_seguridad_centimos"] == 100
+        assert client.get("/web/cotizar?linea=academias&moneda=PEN&base=85000").json()["cargo_centimos"] == 3200
+        assert client.get("/web/cotizar?linea=reservas&moneda=PEN&base=abc").json()["cargo_centimos"] == 0
+        # Reserva: asegurar muestra el total con cargo; pagar cobra ese total.
+        f = _manana()
+        j = _asegurar(f)  # 60 + 60 + 30 árbitro = 150 → cargo 7.50
+        assert j["ok"] and j["total"] == 150 and j["cargo_centimos"] == 750 and j["total_centimos"] == 15750
+        assert j["cargo"]["activo"] and j["cargo"]["titulo"] == "Cargo por servicio Pichangol"
+        p = client.post("/web/pagar", json={"ids": j["ids"], "firma": j["firma"], "token": "tkn_cs", "medio": "yape", "email": "ana@x.com"}).json()
+        assert p["ok"]
+        assert cargos[-1]["monto_centimos"] == 15750 and cargos[-1]["metadata"]["cargo_servicio_centimos"] == 750
+        # Libro: el cobro lleva el cargo congelado; la liquidación al dueño va sobre el PRECIO (150) con el cargo aparte.
+        cobro = next(x for x in reversed(stores.pagos) if x.tipo == "cobro_web" and x.concepto == f"web:{j['grupo']}")
+        assert cobro.monto_centimos == 15750 and cobro.cargo_servicio_centimos == 750 and len(cobro.cargo_desglose) == 3
+        liq = stores.pago_por_charge(j["ids"][0])
+        assert liq.monto_centimos == 15000 and liq.cargo_servicio_centimos == 750 and liq.cargo_desglose[0]["clave"] == "pago_protegido"
+        d = pr._liquidacion_dict(liq)
+        assert d["cargo_servicio_soles"] == 7.5 and d["bruto_soles"] == 150.0
+        # Comprobante: línea del cargo, total pagado con cargo y desglose.
+        r = client.get(p["url"]).text
+        assert "Cargo por servicio Pichangol" in r and "S/ 7.50" in r and "S/ 157.50" in r and "Qué incluye el cargo por servicio" in r
+        assert "Pago protegido" in r and "mínimo S/ 2.00" in r
+        # Matrícula web: una persona (250 × 3 − 10 % = 675 → 5 % de 500 + 2 % de 175 = 28.50) y familia (ahorro).
+        monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+        db.academias["ac_cs"] = {"nombre": "Academia Cargo", "deporte": "tenis", "dueno": "profe@gmail.com", "sedeClub": "Club X", "zona": "Surco",
+                                 "lat": -12.1, "lng": -77.0, "whatsapp": "999888777", "descuentoPrepago": 10, "mesesMinPrepago": 3,
+                                 "planes": [{"id": "m", "nombre": "Mensual", "precioMes": 250}]}
+        cli = TestClient(app, base_url="https://testserver")
+        conta = []
+        monkeypatch.setattr(pr, "post_matricula", lambda req: conta.append(req) or {"ok": True})
+        monkeypatch.setattr(pr, "post_suscripcion_alumno", lambda req: {"ok": True})
+        _entrar_como(cli, monkeypatch, "dennis@gmail.com", nombre="Dennis")
+        html = cli.get("/academia/ac_cs").text
+        assert '"cargo": true' in html and "linea=academias" in html and "Ahorras" in html
+        r = cli.post("/web/matricular", json={"academia_id": "ac_cs", "plan_id": "m", "nombre": "Dennis Calagua", "celular": "999888777", "token": "t",
+                                              "quien": "yo", "cantidad": 3}).json()
+        assert r["ok"] and cargos[-1]["monto_centimos"] == 67500 + 2850
+        m = db.matriculas[-1]
+        assert m["pagoWeb"]["monto"] == 675 and m["pagoWeb"]["cargo"] == 28.5 and m["pagoWeb"]["cargoPersonas"] == 1 and len(m["pagoWeb"]["cargoDesglose"]) == 3
+        assert conta[-1].monto_soles == 675 and conta[-1].cargo_servicio_centimos == 2850
+        rc = cli.get(r["url"]).text
+        assert "Cargo por servicio Pichangol" in rc and "S/ 28.50" in rc and "S/ 703.50" in rc and "Portal del alumno y competencia" in rc
+        # Familia: 3 personas (250 + 250 + 250 = 750 → 25 + 5 = 30) vs por separado 3 × 12.50 = 37.50 → ahorra 7.50.
+        q = cli.get("/web/cotizar?linea=academias&moneda=PEN&base=75000&partes=25000,25000,25000").json()
+        assert q["cargo_centimos"] == 3000 and q["ahorro_centimos"] == 750
+        r = cli.post("/web/matricular-varios", json={"academia_id": "ac_cs", "token": "t", "medio": "tarjeta", "personas": [
+            {"plan_id": "m", "nombre": "María López", "celular": "988777666", "quien": "familiar"},
+            {"plan_id": "m", "nombre": "Lucas", "celular": "999888777", "quien": "hijo", "edad": 9},
+            {"plan_id": "m", "nombre": "Mateo", "celular": "999888777", "quien": "hijo", "edad": 7}]}).json()
+        assert r["ok"], r
+        # Base real con descuento familiar (2.º −0 %: la academia no lo configuró) = 750; cargo 30; un solo cobro.
+        assert cargos[-1]["monto_centimos"] == 75000 + 3000
+        ms = db.matriculas[-3:]
+        assert all(x["pagoWeb"]["cargo"] == 30.0 and x["pagoWeb"]["cargoPersonas"] == 3 and x["pagoWeb"]["cargoAhorro"] == 7.5 for x in ms)
+        rf = cli.get(r["url"]).text
+        assert "Cargo por servicio Pichangol" in rf and "S/ 30.00" in rf and "S/ 780.00" in rf and "Ahorraste S/ 7.50" in rf
+        # El comprobante individual de un miembro explica que el cargo fue uno por la familia y no lo suma.
+        ri = cli.get(f"/academia/ac_cs/matricula/{ms[1]['id']}").text
+        assert "se pagó una sola vez" in ri and "S/ 250.00" in ri and "S/ 280.00" not in ri
+        # El anfitrión ve qué incluye su comisión (Ingresos y Mi academia).
+        _entrar_como(cli, monkeypatch, "dueno@x.com", nombre="Dueño")
+        ing = cli.get("/anfitrion/ingresos").text
+        assert "Tu comisión Pichangol incluye" in ing and "Visibilidad y marketing" in ing and "cargo por servicio del jugador 7.50" in ing
+        _entrar_como(cli, monkeypatch, "profe@gmail.com", nombre="Profe")
+        mia = cli.get("/anfitrion/academia").text
+        assert "Tu comisión Pichangol incluye" in mia and "Alumnos y cuotas" in mia
+        # Términos: la línea del cargo está declarada.
+        assert "Cargo por servicio Pichangol" in client.get("/legal/terminos").text
+    finally:
+        stores.config["cargo_activo_reservas"] = "0"
+        stores.config["cargo_activo_academias"] = "0"

@@ -45,6 +45,7 @@ import config
 import empresa
 from paises import _CAJAS, pais_de_coordenadas, moneda_de_pais, simbolo_de_moneda
 from pagos import culqi
+from pagos import cargo_servicio as _cs
 from web import catalogos, datos, descubrir, horarios, marca, sesion, ui
 from web.ui import e
 
@@ -1453,18 +1454,51 @@ _JS_RESERVA = r"""
     extrasSel().forEach(function(x){ t += x.precio; });
     return t;
   }
+  // CARGO POR SERVICIO Pichangol (fase 2, sep-2026): el servidor cotiza
+  // (`/web/cotizar`, misma regla que al cobrar); aquí solo se pinta la línea,
+  // el ⓘ con el desglose y el total. Con C.cargo=false no se cotiza nada.
+  var cot = null, cotT = null, cotCache = {};
+  function deporteSel(){ return ($('deporte') && $('deporte').value) || C.deporteBase || ''; }
+  function cotizar(t){
+    if(!C.cargo || t <= 0){ cot = null; return; }
+    var base = Math.round(t * 100), k = base + '|' + deporteSel();
+    if(cotCache[k]){ cot = cotCache[k]; return; }
+    cot = null;
+    if(cotT) clearTimeout(cotT);
+    cotT = setTimeout(function(){
+      fetch('/web/cotizar?linea=reservas&moneda=' + encodeURIComponent(C.moneda) + '&base=' + base + '&deporte=' + encodeURIComponent(k.split('|')[1]))
+        .then(function(r){ return r.json(); })
+        .then(function(j){ if(j && j.ok){ cotCache[k] = j; if(Math.round(total() * 100) === base) pintarResumen(); } })
+        .catch(function(){});
+    }, 150);
+  }
+  var BTN_INFO = '<button type="button" class="info-cargo" id="btnCargoInfo" aria-label="Qué incluye el cargo por servicio" style="border:1px solid var(--trazo);background:#fff;color:var(--tinta);border-radius:50%;width:20px;height:20px;line-height:18px;font-size:12px;cursor:pointer;padding:0;margin-left:4px;vertical-align:middle;display:inline-block">ⓘ</button>';
+  function htmlDesglose(c){
+    var h = '<div style="text-align:left;display:grid;gap:8px">';
+    (c.desglose || []).forEach(function(x){ h += '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;border-bottom:1px solid #eee;padding:6px 0"><div><b>' + esc(x.nombre) + '</b><div style="color:#717171;font-size:12.5px">' + esc(x.detalle) + '</div></div><span style="white-space:nowrap;font-weight:700">' + fmt(x.monto_centimos / 100) + '</span></div>'; });
+    h += '<div style="color:#717171;font-size:12px;margin-top:4px">' + esc(c.regla) + '. El precio de la cancha va completo al local, menos su comisión.</div></div>';
+    return h;
+  }
+  document.addEventListener('click', function(ev){
+    var b = ev.target && ev.target.closest ? ev.target.closest('#btnCargoInfo') : null;
+    if(b && cot && window.pcgAvisar) pcgAvisar({titulo: cot.titulo || 'Cargo por servicio Pichangol', html: htmlDesglose(cot), confirmar: 'Entendido', icono: '🛡️'});
+  });
   function pintarResumen(){
     var ks = Object.keys(sel).sort(), n = ks.length, t = total();
+    cotizar(t);
+    var cargo = (cot && cot.activo && cot.cargo_centimos > 0) ? cot.cargo_centimos / 100 : 0;
     var h = '';
     if(!n){ h = '<div class="linea"><span style="color:var(--tenue)">Elige un horario para ver tu resumen.</span></div>'; }
     else {
       ks.forEach(function(k){ var s = sel[k];
         h += '<div class="linea"><span>' + esc(C.etiquetas[s.fecha] || s.fecha) + ' · ' + s.hora + '–' + s.fin + '</span><b>' + fmt(s.precio) + '</b></div>'; });
       extrasSel().forEach(function(x){ h += '<div class="linea"><span>' + esc(x.nombre) + (x.cantidad > 1 ? ' × ' + x.cantidad : '') + '</span><b>' + fmt(x.precio) + '</b></div>'; });
+      if(C.cargo) h += '<div class="linea" id="lineaCargo"><span>Cargo por servicio Pichangol ' + BTN_INFO + '</span><b>' + (cot ? fmt(cargo) : '…') + '</b></div>';
     }
     $('lineas').innerHTML = h;
-    $('tot').textContent = fmt(t); $('totBarra').textContent = fmt(t);
-    var txt = n ? ('Reservar y pagar ' + fmt(t)) : 'Elige un horario';
+    var tt = t + cargo;
+    $('tot').textContent = fmt(tt); $('totBarra').textContent = fmt(tt);
+    var txt = n ? ('Reservar y pagar ' + fmt(tt)) : 'Elige un horario';
     ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = !n; $(id).textContent = txt; });
   }
   function pintarDias(){
@@ -1830,6 +1864,8 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
 
     cfg = json.dumps({"id": c["id"], "moneda": sim, "pk": config.CULQI_PUBLIC_KEY, "maxSlots": MAX_SLOTS,
                       "logo": "", "hoy": dias[0]["iso"], "dias": dias, "etiquetas": etiquetas,
+                      # Cargo por servicio (fase 2): con el flag apagado el JS no cotiza ni pinta la línea.
+                      "cargo": _cs.activo("reservas"), "deporteBase": (_deportes_de(c) or [""])[0],
                       # Día preseleccionado desde el buscador de la portada (solo si cae en la tira).
                       "fecha": fecha if any(d["iso"] == fecha for d in dias) else "",
                       # Hora buscada en la portada: se marca el turno libre que la cubre.
@@ -1912,6 +1948,34 @@ class AsegurarReq(BaseModel):
 
 
 _contador = {"n": 0}
+
+
+def _cotizacion_reserva(c: dict, total_soles: float, deporte: str = "") -> "_cs.Cotizacion":
+    """CARGO POR SERVICIO de una reserva web (fase 2 del diseño, sep-2026): la
+    MISMA cotización al asegurar (lo que ve el jugador) y al cobrar en
+    `/web/pagar` (lo que se le carga). Red de seguridad con la tarifa de
+    TARJETA como peor caso: lo mostrado nunca es menor que lo cobrado. Con el
+    flag `cargo_activo_reservas` en 0 devuelve cargo 0 y total = base."""
+    from pagos.router import cotizacion_para
+    _sim, iso = _moneda_de(c)
+    dep = (deporte or "").strip().lower() or ((_deportes_de(c) or [""])[0])
+    return cotizacion_para("reservas", iso, int(round(float(total_soles) * 100)), medio=None, deporte=dep)
+
+
+@router.get("/web/cotizar")
+def web_cotizar(linea: str = "reservas", moneda: str = "PEN", base: str = "0", deporte: str = "", partes: str = "") -> dict:
+    """Cotización PÚBLICA del cargo por servicio para pintar el checkout web
+    (espejo de `POST /pagos/cotizar`, que exige X-App-Key). `base` y `partes`
+    (separadas por coma) en céntimos. Solo se muestra: el backend recalcula al
+    cobrar y nunca confía en lo que manda el navegador."""
+    from pagos.router import cotizacion_para
+    b = int(base) if str(base).strip().isdigit() else 0
+    if b > 50_000_000:
+        return {"ok": False, "error": "base"}
+    pts = [int(x) for x in (partes or "").split(",") if x.strip().isdigit()][:12]
+    cot = cotizacion_para(linea if linea in _cs.LINEAS else "reservas", moneda, b, medio=None,
+                          deporte=(deporte or "")[:20], partes=pts)
+    return {"ok": True, **cot.dict()}
 
 
 def _nuevo_id() -> str:
@@ -2005,8 +2069,12 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
     if r:
         return {"ok": False, "error": r}
     ids = [f["id"] for f in filas]
+    # Cargo por servicio (si la línea está activa): el total a cobrar lo decide
+    # el servidor; el navegador solo lo muestra y se lo pasa a Culqi.
+    cot = _cotizacion_reserva(c, total, deporte)
     return {"ok": True, "ids": ids, "grupo": grupo, "firma": _firma(ids),
-            "total": total, "total_centimos": total * 100, "moneda": sim,
+            "total": total, "total_centimos": cot.total_centimos, "moneda": sim,
+            "cargo_centimos": cot.cargo_centimos, "cargo": (cot.dict() if cot.activo else None),
             "hold_segundos": datos.HOLD_SEGUNDOS}
 
 
@@ -2051,6 +2119,10 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
     c = datos.cancha(filas[0]["cancha_id"]) or {}
     sim, iso = _moneda_de(c) if c else ("S/", "PEN")
     total = _total_de(filas)
+    # Cargo por servicio: se RECALCULA aquí (misma regla que en /web/asegurar);
+    # lo que se cobra = precio + cargo. El dueño recibe sobre el precio.
+    cot = _cotizacion_reserva(c, total, str(filas[0].get("deporte") or ""))
+    monto_cobro = cot.total_centimos
     email = (ses["email"] if ses else (req.email or filas[0].get("usuario") or "")).strip().lower()
     concepto = f"Reserva {c.get('nombre', 'cancha')} {filas[0]['fecha']} {filas[0]['hora_inicio']}"
     # Datos del pagador para el antifraude de Culqi: nombre de Google (real) o
@@ -2060,9 +2132,10 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
         email, nombre=((ses or {}).get("nombre") or filas[0].get("jugador") or ""),
         telefono=str(filas[0].get("telefono") or ""), pais=(pais_de_coordenadas(c.get("lat"), c.get("lng")) or ""))
     cargo = culqi.crear_cargo(
-        token=req.token.strip(), monto_centimos=total * 100, email=email,
+        token=req.token.strip(), monto_centimos=monto_cobro, email=email,
         descripcion=concepto[:80], moneda=iso, cliente=cliente,
-        metadata={"canal": "web", "reserva_id": filas[0]["id"], "cancha_id": filas[0]["cancha_id"]})
+        metadata={"canal": "web", "reserva_id": filas[0]["id"], "cancha_id": filas[0]["cancha_id"],
+                  "cargo_servicio_centimos": cot.cargo_centimos})
     if not cargo.get("ok"):
         datos.borrar_reservas(req.ids)
         msg = str(cargo.get("error") or "")
@@ -2074,9 +2147,10 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
     try:
         # El cargo queda en el libro (tipo cobro_web) ligado a la reserva/grupo:
         # es lo que permite REEMBOLSAR desde la web al cancelar.
-        _st.registrar_pago(tipo="cobro_web", monto_centimos=total * 100, moneda=iso, estado="aprobado",
+        _st.registrar_pago(tipo="cobro_web", monto_centimos=monto_cobro, moneda=iso, estado="aprobado",
                            culqi_charge_id=str(cargo.get("charge_id") or ""), email=email, medio=medio,
-                           concepto=f"web:{_ref_de(filas)}")
+                           concepto=f"web:{_ref_de(filas)}", cargo_servicio_centimos=cot.cargo_centimos,
+                           cargo_desglose=(cot.desglose or None), cargo_ajuste_centimos=cot.ajuste_seguridad_centimos)
     except Exception:  # noqa: BLE001
         pass
     dueno = (c.get("dueno") or "").strip().lower()
@@ -2086,7 +2160,9 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
             post_liquidacion_online(LiquidacionOnlineReq(
                 dueno_id=dueno, monto_soles=float(total), reserva_id=filas[0]["id"],
                 concepto=f"Reserva web · {c.get('nombre', '')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}",
-                medio=medio, moneda=iso, charge_id=str(cargo.get("charge_id") or "")))
+                medio=medio, moneda=iso, charge_id=str(cargo.get("charge_id") or ""),
+                cargo_servicio_centimos=cot.cargo_centimos, cargo_desglose=list(cot.desglose or []),
+                cargo_ajuste_centimos=cot.ajuste_seguridad_centimos))
             rango = f"{filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"
             _aviso_push_usuario(
                 dueno, "Nueva reserva 📅",
@@ -2524,6 +2600,10 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
     c = datos.cancha(filas[0]["cancha_id"]) or {}
     sim = filas[0].get("moneda") or "S/"
     total = _total_de(filas)
+    # Cargo por servicio cobrado (congelado en el libro con su desglose).
+    cobro = _cobro_web(_ref_de(filas))
+    cargo_c = int(getattr(cobro, "cargo_servicio_centimos", 0) or 0) if cobro else 0
+    pagado = total + cargo_c / 100.0
     extras = [x for f in filas for x in (f.get("extras") or [])]
     lineas = "".join(
         f"<div class='linea'><span>{e(horarios.fecha_larga(f['fecha']))} · {e(f['hora_inicio'])}–{e(f['hora_fin'])}</span>"
@@ -2532,6 +2612,13 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         f"<div class='linea'><span>{e(x.get('nombre') or EXTRAS_NOMBRE.get(str(x.get('clave')), str(x.get('clave')).capitalize()))}"
         f"{(' × ' + str(int(x.get('cantidad')))) if int(x.get('cantidad') or 1) > 1 else ''}</span>"
         f"<b>{e(sim)} {float(x.get('precio') or 0):.2f}</b></div>" for x in extras)
+    if cargo_c > 0:
+        lineas += (f"<div class='linea'><span>Cargo por servicio Pichangol</span><b>{e(sim)} {cargo_c / 100.0:.2f}</b></div>")
+    detalle_cargo = ""
+    if cargo_c > 0:
+        _s, _iso_c = _moneda_de(c) if c else (sim, _cs.moneda_iso(sim))
+        detalle_cargo = ("<details style='margin-top:8px;text-align:left'><summary class='sub' style='cursor:pointer;font-size:13px'>Qué incluye el cargo por servicio</summary>"
+                         f"{ui.desglose_cargo_html(getattr(cobro, 'cargo_desglose', None) or [], sim, _cs.regla_texto(_iso_c))}</details>")
     lugar = ", ".join(x for x in (c.get("direccion"), _zona(c)) if x)
     base = (config.PUBLIC_BASE_URL or "").rstrip("/")
     boton_wa = ui.boton_whatsapp(
@@ -2547,7 +2634,7 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         f"<h3 style='margin-top:16px'>{e(c.get('nombre') or 'Cancha')}</h3>"
         f"<div class='sub'>{e(c.get('club'))}{(' · ' + e(lugar)) if lugar else ''}</div>"
         f"<div style='text-align:left;margin-top:16px'>{lineas}"
-        f"<div class='total'><span>Total pagado</span><span>{e(sim)} {total:.2f}</span></div></div>"
+        f"<div class='total'><span>Total pagado</span><span>{e(sim)} {pagado:.2f}</span></div>{detalle_cargo}</div>"
         f"<div class='sub' style='margin-top:12px'>A nombre de <b>{e(filas[0].get('jugador'))}</b> · {e(filas[0].get('usuario'))}. "
         "Guarda este enlace: es tu comprobante.</div>"
         "<div class='acciones'>"

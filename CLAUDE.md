@@ -2527,7 +2527,7 @@ antes del corte.
 ## Pendientes / backlog
 
 - **CARGO POR SERVICIO + MODELO DE COMISIONES (diseño aprobado,
-  27-sep-2026; FASE 1 backend HECHA, fases 2-5 pendientes):**
+  27-sep-2026; FASES 1 backend y 2 web HECHAS, fases 3-5 pendientes):**
   `docs/diseno-cargo-por-servicio.md` (decisiones del director en § 7,
   estado en § 8). Dos lados como Airbnb: comisión 5 % mín S/ 2 a quien
   recibe (reservas y academias) + cargo por servicio al cliente 5 % hasta
@@ -2548,7 +2548,25 @@ antes del corte.
   `cargo_servicio_soles`, `ingreso_pcg_soles` y `margen = comisión + cargo −
   pasarela` (estimada sobre precio + cargo), torre → Cobros → "🧾 Cargo por
   servicio". Arranca APAGADO por flag en ambos ambientes. Test
-  `tests/test_cargo_servicio.py`.
+  `tests/test_cargo_servicio.py`. **Fase 2 (web, hecha 27-sep-2026):** `GET
+  /web/cotizar` (público, céntimos; usa `pagos.router.cotizacion_para`);
+  reserva: `_cotizacion_reserva` = misma cotización en `/web/asegurar`
+  (`total_centimos` = precio + cargo, `cargo`) y en `/web/pagar` (cobra el
+  total, cargo + desglose en el `cobro_web` y en `LiquidacionOnlineReq`; el
+  dueño recibe sobre el PRECIO); JS con línea "Cargo por servicio Pichangol
+  ⓘ" (`pcgAvisar({html})`, `ui.py` acepta `html`), total y botón con cargo;
+  academia: una cotización sobre la SUMA del carrito con `partes` → línea +
+  "Ahorras S/ X pagando en familia", `pagar()` espera la cotización antes de
+  abrir Culqi, `_cobrar_y_matricular` guarda `pagoWeb.cargo/cargoDesglose/
+  cargoRegla/cargoPersonas/cargoAhorro`; comprobantes de reserva y matrícula
+  (individual y familiar) con la línea, "Pagado hoy" y `<details>` "Qué
+  incluye" (`ui.desglose_cargo_html`); tarjeta "Tu comisión Pichangol
+  incluye" (`ui.tarjeta_comision`) en Ingresos y Mi academia; términos 3-bis.
+  Con el flag apagado NADA cambia (cfg `cargo:false` → el JS no cotiza).
+  Test `test_cargo_por_servicio_en_la_web_reserva_y_matricula`. OJO fase 4:
+  la cancelación web aún devuelve el 100 % del cargo de Culqi (precio +
+  cargo); con la política aprobada se devolverá el precio y el cargo solo a
+  saldo.
 
 - **Community Manager AUTÓNOMO (servicio estrella, ingreso recurrente):** la
   visión del director NO es "generar posts para que el dueño publique a mano"

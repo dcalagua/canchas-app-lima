@@ -104,6 +104,12 @@ def _tarjeta(a: dict, n_alumnos: int) -> str:
             "</div></div></div>")
 
 
+def _simbolo_iso(a: dict) -> tuple[str, str]:
+    m = str(a.get("moneda") or "S/").strip()
+    iso = {"S/": "PEN", "PEN": "PEN", "$": "USD", "USD": "USD", "Bs": "BOB", "BOB": "BOB"}.get(m, "PEN")
+    return {"PEN": "S/", "USD": "$", "BOB": "Bs"}[iso], iso
+
+
 @router.get("/anfitrion/academia", response_class=HTMLResponse)
 def pagina_academias(request: Request, guardado: str = "") -> HTMLResponse:
     ses, resp = _sesion_o_entrar(request, "/anfitrion/academia")
@@ -132,7 +138,8 @@ def pagina_academias(request: Request, guardado: str = "") -> HTMLResponse:
               f"<p class='sub'>{len(acads)} academia{'s' if len(acads) != 1 else ''} · {len(mats)} alumno{'s' if len(mats) != 1 else ''}. Edita aquí o en la app: es la misma academia.</p></div>"
               "<a class='btn sec' href='/anfitrion/academia/nueva'>＋ Otra academia</a></div>"
               f"{aviso}"
-              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(360px,1fr));margin-top:16px'>{''.join(_tarjeta(a, por_ac.get(a['id'], 0)) for a in acads)}</div>")
+              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(360px,1fr));margin-top:16px'>{''.join(_tarjeta(a, por_ac.get(a['id'], 0)) for a in acads)}</div>"
+              + ui.tarjeta_comision('academias', *_simbolo_iso(acads[0])))
     return ui.shell("Mi academia", cuerpo, nav=_cab(ses, "academias"), sesion=ses, ancho=True, titulo_tab="Mi academia · Modo anfitrión")
 
 
