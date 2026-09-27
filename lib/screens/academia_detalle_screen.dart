@@ -817,6 +817,7 @@ Future<bool> _pagarMatriculas(
     matriculaId: 'mat_${academia.id}_${DateTime.now().microsecondsSinceEpoch}',
     pais: academia.pais.iso,
     concepto: concepto,
+    chargeId: operacionId ?? '',
   );
 
   String? primeraSuscripcion;

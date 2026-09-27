@@ -460,6 +460,16 @@ class PagoRegistro:
     # (bienvenida). Al revertir una cancelación, esa parte vuelve al bolsillo
     # promocional y no al saldo real (el regalo nunca se vuelve plata real).
     promo_centimos: int = 0
+    # COMISIÓN REAL DE LA PASARELA (sincerada con Culqi, 27-sep-2026): en la
+    # fila del CARGO (culqi_charge_id `chr_…`), lo que Culqi se quedó de verdad
+    # (céntimos, con IGV) según `total_fee`/`net_amount` del cargo; None = aún
+    # no consultado o Culqi todavía no lo calculó. `pasarela_en` = cuándo se leyó.
+    pasarela_centimos: int | None = None
+    pasarela_en: datetime | None = None
+    # Enlace liquidación/matrícula/venta → cargo de Culqi (`chr_…`) con el que
+    # el jugador pagó, para leer su comisión real. Lo manda el APK/web al
+    # registrar la contabilidad (`charge_id`); para filas viejas se infiere.
+    cargo_id: str | None = None
 
 
 def es_liquidacion_torneo(p: "PagoRegistro") -> bool:
@@ -1372,7 +1382,9 @@ def _pago_from(d: dict) -> PagoRegistro:
         liquidado_en=_dt(d.get("liquidado_en")),
         metodo_liquidacion=d.get("metodo_liquidacion"),
         referencia_liquidacion=d.get("referencia_liquidacion"),
-        medio=d.get("medio"), promo_centimos=int(d.get("promo_centimos", 0) or 0))
+        medio=d.get("medio"), promo_centimos=int(d.get("promo_centimos", 0) or 0),
+        pasarela_centimos=(int(d["pasarela_centimos"]) if d.get("pasarela_centimos") is not None else None),
+        pasarela_en=_dt(d.get("pasarela_en")), cargo_id=d.get("cargo_id") or None)
 
 
 def _insc_from(d: dict) -> Inscripcion:

@@ -223,6 +223,9 @@ class LiquidacionOnlineReq(BaseModel):
     # para el estado de cuenta del dueño. Vacío = no informado (APKs viejos).
     medio: str = ""
     moneda: str = "PEN"        # moneda de la cancha (decide el mínimo de comisión)
+    # Cargo de Culqi (`chr_…`) con el que pagó el jugador: liga la liquidación
+    # con la comisión REAL de la pasarela (sincerada después). Vacío = APK viejo.
+    charge_id: str = ""
 
 
 class VentaProductoReq(BaseModel):
@@ -230,6 +233,7 @@ class VentaProductoReq(BaseModel):
     monto_soles: float         # precio BRUTO que pagó el comprador (Culqi)
     venta_id: str              # idempotencia (id de la venta/producto+comprador)
     concepto: str | None = None
+    charge_id: str = ""        # cargo de Culqi (si venta_id no es ya el chr_)
     # Datos de la ORDEN (escrow) — para "marcar entregado/recibido".
     producto_id: str = ""
     producto_nombre: str = ""
@@ -1695,7 +1699,7 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
             culqi_charge_id=f"{req.reserva_id}_com", promo_centimos=promo_usado,
             concepto=f"Comisión · {req.concepto or 'Reserva online'}{sufijo}")
         stores.registrar_pago(
-            tipo="liquidacion_full", monto_centimos=bruto, moneda=iso,
+            tipo="liquidacion_full", cargo_id=(req.charge_id.strip() or None), monto_centimos=bruto, moneda=iso,
             estado="aprobado", dueno_id=req.dueno_id,
             culqi_charge_id=req.reserva_id,
             concepto=req.concepto or "Reserva online",
@@ -1707,7 +1711,7 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
 
     # Sin saldo suficiente → comisión de la transacción (neto), como antes.
     stores.registrar_pago(
-        tipo="liquidacion_online", monto_centimos=bruto, moneda=iso,
+        tipo="liquidacion_online", cargo_id=(req.charge_id.strip() or None), monto_centimos=bruto, moneda=iso,
         estado="aprobado", dueno_id=req.dueno_id,
         culqi_charge_id=req.reserva_id,
         concepto=req.concepto or "Reserva online",
@@ -1788,7 +1792,7 @@ def post_venta(req: VentaProductoReq) -> dict:
         return {"ok": True, "duplicada": True, "bruto_centimos": ya.monto_centimos,
                 "comision_centimos": com, "neto_centimos": ya.monto_centimos - com}
     stores.registrar_pago(
-        tipo="venta_producto", monto_centimos=bruto, moneda=iso,
+        tipo="venta_producto", cargo_id=(req.charge_id.strip() or None), monto_centimos=bruto, moneda=iso,
         estado="aprobado", dueno_id=req.vendedor_id,
         culqi_charge_id=req.venta_id,
         concepto=req.concepto or "Venta de producto (marketplace)")
@@ -2285,6 +2289,7 @@ class MatriculaReq(BaseModel):
     matricula_id: str         # idempotencia: no registrar 2 veces
     pais: str = "pe"
     concepto: str | None = None
+    charge_id: str = ""       # cargo de Culqi del pago (comisión real de la pasarela)
 
 
 @router.get("/comision-matricula")
@@ -2313,6 +2318,7 @@ def post_matricula(req: MatriculaReq) -> dict:
         tipo="matricula_online", monto_centimos=bruto, moneda="PEN",
         estado="aprobado", dueno_id=req.academia_id,
         culqi_charge_id=req.matricula_id, comision_centimos=comision,
+        cargo_id=(req.charge_id.strip() or None),
         concepto=req.concepto or "Matrícula (cobro digital)")
     return {"ok": True, "duplicada": False, "bruto_centimos": bruto,
             "comision_centimos": comision, "neto_centimos": bruto - comision,
@@ -2363,7 +2369,7 @@ def _liquidacion_dict(p) -> dict:
     neto = bruto - comision
     # Costo estimado de la PASARELA (Culqi/PayPhone/Libélula) y margen real de
     # Pichangol = comisión − pasarela (tarifa configurable en la torre).
-    pasarela = _tp.costo_centimos(bruto, moneda_iso(p.moneda), p.medio, p.tipo)
+    pasarela, pasarela_fuente = _tp.costo_para(p)
     # Antigüedad: para que la torre avise lo que lleva días sin pagarse.
     try:
         dias = max(0, (datetime.now(timezone.utc) - p.creado_en).days)
@@ -2381,6 +2387,7 @@ def _liquidacion_dict(p) -> dict:
         "comision_soles": comision / 100.0,
         "neto_soles": neto / 100.0,
         "pasarela_soles": pasarela / 100.0,
+        "pasarela_fuente": pasarela_fuente,  # real (Culqi) | estimado (tarifa) | saldo
         "margen_soles": (comision - pasarela) / 100.0,
         "medio": p.medio or "",
         "liquidado": p.liquidado,
@@ -2413,7 +2420,15 @@ def get_liquidaciones_pendientes() -> dict:
 def get_tarifas_pasarela(monto: float = 15.0, moneda: str = "PEN", medio: str = "tarjeta") -> dict:
     """TORRE: tarifas vigentes de cada pasarela + simulación de un cobro
     (bruto → pasarela → comisión Pichangol → margen → neto del dueño)."""
-    return {"tarifas": _tp.leer(), "simulacion": simular_cobro(monto, moneda, medio)}
+    return {"tarifas": _tp.leer(), "simulacion": simular_cobro(monto, moneda, medio), "observado": _tp.observado()}
+
+
+@router.post("/tarifas-pasarela/sincerar", dependencies=_ADMIN)
+def post_sincerar_pasarela() -> dict:
+    """TORRE: lee de Culqi la comisión REAL de los cargos recientes (lo mismo
+    que hace el cron cada hora) y devuelve lo observado por medio."""
+    r = _tp.sincerar(max_consultas=60, reintento_horas=0)
+    return {"ok": True, "resultado": r, "observado": _tp.observado()}
 
 
 def simular_cobro(monto: float, moneda: str = "PEN", medio: str = "tarjeta") -> dict:

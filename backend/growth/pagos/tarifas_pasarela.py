@@ -37,8 +37,13 @@ _POR_MONEDA = {v["moneda"]: k for k, v in PASARELAS.items()}
 
 # Defaults (strings, como todo `stores.config`). Culqi = tarifa publicada de
 # referencia; las otras en 0 hasta que el director las configure.
+# Tarjeta: lo OBSERVADO en el primer cobro live (panel de Culqi, 26-sep-2026,
+# S/ 15 → comisión emisor 0.38 + comisión Culqi 0.83 = 1.21 antes de IGV ≈
+# 6.05 % + S/ 0.30). Culqi desglosa en "emisor" (varía por tarjeta) + "Culqi";
+# aquí se modela como un solo % + fijo. La cifra exacta por cobro la trae
+# `sincerar()` de la API; esta tarifa es solo para lo que aún no se leyó.
 DEFAULTS: dict[str, str] = {
-    "tarifa_culqi_tarjeta_pct": "3.44", "tarifa_culqi_tarjeta_fijo": "0.30",
+    "tarifa_culqi_tarjeta_pct": "6.05", "tarifa_culqi_tarjeta_fijo": "0.30",
     "tarifa_culqi_yape_pct": "3.44", "tarifa_culqi_yape_fijo": "0.30",
     "tarifa_culqi_impuesto_pct": "18",
     "tarifa_payphone_tarjeta_pct": "0", "tarifa_payphone_tarjeta_fijo": "0", "tarifa_payphone_impuesto_pct": "0",
@@ -135,3 +140,149 @@ def desglose(monto_centimos: int, comision_centimos: int, moneda_iso: str = "PEN
     return {"bruto_centimos": monto_centimos, "pasarela_centimos": pas, "comision_centimos": comision_centimos,
             "margen_centimos": comision_centimos - pas, "neto_centimos": monto_centimos - comision_centimos,
             "pasarela": pasarela_de(moneda_iso), "medio": "yape" if (medio or "").lower() == "yape" else "tarjeta"}
+
+
+# ── COMISIÓN REAL (sincerada con Culqi) ──────────────────────────────────────
+# El objeto del cargo trae `total_fee` / `net_amount` cuando Culqi termina de
+# calcular su comisión (~12 h después del pago, según su panel). Se guarda en
+# la fila del CARGO (`culqi_charge_id` = `chr_…`) y las filas contables que
+# nacen de ese pago (liquidación, matrícula, venta) la leen por `cargo_id`.
+
+TIPOS_CARGO = {"reserva", "academia", "cobro", "cobro_web", "recarga", "venta_producto", "matricula_online", "suscripcion", "fee_reserva"}
+_ultimo_intento: dict[str, float] = {}
+
+
+def es_cargo(p) -> bool:
+    return str(p.culqi_charge_id or "").startswith("chr_")
+
+
+def cargo_de(p):
+    """Fila del CARGO de Culqi de la que salió esta liquidación/matrícula/venta
+    (o la misma fila si ya es el cargo). Sin enlace explícito (`cargo_id`,
+    APKs viejos) se infiere: un único cargo `chr_` del mismo monto, misma
+    moneda y creado ±20 min alrededor, aún no ligado a otra fila; si calza,
+    se guarda el enlace para no volver a buscar."""
+    if es_cargo(p):
+        return p
+    if p.cargo_id:
+        c = stores.pago_por_charge(p.cargo_id)
+        if c is not None:
+            return c
+    if p.tipo not in ("liquidacion_online", "liquidacion_full", "matricula_online", "venta_producto"):
+        return None
+    usados = {q.cargo_id for q in stores.pagos if q.cargo_id}
+    cands = []
+    for q in stores.pagos:
+        if q is p or not es_cargo(q) or q.tipo not in TIPOS_CARGO or q.moneda != p.moneda:
+            continue
+        if q.monto_centimos != p.monto_centimos or q.culqi_charge_id in usados:
+            continue
+        try:
+            if abs((q.creado_en - p.creado_en).total_seconds()) > 20 * 60:
+                continue
+        except TypeError:
+            continue
+        cands.append(q)
+    if len(cands) == 1:
+        p.cargo_id = cands[0].culqi_charge_id
+        return cands[0]
+    return None
+
+
+def costo_para(p) -> tuple[int, str]:
+    """(céntimos, fuente) del costo de la pasarela para una fila contable:
+    'real' (leído de Culqi), 'estimado' (tarifa configurada), 'saldo' (0: se
+    pagó con saldo, la pasarela ya se pagó al recargar)."""
+    if p.tipo and p.tipo not in TIPOS_CON_PASARELA:
+        return 0, "saldo"
+    c = cargo_de(p)
+    if c is not None and c.pasarela_centimos is not None:
+        return int(c.pasarela_centimos), "real"
+    from pagos.router import moneda_iso  # import tardío: router importa este módulo
+    return costo_centimos(p.monto_centimos, moneda_iso(p.moneda), p.medio, p.tipo), "estimado"
+
+
+def sincerar(max_consultas: int = 40, dias: int = 15, reintento_horas: float = 4.0) -> dict:
+    """Lee de Culqi la comisión REAL de los cargos recientes que aún no la
+    tienen (`pasarela_centimos` None) y la guarda. Lo corre el cron cada hora
+    y el botón "Sincerar con Culqi" de la torre. Fail-safe: si Culqi no está
+    configurado o falla, no toca nada. Devuelve un resumen."""
+    from datetime import datetime, timedelta, timezone
+    import time as _t
+    from pagos import culqi
+    res = {"consultados": 0, "actualizados": 0, "pendientes": 0, "errores": 0, "disponible": culqi.disponible()}
+    if not res["disponible"]:
+        return res
+    ahora = datetime.now(timezone.utc)
+    corte = ahora - timedelta(days=dias)
+    vistos: set[str] = set()
+    for p in sorted(stores.pagos, key=lambda x: x.creado_en, reverse=True):
+        if res["consultados"] >= max_consultas:
+            break
+        if not es_cargo(p) or p.pasarela_centimos is not None or p.moneda not in ("PEN", "S/"):
+            continue
+        cid = str(p.culqi_charge_id)
+        if cid in vistos:
+            continue
+        try:
+            if p.creado_en.replace(tzinfo=p.creado_en.tzinfo or timezone.utc) < corte:
+                continue
+        except Exception:  # noqa: BLE001
+            pass
+        if _t.time() - _ultimo_intento.get(cid, 0) < reintento_horas * 3600:
+            continue
+        vistos.add(cid)
+        _ultimo_intento[cid] = _t.time()
+        res["consultados"] += 1
+        r = culqi.comision_real(cid)
+        if not r.get("ok"):
+            res["errores"] += 1
+            continue
+        if not r.get("conocida"):
+            res["pendientes"] += 1
+            continue
+        # Todas las filas con ese cargo (p. ej. cobro_web + matricula_online del mismo chr_).
+        for q in stores.pagos:
+            if q.culqi_charge_id == cid:
+                q.pasarela_centimos = int(r["pasarela_centimos"])
+                q.pasarela_en = ahora
+        res["actualizados"] += 1
+        print(f"[tarifa] {cid}: Culqi cobró {r['pasarela_centimos']/100:.2f} de {r['monto_centimos']/100:.2f} "
+              f"(neto {r['neto_centimos']/100:.2f}) detalle={r.get('detalle')}", flush=True)
+    stores.config["tarifa_sincerado_en"] = ahora.isoformat()
+    if res["actualizados"]:
+        try:
+            from db import pg
+            pg.persistir_en_segundo_plano(stores)
+        except Exception:  # noqa: BLE001
+            pass
+    return res
+
+
+def observado() -> dict:
+    """Lo que Culqi cobró DE VERDAD en los cargos ya sincerados, por medio
+    (tarjeta / yape): n, bruto, pasarela, % efectivo y el % que habría que
+    poner en la tarifa (dado el fijo y el impuesto configurados) para que la
+    estimación calce con la realidad. Para el botón "Usar la tarifa observada"."""
+    t = leer()["culqi"]
+    imp = 1 + t["impuesto_pct"] / 100.0
+    acc: dict[str, dict] = {}
+    for p in stores.pagos:
+        if not es_cargo(p) or p.pasarela_centimos is None or p.moneda not in ("PEN", "S/") or p.monto_centimos <= 0:
+            continue
+        m = "yape" if (p.medio or "").lower() == "yape" else "tarjeta"
+        a = acc.setdefault(m, {"n": 0, "bruto": 0, "pasarela": 0, "pcts": [], "ids": set()})
+        if p.culqi_charge_id in a["ids"]:
+            continue
+        a["ids"].add(p.culqi_charge_id)
+        a["n"] += 1
+        a["bruto"] += p.monto_centimos
+        a["pasarela"] += p.pasarela_centimos
+        fijo = t["medios"].get(m, {}).get("fijo", 0.0) * 100
+        a["pcts"].append(max(0.0, (p.pasarela_centimos / imp - fijo) / p.monto_centimos * 100))
+    out = {}
+    for m, a in acc.items():
+        out[m] = {"n": a["n"], "bruto_soles": a["bruto"] / 100.0, "pasarela_soles": a["pasarela"] / 100.0,
+                  "efectivo_pct": round(a["pasarela"] / a["bruto"] * 100, 2) if a["bruto"] else 0.0,
+                  "pct_sugerido": round(sum(a["pcts"]) / len(a["pcts"]), 2) if a["pcts"] else 0.0}
+    return {"medios": out, "sincerado_en": stores.config.get("tarifa_sincerado_en", "")}

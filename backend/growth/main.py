@@ -222,6 +222,13 @@ async def _iniciar_cron_liquidaciones() -> None:
                 recordar_liquidaciones_pendientes()
             except Exception:  # noqa: BLE001
                 pass
+            try:
+                # Comisión REAL de Culqi por cargo (la publica ~12 h después
+                # del pago): se lee en un hilo para no bloquear el loop.
+                from pagos import tarifas_pasarela as _tp
+                await asyncio.to_thread(_tp.sincerar)
+            except Exception:  # noqa: BLE001
+                pass
             await asyncio.sleep(3600)
 
     asyncio.create_task(_loop())

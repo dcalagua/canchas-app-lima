@@ -1124,9 +1124,46 @@ para la API del APK.
   `/liquidaciones/pendientes` suma `total_pasarela_soles`,
   `total_margen_soles`, `tarifas`). Es una ESTIMACIÓN contable con la tarifa
   contratada, no mueve plata: el número exacto está en el panel de Culqi.
-  Con S/ 15: pasarela ≈ S/ 0.96, comisión S/ 2, margen ≈ S/ 1.04 → en
-  reservas chicas el mínimo de S/ 2 apenas cubre a Culqi (sugerido: subir el
-  mínimo o cargo por servicio al jugador). Test `tests/test_tarifas_pasarela.py`.
+  **COMISIÓN REAL SINCERADA CON CULQI (27-sep-2026, el director mostró el
+  panel de Culqi del cobro de S/ 15: comisión emisor 0.38 + comisión Culqi
+  0.83 = 1.21 antes de IGV, abono 13.79; "sincerar los montos y comisiones
+  que ganará PCG"):** la estimación se quedaba corta (0.96). Ahora (1) la
+  tarifa de referencia de TARJETA es lo observado: 6.05 % + S/ 0.30 + IGV
+  (Culqi lo desglosa en "emisor", que varía por tarjeta, + "Culqi"; se
+  modela como un solo %); Yape sigue en 3.44 % hasta observar un cobro; (2)
+  **la torre lee de la API de Culqi la comisión REAL de cada cargo**:
+  `culqi.comision_real(charge_id)` toma `net_amount`/`total_fee` del objeto
+  cargo (Culqi los completa ~12 h después del pago; prefiere `monto −
+  net_amount`, que incluye IGV) y `tarifas_pasarela.sincerar()` la guarda en
+  `PagoRegistro.pasarela_centimos` (+ `pasarela_en`) de la fila del CARGO
+  (`culqi_charge_id` = `chr_…`: tipos `reserva|academia|cobro` de
+  `/pagos/cobrar`, `cobro_web`, `venta_producto`, `matricula_online` web…);
+  corre en el cron horario de `main.py` (`asyncio.to_thread`, reintento por
+  cargo cada 4 h, últimos 15 días, máx. 40 consultas) y con el botón "🔄
+  Sincerar con Culqi ahora" (`POST /pagos/tarifas-pasarela/sincerar`). (3)
+  **Enlace cargo ↔ liquidación:** `PagoRegistro.cargo_id` (nuevo) se llena
+  con `charge_id` en `LiquidacionOnlineReq`, `MatriculaReq` y
+  `VentaProductoReq` (la web lo manda; el APK desde este build:
+  `PagoTarjeta.cobrar(onOperacion:)` → `agregarReservasJugadorMulti(
+  operacionId:)` → acción contable `charge_id` → `liquidacionOnline(
+  chargeId:)`; `registrarMatricula(chargeId:)` en la ficha de academia y en
+  Mi familia; las ventas ya usan el `chr_` como `venta_id`). Para filas
+  viejas/APKs viejos `tarifas_pasarela.cargo_de(p)` INFIERE el cargo (único
+  `chr_` del mismo monto y moneda a ±20 min, no ligado a otra fila) y guarda
+  el enlace. `costo_para(p)` → (céntimos, `real|estimado|saldo`);
+  `_liquidacion_dict` trae `pasarela_fuente` y la torre pinta "✓ real" /
+  "est." / "saldo" en cada fila. (4) `observado()` = por medio (tarjeta/
+  Yape): n, bruto, lo que Culqi se quedó, % efectivo y `pct_sugerido` (el %
+  que calza con el fijo e IGV configurados); tarjeta "📊 Lo que Culqi cobró
+  de verdad" en el pane con "Usar en la tarifa" (`usarObservada`). Los
+  campos viajan en el snapshot. **Pendiente de verificar con el primer cobro
+  live:** que `total_fee`/`net_amount` vengan en la respuesta de Culqi (la
+  documentación no era accesible desde el entorno de desarrollo); cada
+  lectura deja `[tarifa] chr_… Culqi cobró X de Y (neto Z) detalle=…` en los
+  logs de Railway. Con S/ 15: estimado S/ 1.42, comisión S/ 2, margen ≈ S/
+  0.58 → en reservas chicas el mínimo de S/ 2 apenas cubre a Culqi
+  (sugerido: subir el mínimo o cargo por servicio al jugador). Test
+  `tests/test_tarifas_pasarela.py`.
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
   VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
   Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el

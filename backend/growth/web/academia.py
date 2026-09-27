@@ -786,7 +786,7 @@ def _cobrar_y_matricular(a: dict, ses: dict | None, token: str, medio: str, item
     try:
         from pagos.router import MatriculaReq, post_matricula
         post_matricula(MatriculaReq(academia_id=a["id"], monto_soles=float(total), matricula_id=charge_id or guardadas[0][0],
-                                    pais=_iso(a).lower(), concepto=concepto))
+                                    pais=_iso(a).lower(), concepto=concepto, charge_id=charge_id))
     except Exception as ex:  # noqa: BLE001 — la contabilidad nunca deshace un cobro
         print(f"[matricula-web] contabilidad falló: {ex}", flush=True)
     try:

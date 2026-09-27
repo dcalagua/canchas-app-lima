@@ -1169,7 +1169,8 @@ class AppState extends ChangeNotifier {
       required int sena,
       required String reservaId,
       required String etiqueta,
-      String medio = ''}) {
+      String medio = '',
+      String chargeId = ''}) {
     if (cancha.dueno.isEmpty) return null;
     // Moneda de la CANCHA (país de sus coordenadas): decide el mínimo de la
     // comisión en el backend (S/ 2 · \$ 0.50 · Bs 3).
@@ -1190,13 +1191,15 @@ class AppState extends ChangeNotifier {
           'online': true,
           // Con qué pagó el jugador (yape/tarjeta): estado de cuenta del dueño.
           'medio': medio, 'moneda': moneda,
+          // Cargo de Culqi: la torre lee de ahí la comisión real de la pasarela.
+          'charge_id': chargeId,
         };
       case 'sena':
         return {
           'kind': 'liquidacion', 'dueno': cancha.dueno,
           'monto': sena.toDouble(), 'reserva_id': reservaId,
           'concepto': 'Seña · $etiqueta', 'online': true,
-          'medio': 'sena', 'moneda': moneda,
+          'medio': 'sena', 'moneda': moneda, 'charge_id': chargeId,
         };
       default:
         return null;
@@ -1236,7 +1239,8 @@ class AppState extends ChangeNotifier {
               reservaId: rid,
               concepto: (e['concepto'] ?? '').toString(),
               medio: (e['medio'] ?? '').toString(),
-              moneda: (e['moneda'] ?? '').toString());
+              moneda: (e['moneda'] ?? '').toString(),
+              chargeId: (e['charge_id'] ?? '').toString());
         }
         quitar = r != null; // 200 (ok o duplicada) → listo
       }
@@ -7756,7 +7760,8 @@ class AppState extends ChangeNotifier {
         etiqueta: quien.isEmpty
             ? '$lugar · $diaLabel $hora'
             : '$lugar · $quien · $diaLabel $hora',
-        medio: reserva.medioPago);
+        medio: reserva.medioPago,
+        chargeId: operacionId);
     if (res == ResultadoReserva.ok) {
       if (accion != null) _encolarConta(accion);
       // Reserva CONFIRMADA en el servidor → avisa al dueño (push dedicado).
@@ -7832,6 +7837,9 @@ class AppState extends ChangeNotifier {
       String cobro = 'ninguno',
       String medioPago = '',
       bool conSena = false,
+      // N.º de operación (cargo chr_ de Culqi) del pago online/seña: viaja con
+      // la liquidación para que la torre lea la comisión REAL de la pasarela.
+      String operacionId = '',
       // Bloque YA ASEGURADO en Supabase antes de cobrar (flujo online/seña):
       // se confirman esas mismas filas (id/grupo) en vez de insertar nuevas.
       List<Reserva>? aseguradas}) async {
