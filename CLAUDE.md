@@ -416,7 +416,9 @@ para la API del APK.
   Culqi ya me dio las llaves live"):** `WEB_USUARIOS_PRUEBA` quedó VACÍA en
   Railway QAS y PRD (la de PRD era referencia a QAS); el código sigue por si
   Culqi/INDECOPI vuelven a pedir un usuario de prueba: basta volver a poner
-  la variable, sin publicar código.
+  la variable, sin publicar código. OJO: `yoshi28012007@gmail.com` es la
+  cuenta PERSONAL del director para OPERAR la torre (`ADMIN_PANEL_USUARIOS`,
+  con 2 pasos enrolados en PRD): NO es la cuenta de revisión, no quitarla.
 - **Paleta = la del LOGO oficial (sep-2026):** `ui.py` TOKENS: verde
   `#0B8A3E` (CTA), verde oscuro `#067A38`, lima `#7CB518`, naranja `#F28C28`
   (corazón de favorito), azul noche `#0A1B3D` (texto), fondo blanco `#FFFFFF`. El
