@@ -1169,6 +1169,31 @@ para la API del APK.
   también lo manda desde la reserva de una sola hora (`cancha_detalle` →
   `agregarReservaJugador(operacionId:)`). Test
   `tests/test_tarifas_pasarela.py`.
+- **DATOS REALES DEL CLIENTE EN CADA CARGO DE CULQI (queja del director,
+  27-sep-2026, captura del panel de Culqi: "Datos del cliente" con
+  `first_last_name` y sin teléfono):** los cargos no llevaban
+  `antifraud_details`. Ahora `culqi.crear_cargo(cliente=)` SIEMPRE lo manda
+  (`culqi.datos_cliente`: nombre partido en nombre/apellidos con
+  `partir_nombre` —"Dennis Calagua Ruiz" → Dennis / Calagua Ruiz—, celular
+  solo dígitos 5-15, ciudad y país —por `pais` o por la moneda: PEN→PE/Lima,
+  USD→EC/Quito, BOB→BO/La Paz—, dirección "Ciudad - ISO" si no hay; sin
+  nombre alguno usa la parte local del correo; todo con los largos mínimos
+  de Culqi). **Ficha del cliente** `stores.clientes_pago[correo]` (snapshot;
+  `recordar_cliente` solo pisa con datos NO vacíos, `cliente_de` mezcla lo
+  de la request con lo conocido): la llenan `/pagos/cobrar`, `/recarga`,
+  `/fee-reserva` (campos opcionales `nombre, apellido, telefono, direccion,
+  ciudad, pais` en `CobroReq/RecargaReq/FeeReq`, `_cliente_de`),
+  `/pagos/metodos`, la tarjeta de suscripción de academia y la suscripción
+  del alumno; los cobros AUTOMÁTICOS (renovaciones Pro/servicios y
+  mensualidades) la reusan. **APK:** `PagosService.datosCliente()` (nombre
+  de la cuenta de Google, `appState.miCelular`, `paisBilletera.iso`) viaja
+  en cobrar/recargar/feeReserva; `guardarMetodo` manda también el celular.
+  **Web:** `/web/pagar` manda nombre de Google (o el de la reserva), celular
+  de la reserva y país de la cancha; `/web/matricular(-varios)` manda el
+  nombre de Google del PAGADOR (no el del hijo) y el celular de la persona
+  "yo" del carrito (o la primera). Tests
+  `test_cargo_lleva_los_datos_reales_del_cliente_para_culqi` + asserts en
+  `test_reserva_web_completa` y `test_ficha_de_academia…`.
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
   VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
   Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el

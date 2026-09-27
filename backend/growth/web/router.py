@@ -2053,9 +2053,15 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
     total = _total_de(filas)
     email = (ses["email"] if ses else (req.email or filas[0].get("usuario") or "")).strip().lower()
     concepto = f"Reserva {c.get('nombre', 'cancha')} {filas[0]['fecha']} {filas[0]['hora_inicio']}"
+    # Datos del pagador para el antifraude de Culqi: nombre de Google (real) o
+    # el que escribió en la reserva, celular de la reserva, país de la cancha.
+    from db.store import stores as _st
+    cliente = _st.cliente_de(
+        email, nombre=((ses or {}).get("nombre") or filas[0].get("jugador") or ""),
+        telefono=str(filas[0].get("telefono") or ""), pais=(pais_de_coordenadas(c.get("lat"), c.get("lng")) or ""))
     cargo = culqi.crear_cargo(
         token=req.token.strip(), monto_centimos=total * 100, email=email,
-        descripcion=concepto[:80], moneda=iso,
+        descripcion=concepto[:80], moneda=iso, cliente=cliente,
         metadata={"canal": "web", "reserva_id": filas[0]["id"], "cancha_id": filas[0]["cancha_id"]})
     if not cargo.get("ok"):
         datos.borrar_reservas(req.ids)
@@ -2068,7 +2074,6 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
     try:
         # El cargo queda en el libro (tipo cobro_web) ligado a la reserva/grupo:
         # es lo que permite REEMBOLSAR desde la web al cancelar.
-        from db.store import stores as _st
         _st.registrar_pago(tipo="cobro_web", monto_centimos=total * 100, moneda=iso, estado="aprobado",
                            culqi_charge_id=str(cargo.get("charge_id") or ""), email=email, medio=medio,
                            concepto=f"web:{_ref_de(filas)}")

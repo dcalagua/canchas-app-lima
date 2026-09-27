@@ -188,6 +188,15 @@ class RecargaReq(BaseModel):
     dueno_id: str              # a quién se le acredita el saldo (correo del dueño)
     email: str                 # correo del pagador (lo exige Culqi)
     monto_soles: float
+    # Datos del pagador para el antifraude de Culqi (lo que el APK sepa: nombre
+    # de Google / verificado, celular del perfil, país). Vacíos = se completa
+    # con la ficha ya conocida del correo o con el propio correo.
+    nombre: str = ""
+    apellido: str = ""
+    telefono: str = ""
+    direccion: str = ""
+    ciudad: str = ""
+    pais: str = ""
 
 
 class FeeReq(BaseModel):
@@ -196,6 +205,15 @@ class FeeReq(BaseModel):
     monto_soles: float         # la comisión a cobrar (la calcula el APK o aquí)
     concepto: str = "Fee de reserva Pichangol"
     reserva_id: str | None = None
+    # Datos del pagador para el antifraude de Culqi (lo que el APK sepa: nombre
+    # de Google / verificado, celular del perfil, país). Vacíos = se completa
+    # con la ficha ya conocida del correo o con el propio correo.
+    nombre: str = ""
+    apellido: str = ""
+    telefono: str = ""
+    direccion: str = ""
+    ciudad: str = ""
+    pais: str = ""
 
 
 class CobroReq(BaseModel):
@@ -204,6 +222,23 @@ class CobroReq(BaseModel):
     monto_soles: float
     concepto: str = "Pago Pichangol"
     tipo: str = "cobro"        # reserva | academia | cobro
+    # Datos del pagador para el antifraude de Culqi (lo que el APK sepa: nombre
+    # de Google / verificado, celular del perfil, país). Vacíos = se completa
+    # con la ficha ya conocida del correo o con el propio correo.
+    nombre: str = ""
+    apellido: str = ""
+    telefono: str = ""
+    direccion: str = ""
+    ciudad: str = ""
+    pais: str = ""
+
+
+def _cliente_de(email: str, req=None) -> dict:
+    """Ficha del pagador para `culqi.crear_cargo(cliente=)`: lo que trae la
+    request (nombre, apellido, telefono, direccion, ciudad, pais) se recuerda
+    en `stores.clientes_pago` y se completa con lo ya conocido del correo."""
+    campos = {k: getattr(req, k, "") for k in stores.CAMPOS_CLIENTE} if req is not None else {}
+    return stores.cliente_de(email, **campos)
 
 
 class ComisionReservaReq(BaseModel):
@@ -2031,7 +2066,8 @@ def procesar_renovaciones() -> dict:
             r = culqi.crear_cargo(
                 token=metodo["card_id"], monto_centimos=monto,
                 email=metodo.get("email") or "", descripcion=concepto,
-                metadata={"tipo": "suscripcion", "academia_id": aca})
+                metadata={"tipo": "suscripcion", "academia_id": aca},
+                cliente=_cliente_de(metodo.get("email") or ""))
             if r.get("ok"):
                 stores.registrar_pago(
                     tipo="suscripcion", monto_centimos=monto, moneda="PEN",
@@ -2083,6 +2119,7 @@ def set_metodo_suscripcion(req: MetodoSuscripcionReq) -> dict:
     if not culqi.disponible():
         raise HTTPException(status_code=503, detail="pagos_no_configurados")
     key = f"aca:{req.academia_id}"
+    stores.recordar_cliente(req.email, nombre=req.nombre, apellido=req.apellido)
     cus = stores.customers.get(key)
     if not cus:
         rc = culqi.crear_customer(email=req.email, nombre=req.nombre,
@@ -2179,6 +2216,8 @@ def post_suscripcion_alumno(req: SuscripcionAlumnoReq) -> dict:
             return {"ok": False, "error": rcard.get("error", "no_se_pudo_guardar_tarjeta")}
         card_id, marca, ultimos4 = rcard["card_id"], rcard["marca"], rcard["ultimos4"]
     ahora = datetime.now(timezone.utc)
+    stores.recordar_cliente(req.email, nombre=req.nombre, apellido=req.apellido,
+                            pais=(req.pais or "").upper())
     stores.suscripciones_alumno[req.alumno_id] = {
         "alumno_id": req.alumno_id, "academia_id": req.academia_id,
         "email": req.email, "card_id": card_id,
@@ -2231,7 +2270,8 @@ def procesar_renovaciones_alumnos() -> dict:
             token=s["card_id"], monto_centimos=monto,
             email=s.get("email") or "", descripcion=concepto,
             metadata={"tipo": "mensualidad_alumno", "academia_id": aca,
-                      "alumno_id": s.get("alumno_id")})
+                      "alumno_id": s.get("alumno_id")},
+            cliente=_cliente_de(s.get("email") or ""))
         if r.get("ok"):
             pct = _comision_matricula_pct(s.get("pais"))
             comision = int(round(monto * pct / 100.0))
@@ -2810,6 +2850,7 @@ def post_cobrar(req: CobroReq) -> dict:
         monto_centimos=centimos,
         email=req.email,
         descripcion=req.concepto,
+        cliente=_cliente_de(req.email, req),
     )
     if not r["ok"]:
         return {
@@ -2840,6 +2881,8 @@ def post_metodo(req: MetodoReq) -> dict:
     marca + últimos 4 (nunca el número completo)."""
     if not culqi.disponible():
         raise HTTPException(status_code=503, detail="pagos_no_configurados")
+    stores.recordar_cliente(req.email, nombre=req.nombre, apellido=req.apellido,
+                            telefono=req.telefono)
     cus = stores.customers.get(req.user_id)
     if not cus:
         rc = culqi.crear_customer(
@@ -2889,6 +2932,7 @@ def post_recarga(req: RecargaReq) -> dict:
         descripcion="Recarga Pichangol",
         # Sin metadata por ahora: la recarga acredita de forma síncrona (no
         # depende del webhook). Se aísla un posible parameter_error de Culqi.
+        cliente=_cliente_de(req.email, req),
     )
     if not r["ok"]:
         stores.registrar_pago(
@@ -2940,6 +2984,7 @@ def post_fee(req: FeeReq) -> dict:
         email=req.email,
         descripcion=req.concepto,
         metadata={"tipo": "fee_reserva", "reserva_id": req.reserva_id or ""},
+        cliente=_cliente_de(req.email, req),
     )
     if not r["ok"]:
         return {"ok": False, "error": r.get("error", "cargo_rechazado")}

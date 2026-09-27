@@ -31,6 +31,7 @@ class _FakeCulqi:
         self.n = 0
         self.forzar_error = False
         self.ultimo_customer = None  # último body enviado a /customers
+        self.ultimo_cargo = None     # último body enviado a /charges
 
     def request(self, metodo, path, body=None):
         if self.forzar_error:
@@ -49,6 +50,7 @@ class _FakeCulqi:
             return {"ok": True, "data": {}}
         if metodo == "POST" and path == "/charges":
             self.n += 1
+            self.ultimo_cargo = body
             cid = f"chr_test_{self.n}"
             data = {
                 "id": cid,
@@ -638,6 +640,60 @@ def test_customer_cumple_minimos_de_culqi(_setup):
     assert len(b["last_name"]) >= 2
     assert len(b["phone_number"]) >= 5
     assert len(b["email"]) <= 50
+
+
+def test_cargo_lleva_los_datos_reales_del_cliente_para_culqi(_setup):
+    """Queja del director (27-sep-2026, panel de Culqi del cobro de S/ 15):
+    "Datos del cliente" salía con "first_last_name" y sin teléfono. Cada cargo
+    manda `antifraud_details` con el nombre real (partido en nombre/apellido),
+    el celular, ciudad y país; lo que el APK/web manda se RECUERDA por correo
+    y se reusa cuando el cobro no trae datos (recargas, renovaciones)."""
+    from pagos.culqi import partir_nombre, datos_cliente
+    assert partir_nombre("Dennis Calagua") == ("Dennis", "Calagua")
+    assert partir_nombre("Dennis Calagua Ruiz") == ("Dennis", "Calagua Ruiz")
+    assert partir_nombre("Ana María Pérez Soto") == ("Ana María", "Pérez Soto")
+    assert partir_nombre("Madonna") == ("Madonna", "")
+    # Sin nombre: la parte local del correo, mejor que "Cliente Pichangol".
+    d = datos_cliente(email="dennis.calagua@ebim.pe")
+    assert (d["first_name"], d["last_name"], d["country_code"], d["address_city"]) == ("Dennis", "Calagua", "PE", "Lima")
+    assert len(d["address"]) >= 5 and "phone_number" not in d
+    # En dólares (Ecuador) sin país explícito → EC / Quito.
+    assert datos_cliente(email="x@y.com", moneda="USD")["country_code"] == "EC"
+
+    # 1) El APK manda nombre + celular + país con el cobro.
+    r = client.post("/pagos/cobrar", json={
+        "token": "tkn_1", "email": "dcalagua@ebim.pe", "monto_soles": 15.0,
+        "concepto": "Reserva Cancha 1", "tipo": "reserva",
+        "nombre": "Dennis Calagua", "telefono": "+51 999 888 777", "pais": "PE"}).json()
+    assert r["ok"] is True
+    af = _setup.ultimo_cargo["antifraud_details"]
+    assert af == {"first_name": "Dennis", "last_name": "Calagua", "address": "Lima - PE",
+                  "address_city": "Lima", "country_code": "PE", "phone_number": "51999888777"}
+    # Quedó la ficha del cliente (viaja en el snapshot).
+    ficha = stores.clientes_pago["dcalagua@ebim.pe"]
+    assert ficha["nombre"] == "Dennis Calagua" and ficha["telefono"] == "+51 999 888 777"
+    assert "clientes_pago" in stores.to_state()
+
+    # 2) Una recarga SIN datos (APK viejo) reusa la ficha conocida.
+    r = client.post("/pagos/recarga", json={
+        "token": "tkn_2", "dueno_id": "dcalagua@ebim.pe", "email": "dcalagua@ebim.pe",
+        "monto_soles": 20.0}).json()
+    assert r["ok"] is True
+    af = _setup.ultimo_cargo["antifraud_details"]
+    assert af["first_name"] == "Dennis" and af["last_name"] == "Calagua" and af["phone_number"] == "51999888777"
+
+    # 3) Un dato nuevo no vacío actualiza la ficha; uno vacío no la borra.
+    client.post("/pagos/cobrar", json={
+        "token": "tkn_3", "email": "dcalagua@ebim.pe", "monto_soles": 10.0,
+        "concepto": "Reserva Cancha 2", "telefono": "988777666", "nombre": ""})
+    af = _setup.ultimo_cargo["antifraud_details"]
+    assert af["phone_number"] == "988777666" and af["first_name"] == "Dennis"
+
+    # 4) Guardar una tarjeta también recuerda nombre/apellido/teléfono.
+    client.post("/pagos/metodos", json={
+        "token": "t", "user_id": "ana@x.com", "email": "ana@x.com",
+        "nombre": "Ana", "apellido": "Torres", "telefono": "977666555"})
+    assert stores.clientes_pago["ana@x.com"]["apellido"] == "Torres"
 
 
 def test_eliminar_metodo_de_pago():

@@ -12,6 +12,7 @@ backend. Nunca lanza: devuelve dicts {ok: bool, ...}.
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 import urllib.request
 
@@ -66,6 +67,71 @@ def _request(metodo: str, path: str, body: dict | None = None) -> dict:
         return {"ok": False, "error": str(e)[:160]}
 
 
+# País → (código, ciudad por defecto) para el bloque antifraude cuando el
+# cliente no dio dirección. Culqi exige country_code ISO-2 y address_city 2–30.
+_PAIS_CIUDAD = {"PE": "Lima", "EC": "Quito", "BO": "La Paz"}
+_MONEDA_PAIS = {"PEN": "PE", "USD": "EC", "BOB": "BO"}
+
+
+def _campo(v: str, fallback: str, minimo: int, maximo: int) -> str:
+    """Culqi valida largos MÍNIMOS: first/last_name 2–50, address 5–100,
+    address_city 2–30, phone_number 5–15, email ≤50. Un valor corto dispara
+    `parameter_error`, así que se recorta y, si no alcanza, cae al fallback."""
+    t = (v or "").strip()[:maximo]
+    return t if len(t) >= minimo else fallback
+
+
+def partir_nombre(nombre_completo: str) -> tuple[str, str]:
+    """"Dennis Calagua" → ("Dennis", "Calagua"); "Dennis Calagua Ruiz" →
+    ("Dennis", "Calagua Ruiz"); "Ana María Pérez Soto" → ("Ana María", "Pérez
+    Soto"). Regla: los apellidos son la SEGUNDA mitad (redondeando hacia los
+    apellidos), que es lo usual en nombres hispanos. Una sola palabra → sin
+    apellido."""
+    partes = [w for w in (nombre_completo or "").replace("\u00a0", " ").split() if w]
+    if not partes:
+        return "", ""
+    if len(partes) == 1:
+        return partes[0], ""
+    corte = max(1, len(partes) // 2)
+    return " ".join(partes[:corte]), " ".join(partes[corte:])
+
+
+def datos_cliente(*, email: str = "", nombre: str = "", apellido: str = "",
+                  telefono: str = "", direccion: str = "", ciudad: str = "",
+                  pais: str = "", moneda: str = "PEN") -> dict:
+    """Arma `antifraud_details` de un cargo con lo que sabemos del cliente
+    (queja del director, 27-sep-2026: en el panel de Culqi el cargo salía con
+    "first_last_name" y sin teléfono). `nombre` puede venir completo ("Dennis
+    Calagua") y sin `apellido`: se parte solo. Sin nombre alguno se usa la
+    parte local del correo (mejor que nada para identificar al pagador en el
+    panel). Todo cumple los largos que exige Culqi."""
+    nom = (nombre or "").strip()
+    ape = (apellido or "").strip()
+    if nom and not ape:
+        nom, ape = partir_nombre(nom)
+    if not nom:
+        local = (email or "").split("@")[0]
+        local = " ".join(w for w in re.split(r"[._\-+0-9]+", local) if w).title()
+        nom, ape2 = partir_nombre(local)
+        ape = ape or ape2
+    iso = (pais or "").strip().upper()[:2] or _MONEDA_PAIS.get((moneda or "PEN").upper(), "PE")
+    if iso not in _PAIS_CIUDAD:
+        iso = "PE"
+    ciu = _campo(ciudad, _PAIS_CIUDAD[iso], 2, 30)
+    dire = _campo(direccion, f"{ciu} - {iso}", 5, 100)
+    tel = "".join(c for c in (telefono or "") if c.isdigit())
+    d = {
+        "first_name": _campo(nom, "Cliente", 2, 50),
+        "last_name": _campo(ape, "Pichangol", 2, 50),
+        "address": dire,
+        "address_city": ciu,
+        "country_code": iso,
+    }
+    if 5 <= len(tel) <= 15:
+        d["phone_number"] = tel
+    return d
+
+
 def crear_cargo(
     *,
     token: str,
@@ -74,10 +140,14 @@ def crear_cargo(
     descripcion: str,
     metadata: dict | None = None,
     moneda: str = "PEN",
+    cliente: dict | None = None,
 ) -> dict:
     """Crea un cargo en Culqi. Devuelve {ok, charge_id, capturado, raw} o
     {ok: False, error}. El `token` es el source_id que generó el APK (tarjeta o
-    Yape) con la llave pública."""
+    Yape) con la llave pública. `cliente` = {nombre, apellido, telefono,
+    direccion, ciudad, pais} (lo que se sepa) → viaja como `antifraud_details`
+    para que el panel de Culqi muestre a la persona real y no "first_last_name";
+    si es None se arma igual a partir del correo."""
     if not disponible():
         return {"ok": False, "error": "culqi_no_configurado"}
     if monto_centimos < 100:  # Culqi exige mínimo S/ 1.00 (100 céntimos)
@@ -98,6 +168,11 @@ def crear_cargo(
     if metadata:
         # Culqi acepta metadata con valores string.
         body["metadata"] = {k: str(v) for k, v in metadata.items()}
+    c = dict(cliente or {})
+    body["antifraud_details"] = datos_cliente(
+        email=email, nombre=str(c.get("nombre") or ""), apellido=str(c.get("apellido") or ""),
+        telefono=str(c.get("telefono") or ""), direccion=str(c.get("direccion") or ""),
+        ciudad=str(c.get("ciudad") or ""), pais=str(c.get("pais") or ""), moneda=moneda)
     r = _request("POST", "/charges", body)
     if not r["ok"]:
         return r
@@ -134,13 +209,10 @@ def crear_customer(*, email: str, nombre: str = "", apellido: str = "",
     if not disponible():
         return {"ok": False, "error": "culqi_no_configurado"}
 
-    # Culqi valida largos MÍNIMOS: first/last_name 2–50, address 5–100,
-    # address_city 2–30, phone_number 5–15, email ≤50. Un valor corto (p. ej.
-    # address="Lima", 4 chars) dispara `parameter_error` al crear el cliente.
-    def _campo(v: str, fallback: str, minimo: int, maximo: int) -> str:
-        t = (v or "").strip()[:maximo]
-        return t if len(t) >= minimo else fallback
-
+    # Largos mínimos de Culqi: ver `_campo` (address="Lima", 4 chars, daba
+    # `parameter_error`). Un nombre completo sin apellido se parte solo.
+    if nombre and not apellido:
+        nombre, apellido = partir_nombre(nombre)
     solo_digitos = "".join(c for c in (telefono or "") if c.isdigit())
     body = {
         "first_name": _campo(nombre, "Cliente", 2, 50),

@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../state/app_state.dart';
 import 'auth_service.dart';
 
 /// Cliente de PAGOS (Culqi, modelo inDrive). Dos capas:
@@ -123,6 +124,20 @@ class PagosService {
   }
 
   // --- 3) Cobro en nuestro backend (crea el cargo con la sk) ---------------
+  /// Datos del PAGADOR que viajan con cada cobro para el antifraude de la
+  /// pasarela (queja del director, 27-sep-2026: el panel de Culqi mostraba
+  /// "first_last_name" y sin teléfono). Nombre de la cuenta de Google, celular
+  /// del perfil y país de la billetera; el backend los recuerda por correo y
+  /// los reusa en los cobros automáticos. Nada de esto es texto libre nuevo.
+  static Map<String, dynamic> datosCliente() {
+    final u = appState.usuario;
+    return {
+      'nombre': (u?.nombre ?? '').trim(),
+      'telefono': appState.miCelular,
+      'pais': appState.paisBilletera.iso,
+    };
+  }
+
   /// Recarga el saldo prepago del dueño. Devuelve {ok, saldoSoles} o {ok:false}.
   static Future<Map<String, dynamic>> recargar({
     required String token,
@@ -142,6 +157,7 @@ class PagosService {
           'dueno_id': duenoId,
           'email': email,
           'monto_soles': montoSoles,
+          ...datosCliente(),
         }),
       ).timeout(const Duration(seconds: 40));
       Map<String, dynamic> j = {};
@@ -191,6 +207,7 @@ class PagosService {
           'monto_soles': montoSoles,
           'concepto': concepto,
           'tipo': tipo,
+          ...datosCliente(),
         }),
       ).timeout(const Duration(seconds: 40));
       Map<String, dynamic> j = {};
@@ -350,6 +367,7 @@ class PagosService {
           'monto_soles': montoSoles,
           'concepto': concepto,
           'reserva_id': reservaId,
+          ...datosCliente(),
         }),
       ).timeout(const Duration(seconds: 25));
       final j = jsonDecode(r.body) as Map<String, dynamic>;
@@ -521,6 +539,7 @@ class PagosService {
           'email': email,
           'nombre': nombre,
           'apellido': apellido,
+          'telefono': appState.miCelular,
         }),
       ).timeout(const Duration(seconds: 25));
       final j = jsonDecode(r.body) as Map<String, dynamic>;

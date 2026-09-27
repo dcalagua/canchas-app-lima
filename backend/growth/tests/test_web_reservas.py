@@ -390,6 +390,10 @@ def test_reserva_web_completa(db, monkeypatch):
                                         "medio": "yape", "email": "ana@x.com"}).json()
     assert p["ok"] and p["url"] == f"/reserva/{j['grupo']}"
     assert cargos[0]["monto_centimos"] == 15000 and cargos[0]["moneda"] == "PEN"
+    # Datos reales del pagador para el antifraude de Culqi (27-sep-2026): el
+    # nombre y celular de la reserva + país de la cancha; quedan en la ficha.
+    assert cargos[0]["cliente"]["nombre"] == "Ana Pérez" and cargos[0]["cliente"]["telefono"] == "999888777"
+    assert cargos[0]["cliente"]["pais"] == "PE" and stores.clientes_pago["ana@x.com"]["nombre"] == "Ana Pérez"
     for i in j["ids"]:
         r = db.reservas[i]
         assert r["estado"] == "confirmada" and r["pagado"] and r["medio_pago"] == "yape"
@@ -1490,6 +1494,8 @@ def test_ficha_de_academia_y_matricula_web_como_el_app(db, monkeypatch):
     r = cli.post("/web/matricular", json={"academia_id": "ac_t1", "plan_id": "Bola Roja | 2x", "nombre": "Lucas Pérez", "celular": "999 888 777",
                                           "es_hijo": True, "edad": 8, "cantidad": 3, "mes_a_mes": False, "token": "tkn_1", "medio": "yape"}).json()
     assert r["ok"] and r["url"].startswith("/academia/ac_t1/matricula/al_") and cargos[0]["monto_centimos"] == 67500 and cargos[0]["email"] == "ana@gmail.com"
+    # Antifraude: el pagador es la cuenta de Google (Ana), no el hijo matriculado.
+    assert cargos[0]["cliente"]["nombre"] == "Ana Pérez" and cargos[0]["cliente"]["telefono"] == "999888777"
     m = db.matriculas[-1]
     assert m["id"].startswith("al_") and m["academiaId"] == "ac_t1" and m["email"] == "ana@gmail.com" and m["canal"] == "web"
     assert m["nombre"] == "Lucas Pérez" and m["apoderadoNombre"] == "Ana Pérez" and m["apoderadoWhatsapp"] == "999888777" and m["whatsapp"] == "" and m["edad"] == 8

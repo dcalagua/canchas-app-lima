@@ -758,8 +758,15 @@ def _cobrar_y_matricular(a: dict, ses: dict | None, token: str, medio: str, item
         concepto = f"Matrícula {a['nombre']} · {items[0]['plan']['nombre']}"
     else:
         concepto = f"Matrícula {a['nombre']} · {len(items)} personas"
+    # Antifraude de Culqi: el PAGADOR es la cuenta de Google (nombre real); el
+    # celular sale de la persona "yo" del carrito o, si no va, de la primera.
+    titular = next((it for it in items if not it.get("parentesco")), items[0])
+    from db.store import stores as _st
+    cliente = _st.cliente_de(email, nombre=((ses or {}).get("nombre") or titular.get("nombre") or ""),
+                             telefono=str(titular.get("celular") or ""),
+                             pais=str(_iso(a) or "").upper())
     cargo = culqi.crear_cargo(token=token.strip(), monto_centimos=monto_c, email=email or "sin-correo@pichangol.app",
-                              descripcion=concepto[:80], moneda=iso,
+                              descripcion=concepto[:80], moneda=iso, cliente=cliente,
                               metadata={"canal": "web", "academia_id": a["id"], "plan_id": items[0]["plan"]["id"], "personas": len(items)})
     if not cargo.get("ok"):
         msg = str(cargo.get("error") or "")

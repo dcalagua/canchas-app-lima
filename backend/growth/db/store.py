@@ -580,6 +580,12 @@ class Stores:
         # Métodos de pago guardados (One Click). NO se guarda la tarjeta, sólo el
         # token permanente de Culqi (crd_...) + marca y últimos 4 para mostrar.
         self.customers: dict[str, str] = {}       # user_id -> cus_id de Culqi
+        # FICHA DEL CLIENTE para el antifraude de la pasarela (27-sep-2026):
+        # correo → {nombre, apellido, telefono, direccion, ciudad, pais,
+        # actualizado}. Se completa con lo que mandan el APK y la web en cada
+        # cobro/tarjeta y se reusa en los cobros AUTOMÁTICOS (renovaciones,
+        # mensualidades), donde ya no hay nadie escribiendo su nombre.
+        self.clientes_pago: dict[str, dict] = {}
         self.metodos: dict[str, list[dict]] = {}  # user_id -> [{id, marca, ultimos4, creado_en}]
         # Tarjeta de DÉBITO AUTOMÁTICO por academia para las suscripciones: al
         # renovar, si no hay saldo, se cobra a esta tarjeta guardada (crd_ de
@@ -814,6 +820,7 @@ class Stores:
         self.metodo_suscripcion = {}
         self.metodos = {}
         self.customers = {}
+        self.clientes_pago = {}
         self.vistas = {}
         self.membresias_pro = {}
         self.jugadores_circuito = {}
@@ -907,6 +914,37 @@ class Stores:
         return None
 
     # --- cuenta de cobro + lotes de liquidación ---
+    # --- Ficha del cliente para el antifraude de la pasarela ---------------
+    CAMPOS_CLIENTE = ("nombre", "apellido", "telefono", "direccion", "ciudad", "pais")
+
+    def recordar_cliente(self, email: str, **campos) -> dict:
+        """Guarda/actualiza lo que sabemos del pagador (solo campos NO vacíos;
+        nunca borra un dato previo con uno vacío). Devuelve la ficha."""
+        e = (email or "").strip().lower()
+        if not e:
+            return {}
+        ficha = dict(self.clientes_pago.get(e) or {})
+        cambio = False
+        for k in self.CAMPOS_CLIENTE:
+            v = str(campos.get(k) or "").strip()
+            if v and ficha.get(k) != v:
+                ficha[k] = v[:100]
+                cambio = True
+        if cambio or e not in self.clientes_pago:
+            ficha["actualizado"] = datetime.now(timezone.utc).isoformat()
+            self.clientes_pago[e] = ficha
+        return ficha
+
+    def cliente_de(self, email: str, **campos) -> dict:
+        """Ficha para `culqi.crear_cargo(cliente=)`: lo que llega en la request
+        (si trae algo, se recuerda) completado con lo ya conocido del correo."""
+        e = (email or "").strip().lower()
+        base = dict(self.clientes_pago.get(e) or {}) if e else {}
+        nuevos = {k: v for k, v in campos.items() if k in self.CAMPOS_CLIENTE and str(v or "").strip()}
+        if nuevos:
+            base = dict(self.recordar_cliente(e, **nuevos))
+        return {k: base.get(k, "") for k in self.CAMPOS_CLIENTE}
+
     def cuenta_cobro(self, email: str) -> dict | None:
         c = self.cuentas_cobro.get((email or "").strip().lower())
         return dict(c) if c else None
@@ -1069,6 +1107,7 @@ class Stores:
             "conexiones_redes": {k: dict(v) for k, v in self.conexiones_redes.items()},
             "vistas": {k: dict(v) for k, v in self.vistas.items()},
             "customers": dict(self.customers),
+            "clientes_pago": {k: dict(v) for k, v in self.clientes_pago.items()},
             "metodos": {k: list(v) for k, v in self.metodos.items()},
             "metodo_suscripcion": {k: dict(v) for k, v in self.metodo_suscripcion.items()},
             "suscripciones_alumno": {
@@ -1159,6 +1198,8 @@ class Stores:
             for k, v in (data.get("vistas") or {}).items()
         }
         self.customers = dict(data.get("customers") or {})
+        self.clientes_pago = {
+            k: dict(v) for k, v in (data.get("clientes_pago") or {}).items()}
         self.metodos = {
             k: list(v) for k, v in (data.get("metodos") or {}).items()
         }
