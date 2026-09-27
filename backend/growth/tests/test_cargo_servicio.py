@@ -169,3 +169,60 @@ def test_torre_configura_regla_flags_y_textos_y_simula(monkeypatch):
         if k.startswith("cargo_"):
             del stores.config[k]
     stores.cargo_servicio_textos = {}
+
+
+def test_mes_a_mes_agrupado_por_familia(monkeypatch):
+    """Fase 4: las mensualidades vencidas de la MISMA cuenta y tarjeta se cobran
+    en UN solo cargo de Culqi con UNA cotización del cargo por servicio
+    (partes por persona → menos por cabeza), el cargo se reparte en la fila de
+    cada matrícula y, si Culqi rechaza, el grupo entero queda pendiente."""
+    from datetime import datetime, timedelta, timezone
+    import pagos.router as pr
+    from pagos import culqi
+    stores.config["cargo_activo_academias"] = "1"
+    stores.suscripciones_alumno.clear()
+    vencido = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    def sub(aid, email, card, monto, aca="ac_1", rest=None):
+        stores.suscripciones_alumno[aid] = {"alumno_id": aid, "academia_id": aca, "email": email, "card_id": card,
+                                            "monto_centimos": monto, "pais": "pe", "estado": "activa", "concepto": f"Plan {aid}",
+                                            "proximo_cobro": vencido, "cobros_hechos": 0, "cobros_restantes": rest}
+    sub("al_yo", "dennis@gmail.com", "crd_1", 30000, rest=2)
+    sub("al_esposa", "dennis@gmail.com", "crd_1", 30000, aca="ac_2")
+    sub("al_otro", "otra@gmail.com", "crd_9", 10000)
+    cargos = []
+    monkeypatch.setattr(culqi, "disponible", lambda: True)
+    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: (cargos.append(kw) or {"ok": kw["token"] != "crd_9", "charge_id": f"chr_m{len(cargos)}", "error": "rechazada"}))
+    try:
+        r = pr.procesar_renovaciones_alumnos()
+        assert r["cobradas"] == 2 and r["pendientes"] == 1
+        # UN cargo para la familia: 600 + (5 % de 500 + 2 % de 100 = 27) = 627; el otro correo va aparte y falla.
+        fam = next(k for k in cargos if k["token"] == "crd_1")
+        assert fam["monto_centimos"] == 62700 and fam["metadata"]["alumnos"] == 2 and fam["metadata"]["cargo_servicio_centimos"] == 2700
+        assert "pago familiar" in fam["descripcion"] and "cargo por servicio" in fam["descripcion"]
+        filas = [p for p in stores.pagos if p.tipo == "matricula_online" and (p.cargo_id or "").startswith("chr_m")]
+        assert len(filas) == 2 and sorted(p.dueno_id for p in filas) == ["ac_1", "ac_2"]
+        assert sum(p.cargo_servicio_centimos for p in filas) == 2700 and {p.monto_centimos for p in filas} == {30000}
+        assert filas[0].culqi_charge_id.startswith("chr_m") and "#" in filas[1].culqi_charge_id and filas[0].cargo_desglose
+        assert all("pago familiar" in p.concepto and "cargo por servicio" in p.concepto for p in filas)
+        assert stores.suscripciones_alumno["al_yo"]["cobros_restantes"] == 1 and stores.suscripciones_alumno["al_yo"]["estado"] == "activa"
+        assert stores.suscripciones_alumno["al_esposa"]["cobros_hechos"] == 1
+        assert stores.suscripciones_alumno["al_otro"]["estado"] == "pendiente_pago"
+        # Rechazo de la tarjeta → el grupo entero queda pendiente, sin filas.
+        monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: {"ok": False, "error": "fondos"})
+        for s in stores.suscripciones_alumno.values():
+            s["proximo_cobro"] = vencido; s["estado"] = "activa"
+        n = len(stores.pagos)
+        r = pr.procesar_renovaciones_alumnos()
+        assert r["cobradas"] == 0 and r["pendientes"] == 3 and len(stores.pagos) == n
+        assert all(s["estado"] == "pendiente_pago" for s in stores.suscripciones_alumno.values())
+        # Apagado: un solo alumno se cobra como siempre (sin cargo, mismo monto).
+        stores.config["cargo_activo_academias"] = "0"
+        monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: (cargos.append(kw) or {"ok": True, "charge_id": f"chr_s{len(cargos)}"}))
+        stores.suscripciones_alumno.clear()
+        sub("al_solo", "solo@gmail.com", "crd_5", 25000)
+        pr.procesar_renovaciones_alumnos()
+        assert cargos[-1]["monto_centimos"] == 25000 and stores.pagos[-1].cargo_servicio_centimos == 0
+        assert stores.pagos[-1].monto_centimos == 25000 and "pago familiar" not in stores.pagos[-1].concepto
+    finally:
+        stores.config["cargo_activo_academias"] = "0"
+        stores.suscripciones_alumno.clear()

@@ -164,7 +164,9 @@ enum _Metodo { yape, tarjeta }
 class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
   String get _mon => widget.moneda.isNotEmpty ? widget.moneda : monedaSimbolo;
   bool _cargando = true;
-  _Metodo _metodo = _Metodo.tarjeta;
+  // YAPE POR DEFECTO en Perú (decisión del director, 27-sep-2026): baja el
+  // costo de pasarela a la mitad; el jugador puede cambiar a tarjeta.
+  _Metodo _metodo = paisActual.iso == 'PE' ? _Metodo.yape : _Metodo.tarjeta;
   List<Map<String, dynamic>> _guardadas = [];
   String? _cardSel; // id de la tarjeta guardada elegida; null = nueva
   bool _nueva = false; // mostrando el formulario de tarjeta nueva

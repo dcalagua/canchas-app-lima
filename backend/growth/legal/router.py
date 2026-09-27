@@ -431,15 +431,27 @@ def devoluciones() -> str:
     (web <b>pichangol.app</b> y app), a todas las compras realizadas en ella.</p>
 
     <h2>1. Reservas de canchas</h2>
+    <p>Cuando pagas en línea, el total puede incluir un <b>cargo por servicio Pichangol</b>
+    (se muestra como línea aparte antes de pagar). Las devoluciones se calculan así:</p>
     <ul>
       <li><b>Cancelación por el jugador con {horas} horas o más de anticipación</b> al inicio
-      del turno: devolución del <b>100 %</b> de lo pagado en línea.</li>
+      del turno: eliges a dónde va la devolución. <b>A tu saldo Pichangol</b>: el
+      <b>100 %</b>, cargo por servicio incluido, al instante, para usarlo en tu próxima
+      reserva. <b>Al mismo medio de pago</b> (tarjeta o Yape): se devuelve el <b>precio de
+      la reserva</b>; el cargo por servicio no se devuelve, porque cubre la comisión que la
+      pasarela de pagos ya cobró por esa operación.</li>
+      <li><b>Arrepentimiento</b>: si cancelas dentro de la <b>hora siguiente al pago</b> y
+      faltan más de <b>24 horas</b> para el turno, te devolvemos el <b>100 %</b>, cargo por
+      servicio incluido, por el medio que elijas.</li>
       <li><b>Con menos de {horas} horas</b>: la reserva no es reembolsable, porque el
       horario quedó bloqueado para ti y el establecimiento reservó el espacio.</li>
       <li><b>Cambio de fecha u hora</b>: con {horas} horas o más de anticipación puedes cancelar
-      sin costo y reservar de nuevo el horario que prefieras, sujeto a disponibilidad.</li>
+      (devolución a saldo, sin pérdida) y reservar de nuevo el horario que prefieras, sujeto
+      a disponibilidad.</li>
       <li><b>Cancelación por el establecimiento</b> (clima, fuerza mayor u otro motivo):
-      tienes derecho a <b>reprogramar sin costo</b> o a la <b>devolución del 100 %</b>.</li>
+      tienes derecho a <b>reprogramar sin costo</b> o a la <b>devolución del 100 %</b>,
+      cargo por servicio incluido, por el medio que elijas. El costo de esa devolución lo
+      asume el establecimiento.</li>
       <li>Las reservas que se pagan en la cancha no generan cobro en línea ni devolución.</li>
     </ul>
 
@@ -471,9 +483,11 @@ def devoluciones() -> str:
       ({em["whatsapp_bonito"] or "ver Contacto"}) indicando tu nombre, la fecha y hora de la
       compra y el motivo.</li>
     </ul>
-    <p>Las devoluciones aprobadas se realizan por el <b>mismo medio de pago</b> (tarjeta
-    o Yape, a través de Culqi) en un plazo de <b>hasta 7 días hábiles</b>, según los tiempos
-    de la pasarela y del banco emisor. El monto devuelto es el efectivamente pagado.</p>
+    <p>Las devoluciones a tu <b>saldo Pichangol</b> son inmediatas. Las devoluciones al
+    <b>mismo medio de pago</b> (tarjeta o Yape, a través de Culqi) llegan en un plazo de
+    <b>hasta 7 días hábiles</b>, según los tiempos de la pasarela y del banco emisor. El monto
+    devuelto es el que corresponde según esta política; el cargo por servicio solo se
+    devuelve en los casos indicados arriba.</p>
 
     <h2>6. Reclamos</h2>
     <p>Si no estás conforme, registra tu reclamo en nuestro

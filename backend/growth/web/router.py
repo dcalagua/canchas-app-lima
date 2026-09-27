@@ -46,6 +46,7 @@ import empresa
 from paises import _CAJAS, pais_de_coordenadas, moneda_de_pais, simbolo_de_moneda
 from pagos import culqi
 from pagos import cargo_servicio as _cs
+from pagos import devoluciones as _dev
 from web import catalogos, datos, descubrir, horarios, marca, sesion, ui
 from web.ui import e
 
@@ -2203,12 +2204,45 @@ def _cobro_web(ref: str):
     return None
 
 
-def estado_cancelacion(filas: list[dict], c: dict | None, email: str) -> dict:
-    """Qué pasa si el usuario cancela AHORA: si puede, cuántas horas faltan y
-    si le corresponde reembolso (regla: ≥ WEB_CANCELACION_HORAS → 100 %)."""
+def _cargo_pagado(filas: list[dict], cobro) -> tuple[int, list]:
+    """Cargo por servicio que pagó el jugador (céntimos) y su desglose: del
+    `cobro_web` si la reserva se pagó en la web; de la fila (`cargo_servicio`,
+    SQL supabase_reservas_cargo.sql) si se pagó en el app."""
+    if cobro is not None and int(getattr(cobro, "cargo_servicio_centimos", 0) or 0) > 0:
+        return int(cobro.cargo_servicio_centimos), list(getattr(cobro, "cargo_desglose", None) or [])
+    try:
+        c = int(round(float(filas[0].get("cargo_servicio") or 0) * 100))
+    except (TypeError, ValueError):
+        c = 0
+    raw = filas[0].get("cargo_desglose")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            raw = []
+    return max(c, 0), (list(raw) if isinstance(raw, list) else [])
+
+
+def _horas_desde_pago(cobro) -> float | None:
+    if cobro is None or not getattr(cobro, "creado_en", None):
+        return None
+    from db.store import ahora as _ahora
+    try:
+        return max((_ahora() - cobro.creado_en).total_seconds() / 3600.0, 0.0)
+    except TypeError:
+        return None
+
+
+def estado_cancelacion(filas: list[dict], c: dict | None, email: str, cancela_anfitrion: bool = False) -> dict:
+    """Qué pasa si se cancela AHORA: si se puede, cuántas horas faltan y qué
+    devolución corresponde según la POLÍTICA (`pagos/devoluciones.py`): a
+    saldo 100 % con cargo; al medio original el precio sin el cargo;
+    arrepentimiento (1 h del pago y > 24 h para el turno) y cancelación del
+    anfitrión = 100 % con cargo; tarde = sin devolución. [email] = el jugador;
+    con [cancela_anfitrion] no se exige que sea quien cancela."""
     if not filas or not email:
         return {"puede": False, "motivo": "sin_reserva"}
-    if any((f.get("usuario") or "").strip().lower() != email for f in filas):
+    if not cancela_anfitrion and any((f.get("usuario") or "").strip().lower() != email for f in filas):
         return {"puede": False, "motivo": "ajena"}
     if any(str(f.get("estado") or "") in ("cancelada", "noShow") for f in filas):
         return {"puede": False, "motivo": "ya_cancelada"}
@@ -2221,47 +2255,68 @@ def estado_cancelacion(filas: list[dict], c: dict | None, email: str) -> dict:
         return {"puede": False, "motivo": "ya_empezo", "horas": horas}
     pagado_online = all(f.get("pagado") for f in filas) and str(filas[0].get("medio_pago") or "") in ("yape", "tarjeta")
     pagado = all(f.get("pagado") for f in filas)
-    reembolsable = pagado and horas >= config.WEB_CANCELACION_HORAS
+    sim = filas[0].get("moneda") or "S/"
+    precio = _total_de(filas)
+    cobro = _cobro_web(_ref_de(filas))
+    cargo_c, _desg = _cargo_pagado(filas, cobro)
+    pol = _dev.resumen(pagado=pagado, horas_para_inicio=horas, horas_desde_pago=_horas_desde_pago(cobro),
+                       precio_centimos=precio * 100, cargo_centimos=cargo_c, simbolo=sim, cancela_anfitrion=cancela_anfitrion)
+    reembolsable = pol["motivo"] in ("plazo", "arrepentimiento", "anfitrion")
     return {"puede": True, "horas": round(horas, 1), "pagado": pagado, "pagado_online": pagado_online,
             "reembolsable": reembolsable, "minimo_horas": config.WEB_CANCELACION_HORAS,
-            "monto": _total_de(filas), "moneda": filas[0].get("moneda") or "S/"}
+            "monto": precio, "moneda": sim, "cargo_centimos": cargo_c, "total_pagado": precio + cargo_c / 100.0,
+            "politica": pol}
 
 
 class CancelarReq(BaseModel):
     ref: str
+    # A dónde va la devolución (política fase 4): 'saldo' (100 % con cargo,
+    # al instante) u 'original' (tarjeta/Yape vía Culqi: el precio, sin el
+    # cargo salvo arrepentimiento o cancelación del anfitrión). Los clientes
+    # viejos no lo mandan → original.
+    medio: str = "original"
 
 
-@router.post("/web/cancelar")
-def cancelar(req: CancelarReq, request: Request = None) -> dict:
-    """Cancela una reserva del usuario con sesión (grupo o turno suelto),
-    libera el horario y, si corresponde (≥ WEB_CANCELACION_HORAS y pagada),
-    DEVUELVE el dinero: cargo web → reembolso Culqi al instante; pagada en el
-    app → queda `manual` para el operador. Revierte la liquidación del dueño
-    (y su comisión, regalo incluido) si aún no se le pagó; si ya cobró, deja
-    la deuda anotada para la torre. Todo queda en `stores.cancelaciones_web`."""
+def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: str = "original",
+                      cancela_anfitrion: bool = False, quien: str = "") -> dict:
+    """Cancela un bloque (del jugador o del anfitrión), libera el horario y
+    DEVUELVE según la política: a SALDO acredita al instante en la billetera
+    del jugador (registro `devolucion_saldo`); al medio ORIGINAL reembolsa en
+    Culqi el monto que corresponda (cargo web) o queda `manual` (pagó en el
+    app). Revierte la liquidación del dueño si el jugador recupera su plata;
+    si el dueño ya cobró, deja la deuda anotada; si cancela el anfitrión, el
+    costo de pasarela de la devolución también es deuda suya."""
     from db.store import stores as _st, ahora as _ahora
-    ses = sesion.de_request(request)
-    if not ses:
-        return {"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión con Google para cancelar."}
-    email = ses["email"]
-    ref = (req.ref or "").strip()
-    filas = datos.reservas_por_grupo(ref) if ref.startswith("grp_") else datos.reservas_de([ref])
-    filas = sorted([f for f in filas if f.get("estado") != "nueva" or f.get("pagado")],
-                   key=lambda x: (str(x.get("fecha")), str(x.get("hora_inicio"))))
-    c = datos.cancha(filas[0]["cancha_id"]) if filas else None
-    est = estado_cancelacion(filas, c, email)
+    from pagos import tarifas_pasarela as _tp
+    medio = _dev.medio_valido(medio)
+    est = estado_cancelacion(filas, c, email, cancela_anfitrion=cancela_anfitrion)
     if not est.get("puede"):
         msgs = {"sin_reserva": "No encontramos esa reserva.", "ajena": "Esa reserva no es de tu cuenta.",
                 "ya_cancelada": "Esa reserva ya estaba cancelada.", "ya_empezo": "El turno ya empezó o ya pasó: no se puede cancelar.",
                 "sin_fecha": "No pudimos leer la fecha de la reserva."}
         return {"ok": False, "error": est.get("motivo"), "mensaje": msgs.get(est.get("motivo"), "No se pudo cancelar.")}
+    ref = _ref_de(filas)
     ids = [str(f["id"]) for f in filas]
     monto = int(est["monto"]); sim = est["moneda"]; iso = _moneda_de(c)[1] if c else "PEN"
+    pol = est["politica"]; mot = pol["motivo"]
+    cargo_c = int(est["cargo_centimos"])
+    monto_dev, incluye_cargo = _dev.monto_devolucion(mot, medio, monto * 100, cargo_c)
+    cobro = _cobro_web(ref)
     reembolso, refund_id, detalle = "no_aplica", None, ""
-    if est["pagado"] and est["reembolsable"]:
-        cobro = _cobro_web(ref)
-        if cobro is not None and cobro.culqi_charge_id and cobro.estado == "aprobado":
-            r = culqi.reembolsar(charge_id=cobro.culqi_charge_id, monto_centimos=cobro.monto_centimos)
+    medio_pago = str(filas[0].get("medio_pago") or "")
+    if est["pagado"] and monto_dev > 0:
+        if medio == "saldo":
+            # A la billetera del JUGADOR, al instante y sin pasar por Culqi.
+            if _st.pago_por_charge(f"dev:{ref}") is None:
+                _st.acreditar(email, monto_dev)
+                _st.registrar_pago(tipo="devolucion_saldo", monto_centimos=monto_dev, moneda=iso, estado="aprobado",
+                                   dueno_id=email, culqi_charge_id=f"dev:{ref}", medio=medio_pago,
+                                   concepto=f"Devolución a saldo · {(c or {}).get('nombre', 'reserva')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}")
+            if cobro is not None and cobro.estado == "aprobado":
+                cobro.estado = "devuelto_saldo"
+            reembolso = "saldo"
+        elif cobro is not None and cobro.culqi_charge_id and cobro.estado == "aprobado":
+            r = culqi.reembolsar(charge_id=cobro.culqi_charge_id, monto_centimos=min(monto_dev, cobro.monto_centimos))
             if r.get("ok"):
                 reembolso, refund_id = "reembolsado", r.get("refund_id")
                 cobro.estado = "reembolsado"
@@ -2270,19 +2325,17 @@ def cancelar(req: CancelarReq, request: Request = None) -> dict:
         else:
             reembolso = "manual"  # pagó desde el app: el operador devuelve
     elif est["pagado"]:
-        reembolso = "sin_reembolso"  # menos de N horas: sin devolución (política publicada)
+        reembolso = "sin_reembolso"  # tarde: sin devolución (política publicada)
     # Reversa contable del dueño solo si el cliente recupera su dinero.
     deuda = 0
+    costo_pasarela = 0
     dueno = (c.get("dueno") or "").strip().lower() if c else ""
-    if reembolso in ("reembolsado", "fallo", "manual") and dueno:
+    if reembolso in ("reembolsado", "fallo", "manual", "saldo") and dueno:
         liq = _st.pago_por_charge(ids[0])
         if liq is not None and liq.tipo in ("liquidacion_online", "liquidacion_full") and liq.estado == "aprobado":
             if liq.liquidado:
                 from pagos.router import comision_centimos as _com
                 deuda = liq.monto_centimos - (_com(liq.monto_centimos / 100.0, liq.moneda) if liq.tipo == "liquidacion_online" else 0)
-                _st.registrar_pago(tipo="ajuste_cancelacion", monto_centimos=deuda, moneda=liq.moneda, estado="pendiente",
-                                   dueno_id=dueno, culqi_charge_id=f"{ids[0]}_ajuste",
-                                   concepto=f"Descuento por cancelación web · {c.get('nombre', '')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}")
             else:
                 liq.estado = "anulado"
                 com = _st.pago_por_charge(f"{ids[0]}_com")
@@ -2293,6 +2346,19 @@ def cancelar(req: CancelarReq, request: Request = None) -> dict:
                         _st.acreditar_promo(dueno, promo)
                     if com.monto_centimos - promo > 0:
                         _st.acreditar(dueno, com.monto_centimos - promo)
+        if cancela_anfitrion and reembolso != "saldo":
+            # Culpa del anfitrión: el costo de la pasarela de esa devolución
+            # (Culqi no devuelve su comisión) se le descuenta en la siguiente
+            # liquidación. A saldo no hay costo.
+            base_pasarela = cobro.monto_centimos if cobro is not None else monto * 100 + cargo_c
+            costo_pasarela = _tp.costo_centimos(base_pasarela, iso, medio_pago or "tarjeta", "liquidacion_online")
+            deuda += costo_pasarela
+        if deuda > 0:
+            _st.registrar_pago(tipo="ajuste_cancelacion", monto_centimos=deuda, moneda=iso, estado="pendiente",
+                               dueno_id=dueno, culqi_charge_id=f"{ids[0]}_ajuste",
+                               concepto=(f"{'Cancelación del local' if cancela_anfitrion else 'Descuento por cancelación web'} · "
+                                         f"{(c or {}).get('nombre', '')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}"
+                                         + (f" (incluye pasarela {sim} {costo_pasarela / 100.0:.2f})" if costo_pasarela else "")))
     if not datos.eliminar_reservas(ids):
         return {"ok": False, "error": "no_se_pudo", "mensaje": "No pudimos liberar el horario. Inténtalo de nuevo."}
     reg = {"id": _st.next_id("cancelacion_web"), "ref": ref, "ids": ids, "usuario": email, "cancha_id": filas[0]["cancha_id"],
@@ -2300,24 +2366,55 @@ def cancelar(req: CancelarReq, request: Request = None) -> dict:
            "hora_inicio": str(filas[0]["hora_inicio"]), "hora_fin": str(filas[-1]["hora_fin"]), "turnos": len(filas),
            "monto": monto, "moneda": sim, "moneda_iso": iso, "pagado": bool(est["pagado"]), "horas_antes": est["horas"],
            "reembolso": reembolso, "refund_id": refund_id, "detalle": detalle, "deuda_dueno_centimos": deuda,
-           "dueno": dueno, "creado_en": _ahora().isoformat()}
+           "dueno": dueno, "creado_en": _ahora().isoformat(),
+           # Política fase 4: qué se devolvió, por dónde y por qué.
+           "motivo": mot, "medio_devolucion": medio if monto_dev > 0 else "", "monto_devuelto_centimos": monto_dev if reembolso != "sin_reembolso" else 0,
+           "cargo_centimos": cargo_c, "incluye_cargo": bool(incluye_cargo and monto_dev > 0),
+           "cancela_anfitrion": bool(cancela_anfitrion), "quien": quien or email, "costo_pasarela_centimos": costo_pasarela}
     _st.cancelaciones_web.append(reg)
     try:
         from pagos.router import _aviso_push_usuario
         rango = f"{filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"
-        if dueno:
+        dev_txt = f"{sim} {monto_dev / 100.0:.2f}"
+        if dueno and not cancela_anfitrion:
             _aviso_push_usuario(dueno, "Reserva cancelada 📅",
-                                f"{filas[0].get('jugador') or email} canceló {c.get('nombre', '')} · {horarios.fecha_larga(str(filas[0]['fecha']))} {rango}. El horario quedó libre.",
+                                f"{filas[0].get('jugador') or email} canceló {(c or {}).get('nombre', '')} · {horarios.fecha_larga(str(filas[0]['fecha']))} {rango}. El horario quedó libre.",
                                 tipo="reserva")
-        txt = {"reembolsado": f"Te devolvemos {sim} {monto:.2f} al mismo medio de pago (3 a 7 días hábiles).",
-               "manual": f"Te devolvemos {sim} {monto:.2f}; te escribimos para coordinar.",
+        txt = {"reembolsado": f"Te devolvemos {dev_txt} al mismo medio de pago (3 a 7 días hábiles)."
+                              + ("" if incluye_cargo else " El cargo por servicio no se devuelve."),
+               "saldo": f"Te devolvimos {dev_txt} a tu saldo Pichangol (100 %, cargo incluido). Ya lo puedes usar.",
+               "manual": f"Te devolvemos {dev_txt}; te escribimos para coordinar.",
                "fallo": "Tu devolución está en proceso; te escribimos en breve.",
-               "sin_reembolso": "Cancelaste con menos de 6 horas: sin devolución.", "no_aplica": ""}[reembolso]
-        _aviso_push_usuario(email, "Reserva cancelada", f"{c.get('nombre', '')} · {horarios.fecha_larga(str(filas[0]['fecha']))} {rango}. {txt}".strip(), tipo="reserva")
+               "sin_reembolso": f"Cancelaste con menos de {int(_dev.horas_minimas())} horas: sin devolución.", "no_aplica": ""}[reembolso]
+        quien_txt = "El local canceló" if cancela_anfitrion else "Reserva cancelada"
+        _aviso_push_usuario(email, quien_txt if cancela_anfitrion else "Reserva cancelada",
+                            f"{(c or {}).get('nombre', '')} · {horarios.fecha_larga(str(filas[0]['fecha']))} {rango}. {txt}".strip(), tipo="reserva")
     except Exception:  # noqa: BLE001
         pass
-    print(f"[cancelar] {ref} {email} {reembolso} monto={monto} horas={est['horas']} deuda={deuda} {detalle}", flush=True)
-    return {"ok": True, "reembolso": reembolso, "monto": monto, "moneda": sim, "horas": est["horas"], "refund_id": refund_id}
+    print(f"[cancelar] {ref} {email} {reembolso} motivo={mot} medio={medio} monto={monto} dev={monto_dev} "
+          f"cargo={cargo_c} horas={est['horas']} deuda={deuda} anfitrion={int(cancela_anfitrion)} {detalle}", flush=True)
+    return {"ok": True, "reembolso": reembolso, "monto": monto, "moneda": sim, "horas": est["horas"], "refund_id": refund_id,
+            "motivo": mot, "medio": medio if monto_dev > 0 else "", "monto_devuelto": monto_dev / 100.0,
+            "incluye_cargo": bool(incluye_cargo and monto_dev > 0), "cargo": cargo_c / 100.0}
+
+
+@router.post("/web/cancelar")
+def cancelar(req: CancelarReq, request: Request = None) -> dict:
+    """Cancela una reserva del usuario con sesión (grupo o turno suelto) y
+    devuelve según la política (`pagos/devoluciones.py`, fase 4): `medio`
+    'saldo' = 100 % con cargo a su billetera; 'original' = el precio a la
+    tarjeta/Yape (el cargo solo en arrepentimiento). Todo queda en
+    `stores.cancelaciones_web`."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return {"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión con Google para cancelar."}
+    email = ses["email"]
+    ref = (req.ref or "").strip()
+    filas = datos.reservas_por_grupo(ref) if ref.startswith("grp_") else datos.reservas_de([ref])
+    filas = sorted([f for f in filas if f.get("estado") != "nueva" or f.get("pagado")],
+                   key=lambda x: (str(x.get("fecha")), str(x.get("hora_inicio"))))
+    c = datos.cancha(filas[0]["cancha_id"]) if filas else None
+    return _cancelar_reserva(filas, c, email, medio=req.medio)
 
 
 _MODAL_CANCELAR = (
@@ -2327,6 +2424,7 @@ _MODAL_CANCELAR = (
     "<h4 id='cancTit' style='margin:0 0 6px'>¿Seguro que quieres cancelar?</h4>"
     "<p class='sub' id='cancTxt' style='margin:0 0 14px'></p>"
     "<div class='estado' id='cancPol' style='text-align:left'></div>"
+    "<div id='cancOpc' style='display:none;margin-top:12px'><div style='font-weight:800;margin-bottom:6px'>¿A dónde te devolvemos?</div><div id='cancOpcLista'></div></div>"
     "<div class='estado bad' id='cancErr' style='display:none'></div></div>"
     "<div class='modal-pie'><button type='button' class='limpiar' id='cancNo'>Mantener reserva</button>"
     "<button type='button' class='btn dark' id='cancSi'>Sí, cancelar</button></div></div></div>")
@@ -2343,9 +2441,22 @@ JS_CANCELAR = r"""
     ref = b.dataset.cancelar; datos = b.dataset;
     document.getElementById('cancTit').textContent = '¿Cancelar ' + (datos.nombre || 'la reserva') + '?';
     document.getElementById('cancTxt').textContent = (datos.cuando || '') + (datos.monto ? ' · ' + fmt(datos.moneda || 'S/', datos.monto) : '');
-    var pol = document.getElementById('cancPol');
+    var pol = document.getElementById('cancPol'), opc = document.getElementById('cancOpc'), lista = document.getElementById('cancOpcLista');
+    var opciones = []; try { opciones = JSON.parse(datos.opciones || '[]'); } catch(e){ opciones = []; }
+    opc.style.display = 'none'; lista.innerHTML = '';
     if(datos.pagado !== '1'){ pol.className = 'estado ok'; pol.textContent = 'Pagabas en la cancha: cancelar no tiene costo. El horario queda libre para otro jugador.'; }
-    else if(datos.reembolsable === '1'){ pol.className = 'estado ok'; pol.textContent = 'Faltan ' + datos.horas + ' h: te devolvemos el 100 % (' + fmt(datos.moneda || 'S/', datos.monto) + ') al mismo medio de pago, en 3 a 7 días hábiles.'; }
+    else if(datos.reembolsable === '1' && opciones.length){
+      pol.className = 'estado ok';
+      pol.textContent = (datos.motivo === 'arrepentimiento' ? 'Pagaste hace menos de ' + (datos.arrep || '1') + ' h y faltan más de 24 h: te devolvemos el 100 %, cargo por servicio incluido, por el medio que elijas.'
+                        : 'Faltan ' + datos.horas + ' h: puedes cancelar con devolución. Elige a dónde te la mandamos.');
+      opciones.forEach(function(o, i){
+        lista.innerHTML += '<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--trazo);border-radius:12px;margin-bottom:8px;cursor:pointer">' +
+          '<input type="radio" name="cancMedio" value="' + o.medio + '"' + (i === 0 ? ' checked' : '') + ' style="width:auto;flex:none;margin-top:3px">' +
+          '<span style="flex:1"><b>' + o.etiqueta + ' · ' + fmt(o.simbolo || datos.moneda || 'S/', o.monto) + '</b>' + (i === 0 ? ' <span class="pill ok" style="font-size:11px">Recomendado</span>' : '') +
+          '<div class="sub" style="font-size:12.5px;margin-top:2px">' + o.nota + '</div></span></label>';
+      });
+      opc.style.display = '';
+    }
     else { pol.className = 'estado bad'; pol.textContent = 'Faltan menos de ' + datos.minimo + ' h para el turno: la cancelación NO tiene devolución (política publicada). Puedes mantener la reserva y jugar.'; }
     document.getElementById('cancErr').style.display = 'none';
     var si = document.getElementById('cancSi'); si.disabled = false; si.textContent = datos.pagado === '1' && datos.reembolsable !== '1' ? 'Cancelar sin devolución' : 'Sí, cancelar';
@@ -2356,12 +2467,15 @@ JS_CANCELAR = r"""
   m.addEventListener('click', function(ev){ if(ev.target === m) abrir(false); });
   document.getElementById('cancSi').addEventListener('click', function(){
     var si = this; si.disabled = true; si.textContent = 'Cancelando…';
-    fetch('/web/cancelar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ref: ref})})
+    var sel = document.querySelector('input[name=cancMedio]:checked'), medio = sel ? sel.value : 'original';
+    fetch('/web/cancelar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ref: ref, medio: medio})})
       .then(function(r){ return r.json(); })
       .then(function(j){
         if(!j.ok){ var e = document.getElementById('cancErr'); e.textContent = j.mensaje || 'No pudimos cancelar.'; e.style.display = 'block'; si.disabled = false; si.textContent = 'Reintentar'; return; }
-        var msg = {reembolsado: 'Reserva cancelada. Te devolvemos ' + fmt(j.moneda, j.monto) + ' al mismo medio de pago en 3 a 7 días hábiles.',
-                   manual: 'Reserva cancelada. Te devolvemos ' + fmt(j.moneda, j.monto) + '; te escribimos para coordinar.',
+        var dev = fmt(j.moneda, j.monto_devuelto != null ? j.monto_devuelto : j.monto);
+        var msg = {reembolsado: 'Reserva cancelada. Te devolvemos ' + dev + ' al mismo medio de pago en 3 a 7 días hábiles.' + (j.incluye_cargo === false && j.cargo > 0 ? ' El cargo por servicio no se devuelve.' : ''),
+                   saldo: 'Reserva cancelada. Te devolvimos ' + dev + ' a tu saldo Pichangol (cargo incluido): ya lo puedes usar.',
+                   manual: 'Reserva cancelada. Te devolvemos ' + dev + '; te escribimos para coordinar.',
                    fallo: 'Reserva cancelada. Tu devolución está en proceso; te escribimos en breve.',
                    sin_reembolso: 'Reserva cancelada sin devolución.', no_aplica: 'Reserva cancelada. El horario quedó libre.'}[j.reembolso] || 'Reserva cancelada.';
         try { sessionStorage.setItem('pcg_aviso', msg); } catch(e){}
@@ -2382,9 +2496,13 @@ def _boton_cancelar(filas: list[dict], c: dict | None, ses: dict | None, clase: 
     if not est.get("puede"):
         return ""
     cuando = f"{horarios.fecha_larga(str(filas[0]['fecha']))} · {filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"
+    pol = est.get("politica") or {}
+    opciones = json.dumps([{k: o[k] for k in ("medio", "monto", "etiqueta", "nota", "simbolo", "incluye_cargo")} for o in pol.get("opciones") or []],
+                          ensure_ascii=False)
     return (f"<button type='button' class='{clase}' data-cancelar='{e(_ref_de(filas))}' data-nombre='{e((c or {}).get('nombre') or 'la reserva')}' "
             f"data-cuando='{e(cuando)}' data-monto='{est['monto']}' data-moneda='{e(est['moneda'])}' data-pagado='{1 if est['pagado'] else 0}' "
-            f"data-reembolsable='{1 if est['reembolsable'] else 0}' data-horas='{est['horas']}' data-minimo='{int(est['minimo_horas'])}'>Cancelar reserva</button>")
+            f"data-reembolsable='{1 if est['reembolsable'] else 0}' data-horas='{est['horas']}' data-minimo='{int(est['minimo_horas'])}' "
+            f"data-motivo='{e(pol.get('motivo') or '')}' data-arrep='{pol.get('arrepentimiento_horas', 1):g}' data-opciones='{e(opciones)}'>Cancelar reserva</button>")
 
 
 def _url_comprobante(filas: list[dict]) -> str:
@@ -2494,7 +2612,8 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
         "<a class='btn' href='/canchas'>Explorar canchas</a></div>")
     pasadas_html = "".join(_tarjeta_viaje(r, canchas.get(r.get("cancha_id")), hoy, ses) for r in pasadas)
     def _fila_cancel(x: dict) -> str:
-        est = {"reembolsado": ("Devolución en camino", "ok"), "manual": ("Devolución en proceso", "warn"), "fallo": ("Devolución en proceso", "warn"),
+        est = {"reembolsado": ("Devolución en camino", "ok"), "saldo": ("Devuelto a tu saldo", "ok"), "reembolsado_manual": ("Devuelto", "ok"),
+               "manual": ("Devolución en proceso", "warn"), "fallo": ("Devolución en proceso", "warn"),
                "sin_reembolso": ("Sin devolución", "bad"), "no_aplica": ("Sin costo", "ok")}.get(x.get("reembolso"), ("", ""))
         return (f"<div class='cancelada'><div><b>{e(x.get('cancha') or 'Cancha')}</b><div class='sub' style='font-size:13px;margin:0'>"
                 f"{e(horarios.fecha_larga(str(x.get('fecha') or '')))} · {e(x.get('hora_inicio'))}–{e(x.get('hora_fin'))}"

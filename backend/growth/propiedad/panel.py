@@ -4549,7 +4549,7 @@ async function cargarCancelacionesWeb(){
     const j = await r.json();
     const cs = j.cancelaciones||[];
     const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    const ETQ = {reembolsado:['Reembolso Culqi hecho','#1F6E49'], reembolsado_manual:['Devuelto a mano','#1F6E49'], manual:['Devolver a mano (pagó en el app)','#946200'],
+    const ETQ = {reembolsado:['Reembolso Culqi hecho','#1F6E49'], saldo:['Devuelto a su saldo Pichangol','#1F6E49'], reembolsado_manual:['Devuelto a mano','#1F6E49'], manual:['Devolver a mano (pagó en el app)','#946200'],
                  fallo:['Culqi rechazó el reembolso: devolver a mano','#C0392B'], sin_reembolso:['Sin devolución (< 6 h)','#667'], no_aplica:['Pagaba en la cancha · sin costo','#667']};
     const mon = c => (c.moneda||'S/')+' '+Number(c.monto||0).toFixed(2);
     if(!cs.length){ box.innerHTML = '<div class="card">Sin cancelaciones desde la web todavía. Se registran cuando un jugador cancela en <code>/mis-reservas</code> o en su comprobante.</div>'; return; }

@@ -387,5 +387,44 @@ contempla (`cargo_activo_marketplace|torneos`) para encenderlos después.
   montos). Pendiente menor: el botón "Pagar S/ X" de `_ProximosPagos` (una
   cuota suelta) muestra el monto sin cargo; el total con cargo se ve en la
   hoja de Culqi antes de confirmar.
-- Fases 4 (mes a mes agrupado, devoluciones con la política aprobada,
-  `/legal/devoluciones`, KPI) y 5 (encendido QAS → PRD): pendientes.
+- **Fase 4 HECHA el 27-sep-2026:** (1) **Política de devoluciones**
+  (`pagos/devoluciones.py`, regla pura: `motivo` no_pagado · anfitrion ·
+  arrepentimiento · plazo · tarde; `monto_devolucion`, `opciones`,
+  `resumen`; envs `ARREPENTIMIENTO_HORAS`=1 y
+  `ARREPENTIMIENTO_MIN_HORAS_TURNO`=24) aplicada en la web:
+  `estado_cancelacion` devuelve `politica` (motivo, opciones con monto por
+  medio, cargo pagado —del `cobro_web` o de la fila `cargo_servicio`—) y
+  `_cancelar_reserva(filas, c, email, medio, cancela_anfitrion, quien)` hace
+  la plata: `medio='saldo'` → `stores.acreditar(email)` al instante +
+  `PagoRegistro devolucion_saldo` (idempotente `dev:<ref>`, entra en
+  `/pagos/movimientos` y el APK lo pinta como ingreso) y el `cobro_web` pasa a
+  `devuelto_saldo`; `medio='original'` → `culqi.reembolsar` por el monto de
+  la política (precio sin cargo en "plazo"; 100 % con cargo en
+  arrepentimiento y anfitrión); pagó en el app → `manual`. Reversa de la
+  liquidación del dueño como antes; **cancela el anfitrión** (`POST
+  /anfitrion/reserva/{id}/cancelar`, botón "↩ Cancelar y devolver al
+  jugador" en el calendario web para pagadas en línea) → 100 % con cargo al
+  jugador y `ajuste_cancelacion` con el costo de pasarela
+  (`tarifas_pasarela.costo_centimos`) como deuda del dueño. Modal web con
+  radios "A tu saldo Pichangol (Recomendado)" / "Al mismo medio de pago" con
+  montos y notas (`data-opciones`, `data-motivo`); `POST /web/cancelar
+  {ref, medio}` (sin `medio` = original, clientes viejos); registro con
+  `motivo`, `medio_devolucion`, `monto_devuelto_centimos`, `incluye_cargo`,
+  `cancela_anfitrion`, `quien`, `costo_pasarela_centimos`; etiqueta "Devuelto
+  a tu saldo" en Mis reservas y en la torre. `/legal/devoluciones`
+  reescrito con la política. (2) **Mes a mes agrupado por familia**
+  (`procesar_renovaciones_alumnos`): las vencidas de la misma `(email,
+  card_id)` se cobran en UN cargo = suma + cargo cotizado con `partes`;
+  el cargo se reparte (`cargo_servicio.repartir`) en la fila
+  `matricula_online` de cada alumno (1.ª con el `chr_` real y el desglose,
+  las demás `chr_#k`, todas con `cargo_id`), concepto "· pago familiar k/n ·
+  cargo por servicio S/ x"; si Culqi rechaza, el grupo entero queda
+  `pendiente_pago`. (3) **Yape por defecto en Perú** en
+  `pago_tarjeta_sheet.dart`. (4) Botón "Pagar" de cuotas sueltas
+  (`_ProximosPagos`) con el cargo. Tests
+  `test_politica_de_devoluciones_con_cargo_por_servicio`,
+  `test_mes_a_mes_agrupado_por_familia`. Pendiente: la cancelación desde el
+  APP del jugador sigue con su flujo (`_reembolsosPend`, operador); la
+  política se aplica en el backend cuando ese flujo pase por `/web/cancelar`
+  o un endpoint equivalente (backlog).
+- Fase 5 (encendido QAS → PRD solo con "pasa a PRD"): pendiente.

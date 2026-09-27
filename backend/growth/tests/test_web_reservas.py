@@ -2012,3 +2012,96 @@ def test_cargo_por_servicio_en_la_web_reserva_y_matricula(db, monkeypatch):
     finally:
         stores.config["cargo_activo_reservas"] = "0"
         stores.config["cargo_activo_academias"] = "0"
+
+
+def test_politica_de_devoluciones_con_cargo_por_servicio(db, monkeypatch):
+    """Fase 4 (política aprobada por el director, 27-sep-2026): con el cargo
+    encendido, al cancelar se elige a dónde va la devolución. A SALDO = 100 %
+    con cargo, al instante (sin Culqi); al MEDIO ORIGINAL = solo el precio (el
+    cargo cubre lo que Culqi ya cobró); ARREPENTIMIENTO (≤ 1 h del pago y > 24 h
+    para el turno) = 100 % con cargo por cualquier medio; CANCELA EL ANFITRIÓN
+    = 100 % con cargo al jugador y el costo de pasarela como deuda del dueño."""
+    from datetime import date, timedelta as _td
+    import pagos.router as pr
+    from pagos import devoluciones as dev
+    monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
+    stores.config["cargo_activo_reservas"] = "1"
+    cli = TestClient(app, base_url="https://testserver")
+    cargos, reembolsos = [], []
+    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: (cargos.append(kw) or {"ok": True, "charge_id": f"chr_p{len(cargos)}"}))
+    monkeypatch.setattr(culqi, "reembolsar", lambda **kw: (reembolsos.append(kw) or {"ok": True, "refund_id": f"ref_{len(reembolsos)}"}))
+    monkeypatch.setattr(pr, "_aviso_push_usuario", lambda *a, **k: None)
+    try:
+        # Regla pura.
+        assert dev.motivo(pagado=True, horas_para_inicio=48, horas_desde_pago=0.2) == "arrepentimiento"
+        assert dev.motivo(pagado=True, horas_para_inicio=10, horas_desde_pago=0.2) == "plazo"      # < 24 h para el turno: no es arrepentimiento
+        assert dev.motivo(pagado=True, horas_para_inicio=48, horas_desde_pago=5) == "plazo"
+        assert dev.motivo(pagado=True, horas_para_inicio=2, horas_desde_pago=5) == "tarde"
+        assert dev.motivo(pagado=True, horas_para_inicio=2, cancela_anfitrion=True) == "anfitrion"
+        assert dev.monto_devolucion("plazo", "saldo", 12000, 600) == (12600, True)
+        assert dev.monto_devolucion("plazo", "original", 12000, 600) == (12000, False)
+        assert dev.monto_devolucion("arrepentimiento", "original", 12000, 600) == (12600, True)
+        assert dev.monto_devolucion("tarde", "saldo", 12000, 600) == (0, False)
+        assert [o["medio"] for o in dev.opciones("plazo", 12000, 600)] == ["saldo", "original"]
+        _entrar_como(cli, monkeypatch, "ana@gmail.com", nombre="Ana Pérez")
+        d_min, _ = web._fechas_validas("PE")
+        lejos = (date.fromisoformat(d_min) + _td(days=3)).isoformat()  # > 24 h seguro
+        def reservar(horas):
+            r = cli.post("/web/asegurar", json={"cancha_id": "c_lima", "horas": [{"fecha": lejos, "hora": h} for h in horas], "extras": [],
+                                                "nombre": "Ana Pérez", "celular": "999888777", "email": "ana@gmail.com"}).json()
+            assert r["ok"], r
+            p = cli.post("/web/pagar", json={"ids": r["ids"], "firma": r["firma"], "token": "t", "medio": "tarjeta"}).json()
+            assert p["ok"], p
+            return r, db.reservas[r["ids"][0]].get("grupo_reserva_id") or r["ids"][0]
+        # 1) Reserva de 2 turnos (120) + cargo 6 = 126. Recién pagada y a más de 24 h → ARREPENTIMIENTO:
+        #    100 % con cargo incluso al medio original.
+        r1, ref1 = reservar(["15:00", "16:00"])
+        assert cargos[-1]["monto_centimos"] == 12600
+        mr = cli.get("/mis-reservas").text
+        assert "data-motivo='arrepentimiento'" in mr and "data-opciones=" in mr
+        j = cli.post("/web/cancelar", json={"ref": ref1, "medio": "original"}).json()
+        assert j["ok"] and j["reembolso"] == "reembolsado" and j["motivo"] == "arrepentimiento" and j["monto_devuelto"] == 126.0 and j["incluye_cargo"]
+        assert reembolsos[-1]["monto_centimos"] == 12600
+        # 2) Misma reserva pero pagada hace 3 h (ya no es arrepentimiento) → PLAZO: a saldo 100 % con cargo, al instante.
+        r2, ref2 = reservar(["17:00", "18:00"])
+        cobro2 = next(x for x in stores.pagos if x.tipo == "cobro_web" and x.concepto == f"web:{ref2}")
+        cobro2.creado_en = cobro2.creado_en - _td(hours=3)
+        est = web.estado_cancelacion(sorted((db.reservas[i] for i in r2["ids"]), key=lambda x: x["hora_inicio"]), db.canchas["c_lima"], "ana@gmail.com")
+        assert est["politica"]["motivo"] == "plazo" and [o["monto"] for o in est["politica"]["opciones"]] == [126.0, 120.0]
+        saldo_antes = stores.saldo_centimos("ana@gmail.com")
+        n_reemb = len(reembolsos)
+        j = cli.post("/web/cancelar", json={"ref": ref2, "medio": "saldo"}).json()
+        assert j["ok"] and j["reembolso"] == "saldo" and j["monto_devuelto"] == 126.0 and j["incluye_cargo"]
+        assert stores.saldo_centimos("ana@gmail.com") == saldo_antes + 12600 and len(reembolsos) == n_reemb  # sin Culqi
+        assert cobro2.estado == "devuelto_saldo" and stores.pago_por_charge(f"dev:{ref2}").tipo == "devolucion_saldo"
+        assert stores.pago_por_charge(r2["ids"][0]).estado == "anulado"  # el dueño ya no tiene ese por recibir
+        movs = cli.get("/pagos/movimientos/ana@gmail.com").json()["movimientos"]
+        assert any(m["tipo"] == "devolucion_saldo" and m["monto_soles"] == 126.0 for m in movs)
+        # 3) PLAZO al medio original: solo el precio (120), el cargo no se devuelve.
+        r3, ref3 = reservar(["19:00", "20:00"])
+        cobro3 = next(x for x in stores.pagos if x.tipo == "cobro_web" and x.concepto == f"web:{ref3}")
+        cobro3.creado_en = cobro3.creado_en - _td(hours=3)
+        j = cli.post("/web/cancelar", json={"ref": ref3}).json()  # cliente viejo: sin medio → original
+        assert j["ok"] and j["reembolso"] == "reembolsado" and j["monto_devuelto"] == 120.0 and j["incluye_cargo"] is False and j["cargo"] == 6.0
+        assert reembolsos[-1]["monto_centimos"] == 12000
+        reg = stores.cancelaciones_web[-1]
+        assert reg["medio_devolucion"] == "original" and reg["monto_devuelto_centimos"] == 12000 and reg["cargo_centimos"] == 600
+        # 4) CANCELA EL ANFITRIÓN desde su calendario web: 100 % con cargo al jugador + costo de pasarela como deuda del dueño.
+        r4, ref4 = reservar(["21:00"])
+        total4 = cargos[-1]["monto_centimos"]
+        assert total4 > 6000  # 60 → mínimo 2 y la red de seguridad lo sube (tarifa de tarjeta)
+        _entrar_como(cli, monkeypatch, "dueno@x.com", nombre="Dueño")
+        assert cli.post("/anfitrion/reserva/no_existe/cancelar", json={}).status_code == 404
+        j = cli.post(f"/anfitrion/reserva/{r4['ids'][0]}/cancelar", json={}).json()
+        assert j["ok"] and j["motivo"] == "anfitrion" and j["monto_devuelto"] == total4 / 100.0 and j["incluye_cargo"]
+        assert reembolsos[-1]["monto_centimos"] == total4 and r4["ids"][0] not in db.reservas
+        reg = stores.cancelaciones_web[-1]
+        assert reg["cancela_anfitrion"] and reg["quien"] == "dueno@x.com" and reg["costo_pasarela_centimos"] > 0
+        aj = stores.pago_por_charge(f"{r4['ids'][0]}_ajuste")
+        assert aj is not None and aj.tipo == "ajuste_cancelacion" and aj.monto_centimos == reg["costo_pasarela_centimos"] and "pasarela" in aj.concepto
+        # Política publicada.
+        leg = cli.get("/legal/devoluciones").text
+        assert "saldo Pichangol" in leg and "Arrepentimiento" in leg and "cargo por servicio no se devuelve" in leg
+    finally:
+        stores.config["cargo_activo_reservas"] = "0"

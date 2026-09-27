@@ -2266,6 +2266,7 @@ def procesar_renovaciones_alumnos() -> dict:
     academia como 'por recibir'. Fail-safe. La usa el cron interno."""
     ahora = datetime.now(timezone.utc)
     cobradas = pendientes = 0
+    vencidas: list[dict] = []
     for s in stores.suscripciones_alumno.values():
         if s.get("estado") not in ("activa", "pendiente_pago"):
             continue
@@ -2280,23 +2281,60 @@ def procesar_renovaciones_alumnos() -> dict:
             s["estado"] = "pendiente_pago"
             pendientes += 1
             continue
-        monto = s.get("monto_centimos", 0)
-        aca = s.get("academia_id")
-        concepto = s.get("concepto") or "Mensualidad"
+        vencidas.append(s)
+    # MES A MES AGRUPADO POR FAMILIA (fase 4 del cargo por servicio): las
+    # mensualidades vencidas de la MISMA cuenta y la MISMA tarjeta se cobran
+    # en UN solo cargo (a más personas, menos cargo por cabeza: una sola
+    # cotización con `partes`). Si Culqi rechaza, el grupo entero queda
+    # pendiente (no hay cobro parcial). Con la línea apagada el cargo es 0 y
+    # solo cambia que el pago familiar es uno.
+    grupos: dict[tuple, list[dict]] = {}
+    for s in vencidas:
+        grupos.setdefault(((s.get("email") or "").strip().lower(), str(s.get("card_id"))), []).append(s)
+    for (email, card), grupo in grupos.items():
+        montos = [int(x.get("monto_centimos", 0) or 0) for x in grupo]
+        base = sum(montos)
+        cot = cotizacion_para("academias", "PEN", base, medio=None,
+                              deporte="", partes=(montos if len(grupo) > 1 else None))
+        if len(grupo) == 1:
+            concepto = grupo[0].get("concepto") or "Mensualidad"
+        else:
+            concepto = f"{len(grupo)} mensualidades · pago familiar"
         r = culqi.crear_cargo(
-            token=s["card_id"], monto_centimos=monto,
-            email=s.get("email") or "", descripcion=concepto,
-            metadata={"tipo": "mensualidad_alumno", "academia_id": aca,
-                      "alumno_id": s.get("alumno_id")},
-            cliente=_cliente_de(s.get("email") or ""))
-        if r.get("ok"):
+            token=card, monto_centimos=cot.total_centimos,
+            email=email, descripcion=(concepto + (" + cargo por servicio" if cot.cargo_centimos else ""))[:80],
+            metadata={"tipo": "mensualidad_alumno", "academia_id": grupo[0].get("academia_id"),
+                      "alumno_id": grupo[0].get("alumno_id"), "alumnos": len(grupo),
+                      "cargo_servicio_centimos": cot.cargo_centimos},
+            cliente=_cliente_de(email))
+        if not r.get("ok"):
+            for s in grupo:
+                s["estado"] = "pendiente_pago"
+                pendientes += 1
+            continue
+        charge_id = str(r.get("charge_id") or "")
+        reparto = _cs.repartir(cot.cargo_centimos, montos)
+        for k, s in enumerate(grupo):
+            monto = montos[k]
+            aca = s.get("academia_id")
             pct = _comision_matricula_pct(s.get("pais"))
             comision = int(round(monto * pct / 100.0))
+            conc = (s.get("concepto") or "Mensualidad") + " (mes a mes)"
+            if len(grupo) > 1:
+                conc += f" · pago familiar {k + 1}/{len(grupo)}"
+            if reparto[k]:
+                conc += f" · cargo por servicio S/ {reparto[k] / 100.0:.2f}"
             stores.registrar_pago(
                 tipo="matricula_online", monto_centimos=monto, moneda="PEN",
                 estado="aprobado", dueno_id=aca,
-                culqi_charge_id=r.get("charge_id"), comision_centimos=comision,
-                concepto=concepto + " (mes a mes)")
+                # La 1.ª fila lleva el chr_ real (sinceramiento con Culqi); las
+                # demás un sufijo para no chocar en `pago_por_charge`.
+                culqi_charge_id=charge_id if k == 0 else f"{charge_id}#{k}",
+                cargo_id=charge_id or None, comision_centimos=comision,
+                cargo_servicio_centimos=reparto[k],
+                cargo_desglose=(list(cot.desglose) if (k == 0 and cot.desglose) else None),
+                cargo_ajuste_centimos=(cot.ajuste_seguridad_centimos if k == 0 else 0),
+                concepto=conc)
             s["ultimo_cobro"] = ahora.isoformat()
             s["proximo_cobro"] = _mas_un_mes(ahora).isoformat()
             s["cobros_hechos"] = int(s.get("cobros_hechos", 0)) + 1
@@ -2310,9 +2348,9 @@ def procesar_renovaciones_alumnos() -> dict:
             else:
                 s["estado"] = "activa"
             cobradas += 1
-        else:
-            s["estado"] = "pendiente_pago"
-            pendientes += 1
+        if cot.cargo_centimos or len(grupo) > 1:
+            print(f"[mes-a-mes] {email} {len(grupo)} mensualidad(es) base={base} cargo={cot.cargo_centimos} "
+                  f"total={cot.total_centimos} charge={charge_id}", flush=True)
     return {"ok": True, "cobradas": cobradas, "pendientes": pendientes}
 
 
@@ -2883,7 +2921,7 @@ def get_movimientos(dueno_id: str,
     # Pichangol cobró al comprador y le debe el NETO al dueño (misma
     # contabilidad que una reserva online). DEBE aparecer en el historial.
     _INCLUIR = ("recarga", "bono_recarga", "bono_bienvenida", "cupon",
-                "aporte_equipo_devolucion",
+                "aporte_equipo_devolucion", "devolucion_saldo",
                 "liquidacion_online", "liquidacion_full",
                 "venta_producto", "venta_bodega",
                 "inscripcion_torneo_ingreso") + _EGRESOS
@@ -2904,6 +2942,7 @@ def get_movimientos(dueno_id: str,
         "inscripcion_torneo_ingreso": "Inscripción a torneo (neto por recibir)",
         "aporte_equipo": "Mi parte en el equipo (torneo)",
         "aporte_equipo_devolucion": "Devolución de mi parte (torneo)",
+        "devolucion_saldo": "Devolución a tu saldo (reserva cancelada)",
         "liquidacion_online": "Reserva online (neto)",
         "liquidacion_full": "Reserva online (recibes 100%)",
         "venta_producto": "Venta / bono (neto)",
@@ -2920,7 +2959,7 @@ def get_movimientos(dueno_id: str,
         if getattr(p, "medio", None):
             base["medio"] = p.medio
         if p.tipo in ("recarga", "bono_recarga", "bono_bienvenida", "cupon",
-                      "aporte_equipo_devolucion"):
+                      "aporte_equipo_devolucion", "devolucion_saldo"):
             return {**base, "monto_soles": p.monto_centimos / 100.0}
         if p.tipo in _EGRESOS:
             # Egreso de saldo: negativo.

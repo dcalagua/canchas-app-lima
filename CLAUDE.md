@@ -2527,7 +2527,7 @@ antes del corte.
 ## Pendientes / backlog
 
 - **CARGO POR SERVICIO + MODELO DE COMISIONES (diseño aprobado,
-  27-sep-2026; FASES 1 backend, 2 web y 3 APK HECHAS, fases 4-5 pendientes):**
+  27-sep-2026; FASES 1 a 4 HECHAS, fase 5 = encendido pendiente):**
   `docs/diseno-cargo-por-servicio.md` (decisiones del director en § 7,
   estado en § 8). Dos lados como Airbnb: comisión 5 % mín S/ 2 a quien
   recibe (reservas y academias) + cargo por servicio al cliente 5 % hasta
@@ -2587,6 +2587,28 @@ antes del corte.
   Comprobantes: pase de Mis reservas, Mis pagos (`Reserva.totalPagado`),
   comprobante de cuota; el web `/reserva/{id}` lee el cargo de la fila si no
   hay `cobro_web`. Con el flag apagado el APK no cotiza ni pinta nada.
+  **Fase 4 (hecha 27-sep-2026):** POLÍTICA DE DEVOLUCIONES
+  (`pagos/devoluciones.py`, aprobada por el director): a SALDO 100 % con
+  cargo al instante (`stores.acreditar` + `PagoRegistro devolucion_saldo`,
+  `cobro_web` → `devuelto_saldo`); al medio ORIGINAL solo el precio (el
+  cargo cubre lo que Culqi ya cobró); ARREPENTIMIENTO (≤ 1 h del pago y
+  > 24 h para el turno, envs `ARREPENTIMIENTO_HORAS`/`_MIN_HORAS_TURNO`) y
+  CANCELA EL ANFITRIÓN = 100 % con cargo; TARDE = sin devolución.
+  `estado_cancelacion(..., cancela_anfitrion)` trae `politica` y
+  `_cancelar_reserva(filas, c, email, medio=, cancela_anfitrion=, quien=)`
+  es el único que mueve plata; `POST /web/cancelar {ref, medio}` (modal con
+  radios saldo/original, `data-opciones`) y `POST
+  /anfitrion/reserva/{id}/cancelar` (botón "↩ Cancelar y devolver al
+  jugador" en el calendario web; costo de pasarela → `ajuste_cancelacion`
+  del dueño). `/legal/devoluciones` reescrito. MES A MES AGRUPADO:
+  `procesar_renovaciones_alumnos` cobra en UN cargo las vencidas de la misma
+  `(email, card_id)` con una cotización (`partes`) y reparte el cargo
+  (`cargo_servicio.repartir`) en cada `matricula_online` (`chr_` real en la
+  1.ª, `chr_#k` en las demás, `cargo_id` en todas); rechazo → grupo entero
+  `pendiente_pago`. Yape por defecto en PE (`pago_tarjeta_sheet`). Tests
+  `test_politica_de_devoluciones_con_cargo_por_servicio`,
+  `test_mes_a_mes_agrupado_por_familia`. Falta solo la fase 5 (encender en
+  QAS y, con "pasa a PRD", en producción).
 
 - **Community Manager AUTÓNOMO (servicio estrella, ingreso recurrente):** la
   visión del director NO es "generar posts para que el dueño publique a mano"

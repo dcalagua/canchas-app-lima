@@ -356,6 +356,18 @@ def validar_y_guardar(body: dict) -> tuple[bool, str]:
     return True, ""
 
 
+def repartir(cargo_centimos: int, subtotales: list[int]) -> list[int]:
+    """Reparte un cargo proporcionalmente a [subtotales] (resto al primero):
+    un pago que cubre varias matrículas/academias deja su parte del cargo en
+    cada fila. Espejo de `CargoServicio.repartir` del APK."""
+    total = sum(int(x) for x in subtotales)
+    if not subtotales or total <= 0 or cargo_centimos <= 0:
+        return [0] * len(subtotales)
+    out = [int(cargo_centimos * int(s) // total) for s in subtotales]
+    out[0] += int(cargo_centimos) - sum(out)
+    return out
+
+
 def sin_cargo_recientes(dias: int = 30) -> dict:
     """KPI de la torre: operaciones cobradas en línea SIN cargo (APK viejo)
     desde que la línea está activa, en los últimos `dias`."""

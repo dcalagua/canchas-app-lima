@@ -661,6 +661,18 @@ class _ProximosPagos extends StatefulWidget {
 }
 
 class _ProximosPagosState extends State<_ProximosPagos> {
+  // Cargo por servicio Pichangol sobre lo seleccionado (línea apagada → 0).
+  late final CotizadorCargo _cotizadorCuotas = CotizadorCargo(() {
+    if (mounted) setState(() {});
+  });
+  double get _cargoSel {
+    final c = _cotizadorCuotas.para(
+        linea: 'academias',
+        moneda: widget.moneda,
+        baseCentimos: (_totalSel * 100).round());
+    return (c?.hayCargo ?? false) ? c!.cargo : 0.0;
+  }
+
   static const _meses = [
     'ene', 'feb', 'mar', 'abr', 'may', 'jun',
     'jul', 'ago', 'set', 'oct', 'nov', 'dic'
@@ -766,7 +778,9 @@ class _ProximosPagosState extends State<_ProximosPagos> {
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12)),
             onPressed: (_sel.isEmpty || _pagando) ? null : _pagar,
-            child: Text('Pagar ${widget.moneda} ${_totalSel.toStringAsFixed(2)}',
+            child: Text(
+                'Pagar ${widget.moneda} ${(_totalSel + _cargoSel).toStringAsFixed(2)}'
+                '${_cargoSel > 0 ? ' (incluye cargo por servicio)' : ''}',
                 style: const TextStyle(fontWeight: FontWeight.w800)),
           ),
         ),
