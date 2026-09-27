@@ -2224,6 +2224,8 @@ def _cargo_pagado(filas: list[dict], cobro) -> tuple[int, list]:
 
 
 def _horas_desde_pago(cobro) -> float | None:
+    """Horas desde el pago: del `cobro_web` (web) o de la liquidación / el cargo
+    de Culqi (app), lo que haya."""
     if cobro is None or not getattr(cobro, "creado_en", None):
         return None
     from db.store import ahora as _ahora
@@ -2231,6 +2233,39 @@ def _horas_desde_pago(cobro) -> float | None:
         return max((_ahora() - cobro.creado_en).total_seconds() / 3600.0, 0.0)
     except TypeError:
         return None
+
+
+def _cargo_app(ids: list[str]):
+    """Reserva pagada EN EL APP: la liquidación del dueño (`culqi_charge_id` =
+    id de la reserva) y la fila del CARGO de Culqi (`chr_…`) con el que pagó el
+    jugador, ligada por `PagoRegistro.cargo_id` (APK desde sep-2026) o
+    inferida por `tarifas_pasarela.cargo_de` (APKs viejos: mismo monto y
+    moneda a ±20 min). Con el cargo a la mano la devolución al medio original
+    va DIRECTO a Culqi, igual que una reserva web; sin él queda `manual`.
+    Devuelve (liquidación, cargo) — cualquiera puede ser None."""
+    from db.store import stores as _st
+    from pagos import tarifas_pasarela as _tp
+    liq = _st.pago_por_charge(ids[0]) if ids else None
+    if liq is None or liq.tipo not in ("liquidacion_online", "liquidacion_full"):
+        return None, None
+    try:
+        cargo = _tp.cargo_de(liq)
+    except Exception:  # noqa: BLE001 — la inferencia nunca rompe una cancelación
+        cargo = None
+    if cargo is not None and not str(cargo.culqi_charge_id or "").startswith("chr_"):
+        cargo = None
+    return liq, cargo
+
+
+def _filas_de_ref(ref: str) -> list[dict]:
+    """Turnos de una referencia (grupo `grp_…` o id de un turno suelto),
+    ordenados y sin retenciones web sin pagar."""
+    ref = (ref or "").strip()
+    if not ref:
+        return []
+    filas = datos.reservas_por_grupo(ref) if ref.startswith("grp_") else datos.reservas_de([ref])
+    return sorted([f for f in filas if f.get("estado") != "nueva" or f.get("pagado")],
+                  key=lambda x: (str(x.get("fecha")), str(x.get("hora_inicio"))))
 
 
 def estado_cancelacion(filas: list[dict], c: dict | None, email: str, cancela_anfitrion: bool = False) -> dict:
@@ -2258,14 +2293,27 @@ def estado_cancelacion(filas: list[dict], c: dict | None, email: str, cancela_an
     sim = filas[0].get("moneda") or "S/"
     precio = _total_de(filas)
     cobro = _cobro_web(_ref_de(filas))
+    liq, cargo_app = (None, None) if cobro is not None else _cargo_app([str(f["id"]) for f in filas])
     cargo_c, _desg = _cargo_pagado(filas, cobro)
-    pol = _dev.resumen(pagado=pagado, horas_para_inicio=horas, horas_desde_pago=_horas_desde_pago(cobro),
+    if cargo_c <= 0 and liq is not None:
+        cargo_c = max(int(getattr(liq, "cargo_servicio_centimos", 0) or 0), 0)
+    pol = _dev.resumen(pagado=pagado, horas_para_inicio=horas,
+                       horas_desde_pago=_horas_desde_pago(cobro if cobro is not None else (cargo_app or liq)),
                        precio_centimos=precio * 100, cargo_centimos=cargo_c, simbolo=sim, cancela_anfitrion=cancela_anfitrion)
+    # ¿La devolución al medio original sale sola por Culqi (tenemos el cargo)
+    # o la coordina el operador (pago viejo del app sin cargo ligado)?
+    directo = cobro is not None or cargo_app is not None
+    if pagado and not directo:
+        for o in pol.get("opciones") or []:
+            if o.get("medio") == "original":
+                o["nota"] = (("100 %, incluido el cargo por servicio. " if o.get("incluye_cargo") else
+                              "Se devuelve el precio de la reserva; el cargo por servicio no se devuelve. ")
+                             + "Te escribimos para coordinar la devolución.")
     reembolsable = pol["motivo"] in ("plazo", "arrepentimiento", "anfitrion")
     return {"puede": True, "horas": round(horas, 1), "pagado": pagado, "pagado_online": pagado_online,
             "reembolsable": reembolsable, "minimo_horas": config.WEB_CANCELACION_HORAS,
             "monto": precio, "moneda": sim, "cargo_centimos": cargo_c, "total_pagado": precio + cargo_c / 100.0,
-            "politica": pol}
+            "reembolso_directo": directo, "politica": pol}
 
 
 class CancelarReq(BaseModel):
@@ -2302,6 +2350,10 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
     cargo_c = int(est["cargo_centimos"])
     monto_dev, incluye_cargo = _dev.monto_devolucion(mot, medio, monto * 100, cargo_c)
     cobro = _cobro_web(ref)
+    _liq, cargo_app = (None, None) if cobro is not None else _cargo_app(ids)
+    # Fila del cargo de Culqi que se reembolsa: el `cobro_web` (web) o el cargo
+    # del app ligado a la liquidación (`chr_…`). Sin ninguno → manual.
+    fila_cargo = cobro if cobro is not None else cargo_app
     reembolso, refund_id, detalle = "no_aplica", None, ""
     medio_pago = str(filas[0].get("medio_pago") or "")
     if est["pagado"] and monto_dev > 0:
@@ -2312,18 +2364,18 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
                 _st.registrar_pago(tipo="devolucion_saldo", monto_centimos=monto_dev, moneda=iso, estado="aprobado",
                                    dueno_id=email, culqi_charge_id=f"dev:{ref}", medio=medio_pago,
                                    concepto=f"Devolución a saldo · {(c or {}).get('nombre', 'reserva')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}")
-            if cobro is not None and cobro.estado == "aprobado":
-                cobro.estado = "devuelto_saldo"
+            if fila_cargo is not None and fila_cargo.estado == "aprobado":
+                fila_cargo.estado = "devuelto_saldo"
             reembolso = "saldo"
-        elif cobro is not None and cobro.culqi_charge_id and cobro.estado == "aprobado":
-            r = culqi.reembolsar(charge_id=cobro.culqi_charge_id, monto_centimos=min(monto_dev, cobro.monto_centimos))
+        elif fila_cargo is not None and fila_cargo.culqi_charge_id and fila_cargo.estado == "aprobado":
+            r = culqi.reembolsar(charge_id=fila_cargo.culqi_charge_id, monto_centimos=min(monto_dev, fila_cargo.monto_centimos))
             if r.get("ok"):
                 reembolso, refund_id = "reembolsado", r.get("refund_id")
-                cobro.estado = "reembolsado"
+                fila_cargo.estado = "reembolsado"
             else:
                 reembolso, detalle = "fallo", str(r.get("error") or "")[:160]
         else:
-            reembolso = "manual"  # pagó desde el app: el operador devuelve
+            reembolso = "manual"  # pago viejo del app sin cargo ligado: el operador devuelve
     elif est["pagado"]:
         reembolso = "sin_reembolso"  # tarde: sin devolución (política publicada)
     # Reversa contable del dueño solo si el cliente recupera su dinero.
@@ -2350,7 +2402,7 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
             # Culpa del anfitrión: el costo de la pasarela de esa devolución
             # (Culqi no devuelve su comisión) se le descuenta en la siguiente
             # liquidación. A saldo no hay costo.
-            base_pasarela = cobro.monto_centimos if cobro is not None else monto * 100 + cargo_c
+            base_pasarela = fila_cargo.monto_centimos if fila_cargo is not None else monto * 100 + cargo_c
             costo_pasarela = _tp.costo_centimos(base_pasarela, iso, medio_pago or "tarjeta", "liquidacion_online")
             deuda += costo_pasarela
         if deuda > 0:
@@ -2409,10 +2461,7 @@ def cancelar(req: CancelarReq, request: Request = None) -> dict:
     if not ses:
         return {"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión con Google para cancelar."}
     email = ses["email"]
-    ref = (req.ref or "").strip()
-    filas = datos.reservas_por_grupo(ref) if ref.startswith("grp_") else datos.reservas_de([ref])
-    filas = sorted([f for f in filas if f.get("estado") != "nueva" or f.get("pagado")],
-                   key=lambda x: (str(x.get("fecha")), str(x.get("hora_inicio"))))
+    filas = _filas_de_ref(req.ref)
     c = datos.cancha(filas[0]["cancha_id"]) if filas else None
     return _cancelar_reserva(filas, c, email, medio=req.medio)
 

@@ -2105,3 +2105,91 @@ def test_politica_de_devoluciones_con_cargo_por_servicio(db, monkeypatch):
         assert "saldo Pichangol" in leg and "Arrepentimiento" in leg and "cargo por servicio no se devuelve" in leg
     finally:
         stores.config["cargo_activo_reservas"] = "0"
+
+
+def test_cancelacion_desde_el_app_con_la_misma_politica(db, monkeypatch):
+    """El jugador cancela desde "Mis reservas" del APK una reserva pagada EN
+    EL APP (27-sep-2026, "llévalo al app"): `GET /pagos/reserva/cancelacion/
+    {ref}` explica la política y las opciones y `POST /pagos/reserva/cancelar`
+    aplica la MISMA regla que la web. La devolución al medio original sale por
+    Culqi con el cargo (`chr_`) ligado a la liquidación del dueño; un pago
+    viejo sin cargo ligado queda `manual` y la opción lo dice."""
+    from datetime import date, timedelta as _td
+    import pagos.router as pr
+    stores.config["cargo_activo_reservas"] = "1"
+    cli = TestClient(app, base_url="https://testserver")
+    reembolsos = []
+    monkeypatch.setattr(culqi, "reembolsar", lambda **kw: (reembolsos.append(kw) or {"ok": True, "refund_id": f"ref_{len(reembolsos)}"}))
+    pushes = []
+    monkeypatch.setattr(pr, "_aviso_push_usuario", lambda email, *a, **k: pushes.append(email))
+    try:
+        d_min, _ = web._fechas_validas("PE")
+        lejos = (date.fromisoformat(d_min) + _td(days=3)).isoformat()
+
+        def reserva_app(rid, hora, grupo=""):
+            fin = f"{int(hora[:2]) + 1:02d}:00"
+            db.reservas[rid] = {"id": rid, "cancha_id": "c_lima", "fecha": lejos, "hora_inicio": hora, "hora_fin": fin,
+                                "estado": "confirmada", "pagado": True, "medio_pago": "tarjeta", "usuario": "ana@gmail.com",
+                                "jugador": "Ana Pérez", "precio": 60, "extras": [], "grupo_reserva_id": grupo, "moneda": "S/",
+                                "cargo_servicio": 0, "cargo_desglose": []}
+
+        # 1) Bloque de 2 turnos pagado en el APP (120 + cargo 6 = 126, cargo chr_app1 ligado a la liquidación).
+        reserva_app("app_1", "15:00", "grp_app"); reserva_app("app_2", "16:00", "grp_app")
+        db.reservas["app_1"].update(cargo_servicio=6.0)
+        stores.registrar_pago(tipo="reserva", monto_centimos=12600, moneda="PEN", estado="aprobado", email="ana@gmail.com",
+                              culqi_charge_id="chr_app1", concepto="Reserva app")
+        pr.post_liquidacion_online(pr.LiquidacionOnlineReq(dueno_id="dueno@x.com", monto_soles=120.0, reserva_id="app_1",
+                                                           concepto="Reserva app · Cancha Lima", medio="tarjeta", moneda="PEN",
+                                                           charge_id="chr_app1", cargo_servicio_centimos=600))
+        liq = stores.pago_por_charge("app_1")
+        assert liq is not None and liq.cargo_id == "chr_app1"
+        # Recién pagada y a > 24 h → arrepentimiento (100 % con cargo por cualquier medio).
+        est = cli.get("/pagos/reserva/cancelacion/grp_app", params={"email": "ana@gmail.com"}).json()
+        assert est["puede"] and est["pagado"] and est["reembolso_directo"] and est["politica"]["motivo"] == "arrepentimiento"
+        assert [o["monto"] for o in est["politica"]["opciones"]] == [126.0, 126.0]
+        # Pasan 3 h → plazo: a saldo 126, al medio original 120 (el cargo no vuelve).
+        cargo = stores.pago_por_charge("chr_app1")
+        cargo.creado_en = cargo.creado_en - _td(hours=3); liq.creado_en = liq.creado_en - _td(hours=3)
+        est = cli.get("/pagos/reserva/cancelacion/grp_app", params={"email": "ana@gmail.com"}).json()
+        assert est["politica"]["motivo"] == "plazo" and [o["monto"] for o in est["politica"]["opciones"]] == [126.0, 120.0]
+        assert "3 a 7 días" in est["politica"]["opciones"][1]["nota"]
+        # Reserva ajena → no se puede.
+        assert cli.get("/pagos/reserva/cancelacion/grp_app", params={"email": "otro@gmail.com"}).json() == {"puede": False, "motivo": "ajena"}
+        assert cli.post("/pagos/reserva/cancelar", json={"ref": "grp_app", "email": "otro@gmail.com", "medio": "original"}).json()["error"] == "ajena"
+        j = cli.post("/pagos/reserva/cancelar", json={"ref": "grp_app", "email": "ana@gmail.com", "medio": "original"}).json()
+        assert j["ok"] and j["reembolso"] == "reembolsado" and j["monto_devuelto"] == 120.0 and j["incluye_cargo"] is False
+        assert reembolsos[-1] == {"charge_id": "chr_app1", "monto_centimos": 12000}
+        assert "app_1" not in db.reservas and "app_2" not in db.reservas
+        assert cargo.estado == "reembolsado" and liq.estado == "anulado"  # el dueño ya no tiene ese por recibir
+        assert "dueno@x.com" in pushes and "ana@gmail.com" in pushes
+        reg = stores.cancelaciones_web[-1]
+        assert reg["usuario"] == "ana@gmail.com" and reg["quien"] == "ana@gmail.com" and reg["monto_devuelto_centimos"] == 12000
+
+        # 2) Pago viejo del APK SIN cargo ligado (ni inferible) → la opción avisa que se coordina y queda manual.
+        reserva_app("app_3", "18:00")
+        pr.post_liquidacion_online(pr.LiquidacionOnlineReq(dueno_id="dueno@x.com", monto_soles=60.0, reserva_id="app_3",
+                                                           concepto="Reserva app vieja", medio="yape", moneda="PEN"))
+        stores.pago_por_charge("app_3").creado_en -= _td(hours=3)
+        est = cli.get("/pagos/reserva/cancelacion/app_3", params={"email": "ana@gmail.com"}).json()
+        assert est["puede"] and est["reembolso_directo"] is False and est["politica"]["motivo"] == "plazo"
+        assert "coordinar" in est["politica"]["opciones"][1]["nota"] and est["politica"]["opciones"][0]["monto"] == 60.0
+        n = len(reembolsos)
+        j = cli.post("/pagos/reserva/cancelar", json={"ref": "app_3", "email": "ana@gmail.com"}).json()
+        assert j["ok"] and j["reembolso"] == "manual" and len(reembolsos) == n and "app_3" not in db.reservas
+
+        # 3) A saldo desde el app: 100 % con cargo a la billetera, sin Culqi.
+        reserva_app("app_4", "20:00"); db.reservas["app_4"].update(cargo_servicio=3.0)
+        stores.registrar_pago(tipo="reserva", monto_centimos=6300, moneda="PEN", estado="aprobado", email="ana@gmail.com",
+                              culqi_charge_id="chr_app4", concepto="Reserva app")
+        pr.post_liquidacion_online(pr.LiquidacionOnlineReq(dueno_id="dueno@x.com", monto_soles=60.0, reserva_id="app_4",
+                                                           concepto="Reserva app", medio="tarjeta", moneda="PEN", charge_id="chr_app4",
+                                                           cargo_servicio_centimos=300))
+        saldo_antes = stores.saldo_centimos("ana@gmail.com")
+        j = cli.post("/pagos/reserva/cancelar", json={"ref": "app_4", "email": "ana@gmail.com", "medio": "saldo"}).json()
+        assert j["ok"] and j["reembolso"] == "saldo" and j["monto_devuelto"] == 63.0 and j["incluye_cargo"]
+        assert stores.saldo_centimos("ana@gmail.com") == saldo_antes + 6300 and len(reembolsos) == n
+        assert stores.pago_por_charge("chr_app4").estado == "devuelto_saldo"
+        # Referencia inexistente.
+        assert cli.post("/pagos/reserva/cancelar", json={"ref": "nada", "email": "ana@gmail.com"}).json()["error"] == "sin_reserva"
+    finally:
+        stores.config["cargo_activo_reservas"] = "0"

@@ -2607,8 +2607,15 @@ antes del corte.
   1.ª, `chr_#k` en las demás, `cargo_id` en todas); rechazo → grupo entero
   `pendiente_pago`. Yape por defecto en PE (`pago_tarjeta_sheet`). Tests
   `test_politica_de_devoluciones_con_cargo_por_servicio`,
-  `test_mes_a_mes_agrupado_por_familia`. Falta solo la fase 5 (encender en
-  QAS y, con "pasa a PRD", en producción).
+  `test_mes_a_mes_agrupado_por_familia`. **CANCELAR DESDE EL APP con la
+  misma política (27-sep-2026):** `GET /pagos/reserva/cancelacion/{ref}` +
+  `POST /pagos/reserva/cancelar {ref, email, medio}` (X-App-Key) reusan el
+  motor web; `_cargo_app` halla el `chr_` de un pago hecho EN EL APP desde la
+  liquidación (`cargo_id` / inferencia) → reembolso Culqi directo, sin él
+  `manual`; APK `mis_reservas_screen._cancelarPagadaEnLinea` + hoja
+  `_HojaCancelarOnline`, `AppState.cancelarReserva(r, enNube: false)`. Test
+  `test_cancelacion_desde_el_app_con_la_misma_politica`. Falta solo la fase 5
+  (encender en QAS y, con "pasa a PRD", en producción).
 
 - **Community Manager AUTÓNOMO (servicio estrella, ingreso recurrente):** la
   visión del director NO es "generar posts para que el dueño publique a mano"

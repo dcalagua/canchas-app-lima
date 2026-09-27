@@ -3200,3 +3200,53 @@ async def post_webhook(request: Request, t: str | None = None) -> dict:
             estado="aprobado", culqi_charge_id=charge_id,
             concepto="Confirmado por webhook")
     return {"ok": True}
+
+
+# --- Cancelación de reservas desde el APK (política de devoluciones) ------
+# El jugador cancela desde "Mis reservas" del app una reserva PAGADA EN LÍNEA
+# (app o web). Es la MISMA regla y el mismo motor que la web (`web/router.py::
+# estado_cancelacion` + `_cancelar_reserva`, `pagos/devoluciones.py`): a saldo
+# 100 % con cargo al instante; al medio original el precio (el cargo solo en
+# arrepentimiento); tarde = sin devolución. La devolución al medio original sale
+# por Culqi con el cargo ligado a la liquidación (`cargo_id`); sin él, manual.
+class CancelarReservaAppReq(BaseModel):
+    ref: str                 # grupo `grp_…` o id de un turno suelto
+    email: str               # correo del jugador (dueño de la reserva)
+    medio: str = "original"  # saldo | original
+
+
+def _filas_y_cancha_de_ref(ref: str):
+    from web import router as _web  # perezoso: evita el ciclo web ↔ pagos
+    from web import datos as _datos
+    filas = _web._filas_de_ref(ref)
+    c = _datos.cancha(filas[0]["cancha_id"]) if filas else None
+    return _web, filas, c
+
+
+@router.get("/reserva/cancelacion/{ref}", dependencies=_APP)
+def get_cancelacion_reserva(ref: str, email: str = "",
+                            x_user_token: str | None = Header(default=None)) -> dict:
+    """Qué pasa si el jugador cancela AHORA: si puede, horas que faltan, si
+    hay devolución y las OPCIONES (a saldo / al medio original) con montos y
+    notas, para que el app las muestre ANTES de confirmar. Solo lee."""
+    email = (email or "").strip().lower()
+    if not email:
+        return {"puede": False, "motivo": "sin_usuario"}
+    _require_usuario(email, x_user_token)
+    _web, filas, c = _filas_y_cancha_de_ref(ref)
+    return _web.estado_cancelacion(filas, c, email)
+
+
+@router.post("/reserva/cancelar", dependencies=_APP)
+def post_cancelar_reserva(req: CancelarReservaAppReq,
+                          x_user_token: str | None = Header(default=None)) -> dict:
+    """Cancela la reserva del jugador y devuelve según la política. Libera el
+    horario en `pichangol_reservas` (el app luego quita la copia local), revierte
+    la liquidación del dueño y avisa por push al dueño y al jugador. El
+    middleware persiste el snapshot."""
+    email = (req.email or "").strip().lower()
+    if not email:
+        return {"ok": False, "error": "sin_usuario", "mensaje": "Inicia sesión para cancelar."}
+    _require_usuario(email, x_user_token)
+    _web, filas, c = _filas_y_cancha_de_ref(req.ref)
+    return _web._cancelar_reserva(filas, c, email, medio=req.medio, quien=email)

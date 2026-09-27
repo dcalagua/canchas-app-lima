@@ -8660,7 +8660,12 @@ class AppState extends ChangeNotifier {
   /// La quita de sus listas y de la del dueño, libera el slot en la agenda y la
   /// borra de Supabase (best-effort) para que el horario vuelva a estar libre y
   /// no reaparezca al sincronizar.
-  Future<void> cancelarReserva(Reserva r) async {
+  ///
+  /// [enNube] = false cuando el BACKEND ya canceló (reserva pagada en línea
+  /// vía `PagosService.cancelarReservaOnline`): él borró las filas, revirtió
+  /// la liquidación y avisó por push al dueño y al jugador, así que aquí solo
+  /// se limpia la copia local (y se avisa a la lista de espera).
+  Future<void> cancelarReserva(Reserva r, {bool enNube = true}) async {
     // Reserva de varias horas seguidas: cancelar el bloque cancela TODAS sus
     // horas (mismo grupo). Una hora suelta solo se cancela a sí misma.
     final grupo = r.grupoReservaId.isNotEmpty
@@ -8682,15 +8687,18 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _persistirDatos();
-    for (final id in ids) {
-      await ReservasRepo.eliminar(id); // libera cada slot en la nube
+    if (enNube) {
+      for (final id in ids) {
+        await ReservasRepo.eliminar(id); // libera cada slot en la nube
+      }
     }
     // Push AUTOMÁTICO a quienes esperaban esa hora (waitlist): reusa el canal
     // genérico de avisos (pichangol_avisos → push-aviso), sin deploy nuevo.
     _avisarEsperaLiberada(liberados);
     // Push al DUEÑO: se enteró al instante de que el horario quedó libre otra
-    // vez (antes solo lo veía al refrescar su agenda).
-    _avisarDuenoCancelacion(grupo);
+    // vez (antes solo lo veía al refrescar su agenda). Si canceló el backend,
+    // el push ya salió de ahí (con el detalle de la devolución).
+    if (enNube) _avisarDuenoCancelacion(grupo);
     // Registro HISTÓRICO para el reporte de cancelados del dueño (la fila
     // original se borró para liberar el slot; la copia vive en su tabla).
     unawaited(CancelacionesRepo.registrar(grupo, _canchaPorIdAny(r.canchaId),

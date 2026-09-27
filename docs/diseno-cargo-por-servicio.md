@@ -423,8 +423,25 @@ contempla (`cargo_activo_marketplace|torneos`) para encenderlos después.
   `pago_tarjeta_sheet.dart`. (4) Botón "Pagar" de cuotas sueltas
   (`_ProximosPagos`) con el cargo. Tests
   `test_politica_de_devoluciones_con_cargo_por_servicio`,
-  `test_mes_a_mes_agrupado_por_familia`. Pendiente: la cancelación desde el
-  APP del jugador sigue con su flujo (`_reembolsosPend`, operador); la
-  política se aplica en el backend cuando ese flujo pase por `/web/cancelar`
-  o un endpoint equivalente (backlog).
+  `test_mes_a_mes_agrupado_por_familia`.
+- **Cancelación desde el APP con la misma política (27-sep-2026, "Sí,
+  llévalo al app"):** `GET /pagos/reserva/cancelacion/{ref}?email=` y `POST
+  /pagos/reserva/cancelar {ref, email, medio}` (X-App-Key + auth de usuario
+  si `PAGOS_AUTH_USUARIO=1`) reusan `web/router.py::estado_cancelacion` /
+  `_cancelar_reserva` (`_filas_de_ref`, importación perezosa para no crear
+  ciclo web ↔ pagos). Para reservas pagadas EN EL APP el cargo de Culqi se
+  encuentra desde la liquidación del dueño (`_cargo_app`: `cargo_id` del APK
+  nuevo o inferencia de `tarifas_pasarela.cargo_de`) → la devolución al medio
+  original va DIRECTO a Culqi como en la web; sin cargo ligado (APK viejo)
+  queda `manual` y la opción avisa "te escribimos para coordinar"
+  (`reembolso_directo` en el estado). Arrepentimiento con la fecha del cargo
+  o de la liquidación. APK: `_pagadaEnLinea(r)` (pagada con yape/tarjeta) →
+  `_cancelarPagadaEnLinea` en `mis_reservas_screen.dart`: preloader
+  (`_conEspera`), hoja `_HojaCancelarOnline` (mismo contenido que el modal
+  web: explicación por motivo, opciones "A tu saldo · Recomendado" / "Al
+  mismo medio", botón rojo "Cancelar sin devolución" si es tarde), el backend
+  cancela y el app limpia la copia local con `cancelarReserva(r, enNube:
+  false)` (sin borrar en Supabase ni push al dueño: ya lo hizo el servidor);
+  sin red NO se cancela. Efectivo / seña / historial siguen con el flujo local.
+  Test `test_cancelacion_desde_el_app_con_la_misma_politica`.
 - Fase 5 (encendido QAS → PRD solo con "pasa a PRD"): pendiente.

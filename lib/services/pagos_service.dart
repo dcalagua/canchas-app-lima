@@ -1533,6 +1533,53 @@ class PagosService {
     }
   }
 
+  // --- Cancelación de reservas pagadas en línea (política de devoluciones) --
+  /// Qué pasa si el jugador cancela AHORA una reserva pagada en línea: si
+  /// puede, horas que faltan, si hay devolución y las OPCIONES (a saldo / al
+  /// medio original) con montos y notas. Es la misma política que la web
+  /// (`pagos/devoluciones.py`). null = sin red (con plata en juego NO se
+  /// cancela a ciegas).
+  static Future<Map<String, dynamic>?> estadoCancelacionReserva(
+      String ref, String email) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse(
+              '$_baseUrl/pagos/reserva/cancelacion/${Uri.encodeComponent(ref)}')
+          .replace(queryParameters: {'email': email});
+      final r = await http
+          .get(uri, headers: await _headersUsuario())
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Cancela en el backend una reserva pagada en línea y devuelve según la
+  /// política: [medio] 'saldo' (100 % con cargo a la billetera, al instante)
+  /// u 'original' (el precio a la tarjeta/Yape vía Culqi). El backend libera
+  /// el horario, revierte la liquidación del dueño y avisa por push a ambos.
+  /// Devuelve el JSON ({ok, reembolso, monto_devuelto, …}) o null sin red.
+  static Future<Map<String, dynamic>?> cancelarReservaOnline({
+    required String ref,
+    required String email,
+    required String medio,
+  }) async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/reserva/cancelar'),
+              headers: await _headersUsuario(json: true),
+              body: jsonEncode({'ref': ref, 'email': email, 'medio': medio}))
+          .timeout(const Duration(seconds: 25));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Reembolsa un pedido pagado con saldo que no procedió. Idempotente.
   static Future<bool> bodegaReembolso(String pedidoId) async {
     if (!disponible) return false;
