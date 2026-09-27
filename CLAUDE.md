@@ -412,6 +412,11 @@ para la API del APK.
   firmada que Google (`nombre` "Cuenta de revisión"), así el revisor
   reserva/paga/ve el comprobante como un cliente. Vacía → la opción no
   existe. Test `test_acceso_de_revision_con_usuario_y_clave_para_culqi`.
+  **RETIRADO el 27-sep-2026 (director: "ya no necesito acceso revisor,
+  Culqi ya me dio las llaves live"):** `WEB_USUARIOS_PRUEBA` quedó VACÍA en
+  Railway QAS y PRD (la de PRD era referencia a QAS); el código sigue por si
+  Culqi/INDECOPI vuelven a pedir un usuario de prueba: basta volver a poner
+  la variable, sin publicar código.
 - **Paleta = la del LOGO oficial (sep-2026):** `ui.py` TOKENS: verde
   `#0B8A3E` (CTA), verde oscuro `#067A38`, lima `#7CB518`, naranja `#F28C28`
   (corazón de favorito), azul noche `#0A1B3D` (texto), fondo blanco `#FFFFFF`. El
@@ -1484,7 +1489,8 @@ off → redeploy inmediato en cada push). URL pública:
     `entorno=prod`). Variables en `pg-backend-prd`: `WEB_USUARIOS_PRUEBA`
     como REFERENCIA a QAS (`${{pg-backend.WEB_USUARIOS_PRUEBA}}`; retirarla
     cuando Culqi termine la revisión), `LANDING_BASE_URL` y
-    `PUBLIC_BASE_URL` reescritas limpias a `https://www.pichangol.app`.
+    `PUBLIC_BASE_URL` reescritas limpias a `https://www.pichangol.app`
+    (`WEB_USUARIOS_PRUEBA` se vació en ambos ambientes el 27-sep-2026).
     OJO: un APK anterior a este pase pierde `fase/grupo` al guardar un
     campeonato de grupos → actualizar el APK antes de usar ese formato.
     **Pase del 26-sep-2026 (autorizado: "Pasa a PRD"):** `prd` = merge
