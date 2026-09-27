@@ -1162,7 +1162,12 @@ para la API del APK.
   lectura deja `[tarifa] chr_… Culqi cobró X de Y (neto Z) detalle=…` en los
   logs de Railway. Con S/ 15: estimado S/ 1.42, comisión S/ 2, margen ≈ S/
   0.58 → en reservas chicas el mínimo de S/ 2 apenas cubre a Culqi
-  (sugerido: subir el mínimo o cargo por servicio al jugador). Test
+  (sugerido: subir el mínimo o cargo por servicio al jugador). **OJO
+  defaults:** `stores.config` nace de `CONFIG_DEFAULT` (`db/store.py`) y
+  PISA a `tarifas_pasarela.DEFAULTS` en los snapshots reales → al cambiar
+  una tarifa por defecto hay que tocar AMBOS (el test lo exige). El APK
+  también lo manda desde la reserva de una sola hora (`cancha_detalle` →
+  `agregarReservaJugador(operacionId:)`). Test
   `tests/test_tarifas_pasarela.py`.
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
   VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
