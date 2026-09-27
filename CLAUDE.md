@@ -1606,6 +1606,20 @@ off → redeploy inmediato en cada push). URL pública:
     ahora" lee el fee real del primer cobro live de S/ 15 (Culqi lo publica
     ~12 h después del pago). OJO: un APK anterior liga el cargo por
     inferencia (mismo monto ±20 min), no por `charge_id` → actualizar.
+    **Pase del 27-sep-2026 (2.º, autorizado: "3. ok" tras "Dale, terminando
+    el 1"):** `prd` = merge `9dc479b` (cargo por servicio fases 1-4 en
+    backend/torre/web/APK, política de devoluciones con cancelación desde la
+    web, desde el anfitrión y desde el APP, mes a mes agrupado por familia,
+    Yape primero en el APK y en el checkout web). SQL
+    `docs/piloto/supabase_reservas_cargo.sql` APLICADO en PCG-PRD vía
+    `apply_migration` (`pichangol_reservas_cargo_servicio`). Sin Edge ni
+    variables nuevas. CAMBIÓ `lib/` → APK/AAB de PRD = run 1422
+    (`workflow_dispatch`, `ref=prd`, `entorno=prod`). **Los flags
+    `cargo_activo_reservas|academias` siguen APAGADOS en QAS y PRD**: se
+    encienden en la torre → Cobros → "🧾 Cargo por servicio" cuando el
+    director lo decida (primero QAS). OJO: un APK anterior cancela una
+    reserva pagada en línea sin pasar por la política (borra la fila y deja
+    el reembolso al operador) → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
