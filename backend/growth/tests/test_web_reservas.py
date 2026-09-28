@@ -2214,3 +2214,6 @@ def test_yape_es_la_pestana_principal_del_checkout_web(db, monkeypatch):
         # Culqi se abre SOLO con el método elegido (el Checkout v4 ignora el orden de las claves).
         assert "paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta'" in html and "paymentMethods: { tarjeta: true" not in html, url
         assert "window.pcgMedioPago = function()" in html, url
+        # "Resumen de tu pago" propio ANTES de abrir Culqi (28-sep-2026): Culqi solo muestra el total.
+        assert "window.pcgResumenPago = function(o)" in html and "pcgResumenPago({moneda: C.moneda, medio: m" in html, url
+        assert "Continuar con ' + (tarjeta ? 'tarjeta' : 'Yape')" in html and "Total a pagar hoy" in html, url

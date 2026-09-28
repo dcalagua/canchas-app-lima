@@ -182,6 +182,10 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .candado{display:inline-flex;align-items:center;gap:6px;background:var(--noche);color:#fff;font-size:12px;font-weight:700;padding:6px 10px;border-radius:10px}
 .medio-pago .mp-t{font-weight:800;font-size:14px;margin-bottom:8px}.medio-pago .chip{padding:9px 12px}.medio-pago .chip small{font-size:11px;font-weight:800;color:var(--esmeralda)}
 .mp-mini{display:inline-flex;align-items:center;gap:6px;background:var(--blanco);border:1px solid var(--trazo);border-radius:999px;padding:6px 10px;cursor:pointer;font:inherit;flex:none}.mp-mini b{color:var(--gris);font-weight:700}
+.pcg-rp{text-align:left;display:grid;gap:7px;margin:2px 0 6px}.pcg-rp .rp-l{display:flex;justify-content:space-between;gap:12px;font-size:14px;color:var(--noche)}.pcg-rp .rp-l span{min-width:0}.pcg-rp .rp-l b{white-space:nowrap}
+.pcg-rp .rp-t{display:flex;justify-content:space-between;gap:12px;border-top:1px solid var(--trazo);padding-top:10px;margin-top:4px;font-size:17px;font-weight:800;color:var(--noche)}
+.pcg-rp .rp-d{font-size:12.5px;color:#717171;margin-top:-2px}.pcg-rp .rp-d summary{cursor:pointer;color:var(--esmeralda);font-weight:700;list-style:none}.pcg-rp .rp-d summary::before{content:'ⓘ ';}.pcg-rp .rp-d[open] summary{margin-bottom:6px}
+.pcg-rp .rp-ok{color:var(--esmeralda);font-size:12.5px;font-weight:700}.pcg-rp .rp-n{font-size:12px;color:#717171;line-height:1.4}
 /* hero ficha */
 .galeria{display:grid;grid-template-columns:2fr 1fr;grid-template-rows:170px 170px;gap:8px;border-radius:var(--r-lg);overflow:hidden}
 .galeria img,.galeria .sinfoto{width:100%;height:100%;object-fit:cover;aspect-ratio:auto}
@@ -997,6 +1001,28 @@ JS_NAV = r"""
     ok.onclick = function(){ fin(true); }; no.onclick = function(){ fin(false); }; d.onclick = function(ev){ if(ev.target === d) fin(false); };
     document.addEventListener('keydown', esc); d.classList.add('open'); setTimeout(function(){ (conCancelar && o.destructivo ? no : ok).focus(); }, 40); }); }
   window.pcgConfirmar = function(o){ return abrirDlg(o || {}, true); };
+  // RESUMEN DE TU PAGO antes de abrir Culqi (pedido del director, 28-sep-2026: "a la hora de pagar
+  // no veo el detalle del servicio"): el iframe de Culqi solo muestra el total, así que el detalle
+  // (líneas + cargo por servicio con su desglose + total) se confirma AQUÍ, en nuestro modal, y recién
+  // entonces se abre Culqi con el medio elegido. Las líneas llegan ya escapadas. → Promise<bool>.
+  window.pcgResumenPago = function(o){
+    o = o || {};
+    var mon = o.moneda || 'S/', fmt = function(n){ return mon + ' ' + Number(n || 0).toFixed(2); };
+    var h = '<div class="pcg-rp">';
+    (o.lineas || []).forEach(function(l){ h += '<div class="rp-l"><span>' + l.t + '</span><b>' + fmt(l.m) + '</b></div>'; });
+    var c = o.cargo;
+    if(c && c.monto > 0){
+      h += '<div class="rp-l"><span>' + (c.titulo || 'Cargo por servicio Pichangol') + '</span><b>' + fmt(c.monto) + '</b></div>';
+      if(c.html) h += '<details class="rp-d"><summary>Qué incluye el cargo</summary>' + c.html + '</details>';
+      if(c.ahorro > 0) h += '<div class="rp-ok">🎉 Ahorras ' + fmt(c.ahorro) + ' en el cargo por pagar todo en un solo cobro</div>';
+    }
+    h += '<div class="rp-t"><span>Total a pagar hoy</span><b>' + fmt(o.total) + '</b></div>';
+    if(o.nota) h += '<div class="rp-n">' + o.nota + '</div>';
+    h += '</div>';
+    var tarjeta = o.medio === 'tarjeta';
+    return pcgConfirmar({titulo: o.titulo || 'Resumen de tu pago', html: h, icono: tarjeta ? '💳' : '📲',
+                         confirmar: 'Continuar con ' + (tarjeta ? 'tarjeta' : 'Yape') + ' · ' + fmt(o.total), cancelar: 'Volver'});
+  };
   window.pcgAvisar = function(o){ return abrirDlg(typeof o === 'string' ? {mensaje: o} : (o || {}), false); };
   // pcgCargando('Guardando…') muestra el velo con spinner; pcgCargando(false) lo quita. Con {demora:ms} aparece solo si la espera supera ese tiempo.
   var veloT = null;

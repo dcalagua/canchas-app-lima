@@ -2560,7 +2560,17 @@ antes del corte.
   resumen, Yape preseleccionado) + `ui.medio_pago_mini()` (chip en la barra
   fija móvil, alterna al tocar) sincronizados por `pcgMedioPago()` en
   `JS_NAV`, y Culqi se abre SOLO con ese método; test
-  `test_yape_es_la_pestana_principal_del_checkout_web`). **Fase 1:** `pagos/cargo_servicio.py`
+  `test_yape_es_la_pestana_principal_del_checkout_web`). **RESUMEN DE TU
+  PAGO antes de Culqi (pedido del director, 28-sep-2026: "a la hora de
+  pagar no veo el detalle del servicio"; el iframe de Culqi solo muestra el
+  total y no admite líneas):** `pcgResumenPago({moneda, medio, lineas:[{t,m}],
+  cargo:{monto,titulo,html,ahorro}, total, nota})` en `JS_NAV` = modal
+  `pcgConfirmar` con las líneas (turnos+extras / personas del carrito), el
+  cargo con `<details>` "Qué incluye", "Ahorras…" en familia, "Total a
+  pagar hoy" y botón "Continuar con Yape|tarjeta · S/ X" / "Volver". En la
+  RESERVA va DESPUÉS de `/web/asegurar` (monto y cargo del servidor; Volver
+  → `liberar()`); en la MATRÍCULA antes de `Culqi.open` (`pagar.confirmado`
+  evita el bucle). CSS `.pcg-rp`. Playwright `$SP/pw_resumen.js`. **Fase 1:** `pagos/cargo_servicio.py`
   (`cotizar`, `cargo_centimos`, `red_de_seguridad`, `desglose`,
   `publico`, `validar_y_guardar`, `sin_cargo_recientes`; params
   `cargo_<PEN|USD|BOB>_pct|min|tramo|pct_exc|margen_min` y flags

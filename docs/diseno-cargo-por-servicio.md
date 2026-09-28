@@ -444,4 +444,11 @@ contempla (`cargo_activo_marketplace|torneos`) para encenderlos después.
   false)` (sin borrar en Supabase ni push al dueño: ya lo hizo el servidor);
   sin red NO se cancela. Efectivo / seña / historial siguen con el flujo local.
   Test `test_cancelacion_desde_el_app_con_la_misma_politica`.
-- Fase 5 (encendido QAS → PRD solo con "pasa a PRD"): pendiente.
+- **Fase 5 (28-sep-2026):** el director ENCENDIÓ `cargo_activo_reservas` y
+  `cargo_activo_academias` en la torre de PRD (y QAS). Al probar la
+  matrícula web vio la línea del cargo en el resumen pero no en la ventana
+  de Culqi (que solo muestra el total) → se agregó el modal propio "Resumen
+  de tu pago" antes de abrir Culqi (`pcgResumenPago`, reserva y matrícula)
+  con las líneas, el cargo con su desglose, el total y el botón "Continuar
+  con Yape/tarjeta". Pendiente: observar el margen real con los primeros
+  cobros live y ajustar el mínimo si hace falta.
