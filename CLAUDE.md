@@ -1850,7 +1850,7 @@ off → redeploy inmediato en cada push). URL pública:
     `a3a07b4` (abrir en la app desde el navegador del celular: script
     `JS_ABRIR_APP` en la web, App Links ampliados en el manifest y enrutado
     de URLs web en `EnlacesService`). Sin SQL ni Edge; sin variables nuevas.
-    CAMBIÓ `lib/` → APK/AAB de PRD por `workflow_dispatch` (`ref=prd`,
+    CAMBIÓ `lib/` → APK/AAB de PRD = run 1445 (`workflow_dispatch`, `ref=prd`,
     `entorno=prod`). OJO: un APK anterior solo entiende `/c/{id}`: el salto
     desde `/reservar/…`, `/academia/…`, `/mis-reservas` o `/anfitrion` lo
     abre en Explorar → actualizar. Sigue pendiente del director agregar las
