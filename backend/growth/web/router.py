@@ -1632,11 +1632,15 @@ _JS_RESERVA = r"""
         }
         hold = j;
         if(!C.pk){ mostrarError('El pago en línea no está disponible por ahora.'); liberar(); pintarResumen(); return; }
-        Culqi.publicKey = C.pk;
-        Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: j.total_centimos });
         // El medio se elige en la página (Yape por defecto) y Culqi se abre SOLO con ese método:
         // el Checkout v4 siempre abría en Tarjeta aunque Yape fuera primero (pedido del director, 27-sep-2026).
         var m = window.pcgMedioPago ? pcgMedioPago() : 'yape';
+        // RESUMEN DE TU PAGO (pedido del director, 28-sep-2026): Culqi solo muestra el total; aquí se
+        // confirma el detalle (turnos, extras, cargo por servicio con desglose y total, tal cual lo
+        // cobrará el servidor). "Volver" libera la retención del horario.
+        var abrirCulqi = function(){
+        Culqi.publicKey = C.pk;
+        Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: j.total_centimos });
         Culqi.options({ lang: 'es', installments: false,
           paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false },
           style: { logo: C.logo, bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
@@ -1665,6 +1669,14 @@ _JS_RESERVA = r"""
           if(!abierto && hold){ clearInterval(chk); liberar(); pintarResumen(); }
           if(!hold) clearInterval(chk);
         }, 1500);
+        };
+        if(!window.pcgResumenPago){ abrirCulqi(); return; }
+        var lineas = Object.keys(sel).sort().map(function(k){ var s = sel[k]; return {t: esc(C.etiquetas[s.fecha] || s.fecha) + ' · ' + s.hora + '–' + s.fin, m: s.precio}; });
+        extrasSel().forEach(function(x){ lineas.push({t: esc(x.nombre) + (x.cantidad > 1 ? ' × ' + x.cantidad : ''), m: x.precio}); });
+        var cj = j.cargo && j.cargo_centimos > 0 ? {monto: j.cargo_centimos / 100, titulo: j.cargo.titulo, html: htmlDesglose(j.cargo)} : null;
+        pcgResumenPago({moneda: C.moneda, medio: m, lineas: lineas, cargo: cj, total: j.total_centimos / 100,
+                        nota: 'El horario queda reservado para ti mientras pagas (' + Math.round((j.hold_segundos || 600) / 60) + ' min).'})
+          .then(function(ok){ if(ok){ abrirCulqi(); } else { liberar(); pintarResumen(); } });
       }).catch(function(){ pintarResumen(); mostrarError('No pudimos reservar el horario. Inténtalo de nuevo.'); });
   }
   $('btnPagar').addEventListener('click', pagar);

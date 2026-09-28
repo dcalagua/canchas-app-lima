@@ -571,11 +571,23 @@ _JS_ACADEMIA = r"""
     if(C.cargo && !cg){ pagar.intentos = (pagar.intentos || 0) + 1; if(pagar.intentos > 24){ pagar.intentos = 0; mostrarError('No pudimos calcular el total. Recarga la página e inténtalo de nuevo.'); return; } setTimeout(pagar, 250); return; }
     pagar.intentos = 0;
     var montoC = Math.round(total * 100) + (cg ? cg.cargo_centimos : 0);
+    // El medio se elige en la página (Yape por defecto) y Culqi se abre SOLO con ese método.
+    var m = window.pcgMedioPago ? pcgMedioPago() : 'yape';
+    // RESUMEN DE TU PAGO (pedido del director, 28-sep-2026): Culqi solo muestra el total, así que
+    // antes se confirma aquí el detalle por persona + cargo por servicio + total.
+    if(window.pcgResumenPago && !pagar.confirmado){
+      var lineas = st.carrito.map(function(it){ return {t: esc(it.nombre) + ' · ' + esc(it.plan.nombre) + ' · ' + modoTxt(it) + (it.pct > 0 ? ' (−' + it.pct + ' % familiar)' : ''), m: it.r.total}; });
+      if(st.plan){ var cur = itemActual(), rr = calc(); lineas.push({t: esc(cur.nombre || ('Persona ' + (st.carrito.length + 1))) + ' · ' + esc(st.plan.nombre) + ' · ' + modoTxt({plan: st.plan, n: st.n, r: rr}), m: rr.total}); }
+      var mesAMes = st.carrito.some(function(it){ return it.r.mesAMes; }) || (st.plan && calc().mesAMes);
+      pcgResumenPago({moneda: C.moneda, medio: m, lineas: lineas, total: montoC / 100,
+                      cargo: cg && cg.activo && cg.cargo_centimos > 0 ? {monto: cg.cargo_centimos / 100, titulo: cg.titulo, html: htmlDesglose(cg), ahorro: (cg.ahorro_centimos || 0) / 100} : null,
+                      nota: mesAMes ? 'Un solo cobro hoy. Los meses siguientes de mes a mes se cobran solos al mismo medio de pago.' : ''})
+        .then(function(ok){ if(!ok) return; pagar.confirmado = true; pagar(); });
+      return;
+    }
+    pagar.confirmado = false;
     Culqi.publicKey = C.pk;
     Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: montoC });
-    // El medio se elige en la página (Yape por defecto) y Culqi se abre SOLO con ese método:
-    // el Checkout v4 siempre abría en Tarjeta aunque Yape fuera primero (pedido del director, 27-sep-2026).
-    var m = window.pcgMedioPago ? pcgMedioPago() : 'yape';
     Culqi.options({ lang: 'es', installments: false,
       paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false },
       style: { logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
