@@ -2217,3 +2217,8 @@ def test_yape_es_la_pestana_principal_del_checkout_web(db, monkeypatch):
         # "Resumen de tu pago" propio ANTES de abrir Culqi (28-sep-2026): Culqi solo muestra el total.
         assert "window.pcgResumenPago = function(o)" in html and "pcgResumenPago({moneda: C.moneda, medio: m" in html, url
         assert "Continuar con ' + (tarjeta ? 'tarjeta' : 'Yape')" in html and "Total a pagar hoy" in html, url
+        # Responsivo (28-sep-2026, captura del director): en móvil el diálogo es una hoja inferior
+        # con el contenido desplazable DENTRO y los botones siempre a la vista.
+        assert "id='pcgDlgMsg'" in html and "<div class='msg' id='pcgDlgMsg'>" in html, url
+        assert ".pcg-dlg .msg{width:100%;min-height:0;flex:0 1 auto;overflow-y:auto" in html, url
+        assert "@media (max-width:600px){.pcg-dlg{align-items:flex-end;padding:0}" in html, url

@@ -1624,6 +1624,11 @@ off → redeploy inmediato en cada push). URL pública:
     `8a3b7f5` (selector de medio de pago en el checkout web: Yape
     preseleccionado, Culqi se abre solo con el método elegido). Solo web:
     sin SQL, sin Edge, sin APK, sin variables.
+    **Pase del 28-sep-2026 (autorizado: "Pasar a prd"):** `prd` = merge
+    `8dff6fe` (modal "Resumen de tu pago" antes de abrir Culqi en la reserva
+    y en la matrícula web: líneas, cargo por servicio con "Qué incluye",
+    total y botón "Continuar con Yape|tarjeta"). Solo web: sin SQL, sin
+    Edge, sin APK, sin variables. Railway `pg-backend-prd` desplegado OK.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -2440,7 +2445,17 @@ no inventar layouts propios. Rasgos Airbnb:
   (así no se ve la página vieja tras guardar). Los `post()` de Mis
   campeonatos ya lo llevan; en el resto de anfitrión se usa en eliminar /
   quitar / publicar. `pcgToast` tiene fallback global ahí mismo. Test
-  Playwright: `page.on('dialog')` debe quedar en cero.
+  Playwright: `page.on('dialog')` debe quedar en cero. **Responsivo
+  (queja del director, 28-sep-2026, captura del "Resumen de tu pago" en el
+  celular: el modal ocupaba toda la pantalla y los botones quedaban fuera):**
+  `.pcg-dlg .caja` es flex-columna con `max-height` (100dvh − 48 px) y el
+  cuerpo es `<div class='msg' id='pcgDlgMsg'>` (antes `<p>`) con
+  `overflow-y:auto`: lo largo se desplaza DENTRO y Continuar/Volver quedan
+  siempre a la vista; en ≤600 px el diálogo es una HOJA INFERIOR (asa gris,
+  esquinas superiores, `safe-area-inset-bottom`, animación `subir`, 92dvh) y
+  las líneas del resumen son grid `minmax(0,1fr) auto` con
+  `overflow-wrap:anywhere` para que el monto no se parta. Playwright
+  `$SP/pw_resumen_mov.js` (390×844, desglose abierto).
 - **Popups: UN SOLO formato (REGLA de todo el app).** Todo diálogo de
   confirmación/aviso usa `widgets/dialogo_pichangol.dart`: `confirmarPichangol(
   context, titulo:, mensaje:, textoConfirmar:, destructivo:, icono:)` (devuelve
