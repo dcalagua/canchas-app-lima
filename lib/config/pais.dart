@@ -78,6 +78,21 @@ class PaisConfig {
   /// esto es para mostrar/estimar en el APK.
   final double comisionMin;
 
+  /// Nombre local del jugador de peloteo por turno (módulo BOLEADORES,
+  /// sep-2026): en Perú "boleador"; en Bolivia y Ecuador "sparring". Espejo
+  /// de `boleadores.nombre_por_pais` del backend.
+  String get nombreBoleador => iso == 'PE' ? 'Boleador' : 'Sparring';
+  String get nombreBoleadorMin => nombreBoleador.toLowerCase();
+
+  /// Comisión FIJA de Pichangol por turno de boleo (decisión del director,
+  /// sep-2026): S/ 2 · \$ 0.50 · Bs 3. Espejo de `boleador_comision_<ISO>`
+  /// en el backend; el backend es quien la descuenta, esto es para mostrar.
+  double get comisionBoleador => switch (monedaIso) {
+        'USD' => 0.5,
+        'BOB' => 3.0,
+        _ => 2.0,
+      };
+
   const PaisConfig({
     required this.iso,
     required this.nombre,

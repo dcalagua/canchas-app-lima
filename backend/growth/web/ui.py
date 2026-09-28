@@ -166,6 +166,16 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 @media(max-width:900px){.resumen{position:static}}
 .linea{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:7px 0;border-bottom:1px solid var(--trazo)}
 .linea:last-child{border-bottom:0}.linea b{font-weight:700}
+/* Boleadores (sparring por turno) en la ficha de reserva y en Modo anfitrión */
+.bol-box{display:grid;gap:10px;margin:4px 0 12px}
+.bol-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--trazo);border-radius:16px;background:var(--blanco);cursor:pointer;box-shadow:0 1px 3px rgba(10,27,61,.06);transition:box-shadow .15s,border-color .15s}
+.bol-card:hover{box-shadow:0 4px 14px rgba(10,27,61,.10)}.bol-card.sel{border-color:var(--noche);box-shadow:0 0 0 2px var(--noche) inset}
+.bol-card img,.bol-card .ini{width:48px;height:48px;border-radius:50%;object-fit:cover;flex:none;background:var(--tinte);display:inline-flex;align-items:center;justify-content:center;font-weight:800;color:var(--esmeralda);font-size:18px}
+.bol-card .nom{font-weight:800;color:var(--noche)}.bol-card .cat{display:inline-block;background:var(--tinte);color:var(--esmeralda);font-weight:800;font-size:12px;padding:2px 8px;border-radius:999px;margin-left:6px}
+.bol-card .det{color:var(--tenue);font-size:12.5px;margin-top:2px}.bol-card .pre{margin-left:auto;text-align:right;white-space:nowrap;font-weight:800;color:var(--noche)}.bol-card .pre small{display:block;color:var(--tenue);font-weight:600;font-size:11.5px}
+.bol-card .chk{width:22px;height:22px;border-radius:50%;border:2px solid var(--trazo);flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:13px;color:#fff}.bol-card.sel .chk{background:var(--esmeralda);border-color:var(--esmeralda)}
+.bol-sol{border:1px solid var(--trazo);border-radius:16px;padding:14px 16px;background:var(--blanco);display:grid;gap:6px}.bol-sol.pend{border-color:#F2C94C;background:#FFFBEA}
+.bol-sol .acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
 .total{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:20px;padding-top:12px}
 .barra-fija{display:none}
 @media(max-width:900px){

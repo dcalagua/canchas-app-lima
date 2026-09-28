@@ -1743,4 +1743,104 @@ class PagosService {
       return null;
     }
   }
+
+  // --- BOLEADORES (peloteo por turno, sep-2026) --------------------------------
+  // Espejo de `backend/growth/boleadores.py`. El cliente elige un boleador al
+  // reservar (solo pago en línea), Pichangol cobra todo junto, el boleador
+  // ACEPTA o rechaza y, al aceptar, su neto (tarifa − comisión fija) queda "por
+  // recibir" en su billetera. Todos con `X-App-Key`; ninguno rompe el flujo si
+  // el backend no responde (null).
+
+  static Future<Map<String, dynamic>?> _getJson(String ruta,
+      [Map<String, String>? query]) async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl$ruta')
+          .replace(queryParameters: query == null || query.isEmpty ? null : query);
+      final r = await http
+          .get(uri, headers: _appHeaders())
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> _postJson(
+      String ruta, Map<String, dynamic> body) async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl$ruta'),
+              headers: _appHeaders(json: true), body: jsonEncode(body))
+          .timeout(const Duration(seconds: 20));
+      if (r.statusCode != 200) return null;
+      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Catálogos del registro (categorías de la Liga, tarifas sugeridas,
+  /// etiquetas, comisión fija y horas para aceptar) según el país.
+  static Future<Map<String, dynamic>?> boleadorConfig(String pais) =>
+      _getJson('/boleadores/config', {'pais': pais});
+
+  /// Mi perfil de boleador (null en `boleador` si no me registré) + si estoy
+  /// verificado + la config de mi país.
+  static Future<Map<String, dynamic>?> boleadorPerfil(String email) =>
+      _getJson('/boleadores/perfil/${Uri.encodeComponent(email)}');
+
+  static Future<Map<String, dynamic>?> guardarPerfilBoleador(
+          Map<String, dynamic> perfil) =>
+      _postJson('/boleadores/perfil', perfil);
+
+  static Future<Map<String, dynamic>?> boleadorActivo(
+          {required String email, required bool activo}) =>
+      _postJson('/boleadores/perfil/activo', {'email': email, 'activo': activo});
+
+  /// Boleadores que pueden atender ESA reserva (local, día, franja, sin
+  /// cruces). Público (sin correos).
+  static Future<List<Map<String, dynamic>>?> boleadoresDisponibles({
+    required String canchaId,
+    required String fecha,
+    required String hora,
+    required int turnos,
+    required String deporte,
+  }) async {
+    final j = await _getJson('/boleadores/disponibles', {
+      'cancha_id': canchaId,
+      'fecha': fecha,
+      'hora': hora,
+      'turnos': '$turnos',
+      'deporte': deporte,
+    });
+    if (j == null || j['ok'] != true) return null;
+    return (j['boleadores'] as List? ?? const [])
+        .whereType<Map>()
+        .map((m) => Map<String, dynamic>.from(m))
+        .toList();
+  }
+
+  /// Tras cobrar la reserva con boleador: registra la solicitud (idempotente
+  /// por reserva) y le avisa por push al boleador para que acepte.
+  static Future<Map<String, dynamic>?> solicitarBoleador(
+          Map<String, dynamic> body) =>
+      _postJson('/boleadores/solicitar', body);
+
+  /// Mis solicitudes: como boleador (pendientes/aceptadas primero) y como
+  /// cliente, con `estado_visible` y `neto_centimos` ya calculados.
+  static Future<Map<String, dynamic>?> solicitudesBoleo(String email) =>
+      _getJson('/boleadores/solicitudes', {'email': email});
+
+  /// `accion` = aceptar | rechazar | cancelar.
+  static Future<Map<String, dynamic>?> responderBoleo({
+    required String solicitudId,
+    required String accion,
+    required String email,
+    String motivo = '',
+  }) =>
+      _postJson('/boleadores/solicitudes/${Uri.encodeComponent(solicitudId)}/$accion',
+          {'email': email, if (motivo.isNotEmpty) 'motivo': motivo});
 }

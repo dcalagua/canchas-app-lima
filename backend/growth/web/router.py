@@ -1450,9 +1450,52 @@ _JS_RESERVA = r"""
     if(t.name === 'extra'){ var sc = t.parentNode.querySelector('select.cant'); if(sc) sc.disabled = !t.checked; }
     if(t.name === 'extra' || (t.classList && t.classList.contains('cant'))) pintarResumen();
   });
+  // BOLEADOR / SPARRING (sep-2026): la lista depende de fecha, hora y turnos (disponibilidad y
+  // otras solicitudes del boleador), así que se pide al servidor cada vez que cambia la selección.
+  var bolSel = null, bolLista = [], bolClave = '';
+  function bolLinea(){
+    if(!C.boleadores || !bolSel) return null;
+    var n = Object.keys(sel).length || 1;
+    return {clave: 'boleador', nombre: C.nombreBoleador + ' · ' + bolSel.nombre, cantidad: n, unitario: bolSel.tarifa, precio: bolSel.tarifa * n, slug: bolSel.slug};
+  }
+  function pintarBoleadores(){
+    var box = $('bolBox'); if(!box) return;
+    if(!bolLista.length){ box.innerHTML = '<span class="sub">' + (Object.keys(sel).length ? 'Ningún ' + C.nombreBoleador.toLowerCase() + ' disponible para ese horario.' : 'Elige un horario para ver quién puede atenderte.') + '</span>'; return; }
+    box.innerHTML = bolLista.map(function(b){
+      var ini = b.foto ? '<img src="' + esc(b.foto) + '" alt="">' : '<span class="ini">' + esc((b.nombre || '?').charAt(0).toUpperCase()) + '</span>';
+      var det = [b.etiquetas && b.etiquetas.length ? b.etiquetas.slice(0, 3).join(' · ') : '', b.aceptadas ? b.aceptadas + ' boleos' : 'Nuevo en Pichangol'].filter(Boolean).join(' · ');
+      return '<div class="bol-card' + (bolSel && bolSel.slug === b.slug ? ' sel' : '') + '" data-slug="' + esc(b.slug) + '" role="button" tabindex="0">' + ini +
+             '<div><span class="nom">' + esc(b.nombre) + '</span><span class="cat">' + esc(b.categoria) + '</span><div class="det">' + esc(det) + '</div></div>' +
+             '<div class="pre">' + fmt(b.tarifa) + '<small>por turno</small></div><span class="chk">✓</span></div>';
+    }).join('');
+    box.querySelectorAll('.bol-card').forEach(function(el){
+      el.addEventListener('click', function(){
+        var s = el.dataset.slug;
+        bolSel = (bolSel && bolSel.slug === s) ? null : bolLista.filter(function(b){ return b.slug === s; })[0] || null;
+        pintarBoleadores(); pintarResumen();
+      });
+    });
+  }
+  function cargarBoleadores(){
+    if(!C.boleadores || !$('bolBox')) return;
+    var ks = Object.keys(sel).sort();
+    if(!ks.length){ bolLista = []; bolSel = null; bolClave = ''; pintarBoleadores(); return; }
+    var p = sel[ks[0]], clave = p.fecha + '|' + p.hora + '|' + ks.length + '|' + deporteSel();
+    if(clave === bolClave) return;
+    bolClave = clave;
+    fetch('/boleadores/disponibles?cancha_id=' + encodeURIComponent(C.id) + '&fecha=' + encodeURIComponent(p.fecha) + '&hora=' + encodeURIComponent(p.hora) + '&turnos=' + ks.length + '&deporte=' + encodeURIComponent(deporteSel()))
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(clave !== bolClave) return;
+        bolLista = (j && j.ok && j.boleadores) || [];
+        if(bolSel && !bolLista.some(function(b){ return b.slug === bolSel.slug; })){ bolSel = null; pintarResumen(); }
+        pintarBoleadores();
+      }).catch(function(){ bolLista = []; pintarBoleadores(); });
+  }
   function total(){
     var t = 0; Object.keys(sel).forEach(function(k){ t += sel[k].precio; });
     extrasSel().forEach(function(x){ t += x.precio; });
+    var bl = bolLinea(); if(bl) t += bl.precio;
     return t;
   }
   // CARGO POR SERVICIO Pichangol (fase 2, sep-2026): el servidor cotiza
@@ -1494,9 +1537,11 @@ _JS_RESERVA = r"""
       ks.forEach(function(k){ var s = sel[k];
         h += '<div class="linea"><span>' + esc(C.etiquetas[s.fecha] || s.fecha) + ' · ' + s.hora + '–' + s.fin + '</span><b>' + fmt(s.precio) + '</b></div>'; });
       extrasSel().forEach(function(x){ h += '<div class="linea"><span>' + esc(x.nombre) + (x.cantidad > 1 ? ' × ' + x.cantidad : '') + '</span><b>' + fmt(x.precio) + '</b></div>'; });
+      var bl = bolLinea(); if(bl) h += '<div class="linea"><span>🎾 ' + esc(bl.nombre) + (bl.cantidad > 1 ? ' × ' + bl.cantidad : '') + '</span><b>' + fmt(bl.precio) + '</b></div>';
       if(C.cargo) h += '<div class="linea" id="lineaCargo"><span>Cargo por servicio Pichangol ' + BTN_INFO + '</span><b>' + (cot ? fmt(cargo) : '…') + '</b></div>';
     }
     $('lineas').innerHTML = h;
+    cargarBoleadores();
     var tt = t + cargo;
     $('tot').textContent = fmt(tt); $('totBarra').textContent = fmt(tt);
     var txt = n ? ('Reservar y pagar ' + fmt(tt)) : 'Elige un horario';
@@ -1619,13 +1664,15 @@ _JS_RESERVA = r"""
     var horas = Object.keys(sel).map(function(k){ return {fecha: sel[k].fecha, hora: sel[k].hora}; });
     var deporte = ($('deporte') && $('deporte').value) || '';
     ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = true; $(id).textContent = 'Reservando tu horario…'; });
+    var blSel = bolLinea();
     fetch('/web/asegurar', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({cancha_id: C.id, horas: horas, extras: extras, deporte: deporte, nombre: d.nombre, celular: d.celular, email: d.email})})
+      body: JSON.stringify({cancha_id: C.id, horas: horas, extras: extras, deporte: deporte, nombre: d.nombre, celular: d.celular, email: d.email, boleador: blSel ? blSel.slug : ''})})
       .then(function(r){ return r.json(); })
       .then(function(j){
         if(!j.ok){
           pintarResumen();
           if(j.error === 'ocupado'){ mostrarError('Alguien acaba de tomar uno de esos horarios. Elige otro, por favor.'); cargar(); }
+          else if(j.error === 'boleador_no_disponible'){ bolSel = null; bolClave = ''; mostrarError('Ese ' + C.nombreBoleador.toLowerCase() + ' ya no está disponible para ese horario. Elige otro o reserva sin él.'); pintarResumen(); }
           else if(j.error === 'sesion_requerida'){ C.sesion = null; mostrarError('Tu sesión venció. Inicia sesión con Google para reservar.'); var lb = $('loginBox'), db = $('datosBox'); if(lb) lb.style.display = ''; if(db) db.style.display = 'none'; }
           else mostrarError('No pudimos reservar el horario. Inténtalo de nuevo.');
           return;
@@ -1673,9 +1720,10 @@ _JS_RESERVA = r"""
         if(!window.pcgResumenPago){ abrirCulqi(); return; }
         var lineas = Object.keys(sel).sort().map(function(k){ var s = sel[k]; return {t: esc(C.etiquetas[s.fecha] || s.fecha) + ' · ' + s.hora + '–' + s.fin, m: s.precio}; });
         extrasSel().forEach(function(x){ lineas.push({t: esc(x.nombre) + (x.cantidad > 1 ? ' × ' + x.cantidad : ''), m: x.precio}); });
+        if(blSel) lineas.push({t: '🎾 ' + esc(blSel.nombre) + (blSel.cantidad > 1 ? ' × ' + blSel.cantidad : ''), m: blSel.precio});
         var cj = j.cargo && j.cargo_centimos > 0 ? {monto: j.cargo_centimos / 100, titulo: j.cargo.titulo, html: htmlDesglose(j.cargo)} : null;
         pcgResumenPago({moneda: C.moneda, medio: m, lineas: lineas, cargo: cj, total: j.total_centimos / 100,
-                        nota: 'El horario queda reservado para ti mientras pagas (' + Math.round((j.hold_segundos || 600) / 60) + ' min).'})
+                        nota: 'El horario queda reservado para ti mientras pagas (' + Math.round((j.hold_segundos || 600) / 60) + ' min).' + (blSel ? ' El ' + C.nombreBoleador.toLowerCase() + ' confirma después; si no puede, te devolvemos su parte.' : '')})
           .then(function(ok){ if(ok){ abrirCulqi(); } else { liberar(); pintarResumen(); } });
       }).catch(function(){ pintarResumen(); mostrarError('No pudimos reservar el horario. Inténtalo de nuevo.'); });
   }
@@ -1877,8 +1925,20 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
                   f"{s['emoji']} {e(nombre)} <small style='color:var(--tenue)'>+ {e(sim)} {precio:.2f}{sufijo}</small>{cant}</label>")
     if filas:
         extras_html = f"<div class='paso'><span>3</span> Servicios extra <small style='color:var(--tenue);font-weight:600'>(opcional)</small></div>{filas}"
+    # BOLEADOR / SPARRING (sep-2026): solo canchas de tenis/pádel cuyo local lo
+    # permite; la lista se pide al elegir el horario (depende de fecha y hora).
+    import boleadores as _bol
+    con_bol = (_bol.activo() and any(d in _bol.DEPORTES for d in _deportes_de(c)) and datos.permite_boleadores(c["id"]))
+    nombre_bol = _bol.nombre_por_pais(pais)
+    if con_bol:
+        extras_html += (f"<div class='paso'><span>{'4' if filas else '3'}</span> 🎾 ¿Quieres un {nombre_bol.lower()}? "
+                        "<small style='color:var(--tenue);font-weight:600'>(opcional)</small></div>"
+                        f"<div class='sub' style='margin:-4px 0 10px;font-size:13px'>Jugadores de la Liga Pichangol que pelotean contigo en este local. "
+                        f"Eliges por categoría y precio por turno; el {nombre_bol.lower()} confirma y, si no puede, te devolvemos su parte.</div>"
+                        "<div id='bolBox' class='bol-box'><span class='sub'>Elige un horario para ver quién puede atenderte.</span></div>")
 
     cfg = json.dumps({"id": c["id"], "moneda": sim, "pk": config.CULQI_PUBLIC_KEY, "maxSlots": MAX_SLOTS,
+                      "boleadores": con_bol, "nombreBoleador": nombre_bol,
                       "logo": "", "hoy": dias[0]["iso"], "dias": dias, "etiquetas": etiquetas,
                       # Cargo por servicio (fase 2): con el flag apagado el JS no cotiza ni pinta la línea.
                       "cargo": _cs.activo("reservas"), "deporteBase": (_deportes_de(c) or [""])[0],
@@ -1961,6 +2021,7 @@ class AsegurarReq(BaseModel):
     nombre: str
     celular: str = ""
     email: str
+    boleador: str = ""  # slug del boleador elegido (sparring por turno, opcional)
 
 
 _contador = {"n": 0}
@@ -2068,6 +2129,22 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
         if not s or s["ocupado"]:
             return {"ok": False, "error": "ocupado" if s else "hora_invalida"}
         total += s["precio"]
+    # BOLEADOR (sparring por turno): el servidor vuelve a comprobar que atiende
+    # en esta cancha, que la franja cae en su disponibilidad y que no tiene otra
+    # solicitud viva cruzada. Entra como una línea más de `extras`.
+    if (req.boleador or "").strip():
+        import boleadores as _bol
+        primero = validos[sorted(pedidos)[0]]
+        ultimo = validos[sorted(pedidos)[-1]]
+        libres = {b["slug"]: b for b in _bol.disponibles(c["id"], primero["fecha"], primero["hora"], len(pedidos), deporte)}
+        b = datos.boleador_por_slug(req.boleador.strip())
+        if not b or _bol.slug_de(b["email"]) not in libres:
+            return {"ok": False, "error": "boleador_no_disponible"}
+        if datos.solicitudes_cruce(b["email"], primero["fecha"], primero["hora"], ultimo["fin"]):
+            return {"ok": False, "error": "boleador_no_disponible"}
+        extras_ok = [x for x in extras_ok if x.get("clave") != "boleador"] + [_bol.linea_reserva(b, len(pedidos))]
+    for i, key in enumerate(sorted(pedidos)):
+        s = validos[key]
         filas.append({
             "id": _nuevo_id(), "cancha_id": c["id"], "jugador": nombre, "nivel": "",
             "fecha": s["fecha"], "dia": horarios.etiqueta_dia(s["fecha"], hoy),
@@ -2170,11 +2247,16 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
     except Exception:  # noqa: BLE001
         pass
     dueno = (c.get("dueno") or "").strip().lower()
+    # La parte del BOLEADOR no es del dueño: sale del bruto de su liquidación y
+    # abre la solicitud al boleador (acepta o rechaza; ver boleadores.py).
+    linea_bol = next((x for f in filas for x in (f.get("extras") or []) if isinstance(x, dict) and x.get("clave") == "boleador"), None)
+    bol_soles = float(linea_bol.get("precio") or 0) if linea_bol else 0.0
+    total_dueno = max(0.0, float(total) - bol_soles)
     if dueno:
         try:
             from pagos.router import LiquidacionOnlineReq, post_liquidacion_online, _aviso_push_usuario
             post_liquidacion_online(LiquidacionOnlineReq(
-                dueno_id=dueno, monto_soles=float(total), reserva_id=filas[0]["id"],
+                dueno_id=dueno, monto_soles=total_dueno, reserva_id=filas[0]["id"],
                 concepto=f"Reserva web · {c.get('nombre', '')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}",
                 medio=medio, moneda=iso, charge_id=str(cargo.get("charge_id") or ""),
                 cargo_servicio_centimos=cot.cargo_centimos, cargo_desglose=list(cot.desglose or []),
@@ -2185,6 +2267,19 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
                 f"{filas[0]['jugador']} · {c.get('nombre', '')} · {horarios.fecha_larga(filas[0]['fecha'])} {rango} · "
                 f"pagó {sim} {total:.2f} por la web", tipo="reserva")
         except Exception:  # noqa: BLE001 — la contabilidad nunca deshace un cobro
+            pass
+    if linea_bol and bol_soles > 0:
+        try:
+            import boleadores as _bol
+            b = datos.boleador_por_slug(str(linea_bol.get("boleador") or ""))
+            if b:
+                cargo_bol = int(round(cot.cargo_centimos * bol_soles / float(total))) if total and cot.cargo_centimos else 0
+                _bol.crear_solicitud(boleador=b, cliente_email=email, cliente_nombre=str(filas[0].get("jugador") or ""),
+                                     reserva_ids=[str(f["id"]) for f in filas], reserva_ref=_ref_de(filas), cancha=c,
+                                     fecha=str(filas[0]["fecha"]), hora_inicio=str(filas[0]["hora_inicio"]),
+                                     hora_fin=str(filas[-1]["hora_fin"]), turnos=len(filas),
+                                     charge_id=str(cargo.get("charge_id") or ""), cargo_centimos=cargo_bol, medio=medio, canal="web")
+        except Exception:  # noqa: BLE001
             pass
     return {"ok": True, "url": _url_comprobante(filas), "charge_id": cargo.get("charge_id")}
 
@@ -2428,6 +2523,13 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
                                          + (f" (incluye pasarela {sim} {costo_pasarela / 100.0:.2f})" if costo_pasarela else "")))
     if not datos.eliminar_reservas(ids):
         return {"ok": False, "error": "no_se_pudo", "mensaje": "No pudimos liberar el horario. Inténtalo de nuevo."}
+    # Boleador contratado en esta reserva: su solicitud se cancela y su
+    # liquidación se revierte (la devolución al jugador ya incluyó su parte).
+    try:
+        import boleadores as _bol
+        _bol.cancelar_por_reserva(ref, ids, quien=("local" if cancela_anfitrion else "cliente"))
+    except Exception:  # noqa: BLE001
+        pass
     reg = {"id": _st.next_id("cancelacion_web"), "ref": ref, "ids": ids, "usuario": email, "cancha_id": filas[0]["cancha_id"],
            "cancha": (c or {}).get("nombre") or "", "club": (c or {}).get("club") or "", "fecha": str(filas[0]["fecha"]),
            "hora_inicio": str(filas[0]["hora_inicio"]), "hora_fin": str(filas[-1]["hora_fin"]), "turnos": len(filas),
@@ -2803,12 +2905,21 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         desglose_guardado = list(raw or []) if isinstance(raw, list) else []
     pagado = total + cargo_c / 100.0
     extras = [x for f in filas for x in (f.get("extras") or [])]
+    # Estado del BOLEADOR (si lo contrató): Esperando confirmación / Confirmado / devuelto.
+    estado_bol = ""
+    if any(isinstance(x, dict) and x.get("clave") == "boleador" for x in extras):
+        try:
+            import boleadores as _bol
+            estado_bol = _bol.estado_visible(datos.solicitud_por_reserva(ref))
+        except Exception:  # noqa: BLE001
+            estado_bol = ""
     lineas = "".join(
         f"<div class='linea'><span>{e(horarios.fecha_larga(f['fecha']))} · {e(f['hora_inicio'])}–{e(f['hora_fin'])}</span>"
         f"<b>{e(sim)} {int(f['precio']):.2f}</b></div>" for f in filas)
     lineas += "".join(
         f"<div class='linea'><span>{e(x.get('nombre') or EXTRAS_NOMBRE.get(str(x.get('clave')), str(x.get('clave')).capitalize()))}"
-        f"{(' × ' + str(int(x.get('cantidad')))) if int(x.get('cantidad') or 1) > 1 else ''}</span>"
+        f"{(' × ' + str(int(x.get('cantidad')))) if int(x.get('cantidad') or 1) > 1 else ''}"
+        f"{(' <small class=' + chr(39) + 'sub' + chr(39) + ' style=' + chr(39) + 'font-size:12px' + chr(39) + '>· ' + e(estado_bol) + '</small>') if (x.get('clave') == 'boleador' and estado_bol) else ''}</span>"
         f"<b>{e(sim)} {float(x.get('precio') or 0):.2f}</b></div>" for x in extras)
     if cargo_c > 0:
         lineas += (f"<div class='linea'><span>Cargo por servicio Pichangol</span><b>{e(sim)} {cargo_c / 100.0:.2f}</b></div>")

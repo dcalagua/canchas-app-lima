@@ -7,7 +7,10 @@ import 'brand.dart';
 import 'config/pais.dart';
 import 'data/presencia_repo.dart';
 import 'models/models.dart';
+import 'models/boleador.dart';
 import 'screens/bodega_screen.dart';
+import 'screens/boleador_screen.dart';
+import 'screens/mis_reservas_screen.dart';
 import 'screens/llamada_screen.dart';
 import 'screens/mensajes_screen.dart';
 import 'screens/home_shell.dart';
@@ -62,6 +65,16 @@ void main() async {
     final nav = PushService.navigatorKey.currentState;
     if (nav == null) return;
     nav.push(MaterialPageRoute(builder: (_) => const HomeShell()));
+  };
+  // Push del módulo BOLEADORES: el boleador va a "Soy boleador" (Aceptar /
+  // No puedo); el cliente, a Mis reservas (ahí ve si su boleador confirmó).
+  PushService.alAbrirBoleador = () {
+    final nav = PushService.navigatorKey.currentState;
+    if (nav == null) return;
+    nav.push(MaterialPageRoute(
+        builder: (_) => Boleadores.soyBoleador
+            ? const BoleadorScreen()
+            : const MisReservasScreen()));
   };
   // Al tocar el push de un PEDIDO DE BODEGA siendo DUEÑO, abre Mi bodega
   // directo en la pestaña Pedidos.

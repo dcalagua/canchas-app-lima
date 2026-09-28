@@ -221,6 +221,8 @@ def armar_lote(pendientes: list[dict], cuentas: dict[str, dict], moneda: str = "
     for p in pendientes:
         if (p.get("moneda") or "PEN").upper() != moneda:
             continue
+        if p.get("liberada") is False:
+            continue  # boleador cuyo turno aún no pasó: se paga en el siguiente lote
         d = por_dueno.setdefault(p["dueno_id"], {"dueno": p["dueno_id"], "neto_centimos": 0, "n": 0,
                                                  "reserva_ids": [], "conceptos": []})
         d["neto_centimos"] += int(round(float(p["neto_soles"]) * 100))

@@ -26,6 +26,8 @@ import 'login_google_sheet.dart';
 import 'cuenta_screen.dart';
 import 'circuito_screen.dart';
 import 'mis_campeonatos_screen.dart';
+import 'boleador_screen.dart';
+import '../models/boleador.dart';
 import 'editar_perfil_screen.dart';
 
 /// Pestaña PERFIL del jugador, rediseñada al UI/UX de Airbnb:
@@ -189,6 +191,24 @@ class PerfilScreen extends StatelessWidget {
             titulo: 'Campeonatos',
             onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const MisCampeonatosScreen())),
+          ),
+          // BOLEADORES (sep-2026): registrarse como boleador/sparring de
+          // tenis o pádel y responder solicitudes. El badge son las
+          // solicitudes por responder (push "Te contrataron 🎾").
+          ValueListenableBuilder<int>(
+            valueListenable: Boleadores.pendientes,
+            builder: (_, pend, __) => ValueListenableBuilder<PerfilBoleador?>(
+              valueListenable: Boleadores.perfil,
+              builder: (_, perfil, __) => _ItemAirbnb(
+                icono: Icons.sports_tennis_outlined,
+                titulo: perfil == null
+                    ? 'Ser ${paisActual.nombreBoleadorMin}'
+                    : 'Soy ${paisActual.nombreBoleadorMin}',
+                badge: pend,
+                onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const BoleadorScreen())),
+              ),
+            ),
           ),
           if (appState.usaCircuito)
             _ItemAirbnb(

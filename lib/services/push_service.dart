@@ -88,6 +88,11 @@ class PushService {
   /// Lo define main.dart.
   static void Function(String duenoEmail)? alAbrirBodegaCliente;
 
+  /// Push del módulo BOLEADORES ("Te contrataron 🎾", "Boleador confirmado
+  /// ✅", "Sin boleador esta vez 😕"…): abre "Soy boleador" si el usuario es
+  /// boleador (ahí acepta/rechaza) o Mis reservas si es el cliente.
+  static void Function()? alAbrirBoleador;
+
   /// Invoca la Edge Function `push-reserva` para avisar al DUEÑO de la cancha
   /// que entró una reserva (push dedicado, fuera del chat). Se pasa SOLO el id
   /// (o el del grupo si son varias horas); el servidor deriva destinatario y
@@ -184,6 +189,10 @@ class PushService {
       } else {
         alAbrirBodegaDueno?.call();
       }
+      return;
+    }
+    if (data['tipo'] == 'boleador') {
+      alAbrirBoleador?.call();
       return;
     }
     final hilo = (data['hilo'] ?? '').toString();
