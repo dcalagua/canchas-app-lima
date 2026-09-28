@@ -1361,8 +1361,8 @@ para la API del APK.
   franja, turnos, `monto_centimos`, `comision_centimos`, estado `pendiente →
   aceptada | rechazada | vencida | cancelada | cancelada_boleador`, canal
   app|web, `charge_id`, `vence_en`) + columna `pichangol_canchas.
-  permite_boleadores` (SQL `docs/piloto/supabase_boleadores.sql`, PENDIENTE
-  de correr en QAS y PRD). **Dinero:** el cliente paga TODO en línea (cancha
+  permite_boleadores` (SQL `docs/piloto/supabase_boleadores.sql`, corrido en
+  QAS y PRD el 28-sep-2026). **Dinero:** el cliente paga TODO en línea (cancha
   + boleador + cargo por servicio sobre la suma); solo con pago en línea
   (nunca seña ni efectivo: sin el cobro no hay cómo garantizarle al
   boleador). Comisión FIJA por turno **S/ 2 · \$ 0.50 · Bs 3**
@@ -1717,6 +1717,17 @@ off → redeploy inmediato en cada push). URL pública:
     `9135094` (diálogos web responsivos en móvil: hoja inferior con scroll
     interno y botones siempre visibles). Solo web: sin SQL, sin Edge, sin
     APK, sin variables.
+    **Pase del 28-sep-2026 (3.º, autorizado: "ya corrí el sql supabase en
+    qas y prd, pasar a prd las mejoras"):** `prd` = merge `f9730c5`
+    (módulo BOLEADORES en backend, web y APK + logo de Pichangol en el
+    "Resumen de tu pago"). SQL `docs/piloto/supabase_boleadores.sql`
+    corrido A MANO por el director en QAS y PCG-PRD (tablas
+    `pichangol_boleadores`, `pichangol_boleador_solicitudes`, columna
+    `permite_boleadores`). Sin Edge ni variables nuevas (`boleador_comision_*`
+    y `boleadores_activo` nacen en `CONFIG_DEFAULT`). CAMBIÓ `lib/` →
+    APK/AAB de PRD = run 1437 (`workflow_dispatch`, `ref=prd`,
+    `entorno=prod`). OJO: un APK anterior no ofrece boleador al reservar ni
+    tiene "Ser boleador" en Perfil → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -2543,7 +2554,7 @@ no inventar layouts propios. Rasgos Airbnb:
   esquinas superiores, `safe-area-inset-bottom`, animación `subir`, 92dvh) y
   las líneas del resumen son grid `minmax(0,1fr) auto` con
   `overflow-wrap:anywhere` para que el monto no se parta. Playwright
-  `$SP/pw_resumen_mov.js` (390×844, desglose abierto). **Logo en el resumen (pedido del director, 28-sep-2026: "en vez del celular debe salir el logo de PCG"):** `pcgResumenPago` abre el diálogo con `logo: true` → `abrirDlg` pinta `/static/brand/logo_pin.png` en la burbuja (`.pcg-dlg .ico.marca`) en vez del emoji 📱; los demás diálogos siguen con su ícono. Solo en QAS hasta el próximo pase.
+  `$SP/pw_resumen_mov.js` (390×844, desglose abierto). **Logo en el resumen (pedido del director, 28-sep-2026: "en vez del celular debe salir el logo de PCG"):** `pcgResumenPago` abre el diálogo con `logo: true` → `abrirDlg` pinta `/static/brand/logo_pin.png` en la burbuja (`.pcg-dlg .ico.marca`) en vez del emoji 📱; los demás diálogos siguen con su ícono. En PRD desde el pase `f9730c5`.
 - **Popups: UN SOLO formato (REGLA de todo el app).** Todo diálogo de
   confirmación/aviso usa `widgets/dialogo_pichangol.dart`: `confirmarPichangol(
   context, titulo:, mensaje:, textoConfirmar:, destructivo:, icono:)` (devuelve
