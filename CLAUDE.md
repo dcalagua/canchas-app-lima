@@ -1624,6 +1624,11 @@ off → redeploy inmediato en cada push). URL pública:
     `8a3b7f5` (selector de medio de pago en el checkout web: Yape
     preseleccionado, Culqi se abre solo con el método elegido). Solo web:
     sin SQL, sin Edge, sin APK, sin variables.
+    **Pase del 28-sep-2026 (autorizado: "Pasar a prd"):** `prd` = merge
+    `8dff6fe` (modal "Resumen de tu pago" antes de abrir Culqi en la reserva
+    y en la matrícula web: líneas, cargo por servicio con "Qué incluye",
+    total y botón "Continuar con Yape|tarjeta"). Solo web: sin SQL, sin
+    Edge, sin APK, sin variables. Railway `pg-backend-prd` desplegado OK.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
