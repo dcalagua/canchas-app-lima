@@ -1846,6 +1846,16 @@ off → redeploy inmediato en cada push). URL pública:
     Edge ni variables nuevas. CAMBIÓ `lib/` → APK/AAB de PRD = run 1441
     (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un APK anterior no
     muestra la tarjeta ni aplica el premio → actualizar.
+    **Pase del 28-sep-2026 (5.º, autorizado: "pasar a prd"):** `prd` = merge
+    `a3a07b4` (abrir en la app desde el navegador del celular: script
+    `JS_ABRIR_APP` en la web, App Links ampliados en el manifest y enrutado
+    de URLs web en `EnlacesService`). Sin SQL ni Edge; sin variables nuevas.
+    CAMBIÓ `lib/` → APK/AAB de PRD por `workflow_dispatch` (`ref=prd`,
+    `entorno=prod`). OJO: un APK anterior solo entiende `/c/{id}`: el salto
+    desde `/reservar/…`, `/academia/…`, `/mis-reservas` o `/anfitrion` lo
+    abre en Explorar → actualizar. Sigue pendiente del director agregar las
+    SHA-256 de Play a `ANDROID_CERT_SHA256` para que el enlace tocado en
+    WhatsApp abra la app sin pasar por el navegador.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
