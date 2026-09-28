@@ -30,6 +30,7 @@ from web.anfitrion_tienda import router as anfitrion_tienda_router
 from web.anfitrion_campeonatos import router as anfitrion_campeonatos_router
 from web.anfitrion_boleadores import router as anfitrion_boleadores_router
 from boleadores import router as boleadores_router
+from fidelidad import router as fidelidad_router
 from web.academia import router as academia_web_router
 from models import ConfigRequest, ConsentimientoRequest
 from marketing.router import router as marketing_router
@@ -137,6 +138,7 @@ app.include_router(anfitrion_campeonatos_router)  # antes del comodín /anfitrio
 app.include_router(anfitrion_boleadores_router)  # antes del comodín /anfitrion/{modulo}
 app.include_router(anfitrion_router)
 app.include_router(boleadores_router)  # /boleadores/* (APK + ficha web)
+app.include_router(fidelidad_router)  # /fidelidad/* (tarjeta de fidelidad del local)
 # Assets de marca de la web pública (pin, logo para OG/favicon). Ruta fija
 # junto a este archivo para que Railway (root dir backend/growth) los sirva.
 app.mount("/static", StaticFiles(directory=os.path.join(

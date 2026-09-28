@@ -368,6 +368,10 @@ class Cancha {
   /// reservar (módulo Boleadores, tenis/pádel)? true por defecto; el dueño lo
   /// apaga en Editar cancha. Columna `permite_boleadores`.
   final bool permiteBoleadores;
+  /// TARJETA DE FIDELIDAD del local (sep-2026): `{activa, meta, premio,
+  /// descuentoPct, ventanaDias, aplica}`; igual en todas las canchas del
+  /// local. Se lee con `FidelidadConfig.de(fidelidad)`. Columna `fidelidad`.
+  final Map<String, dynamic> fidelidad;
   /// "Hora feliz": descuento (%) que aplica el dueño a las horas VALLE (mañanas)
   /// para llenar cancha vacía. 0 = sin descuento. Gana el dueño (más ocupación)
   /// y el jugador (más barato).
@@ -444,6 +448,7 @@ class Cancha {
     this.moneda = '',
     this.serviciosExtra = const [],
     this.permiteBoleadores = true,
+    this.fidelidad = const {},
     this.descuentoValle = 0,
     this.valleDesde = '',
     this.valleHasta = '',
@@ -604,6 +609,7 @@ class Cancha {
     String? moneda,
     List<ServicioExtra>? serviciosExtra,
     bool? permiteBoleadores,
+    Map<String, dynamic>? fidelidad,
     int? descuentoValle,
     String? valleDesde,
     String? valleHasta,
@@ -636,6 +642,7 @@ class Cancha {
       moneda: moneda ?? this.moneda,
       serviciosExtra: serviciosExtra ?? this.serviciosExtra,
       permiteBoleadores: permiteBoleadores ?? this.permiteBoleadores,
+      fidelidad: fidelidad ?? this.fidelidad,
       descuentoValle: descuentoValle ?? this.descuentoValle,
       valleDesde: valleDesde ?? this.valleDesde,
       valleHasta: valleHasta ?? this.valleHasta,
@@ -671,6 +678,7 @@ class Cancha {
         'moneda': moneda,
         'serviciosExtra': serviciosExtra.map((s) => s.toJson()).toList(),
         'permiteBoleadores': permiteBoleadores,
+        'fidelidad': fidelidad,
         'descuentoValle': descuentoValle,
         'valleDesde': valleDesde,
         'valleHasta': valleHasta,
@@ -713,6 +721,9 @@ class Cancha {
         moneda: (j['moneda'] ?? '') as String,
         serviciosExtra: ServicioExtra.listaDe(j['serviciosExtra']),
         permiteBoleadores: (j['permiteBoleadores'] ?? true) as bool,
+        fidelidad: j['fidelidad'] is Map
+            ? Map<String, dynamic>.from(j['fidelidad'] as Map)
+            : const {},
         descuentoValle: (j['descuentoValle'] ?? 0) as int,
         valleDesde: (j['valleDesde'] ?? '') as String,
         valleHasta: (j['valleHasta'] ?? '') as String,

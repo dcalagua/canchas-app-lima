@@ -12,6 +12,7 @@ import 'package:image_picker/image_picker.dart';
 import '../data/canchas_repo.dart';
 import '../services/supabase_service.dart';
 import '../models/models.dart';
+import '../models/fidelidad.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -64,6 +65,9 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
   // BOLEADORES (sep-2026): ¿los jugadores pueden contratar un boleador/
   // sparring al reservar esta cancha? Solo aplica a tenis/pádel.
   late bool _permiteBoleadores = widget.cancha.permiteBoleadores;
+  // TARJETA DE FIDELIDAD del local (sep-2026): "cada N reservas, una hora
+  // gratis o un descuento". Es del LOCAL: se copia a todas sus canchas.
+  late FidelidadConfig _fid = FidelidadConfig.de(widget.cancha.fidelidad);
   final TextEditingController _ruc =
       TextEditingController(); // opcional, refuerza la verificación al reclamar
   final TextEditingController _contacto =
@@ -378,6 +382,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       valleHasta: _valleHasta,
       senaPct: _senaPct,
       permiteBoleadores: _permiteBoleadores,
+      fidelidad: _fid.toJson(),
     );
     appState.actualizarCancha(actualizada);
     if (club != widget.cancha.club) {
@@ -389,6 +394,9 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     // también son del recinto: se copian a las demás canchas del local.
     appState.actualizarServiciosExtraLocal(
         club, actualizada.serviciosExtra.where((s) => s.esDelLocal).toList(),
+        exceptoId: actualizada.id);
+    // La tarjeta de fidelidad también es del local: misma config en todas.
+    appState.actualizarFidelidadLocal(club, _fid.toJson(),
         exceptoId: actualizada.id);
 
     // Al reclamar, dispara la verificación de EXISTENCIA en segundo plano. Esto
@@ -844,6 +852,137 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                 ),
               ],
             ),
+          ],
+          const SizedBox(height: 18),
+          const Text('🎁 Tarjeta de fidelidad del local',
+              style: TextStyle(fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          Text(
+              'Como una tarjeta de sellos: cada N reservas pagadas el jugador '
+              'gana una hora gratis o un descuento. Lo ve en la ficha y se '
+              'aplica solo al reservar (app y web). El premio lo asumes tú y '
+              'vale en todas las canchas de este local.',
+              style: TextStyle(color: textoTenue, fontSize: 12)),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            children: [
+              ChoiceChip(
+                label: const Text('Premiar a mis clientes ⭐'),
+                selected: _fid.activa,
+                onSelected: (_) =>
+                    setState(() => _fid = _fid.copyWith(activa: true)),
+              ),
+              ChoiceChip(
+                label: const Text('No por ahora'),
+                selected: !_fid.activa,
+                onSelected: (_) =>
+                    setState(() => _fid = _fid.copyWith(activa: false)),
+              ),
+            ],
+          ),
+          if (_fid.activa) ...[
+            const SizedBox(height: 12),
+            const Text('Cada cuántas reservas',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final m in FidelidadConfig.metas)
+                  ChoiceChip(
+                    label: Text('$m'),
+                    selected: _fid.meta == m,
+                    onSelected: (_) =>
+                        setState(() => _fid = _fid.copyWith(meta: m)),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text('Premio',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('🎁 Una hora gratis'),
+                  selected: _fid.esHoraGratis,
+                  onSelected: (_) => setState(
+                      () => _fid = _fid.copyWith(premio: 'hora_gratis')),
+                ),
+                ChoiceChip(
+                  label: const Text('🏷️ Descuento'),
+                  selected: !_fid.esHoraGratis,
+                  onSelected: (_) => setState(
+                      () => _fid = _fid.copyWith(premio: 'descuento')),
+                ),
+              ],
+            ),
+            if (!_fid.esHoraGratis) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final d in FidelidadConfig.descuentos)
+                    ChoiceChip(
+                      label: Text('$d %'),
+                      selected: _fid.descuentoPct == d,
+                      onSelected: (_) => setState(
+                          () => _fid = _fid.copyWith(descuentoPct: d)),
+                    ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 12),
+            const Text('Cuentan las reservas de los últimos',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final v in FidelidadConfig.ventanas)
+                  ChoiceChip(
+                    label: Text(FidelidadConfig.etiquetaVentana[v] ?? '$v'),
+                    selected: _fid.ventanaDias == v,
+                    onSelected: (_) =>
+                        setState(() => _fid = _fid.copyWith(ventanaDias: v)),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            const Text('Qué reservas cuentan',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('Todas las pagadas'),
+                  selected: _fid.aplica == 'todas',
+                  onSelected: (_) =>
+                      setState(() => _fid = _fid.copyWith(aplica: 'todas')),
+                ),
+                ChoiceChip(
+                  label: const Text('Solo pagadas en línea'),
+                  selected: _fid.aplica == 'online',
+                  onSelected: (_) =>
+                      setState(() => _fid = _fid.copyWith(aplica: 'online')),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+                'Ejemplo: cada ${_fid.meta} reservas, ${_fid.nombrePremio}. '
+                'Las reservas manuales que registras tú no cuentan; si el '
+                'jugador cancela una reserva premiada, recupera su premio.',
+                style: const TextStyle(
+                    color: lima, fontWeight: FontWeight.w700, fontSize: 12.5)),
           ],
           const SizedBox(height: 18),
           const Text('Tipo de piso *',

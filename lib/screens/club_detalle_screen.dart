@@ -24,6 +24,7 @@ import '../widgets/candado_pro.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../models/cargo_servicio.dart';
 import '../models/boleador.dart';
+import '../models/fidelidad.dart';
 import '../widgets/cargo_servicio_info.dart';
 import '../widgets/marca.dart';
 import 'bonos_dueno_screen.dart';
@@ -56,6 +57,18 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   Deporte? _deporteSel;
   Deporte get _deporteEfectivo => _deporteSel ?? _cancha.deporte;
   String _dia = 'Hoy';
+
+  // TARJETA DE FIDELIDAD del local (sep-2026): progreso del jugador y premio
+  // disponible, lo decide el backend. Null = sin sesión / sin red / no activa.
+  EstadoFidelidad? _fid;
+  FidelidadConfig get _fidCfg => FidelidadConfig.de(_cancha.fidelidad);
+
+  Future<void> _cargarFidelidad() async {
+    final email = appState.usuario?.email ?? '';
+    if (!_fidCfg.activa || email.isEmpty || !_cancha.registrada) return;
+    final e = await Fidelidad.estado(email, _cancha.id);
+    if (mounted && e != null) setState(() => _fid = e);
+  }
   // Horas SELECCIONADAS (bloque contiguo). El jugador puede reservar 1 o varias
   // horas seguidas; el bloque siempre queda ordenado (inicio = primera, fin =
   // última + duración), así nunca hay un rango invertido (fin antes del inicio).
@@ -90,6 +103,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // editar duración de slot / precio / horario): el jugador debe ver el
     // cambio al instante, no el snapshot con el que se abrió la ficha.
     _cancha = appState.canchaVigente(_cancha);
+    _cargarFidelidad();
     // Al abrir la ficha, sincroniza el estado REAL de la cancha con el backend:
     // - pendiente → puede pasar a verificada (quita el cartel "pendiente").
     // - verificada → puede DEGRADARSE si el admin la rechazó/revocó (quita los
@@ -560,6 +574,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         total: total,
         permiteEfectivo: appState.esDestacada(_cancha),
         saldoBono: appState.miSaldoBono(_cancha.club),
+        fidelidad: _fid,
+        preciosSlots: [
+          for (final h in ord)
+            appState.precioSlotEfectivo(_cancha, _fechaSlot(h), h)
+        ],
       ),
     );
   }
@@ -590,8 +609,25 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         return;
       }
     }
-    // El jugador paga las horas + los servicios extra que eligió (una sola vez).
-    final total = base + extras.fold(0.0, (a, s) => a + s.precio);
+    // PREMIO DE FIDELIDAD del local: descuento por turno (hora gratis = el
+    // más barato a 0; descuento = % por turno), espejo del backend.
+    final usaFid = r.usarFidelidad && _fid != null && _fid!.disponible;
+    final descPorHora = <String, int>{};
+    var descFid = 0;
+    if (usaFid) {
+      final precios = [
+        for (final h in slots)
+          appState.precioSlotEfectivo(_cancha, _fechaSlot(h), h)
+      ];
+      final (tot, por) = _fid!.config.descuentoPara(precios);
+      descFid = tot;
+      for (var i = 0; i < slots.length; i++) {
+        if (por[i] > 0) descPorHora[slots[i]] = por[i];
+      }
+    }
+    // El jugador paga las horas (menos el premio) + los servicios extra que
+    // eligió (una sola vez).
+    final total = base - descFid + extras.fold(0.0, (a, s) => a + s.precio);
     // CANJE DE PUNTOS (solo pago ONLINE, en soles): 100 pts = S/3 de descuento.
     // El dueño recibe su bruto completo (la liquidación va con el precio real);
     // el descuento lo absorbe Pichangol de su comisión.
@@ -667,7 +703,40 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       }
     }
     final cargoSoles = (cargo?.hayCargo ?? false) ? cargo!.cargo : 0.0;
-    if (metodo == 'online') {
+    // FIDELIDAD: con el bloque asegurado, el servidor APARTA el premio para
+    // esta reserva antes de cobrar (si otro equipo lo usó un segundo antes,
+    // se libera el horario y se avisa; nunca se cobra de menos sin premio).
+    var refFid = '';
+    if (usaFid && aseguradas != null && aseguradas.isNotEmpty) {
+      refFid = aseguradas.first.grupoReservaId.isNotEmpty
+          ? aseguradas.first.grupoReservaId
+          : aseguradas.first.id;
+      final ok = await Fidelidad.reservarCanje(
+          email: appState.usuario?.email ?? '',
+          canchaId: _cancha.id,
+          reservaRef: refFid,
+          reservaIds: [for (final x in aseguradas) x.id],
+          descuento: descFid);
+      if (!mounted) return;
+      if (!ok) {
+        await appState.liberarBloqueAsegurado(aseguradas);
+        setState(() => _fid = null);
+        _cargarFidelidad();
+        messenger.showSnackBar(const SnackBar(
+          backgroundColor: Color(0xFFB4471F),
+          content: Text(
+              'Tu premio de fidelidad ya no está disponible. Revisa el total y '
+              'vuelve a intentar. No se te cobró nada.'),
+        ));
+        return;
+      }
+    }
+    // Reserva GRATIS (hora gratis sin extras): no hay pasarela ni cargo.
+    final gratis =
+        pagoOnline && descFid > 0 && total - descuentoPuntos + cargoSoles <= 0;
+    if (metodo == 'online' && gratis) {
+      // Nada que cobrar: la reserva nace pagada con el premio.
+    } else if (metodo == 'online') {
       // Pago con tarjeta/Yape (Culqi/Libélula). Si cancela o falla, se libera
       // el horario asegurado y no se reserva.
       final pagado = await PagoTarjeta.cobrar(
@@ -682,6 +751,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       );
       if (!pagado) {
         await appState.liberarBloqueAsegurado(aseguradas!);
+        if (refFid.isNotEmpty) unawaited(Fidelidad.revertir(refFid));
         if (PagoTarjeta.ultimoError.isNotEmpty) {
           appState.avisarPagoRechazado(
               cancha: _cancha,
@@ -725,16 +795,20 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         operacionId: operacion,
         medioPago: esSena
             ? 'sena'
-            : pagoOnline
-                ? (PagoTarjeta.ultimoMetodo.isNotEmpty
-                    ? PagoTarjeta.ultimoMetodo
-                    : 'online')
-                : (metodo == 'bono' ? 'bono' : 'efectivo'),
+            : gratis
+                ? 'fidelidad'
+                : pagoOnline
+                    ? (PagoTarjeta.ultimoMetodo.isNotEmpty
+                        ? PagoTarjeta.ultimoMetodo
+                        : 'online')
+                    : (metodo == 'bono' ? 'bono' : 'efectivo'),
         conSena: esSena,
         aseguradas: aseguradas,
-        cargo: (pagoOnline || esSena) ? cargo : null);
+        cargo: (pagoOnline || esSena) ? cargo : null,
+        descuentos: descPorHora);
     if (!mounted) return;
     if (res == ResultadoReserva.ocupado) {
+      if (refFid.isNotEmpty) unawaited(Fidelidad.revertir(refFid));
       setState(() => _slots.clear()); // libera selección; la grilla se refresca
       messenger.showSnackBar(const SnackBar(
         backgroundColor: Colors.redAccent,
@@ -747,6 +821,37 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // Solo es "confirmada" si llegó a Supabase (fuente de verdad anti-doble
     // reserva). Con sinConexion/error se guarda local pero NO está garantizada.
     final confirmada = res == ResultadoReserva.ok;
+    // FIDELIDAD: premio apartado → queda USADO; sin bloque asegurado
+    // (efectivo) se usa directo sobre la reserva recién creada. Luego se
+    // refresca la tarjeta (ciclo nuevo).
+    if (usaFid && descFid > 0) {
+      if (refFid.isNotEmpty) {
+        unawaited(Fidelidad.confirmar(refFid).then((_) => _cargarFidelidad()));
+      } else if (confirmada) {
+        final fh0 = _cancha.fechaRealSlot(_fechaIso, slots.first);
+        Reserva? creada;
+        for (final x in appState.reservas) {
+          if (x.canchaId == _cancha.id && x.horaInicio == slots.first && x.fecha == fh0) {
+            creada = x;
+            break;
+          }
+        }
+        if (creada != null) {
+          final ref = creada.grupoReservaId.isNotEmpty ? creada.grupoReservaId : creada.id;
+          final ids = creada.grupoReservaId.isNotEmpty
+              ? [for (final x in appState.reservas) if (x.grupoReservaId == creada.grupoReservaId) x.id]
+              : [creada.id];
+          unawaited(Fidelidad.reservarCanje(
+                  email: appState.usuario?.email ?? '',
+                  canchaId: _cancha.id,
+                  reservaRef: ref,
+                  reservaIds: ids,
+                  descuento: descFid,
+                  confirmar: true)
+              .then((_) => _cargarFidelidad()));
+        }
+      }
+    }
     // BOLEADOR: el cliente ya pagó su parte → se registra la solicitud (el
     // backend le avisa por push y él acepta). Si no llega, queda en el outbox
     // y se reintenta: nunca se pierde un boleo pagado.
@@ -814,8 +919,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     ? '✅ Reserva confirmada con tu bono en ${_cancha.nombre} · $_dia $etiqueta · te quedan ${appState.miSaldoBono(_cancha.club)} h'
                     : esSena
                     ? '✅ Seña pagada · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta · paga $mon ${(total - senaMonto).toStringAsFixed(2)} en la cancha'
+                    : gratis
+                        ? '🎁 ¡Reserva gratis con tu premio de fidelidad! ${_cancha.nombre} · $_dia $etiqueta'
                     : pagoOnline
-                        ? '✅ Pago OK · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta${bol != null ? ' · ${bol.nombre} confirma tu boleo en breve' : ''}'
+                        ? '✅ Pago OK · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta${bol != null ? ' · ${bol.nombre} confirma tu boleo en breve' : ''}${descFid > 0 ? ' · premio de fidelidad aplicado 🎁' : ''}'
                         : '✅ Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta · pagas en la cancha')
                 : '⚠️ Sin señal: guardamos tu reserva como PENDIENTE y la '
                     'confirmaremos sola al recuperar conexión. Si para entonces '
@@ -1076,6 +1183,17 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                           label: const Text(
                               'Bodega del local · pide a tu cancha'),
                         ),
+                      ),
+                      const SizedBox(height: 20),
+                    ],
+                    // TARJETA DE FIDELIDAD del local: cada N reservas, un
+                    // premio. Progreso real del jugador (backend) o la promo.
+                    if (_fidCfg.activa && _cancha.reservable) ...[
+                      _TarjetaFidelidad(
+                        cfg: _fidCfg,
+                        estado: _fid,
+                        local: widget.club.nombre,
+                        conSesion: appState.usuario != null,
                       ),
                       const SizedBox(height: 20),
                     ],
@@ -1697,6 +1815,8 @@ typedef ResumenResultado = ({
   // BOLEADOR elegido (módulo Boleadores, solo pago en línea); su línea ya va
   // dentro de `extras` (clave `boleador`).
   BoleadorPublico? boleador,
+  // ¿Usa su premio de FIDELIDAD del local en esta reserva?
+  bool usarFidelidad,
 });
 
 /// Ícono para un servicio extra según su clave.
@@ -1726,6 +1846,8 @@ class _ResumenReserva extends StatefulWidget {
     required this.total,
     required this.permiteEfectivo,
     this.saldoBono = 0,
+    this.fidelidad,
+    this.preciosSlots = const [],
   });
 
   final Cancha cancha;
@@ -1739,6 +1861,10 @@ class _ResumenReserva extends StatefulWidget {
   final num total; // precio base del bloque (suma de las horas, sin extras)
   final bool permiteEfectivo; // efectivo solo si el dueño tiene saldo
   final int saldoBono; // horas de bono prepagado del jugador en este local
+  // Tarjeta de FIDELIDAD del local: progreso/premio del jugador (backend) y
+  // el precio de cada turno del bloque (para calcular el descuento).
+  final EstadoFidelidad? fidelidad;
+  final List<int> preciosSlots;
 
   @override
   State<_ResumenReserva> createState() => _ResumenReservaState();
@@ -1807,8 +1933,24 @@ class _ResumenReservaState extends State<_ResumenReserva> {
         if (_bol != null) _bol!.linea(widget.nSlots <= 0 ? 1 : widget.nSlots),
       ];
 
+  // PREMIO DE FIDELIDAD (sep-2026): con premio disponible, "Usar mi premio"
+  // descuenta el precio de la cancha (hora gratis = el turno más barato;
+  // descuento = % por turno). No aplica con seña (el adelanto se calcula
+  // sobre el precio de lista). El servidor lo aparta y confirma al reservar.
+  bool _usarFid = true;
+  bool get _fidDisponible =>
+      widget.fidelidad != null && widget.fidelidad!.disponible && !_exigeSena;
+  int get _descFid => _fidDisponible && _usarFid
+      ? widget.fidelidad!.config.descuentoPara(widget.preciosSlots).$1
+      : 0;
+
   double get _totalFinal =>
-      widget.total + _elegidos.fold(0.0, (a, s) => a + s.precio);
+      widget.total - _descFid + _elegidos.fold(0.0, (a, s) => a + s.precio);
+
+  /// Con el premio la reserva puede quedar en 0 (hora gratis sin extras):
+  /// entonces no hay pasarela ni cargo, se confirma directo.
+  bool get _gratis =>
+      _descFid > 0 && (_usarPuntos ? _totalFinal - 3.0 : _totalFinal) <= 0;
 
   /// ¿Esta cancha exige seña por adelantado (anti no-show)?
   bool get _exigeSena => cancha.exigeSena;
@@ -1833,7 +1975,8 @@ class _ResumenReservaState extends State<_ResumenReserva> {
   bool get _puedeCanjear =>
       appState.misPuntosDisponibles >= 100 &&
       cancha.monedaSimbolo == 'S/' &&
-      _totalFinal > 3.0;
+      _totalFinal > 3.0 &&
+      _descFid <= 0; // un solo premio por reserva
 
   // CARGO POR SERVICIO Pichangol (fase 3): cotizado por el backend sobre lo
   // que se paga EN LÍNEA (total con extras y puntos, o la seña). Se pinta al
@@ -1893,6 +2036,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                 ? _cotSena
                 : null,
         boleador: metodo == 'online' ? _bol : null,
+        usarFidelidad: _descFid > 0 && metodo != 'sena' && metodo != 'bono',
       ));
 
   @override
@@ -2010,9 +2154,63 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                       style: t.bodySmall?.copyWith(color: textoTenue, height: 1.3)),
                 ),
             ],
+            // PREMIO DE FIDELIDAD del local: interruptor "Usar mi premio".
+            if (_fidDisponible) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: limaSuave,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: lima.withOpacity(0.35)),
+                ),
+                child: Row(
+                  children: [
+                    const Text('🎁', style: TextStyle(fontSize: 18)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '¡Tienes ${widget.fidelidad!.nombrePremio} en '
+                        '${widget.fidelidad!.local.isNotEmpty ? widget.fidelidad!.local : 'este local'}! '
+                        'Usar mi premio en esta reserva.',
+                        style: t.bodySmall?.copyWith(
+                            color: bosque,
+                            fontWeight: FontWeight.w700,
+                            height: 1.25),
+                      ),
+                    ),
+                    Switch(
+                      value: _usarFid,
+                      activeColor: pino,
+                      onChanged: (v) => setState(() {
+                        _usarFid = v;
+                        _refrescarCargo();
+                      }),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 8),
             Divider(color: trazo),
             const SizedBox(height: 4),
+            if (_descFid > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                          '🎁 ${widget.fidelidad!.premioCorto} · fidelidad',
+                          style: t.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600, color: pino)),
+                    ),
+                    Text('−$mon ${_descFid.toStringAsFixed(2)}',
+                        style: t.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700, color: pino)),
+                  ],
+                ),
+              ),
             // Cargo por servicio Pichangol (solo pagando en línea): línea
             // aparte con ⓘ, como en la web. Con la línea apagada no aparece.
             if (_cargoAplica && (_cot?.hayCargo ?? false)) ...[
@@ -2230,11 +2428,13 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                     padding: const EdgeInsets.symmetric(vertical: 15)),
                 onPressed: () =>
                     _cerrar(_exigeSena && _bol == null ? 'sena' : 'online'),
-                icon: const Icon(Icons.lock, size: 18),
+                icon: Icon(_gratis ? Icons.card_giftcard : Icons.lock, size: 18),
                 label: Text(
-                    _exigeSena && _bol == null
-                        ? 'Pagar seña $mon ${(_senaMonto + (_cargoAplica ? _cargoSena : 0)).toStringAsFixed(2)} y reservar'
-                        : 'Pagar ahora (Yape / Tarjeta)',
+                    _gratis
+                        ? 'Reservar gratis con mi premio 🎁'
+                        : _exigeSena && _bol == null
+                            ? 'Pagar seña $mon ${(_senaMonto + (_cargoAplica ? _cargoSena : 0)).toStringAsFixed(2)} y reservar'
+                            : 'Pagar ahora (Yape / Tarjeta)',
                     style: const TextStyle(
                         fontWeight: FontWeight.w800, fontSize: 15)),
               ),
@@ -2271,7 +2471,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
             ],
             // Efectivo puro (sin adelanto) solo si NO hay seña y el dueño tiene
             // saldo (así PCG cobra su comisión de ese saldo).
-            if (!_exigeSena && widget.permiteEfectivo && _bol == null) ...[
+            if (!_exigeSena && widget.permiteEfectivo && _bol == null && !_gratis) ...[
               const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
@@ -2305,6 +2505,90 @@ class _ResumenReservaState extends State<_ResumenReserva> {
           Expanded(
             child: Text(texto,
                 style: const TextStyle(fontSize: 14.5, height: 1.3)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tarjeta de FIDELIDAD del local en la ficha: sellos (reservas pagadas),
+/// cuántas faltan y el premio; con premio disponible lo anuncia. Sin sesión
+/// solo explica la promo.
+class _TarjetaFidelidad extends StatelessWidget {
+  const _TarjetaFidelidad(
+      {required this.cfg,
+      required this.estado,
+      required this.local,
+      required this.conSesion});
+  final FidelidadConfig cfg;
+  final EstadoFidelidad? estado;
+  final String local;
+  final bool conSesion;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final e = estado;
+    final meta = e?.meta ?? cfg.meta;
+    final conteo = e?.conteo ?? 0;
+    final disponible = e?.disponible ?? false;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1FAF5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: lima.withOpacity(0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('🎁', style: TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Tarjeta de fidelidad de $local',
+                    style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (var i = 0; i < meta; i++)
+                Container(
+                  width: 26,
+                  height: 26,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: i < conteo ? lima : Colors.white,
+                    border: Border.all(
+                        color: i < conteo ? lima : const Color(0xFFCFE8DA),
+                        width: 2),
+                  ),
+                  child: i < conteo
+                      ? const Icon(Icons.check, size: 15, color: Colors.white)
+                      : null,
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            !conSesion || e == null
+                ? 'Cada $meta reservas pagadas, ${cfg.nombrePremio}. '
+                    '${conSesion ? 'Cargando tu progreso…' : 'Inicia sesión para ver tu progreso.'}'
+                : disponible
+                    ? '¡Tienes ${e.nombrePremio}! Se aplica al reservar.'
+                    : '$conteo de $meta reservas · te falta${e.faltan == 1 ? '' : 'n'} '
+                        '${e.faltan} para ${e.nombrePremio}.',
+            style: t.bodySmall?.copyWith(
+                color: disponible ? bosque : textoTenue,
+                fontWeight: disponible ? FontWeight.w700 : FontWeight.w500,
+                height: 1.3),
           ),
         ],
       ),

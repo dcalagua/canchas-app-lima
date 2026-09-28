@@ -1106,7 +1106,7 @@ void _mostrarPase(BuildContext context, Reserva reserva, Cancha? cancha) {
                   Icons.payments_outlined,
                   'Precio',
                   '${reserva.monedaSimbolo}${reserva.precio} · '
-                  '${reserva.pagado ? 'pagado ✓' : reserva.sena > 0 ? 'seña pagada, resto en la cancha' : 'pagas en la cancha'}'),
+                  '${reserva.medioPago == 'fidelidad' ? 'gratis · premio de fidelidad 🎁' : reserva.pagado ? 'pagado ✓' : reserva.sena > 0 ? 'seña pagada, resto en la cancha' : 'pagas en la cancha'}'),
               // BOLEADOR contratado con la reserva (módulo Boleadores): quién y
               // en qué quedó (esperando confirmación / confirmado / devuelto).
               for (final x in reserva.extras.where((x) => x.esBoleador))
