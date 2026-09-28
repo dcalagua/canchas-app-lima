@@ -2445,7 +2445,17 @@ no inventar layouts propios. Rasgos Airbnb:
   (así no se ve la página vieja tras guardar). Los `post()` de Mis
   campeonatos ya lo llevan; en el resto de anfitrión se usa en eliminar /
   quitar / publicar. `pcgToast` tiene fallback global ahí mismo. Test
-  Playwright: `page.on('dialog')` debe quedar en cero.
+  Playwright: `page.on('dialog')` debe quedar en cero. **Responsivo
+  (queja del director, 28-sep-2026, captura del "Resumen de tu pago" en el
+  celular: el modal ocupaba toda la pantalla y los botones quedaban fuera):**
+  `.pcg-dlg .caja` es flex-columna con `max-height` (100dvh − 48 px) y el
+  cuerpo es `<div class='msg' id='pcgDlgMsg'>` (antes `<p>`) con
+  `overflow-y:auto`: lo largo se desplaza DENTRO y Continuar/Volver quedan
+  siempre a la vista; en ≤600 px el diálogo es una HOJA INFERIOR (asa gris,
+  esquinas superiores, `safe-area-inset-bottom`, animación `subir`, 92dvh) y
+  las líneas del resumen son grid `minmax(0,1fr) auto` con
+  `overflow-wrap:anywhere` para que el monto no se parta. Playwright
+  `$SP/pw_resumen_mov.js` (390×844, desglose abierto).
 - **Popups: UN SOLO formato (REGLA de todo el app).** Todo diálogo de
   confirmación/aviso usa `widgets/dialogo_pichangol.dart`: `confirmarPichangol(
   context, titulo:, mensaje:, textoConfirmar:, destructivo:, icono:)` (devuelve

@@ -182,10 +182,12 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .candado{display:inline-flex;align-items:center;gap:6px;background:var(--noche);color:#fff;font-size:12px;font-weight:700;padding:6px 10px;border-radius:10px}
 .medio-pago .mp-t{font-weight:800;font-size:14px;margin-bottom:8px}.medio-pago .chip{padding:9px 12px}.medio-pago .chip small{font-size:11px;font-weight:800;color:var(--esmeralda)}
 .mp-mini{display:inline-flex;align-items:center;gap:6px;background:var(--blanco);border:1px solid var(--trazo);border-radius:999px;padding:6px 10px;cursor:pointer;font:inherit;flex:none}.mp-mini b{color:var(--gris);font-weight:700}
-.pcg-rp{text-align:left;display:grid;gap:7px;margin:2px 0 6px}.pcg-rp .rp-l{display:flex;justify-content:space-between;gap:12px;font-size:14px;color:var(--noche)}.pcg-rp .rp-l span{min-width:0}.pcg-rp .rp-l b{white-space:nowrap}
-.pcg-rp .rp-t{display:flex;justify-content:space-between;gap:12px;border-top:1px solid var(--trazo);padding-top:10px;margin-top:4px;font-size:17px;font-weight:800;color:var(--noche)}
-.pcg-rp .rp-d{font-size:12.5px;color:#717171;margin-top:-2px}.pcg-rp .rp-d summary{cursor:pointer;color:var(--esmeralda);font-weight:700;list-style:none}.pcg-rp .rp-d summary::before{content:'ⓘ ';}.pcg-rp .rp-d[open] summary{margin-bottom:6px}
+.pcg-rp{text-align:left;display:grid;gap:7px;margin:2px 0 6px}.pcg-rp .rp-l{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:12px;font-size:14px;color:var(--noche)}.pcg-rp .rp-l span{min-width:0;overflow-wrap:anywhere;line-height:1.3}.pcg-rp .rp-l b{white-space:nowrap}
+.pcg-rp .rp-t{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:12px;border-top:1px solid var(--trazo);padding-top:10px;margin-top:4px;font-size:17px;font-weight:800;color:var(--noche)}
+.pcg-rp .rp-d{font-size:12.5px;color:#717171;margin-top:-2px}.pcg-rp .rp-d summary{cursor:pointer;color:var(--esmeralda);font-weight:700;list-style:none}.pcg-rp .rp-d summary::-webkit-details-marker{display:none}.pcg-rp .rp-d summary::before{content:'ⓘ ';}.pcg-rp .rp-d[open] summary{margin-bottom:6px}
+.pcg-rp .rp-d .cg-fila{padding:6px 0;font-size:13px;line-height:1.35}.pcg-rp .rp-d .cg-fila .sub{font-size:12px!important;line-height:1.35}
 .pcg-rp .rp-ok{color:var(--esmeralda);font-size:12.5px;font-weight:700}.pcg-rp .rp-n{font-size:12px;color:#717171;line-height:1.4}
+@media (max-width:600px){.pcg-rp .rp-l{font-size:13.5px;gap:10px}.pcg-rp .rp-t{font-size:16px}.pcg-rp .rp-d .cg-fila{font-size:12.5px}}
 /* hero ficha */
 .galeria{display:grid;grid-template-columns:2fr 1fr;grid-template-rows:170px 170px;gap:8px;border-radius:var(--r-lg);overflow:hidden}
 .galeria img,.galeria .sinfoto{width:100%;height:100%;object-fit:cover;aspect-ratio:auto}
@@ -512,10 +514,18 @@ body.sin-scroll{overflow:hidden}
 .modal-cuerpo section{padding:22px 0;border-bottom:1px solid var(--trazo)}.modal-cuerpo section:last-child{border-bottom:0}
 .modal-cuerpo h4{margin:0 0 14px;font-size:18px;font-weight:600}
 .pcg-dlg{display:none;position:fixed;inset:0;background:rgba(10,27,61,.5);z-index:80;align-items:center;justify-content:center;padding:24px 16px}.pcg-dlg.open{display:flex}
-.pcg-dlg .caja{background:var(--blanco);border-radius:24px;width:100%;max-width:420px;padding:28px 24px 20px;text-align:center;box-shadow:0 12px 40px rgba(10,27,61,.3);animation:pop .18s ease-out}
-.pcg-dlg .ico{width:56px;height:56px;border-radius:50%;background:var(--tinte);display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:12px}.pcg-dlg .ico.mal{background:#FDECE8}
-.pcg-dlg h3{margin:0 0 8px;font-size:19px;color:var(--noche)}.pcg-dlg p{margin:0 0 20px;color:var(--tenue);font-size:15px;line-height:1.45}
-.pcg-dlg .btn{width:100%;padding:14px 18px;font-size:15.5px}.pcg-dlg .btn.mal{background:var(--rojo)}.pcg-dlg .txt{display:block;width:100%;margin-top:6px;padding:12px;border:0;background:transparent;color:var(--noche);font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;border-radius:12px}.pcg-dlg .txt:hover{background:var(--gris)}
+.pcg-dlg .caja{background:var(--blanco);border-radius:24px;width:100%;max-width:420px;padding:28px 24px 20px;text-align:center;box-shadow:0 12px 40px rgba(10,27,61,.3);animation:pop .18s ease-out;display:flex;flex-direction:column;align-items:center;max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px)}
+.pcg-dlg .ico{width:56px;height:56px;border-radius:50%;background:var(--tinte);display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:12px;flex:none}.pcg-dlg .ico.mal{background:#FDECE8}
+.pcg-dlg h3{margin:0 0 8px;font-size:19px;color:var(--noche);flex:none}.pcg-dlg p,.pcg-dlg .msg{margin:0 0 20px;color:var(--tenue);font-size:15px;line-height:1.45}
+.pcg-dlg .msg{width:100%;min-height:0;flex:0 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:0 2px}
+.pcg-dlg .btn{width:100%;padding:14px 18px;font-size:15.5px;flex:none}.pcg-dlg .btn.mal{background:var(--rojo)}.pcg-dlg .txt{display:block;width:100%;margin-top:6px;padding:12px;border:0;background:transparent;color:var(--noche);font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;border-radius:12px;flex:none}.pcg-dlg .txt:hover{background:var(--gris)}
+/* Móvil: el diálogo es una HOJA INFERIOR (como Airbnb en el celular). El contenido largo (p. ej. el
+   resumen de pago con el desglose abierto) se desplaza DENTRO de la hoja y los botones quedan
+   siempre a la vista (queja del director, 28-sep-2026: "la web debe de ser responsiva"). */
+@media (max-width:600px){.pcg-dlg{align-items:flex-end;padding:0}.pcg-dlg .caja{max-width:none;border-radius:22px 22px 0 0;padding:12px 18px calc(14px + env(safe-area-inset-bottom,0px));max-height:92vh;max-height:92dvh;animation:subir .22s ease-out;box-shadow:0 -8px 30px rgba(10,27,61,.25)}
+.pcg-dlg .caja::before{content:'';display:block;width:40px;height:4px;border-radius:2px;background:#DDDDDD;margin:0 auto 12px;flex:none}
+.pcg-dlg .ico{width:44px;height:44px;font-size:21px;margin-bottom:8px}.pcg-dlg h3{font-size:17px}.pcg-dlg p,.pcg-dlg .msg{font-size:14px;margin-bottom:14px}.pcg-dlg .btn{padding:13px 16px;font-size:15px}.pcg-dlg .txt{padding:10px;font-size:14.5px}}
+@keyframes subir{0%{transform:translateY(40px);opacity:0}100%{transform:none;opacity:1}}
 .pcg-velo{display:none;position:fixed;inset:0;background:rgba(10,27,61,.35);backdrop-filter:blur(2px);z-index:90;align-items:center;justify-content:center;padding:16px}.pcg-velo.open{display:flex}
 .pcg-velo .tarjeta{background:var(--blanco);border-radius:20px;padding:24px 28px;display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--noche);font-weight:700;font-size:15px;box-shadow:0 12px 40px rgba(10,27,61,.3);min-width:220px;text-align:center}
 .pcg-velo .aro{width:46px;height:46px;border-radius:50%;border:4px solid var(--gris);border-top-color:var(--esmeralda);animation:pcgGiro .8s linear infinite}@keyframes pcgGiro{to{transform:rotate(360deg)}}
@@ -990,7 +1000,7 @@ JS_NAV = r"""
   // ── Diálogos y preloader de TODA la web (regla del director, sep-2026: nada de confirm()/alert() del navegador) ──
   // pcgConfirmar({titulo, mensaje, confirmar, cancelar, destructivo, icono}) → Promise<bool>; pcgAvisar({...}) → Promise; mismo formato que dialogo_pichangol.dart.
   function dlg(){ var d = document.getElementById('pcgDlg'); if(d) return d; d = document.createElement('div'); d.id = 'pcgDlg'; d.className = 'pcg-dlg'; d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true');
-    d.innerHTML = "<div class='caja'><div class='ico' id='pcgDlgIco'></div><h3 id='pcgDlgTit'></h3><p id='pcgDlgMsg'></p><button type='button' class='btn' id='pcgDlgOk'></button><button type='button' class='txt' id='pcgDlgNo'></button></div>";
+    d.innerHTML = "<div class='caja'><div class='ico' id='pcgDlgIco'></div><h3 id='pcgDlgTit'></h3><div class='msg' id='pcgDlgMsg'></div><button type='button' class='btn' id='pcgDlgOk'></button><button type='button' class='txt' id='pcgDlgNo'></button></div>";
     document.body.appendChild(d); return d; }
   function abrirDlg(o, conCancelar){ return new Promise(function(res){ var d = dlg(), ok = d.querySelector('#pcgDlgOk'), no = d.querySelector('#pcgDlgNo'), ico = d.querySelector('#pcgDlgIco');
     d.querySelector('#pcgDlgTit').textContent = o.titulo || (conCancelar ? '¿Seguro?' : 'Aviso'); var msgEl = d.querySelector('#pcgDlgMsg'); if(o.html){ msgEl.innerHTML = o.html; } else { msgEl.textContent = o.mensaje || ''; }
