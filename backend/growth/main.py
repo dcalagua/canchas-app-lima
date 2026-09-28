@@ -28,6 +28,8 @@ from web.anfitrion import router as anfitrion_router
 from web.anfitrion_academia import router as anfitrion_academia_router
 from web.anfitrion_tienda import router as anfitrion_tienda_router
 from web.anfitrion_campeonatos import router as anfitrion_campeonatos_router
+from web.anfitrion_boleadores import router as anfitrion_boleadores_router
+from boleadores import router as boleadores_router
 from web.academia import router as academia_web_router
 from models import ConfigRequest, ConsentimientoRequest
 from marketing.router import router as marketing_router
@@ -132,7 +134,9 @@ app.include_router(academia_web_router)  # ficha pública /academia/{id} + matr�
 app.include_router(anfitrion_academia_router)  # antes del comodín /anfitrion/{modulo}
 app.include_router(anfitrion_tienda_router)
 app.include_router(anfitrion_campeonatos_router)  # antes del comodín /anfitrion/{modulo}
+app.include_router(anfitrion_boleadores_router)  # antes del comodín /anfitrion/{modulo}
 app.include_router(anfitrion_router)
+app.include_router(boleadores_router)  # /boleadores/* (APK + ficha web)
 # Assets de marca de la web pública (pin, logo para OG/favicon). Ruta fija
 # junto a este archivo para que Railway (root dir backend/growth) los sirva.
 app.mount("/static", StaticFiles(directory=os.path.join(
@@ -230,6 +234,26 @@ async def _iniciar_cron_liquidaciones() -> None:
             except Exception:  # noqa: BLE001
                 pass
             await asyncio.sleep(3600)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_boleadores() -> None:
+    """BOLEADORES: cada 5 min cierra como `vencida` las solicitudes que el
+    boleador no respondió a tiempo y devuelve su parte al cliente (en un hilo:
+    toca Postgres y Culqi). Fail-safe."""
+    async def _loop() -> None:
+        await asyncio.sleep(90)
+        while True:
+            try:
+                import boleadores as _bol
+                n = await asyncio.to_thread(_bol.vencer_pendientes)
+                if n:
+                    pg.persistir_en_segundo_plano(stores)
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(300)
 
     asyncio.create_task(_loop())
 

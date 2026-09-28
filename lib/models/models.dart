@@ -147,6 +147,14 @@ class ServicioExtra {
   final int cantidad;
   final double? unitario;
 
+  /// Línea de BOLEADOR (módulo Boleadores, sep-2026): `boleador` = slug
+  /// público del boleador elegido y `estado` = lo que el backend escribe en la
+  /// fila (`pendiente` → `aceptada` / `rechazada` / `vencida` / `cancelada…`).
+  /// Se conservan en el JSON para que un upsert del APK no los borre; el
+  /// estado VIVO se lee de `/boleadores/solicitudes` (`Boleadores`).
+  final String boleador;
+  final String estado;
+
   const ServicioExtra({
     required this.clave,
     required this.precio,
@@ -156,7 +164,12 @@ class ServicioExtra {
     this.ambito = '',
     this.cantidad = 1,
     this.unitario,
+    this.boleador = '',
+    this.estado = '',
   }) : nombreJson = nombre;
+
+  /// ¿Es la línea del boleador contratado al reservar?
+  bool get esBoleador => clave == 'boleador';
 
   /// Catálogo EMPAQUETADO (respaldo sin red): clave → nombre visible.
   static const catalogo = <String, String>{
@@ -270,6 +283,8 @@ class ServicioExtra {
         ambito: ambito,
         cantidad: cantidad,
         unitario: unitario,
+        boleador: boleador,
+        estado: estado,
       );
 
   Map<String, dynamic> toJson() => {
@@ -281,6 +296,8 @@ class ServicioExtra {
         if (ambito.isNotEmpty) 'ambito': ambito,
         if (cantidad != 1) 'cantidad': cantidad,
         if (unitario != null) 'unitario': unitario,
+        if (boleador.isNotEmpty) 'boleador': boleador,
+        if (estado.isNotEmpty) 'estado': estado,
       };
 
   factory ServicioExtra.fromJson(Map<String, dynamic> j) => ServicioExtra(
@@ -292,6 +309,8 @@ class ServicioExtra {
         ambito: (j['ambito'] ?? '').toString(),
         cantidad: ((j['cantidad'] ?? 1) as num).toInt(),
         unitario: j['unitario'] == null ? null : (j['unitario'] as num).toDouble(),
+        boleador: (j['boleador'] ?? '').toString(),
+        estado: (j['estado'] ?? '').toString(),
       );
 
   static List<ServicioExtra> listaDe(dynamic raw) {
@@ -345,6 +364,10 @@ class Cancha {
   /// Servicios EXTRA de pago que ofrece la cancha (árbitro, pelotero…). El
   /// jugador los agrega al reservar. Vacío = la cancha no ofrece ninguno.
   final List<ServicioExtra> serviciosExtra;
+  /// ¿El local acepta que los jugadores contraten un BOLEADOR/sparring al
+  /// reservar (módulo Boleadores, tenis/pádel)? true por defecto; el dueño lo
+  /// apaga en Editar cancha. Columna `permite_boleadores`.
+  final bool permiteBoleadores;
   /// "Hora feliz": descuento (%) que aplica el dueño a las horas VALLE (mañanas)
   /// para llenar cancha vacía. 0 = sin descuento. Gana el dueño (más ocupación)
   /// y el jugador (más barato).
@@ -420,6 +443,7 @@ class Cancha {
     this.superficie = '',
     this.moneda = '',
     this.serviciosExtra = const [],
+    this.permiteBoleadores = true,
     this.descuentoValle = 0,
     this.valleDesde = '',
     this.valleHasta = '',
@@ -579,6 +603,7 @@ class Cancha {
     String? superficie,
     String? moneda,
     List<ServicioExtra>? serviciosExtra,
+    bool? permiteBoleadores,
     int? descuentoValle,
     String? valleDesde,
     String? valleHasta,
@@ -610,6 +635,7 @@ class Cancha {
       superficie: superficie ?? this.superficie,
       moneda: moneda ?? this.moneda,
       serviciosExtra: serviciosExtra ?? this.serviciosExtra,
+      permiteBoleadores: permiteBoleadores ?? this.permiteBoleadores,
       descuentoValle: descuentoValle ?? this.descuentoValle,
       valleDesde: valleDesde ?? this.valleDesde,
       valleHasta: valleHasta ?? this.valleHasta,
@@ -644,6 +670,7 @@ class Cancha {
         'superficie': superficie,
         'moneda': moneda,
         'serviciosExtra': serviciosExtra.map((s) => s.toJson()).toList(),
+        'permiteBoleadores': permiteBoleadores,
         'descuentoValle': descuentoValle,
         'valleDesde': valleDesde,
         'valleHasta': valleHasta,
@@ -685,6 +712,7 @@ class Cancha {
         superficie: (j['superficie'] ?? '') as String,
         moneda: (j['moneda'] ?? '') as String,
         serviciosExtra: ServicioExtra.listaDe(j['serviciosExtra']),
+        permiteBoleadores: (j['permiteBoleadores'] ?? true) as bool,
         descuentoValle: (j['descuentoValle'] ?? 0) as int,
         valleDesde: (j['valleDesde'] ?? '') as String,
         valleHasta: (j['valleHasta'] ?? '') as String,

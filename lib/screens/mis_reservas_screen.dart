@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../models/models.dart';
 import '../models/cargo_servicio.dart';
+import '../models/boleador.dart';
 import '../widgets/cargo_servicio_info.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -33,6 +34,13 @@ class _MisReservasScreenState extends State<MisReservasScreen> {
     super.initState();
     // Puntos DISPONIBLES reales (ganados − canjeados) al abrir la pantalla.
     appState.cargarPuntosCanjeados();
+    // Estado de los boleadores contratados (esperando / confirmado / devuelto).
+    final email = appState.usuario?.email ?? '';
+    if (email.isNotEmpty) {
+      Boleadores.refrescarSolicitudes(email).then((ok) {
+        if (ok && mounted) setState(() {});
+      });
+    }
   }
 
   Cancha? _cancha(String id) {
@@ -1099,6 +1107,15 @@ void _mostrarPase(BuildContext context, Reserva reserva, Cancha? cancha) {
                   'Precio',
                   '${reserva.monedaSimbolo}${reserva.precio} · '
                   '${reserva.pagado ? 'pagado ✓' : reserva.sena > 0 ? 'seña pagada, resto en la cancha' : 'pagas en la cancha'}'),
+              // BOLEADOR contratado con la reserva (módulo Boleadores): quién y
+              // en qué quedó (esperando confirmación / confirmado / devuelto).
+              for (final x in reserva.extras.where((x) => x.esBoleador))
+                _PaseFila(
+                    Icons.sports_tennis,
+                    'Boleador',
+                    '${x.nombre.replaceFirst('Boleador · ', '')} · '
+                    '${reserva.monedaSimbolo}${x.precio.toStringAsFixed(2)} · '
+                    '${Boleadores.deReserva(reserva)?.etiquetaEstado ?? (x.estado.isEmpty ? 'esperando confirmación' : x.estado)}'),
               // Cargo por servicio Pichangol (si lo pagó): línea aparte, total
               // pagado y el desglose con un toque, como en el comprobante web.
               if (reserva.cargoServicio > 0) ...[

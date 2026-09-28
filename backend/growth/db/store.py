@@ -52,6 +52,11 @@ CONFIG_DEFAULT: dict[str, str] = {
     "cargo_USD_pct": "5", "cargo_USD_min": "0.5", "cargo_USD_tramo": "140", "cargo_USD_pct_exc": "2", "cargo_USD_margen_min": "0.5",
     "cargo_BOB_pct": "5", "cargo_BOB_min": "3", "cargo_BOB_tramo": "1000", "cargo_BOB_pct_exc": "2", "cargo_BOB_margen_min": "3",
     "cargo_activo_reservas": "0", "cargo_activo_academias": "0", "cargo_activo_marketplace": "0", "cargo_activo_torneos": "0",
+    # BOLEADORES (decisión del director, 28-sep-2026): comisión FIJA por turno
+    # que Pichangol descuenta al boleador (S/ 2 · $ 0.50 · Bs 3, = mínimo de
+    # comisión por moneda) y horas que tiene para aceptar una solicitud.
+    "boleador_comision_PEN": "2", "boleador_comision_USD": "0.5", "boleador_comision_BOB": "3",
+    "boleador_aceptar_horas": "2", "boleadores_activo": "1",
     # DATOS DE LA EMPRESA (razón social, RUC, dirección, correo, horario) que
     # salen en la portada, el pie de la web, las páginas legales y el Libro de
     # Reclamaciones. Editables desde la torre (Comunicación → "Datos de la
@@ -490,6 +495,10 @@ class PagoRegistro:
     cargo_servicio_centimos: int = 0
     cargo_desglose: list | None = None
     cargo_ajuste_centimos: int = 0
+    # BOLEADORES (sep-2026, `boleadores.py`): la liquidación del boleador
+    # (`liquidacion_boleador`) se LIBERA recién cuando el turno terminó (por si
+    # no se presenta); hasta entonces la torre la ve pero el lote no la paga.
+    disponible_en: datetime | None = None
 
 
 def es_liquidacion_torneo(p: "PagoRegistro") -> bool:
@@ -898,7 +907,7 @@ class Stores:
         for p in self.pagos:
             if p.tipo not in ("liquidacion_online", "liquidacion_full",
                               "venta_producto", "venta_bodega",
-                              "inscripcion_torneo_ingreso"):
+                              "inscripcion_torneo_ingreso", "liquidacion_boleador"):
                 continue
             # Ingresos de TORNEO (pozo del equipo / cuota individual): desde
             # sep-2026 son "por recibir" como una reserva online (decisión del
@@ -923,7 +932,7 @@ class Stores:
         for p in self.pagos:
             if (p.tipo in ("liquidacion_online", "liquidacion_full",
                            "venta_producto", "venta_bodega",
-                           "inscripcion_torneo_ingreso")
+                           "inscripcion_torneo_ingreso", "liquidacion_boleador")
                     and p.estado == "aprobado"  # una anulada no se "paga"
                     and p.culqi_charge_id == reserva_id):
                 if not p.liquidado:
@@ -1454,7 +1463,8 @@ def _pago_from(d: dict) -> PagoRegistro:
         pasarela_en=_dt(d.get("pasarela_en")), cargo_id=d.get("cargo_id") or None,
         cargo_servicio_centimos=int(d.get("cargo_servicio_centimos", 0) or 0),
         cargo_desglose=(list(d["cargo_desglose"]) if isinstance(d.get("cargo_desglose"), list) else None),
-        cargo_ajuste_centimos=int(d.get("cargo_ajuste_centimos", 0) or 0))
+        cargo_ajuste_centimos=int(d.get("cargo_ajuste_centimos", 0) or 0),
+        disponible_en=_dt(d.get("disponible_en")))
 
 
 def _insc_from(d: dict) -> Inscripcion:

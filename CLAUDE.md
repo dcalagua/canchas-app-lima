@@ -1346,6 +1346,90 @@ para la API del APK.
   hora, fin, PRECIO del turno y etiqueta "⚡ hora feliz" / "−N % promo";
   ocupado = gris tachado; seleccionado = azul noche; nota "El precio varía
   según la hora: desde … hasta …" cuando hay diferencias.
+- **BOLEADORES / SPARRING (módulo nuevo, pedido del director 28-sep-2026:
+  "personas que quieran bolear se inscriben como boleadores, ponen cuánto
+  cobran y en qué canchas atienden; el que alquila la cancha lo selecciona
+  como servicio extra; PCG le cobra S/ 2 al boleador"; decisiones: el
+  boleador RECIBE NOTIFICACIÓN Y ACEPTA —puede estar ocupado— y las
+  categorías son las de la Liga Pichangol 5P · 5A · 5B · 4ta · 3ra · 2da ·
+  1ra; diseño en `docs/diseno-boleadores.md`):** `backend/growth/boleadores.py`
+  (router `/boleadores/*`) + tablas `pichangol_boleadores` (email, deporte
+  tenis|padel, categoría, tarifa por turno, moneda, activo, `data` = slug,
+  nombre, foto, celular, canchas, disponibilidad {dias, desde, hasta},
+  etiquetas, stats) y `pichangol_boleador_solicitudes` (una por reserva:
+  boleador, cliente, `reserva_ref` = grupo o id, ids, cancha/club, fecha,
+  franja, turnos, `monto_centimos`, `comision_centimos`, estado `pendiente →
+  aceptada | rechazada | vencida | cancelada | cancelada_boleador`, canal
+  app|web, `charge_id`, `vence_en`) + columna `pichangol_canchas.
+  permite_boleadores` (SQL `docs/piloto/supabase_boleadores.sql`, PENDIENTE
+  de correr en QAS y PRD). **Dinero:** el cliente paga TODO en línea (cancha
+  + boleador + cargo por servicio sobre la suma); solo con pago en línea
+  (nunca seña ni efectivo: sin el cobro no hay cómo garantizarle al
+  boleador). Comisión FIJA por turno **S/ 2 · \$ 0.50 · Bs 3**
+  (`boleador_comision_<ISO>` en `stores.config` / `PaisConfig.
+  comisionBoleador`); al ACEPTAR nace `liquidacion_boleador` (`culqi_charge_id
+  = bol:<sol_id>`, comisión congelada, `disponible_en` = fin del turno; entra
+  en la MISMA cola de liquidaciones y en "Por recibir" de la billetera; el
+  lote BCP salta las no liberadas) y el dueño liquida SOLO el precio de la
+  cancha (`/web/pagar` resta la línea; en el APK la liquidación ya era solo
+  `precioHoraEfectivo`). Si el boleador RECHAZA, no responde en
+  `boleador_aceptar_horas` (2; cron `_iniciar_cron_boleadores` cada 5 min →
+  `vencer_pendientes`) o CANCELA un boleo aceptado → devolución PARCIAL al
+  cliente (tarifa + su parte del cargo) por `culqi.reembolsar`; si falla o el
+  pago fue en el app sin cargo ligado → `manual` en `stores.cancelaciones_web`
+  con `boleador: true` (torre → Cancelaciones web). Cancelar la RESERVA
+  (`_cancelar_reserva`) cancela también el boleo (`cancelar_por_reserva`).
+  2 cancelaciones del boleador en 90 días → perfil pausado
+  (`registrar_falta`). Identidad VERIFICADA obligatoria para registrarse
+  (`datos.esta_verificado`). Nombre por país: "Boleador" (PE) / "Sparring"
+  (BO, EC) (`nombre_por_pais` / `PaisConfig.nombreBoleador`). Endpoints:
+  `GET /boleadores/config?pais`, `GET /boleadores/disponibles?cancha_id&fecha
+  &hora&turnos&deporte` (públicos, sin correos; `disponibles()` = activo ∧
+  local marcado ∧ día/franja ∧ sin cruce con otro boleo ∧ local que lo
+  permite), `GET/POST /boleadores/perfil[/{email}]`, `/perfil/activo`, `POST
+  /boleadores/solicitar` (APK tras pagar; idempotente por reserva), `GET
+  /boleadores/solicitudes?email` (como boleador y como cliente, con
+  `estado_visible` y `neto_centimos`), `POST /solicitudes/{id}/aceptar|
+  rechazar|cancelar` (X-App-Key). Pushes tipo `boleador` ("Te contrataron
+  🎾" al boleador; "Esperando…", "Boleador confirmado ✅", "Sin boleador esta
+  vez 😕" al cliente). **Web:** ficha `/reservar/{id}` (tenis/pádel, local que
+  permite, módulo activo) muestra "🎾 ¿Quieres un boleador?" con tarjetas
+  (`.bol-card`: foto/inicial, categoría, etiquetas, precio por turno) que el
+  JS carga por fecha+turno (`cargarBoleadores`), la línea entra al resumen y
+  a `pcgResumenPago`; `/web/asegurar` recibe `boleador` (slug), valida
+  disponibilidad y guarda la línea `{clave: boleador, precio total, unitario,
+  cantidad, nombre "Boleador · X", emoji 🎾, tipo turno, boleador: slug,
+  estado}` en `extras`; `/web/pagar` crea la solicitud; el comprobante muestra
+  el estado. Modo anfitrión → **"🎾 Soy boleador"** (`web/anfitrion_
+  boleadores.py`, `/anfitrion/boleador`): candado de verificación, pendientes
+  con "✅ Aceptar · ganas S/ 18 / No puedo", confirmados con cancelar, perfil
+  por SELECCIÓN (deporte, categoría, tarifa con chips + otro monto, locales
+  verificados por deporte `/anfitrion/boleador/locales`, días, desde/hasta,
+  etiquetas, celular, recibir solicitudes) e historial. **APK:**
+  `lib/models/boleador.dart` (`BoleadorConfig`, `BoleadorPublico.linea(turnos)`
+  = misma línea que el backend, `SolicitudBoleo`, `PerfilBoleador`,
+  `Boleadores` = caché device-first en SharedPreferences + OUTBOX
+  `boleador_solicitar_pend` que `flushContabilidad` reintenta: el cliente ya
+  pagó, la solicitud no se pierde), `PagosService.boleador*`, Perfil → "Ser
+  boleador / Soy boleador" con badge de pendientes (`boleador_screen.dart`,
+  mismo formulario que la web; exige `jugadorVerificado` → Verificar
+  identidad), `club_detalle._ResumenReserva` (sección con `_TarjetaBoleador`
+  solo en tenis/pádel con pago en línea; con boleador elegido se esconden
+  seña y efectivo con aviso; `ResumenResultado.boleador`; tras `agregar
+  ReservasJugadorMulti` OK → `Boleadores.solicitar` con los ids asegurados,
+  `charge_id` y la parte proporcional del cargo), `ServicioExtra.boleador/
+  estado` (se conservan en el JSON), pase de Mis reservas con "Boleador · X ·
+  S/ 20 · Esperando confirmación" (`Boleadores.deReserva`), push `boleador` →
+  `BoleadorScreen` si soy boleador o Mis reservas si soy cliente, billetera
+  mapea `liquidacion_boleador` a "por recibir", Editar cancha → chips
+  "Boleadores en esta cancha: Permitir / No en mi cancha"
+  (`Cancha.permiteBoleadores`, columna bajo el flag de columnas nuevas de
+  `CanchasRepo`). Test `tests/test_boleadores.py` (7 tests: registro por
+  selección con identidad, disponibles por local/franja/cruces, contratar
+  en la web + aceptar + liquidación con comisión fija, rechazo/vencimiento
+  con devolución parcial, cancelaciones con faltas, solicitar desde el APK,
+  comisión por moneda). Backlog (fase 2): reseñas del boleador, elegir otro
+  tras un rechazo, "no vino", pane en la torre, radio por zona.
 - **LENTITUD EN TODO EL SISTEMA (queja del director, 25-sep-2026: "mucho se
   demora para agregar un simple equipo, y lo mismo sucede en todo el
   sistema"). CAUSA RAÍZ:** el middleware de `main.py` corría, DENTRO de cada
@@ -1629,6 +1713,10 @@ off → redeploy inmediato en cada push). URL pública:
     y en la matrícula web: líneas, cargo por servicio con "Qué incluye",
     total y botón "Continuar con Yape|tarjeta"). Solo web: sin SQL, sin
     Edge, sin APK, sin variables. Railway `pg-backend-prd` desplegado OK.
+    **Pase del 28-sep-2026 (2.º, autorizado: "Subir a prd"):** `prd` = merge
+    `9135094` (diálogos web responsivos en móvil: hoja inferior con scroll
+    interno y botones siempre visibles). Solo web: sin SQL, sin Edge, sin
+    APK, sin variables.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -2455,7 +2543,7 @@ no inventar layouts propios. Rasgos Airbnb:
   esquinas superiores, `safe-area-inset-bottom`, animación `subir`, 92dvh) y
   las líneas del resumen son grid `minmax(0,1fr) auto` con
   `overflow-wrap:anywhere` para que el monto no se parta. Playwright
-  `$SP/pw_resumen_mov.js` (390×844, desglose abierto).
+  `$SP/pw_resumen_mov.js` (390×844, desglose abierto). **Logo en el resumen (pedido del director, 28-sep-2026: "en vez del celular debe salir el logo de PCG"):** `pcgResumenPago` abre el diálogo con `logo: true` → `abrirDlg` pinta `/static/brand/logo_pin.png` en la burbuja (`.pcg-dlg .ico.marca`) en vez del emoji 📱; los demás diálogos siguen con su ícono. Solo en QAS hasta el próximo pase.
 - **Popups: UN SOLO formato (REGLA de todo el app).** Todo diálogo de
   confirmación/aviso usa `widgets/dialogo_pichangol.dart`: `confirmarPichangol(
   context, titulo:, mensaje:, textoConfirmar:, destructivo:, icono:)` (devuelve

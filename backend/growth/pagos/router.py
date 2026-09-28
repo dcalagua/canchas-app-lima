@@ -2465,7 +2465,7 @@ def _liquidacion_dict(p) -> dict:
     # decisión de producto (la bodega es cero comisión) → usa la congelada (0).
     comision = (p.comision_centimos
                 if p.tipo in ("liquidacion_full", "venta_bodega",
-                              "inscripcion_torneo_ingreso")
+                              "inscripcion_torneo_ingreso", "liquidacion_boleador")
                 else comision_centimos(bruto / 100.0, p.moneda))
     neto = bruto - comision
     # Costo estimado de la PASARELA (Culqi/PayPhone/Libélula) y margen real de
@@ -2482,9 +2482,20 @@ def _liquidacion_dict(p) -> dict:
         dias = max(0, (datetime.now(timezone.utc) - p.creado_en).days)
     except Exception:  # noqa: BLE001
         dias = 0
+    # Boleadores: el neto se LIBERA cuando el turno terminó (`disponible_en`);
+    # antes la torre lo ve como "se libera el …" y el lote no lo incluye.
+    disp = getattr(p, "disponible_en", None)
+    liberada = True
+    if disp is not None:
+        try:
+            liberada = datetime.now(timezone.utc) >= disp
+        except TypeError:
+            liberada = True
     return {
         "reserva_id": p.culqi_charge_id,
         "tipo": p.tipo,
+        "disponible_en": disp.isoformat() if disp is not None else None,
+        "liberada": liberada,
         "moneda": moneda_iso(p.moneda),
         "dias": dias,
         "dueno_id": p.dueno_id,
@@ -2924,7 +2935,7 @@ def get_movimientos(dueno_id: str,
                 "aporte_equipo_devolucion", "devolucion_saldo",
                 "liquidacion_online", "liquidacion_full",
                 "venta_producto", "venta_bodega",
-                "inscripcion_torneo_ingreso") + _EGRESOS
+                "inscripcion_torneo_ingreso", "liquidacion_boleador") + _EGRESOS
     propios = [
         p for p in stores.pagos
         if p.dueno_id == dueno_id and p.estado == "aprobado"
@@ -2948,6 +2959,7 @@ def get_movimientos(dueno_id: str,
         "venta_producto": "Venta / bono (neto)",
         "venta_bodega": "Venta de bodega (pagada con saldo)",
         "bodega_pago": "Bodega · pagado con saldo",
+        "liquidacion_boleador": "Boleo (neto por recibir)",
     }
 
     def _fila(p) -> dict:
@@ -2969,8 +2981,8 @@ def get_movimientos(dueno_id: str,
         bruto = p.monto_centimos
         if p.tipo == "liquidacion_full":
             comision = 0  # la comisión ya salió del saldo (billetera-first)
-        elif p.tipo in ("inscripcion_torneo_ingreso", "venta_bodega"):
-            comision = p.comision_centimos  # bodega: 0 (cero comisión)
+        elif p.tipo in ("inscripcion_torneo_ingreso", "venta_bodega", "liquidacion_boleador"):
+            comision = p.comision_centimos  # bodega: 0 (cero comisión); boleador: fija por turno
         else:
             comision = comision_centimos(bruto / 100.0, p.moneda)
         neto = bruto - comision
@@ -2981,7 +2993,7 @@ def get_movimientos(dueno_id: str,
                 "neto_soles": neto / 100.0,
                 "liquidado": (p.liquidado if (p.tipo in
                               ("liquidacion_online", "liquidacion_full",
-                               "venta_producto", "venta_bodega")
+                               "venta_producto", "venta_bodega", "liquidacion_boleador")
                               or es_liquidacion_torneo(p))
                               else True)}
 

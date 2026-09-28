@@ -166,6 +166,16 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 @media(max-width:900px){.resumen{position:static}}
 .linea{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:7px 0;border-bottom:1px solid var(--trazo)}
 .linea:last-child{border-bottom:0}.linea b{font-weight:700}
+/* Boleadores (sparring por turno) en la ficha de reserva y en Modo anfitrión */
+.bol-box{display:grid;gap:10px;margin:4px 0 12px}
+.bol-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--trazo);border-radius:16px;background:var(--blanco);cursor:pointer;box-shadow:0 1px 3px rgba(10,27,61,.06);transition:box-shadow .15s,border-color .15s}
+.bol-card:hover{box-shadow:0 4px 14px rgba(10,27,61,.10)}.bol-card.sel{border-color:var(--noche);box-shadow:0 0 0 2px var(--noche) inset}
+.bol-card img,.bol-card .ini{width:48px;height:48px;border-radius:50%;object-fit:cover;flex:none;background:var(--tinte);display:inline-flex;align-items:center;justify-content:center;font-weight:800;color:var(--esmeralda);font-size:18px}
+.bol-card .nom{font-weight:800;color:var(--noche)}.bol-card .cat{display:inline-block;background:var(--tinte);color:var(--esmeralda);font-weight:800;font-size:12px;padding:2px 8px;border-radius:999px;margin-left:6px}
+.bol-card .det{color:var(--tenue);font-size:12.5px;margin-top:2px}.bol-card .pre{margin-left:auto;text-align:right;white-space:nowrap;font-weight:800;color:var(--noche)}.bol-card .pre small{display:block;color:var(--tenue);font-weight:600;font-size:11.5px}
+.bol-card .chk{width:22px;height:22px;border-radius:50%;border:2px solid var(--trazo);flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:13px;color:#fff}.bol-card.sel .chk{background:var(--esmeralda);border-color:var(--esmeralda)}
+.bol-sol{border:1px solid var(--trazo);border-radius:16px;padding:14px 16px;background:var(--blanco);display:grid;gap:6px}.bol-sol.pend{border-color:#F2C94C;background:#FFFBEA}
+.bol-sol .acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
 .total{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:20px;padding-top:12px}
 .barra-fija{display:none}
 @media(max-width:900px){
@@ -516,6 +526,7 @@ body.sin-scroll{overflow:hidden}
 .pcg-dlg{display:none;position:fixed;inset:0;background:rgba(10,27,61,.5);z-index:80;align-items:center;justify-content:center;padding:24px 16px}.pcg-dlg.open{display:flex}
 .pcg-dlg .caja{background:var(--blanco);border-radius:24px;width:100%;max-width:420px;padding:28px 24px 20px;text-align:center;box-shadow:0 12px 40px rgba(10,27,61,.3);animation:pop .18s ease-out;display:flex;flex-direction:column;align-items:center;max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px)}
 .pcg-dlg .ico{width:56px;height:56px;border-radius:50%;background:var(--tinte);display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:12px;flex:none}.pcg-dlg .ico.mal{background:#FDECE8}
+.pcg-dlg .ico.marca{background:var(--blanco);box-shadow:0 2px 10px rgba(10,27,61,.12)}.pcg-dlg .ico img{width:38px;height:38px;object-fit:contain;display:block}
 .pcg-dlg h3{margin:0 0 8px;font-size:19px;color:var(--noche);flex:none}.pcg-dlg p,.pcg-dlg .msg{margin:0 0 20px;color:var(--tenue);font-size:15px;line-height:1.45}
 .pcg-dlg .msg{width:100%;min-height:0;flex:0 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:0 2px}
 .pcg-dlg .btn{width:100%;padding:14px 18px;font-size:15.5px;flex:none}.pcg-dlg .btn.mal{background:var(--rojo)}.pcg-dlg .txt{display:block;width:100%;margin-top:6px;padding:12px;border:0;background:transparent;color:var(--noche);font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;border-radius:12px;flex:none}.pcg-dlg .txt:hover{background:var(--gris)}
@@ -1004,7 +1015,8 @@ JS_NAV = r"""
     document.body.appendChild(d); return d; }
   function abrirDlg(o, conCancelar){ return new Promise(function(res){ var d = dlg(), ok = d.querySelector('#pcgDlgOk'), no = d.querySelector('#pcgDlgNo'), ico = d.querySelector('#pcgDlgIco');
     d.querySelector('#pcgDlgTit').textContent = o.titulo || (conCancelar ? '¿Seguro?' : 'Aviso'); var msgEl = d.querySelector('#pcgDlgMsg'); if(o.html){ msgEl.innerHTML = o.html; } else { msgEl.textContent = o.mensaje || ''; }
-    ico.textContent = o.icono || (o.destructivo ? '🗑' : (conCancelar ? '❓' : 'ℹ️')); ico.classList.toggle('mal', !!o.destructivo);
+    if(o.logo){ ico.innerHTML = "<img src='/static/brand/logo_pin.png' alt='Pichangol'>"; } else { ico.textContent = o.icono || (o.destructivo ? '🗑' : (conCancelar ? '❓' : 'ℹ️')); }
+    ico.classList.toggle('mal', !!o.destructivo); ico.classList.toggle('marca', !!o.logo);
     ok.textContent = o.confirmar || (conCancelar ? 'Sí, continuar' : 'Entendido'); ok.classList.toggle('mal', !!o.destructivo); no.textContent = o.cancelar || 'Cancelar'; no.style.display = conCancelar ? '' : 'none';
     function fin(v){ d.classList.remove('open'); ok.onclick = no.onclick = d.onclick = null; document.removeEventListener('keydown', esc); res(v); }
     function esc(ev){ if(ev.key === 'Escape') fin(false); }
@@ -1030,7 +1042,7 @@ JS_NAV = r"""
     if(o.nota) h += '<div class="rp-n">' + o.nota + '</div>';
     h += '</div>';
     var tarjeta = o.medio === 'tarjeta';
-    return pcgConfirmar({titulo: o.titulo || 'Resumen de tu pago', html: h, icono: tarjeta ? '💳' : '📲',
+    return pcgConfirmar({titulo: o.titulo || 'Resumen de tu pago', html: h, logo: true,
                          confirmar: 'Continuar con ' + (tarjeta ? 'tarjeta' : 'Yape') + ' · ' + fmt(o.total), cancelar: 'Volver'});
   };
   window.pcgAvisar = function(o){ return abrirDlg(typeof o === 'string' ? {mensaje: o} : (o || {}), false); };

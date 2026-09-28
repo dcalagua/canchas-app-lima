@@ -61,6 +61,9 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
   }
   // Seña anti no-show: % del precio que se cobra por adelantado. 0 = sin seña.
   late int _senaPct = widget.cancha.senaPct;
+  // BOLEADORES (sep-2026): ¿los jugadores pueden contratar un boleador/
+  // sparring al reservar esta cancha? Solo aplica a tenis/pádel.
+  late bool _permiteBoleadores = widget.cancha.permiteBoleadores;
   final TextEditingController _ruc =
       TextEditingController(); // opcional, refuerza la verificación al reclamar
   final TextEditingController _contacto =
@@ -374,6 +377,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       valleDesde: _valleDesde,
       valleHasta: _valleHasta,
       senaPct: _senaPct,
+      permiteBoleadores: _permiteBoleadores,
     );
     appState.actualizarCancha(actualizada);
     if (club != widget.cancha.club) {
@@ -809,6 +813,37 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                   style: const TextStyle(
                       color: lima, fontWeight: FontWeight.w700, fontSize: 12.5));
             }),
+          ],
+          // Boleadores: solo en deportes de raqueta (tenis / pádel).
+          if (_deportes.any((d) => d == Deporte.tenis || d == Deporte.padel) ||
+              _deporte == Deporte.tenis ||
+              _deporte == Deporte.padel) ...[
+            const SizedBox(height: 18),
+            Text('${paisDeCoordenadas(_ubicacion.latitude, _ubicacion.longitude).nombreBoleador}es en esta cancha',
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 2),
+            Text(
+                'Si lo permites, el jugador puede contratar un '
+                '${paisDeCoordenadas(_ubicacion.latitude, _ubicacion.longitude).nombreBoleadorMin} '
+                'de la Liga Pichangol al reservar (lo paga aparte; a ti no te '
+                'cuesta nada y tu cancha se llena más).',
+                style: TextStyle(color: textoTenue, fontSize: 12)),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              children: [
+                ChoiceChip(
+                  label: const Text('Permitir ⭐'),
+                  selected: _permiteBoleadores,
+                  onSelected: (_) => setState(() => _permiteBoleadores = true),
+                ),
+                ChoiceChip(
+                  label: const Text('No en mi cancha'),
+                  selected: !_permiteBoleadores,
+                  onSelected: (_) => setState(() => _permiteBoleadores = false),
+                ),
+              ],
+            ),
           ],
           const SizedBox(height: 18),
           const Text('Tipo de piso *',

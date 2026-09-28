@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../data/reservas_repo.dart';
@@ -21,6 +23,7 @@ import '../widgets/court_lines.dart';
 import '../widgets/candado_pro.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../models/cargo_servicio.dart';
+import '../models/boleador.dart';
 import '../widgets/cargo_servicio_info.dart';
 import '../widgets/marca.dart';
 import 'bonos_dueno_screen.dart';
@@ -548,6 +551,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       builder: (_) => _ResumenReserva(
         cancha: _cancha,
         dia: _dia,
+        fechaIso: _fechaIso,
         hora: ord.first,
         horaFin: _cancha.horaFinDe(ord.last),
         nSlots: ord.length,
@@ -743,6 +747,40 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // Solo es "confirmada" si llegó a Supabase (fuente de verdad anti-doble
     // reserva). Con sinConexion/error se guarda local pero NO está garantizada.
     final confirmada = res == ResultadoReserva.ok;
+    // BOLEADOR: el cliente ya pagó su parte → se registra la solicitud (el
+    // backend le avisa por push y él acepta). Si no llega, queda en el outbox
+    // y se reintenta: nunca se pierde un boleo pagado.
+    final bol = r.boleador;
+    if (bol != null && pagoOnline && aseguradas != null) {
+      var bolSoles = 0.0;
+      for (final x in extras) {
+        if (x.esBoleador) bolSoles += x.precio;
+      }
+      final cobrado = total - descuentoPuntos;
+      final cargoBol = (cargo != null && cargo.hayCargo && cobrado > 0)
+          ? (cargo.cargoCentimos * bolSoles / cobrado).round()
+          : 0;
+      unawaited(Boleadores.solicitar({
+        'slug': bol.slug,
+        'cliente_email': appState.usuario?.email ?? '',
+        'cliente_nombre': appState.usuario?.nombre ?? '',
+        'reserva_ids': [for (final x in aseguradas) x.id],
+        'reserva_ref': aseguradas.first.grupoReservaId.isNotEmpty
+            ? aseguradas.first.grupoReservaId
+            : aseguradas.first.id,
+        'cancha_id': _cancha.id,
+        'fecha': _cancha.fechaRealSlot(_fechaIso, slots.first),
+        'hora_inicio': slots.first,
+        'hora_fin': _cancha.horaFinDe(slots.last),
+        'turnos': slots.length,
+        'charge_id': operacion,
+        'cargo_centimos': cargoBol,
+        'medio': PagoTarjeta.ultimoMetodo,
+      }).then((_) {
+        final email = appState.usuario?.email ?? '';
+        if (email.isNotEmpty) Boleadores.refrescarSolicitudes(email);
+      }));
+    }
     if (confirmada) {
       // Ya reservaste: sal de la lista de espera de esas horas (si estabas).
       for (final h in _slotsOrd) {
@@ -777,7 +815,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     : esSena
                     ? '✅ Seña pagada · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta · paga $mon ${(total - senaMonto).toStringAsFixed(2)} en la cancha'
                     : pagoOnline
-                        ? '✅ Pago OK · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta'
+                        ? '✅ Pago OK · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta${bol != null ? ' · ${bol.nombre} confirma tu boleo en breve' : ''}'
                         : '✅ Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta · pagas en la cancha')
                 : '⚠️ Sin señal: guardamos tu reserva como PENDIENTE y la '
                     'confirmaremos sola al recuperar conexión. Si para entonces '
@@ -1656,6 +1694,9 @@ typedef ResumenResultado = ({
   // Cargo por servicio cotizado para el método elegido (null si no aplica:
   // pago en la cancha, bono o línea apagada).
   CotizacionCargo? cargo,
+  // BOLEADOR elegido (módulo Boleadores, solo pago en línea); su línea ya va
+  // dentro de `extras` (clave `boleador`).
+  BoleadorPublico? boleador,
 });
 
 /// Ícono para un servicio extra según su clave.
@@ -1676,6 +1717,7 @@ class _ResumenReserva extends StatefulWidget {
   const _ResumenReserva({
     required this.cancha,
     required this.dia,
+    required this.fechaIso,
     required this.hora,
     required this.horaFin,
     required this.nSlots,
@@ -1688,6 +1730,7 @@ class _ResumenReserva extends StatefulWidget {
 
   final Cancha cancha;
   final String dia;
+  final String fechaIso; // día base (ISO) del bloque, para pedir boleadores
   final String hora;
   final String horaFin;
   final int nSlots; // cuántas horas seguidas (1 = una hora)
@@ -1718,14 +1761,50 @@ class _ResumenReservaState extends State<_ResumenReserva> {
     return m == 0 ? '$h h' : '$h h $m min';
   }
 
+  // BOLEADORES (módulo sep-2026): jugadores de la Liga que pelotean contigo en
+  // este local. Se ofrecen solo en tenis/pádel, si el local lo permite y si
+  // hay pago en línea (el boleador se paga junto con la cancha; el backend
+  // le avisa y él confirma). Lista del backend para ESTA fecha/franja.
+  List<BoleadorPublico>? _boleadores; // null = aún no cargó
+  BoleadorPublico? _bol; // el elegido
+  bool _bolCargando = false;
+  bool get _bolAplica =>
+      !_soloEfectivo &&
+      cancha.permiteBoleadores &&
+      cancha.registrada &&
+      cancha.dueno.isNotEmpty &&
+      (widget.deporte == Deporte.tenis || widget.deporte == Deporte.padel);
+  String get _nombreBol => _paisCancha.nombreBoleador;
+
+  Future<void> _cargarBoleadores() async {
+    if (!_bolAplica || _bolCargando) return;
+    // Desde initState no se llama setState (aún no hubo build); en un
+    // refresco posterior sí, para mostrar "Buscando…".
+    _bolCargando = true;
+    if (_boleadores != null) setState(() {});
+    final lista = await PagosService.boleadoresDisponibles(
+        canchaId: cancha.id,
+        fecha: widget.fechaIso,
+        hora: widget.hora,
+        turnos: widget.nSlots <= 0 ? 1 : widget.nSlots,
+        deporte: widget.deporte.name);
+    if (!mounted) return;
+    setState(() {
+      _bolCargando = false;
+      _boleadores = lista?.map(BoleadorPublico.fromJson).toList() ?? const [];
+    });
+  }
+
   /// Líneas elegidas con su TOTAL: por persona × cantidad, por turno × horas
-  /// del bloque, por reserva una vez (`ServicioExtra.linea`).
+  /// del bloque, por reserva una vez (`ServicioExtra.linea`). El boleador va
+  /// como una línea más (clave `boleador`, por turno), igual que en la web.
   List<ServicioExtra> get _elegidos => [
         for (final s in cancha.serviciosExtra)
           if (_sel.contains(s.clave))
             s.linea(
                 personas: _cant[s.clave] ?? 1,
                 turnos: widget.nSlots <= 0 ? 1 : widget.nSlots),
+        if (_bol != null) _bol!.linea(widget.nSlots <= 0 ? 1 : widget.nSlots),
       ];
 
   double get _totalFinal =>
@@ -1773,6 +1852,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
   void initState() {
     super.initState();
     _refrescarCargo();
+    _cargarBoleadores();
   }
 
   void _refrescarCargo() {
@@ -1812,6 +1892,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
             : metodo == 'sena'
                 ? _cotSena
                 : null,
+        boleador: metodo == 'online' ? _bol : null,
       ));
 
   @override
@@ -1879,6 +1960,54 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                         : _sel.add(s.clave);
                     _refrescarCargo();
                   }),
+                ),
+            ],
+            // BOLEADOR (tenis/pádel): tarjetas por categoría y precio por
+            // turno, como en la ficha web. Solo con pago en línea.
+            if (_bolAplica &&
+                (_bolCargando || (_boleadores?.isNotEmpty ?? false))) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('🎾 ¿Quieres un ${_nombreBol.toLowerCase()}?',
+                        style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                  ),
+                  Text('opcional', style: t.bodySmall?.copyWith(color: textoTenue)),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                  'Jugadores de la Liga Pichangol que pelotean contigo en este '
+                  'local. Eliges por categoría y precio por turno; el '
+                  '${_nombreBol.toLowerCase()} confirma y, si no puede, te '
+                  'devolvemos su parte.',
+                  style: t.bodySmall?.copyWith(color: textoTenue, height: 1.3)),
+              const SizedBox(height: 8),
+              if (_bolCargando && _boleadores == null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text('Buscando ${_nombreBol.toLowerCase()}es disponibles…',
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                )
+              else
+                for (final b in _boleadores!)
+                  _TarjetaBoleador(
+                    b: b,
+                    turnos: widget.nSlots <= 0 ? 1 : widget.nSlots,
+                    seleccionado: _bol?.slug == b.slug,
+                    onTap: () => setState(() {
+                      _bol = _bol?.slug == b.slug ? null : b;
+                      _refrescarCargo();
+                    }),
+                  ),
+              if (_bol != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                      'Se paga en línea junto con la cancha. Si ${_bol!.nombre} '
+                      'no puede, te devolvemos ${mon} ${_bol!.linea(widget.nSlots <= 0 ? 1 : widget.nSlots).precio.toStringAsFixed(2)}.',
+                      style: t.bodySmall?.copyWith(color: textoTenue, height: 1.3)),
                 ),
             ],
             const SizedBox(height: 8),
@@ -2099,18 +2228,30 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                     backgroundColor: lima,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 15)),
-                onPressed: () => _cerrar(_exigeSena ? 'sena' : 'online'),
+                onPressed: () =>
+                    _cerrar(_exigeSena && _bol == null ? 'sena' : 'online'),
                 icon: const Icon(Icons.lock, size: 18),
                 label: Text(
-                    _exigeSena
+                    _exigeSena && _bol == null
                         ? 'Pagar seña $mon ${(_senaMonto + (_cargoAplica ? _cargoSena : 0)).toStringAsFixed(2)} y reservar'
                         : 'Pagar ahora (Yape / Tarjeta)',
                     style: const TextStyle(
                         fontWeight: FontWeight.w800, fontSize: 15)),
               ),
             ),
+            // Con boleador NO hay seña ni efectivo: el boleador se paga en
+            // línea y todo va en un solo cobro (si él no puede, se devuelve
+            // su parte). Se explica en vez de esconderlo en silencio.
+            if (_bol != null && (_exigeSena || widget.permiteEfectivo)) ...[
+              const SizedBox(height: 8),
+              Text(
+                  'Con ${_nombreBol.toLowerCase()} la reserva se paga completa en '
+                  'línea (quítalo si prefieres ${_exigeSena ? 'solo la seña' : 'pagar en la cancha'}).',
+                  textAlign: TextAlign.center,
+                  style: t.bodySmall?.copyWith(color: textoTenue)),
+            ],
             // Con seña, ofrecemos también pagar TODO ahora (sin ir a la cancha).
-            if (_exigeSena) ...[
+            if (_exigeSena && _bol == null) ...[
               const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
@@ -2130,7 +2271,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
             ],
             // Efectivo puro (sin adelanto) solo si NO hay seña y el dueño tiene
             // saldo (así PCG cobra su comisión de ese saldo).
-            if (!_exigeSena && widget.permiteEfectivo) ...[
+            if (!_exigeSena && widget.permiteEfectivo && _bol == null) ...[
               const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
@@ -2166,6 +2307,108 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                 style: const TextStyle(fontSize: 14.5, height: 1.3)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Tarjeta de un BOLEADOR disponible en el resumen (nombre, categoría de la
+/// Liga, etiquetas, precio por turno y total por el bloque). Tocar = elegir.
+class _TarjetaBoleador extends StatelessWidget {
+  const _TarjetaBoleador(
+      {required this.b,
+      required this.turnos,
+      required this.seleccionado,
+      required this.onTap});
+  final BoleadorPublico b;
+  final int turnos;
+  final bool seleccionado;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final total = b.tarifa * turnos;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: seleccionado ? limaSuave : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: seleccionado ? pino : trazo, width: seleccionado ? 1.6 : 1),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: limaSuave,
+              backgroundImage:
+                  b.foto.isNotEmpty ? CachedNetworkImageProvider(b.foto) : null,
+              child: b.foto.isEmpty
+                  ? Text(b.inicial,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, color: bosque))
+                  : null,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(b.nombre,
+                            overflow: TextOverflow.ellipsis,
+                            style: t.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w800)),
+                      ),
+                      if (b.categoria.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                              color: limaSuave,
+                              borderRadius: BorderRadius.circular(999)),
+                          child: Text(b.categoria,
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: lima)),
+                        ),
+                      ],
+                    ],
+                  ),
+                  Text(b.detalle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('${b.simbolo} ${total.toStringAsFixed(2)}',
+                    style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
+                Text(
+                    turnos > 1
+                        ? '${b.simbolo} ${b.tarifa.toStringAsFixed(2)} × $turnos'
+                        : 'por turno',
+                    style: t.bodySmall?.copyWith(color: textoTenue, fontSize: 11)),
+              ],
+            ),
+            const SizedBox(width: 6),
+            Icon(seleccionado ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: seleccionado ? pino : trazo),
+          ],
+        ),
       ),
     );
   }

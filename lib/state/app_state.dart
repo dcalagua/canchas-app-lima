@@ -30,6 +30,7 @@ import '../data/puntos_repo.dart';
 import '../data/bodega_repo.dart';
 import '../models/bodega.dart';
 import '../models/cargo_servicio.dart';
+import '../models/boleador.dart';
 import '../data/bloqueos_repo.dart';
 import '../data/descuentos_repo.dart';
 import '../data/referidos_repo.dart';
@@ -1231,6 +1232,8 @@ class AppState extends ChangeNotifier {
   /// Reintenta registrar en el backend la contabilidad pendiente (comisión de
   /// saldo / liquidación online). Idempotente por reserva_id → seguro repetir.
   Future<void> flushContabilidad() async {
+    // Solicitudes de boleador que no llegaron al backend (el cliente ya pagó).
+    unawaited(Boleadores.flushPendientes());
     if (_contaPend.isEmpty || !PagosService.disponible) return;
     var cambios = false;
     for (final e in [..._contaPend]) {
@@ -5538,6 +5541,7 @@ class AppState extends ChangeNotifier {
         fotos: r.fotos,
         fotoUrl: r.fotoUrl,
         serviciosExtra: r.serviciosExtra,
+        permiteBoleadores: r.permiteBoleadores,
       );
     }
   }
@@ -6569,7 +6573,10 @@ class AppState extends ChangeNotifier {
             // RECIBIR como una reserva online; Pichangol lo transfiere. Los
             // registros viejos (ya acreditados al saldo) llegan con
             // liquidado=true y se ven como recibidos.
-            'inscripcion_torneo_ingreso' =>
+            'inscripcion_torneo_ingreso' ||
+            // Neto de un BOLEO (módulo Boleadores): tarifa − comisión fija,
+            // por recibir cuando termina el turno (Pichangol lo transfiere).
+            'liquidacion_boleador' =>
               TipoMovimiento.liquidacion,
             _ => TipoMovimiento.recarga, // recarga, bonos, cupones
           };
@@ -6593,6 +6600,9 @@ class AppState extends ChangeNotifier {
           } else if (tipoStr == 'inscripcion_torneo_ingreso') {
             fuente = 'transaccion';
             if (concepto.isEmpty) concepto = 'Inscripción a torneo';
+          } else if (tipoStr == 'liquidacion_boleador') {
+            fuente = 'transaccion';
+            if (concepto.isEmpty) concepto = 'Boleo · neto por recibir';
           } else if (tipoStr == 'venta_producto') {
             // Venta del marketplace o bono de horas: Pichangol cobró al comprador
             // y te debe el neto (por recibir). El concepto ya dice qué fue
@@ -7366,6 +7376,7 @@ class AppState extends ChangeNotifier {
     cargarMisNiveles(); // mi nivel de jugador por deporte (device-first)
     cargarReservasSync(); // reservas offline pendientes de subir (outbox)
     cargarContabilidad(); // comisión/liquidación pendiente de registrar
+    Boleadores.sincronizar(u.email); // perfil de boleador + solicitudes (device-first)
     // Trae sus academias (por si las creó en otro dispositivo) y LUEGO las
     // matrículas, para que el profe vea a sus alumnos apenas entra.
     () async {
@@ -7420,6 +7431,7 @@ class AppState extends ChangeNotifier {
   /// del anterior. La fuente de verdad de cada cuenta vuelve a bajarse de la nube
   /// al iniciar sesión (sincronizarAgenda, cargarEstados, etc.).
   void _limpiarDatosDeSesion() {
+    Boleadores.limpiar(); // el perfil de boleador es por cuenta
     _apodos.clear();
     _contactos.clear();
     _bloqueados.clear();

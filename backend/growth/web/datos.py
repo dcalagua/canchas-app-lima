@@ -1150,3 +1150,311 @@ def canchas_para_sede() -> list[dict]:
             return out
     except Exception:  # noqa: BLE001
         return []
+
+
+# ── BOLEADORES (sparring por turno, sep-2026; docs/diseno-boleadores.md) ───────
+# `pichangol_boleadores` (email PK, deporte, categoria, tarifa, moneda, activo,
+# data jsonb) y `pichangol_boleador_solicitudes` (una por reserva con boleador).
+# SQL `docs/piloto/supabase_boleadores.sql`. Solo el backend las toca.
+
+_COLS_BOL = ["email", "deporte", "categoria", "tarifa", "moneda", "activo", "data", "creado", "actualizado"]
+
+
+def _norm_boleador(f) -> dict:
+    d = pg._fila_a_dict(_COLS_BOL, f)
+    data = _json_dict(d.get("data"))
+    out = dict(data)
+    out.update({
+        "email": str(d.get("email") or "").lower(),
+        "deporte": str(d.get("deporte") or "tenis"),
+        "categoria": str(d.get("categoria") or ""),
+        "tarifa": float(d.get("tarifa") or 0),
+        "moneda": str(d.get("moneda") or "PEN"),
+        "activo": bool(d.get("activo")),
+        "creado": d["creado"].isoformat() if d.get("creado") else "",
+        "actualizado": d["actualizado"].isoformat() if d.get("actualizado") else "",
+    })
+    out["canchas"] = [str(x) for x in (data.get("canchas") or []) if x]
+    out["locales"] = [x for x in (data.get("locales") or []) if isinstance(x, dict)]
+    out["etiquetas"] = [str(x) for x in (data.get("etiquetas") or [])]
+    out["disponibilidad"] = data.get("disponibilidad") if isinstance(data.get("disponibilidad"), dict) else {}
+    out["stats"] = data.get("stats") if isinstance(data.get("stats"), dict) else {}
+    return out
+
+
+def boleador(email: str) -> dict | None:
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not email:
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_BOL)} FROM pichangol_boleadores WHERE email = %s", (email,))
+            f = cur.fetchone()
+            return _norm_boleador(f) if f else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def boleador_por_slug(slug: str) -> dict | None:
+    """El público no ve correos: la ficha/checkout identifican al boleador por
+    `data.slug` (hash corto del correo)."""
+    slug = (slug or "").strip()
+    if not pg.habilitado or not slug:
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_BOL)} FROM pichangol_boleadores WHERE data->>'slug' = %s", (slug,))
+            f = cur.fetchone()
+            return _norm_boleador(f) if f else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def guardar_boleador(email: str, *, deporte: str, categoria: str, tarifa: float, moneda: str,
+                     activo: bool, data: dict) -> bool:
+    """UPSERT del perfil de boleador (crea o actualiza el suyo)."""
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not email:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO pichangol_boleadores (email, deporte, categoria, tarifa, moneda, activo, data, creado, actualizado) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, now(), now()) "
+                "ON CONFLICT (email) DO UPDATE SET deporte = EXCLUDED.deporte, categoria = EXCLUDED.categoria, "
+                "tarifa = EXCLUDED.tarifa, moneda = EXCLUDED.moneda, activo = EXCLUDED.activo, data = EXCLUDED.data, actualizado = now()",
+                (email, deporte, categoria, float(tarifa), moneda, bool(activo), json.dumps(data)))
+            conn.commit()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def actualizar_boleador(email: str, *, activo: bool | None = None, data_merge: dict | None = None) -> bool:
+    """Cambios puntuales (pausar, stats/faltas) sin pisar el resto del perfil."""
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not email:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            if data_merge:
+                cur.execute("UPDATE pichangol_boleadores SET data = data || %s::jsonb, actualizado = now() WHERE email = %s",
+                            (json.dumps(data_merge), email))
+            if activo is not None:
+                cur.execute("UPDATE pichangol_boleadores SET activo = %s, actualizado = now() WHERE email = %s", (bool(activo), email))
+            conn.commit()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def boleadores_de_cancha(cancha_id: str, deporte: str = "") -> list[dict]:
+    """Boleadores ACTIVOS que atienden en esa cancha (su `data.canchas` la
+    incluye) y, si se pide, de ese deporte."""
+    if not pg.habilitado or not cancha_id:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            sql = (f"SELECT {', '.join(_COLS_BOL)} FROM pichangol_boleadores "
+                   "WHERE activo = true AND data->'canchas' ? %s")
+            args: list = [cancha_id]
+            if deporte:
+                sql += " AND deporte = %s"
+                args.append(deporte)
+            cur.execute(sql + " ORDER BY tarifa, email", args)
+            return [_norm_boleador(f) for f in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def permite_boleadores(cancha_id: str) -> bool:
+    """`pichangol_canchas.permite_boleadores` (default true; sin la columna, true)."""
+    if not pg.habilitado or not cancha_id:
+        return True
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT coalesce(permite_boleadores, true) FROM pichangol_canchas WHERE id = %s", (cancha_id,))
+            f = cur.fetchone()
+            return bool(f[0]) if f else True
+    except Exception:  # noqa: BLE001
+        return True
+
+
+_COLS_SOL = ["id", "boleador_email", "cliente_email", "cliente_nombre", "reserva_ref", "cancha_id", "club",
+             "fecha", "hora_inicio", "hora_fin", "turnos", "monto_centimos", "comision_centimos", "moneda",
+             "estado", "canal", "charge_id", "vence_en", "respondido_en", "creado", "data"]
+
+
+def _norm_sol(f) -> dict:
+    d = pg._fila_a_dict(_COLS_SOL, f)
+    d["data"] = _json_dict(d.get("data"))
+    for k in ("turnos", "monto_centimos", "comision_centimos"):
+        d[k] = int(d.get(k) or 0)
+    for k in ("vence_en", "respondido_en", "creado"):
+        v = d.get(k)
+        d[k] = v.isoformat() if hasattr(v, "isoformat") else (str(v) if v else "")
+    for k in ("boleador_email", "cliente_email", "cliente_nombre", "reserva_ref", "cancha_id", "club",
+              "fecha", "hora_inicio", "hora_fin", "moneda", "estado", "canal", "charge_id"):
+        d[k] = str(d.get(k) or "")
+    return d
+
+
+def insertar_solicitud(s: dict) -> bool:
+    if not pg.habilitado or not s.get("id"):
+        return False
+    cols = [c for c in _COLS_SOL if c != "creado"]
+    vals = []
+    for c in cols:
+        v = s.get(c)
+        if c == "data":
+            v = json.dumps(v or {})
+        vals.append(v)
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"INSERT INTO pichangol_boleador_solicitudes ({', '.join(cols)}) VALUES "
+                        f"({', '.join(['%s::jsonb' if c == 'data' else '%s' for c in cols])})", vals)
+            conn.commit()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def solicitud(sol_id: str) -> dict | None:
+    if not pg.habilitado or not sol_id:
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_SOL)} FROM pichangol_boleador_solicitudes WHERE id = %s", (sol_id,))
+            f = cur.fetchone()
+            return _norm_sol(f) if f else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def solicitud_por_reserva(ref: str) -> dict | None:
+    """La solicitud viva (no rechazada/vencida/cancelada) de una reserva; si no
+    hay viva, la última."""
+    if not pg.habilitado or not ref:
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_SOL)} FROM pichangol_boleador_solicitudes WHERE reserva_ref = %s "
+                        "ORDER BY (estado IN ('pendiente','aceptada')) DESC, creado DESC LIMIT 1", (ref,))
+            f = cur.fetchone()
+            return _norm_sol(f) if f else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def solicitudes_de_boleador(email: str, estados: tuple[str, ...] = (), limite: int = 100) -> list[dict]:
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not email:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            sql = f"SELECT {', '.join(_COLS_SOL)} FROM pichangol_boleador_solicitudes WHERE boleador_email = %s"
+            args: list = [email]
+            if estados:
+                sql += " AND estado = ANY(%s)"
+                args.append(list(estados))
+            cur.execute(sql + " ORDER BY fecha DESC, hora_inicio DESC LIMIT %s", args + [int(limite)])
+            return [_norm_sol(f) for f in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def solicitudes_de_cliente(email: str, limite: int = 100) -> list[dict]:
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not email:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_SOL)} FROM pichangol_boleador_solicitudes WHERE cliente_email = %s "
+                        "ORDER BY creado DESC LIMIT %s", (email, int(limite)))
+            return [_norm_sol(f) for f in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def solicitudes_cruce(boleador_email: str, fecha: str, hora_inicio: str, hora_fin: str) -> list[dict]:
+    """Solicitudes VIVAS (pendiente/aceptada) del boleador que se cruzan con
+    [hora_inicio, hora_fin) ese día: si hay alguna, no está disponible."""
+    email = (boleador_email or "").strip().lower()
+    if not pg.habilitado or not email or not fecha:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_SOL)} FROM pichangol_boleador_solicitudes "
+                        "WHERE boleador_email = %s AND fecha = %s AND estado IN ('pendiente','aceptada') "
+                        "AND hora_inicio < %s AND hora_fin > %s", (email, fecha, hora_fin, hora_inicio))
+            return [_norm_sol(f) for f in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def solicitudes_vencidas() -> list[dict]:
+    """Pendientes cuyo plazo para aceptar ya pasó (las procesa el cron)."""
+    if not pg.habilitado:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_SOL)} FROM pichangol_boleador_solicitudes "
+                        "WHERE estado = 'pendiente' AND vence_en IS NOT NULL AND vence_en < now() ORDER BY vence_en LIMIT 200")
+            return [_norm_sol(f) for f in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def actualizar_solicitud(sol_id: str, *, estado: str | None = None, data_merge: dict | None = None,
+                         respondida: bool = False, solo_si_estado: tuple[str, ...] = ()) -> bool:
+    """Cambia estado/data de una solicitud. Con `solo_si_estado` es atómico:
+    solo escribe si el estado actual está en la tupla (evita aceptar dos veces
+    o aceptar algo ya vencido). Devuelve True si tocó la fila."""
+    if not pg.habilitado or not sol_id:
+        return False
+    sets, args = [], []
+    if estado is not None:
+        sets.append("estado = %s"); args.append(estado)
+    if data_merge:
+        sets.append("data = data || %s::jsonb"); args.append(json.dumps(data_merge))
+    if respondida:
+        sets.append("respondido_en = now()")
+    if not sets:
+        return False
+    sql = f"UPDATE pichangol_boleador_solicitudes SET {', '.join(sets)} WHERE id = %s"
+    args.append(sol_id)
+    if solo_si_estado:
+        sql += " AND estado = ANY(%s)"
+        args.append(list(solo_si_estado))
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(sql, args)
+            n = cur.rowcount
+            conn.commit()
+            return n == 1
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def marcar_extra_boleador(reserva_ids: list[str], estado: str) -> bool:
+    """Actualiza el `estado` de la línea `boleador` dentro de `extras` de la
+    reserva (la primera fila del bloque la lleva) para que el app/web muestren
+    Esperando confirmación / Confirmado / No disponible."""
+    if not pg.habilitado or not reserva_ids:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, extras FROM pichangol_reservas WHERE id = ANY(%s)", (list(reserva_ids),))
+            for rid, extras in cur.fetchall():
+                lst = _json_list(extras)
+                cambio = False
+                for x in lst:
+                    if isinstance(x, dict) and x.get("clave") == "boleador":
+                        x["estado"] = estado
+                        cambio = True
+                if cambio:
+                    cur.execute("UPDATE pichangol_reservas SET extras = %s WHERE id = %s", (json.dumps(lst), rid))
+            conn.commit()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
