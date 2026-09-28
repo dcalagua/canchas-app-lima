@@ -1442,7 +1442,8 @@ para la API del APK.
   tabla `pichangol_fidelidad_canjes` (email, `local_key` = "dueño|club",
   reserva_ref, reserva_ids, tipo, descuento, estado `reservado → usado |
   devuelto`, `reservas_contadas`); SQL `docs/piloto/supabase_fidelidad.sql`
-  (PENDIENTE de correr en QAS y PRD). `datos.py` lee la columna solo si
+  (aplicado en PCG-PRD el 28-sep-2026; en QAS lo corre el director).
+  `datos.py` lee la columna solo si
   existe (`col_fidelidad_disponible`, `_sel_cancha()`); `COLS_EDITABLES` la
   incluye. **Conteo** (`fidelidad.estado`): reservas PAGADAS del correo en
   cualquier cancha del local (`datos.reservas_pagadas_en`, sin canceladas /
@@ -1796,6 +1797,15 @@ off → redeploy inmediato en cada push). URL pública:
     APK/AAB de PRD = run 1437 (`workflow_dispatch`, `ref=prd`,
     `entorno=prod`). OJO: un APK anterior no ofrece boleador al reservar ni
     tiene "Ser boleador" en Perfil → actualizar.
+    **Pase del 28-sep-2026 (4.º, autorizado: "pasar todo a prd incluido
+    dame el apk para prd"):** `prd` = merge `e0139e4` (tarjeta de FIDELIDAD
+    del local en backend, web y APK). SQL `docs/piloto/supabase_fidelidad.sql`
+    APLICADO en PCG-PRD vía `apply_migration` (`pichangol_fidelidad_local`:
+    columna `pichangol_canchas.fidelidad` + tabla
+    `pichangol_fidelidad_canjes`); en QAS lo corre el director a mano. Sin
+    Edge ni variables nuevas. CAMBIÓ `lib/` → APK/AAB de PRD = run 1441
+    (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un APK anterior no
+    muestra la tarjeta ni aplica el premio → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
