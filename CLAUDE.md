@@ -1499,6 +1499,46 @@ para la API del APK.
   hora gratis sin pasarela + ciclo + editor, descuento % con liquidación
   descontada y devolución al cancelar, hold/pago rechazado devuelven el
   premio + endpoints del APK).
+- **ABRIR EN LA APP DESDE EL NAVEGADOR DEL CELULAR (pedido del director,
+  28-sep-2026: "si estoy en la web de un celular y el usuario tiene instalado
+  el PCG, que lo lleve inmediatamente al app; si no lo tiene, que siga en el
+  browser; que se detecte si está en un celular o no"):** `ui.JS_ABRIR_APP`
+  (concatenado a `JS_NAV` → TODAS las páginas del shell; la página del
+  campeonato `/c/{id}` lo incluye aparte vía `campeonato_web._js_abrir_app`).
+  Solo en ANDROID con navegador real (no en el WebView del propio APK ni en
+  iPhone, que no tiene app: ahí la web sigue igual; escritorio sin cambios) y
+  solo en las rutas que la app sabe abrir (`RUTAS`: `/`, `/canchas`,
+  `/reservar/`, `/reserva/`, `/academia/`, `/l/`, `/mis-reservas`, `/c/`,
+  `/anfitrion`; `/admin`, `/legal`, `/lugar`, `/entrar` se quedan en la web).
+  (1) Al terminar de cargar la página (evento `load`; hacerlo antes CORTA la
+  carga del documento) intenta UNA vez por pestaña `intent://<host><ruta>
+  #Intent;scheme=pichangol;package=pe.ebim.pichangol;S.browser_fallback_url=
+  <misma URL>?web=1;end`: con la app instalada Android la abre en esa misma
+  pantalla; sin app, Chrome vuelve a la MISMA página con `?web=1` → la web
+  guarda `localStorage pcg_sin_app` 7 días (no insiste, sin banner) y limpia
+  el parámetro con `replaceState`. Chrome puede bloquear un intent sin gesto
+  del usuario, por eso (2) banner "Abrir en la app Pichangol" arriba de la
+  página (`#abrirApp`, logo + botón Abrir = `pcgAbrirApp()` + ✕ que lo
+  esconde 7 días, `pcg_app_banner_off`; oculto en ≥901 px). (3) **App Links
+  verificados**: `tool/configure_platforms.py` declara en el manifest, para
+  `www.pichangol.app`, `pichangol.app` y `pg.ebim.pe`, `path` exacto `/` y
+  `/canchas` + `pathPrefix` de las mismas rutas (antes solo `/c/`), así un
+  enlace tocado en WhatsApp abre la app SIN pasar por el navegador
+  (requiere las SHA-256 de Play en `ANDROID_CERT_SHA256`, pendiente del
+  director). (4) **APK** `EnlacesService` (`rutaWebDe(uri)`: https → path;
+  `pichangol://c/ID` → `/c/ID`; `pichangol://www.pichangol.app/...` → path)
+  enruta `/c/{id}[?equipo=]` → ficha del campeonato (como antes),
+  `/reservar/{canchaId}` → `ClubDetalleScreen` del LOCAL con esa cancha
+  seleccionada (baja `cargarCanchasRemotas` si aún no está), `/reserva/` y
+  `/mis-reservas` → Mis reservas, `/academia/{id}` y `/l/{id}` →
+  `AcademiaDetalleScreen` (baja academias si falta), `/anfitrion…` → Modo
+  anfitrión, `/` y `/canchas` → Explorar (nada que empujar). `?fecha=&hora=`
+  de la ficha web no se preselecciona en el app (pendiente). Test
+  `tests/test_abrir_en_la_app.py` (espejo rutas JS ↔ manifest ↔ Dart);
+  Playwright `$SP/pw_app.js` con UA Android / WebView / escritorio. OJO
+  Playwright: el Chromium de escritorio no entiende `intent://` y tras el
+  intento automático se traga los clics físicos (artefacto del harness, no
+  bug): para probar el banner, presembrar `sessionStorage pcg_app_try=1`.
 - **LENTITUD EN TODO EL SISTEMA (queja del director, 25-sep-2026: "mucho se
   demora para agregar un simple equipo, y lo mismo sucede en todo el
   sistema"). CAUSA RAÍZ:** el middleware de `main.py` corría, DENTRO de cada

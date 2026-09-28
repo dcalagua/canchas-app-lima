@@ -139,14 +139,29 @@ def android_manifest(text):
     # esquema propio pichangol:// (botón "Unirme en la app" de la página web)
     # abren la app directo en la ficha del campeonato (EnlacesService).
     if 'android:scheme="pichangol"' not in text:
+        # Rutas de la WEB que la app sabe abrir (espejo de `RUTAS` en
+        # web/ui.py::JS_ABRIR_APP y de `EnlacesService.rutaWebDe`): al tocar
+        # uno de estos enlaces en WhatsApp/Chrome, Android abre la app ya
+        # instalada en esa misma pantalla en vez del navegador (pedido del
+        # director, 28-sep-2026). Exactos: la portada y /canchas; prefijos:
+        # ficha de reserva, comprobante, academia, landing, Mis reservas,
+        # campeonato y Modo anfitrión. /admin, /legal, /lugar quedan en la web.
+        hosts = ("www.pichangol.app", "pichangol.app", "pg.ebim.pe")
+        exactos = ("/", "/canchas")
+        prefijos = ("/c/", "/reservar/", "/reserva/", "/academia/", "/l/",
+                    "/mis-reservas", "/anfitrion")
+        datas = []
+        for h in hosts:
+            for ruta in exactos:
+                datas.append(f'                <data android:scheme="https" android:host="{h}" android:path="{ruta}"/>\n')
+            for ruta in prefijos:
+                datas.append(f'                <data android:scheme="https" android:host="{h}" android:pathPrefix="{ruta}"/>\n')
         filtros = (
             '\n            <intent-filter android:autoVerify="true">\n'
             '                <action android:name="android.intent.action.VIEW"/>\n'
             '                <category android:name="android.intent.category.DEFAULT"/>\n'
             '                <category android:name="android.intent.category.BROWSABLE"/>\n'
-            '                <data android:scheme="https" android:host="www.pichangol.app" android:pathPrefix="/c/"/>\n'
-            '                <data android:scheme="https" android:host="pichangol.app" android:pathPrefix="/c/"/>\n'
-            '                <data android:scheme="https" android:host="pg.ebim.pe" android:pathPrefix="/c/"/>\n'
+            + "".join(datas) +
             '            </intent-filter>\n'
             '            <intent-filter>\n'
             '                <action android:name="android.intent.action.VIEW"/>\n'

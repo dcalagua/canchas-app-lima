@@ -3,21 +3,38 @@ import 'dart:async';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 
+import '../models/club.dart';
+import '../models/models.dart';
+import '../screens/academia_detalle_screen.dart';
+import '../screens/anfitrion_screen.dart';
 import '../screens/campeonato_detalle_screen.dart';
+import '../screens/club_detalle_screen.dart';
+import '../screens/mis_reservas_screen.dart';
 import '../state/app_state.dart';
 import 'push_service.dart';
 
-/// DEEP LINKS de la app (pedido del director: el enlace compartido debe
-/// llevar DIRECTO a unirse). Maneja:
-///  - `https://…/c/{campeonatoId}` (App Link del dominio de marca), y
-///  - `pichangol://c/{campeonatoId}` (esquema propio: lo dispara el botón
-///    "Unirme en la app" de la página web del campeonato).
-/// Ambos aceptan `?equipo=CODIGO` (enlace que comparte el CAPITÁN en fútbol):
-/// la app abre la ficha y, tras el login, ofrece "Unirme a «equipo»" sin que
-/// el jugador escriba el código (pedido del director, sep-2026).
-/// Si la app está instalada, el enlace la abre en la FICHA del campeonato
-/// (con su botón "Inscribirme"); si no, la página web empuja a descargarla.
-/// Fail-safe: cualquier error se ignora (la app arranca normal).
+/// DEEP LINKS de la app. Dos orígenes:
+///  - **App Links** `https://www.pichangol.app/...` (también `pichangol.app` y
+///    `pg.ebim.pe`, verificados contra `/.well-known/assetlinks.json`): al tocar
+///    el enlace en WhatsApp/Chrome, Android abre la app instalada en vez del
+///    navegador.
+///  - **Esquema propio** `pichangol://…`: lo dispara la web desde el navegador
+///    del celular (`ui.JS_ABRIR_APP`: `intent://<host><ruta>#Intent;scheme=
+///    pichangol;…`) y el botón "Unirme en la app" del campeonato
+///    (`pichangol://c/ID`).
+///
+/// La app abre la MISMA pantalla que el usuario veía en la web (pedido del
+/// director, 28-sep-2026: "si estoy en la web de un celular y tengo el PCG
+/// instalado, que me lleve inmediatamente al app"):
+///  - `/c/{id}[?equipo=COD]` → ficha del campeonato (+ "Unirme a «equipo»");
+///  - `/reservar/{canchaId}` → ficha del LOCAL con esa cancha seleccionada;
+///  - `/reserva/{ref}` y `/mis-reservas` → Mis reservas;
+///  - `/academia/{id}` y `/l/{id}` → ficha de la academia;
+///  - `/anfitrion…` → Modo anfitrión;
+///  - `/` y `/canchas` → Explorar (la pantalla inicial: nada que empujar).
+/// Espejo de `RUTAS` en `web/ui.py` y de los `pathPrefix` del manifest
+/// (`tool/configure_platforms.py`). Fail-safe: cualquier error se ignora y la
+/// app arranca normal.
 class EnlacesService {
   EnlacesService._();
 
@@ -40,20 +57,56 @@ class EnlacesService {
     }
   }
 
-  /// Id de campeonato dentro de un URI soportado ('' si no aplica).
-  static String _idCampeonato(Uri uri) {
-    // pichangol://c/ID  (host = 'c', path = '/ID')  ·  pichangol://campeonato?id=ID
-    if (uri.scheme == 'pichangol') {
-      final q = (uri.queryParameters['id'] ?? '').trim();
-      if (q.isNotEmpty) return q;
-      if (uri.host == 'c' && uri.pathSegments.isNotEmpty) {
-        return uri.pathSegments.first.trim();
-      }
+  /// Ruta "de la web" que representa el URI, siempre con `/` inicial y sin
+  /// barra final: `https://www.pichangol.app/reservar/x` → `/reservar/x`;
+  /// `pichangol://www.pichangol.app/mis-reservas` → `/mis-reservas`;
+  /// `pichangol://c/ID` (host sin punto = primer segmento) → `/c/ID`.
+  /// '' si no se reconoce el esquema.
+  static String rutaWebDe(Uri uri) {
+    String ruta;
+    if (uri.scheme == 'https' || uri.scheme == 'http') {
+      ruta = uri.path;
+    } else if (uri.scheme == 'pichangol') {
+      final host = uri.host.trim();
+      ruta = host.isEmpty || host.contains('.')
+          ? uri.path
+          : '/$host${uri.path}';
+    } else {
       return '';
     }
-    // https://dominio/c/ID (y el formato viejo ?id=…): mismo parser que
-    // "Unirme a un campeonato".
-    return AppState.idCampeonatoDe(uri.toString());
+    if (ruta.isEmpty) return '/';
+    if (!ruta.startsWith('/')) ruta = '/$ruta';
+    while (ruta.length > 1 && ruta.endsWith('/')) {
+      ruta = ruta.substring(0, ruta.length - 1);
+    }
+    return ruta;
+  }
+
+  /// Id de campeonato dentro de un URI soportado ('' si no aplica):
+  /// `/c/ID` (https o `pichangol://c/ID`) y el formato viejo
+  /// `…/campeonato…?id=ID` / `pichangol://campeonato?id=ID`.
+  static String _idCampeonato(Uri uri) {
+    final segs = _segmentos(rutaWebDe(uri));
+    if (segs.length >= 2 && segs.first == 'c') return segs[1];
+    final q = (uri.queryParameters['id'] ?? '').trim();
+    if (q.isNotEmpty && segs.isNotEmpty && segs.first.startsWith('campeonato')) {
+      return q;
+    }
+    return '';
+  }
+
+  static List<String> _segmentos(String ruta) {
+    final out = <String>[];
+    for (final s in ruta.split('/')) {
+      String t;
+      try {
+        t = Uri.decodeComponent(s).trim();
+      } catch (_) {
+        t = s.trim();
+      }
+      if (t.isNotEmpty) out.add(t);
+    }
+    return out;
   }
 
   /// Código de equipo del enlace (`?equipo=`), en mayúsculas; '' si no trae.
@@ -64,21 +117,111 @@ class EnlacesService {
   }
 
   static void _manejar(Uri uri) {
-    final id = _idCampeonato(uri);
-    if (id.isEmpty) return;
+    final ruta = rutaWebDe(uri);
+    if (ruta.isEmpty) return;
     _pendiente = uri;
-    _abrirCampeonato(id, equipo: codigoEquipoDe(uri));
+    final idCamp = _idCampeonato(uri);
+    if (idCamp.isNotEmpty) {
+      _abrirCampeonato(idCamp, equipo: codigoEquipoDe(uri));
+      return;
+    }
+    final segs = _segmentos(ruta);
+    if (segs.isEmpty) {
+      _pendiente = null; // portada: Explorar ya es la pantalla inicial
+      return;
+    }
+    final seccion = segs.first.toLowerCase();
+    final id = segs.length >= 2 ? segs[1] : '';
+    switch (seccion) {
+      case 'reservar':
+        if (id.isNotEmpty) _abrirCancha(id);
+      case 'reserva':
+      case 'mis-reservas':
+        _abrirPantalla((_) => const MisReservasScreen());
+      case 'academia':
+      case 'l':
+        if (id.isNotEmpty) _abrirAcademia(id);
+      case 'anfitrion':
+        _abrirPantalla((_) => const AnfitrionScreen());
+      default:
+        _pendiente = null; // /canchas, rutas sin equivalente: queda Explorar
+    }
+  }
+
+  /// Espera a que el navegador global exista (arranque en frío: el enlace
+  /// llega durante el splash). Reintenta unos segundos y desiste.
+  static Future<NavigatorState?> _esperarNavegador() async {
+    for (var i = 0; i < 40; i++) {
+      final nav = PushService.navigatorKey.currentState;
+      if (nav != null) return nav;
+      await Future.delayed(const Duration(milliseconds: 250));
+    }
+    return null;
+  }
+
+  static Future<void> _abrirPantalla(WidgetBuilder builder) async {
+    final nav = await _esperarNavegador();
+    if (nav == null) return;
+    _pendiente = null;
+    nav.push(MaterialPageRoute(builder: builder));
+  }
+
+  /// `/reservar/{canchaId}` → ficha del LOCAL (como la web: la ficha es el
+  /// local, con la cancha del enlace seleccionada). Si las canchas de la nube
+  /// aún no bajaron, las trae primero.
+  static Future<void> _abrirCancha(String canchaId) async {
+    final nav = await _esperarNavegador();
+    if (nav == null) return;
+    Cancha? c = _canchaPorId(canchaId);
+    if (c == null) {
+      try {
+        await appState.cargarCanchasRemotas();
+      } catch (_) {}
+      c = _canchaPorId(canchaId);
+    }
+    if (c == null) return; // no existe / sin red: no interrumpir el arranque
+    final vigente = appState.canchaVigente(c);
+    final todas = <Cancha>[...appState.canchasExtra, ...appState.canchasRemotas];
+    Club? club;
+    for (final cl in Club.agrupar(todas)) {
+      if (cl.canchas.any((x) => x.id == vigente.id)) {
+        club = cl;
+        break;
+      }
+    }
+    final destino =
+        club ?? Club(id: vigente.id, nombre: vigente.club, canchas: [vigente]);
+    _pendiente = null;
+    nav.push(MaterialPageRoute(
+        builder: (_) =>
+            ClubDetalleScreen(club: destino, canchaInicial: vigente)));
+  }
+
+  static Cancha? _canchaPorId(String id) {
+    for (final c in [...appState.canchasExtra, ...appState.canchasRemotas]) {
+      if (c.id == id) return c;
+    }
+    return null;
+  }
+
+  /// `/academia/{id}` y `/l/{id}` → ficha de la academia (baja las academias
+  /// de la nube si aún no están).
+  static Future<void> _abrirAcademia(String id) async {
+    final nav = await _esperarNavegador();
+    if (nav == null) return;
+    if (appState.academiaPorId(id) == null) {
+      try {
+        await appState.cargarAcademiasRemotas();
+      } catch (_) {}
+    }
+    if (appState.academiaPorId(id) == null) return;
+    _pendiente = null;
+    nav.push(MaterialPageRoute(
+        builder: (_) => AcademiaDetalleScreen(academiaId: id)));
   }
 
   static Future<void> _abrirCampeonato(String id, {String equipo = ''}) async {
-    // Espera a que el navegador global exista (arranque en frío: el enlace
-    // llega durante el splash). Reintenta unos segundos y desiste.
-    NavigatorState? nav;
-    for (var i = 0; i < 40; i++) {
-      nav = PushService.navigatorKey.currentState;
-      if (nav != null) break;
-      await Future.delayed(const Duration(milliseconds: 250));
-    }
+    final nav = await _esperarNavegador();
     if (nav == null) return;
     // Trae el campeonato a la caché local (si no estaba) y abre su ficha,
     // donde vive el botón "Inscribirme".
