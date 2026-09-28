@@ -1620,6 +1620,10 @@ off → redeploy inmediato en cada push). URL pública:
     director lo decida (primero QAS). OJO: un APK anterior cancela una
     reserva pagada en línea sin pasar por la política (borra la fila y deja
     el reembolso al operador) → actualizar.
+    **Pase del 27-sep-2026 (3.º, autorizado: "Pasar a prd"):** `prd` = merge
+    `8a3b7f5` (selector de medio de pago en el checkout web: Yape
+    preseleccionado, Culqi se abre solo con el método elegido). Solo web:
+    sin SQL, sin Edge, sin APK, sin variables.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
