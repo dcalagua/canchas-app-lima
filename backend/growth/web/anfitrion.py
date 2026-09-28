@@ -36,6 +36,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 import paises
 import servicios_extra as _se
+import fidelidad as _fid
 from db.store import stores
 from propiedad import reclamos
 from web import almacen, catalogos, datos, horarios, sesion, ui
@@ -1082,6 +1083,7 @@ $('inFotos').addEventListener('change',async function(){var files=Array.prototyp
       if(j.ok&&j.url){fotos.push(j.url);pintarFotos();msg.textContent=''}else{msg.textContent=j.error||'No se pudo subir la foto.'}}
     catch(e){msg.textContent='No se pudo subir la foto. Revisa tu conexión.'}
     subiendo--}});
+(function(){var pb=$('fidPctBox');if(pb)pb.style.display=(sel('fid_premio')[0]==='descuento')?'':'none'})();
 $('btnSug').addEventListener('click',async function(){var t=$('sugTxt').value.trim(),m=$('sugMsg');if(t.length<3){m.textContent='Cuéntanos qué servicio ofrece tu local.';return}
   try{var r=await fetch('/anfitrion/servicios/sugerir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:t,cancha_id:CFG.id})});var j=await r.json();m.textContent=j.ok?'✅ ¡Gracias! Lo revisamos y te avisamos cuando esté disponible.':(j.error||'No se pudo enviar.');if(j.ok)$('sugTxt').value=''}catch(e){m.textContent='No se pudo enviar. Revisa tu conexión.'}});
 $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las fotos.';return}
@@ -1244,7 +1246,21 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
                        f"<label class='precio-serv'{'' if on else ' hidden'}><span>{e(sim)}</span>"
                        f"<input type='number' name='serv_{e(k)}' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
     lista = "".join(f"<li>{_deporte(h.get('deporte'))[1]} <a href='/anfitrion/cancha/{e(h['id'])}/editar'>{e(h['nombre'])}</a> · {e(_deporte(h.get('deporte'))[0])}</li>" for h in hermanas)
-    secciones = [("local", "Nombre y dirección"), ("amenidades", "Servicios del local"), ("extras", "Servicios extra del local"), ("canchas", "Canchas")]
+    # TARJETA DE FIDELIDAD del local (sep-2026): cada N reservas pagadas, una
+    # hora gratis o un % de descuento. Se guarda igual en todas las canchas.
+    fid = _fid.config_de(next((h for h in hermanas if _fid.activa_en(h)), c))
+    ventana_txt = {0: "Sin límite", 90: "90 días", 180: "6 meses", 365: "1 año"}
+    fid_html = (
+        "<p class='sub'>Como una tarjeta de sellos: el jugador ve su progreso en la ficha y, al llegar a la meta, el premio se aplica solo al reservar (app y web). "
+        "Cuentan las reservas PAGADAS del jugador en cualquiera de tus canchas; el premio lo asumes tú (sale de tu liquidación).</p>"
+        "<label>¿Activar la tarjeta?</label>" + _chips("fid_activa", [("1", "✅ Sí, premiar a mis clientes"), ("0", "No por ahora")], {"1" if fid["activa"] else "0"}) +
+        "<label style='margin-top:14px'>Cada cuántas reservas</label>" + _chips("fid_meta", [(str(m), f"{m} reservas") for m in _fid.METAS], {str(fid["meta"])}) +
+        "<label style='margin-top:14px'>Premio</label>" + _chips("fid_premio", [("hora_gratis", "🎁 Una hora gratis (el turno más barato del bloque)"), ("descuento", "🏷️ Descuento en la siguiente reserva")], {fid["premio"]}) +
+        "<div id='fidPctBox'><label style='margin-top:14px'>Descuento</label>" + _chips("fid_pct", [(str(d), f"{d} %") for d in _fid.DESCUENTOS], {str(fid["descuentoPct"])}) + "</div>"
+        "<label style='margin-top:14px'>Cuentan las reservas de los últimos</label>" + _chips("fid_ventana", [(str(v), ventana_txt[v]) for v in _fid.VENTANAS], {str(fid["ventanaDias"])}) +
+        "<label style='margin-top:14px'>Qué reservas cuentan</label>" + _chips("fid_aplica", [("todas", "Todas las pagadas (en línea o en la cancha)"), ("online", "Solo las pagadas en línea")], {fid["aplica"]}) +
+        "<p class='sub' style='margin-top:10px;font-size:12.5px'>Las reservas manuales que registras tú no cuentan. Si el jugador cancela una reserva premiada, recupera su premio.</p>")
+    secciones = [("local", "Nombre y dirección"), ("amenidades", "Servicios del local"), ("extras", "Servicios extra del local"), ("fidelidad", "Fidelidad"), ("canchas", "Canchas")]
     nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
     cfg = {"id": c["id"]}
     cuerpo = f"""
@@ -1269,6 +1285,7 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
    <span class='sub' id='sugMsg' style='margin:4px 0 0'></span>
   </div>
  </section>
+ <section class='panel edit-sec' id='sec-fidelidad'><h2>🎁 Tarjeta de fidelidad</h2>{fid_html}</section>
  <section class='panel edit-sec' id='sec-canchas'><h2>Canchas de este local</h2><p class='sub'>Precio, horario, piso, fotos y servicios propios (árbitro, petos…) se editan en cada una.</p>
   <ul class='sub' style='margin:0 0 0 18px'>{lista}</ul>
   <div class='acciones' style='margin-top:10px'><a class='btn sec' href='/anfitrion/cancha/{e(c['id'])}/agregar'>＋ Agregar cancha a este local</a></div>
@@ -1287,13 +1304,16 @@ _JS_LOCAL = r"""
 function $(id){return document.getElementById(id)}
 function sel(g){return Array.prototype.map.call(document.querySelectorAll(".chip.sel[data-g='"+g+"']"),function(b){return b.dataset.v})}
 document.addEventListener('click',function(ev){var b=ev.target.closest('.chip[data-g]');if(!b)return;var g=b.dataset.g;
+  if(g.indexOf('fid_')===0){document.querySelectorAll(".chip[data-g='"+g+"']").forEach(function(x){x.classList.remove('sel')});b.classList.add('sel');
+    var pb=$('fidPctBox');if(pb)pb.style.display=(sel('fid_premio')[0]==='descuento')?'':'none';return}
   if(g==='servicios'){var row=b.closest('.serv');row.classList.toggle('sel');b.classList.toggle('sel');row.querySelector('.precio-serv').hidden=!row.classList.contains('sel');if(row.classList.contains('sel'))row.querySelector('input').focus();return}
   b.classList.toggle('sel')});
 $('btnSug').addEventListener('click',async function(){var t=$('sugTxt').value.trim(),m=$('sugMsg');if(t.length<3){m.textContent='Cuéntanos qué servicio ofrece tu local.';return}
   try{var r=await fetch('/anfitrion/servicios/sugerir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:t,cancha_id:CFG.id})});var j=await r.json();m.textContent=j.ok?'✅ ¡Gracias! Lo revisamos y te avisamos cuando esté disponible.':(j.error||'No se pudo enviar.');if(j.ok)$('sugTxt').value=''}catch(e){m.textContent='No se pudo enviar. Revisa tu conexión.'}});
 $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');
   var serv=[];document.querySelectorAll('.serv.sel').forEach(function(r){serv.push({clave:r.dataset.serv,precio:parseFloat(r.querySelector('input').value)||0})});
-  var body={nombre_local:$('local').value,direccion:$('direccion').value,amenidades:sel('amenidades'),servicios_extra:serv};
+  var fid={activa:sel('fid_activa')[0]==='1',meta:parseInt(sel('fid_meta')[0]||'5',10),premio:sel('fid_premio')[0]||'hora_gratis',descuentoPct:parseInt(sel('fid_pct')[0]||'20',10),ventanaDias:parseInt(sel('fid_ventana')[0]||'180',10),aplica:sel('fid_aplica')[0]||'todas'};
+  var body={nombre_local:$('local').value,direccion:$('direccion').value,amenidades:sel('amenidades'),servicios_extra:serv,fidelidad:fid};
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Guardando…';
   try{var r=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){location.href=j.url||'/anfitrion/canchas';return}msg.classList.add('err');msg.textContent=j.error||'No se pudo guardar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth'})}}
@@ -1352,17 +1372,28 @@ def _guardar_edicion_local(request: Request, cancha_id: str, _cuerpo_json) -> JS
         vistos.add(k)
         fila["precio"] = p
         locales.append(fila)
+    fid_cfg = None
+    if isinstance(b.get("fidelidad"), dict):
+        err, fid_cfg = _fid.validar(b.get("fidelidad"))
+        if err:
+            msgs = {"meta_invalida": "Elige cada cuántas reservas se gana el premio.", "premio_invalido": "Elige el premio.",
+                    "descuento_invalido": "Elige el porcentaje de descuento."}
+            return JSONResponse({"ok": False, "error": msgs.get(err, "Revisa la tarjeta de fidelidad."), "campo": "fidelidad"}, status_code=400)
+        if not datos.col_fidelidad_disponible():
+            fid_cfg = None  # la base aún no tiene la columna: no se rompe el resto del guardado
     hermanas = _hermanas_local(ses["email"], c)
     n = 0
     for h in hermanas:
         propios = [_se.completar(x) for x in (h.get("servicios_extra") or []) if x.get("clave")]
         nuevos = [x for x in propios if x.get("ambito") != "local"] + [dict(x) for x in locales]
         campos = {"club": local, "direccion": direccion or None, "amenidades": amen, "servicios_extra": nuevos}
+        if fid_cfg is not None:
+            campos["fidelidad"] = fid_cfg
         if datos.actualizar_cancha(h["id"], ses["email"], campos):
             n += 1
     if not n:
         return JSONResponse({"ok": False, "error": "No pudimos guardar en este momento. Inténtalo de nuevo."}, status_code=503)
-    print(f"[editar-local-web] {ses['email']} guardó {local!r}: {n} canchas · amen={amen} · extras_local={[x['clave'] for x in locales]}", flush=True)
+    print(f"[editar-local-web] {ses['email']} guardó {local!r}: {n} canchas · amen={amen} · extras_local={[x['clave'] for x in locales]} · fidelidad={fid_cfg}", flush=True)
     return JSONResponse({"ok": True, "url": f"/anfitrion/canchas?local_guardado={c['id']}", "canchas": n})
 
 

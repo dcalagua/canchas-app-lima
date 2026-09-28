@@ -167,7 +167,7 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .linea{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:7px 0;border-bottom:1px solid var(--trazo)}
 .linea:last-child{border-bottom:0}.linea b{font-weight:700}
 /* Boleadores (sparring por turno) en la ficha de reserva y en Modo anfitrión */
-.bol-box{display:grid;gap:10px;margin:4px 0 12px}
+.fid-box{border:1px dashed var(--verde);background:#F1FAF5;border-radius:14px;padding:12px 14px;margin:0 0 14px}.fid-box .sellos{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 2px}.fid-box .sello{width:26px;height:26px;border-radius:50%;border:2px solid #CFE8DA;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;background:#fff}.fid-box .sello.on{background:var(--verde);border-color:var(--verde)}.fid-usar{display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:700;cursor:pointer}.fid-usar input{width:auto;flex:none}.bol-box{display:grid;gap:10px;margin:4px 0 12px}
 .bol-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--trazo);border-radius:16px;background:var(--blanco);cursor:pointer;box-shadow:0 1px 3px rgba(10,27,61,.06);transition:box-shadow .15s,border-color .15s}
 .bol-card:hover{box-shadow:0 4px 14px rgba(10,27,61,.10)}.bol-card.sel{border-color:var(--noche);box-shadow:0 0 0 2px var(--noche) inset}
 .bol-card img,.bol-card .ini{width:48px;height:48px;border-radius:50%;object-fit:cover;flex:none;background:var(--tinte);display:inline-flex;align-items:center;justify-content:center;font-weight:800;color:var(--esmeralda);font-size:18px}
@@ -1029,7 +1029,7 @@ JS_NAV = r"""
   // entonces se abre Culqi con el medio elegido. Las líneas llegan ya escapadas. → Promise<bool>.
   window.pcgResumenPago = function(o){
     o = o || {};
-    var mon = o.moneda || 'S/', fmt = function(n){ return mon + ' ' + Number(n || 0).toFixed(2); };
+    var mon = o.moneda || 'S/', fmt = function(n){ n = Number(n || 0); return (n < 0 ? '−' : '') + mon + ' ' + Math.abs(n).toFixed(2); };
     var h = '<div class="pcg-rp">';
     (o.lineas || []).forEach(function(l){ h += '<div class="rp-l"><span>' + l.t + '</span><b>' + fmt(l.m) + '</b></div>'; });
     var c = o.cargo;
@@ -1043,7 +1043,7 @@ JS_NAV = r"""
     h += '</div>';
     var tarjeta = o.medio === 'tarjeta';
     return pcgConfirmar({titulo: o.titulo || 'Resumen de tu pago', html: h, logo: true,
-                         confirmar: 'Continuar con ' + (tarjeta ? 'tarjeta' : 'Yape') + ' · ' + fmt(o.total), cancelar: 'Volver'});
+                         confirmar: o.confirmar || ('Continuar con ' + (tarjeta ? 'tarjeta' : 'Yape') + ' · ' + fmt(o.total)), cancelar: 'Volver'});
   };
   window.pcgAvisar = function(o){ return abrirDlg(typeof o === 'string' ? {mensaje: o} : (o || {}), false); };
   // pcgCargando('Guardando…') muestra el velo con spinner; pcgCargando(false) lo quita. Con {demora:ms} aparece solo si la espera supera ese tiempo.

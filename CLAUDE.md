@@ -1361,8 +1361,8 @@ para la API del APK.
   franja, turnos, `monto_centimos`, `comision_centimos`, estado `pendiente →
   aceptada | rechazada | vencida | cancelada | cancelada_boleador`, canal
   app|web, `charge_id`, `vence_en`) + columna `pichangol_canchas.
-  permite_boleadores` (SQL `docs/piloto/supabase_boleadores.sql`, PENDIENTE
-  de correr en QAS y PRD). **Dinero:** el cliente paga TODO en línea (cancha
+  permite_boleadores` (SQL `docs/piloto/supabase_boleadores.sql`, corrido en
+  QAS y PRD el 28-sep-2026). **Dinero:** el cliente paga TODO en línea (cancha
   + boleador + cargo por servicio sobre la suma); solo con pago en línea
   (nunca seña ni efectivo: sin el cobro no hay cómo garantizarle al
   boleador). Comisión FIJA por turno **S/ 2 · \$ 0.50 · Bs 3**
@@ -1430,6 +1430,74 @@ para la API del APK.
   con devolución parcial, cancelaciones con faltas, solicitar desde el APK,
   comisión por moneda). Backlog (fase 2): reseñas del boleador, elegir otro
   tras un rechazo, "no vino", pane en la torre, radio por zona.
+- **FIDELIDAD DEL LOCAL = "cada N reservas, una hora gratis o un descuento"
+  (pedido del director, 28-sep-2026: "de manera configurable, cada vez que el
+  usuario alquile o reserve una cancha hasta determinado número de veces se le
+  da una hora gratis o de descuento según lo que haya configurado el
+  dueño"):** tarjeta tipo "sello de café" POR LOCAL, app y web.
+  `backend/growth/fidelidad.py` (router `/fidelidad/*`) + columna
+  `pichangol_canchas.fidelidad` jsonb `{activa, meta, premio: hora_gratis|
+  descuento, descuentoPct, ventanaDias (0 = sin límite), aplica: todas|online}`
+  (igual en TODAS las canchas del local, como los extras de ámbito local) +
+  tabla `pichangol_fidelidad_canjes` (email, `local_key` = "dueño|club",
+  reserva_ref, reserva_ids, tipo, descuento, estado `reservado → usado |
+  devuelto`, `reservas_contadas`); SQL `docs/piloto/supabase_fidelidad.sql`
+  (PENDIENTE de correr en QAS y PRD). `datos.py` lee la columna solo si
+  existe (`col_fidelidad_disponible`, `_sel_cancha()`); `COLS_EDITABLES` la
+  incluye. **Conteo** (`fidelidad.estado`): reservas PAGADAS del correo en
+  cualquier cancha del local (`datos.reservas_pagadas_en`, sin canceladas /
+  no-show / holds; una reserva multi-hora = 1), dentro de la ventana por
+  `fecha`, con `aplica=online` solo medios en línea; se descuentan las que ya
+  están en un canje vigente (`reservas_contadas` + la premiada) → sin
+  contador aparte y el ciclo vuelve a cero solo. Las reservas MANUALES del
+  dueño no cuentan. **Premio** (`descuento_para`, espejo en
+  `FidelidadConfig.descuentoPara`): hora gratis = el turno MÁS BARATO del
+  bloque a 0; descuento = % por turno. Lo asume el LOCAL: la fila de la
+  reserva guarda el precio ya descontado y la liquidación al dueño va por
+  ese precio (comisión sobre lo descontado); total 0 (hora gratis sin
+  extras) = sin Culqi, sin cargo por servicio, sin liquidación, `medio_pago
+  = fidelidad`. **Canje**: `reservar_canje` aparta el premio para una
+  reserva (hold, `reservado`; caduca a los 15 min si no se paga) → `confirmar
+  _canje` al pagar (`usado`) → `revertir_canje` al cancelar la reserva, al
+  liberar el hold o si Culqi rechaza (`devuelto`, el jugador lo recupera).
+  Endpoints APK (X-App-Key): `GET /fidelidad/estado?email&cancha_id`, `POST
+  /fidelidad/canje/reservar {email, cancha_id, reserva_ref, reserva_ids,
+  descuento, confirmar}` (idempotente por ref; `confirmar=true` lo usa
+  directo, para efectivo), `/canje/confirmar`, `/canje/revertir`, `GET
+  /fidelidad/catalogo`. **Web:** ficha con `#fidBox` (sellos ✓, "3 de 5 ·
+  te faltan 2" o "¡Tienes una hora gratis!" + casilla "Usar mi premio";
+  `GET /web/fidelidad?cancha_id` con sesión), línea "🎁 Hora gratis ·
+  fidelidad −S/ 60" en el resumen, `/web/asegurar` recibe `fidelidad: true`
+  (recalcula y aparta; `sin_premio` si no lo tiene; responde `fidelidad`,
+  `sin_pago`), `/web/pagar` con `total 0` confirma SIN Culqi (`token ''`,
+  `medio fidelidad`; botón "Reservar gratis 🎁" y modal "Confirmar reserva
+  gratis 🎁"), comprobante con "🎁 Premio de fidelidad · ya descontado";
+  `_cancelar_reserva` y `/web/liberar` devuelven el premio. Modo anfitrión →
+  Editar local → sección "🎁 Tarjeta de fidelidad" (chips `fid_*` de
+  selección única: activar, cada cuántas, premio, %, ventana, qué cuentan;
+  `_fid.validar` en `_guardar_edicion_local`, se escribe en todas las
+  hermanas). **APK:** `lib/models/fidelidad.dart` (`FidelidadConfig.de(
+  cancha.fidelidad)`, `EstadoFidelidad`, `Fidelidad.estado/reservarCanje/
+  confirmar/revertir`), `Cancha.fidelidad` (columna bajo el flag de columnas
+  nuevas de `CanchasRepo`; `_sincronizarConfigLocalDesdeNube` la trae),
+  ficha `club_detalle` con `_TarjetaFidelidad` (sellos + progreso, se carga
+  con `_cargarFidelidad` al abrir), `_ResumenReserva` con el interruptor
+  "Usar mi premio" (no con seña; excluye el canje de puntos), línea de
+  descuento y botón "Reservar gratis con mi premio 🎁" cuando queda en 0;
+  `_reservar`: con bloque asegurado aparta el premio ANTES de cobrar (si ya
+  no está → libera y avisa), pago 0 → sin `PagoTarjeta`, `medioPago
+  'fidelidad'`; `agregarReservasJugadorMulti(descuentos: {hora: soles})` →
+  `agregarReservaJugador(descuento:)` guarda el precio descontado y liquida
+  sobre él; confirma el canje al terminar (efectivo: `confirmar: true` sobre
+  la reserva creada) y `cancelarReserva` lo revierte. Editar cancha →
+  sección "🎁 Tarjeta de fidelidad del local" (chips) →
+  `AppState.actualizarFidelidadLocal` copia la config a las hermanas. Pase
+  de Mis reservas: "gratis · premio de fidelidad 🎁". NO aplica en
+  `cancha_detalle_screen` (flujo de una hora del asistente) ni con seña.
+  Tests `tests/test_fidelidad.py` (config/descuentos, progreso por local +
+  hora gratis sin pasarela + ciclo + editor, descuento % con liquidación
+  descontada y devolución al cancelar, hold/pago rechazado devuelven el
+  premio + endpoints del APK).
 - **LENTITUD EN TODO EL SISTEMA (queja del director, 25-sep-2026: "mucho se
   demora para agregar un simple equipo, y lo mismo sucede en todo el
   sistema"). CAUSA RAÍZ:** el middleware de `main.py` corría, DENTRO de cada
@@ -1717,6 +1785,17 @@ off → redeploy inmediato en cada push). URL pública:
     `9135094` (diálogos web responsivos en móvil: hoja inferior con scroll
     interno y botones siempre visibles). Solo web: sin SQL, sin Edge, sin
     APK, sin variables.
+    **Pase del 28-sep-2026 (3.º, autorizado: "ya corrí el sql supabase en
+    qas y prd, pasar a prd las mejoras"):** `prd` = merge `f9730c5`
+    (módulo BOLEADORES en backend, web y APK + logo de Pichangol en el
+    "Resumen de tu pago"). SQL `docs/piloto/supabase_boleadores.sql`
+    corrido A MANO por el director en QAS y PCG-PRD (tablas
+    `pichangol_boleadores`, `pichangol_boleador_solicitudes`, columna
+    `permite_boleadores`). Sin Edge ni variables nuevas (`boleador_comision_*`
+    y `boleadores_activo` nacen en `CONFIG_DEFAULT`). CAMBIÓ `lib/` →
+    APK/AAB de PRD = run 1437 (`workflow_dispatch`, `ref=prd`,
+    `entorno=prod`). OJO: un APK anterior no ofrece boleador al reservar ni
+    tiene "Ser boleador" en Perfil → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -2543,7 +2622,7 @@ no inventar layouts propios. Rasgos Airbnb:
   esquinas superiores, `safe-area-inset-bottom`, animación `subir`, 92dvh) y
   las líneas del resumen son grid `minmax(0,1fr) auto` con
   `overflow-wrap:anywhere` para que el monto no se parta. Playwright
-  `$SP/pw_resumen_mov.js` (390×844, desglose abierto). **Logo en el resumen (pedido del director, 28-sep-2026: "en vez del celular debe salir el logo de PCG"):** `pcgResumenPago` abre el diálogo con `logo: true` → `abrirDlg` pinta `/static/brand/logo_pin.png` en la burbuja (`.pcg-dlg .ico.marca`) en vez del emoji 📱; los demás diálogos siguen con su ícono. Solo en QAS hasta el próximo pase.
+  `$SP/pw_resumen_mov.js` (390×844, desglose abierto). **Logo en el resumen (pedido del director, 28-sep-2026: "en vez del celular debe salir el logo de PCG"):** `pcgResumenPago` abre el diálogo con `logo: true` → `abrirDlg` pinta `/static/brand/logo_pin.png` en la burbuja (`.pcg-dlg .ico.marca`) en vez del emoji 📱; los demás diálogos siguen con su ícono. En PRD desde el pase `f9730c5`.
 - **Popups: UN SOLO formato (REGLA de todo el app).** Todo diálogo de
   confirmación/aviso usa `widgets/dialogo_pichangol.dart`: `confirmarPichangol(
   context, titulo:, mensaje:, textoConfirmar:, destructivo:, icono:)` (devuelve

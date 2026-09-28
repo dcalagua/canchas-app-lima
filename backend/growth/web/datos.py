@@ -22,6 +22,34 @@ COLS_CANCHA = (
     "descuento_valle, valle_desde, valle_hasta, sena_pct, superficie, amenidades"
 )
 _COLS = [c.strip() for c in COLS_CANCHA.split(",")]
+# FIDELIDAD DEL LOCAL (SQL `docs/piloto/supabase_fidelidad.sql`): la columna
+# `fidelidad` se lee solo si existe en esta base (chequeo cacheado), igual que
+# las columnas del cargo por servicio en reservas.
+_col_fid_cache: dict = {}
+
+
+def col_fidelidad_disponible() -> bool:
+    if "ok" in _col_fid_cache:
+        return _col_fid_cache["ok"]
+    if not pg.habilitado:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' "
+                        "AND table_name = 'pichangol_canchas' AND column_name = 'fidelidad'")
+            ok = int(cur.fetchone()[0]) == 1
+    except Exception:  # noqa: BLE001
+        return False
+    _col_fid_cache["ok"] = ok
+    return ok
+
+
+def _cols_cancha() -> list[str]:
+    return _COLS + (["fidelidad"] if col_fidelidad_disponible() else [])
+
+
+def _sel_cancha() -> str:
+    return ", ".join(_cols_cancha())
 
 PREFIJO_ID_WEB = "web_"
 HOLD_SEGUNDOS = 10 * 60  # una reserva web sin pagar se libera a los 10 min
@@ -39,8 +67,21 @@ def _json_list(v) -> list:
         return []
 
 
+def _json_dict(v) -> dict:
+    if isinstance(v, dict):
+        return v
+    if v is None:
+        return {}
+    try:
+        j = json.loads(v)
+        return j if isinstance(j, dict) else {}
+    except (TypeError, ValueError):
+        return {}
+
+
 def _norm_cancha(d: dict) -> dict:
     d = dict(d)
+    d["fidelidad"] = _json_dict(d.get("fidelidad"))
     d["deportes"] = _json_list(d.get("deportes"))
     d["fotos"] = _json_list(d.get("fotos"))
     d["servicios_extra"] = [
@@ -130,10 +171,10 @@ def canchas_publicas() -> list[dict]:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
-                f"SELECT {COLS_CANCHA} FROM pichangol_canchas "
+                f"SELECT {_sel_cancha()} FROM pichangol_canchas "
                 "WHERE coalesce(registrada,true) AND NOT coalesce(eliminada,false) "
                 "ORDER BY (coalesce(verificada,false) AND coalesce(dueno,'') <> '') DESC, club, nombre")
-            return [_norm_cancha(pg._fila_a_dict(_COLS, f)) for f in cur.fetchall()]
+            return [_norm_cancha(pg._fila_a_dict(_cols_cancha(), f)) for f in cur.fetchall()]
     except Exception:  # noqa: BLE001
         return []
 
@@ -156,9 +197,9 @@ def canchas_de_dueno(email: str) -> list[dict]:
         return []
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute(f"SELECT {COLS_CANCHA} FROM pichangol_canchas WHERE lower(dueno) = %s "
+            cur.execute(f"SELECT {_sel_cancha()} FROM pichangol_canchas WHERE lower(dueno) = %s "
                         "AND coalesce(eliminada,false) = false ORDER BY verificada DESC, nombre", (email,))
-            return [_norm_cancha(pg._fila_a_dict(_COLS, f)) for f in cur.fetchall()]
+            return [_norm_cancha(pg._fila_a_dict(_cols_cancha(), f)) for f in cur.fetchall()]
     except Exception:  # noqa: BLE001
         return []
 
@@ -169,9 +210,9 @@ COLS_EDITABLES = {
     "nombre", "club", "deporte", "deportes", "precio_hora", "hora_apertura",
     "hora_cierre", "duracion_slot_min", "descuento_valle", "valle_desde",
     "valle_hasta", "sena_pct", "superficie", "amenidades", "servicios_extra",
-    "fotos", "foto_url", "direccion",
+    "fotos", "foto_url", "direccion", "fidelidad",
 }
-_COLS_JSON = {"deportes", "amenidades", "servicios_extra", "fotos"}
+_COLS_JSON = {"deportes", "amenidades", "servicios_extra", "fotos", "fidelidad"}
 
 
 def actualizar_cancha(cancha_id: str, dueno: str, campos: dict) -> bool:
@@ -428,10 +469,10 @@ def cancha(cancha_id: str) -> dict | None:
         return None
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute(f"SELECT {COLS_CANCHA} FROM pichangol_canchas WHERE id = %s",
+            cur.execute(f"SELECT {_sel_cancha()} FROM pichangol_canchas WHERE id = %s",
                         (cancha_id,))
             f = cur.fetchone()
-            return _norm_cancha(pg._fila_a_dict(_COLS, f)) if f else None
+            return _norm_cancha(pg._fila_a_dict(_cols_cancha(), f)) if f else None
     except Exception:  # noqa: BLE001
         return None
 
@@ -1458,3 +1499,124 @@ def marcar_extra_boleador(reserva_ids: list[str], estado: str) -> bool:
             return True
     except Exception:  # noqa: BLE001
         return False
+
+
+# ── FIDELIDAD DEL LOCAL (sep-2026) ───────────────────────────────────────────
+
+def reservas_pagadas_en(email: str, cancha_ids: list[str], limite: int = 400) -> list[dict]:
+    """Reservas PAGADAS del correo en esas canchas (las que suman en la tarjeta
+    de fidelidad del local): sin canceladas/no-show ni retenciones."""
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not email or not cancha_ids:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, cancha_id, fecha, hora_inicio, precio, medio_pago, grupo_reserva_id, estado "
+                "FROM pichangol_reservas WHERE lower(usuario) = %s AND cancha_id = ANY(%s) "
+                "AND coalesce(pagado,false) AND coalesce(estado,'') NOT IN ('cancelada','no_show','nueva') "
+                "ORDER BY fecha, hora_inicio LIMIT %s", (email, list(cancha_ids), limite))
+            cols = ["id", "cancha_id", "fecha", "hora_inicio", "precio", "medio_pago", "grupo_reserva_id", "estado"]
+            out = []
+            for f in cur.fetchall():
+                d = pg._fila_a_dict(cols, f)
+                d["fecha"] = str(d.get("fecha") or "")
+                d["precio"] = float(d.get("precio") or 0)
+                out.append(d)
+            return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
+_COLS_CANJE = ["id", "email", "local_key", "cancha_id", "reserva_ref", "reserva_ids", "tipo", "descuento",
+               "moneda", "estado", "reservas_contadas", "canal", "creado", "actualizado"]
+
+
+def _norm_canje(d: dict) -> dict:
+    d = dict(d)
+    d["reserva_ids"] = _json_list(d.get("reserva_ids"))
+    d["reservas_contadas"] = _json_list(d.get("reservas_contadas"))
+    d["descuento"] = float(d.get("descuento") or 0)
+    for k in ("creado", "actualizado"):
+        v = d.get(k)
+        if hasattr(v, "isoformat"):
+            d[k] = v.isoformat()
+    return d
+
+
+def insertar_canje(c: dict) -> bool:
+    if not pg.habilitado:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO pichangol_fidelidad_canjes (id, email, local_key, cancha_id, reserva_ref, reserva_ids, "
+                "tipo, descuento, moneda, estado, reservas_contadas, canal) VALUES (%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s::jsonb,%s)",
+                (c["id"], c["email"], c["local_key"], c["cancha_id"], c["reserva_ref"], json.dumps(c.get("reserva_ids") or []),
+                 c["tipo"], float(c.get("descuento") or 0), c.get("moneda") or "PEN", c.get("estado") or "reservado",
+                 json.dumps(c.get("reservas_contadas") or []), c.get("canal") or "app"))
+            conn.commit()
+            return True
+    except Exception as e:  # noqa: BLE001
+        print(f"[fidelidad] no se pudo guardar el canje {c.get('id')}: {e}", flush=True)
+        return False
+
+
+def canjes_de(email: str, local_key: str) -> list[dict]:
+    email = (email or "").strip().lower()
+    if not pg.habilitado or not email or not local_key:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_CANJE)} FROM pichangol_fidelidad_canjes "
+                        "WHERE email = %s AND local_key = %s ORDER BY creado", (email, local_key))
+            return [_norm_canje(pg._fila_a_dict(_COLS_CANJE, f)) for f in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def canje_por_ref(reserva_ref: str) -> dict | None:
+    """El canje (no devuelto) ligado a esa reserva/grupo, si lo hay."""
+    if not pg.habilitado or not reserva_ref:
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_CANJE)} FROM pichangol_fidelidad_canjes "
+                        "WHERE reserva_ref = %s AND estado <> 'devuelto' ORDER BY creado DESC LIMIT 1", (reserva_ref,))
+            f = cur.fetchone()
+            return _norm_canje(pg._fila_a_dict(_COLS_CANJE, f)) if f else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def canje_por_ids(ids: list[str]) -> dict | None:
+    """Canje cuyo `reserva_ids` contiene alguna de esas reservas (hold web)."""
+    if not pg.habilitado or not ids:
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_CANJE)} FROM pichangol_fidelidad_canjes "
+                        "WHERE estado <> 'devuelto' AND reserva_ids ?| %s ORDER BY creado DESC LIMIT 1", (list(ids),))
+            f = cur.fetchone()
+            return _norm_canje(pg._fila_a_dict(_COLS_CANJE, f)) if f else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def actualizar_canje(canje_id: str, estado: str, solo_si: tuple = ()) -> bool:
+    if not pg.habilitado or not canje_id:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            if solo_si:
+                cur.execute("UPDATE pichangol_fidelidad_canjes SET estado = %s, actualizado = now() "
+                            "WHERE id = %s AND estado = ANY(%s)", (estado, canje_id, list(solo_si)))
+            else:
+                cur.execute("UPDATE pichangol_fidelidad_canjes SET estado = %s, actualizado = now() WHERE id = %s",
+                            (estado, canje_id))
+            n = cur.rowcount
+            conn.commit()
+            return n == 1
+    except Exception:  # noqa: BLE001
+        return False
+

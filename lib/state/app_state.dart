@@ -31,6 +31,7 @@ import '../data/bodega_repo.dart';
 import '../models/bodega.dart';
 import '../models/cargo_servicio.dart';
 import '../models/boleador.dart';
+import '../models/fidelidad.dart';
 import '../data/bloqueos_repo.dart';
 import '../data/descuentos_repo.dart';
 import '../data/referidos_repo.dart';
@@ -5542,8 +5543,32 @@ class AppState extends ChangeNotifier {
         fotoUrl: r.fotoUrl,
         serviciosExtra: r.serviciosExtra,
         permiteBoleadores: r.permiteBoleadores,
+        fidelidad: r.fidelidad,
       );
     }
+  }
+
+  /// TARJETA DE FIDELIDAD del local (sep-2026): la config es del LOCAL, así
+  /// que al guardarla en una cancha se copia a las demás del mismo `club`
+  /// (espejo de "Editar local" en la web).
+  void actualizarFidelidadLocal(String club, Map<String, dynamic> cfg,
+      {String? exceptoId}) {
+    if (club.trim().isEmpty) return;
+    void aplicar(List<Cancha> canchas) {
+      for (var i = 0; i < canchas.length; i++) {
+        final x = canchas[i];
+        if (x.club != club || x.id == exceptoId) continue;
+        if (jsonEncode(x.fidelidad) == jsonEncode(cfg)) continue;
+        final f = x.copyWith(fidelidad: Map<String, dynamic>.from(cfg));
+        canchas[i] = f;
+        CanchasRepo.actualizar(f);
+      }
+    }
+
+    aplicar(canchasExtra);
+    aplicar(canchasRemotas);
+    notifyListeners();
+    _persistirDatos();
   }
 
   /// Repara datos viejos: canchas registradas por el dueño que quedaron con el
@@ -7697,7 +7722,11 @@ class AppState extends ChangeNotifier {
       // CARGO POR SERVICIO que pagó el jugador por este pago (fase 3): queda
       // en la fila (comprobante) y viaja con la liquidación. Solo en la 1.ª
       // hora del bloque (el multi-hora lo pasa una vez, como los extras).
-      CotizacionCargo? cargo}) async {
+      CotizacionCargo? cargo,
+      // PREMIO DE FIDELIDAD del local aplicado a ESTE turno (soles enteros):
+      // hora gratis = todo el precio; descuento = el % del turno. El local lo
+      // asume: el precio guardado y la liquidación van ya descontados.
+      int descuento = 0}) async {
     final pagoAdelantado = cobro == 'online' || cobro == 'sena';
     final notaReembolso = pagoAdelantado
         ? ' Tu pago quedó registrado para reembolso.'
@@ -7725,8 +7754,12 @@ class AppState extends ChangeNotifier {
       return ResultadoReserva.ocupado;
     }
 
-    // Precio efectivo del slot (hora feliz de mañanas + descuento puntual).
-    final precio = precioSlotEfectivo(cancha, fecha, hora);
+    // Precio efectivo del slot (hora feliz de mañanas + descuento puntual),
+    // menos el premio de fidelidad si se usó en este turno.
+    final precioLista = precioSlotEfectivo(cancha, fecha, hora);
+    final precio = descuento > 0
+        ? (precioLista - descuento).clamp(0, precioLista)
+        : precioLista;
     final reserva = Reserva(
       id: asegurada?.id ??
           'jug_${DateTime.now().millisecondsSinceEpoch}_${_contadorJugador++}',
@@ -7818,7 +7851,9 @@ class AppState extends ChangeNotifier {
         ? cancha.nombre
         : '$local · ${cancha.nombre}';
     final accion = _accionContable(cancha, cobro,
-        montoBase: precioHoraEfectivo(cancha, fecha, hora),
+        montoBase: descuento > 0
+            ? precio.toDouble()
+            : precioHoraEfectivo(cancha, fecha, hora),
         sena: sena,
         reservaId: reserva.id,
         etiqueta: quien.isEmpty
@@ -7909,7 +7944,9 @@ class AppState extends ChangeNotifier {
       // se confirman esas mismas filas (id/grupo) en vez de insertar nuevas.
       List<Reserva>? aseguradas,
       // Cargo por servicio del pago (una sola vez por bloque, en la 1.ª hora).
-      CotizacionCargo? cargo}) async {
+      CotizacionCargo? cargo,
+      // Premio de FIDELIDAD por hora (hora → soles descontados), si se usó.
+      Map<String, int> descuentos = const {}}) async {
     if (horas.isEmpty) return ResultadoReserva.error;
     final ordenadas = [...horas]..sort();
     // Datos del BLOQUE para los avisos al jugador (un solo aviso por bloque).
@@ -7970,6 +8007,7 @@ class AppState extends ChangeNotifier {
         cobro: cobro,
         medioPago: medioPago,
         sena: senaSlot,
+        descuento: descuentos[h] ?? 0,
         grupoReservaId: grupo,
         // El aviso al dueño se manda UNA sola vez para todo el bloque (abajo),
         // no una vez por hora.
@@ -8704,6 +8742,10 @@ class AppState extends ChangeNotifier {
         await ReservasRepo.eliminar(id); // libera cada slot en la nube
       }
     }
+    // FIDELIDAD: si esta reserva usó un premio del local, el jugador lo
+    // recupera (el backend ignora la llamada si no había canje).
+    unawaited(Fidelidad.revertir(
+        r.grupoReservaId.isNotEmpty ? r.grupoReservaId : r.id));
     // Push AUTOMÁTICO a quienes esperaban esa hora (waitlist): reusa el canal
     // genérico de avisos (pichangol_avisos → push-aviso), sin deploy nuevo.
     _avisarEsperaLiberada(liberados);

@@ -1843,4 +1843,34 @@ class PagosService {
   }) =>
       _postJson('/boleadores/solicitudes/${Uri.encodeComponent(solicitudId)}/$accion',
           {'email': email, if (motivo.isNotEmpty) 'motivo': motivo});
+
+  // --- FIDELIDAD DEL LOCAL (sep-2026) -------------------------------------------
+  // Espejo de `backend/growth/fidelidad.py`: progreso del jugador en la tarjeta
+  // del local y canje del premio (apartar → confirmar / revertir).
+  static Future<Map<String, dynamic>?> fidelidadEstado(
+          {required String email, required String canchaId}) =>
+      _getJson('/fidelidad/estado', {'email': email, 'cancha_id': canchaId});
+
+  static Future<Map<String, dynamic>?> fidelidadCanjeReservar({
+    required String email,
+    required String canchaId,
+    required String reservaRef,
+    required List<String> reservaIds,
+    required int descuento,
+    bool confirmar = false,
+  }) =>
+      _postJson('/fidelidad/canje/reservar', {
+        'email': email,
+        'cancha_id': canchaId,
+        'reserva_ref': reservaRef,
+        'reserva_ids': reservaIds,
+        'descuento': descuento,
+        'confirmar': confirmar,
+      });
+
+  static Future<Map<String, dynamic>?> fidelidadCanjeConfirmar(String ref) =>
+      _postJson('/fidelidad/canje/confirmar', {'reserva_ref': ref});
+
+  static Future<Map<String, dynamic>?> fidelidadCanjeRevertir(String ref) =>
+      _postJson('/fidelidad/canje/revertir', {'reserva_ref': ref});
 }
