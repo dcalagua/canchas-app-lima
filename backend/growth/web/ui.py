@@ -1062,6 +1062,81 @@ JS_NAV = r"""
 """
 
 
+# ── ABRIR EN LA APP desde el navegador del CELULAR (pedido del director,
+# 28-sep-2026: "si estoy en la web de un celular y el usuario tiene instalado
+# el PCG, que lo lleve inmediatamente al app; si no lo tiene, que siga en el
+# browser; que se detecte si está en un celular o no") ──────────────────────
+# Cómo funciona (Android; en iPhone no hay app → la web sigue igual):
+#  1. Solo en un TELÉFONO Android con navegador real (no el WebView del propio
+#     APK) y solo en páginas que la app sabe abrir (RUTAS_APP).
+#  2. Al cargar, intenta UNA vez `intent://<host><ruta>#Intent;scheme=pichangol;
+#     package=pe.ebim.pichangol;S.browser_fallback_url=<misma URL>?web=1;end`:
+#     con la app instalada Android la abre en esa misma pantalla (EnlacesService
+#     enruta /reservar/{id}, /academia/{id}, /mis-reservas, /anfitrion, /c/{id}…);
+#     sin la app, Chrome vuelve a la MISMA página con `?web=1` y la web recuerda
+#     7 días que no la tiene (localStorage `pcg_sin_app`) para no insistir.
+#     Chrome bloquea un intent:// lanzado sin gesto del usuario en algunos
+#     casos; por eso (3).
+#  3. Banner "Abrir en la app Pichangol" arriba de la página (un toque = gesto
+#     → intent://), con ✕ que lo esconde 7 días. Con `pcg_sin_app` vigente no
+#     se muestra: el que no la tiene sigue en la web sin ruido.
+#  4. Los App Links verificados (assetlinks.json + pathPrefix del manifest)
+#     abren la app SIN pasar por el navegador cuando el enlace se toca en
+#     WhatsApp u otra app; esto cubre el caso en que el usuario ya está en Chrome.
+APP_PAQUETE = "pe.ebim.pichangol"
+JS_ABRIR_APP = r"""
+(function(){
+  var ua = navigator.userAgent || '';
+  var android = /Android/i.test(ua), webview = /; wv\)/.test(ua) || /\bwv\b/.test(ua);
+  window.pcgEsMovil = /Android|iPhone|iPad|iPod/i.test(ua);
+  if(!android || webview) return;
+  var RUTAS = /^\/($|canchas$|reservar\/|reserva\/|academia\/|l\/|mis-reservas|c\/|anfitrion)/;
+  var u; try{ u = new URL(location.href); }catch(e){ return; }
+  if(!RUTAS.test(u.pathname)) return;
+  var DIAS7 = 7*24*3600*1000, ahora = Date.now();
+  function ls(k, v){ try{ if(v === undefined) return localStorage.getItem(k); if(v === null) localStorage.removeItem(k); else localStorage.setItem(k, String(v)); }catch(e){ return null; } }
+  function ss(k, v){ try{ if(v === undefined) return sessionStorage.getItem(k); sessionStorage.setItem(k, String(v)); }catch(e){ return null; } }
+  function vigente(k){ var t = Number(ls(k) || 0); return t && (ahora - t) < DIAS7; }
+  // Volvió del intent sin app (fallback ?web=1): recordar y limpiar la URL.
+  if(u.searchParams.get('web') === '1'){
+    ls('pcg_sin_app', ahora); u.searchParams.delete('web');
+    try{ history.replaceState(null, '', u.pathname + (u.search || '') + u.hash); }catch(e){}
+    return;
+  }
+  var sinApp = vigente('pcg_sin_app');
+  function intentUrl(){
+    var f = new URL(location.href); f.searchParams.set('web', '1');
+    var ruta = (u.pathname + u.search).replace(/[;#]/g, function(c){ return encodeURIComponent(c); });
+    return 'intent://' + u.host + ruta + '#Intent;scheme=pichangol;package=pe.ebim.pichangol;S.browser_fallback_url=' + encodeURIComponent(f.href) + ';end';
+  }
+  window.pcgAbrirApp = function(){ ss('pcg_app_try', 1); location.href = intentUrl(); };
+  // Intento automático: una vez por pestaña, no si sabemos que no tiene la app.
+  // Intento automático: una vez por pestaña, no si sabemos que no tiene la app. SOLO cuando la página
+  // terminó de cargar: una navegación (aunque sea a intent://) mientras el documento aún se descarga
+  // CORTA esa carga y la página quedaría a medias si el intent no abre nada.
+  if(!sinApp && !ss('pcg_app_try')){
+    ss('pcg_app_try', 1);
+    var ir = function(){ setTimeout(function(){ try{ location.href = intentUrl(); }catch(e){} }, 120); };
+    if(document.readyState === 'complete') ir(); else window.addEventListener('load', ir, {once: true});
+  }
+  if(sinApp || vigente('pcg_app_banner_off')) return;
+  function banner(){
+    if(document.getElementById('abrirApp')) return;
+    var st = document.createElement('style');
+    st.textContent = ".abrir-app{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 14px;background:#0A1B3D;color:#fff;font:600 14px/1.25 'DM Sans',system-ui,sans-serif}.abrir-app img{width:36px;height:36px;border-radius:10px;background:#fff;padding:3px;flex:none}.abrir-app .t{flex:1;min-width:0}.abrir-app .t small{display:block;font-weight:500;opacity:.8;font-size:12px}.abrir-app .ir{flex:none;background:#0B8A3E;color:#fff;border:0;border-radius:999px;padding:9px 16px;font:700 14px 'DM Sans',system-ui,sans-serif;width:auto}.abrir-app .x{flex:none;background:transparent;border:0;color:#fff;opacity:.7;font-size:20px;line-height:1;padding:6px;width:auto}@media(min-width:901px){.abrir-app{display:none}}";
+    var d = document.createElement('div'); d.id = 'abrirApp'; d.className = 'abrir-app'; d.setAttribute('role', 'region'); d.setAttribute('aria-label', 'Abrir en la app');
+    d.innerHTML = "<img src='/static/brand/logo_pin.png' alt=''><div class='t'>Abrir en la app Pichangol<small>Reserva más rápido y recibe avisos de tus partidos</small></div><button type='button' class='ir' id='abrirAppIr'>Abrir</button><button type='button' class='x' id='abrirAppX' aria-label='Seguir en la web'>&times;</button>";
+    document.head.appendChild(st); document.body.insertBefore(d, document.body.firstChild);
+    d.querySelector('#abrirAppIr').addEventListener('click', function(){ window.pcgAbrirApp(); });
+    d.querySelector('#abrirAppX').addEventListener('click', function(){ ls('pcg_app_banner_off', Date.now()); d.remove(); });
+  }
+  if(document.body) banner(); else document.addEventListener('DOMContentLoaded', banner);
+})();
+"""
+JS_ABRIR_APP = JS_ABRIR_APP.replace("pe.ebim.pichangol", APP_PAQUETE)
+JS_NAV = JS_NAV + JS_ABRIR_APP
+
+
 def nav_simple(ses: dict | None = None, volver: str = "/canchas") -> str:
     return cabecera(ses=ses, volver=volver)
 

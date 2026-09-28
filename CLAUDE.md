@@ -1442,7 +1442,8 @@ para la API del APK.
   tabla `pichangol_fidelidad_canjes` (email, `local_key` = "dueño|club",
   reserva_ref, reserva_ids, tipo, descuento, estado `reservado → usado |
   devuelto`, `reservas_contadas`); SQL `docs/piloto/supabase_fidelidad.sql`
-  (PENDIENTE de correr en QAS y PRD). `datos.py` lee la columna solo si
+  (aplicado en PCG-PRD el 28-sep-2026; en QAS lo corre el director).
+  `datos.py` lee la columna solo si
   existe (`col_fidelidad_disponible`, `_sel_cancha()`); `COLS_EDITABLES` la
   incluye. **Conteo** (`fidelidad.estado`): reservas PAGADAS del correo en
   cualquier cancha del local (`datos.reservas_pagadas_en`, sin canceladas /
@@ -1498,6 +1499,46 @@ para la API del APK.
   hora gratis sin pasarela + ciclo + editor, descuento % con liquidación
   descontada y devolución al cancelar, hold/pago rechazado devuelven el
   premio + endpoints del APK).
+- **ABRIR EN LA APP DESDE EL NAVEGADOR DEL CELULAR (pedido del director,
+  28-sep-2026: "si estoy en la web de un celular y el usuario tiene instalado
+  el PCG, que lo lleve inmediatamente al app; si no lo tiene, que siga en el
+  browser; que se detecte si está en un celular o no"):** `ui.JS_ABRIR_APP`
+  (concatenado a `JS_NAV` → TODAS las páginas del shell; la página del
+  campeonato `/c/{id}` lo incluye aparte vía `campeonato_web._js_abrir_app`).
+  Solo en ANDROID con navegador real (no en el WebView del propio APK ni en
+  iPhone, que no tiene app: ahí la web sigue igual; escritorio sin cambios) y
+  solo en las rutas que la app sabe abrir (`RUTAS`: `/`, `/canchas`,
+  `/reservar/`, `/reserva/`, `/academia/`, `/l/`, `/mis-reservas`, `/c/`,
+  `/anfitrion`; `/admin`, `/legal`, `/lugar`, `/entrar` se quedan en la web).
+  (1) Al terminar de cargar la página (evento `load`; hacerlo antes CORTA la
+  carga del documento) intenta UNA vez por pestaña `intent://<host><ruta>
+  #Intent;scheme=pichangol;package=pe.ebim.pichangol;S.browser_fallback_url=
+  <misma URL>?web=1;end`: con la app instalada Android la abre en esa misma
+  pantalla; sin app, Chrome vuelve a la MISMA página con `?web=1` → la web
+  guarda `localStorage pcg_sin_app` 7 días (no insiste, sin banner) y limpia
+  el parámetro con `replaceState`. Chrome puede bloquear un intent sin gesto
+  del usuario, por eso (2) banner "Abrir en la app Pichangol" arriba de la
+  página (`#abrirApp`, logo + botón Abrir = `pcgAbrirApp()` + ✕ que lo
+  esconde 7 días, `pcg_app_banner_off`; oculto en ≥901 px). (3) **App Links
+  verificados**: `tool/configure_platforms.py` declara en el manifest, para
+  `www.pichangol.app`, `pichangol.app` y `pg.ebim.pe`, `path` exacto `/` y
+  `/canchas` + `pathPrefix` de las mismas rutas (antes solo `/c/`), así un
+  enlace tocado en WhatsApp abre la app SIN pasar por el navegador
+  (requiere las SHA-256 de Play en `ANDROID_CERT_SHA256`, pendiente del
+  director). (4) **APK** `EnlacesService` (`rutaWebDe(uri)`: https → path;
+  `pichangol://c/ID` → `/c/ID`; `pichangol://www.pichangol.app/...` → path)
+  enruta `/c/{id}[?equipo=]` → ficha del campeonato (como antes),
+  `/reservar/{canchaId}` → `ClubDetalleScreen` del LOCAL con esa cancha
+  seleccionada (baja `cargarCanchasRemotas` si aún no está), `/reserva/` y
+  `/mis-reservas` → Mis reservas, `/academia/{id}` y `/l/{id}` →
+  `AcademiaDetalleScreen` (baja academias si falta), `/anfitrion…` → Modo
+  anfitrión, `/` y `/canchas` → Explorar (nada que empujar). `?fecha=&hora=`
+  de la ficha web no se preselecciona en el app (pendiente). Test
+  `tests/test_abrir_en_la_app.py` (espejo rutas JS ↔ manifest ↔ Dart);
+  Playwright `$SP/pw_app.js` con UA Android / WebView / escritorio. OJO
+  Playwright: el Chromium de escritorio no entiende `intent://` y tras el
+  intento automático se traga los clics físicos (artefacto del harness, no
+  bug): para probar el banner, presembrar `sessionStorage pcg_app_try=1`.
 - **LENTITUD EN TODO EL SISTEMA (queja del director, 25-sep-2026: "mucho se
   demora para agregar un simple equipo, y lo mismo sucede en todo el
   sistema"). CAUSA RAÍZ:** el middleware de `main.py` corría, DENTRO de cada
@@ -1796,6 +1837,15 @@ off → redeploy inmediato en cada push). URL pública:
     APK/AAB de PRD = run 1437 (`workflow_dispatch`, `ref=prd`,
     `entorno=prod`). OJO: un APK anterior no ofrece boleador al reservar ni
     tiene "Ser boleador" en Perfil → actualizar.
+    **Pase del 28-sep-2026 (4.º, autorizado: "pasar todo a prd incluido
+    dame el apk para prd"):** `prd` = merge `e0139e4` (tarjeta de FIDELIDAD
+    del local en backend, web y APK). SQL `docs/piloto/supabase_fidelidad.sql`
+    APLICADO en PCG-PRD vía `apply_migration` (`pichangol_fidelidad_local`:
+    columna `pichangol_canchas.fidelidad` + tabla
+    `pichangol_fidelidad_canjes`); en QAS lo corre el director a mano. Sin
+    Edge ni variables nuevas. CAMBIÓ `lib/` → APK/AAB de PRD = run 1441
+    (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un APK anterior no
+    muestra la tarjeta ni aplica el premio → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,

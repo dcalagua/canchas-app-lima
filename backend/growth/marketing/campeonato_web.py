@@ -245,6 +245,15 @@ def _render_tiempos(c: dict) -> str:
     return ''.join(out)
 
 
+def _js_abrir_app() -> str:
+    """Script compartido con la web (`ui.JS_ABRIR_APP`): en el navegador de un
+    celular Android intenta abrir la app en esta misma página y muestra el
+    banner "Abrir en la app"; sin app, la web sigue. Import tardío: `web.ui`
+    no debe cargarse al importar este módulo."""
+    from web import ui
+    return ui.JS_ABRIR_APP
+
+
 def _intent_unirse(campeonato_id: str, equipo: str = "") -> str:
     """URL intent:// de Android: abre la APP en la ficha del campeonato si está
     instalada; si no, cae a la descarga (browser_fallback_url). Es el botón
@@ -503,6 +512,7 @@ def html_campeonato(c: dict, campeonato_id: str = "",
     Organizado con <b>Pichangol</b> · Reserva, juega, repite.<br>
     <a href="{_descarga()}">Descargar la app</a>
   </div>
+  <script>{_js_abrir_app()}</script>
 </body></html>"""
 
 
