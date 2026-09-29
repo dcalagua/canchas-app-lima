@@ -11,6 +11,7 @@ import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Verificación de identidad del jugador.
 ///
@@ -243,7 +244,7 @@ class _VerificarIdentidadScreenState extends State<VerificarIdentidadScreen> {
                 children: [
                   CircleAvatar(
                     backgroundColor: lima.withOpacity(0.16),
-                    child: const Icon(Icons.badge_outlined, color: bosque),
+                    child: const IconoVivo(Icons.badge_outlined, color: bosque),
                   ),
                   const SizedBox(width: 12),
                   Text('Número de $doc',
@@ -468,7 +469,7 @@ class _NotaPrivacidad extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(Icons.lock_outline, size: 15, color: textoTenue),
+        IconoVivo(Icons.lock_outline, size: 15, color: textoTenue),
         const SizedBox(width: 6),
         Expanded(
           child: Text(texto,
@@ -579,7 +580,7 @@ class _Tile extends StatelessWidget {
               else
                 CircleAvatar(
                   backgroundColor: cs.primary.withOpacity(0.14),
-                  child: Icon(icono, color: cs.primary),
+                  child: IconoVivo(icono, color: cs.primary),
                 ),
               const SizedBox(width: 14),
               Expanded(

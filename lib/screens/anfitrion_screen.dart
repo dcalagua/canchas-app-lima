@@ -11,6 +11,7 @@ import 'academia_shell.dart';
 import 'mis_campeonatos_screen.dart';
 import 'mis_productos_screen.dart';
 import 'verificador_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Modo anfitrión (estilo Airbnb): un solo lugar con todo lo del anfitrión —
 /// publicar/administrar canchas y academias, y el rol de verificador. Separa el
@@ -208,7 +209,7 @@ class _Tile extends StatelessWidget {
         leading: CircleAvatar(
           radius: 20,
           backgroundColor: color,
-          child: Icon(icon, color: Colors.white, size: 20),
+          child: IconoVivo(icon, color: Colors.white, size: 20),
         ),
         title: Text(title,
             style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),

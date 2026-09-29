@@ -25,6 +25,7 @@ import 'mapa_canchas_screen.dart';
 import 'permisos_onboarding_screen.dart';
 import 'home_shell.dart';
 import 'ranking_global_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Pantalla de inicio estilo Airbnb: LISTA de canchas/locales (sin mapa) con
 /// barra de búsqueda flotante y filtros por deporte. La ubicación se usa para
@@ -780,7 +781,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                                     fontWeight: FontWeight.w800,
                                     fontSize: 14.5)),
                             SizedBox(width: 7),
-                            Icon(Icons.map_outlined,
+                            IconoVivo(Icons.map_outlined,
                                 color: Colors.white, size: 18),
                           ],
                         ),
@@ -812,7 +813,7 @@ class _ExplorarHomeScreenState extends State<ExplorarHomeScreen> {
                           child: CircularProgressIndicator(
                               strokeWidth: 2,
                               color: Theme.of(context).colorScheme.primary))
-                      : Icon(Icons.my_location,
+                      : IconoVivo(Icons.my_location,
                           color: Theme.of(context).colorScheme.primary),
                 ),
               ),
@@ -1012,7 +1013,7 @@ class _CircuitoBannerExplorar extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
             child: Row(
               children: [
-                const Icon(Icons.emoji_events, color: bosque, size: 20),
+                const IconoVivo(Icons.emoji_events, color: bosque, size: 20),
                 const SizedBox(width: 10),
                 const Expanded(
                   child: Text(
@@ -1194,7 +1195,7 @@ class _SeccionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(top: 20, bottom: 2),
       child: Row(
         children: [
-          Icon(icono, size: 20, color: color),
+          IconoVivo(icono, size: 20, color: color),
           const SizedBox(width: 8),
           Text(titulo,
               style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),

@@ -6,6 +6,7 @@ import '../theme.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/dialogo_pichangol.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Bonos de horas prepagadas de UN local (vista del dueño): crea/edita/retira
 /// los packs que vende ("10 horas por S/360"). El jugador los compra en la ficha
@@ -363,7 +364,7 @@ class _Vacio extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 40),
       child: Column(
         children: [
-          Icon(Icons.confirmation_number_outlined,
+          IconoVivo(Icons.confirmation_number_outlined,
               size: 56, color: textoTenueDe(context)),
           const SizedBox(height: 12),
           Text('Aún no tienes bonos',

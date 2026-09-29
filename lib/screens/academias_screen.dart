@@ -18,6 +18,7 @@ import 'ranking_global_screen.dart';
 import 'login_google_sheet.dart';
 import 'mis_clases_screen.dart';
 import '../config/pais.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Directorio público de academias (Fase 1): el jugador ve las academias, su
 /// deporte, dónde entrenan y sus planes. Al tocar una entra a la ficha, donde
@@ -77,7 +78,7 @@ class _AcademiasScreenState extends State<AcademiasScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              const Icon(Icons.receipt_long, color: lima),
+              const IconoVivo(Icons.receipt_long, color: lima),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -512,7 +513,7 @@ class _UnirmeConCodigo extends StatelessWidget {
                 decoration: BoxDecoration(
                     color: lima.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12)),
-                child: Icon(Icons.qr_code_2, color: cs.primary),
+                child: IconoVivo(Icons.qr_code_2, color: cs.primary),
               ),
               const SizedBox(width: 14),
               Expanded(

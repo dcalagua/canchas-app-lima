@@ -17,6 +17,7 @@ import 'login_google_sheet.dart';
 import 'registrar_cancha_screen.dart';
 import '../utils/moneda.dart';
 import '../utils/ubicacion_share.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Detalle de una cancha (estilo ficha de Airbnb) con selección de día/hora y
 /// flujo de reserva. Demo sin backend: la reserva se guarda en memoria.
@@ -694,7 +695,7 @@ class _PanelDescubierta extends StatelessWidget {
         children: [
           const Row(
             children: [
-              Icon(Icons.travel_explore, color: verdeOscuro),
+              IconoVivo(Icons.travel_explore, color: verdeOscuro),
               SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -748,7 +749,7 @@ class _FilaUbicacion extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(Icons.place_outlined, size: 20, color: cs.primary),
+        IconoVivo(Icons.place_outlined, size: 20, color: cs.primary),
         const SizedBox(width: 6),
         Expanded(
           child: InkWell(

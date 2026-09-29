@@ -6,6 +6,7 @@ import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'recargar_saldo_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// PICHANGOL PRO: membresía mensual del jugador. Se cobra de la BILLETERA ÚNICA
 /// (saldo del usuario) — no pide tarjeta de nuevo. Es la monetización recurrente
@@ -114,7 +115,7 @@ class _HazteProScreenState extends State<HazteProScreen> {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.workspace_premium,
+                        const IconoVivo(Icons.workspace_premium,
                             color: lima, size: 30),
                         const SizedBox(width: 10),
                         const Text('Pichangol Pro',
@@ -187,7 +188,7 @@ class _HazteProScreenState extends State<HazteProScreen> {
                 ),
                 child: Row(
                   children: [
-                    const CircleAvatar(radius: 16, backgroundColor: lima, child: Icon(Icons.account_balance_wallet, size: 17, color: Colors.white)),
+                    const CircleAvatar(radius: 16, backgroundColor: lima, child: IconoVivo(Icons.account_balance_wallet, size: 17, color: Colors.white)),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
@@ -245,7 +246,7 @@ class _Beneficio extends StatelessWidget {
               color: morado,
               borderRadius: BorderRadius.circular(11),
             ),
-            child: Icon(icon, color: Colors.white, size: 20),
+            child: IconoVivo(icon, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(

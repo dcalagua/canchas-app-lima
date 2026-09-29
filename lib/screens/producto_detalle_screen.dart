@@ -10,6 +10,7 @@ import '../widgets/cargando_pichangol.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import 'chat_screen.dart';
 import 'login_google_sheet.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Ficha de un producto del Marketplace: foto, precio, vendedor y descripción.
 /// El comprador paga en la app (Culqi) y coordina la entrega por chat. Pichangol
@@ -166,7 +167,7 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
                 : Container(
                     color: const Color(0xFFF0F0F0),
                     child: const Center(
-                        child: Icon(Icons.image, size: 48, color: textoTenue))),
+                        child: IconoVivo(Icons.image, size: 48, color: textoTenue))),
           ),
           Padding(
             padding: const EdgeInsets.all(18),
@@ -279,7 +280,7 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
                       borderRadius: BorderRadius.circular(12)),
                   child: const Row(
                     children: [
-                      Icon(Icons.verified_user_outlined,
+                      IconoVivo(Icons.verified_user_outlined,
                           size: 18, color: bosque),
                       SizedBox(width: 8),
                       Expanded(

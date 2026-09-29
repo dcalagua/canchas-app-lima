@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Editar un canal propio: nombre, descripción y foto.
 class EditarCanalScreen extends StatefulWidget {
@@ -103,7 +104,7 @@ class _EditarCanalScreenState extends State<EditarCanalScreen> {
                                   as ImageProvider
                               : null),
                       child: (_fotoNueva == null && foto.isEmpty)
-                          ? const Icon(Icons.campaign, color: lima, size: 40)
+                          ? const IconoVivo(Icons.campaign, color: lima, size: 40)
                           : null,
                     ),
                     const Positioned(
@@ -112,7 +113,7 @@ class _EditarCanalScreenState extends State<EditarCanalScreen> {
                       child: CircleAvatar(
                         radius: 15,
                         backgroundColor: lima,
-                        child: Icon(Icons.camera_alt,
+                        child: IconoVivo(Icons.camera_alt,
                             size: 15, color: Colors.white),
                       ),
                     ),

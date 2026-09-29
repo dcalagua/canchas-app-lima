@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../brand.dart';
 import '../theme.dart';
 import 'app_shell.dart';
+import '../widgets/icono_vivo.dart';
 
 const String kPrefOnboardingVisto = 'onboarding_visto';
 
@@ -99,7 +100,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             color: s.color.withOpacity(0.12),
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(s.icono, size: 72, color: s.color),
+                          child: IconoVivo(s.icono, size: 72, color: s.color),
                         ),
                         const SizedBox(height: 40),
                         Text(

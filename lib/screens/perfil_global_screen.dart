@@ -10,6 +10,7 @@ import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/reto_flow.dart';
+import '../widgets/icono_vivo.dart';
 
 /// PERFIL GLOBAL del jugador: su carnet CONSOLIDADO entre todas las academias
 /// (identidad = correo). Se abre al tocar una fila del ranking global. Cierra el
@@ -215,7 +216,7 @@ class _PerfilGlobalScreenState extends State<PerfilGlobalScreen> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.school_outlined,
+                        const IconoVivo(Icons.school_outlined,
                             size: 18, color: lima),
                         const SizedBox(width: 10),
                         Expanded(

@@ -9,6 +9,7 @@ import 'campeonato_detalle_screen.dart';
 import 'crear_campeonato_screen.dart';
 import 'login_google_sheet.dart';
 import 'unirse_campeonato_sheet.dart';
+import '../widgets/icono_vivo.dart';
 
 /// "Mis campeonatos": TODOS los campeonatos que el usuario organiza, con o sin
 /// academia. Antes, un campeonato creado desde Anfitrión (sin academia) no
@@ -162,7 +163,7 @@ class _UnirmeTile extends StatelessWidget {
             const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         leading: const CircleAvatar(
           backgroundColor: bosque,
-          child: Icon(Icons.qr_code_2, color: Colors.white),
+          child: IconoVivo(Icons.qr_code_2, color: Colors.white),
         ),
         title: Text('Unirme a un campeonato',
             style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
@@ -231,7 +232,7 @@ class _Vacio extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     return Column(
       children: [
-        Icon(Icons.emoji_events_outlined,
+        IconoVivo(Icons.emoji_events_outlined,
             size: 56, color: textoTenueDe(context)),
         const SizedBox(height: 12),
         Text('Aún no tienes campeonatos',

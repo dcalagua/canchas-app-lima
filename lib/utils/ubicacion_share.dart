@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../theme.dart';
 import 'compartir_pichangol.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Compartir / abrir la ubicación de un lugar (cancha o academia). Usa un enlace
 /// de Google Maps; no requiere dependencias extra (solo url_launcher).
@@ -57,7 +58,7 @@ class UbicacionShare {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Row(
                   children: [
-                    Icon(Icons.place, color: acento),
+                    IconoVivo(Icons.place, color: acento),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Column(
@@ -97,7 +98,7 @@ class UbicacionShare {
                 },
               ),
               ListTile(
-                leading: Icon(Icons.directions, color: acento),
+                leading: IconoVivo(Icons.directions, color: acento),
                 title: const Text('Cómo llegar'),
                 subtitle: const Text('Abre la ruta en Google Maps'),
                 onTap: () {
@@ -106,7 +107,7 @@ class UbicacionShare {
                 },
               ),
               ListTile(
-                leading: Icon(Icons.chat, color: acento),
+                leading: IconoVivo(Icons.chat, color: acento),
                 title: const Text('Enviar por WhatsApp'),
                 subtitle: const Text('Comparte el punto con un contacto'),
                 onTap: () {
@@ -115,7 +116,7 @@ class UbicacionShare {
                 },
               ),
               ListTile(
-                leading: Icon(Icons.link, color: acento),
+                leading: IconoVivo(Icons.link, color: acento),
                 title: const Text('Copiar enlace'),
                 subtitle: const Text('Pégalo donde quieras'),
                 onTap: () {

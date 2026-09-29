@@ -15,6 +15,7 @@ import 'editar_perfil_screen.dart';
 import 'privacidad_screen.dart';
 import 'referidos_screen.dart';
 import 'verificar_identidad_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Ajustes de la app. Por ahora: selector de tema (Claro / Oscuro / Automático).
 /// Theme-aware a propósito (usa el ColorScheme) para verse bien en ambos modos.
@@ -579,7 +580,7 @@ class _AccionTile extends StatelessWidget {
         leading: CircleAvatar(
           radius: 20,
           backgroundColor: color,
-          child: Icon(icon, color: Colors.white, size: 20),
+          child: IconoVivo(icon, color: Colors.white, size: 20),
         ),
         title: Text(title,
             style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),

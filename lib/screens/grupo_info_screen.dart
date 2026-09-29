@@ -17,6 +17,7 @@ import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Inicia la llamada grupal: publica el enlace en el chat del grupo (para que
 /// todos puedan unirse) y abre la sala DENTRO de la app (Jitsi embebido).
@@ -298,7 +299,7 @@ class _GrupoInfoScreenState extends State<GrupoInfoScreen> {
                           : null,
                       child: g.fotoUrl.isNotEmpty
                           ? null
-                          : const Icon(Icons.groups, size: 52, color: lima),
+                          : const IconoVivo(Icons.groups, size: 52, color: lima),
                     ),
                   ),
                   Positioned(
@@ -313,7 +314,7 @@ class _GrupoInfoScreenState extends State<GrupoInfoScreen> {
                               height: 16,
                               child: CircularProgressIndicator(
                                   strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.camera_alt,
+                          : const IconoVivo(Icons.camera_alt,
                               size: 16, color: Colors.white),
                     ),
                   ),
@@ -375,7 +376,7 @@ class _GrupoInfoScreenState extends State<GrupoInfoScreen> {
             ListTile(
               leading: const CircleAvatar(
                   backgroundColor: limaSuave,
-                  child: Icon(Icons.person_add_alt, color: lima)),
+                  child: IconoVivo(Icons.person_add_alt, color: lima)),
               title: const Text('Añadir integrante',
                   style: TextStyle(fontWeight: FontWeight.w700)),
               onTap: _anadirIntegrante,
@@ -384,7 +385,7 @@ class _GrupoInfoScreenState extends State<GrupoInfoScreen> {
             for (final e in g.miembros) _filaMiembro(e, g, soyCreador),
             const Divider(height: 24),
             ListTile(
-              leading: const Icon(Icons.logout, color: clayOscuro),
+              leading: const IconoVivo(Icons.logout, color: clayOscuro),
               title: const Text('Salir del grupo',
                   style: TextStyle(
                       color: clayOscuro, fontWeight: FontWeight.w700)),

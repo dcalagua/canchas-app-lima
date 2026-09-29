@@ -24,6 +24,7 @@ import '../widgets/selector_horario.dart';
 import 'agregar_cancha_screen.dart';
 import '../utils/moneda.dart';
 import '../config/pais.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Edición de una cancha ya registrada por el dueño: cambiar nombre, precio,
 /// deporte, horario/duración, dirección/ubicación, agregar foto o eliminarla.
@@ -588,7 +589,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             onSubmitted: (_) => _ubicarDireccion(),
             decoration: InputDecoration(
               labelText: 'Dirección',
-              prefixIcon: const Icon(Icons.place, color: clay),
+              prefixIcon: const IconoVivo(Icons.place, color: clay),
               suffixIcon: _geocodificando
                   ? const Padding(
                       padding: EdgeInsets.all(12),
@@ -1049,7 +1050,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             children: [
               for (final a in amenidadesCatalogo)
                 FilterChip(
-                  avatar: Icon(a.icono,
+                  avatar: IconoVivo(a.icono,
                       size: 18,
                       color: _amenidades.contains(a.clave)
                           ? Colors.white
@@ -1131,7 +1132,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
               decoration: InputDecoration(
                 labelText: 'Tu ${docIdActual} *',
                 hintText: 'Validamos tu identidad',
-                prefixIcon: Icon(Icons.badge_outlined, color: cs.primary),
+                prefixIcon: IconoVivo(Icons.badge_outlined, color: cs.primary),
                 counterText: '',
               ),
             ),
@@ -1241,7 +1242,7 @@ class _GaleriaEditor extends StatelessWidget {
               child: const Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.add_a_photo, color: pino, size: 28),
+                  IconoVivo(Icons.add_a_photo, color: pino, size: 28),
                   SizedBox(height: 6),
                   Text('Agregar',
                       style: TextStyle(

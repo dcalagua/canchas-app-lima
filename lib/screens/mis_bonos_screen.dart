@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/icono_vivo.dart';
 
 /// "Mis bonos" (vista del JUGADOR): los packs de horas prepagadas que compró,
 /// con su saldo y consumo. Da claridad de a dónde fue su plata: compró un bono,
@@ -96,7 +97,7 @@ class _MiBonoCard extends StatelessWidget {
                 decoration: BoxDecoration(
                     color: (sinSaldo ? textoTenue : teal).withOpacity(0.14),
                     borderRadius: BorderRadius.circular(12)),
-                child: Icon(Icons.confirmation_number,
+                child: IconoVivo(Icons.confirmation_number,
                     color: sinSaldo ? textoTenue : teal),
               ),
               const SizedBox(width: 12),
@@ -158,7 +159,7 @@ class _Vacio extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     return Column(
       children: [
-        Icon(Icons.confirmation_number_outlined,
+        IconoVivo(Icons.confirmation_number_outlined,
             size: 56, color: textoTenueDe(context)),
         const SizedBox(height: 12),
         Text('Aún no tienes bonos',

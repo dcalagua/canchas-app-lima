@@ -24,6 +24,7 @@ import '../widgets/selector_horario.dart';
 import 'login_google_sheet.dart';
 import '../utils/moneda.dart';
 import '../config/pais.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Registrar una cancha escribiendo la dirección: se geocodifica y aparece en el
 /// mapa automáticamente (estilo eSupplier). Un local puede tener varias canchas
@@ -727,7 +728,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             decoration: InputDecoration(
               label: _lblReq('Dirección (calle y número, distrito)'),
               hintText: 'Ej.: Av. Aviación 2345, San Borja',
-              prefixIcon: const Icon(Icons.place, color: coral),
+              prefixIcon: const IconoVivo(Icons.place, color: coral),
               suffixIcon: _geocodificando
                   ? const Padding(
                       padding: EdgeInsets.all(12),
@@ -760,7 +761,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.my_location),
+                  : const IconoVivo(Icons.my_location),
               label: Text(_ubicandoGps
                   ? 'Leyendo tu GPS…'
                   : 'Estoy en la cancha: usar mi ubicación'),
@@ -995,7 +996,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               hintText: paisActual.consultaDoc
                   ? '${paisActual.docLongitud} dígitos — acelera la validación'
                   : 'Ayuda a validar que eres el dueño',
-              prefixIcon: Icon(Icons.badge_outlined,
+              prefixIcon: IconoVivo(Icons.badge_outlined,
                   color: Theme.of(context).colorScheme.primary),
               suffixIcon: _dniCargando
                   ? const Padding(
@@ -1290,7 +1291,7 @@ class _ZonaFoto extends StatelessWidget {
             ? Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: const [
-                  Icon(Icons.add_a_photo, color: verdeCancha, size: 40),
+                  IconoVivo(Icons.add_a_photo, color: verdeCancha, size: 40),
                   SizedBox(height: 8),
                   Text('Sube una foto de la cancha',
                       style: TextStyle(
@@ -1322,7 +1323,7 @@ class _ResultadoIA extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.auto_awesome, color: color),
+          IconoVivo(Icons.auto_awesome, color: color),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

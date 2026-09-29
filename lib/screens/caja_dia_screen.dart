@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
+import '../widgets/icono_vivo.dart';
 
 /// CAJA DEL DÍA del dueño: la plata de hoy de un vistazo (cobrado, por cobrar,
 /// reservas, ocupación), la lista de reservas del día con "marcar pagado", y el
@@ -448,7 +449,7 @@ class _EtiquetaBono extends StatelessWidget {
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.confirmation_number, size: 15, color: teal),
+          IconoVivo(Icons.confirmation_number, size: 15, color: teal),
           SizedBox(width: 5),
           Text('Bono',
               style: TextStyle(color: teal, fontWeight: FontWeight.w800)),

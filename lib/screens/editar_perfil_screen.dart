@@ -10,6 +10,7 @@ import '../widgets/cargando_pichangol.dart';
 import '../widgets/nivel_chip.dart';
 import '../widgets/responsive.dart';
 import 'nivel_onboarding_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// EDITAR MI PERFIL — rediseño al UI/UX de Airbnb ("Edita el perfil"):
 ///  - Título centrado + X para cerrar.
@@ -146,7 +147,7 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
+              leading: const IconoVivo(Icons.photo_library_outlined),
               title: const Text('Elegir de la galería'),
               onTap: () {
                 Navigator.pop(context);
@@ -154,7 +155,7 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
+              leading: const IconoVivo(Icons.photo_camera_outlined),
               title: const Text('Tomar una foto'),
               onTap: () {
                 Navigator.pop(context);
@@ -389,7 +390,7 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
                           child: _subiendoFoto
                               ? const CircularProgressIndicator(color: bosque)
                               : (foto == null || foto.isEmpty)
-                                  ? const Icon(Icons.person,
+                                  ? const IconoVivo(Icons.person,
                                       size: 64, color: bosque)
                                   : null,
                         ),
@@ -408,7 +409,7 @@ class _EditarPerfilScreenState extends State<EditarPerfilScreen> {
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(Icons.photo_camera,
+                                    IconoVivo(Icons.photo_camera,
                                         size: 17, color: tinta),
                                     SizedBox(width: 7),
                                     Text('Editar',

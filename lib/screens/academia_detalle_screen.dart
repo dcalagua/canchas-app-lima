@@ -23,6 +23,7 @@ import 'login_google_sheet.dart';
 import 'mis_clases_screen.dart';
 import '../utils/moneda.dart';
 import '../config/pais.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Ficha pública de una academia: feed de fotos propio (no Instagram embebido),
 /// planes con matrícula en el mismo app (pago simulado) y redes para seguir.
@@ -309,7 +310,7 @@ class _Contenido extends StatelessWidget {
                         const CircleAvatar(
                             radius: 18,
                             backgroundColor: amarillo,
-                            child: Icon(Icons.local_offer_outlined,
+                            child: IconoVivo(Icons.local_offer_outlined,
                                 color: Colors.white, size: 20)),
                         const SizedBox(width: 10),
                         Expanded(
@@ -434,7 +435,7 @@ class _TarjetaSedeInfo extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.place, size: 18, color: lima),
+              const IconoVivo(Icons.place, size: 18, color: lima),
               const SizedBox(width: 8),
               Expanded(
                 child: Column(
@@ -465,7 +466,7 @@ class _TarjetaSedeInfo extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.schedule, size: 14, color: textoTenue),
+                    const IconoVivo(Icons.schedule, size: 14, color: textoTenue),
                     const SizedBox(width: 6),
                     Expanded(
                         child: Text('${e.key}: ${e.value}',
@@ -627,7 +628,7 @@ class _PlanesSectionState extends State<_PlanesSection> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.schedule, size: 16, color: bosque),
+              const IconoVivo(Icons.schedule, size: 16, color: bosque),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(horarios.join(' · '),
@@ -1006,7 +1007,7 @@ class _CarritoCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.family_restroom, color: bosque),
+                  const IconoVivo(Icons.family_restroom, color: bosque),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1155,7 +1156,7 @@ class _TarjetaPlan extends StatelessWidget {
             const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(Icons.store_mall_directory_outlined,
+                const IconoVivo(Icons.store_mall_directory_outlined,
                     size: 14, color: textoTenue),
                 const SizedBox(width: 4),
                 Text('El precio varía según la sede',
@@ -1538,7 +1539,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                   color: limaSuave, borderRadius: BorderRadius.circular(12)),
               child: Row(
                 children: [
-                  const Icon(Icons.family_restroom, size: 18, color: bosque),
+                  const IconoVivo(Icons.family_restroom, size: 18, color: bosque),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1624,7 +1625,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                     : _esFamiliar
                         ? 'Nombre de la persona'
                         : 'Nombre del alumno',
-                prefixIcon: const Icon(Icons.person_outline)),
+                prefixIcon: const IconoVivo(Icons.person_outline)),
           ),
           if (_esFamiliar) ...[
             const SizedBox(height: 14),
@@ -1635,7 +1636,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                   labelText: 'Su correo de Google (opcional)',
                   helperText:
                       'Con su correo verá sus clases y pagos en su propia app.',
-                  prefixIcon: Icon(Icons.alternate_email)),
+                  prefixIcon: IconoVivo(Icons.alternate_email)),
             ),
           ],
           if (_esHijo) ...[
@@ -1645,7 +1646,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
                   labelText: 'Edad del hijo(a) (opcional)',
-                  prefixIcon: Icon(Icons.cake_outlined)),
+                  prefixIcon: IconoVivo(Icons.cake_outlined)),
             ),
           ],
           const SizedBox(height: 14),
@@ -1659,7 +1660,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                         ? 'WhatsApp de la persona'
                         : 'WhatsApp de contacto',
                 prefixText: '$codigoTelActual ',
-                prefixIcon: const Icon(Icons.chat_outlined)),
+                prefixIcon: const IconoVivo(Icons.chat_outlined)),
           ),
           // Sede (academias multi-sede): elige dónde entrenará el alumno.
           if (widget.sedes.length > 1) ...[
@@ -1673,7 +1674,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
               children: [
                 for (final s in widget.sedes)
                   ChoiceChip(
-                    avatar: Icon(Icons.place,
+                    avatar: IconoVivo(Icons.place,
                         size: 16,
                         color: _sedeId == s.id ? Colors.white : lima),
                     label: Text(s.nombre),
@@ -1829,7 +1830,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
             const SizedBox(height: 10),
             Row(
               children: [
-                const Icon(Icons.error_outline, size: 18, color: clayOscuro),
+                const IconoVivo(Icons.error_outline, size: 18, color: clayOscuro),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(_error!,

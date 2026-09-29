@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/musica_service.dart';
+import 'icono_vivo.dart';
 
 /// Pastilla que muestra la música elegida para una historia (en el composer),
 /// con botón para quitarla. Estilo oscuro semitransparente (se ve sobre foto o
@@ -32,7 +33,7 @@ class ChipMusica extends StatelessWidget {
                 : const _Nota(),
           ),
           const SizedBox(width: 8),
-          const Icon(Icons.music_note, color: Colors.white, size: 16),
+          const IconoVivo(Icons.music_note, color: Colors.white, size: 16),
           const SizedBox(width: 2),
           Flexible(
             child: Text(
@@ -63,6 +64,6 @@ class _Nota extends StatelessWidget {
         width: 28,
         height: 28,
         color: Colors.white24,
-        child: const Icon(Icons.music_note, color: Colors.white, size: 16),
+        child: const IconoVivo(Icons.music_note, color: Colors.white, size: 16),
       );
 }

@@ -9,6 +9,7 @@ import '../widgets/responsive.dart';
 import 'buscar_usuario_screen.dart';
 import 'jugadores_disponibles_screen.dart';
 import 'perfil_global_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// RANKING GLOBAL Pichangol: tabla cruzada de jugadores de TODAS las academias
 /// por deporte (estilo circuito abierto, rankingtenis.pe). Es el motor de
@@ -149,7 +150,7 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                     const CircleAvatar(
                         radius: 18,
                         backgroundColor: teal,
-                        child: Icon(Icons.public,
+                        child: IconoVivo(Icons.public,
                             color: Colors.white, size: 20)),
                     const SizedBox(width: 12),
                     const Expanded(
@@ -180,7 +181,7 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.person_add_alt_1,
+                      IconoVivo(Icons.person_add_alt_1,
                           color: appState.estoyEnCircuito
                               ? bosque
                               : Colors.white,
@@ -254,7 +255,7 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                   runSpacing: 8,
                   children: [
                     ChoiceChip(
-                      avatar: const Icon(Icons.place_outlined, size: 16),
+                      avatar: const IconoVivo(Icons.place_outlined, size: 16),
                       label: const Text('Toda la ciudad'),
                       selected: zonaSel.isEmpty,
                       onSelected: (_) => setState(() => _zona = ''),
@@ -275,7 +276,7 @@ class _RankingGlobalScreenState extends State<RankingGlobalScreen> {
                 runSpacing: 8,
                 children: [
                   ChoiceChip(
-                    avatar: const Icon(Icons.all_inclusive, size: 16),
+                    avatar: const IconoVivo(Icons.all_inclusive, size: 16),
                     label: const Text('Histórico'),
                     selected: tempSel == null,
                     onSelected: (_) => setState(() => _temporadaId = ''),
@@ -383,7 +384,7 @@ class _Vacio extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.emoji_events_outlined,
+            IconoVivo(Icons.emoji_events_outlined,
                 size: 64, color: Theme.of(context).colorScheme.primary),
             const SizedBox(height: 14),
             const Text('El ranking global está por arrancar',
@@ -480,7 +481,7 @@ class _TemporadaAviso extends StatelessWidget {
           CircleAvatar(
               radius: 18,
               backgroundColor: amarillo,
-              child: Icon(icono, color: Colors.white, size: 20)),
+              child: IconoVivo(icono, color: Colors.white, size: 20)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(texto,

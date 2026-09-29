@@ -4,6 +4,7 @@ import '../models/reserva_fija.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
+import '../widgets/icono_vivo.dart';
 
 /// RESERVAS FIJAS ("pensionados"): el dueño registra a los clientes que juegan
 /// SIEMPRE el mismo día y hora, y el app genera solas las reservas de las
@@ -67,7 +68,7 @@ class ReservasFijasScreen extends StatelessWidget {
                   padding: const EdgeInsets.symmetric(vertical: 30),
                   child: Column(
                     children: [
-                      const Icon(Icons.event_repeat,
+                      const IconoVivo(Icons.event_repeat,
                           size: 52, color: textoTenue),
                       const SizedBox(height: 10),
                       Text('Aún no tienes clientes fijos.',
@@ -275,7 +276,7 @@ class _FilaFija extends StatelessWidget {
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: fija.activo ? lima.withOpacity(0.15) : trazo,
-          child: Icon(Icons.event_repeat,
+          child: IconoVivo(Icons.event_repeat,
               color: fija.activo ? lima : textoTenue),
         ),
         title: Text(

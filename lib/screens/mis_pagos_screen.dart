@@ -8,6 +8,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Un renglón del estado de cuenta del JUGADOR (un pago que hizo o una reserva).
 class _Pago {
@@ -336,7 +337,7 @@ class _PagoCard extends StatelessWidget {
           CircleAvatar(
             radius: 20,
             backgroundColor: color.withOpacity(0.12),
-            child: Icon(icono, color: color, size: 20),
+            child: IconoVivo(icono, color: color, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -376,7 +377,7 @@ class _Vacio extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     return Column(
       children: [
-        Icon(Icons.receipt_long_outlined,
+        IconoVivo(Icons.receipt_long_outlined,
             size: 56, color: textoTenueDe(context)),
         const SizedBox(height: 12),
         Text('Aún no tienes pagos',

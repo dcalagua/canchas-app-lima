@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/icono_vivo.dart';
 
 /// MÉTODO DE PAGO DE SERVICIOS: la tarjeta (débito automático One-Click) con la
 /// que se RENUEVAN cada mes las suscripciones de "Servicios Pichangol". El saldo
@@ -89,7 +90,7 @@ class _BilleteraNegocioScreenState extends State<BilleteraNegocioScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.credit_card, color: lima),
+              const IconoVivo(Icons.credit_card, color: lima),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text('Método de pago',

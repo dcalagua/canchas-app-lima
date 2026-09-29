@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/nivel_chip.dart';
 import '../widgets/responsive.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Mini-cuestionario que SIEMBRA el nivel inicial del jugador en un deporte
 /// (estilo Playtomic: te autoevalúas y luego los resultados lo ajustan). Tres
@@ -147,7 +148,7 @@ class _NivelOnboardingScreenState extends State<NivelOnboardingScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.emoji_events, color: lima, size: 56),
+            const IconoVivo(Icons.emoji_events, color: lima, size: 56),
             const SizedBox(height: 12),
             const Text('¡Listo! Este es tu nivel',
                 style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800)),

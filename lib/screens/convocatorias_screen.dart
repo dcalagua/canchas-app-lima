@@ -9,6 +9,7 @@ import '../widgets/cargando_pichangol.dart';
 import 'convocatoria_detalle_screen.dart';
 import 'crear_convocatoria_screen.dart';
 import 'ranking_socios_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Lista de "pichangas" (convocatorias) de un club. Es la puerta de entrada del
 /// módulo: el jugador ve las convocatorias y se anota; el dueño (admin del club)
@@ -208,13 +209,13 @@ class _BarraCupos extends StatelessWidget {
         const SizedBox(height: 8),
         Row(
           children: [
-            Icon(Icons.groups, size: 16, color: textoTenue),
+            IconoVivo(Icons.groups, size: 16, color: textoTenue),
             const SizedBox(width: 6),
             Text('${conv.confirmadosN}/${conv.cupos} confirmados',
                 style: const TextStyle(fontWeight: FontWeight.w600)),
             if (conv.esperaN > 0) ...[
               const SizedBox(width: 12),
-              Icon(Icons.hourglass_bottom, size: 16, color: textoTenue),
+              IconoVivo(Icons.hourglass_bottom, size: 16, color: textoTenue),
               const SizedBox(width: 4),
               Text('${conv.esperaN} en espera',
                   style: TextStyle(color: textoTenue)),
@@ -242,7 +243,7 @@ class _VacioLista extends StatelessWidget {
     return ListView(
       children: [
         const SizedBox(height: 80),
-        Icon(Icons.sports_soccer, size: 56, color: sage.withOpacity(0.6)),
+        IconoVivo(Icons.sports_soccer, size: 56, color: sage.withOpacity(0.6)),
         const SizedBox(height: 16),
         const Center(
           child: Text('Aún no hay pichangas',
@@ -282,7 +283,7 @@ class _AvisoSinBackend extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off, size: 48, color: textoTenue),
+            IconoVivo(Icons.cloud_off, size: 48, color: textoTenue),
             const SizedBox(height: 16),
             const Text('Convocatorias no disponibles',
                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),

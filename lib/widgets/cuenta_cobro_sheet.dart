@@ -5,6 +5,7 @@ import '../config/pais.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'icono_vivo.dart';
 
 /// Hoja "Cuenta de cobro": dónde quiere recibir el dueño/organizador/academia
 /// sus liquidaciones (pedido del director, 26-sep-2026, tras el primer cobro
@@ -182,7 +183,7 @@ class _CuentaCobroSheetState extends State<CuentaCobroSheet> {
                   decoration: BoxDecoration(
                       color: limaSuave,
                       borderRadius: BorderRadius.circular(14)),
-                  child: const Icon(Icons.account_balance_outlined, color: lima),
+                  child: const IconoVivo(Icons.account_balance_outlined, color: lima),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -273,7 +274,7 @@ class _CuentaCobroSheetState extends State<CuentaCobroSheet> {
                 textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(
                   labelText: 'Titular (tal como figura en la cuenta)',
-                  prefixIcon: Icon(Icons.person_outline),
+                  prefixIcon: IconoVivo(Icons.person_outline),
                 ),
               ),
               const SizedBox(height: 14),
@@ -288,7 +289,7 @@ class _CuentaCobroSheetState extends State<CuentaCobroSheet> {
                 textCapitalization: TextCapitalization.characters,
                 decoration: const InputDecoration(
                   labelText: 'Número de documento',
-                  prefixIcon: Icon(Icons.badge_outlined),
+                  prefixIcon: IconoVivo(Icons.badge_outlined),
                 ),
               ),
               if (_error != null) ...[

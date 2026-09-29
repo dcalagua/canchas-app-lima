@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../utils/moneda.dart';
 import 'court_lines.dart';
 import 'marca.dart';
+import 'icono_vivo.dart';
 
 /// Tarjeta de club (rediseño): portada con gradiente de deporte + líneas de
 /// cancha, badges, rating, chips de deportes y precio "desde".
@@ -183,7 +184,7 @@ class ClubCard extends StatelessWidget {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.near_me,
+                            IconoVivo(Icons.near_me,
                                 size: 13, color: cs.primary),
                             const SizedBox(width: 3),
                             Text(_distanciaTxt(distanciaKm!),
@@ -299,7 +300,7 @@ class _AhorroChip extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.trending_down, size: 13, color: _verdeAhorro),
+          const IconoVivo(Icons.trending_down, size: 13, color: _verdeAhorro),
           const SizedBox(width: 4),
           Text('$pct% vs. zona',
               style: const TextStyle(

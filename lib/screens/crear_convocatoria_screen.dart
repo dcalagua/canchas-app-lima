@@ -5,6 +5,7 @@ import '../services/convocatorias_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Formulario del dueño para crear una convocatoria ("pichanga"). Aquí elige el
 /// **modo de asignación** entre las 3 opciones configurables.
@@ -110,7 +111,7 @@ class _CrearConvocatoriaScreenState extends State<CrearConvocatoriaScreen> {
               decoration: const InputDecoration(
                 labelText: 'Título',
                 hintText: 'Ej. Fulbito Máster',
-                prefixIcon: Icon(Icons.sports_soccer),
+                prefixIcon: IconoVivo(Icons.sports_soccer),
               ),
               validator: (v) =>
                   (v == null || v.trim().isEmpty) ? 'Ponle un título' : null,
@@ -138,7 +139,7 @@ class _CrearConvocatoriaScreenState extends State<CrearConvocatoriaScreen> {
                     keyboardType: TextInputType.number,
                     decoration: const InputDecoration(
                       labelText: 'Cupos',
-                      prefixIcon: Icon(Icons.groups),
+                      prefixIcon: IconoVivo(Icons.groups),
                     ),
                     validator: (v) {
                       final n = int.tryParse(v?.trim() ?? '');
@@ -156,7 +157,7 @@ class _CrearConvocatoriaScreenState extends State<CrearConvocatoriaScreen> {
               child: InputDecorator(
                 decoration: const InputDecoration(
                   labelText: 'Fecha del partido (opcional)',
-                  prefixIcon: Icon(Icons.event),
+                  prefixIcon: IconoVivo(Icons.event),
                 ),
                 child: Text(_fechaTexto() ?? 'Elegir fecha',
                     style: TextStyle(

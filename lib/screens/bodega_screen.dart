@@ -21,6 +21,7 @@ import '../widgets/dialogo_pichangol.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/ilustracion_pichangol.dart';
 import '../widgets/imagen_producto_bodega.dart';
+import '../widgets/icono_vivo.dart';
 
 /// MI BODEGA — POS ligero del dueño (función Pichangol Pro): caja rápida de
 /// venta, catálogo con stock y reportes. La plata NO pasa por Pichangol (el
@@ -500,7 +501,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
                   onTap: () => Navigator.pop(bctx, c),
                 ),
               ListTile(
-                leading: const Icon(Icons.person_add_alt_1_outlined,
+                leading: const IconoVivo(Icons.person_add_alt_1_outlined,
                     color: bosque),
                 title: const Text('Abrir cuenta nueva',
                     style: TextStyle(fontWeight: FontWeight.w700)),
@@ -2256,7 +2257,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
                           child: CircleAvatar(
                             radius: 8,
                             backgroundColor: bosque,
-                            child: Icon(Icons.add_a_photo_outlined,
+                            child: IconoVivo(Icons.add_a_photo_outlined,
                                 size: 9, color: Colors.white),
                           ),
                         ),

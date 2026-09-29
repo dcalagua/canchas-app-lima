@@ -2774,6 +2774,22 @@ no inventar layouts propios. Rasgos Airbnb:
   ni el logo de PCG ni la burbuja con la "P" (ambas se probaron y se
   revirtieron). El globo de chat de las fichas (ChatBurbuja) sí usa el pin de
   Pichangol como fallback sin logo del local.
+- **ÍCONOS CON VIDA = EMOJI A COLOR en el contenido (pedido del director,
+  29-sep-2026: "a todo el app ponle íconos o imágenes como los de Agregar
+  servicios"):** `widgets/icono_vivo.dart::IconoVivo(icono, size:, color:)`
+  pinta el emoji del concepto (📅 fecha, 📍 dirección, 🏆 campeonatos, 👛
+  billetera, 🎓 academia, 🏪 tienda, 🧾 pagos, ⚙️ ajustes…) desde UN mapa
+  (`_mapa`, por `codePoint` de Material); si el ícono no está, dibuja el
+  `Icon` de siempre. Se aplicó a todo `Icon(Icons.x)` de CONTENIDO (filas,
+  menús de Perfil / Modo anfitrión / Ajustes / billetera, pases, vacíos,
+  `leading`, `avatar`, `prefixIcon`) y a los widgets de fila que reciben
+  `IconData`. **Se quedan con ícono de línea:** botones y barras de
+  navegación (`icon:` / `selectedIcon:` / `suffixIcon:`), acciones (cerrar,
+  agregar, flechas, editar, borrar, ⓘ de información), estrellas de
+  calificación, llamada/mic/video, la marca (`widgets/marca.dart`), el
+  loader del pin, el globo de chat y el `verified` lima. Toda pantalla
+  nueva usa `IconoVivo` para sus íconos de contenido; para un concepto nuevo
+  se agrega el par al mapa (un solo lugar para todo el app).
 - **Avatares SIEMPRE con foto real:** cualquier avatar de jugador (ranking,
   jugadores disponibles, retos —incluido el reto de dobles—, chat, perfil, etc.)
   DEBE mostrar la foto del perfil (`appState.fotoDe(email)` o `usuario.fotoUrl`),

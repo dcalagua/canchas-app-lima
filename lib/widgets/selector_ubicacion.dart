@@ -4,6 +4,7 @@ import 'package:geocoding/geocoding.dart';
 import '../data/geo_admin.dart';
 import '../services/location_service.dart';
 import '../theme.dart';
+import 'icono_vivo.dart';
 
 /// Selector en CASCADA de la ubicación administrativa del país (3 niveles), con
 /// las etiquetas correctas por país (Departamento/Provincia/Distrito en Perú,
@@ -112,7 +113,7 @@ class _SelectorUbicacionState extends State<SelectorUbicacion> {
       value: value,
       isExpanded: true,
       decoration: InputDecoration(
-          labelText: label, prefixIcon: const Icon(Icons.place_outlined)),
+          labelText: label, prefixIcon: const IconoVivo(Icons.place_outlined)),
       items: [
         for (final it in items)
           DropdownMenuItem(
@@ -159,7 +160,7 @@ class _SelectorUbicacionState extends State<SelectorUbicacion> {
                     height: 15,
                     child: CircularProgressIndicator(
                         strokeWidth: 2.2, color: lima))
-                : const Icon(Icons.my_location, size: 18, color: bosque),
+                : const IconoVivo(Icons.my_location, size: 18, color: bosque),
             label: Text(
                 _detectando
                     ? 'Detectando…'

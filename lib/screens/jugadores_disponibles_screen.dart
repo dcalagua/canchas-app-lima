@@ -13,6 +13,7 @@ import '../widgets/responsive.dart';
 import '../widgets/reto_flow.dart';
 import '../widgets/selector_ubicacion.dart';
 import 'login_google_sheet.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Abre la hoja "Unirme al circuito" (login + formulario) desde CUALQUIER
 /// pantalla. Devuelve true si el usuario se unió/actualizó. Refresca el perfil
@@ -199,7 +200,7 @@ class _JugadoresDisponiblesScreenState
                     // Matchmaking: solo jugadores de mi nivel (si ya tengo nivel).
                     if (appState.tengoNivel)
                       FilterChip(
-                        avatar: Icon(Icons.equalizer,
+                        avatar: IconoVivo(Icons.equalizer,
                             size: 18,
                             color: _soloParejos ? bosque : textoTenue),
                         label: const Text('De mi nivel'),
@@ -219,7 +220,7 @@ class _JugadoresDisponiblesScreenState
                     padding: const EdgeInsets.symmetric(vertical: 30),
                     child: Column(
                       children: [
-                        const Icon(Icons.groups_2_outlined,
+                        const IconoVivo(Icons.groups_2_outlined,
                             size: 54, color: textoTenue),
                         const SizedBox(height: 12),
                         Text(

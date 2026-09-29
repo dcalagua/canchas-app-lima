@@ -16,6 +16,7 @@ import '../widgets/responsive.dart';
 import 'conectar_redes_screen.dart';
 import 'cuenta_screen.dart';
 import 'recargar_saldo_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// "Servicios Pichangol": el dueño de un NEGOCIO (academia o club) contrata
 /// landing / manejo de redes / presencia digital como SUSCRIPCIÓN mensual,
@@ -328,13 +329,13 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.photo_library_outlined, color: lima),
+              leading: const IconoVivo(Icons.photo_library_outlined, color: lima),
               title: const Text('Con foto (Instagram + Facebook)'),
               subtitle: const Text('Instagram requiere una imagen.'),
               onTap: () => Navigator.pop(ctx, 'foto'),
             ),
             ListTile(
-              leading: const Icon(Icons.notes, color: lima),
+              leading: const IconoVivo(Icons.notes, color: lima),
               title: const Text('Solo texto (Facebook)'),
               onTap: () => Navigator.pop(ctx, 'texto'),
             ),
@@ -924,7 +925,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
                 tilePadding: const EdgeInsets.symmetric(horizontal: 16),
                 childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
                 expandedCrossAxisAlignment: CrossAxisAlignment.start,
-                leading: const Icon(Icons.build_outlined, size: 20, color: lima),
+                leading: const IconoVivo(Icons.build_outlined, size: 20, color: lima),
                 title: const Text('Administrar',
                     style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
                 children: tools,

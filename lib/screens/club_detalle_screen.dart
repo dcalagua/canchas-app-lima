@@ -34,6 +34,7 @@ import 'editar_cancha_screen.dart';
 import '../utils/moneda.dart';
 import '../utils/ubicacion_share.dart';
 import 'login_google_sheet.dart';
+import '../widgets/icono_vivo.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import 'registrar_cancha_screen.dart';
 import 'reservas_dueno_screen.dart';
@@ -239,7 +240,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.hourglass_top, color: lima),
+                    const IconoVivo(Icons.hourglass_top, color: lima),
                     const SizedBox(width: 8),
                     Text('Lista de espera · $h',
                         style: t.titleMedium
@@ -1283,7 +1284,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.celebration, color: lima),
+                            const IconoVivo(Icons.celebration, color: lima),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
@@ -1328,7 +1329,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Icon(Icons.touch_app_outlined,
+                          IconoVivo(Icons.touch_app_outlined,
                               size: 15, color: textoTenueDe(context)),
                           const SizedBox(width: 6),
                           Expanded(
@@ -1569,7 +1570,7 @@ class _PanelDueno extends StatelessWidget {
                 decoration: BoxDecoration(
                     color: limaSuave,
                     borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.verified_user, size: 19, color: pino),
+                child: const IconoVivo(Icons.verified_user, size: 19, color: pino),
               ),
               const SizedBox(width: 11),
               Expanded(
@@ -1780,7 +1781,7 @@ class _FilaAmenities extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(a.icono, size: 17, color: cs.primary),
+                    IconoVivo(a.icono, size: 17, color: cs.primary),
                     const SizedBox(width: 7),
                     Text(a.etiqueta,
                         style: t.bodySmall?.copyWith(
@@ -2189,7 +2190,9 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                   labelText: 'Nombre y apellido',
                   hintText: 'Como en tu documento',
                   counterText: '',
-                  prefixIcon: Icon(Icons.person_outline)),
+                  prefixIcon: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: IconoVivo(Icons.person_outline, size: 22))),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -2203,7 +2206,9 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                   labelText: 'Celular',
                   hintText: '${_paisCancha.telLongitud} dígitos',
                   counterText: '',
-                  prefixIcon: const Icon(Icons.phone_iphone)),
+                  prefixIcon: const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: IconoVivo(Icons.phone_iphone, size: 22))),
             ),
             if (_errDatos != null) ...[
               const SizedBox(height: 6),
@@ -2401,7 +2406,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.stars, size: 18, color: bosque),
+                    const IconoVivo(Icons.stars, size: 18, color: bosque),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -2441,7 +2446,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.shield_outlined, size: 18, color: pino),
+                        IconoVivo(Icons.shield_outlined, size: 18, color: pino),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -2493,7 +2498,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.lock_outline, size: 15, color: textoTenue),
+                IconoVivo(Icons.lock_outline, size: 15, color: textoTenue),
                 const SizedBox(width: 6),
                 // La pasarela y la moneda las decide el PAÍS DE LA CANCHA
                 // (sus coordenadas), no el GPS del jugador: una cancha de
@@ -2652,7 +2657,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icono, size: 20, color: color),
+          IconoVivo(icono, size: 20, color: color),
           const SizedBox(width: 12),
           Expanded(
             child: Text(texto,
@@ -3075,7 +3080,7 @@ class _SlotChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.lock, size: 14, color: Colors.white),
+              const IconoVivo(Icons.lock, size: 14, color: Colors.white),
               const SizedBox(width: 5),
               Text(hora,
                   style: const TextStyle(
@@ -3107,10 +3112,10 @@ class _SlotChip extends StatelessWidget {
                           enEspera ? null : TextDecoration.lineThrough)),
               if (enEspera) ...[
                 const SizedBox(width: 5),
-                const Icon(Icons.hourglass_top, size: 13, color: lima),
+                const IconoVivo(Icons.hourglass_top, size: 13, color: lima),
               ] else if (nEspera > 0) ...[
                 const SizedBox(width: 5),
-                Icon(Icons.hourglass_top, size: 12, color: textoTenueDe(context)),
+                IconoVivo(Icons.hourglass_top, size: 12, color: textoTenueDe(context)),
                 Text('$nEspera',
                     style: TextStyle(
                         fontSize: 11,
@@ -3305,7 +3310,7 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
         children: [
           Row(
             children: [
-              const Icon(Icons.lock_clock, color: clayOscuro),
+              const IconoVivo(Icons.lock_clock, color: clayOscuro),
               const SizedBox(width: 8),
               Expanded(
                 child: Text('Cancha ya reclamada',
@@ -3329,7 +3334,7 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
         children: [
           Row(
             children: [
-              Icon(Icons.travel_explore,
+              IconoVivo(Icons.travel_explore,
                   color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 8),
               Expanded(
@@ -3355,7 +3360,7 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.add_location_alt),
+                  : const IconoVivo(Icons.add_location_alt),
               label: Text(_cargando
                   ? 'Verificando disponibilidad…'
                   : 'Reclamar / registrar esta cancha'),
@@ -3932,7 +3937,7 @@ class _SeccionBonosState extends State<_SeccionBonos> {
           children: [
             Row(
               children: [
-                const Icon(Icons.confirmation_number_outlined, color: teal),
+                const IconoVivo(Icons.confirmation_number_outlined, color: teal),
                 const SizedBox(width: 8),
                 Text('Bonos de horas',
                     style:

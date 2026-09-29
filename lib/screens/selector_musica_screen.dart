@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../services/musica_service.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Buscador de música para una historia: escribe, escucha el preview de 30 s y
 /// elige. Devuelve la [PistaMusica] seleccionada (o null si cancela).
@@ -205,7 +206,7 @@ class _ArtVacia extends StatelessWidget {
         width: 48,
         height: 48,
         color: limaSuave,
-        child: const Icon(Icons.music_note, color: teal),
+        child: const IconoVivo(Icons.music_note, color: teal),
       );
 }
 
@@ -301,7 +302,7 @@ class _RecorteMusicaScreenState extends State<RecorteMusicaScreen> {
                       width: 180,
                       height: 180,
                       color: limaSuave,
-                      child: const Icon(Icons.music_note, color: teal, size: 60)),
+                      child: const IconoVivo(Icons.music_note, color: teal, size: 60)),
             ),
             const SizedBox(height: 16),
             Text(p.titulo,

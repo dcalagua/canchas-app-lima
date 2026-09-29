@@ -12,6 +12,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
+import '../widgets/icono_vivo.dart';
 
 /// COMMUNITY MANAGER autónomo (Fase 0): el "post del día" LISTO para las redes
 /// del negocio (IG/FB). Muestra el flyer de marca + el copy (editable) y lo
@@ -356,7 +357,7 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
             border: Border.all(color: trazo),
           ),
           child: SwitchListTile(
-            secondary: Icon(Icons.auto_awesome,
+            secondary: IconoVivo(Icons.auto_awesome,
                 color: _activo ? lima : textoTenue),
             title: const Text('Publicar automático',
                 style: TextStyle(fontWeight: FontWeight.w800)),
@@ -383,7 +384,7 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
               border: Border.all(color: trazo),
             ),
             child: SwitchListTile(
-              secondary: Icon(Icons.rocket_launch_outlined,
+              secondary: IconoVivo(Icons.rocket_launch_outlined,
                   color: _autoPublicar ? lima : textoTenue),
               title: const Text('Publicar solo en mis redes',
                   style: TextStyle(fontWeight: FontWeight.w800)),

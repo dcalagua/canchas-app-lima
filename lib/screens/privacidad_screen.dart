@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Privacidad del chat, estilo WhatsApp: el usuario decide si muestra su
 /// "última vez / en línea" y si envía confirmaciones de lectura (2 azules).
@@ -99,7 +100,7 @@ class _SwitchCard extends StatelessWidget {
           CircleAvatar(
             radius: 20,
             backgroundColor: color,
-            child: Icon(icon, color: Colors.white, size: 20),
+            child: IconoVivo(icon, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 12),
           Expanded(

@@ -18,6 +18,7 @@ import 'pago_libelula.dart';
 import 'pago_payphone.dart';
 import 'pago_procesando.dart';
 import '../utils/moneda.dart';
+import 'icono_vivo.dart';
 
 /// Flujo de cobro reutilizable al jugador (reservas, matrículas). Deja elegir
 /// una **tarjeta guardada** (Culqi One Click) o **una nueva**, tokeniza, cobra
@@ -547,7 +548,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                     ],
                     decoration: const InputDecoration(
                         labelText: 'Celular Yape', prefixText: '+51 ',
-                        prefixIcon: Icon(Icons.phone_android)),
+                        prefixIcon: IconoVivo(Icons.phone_android)),
                   ),
                   const SizedBox(height: 10),
                   TextField(
@@ -588,7 +589,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                     decoration: const InputDecoration(
                         labelText: 'Número de tarjeta',
                         hintText: '1234 5678 9012 3456',
-                        prefixIcon: Icon(Icons.credit_card)),
+                        prefixIcon: IconoVivo(Icons.credit_card)),
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -696,7 +697,7 @@ class _FilaCard extends StatelessWidget {
                   ? const VisaMark(alto: 15)
                   : esMaster
                       ? const MastercardMark(alto: 22)
-                      : Icon(Icons.credit_card,
+                      : IconoVivo(Icons.credit_card,
                           color: Theme.of(context).colorScheme.primary),
             ),
             const SizedBox(width: 12),
@@ -788,7 +789,7 @@ class _FilaNueva extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.add_card, color: Theme.of(context).colorScheme.primary),
+            IconoVivo(Icons.add_card, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 12),
             Expanded(
               child: Text('Usar otra tarjeta',

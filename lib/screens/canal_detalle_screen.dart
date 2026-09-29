@@ -23,6 +23,7 @@ import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'community_manager_screen.dart';
 import 'editar_canal_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Feed de un CANAL (tipo WhatsApp Channels): cabecera con foto/nombre/seguidores,
 /// botón de seguir, y las publicaciones. Si soy el dueño, puedo publicar
@@ -369,7 +370,7 @@ class _CanalDetalleScreenState extends State<CanalDetalleScreen> {
             backgroundImage:
                 foto.isNotEmpty ? CachedNetworkImageProvider(foto) : null,
             child: foto.isEmpty
-                ? const Icon(Icons.campaign, color: lima, size: 42)
+                ? const IconoVivo(Icons.campaign, color: lima, size: 42)
                 : null,
           ),
           const SizedBox(height: 12),
@@ -1052,7 +1053,7 @@ class _LinkPreviewState extends State<_LinkPreview> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        Icon(Icons.link, size: 15, color: textoTenueDe(context)),
+                        IconoVivo(Icons.link, size: 15, color: textoTenueDe(context)),
                         const SizedBox(width: 5),
                         Flexible(
                           child: Text(p.dominio,

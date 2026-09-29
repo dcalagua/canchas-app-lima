@@ -7,6 +7,7 @@ import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Verifica la **PROPIEDAD** de una cancha por OTP de WhatsApp: el código llega
 /// al teléfono del local. Probar que controlas ese teléfono es lo que te habilita
@@ -219,7 +220,7 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
               maxLength: 6,
               decoration: const InputDecoration(
                 labelText: 'Código de 6 dígitos',
-                prefixIcon: Icon(Icons.lock_outline),
+                prefixIcon: IconoVivo(Icons.lock_outline),
               ),
             ),
             const SizedBox(height: 6),

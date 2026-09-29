@@ -9,6 +9,7 @@ import '../services/whatsapp_link.dart';
 import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Flujo GUIADO para que el dueño conecte su Instagram/Facebook y Pichangol
 /// publique por él (Gestión de redes / Nivel 2). Verifica requisitos, abre el
@@ -285,7 +286,7 @@ class _ConectarRedesScreenState extends State<ConectarRedesScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: const [
-          Icon(Icons.hub, color: Colors.white, size: 28),
+          IconoVivo(Icons.hub, color: Colors.white, size: 28),
           SizedBox(height: 10),
           Text('Publicamos por ti',
               style: TextStyle(
@@ -379,7 +380,7 @@ class _ConectarRedesScreenState extends State<ConectarRedesScreen> {
   Widget _piePrivacidad() {
     return Row(
       children: [
-        const Icon(Icons.lock_outline, size: 15, color: textoTenue),
+        const IconoVivo(Icons.lock_outline, size: 15, color: textoTenue),
         const SizedBox(width: 6),
         const Expanded(
           child: Text(

@@ -8,6 +8,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'metodos_pago_screen.dart';
 import 'recargar_saldo_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// MI BILLETERA: saldo único del usuario + historial COMPLETO de movimientos
 /// (recargas por Yape/tarjeta que entran, y lo que consume: Pichangol Pro,
@@ -118,7 +119,7 @@ class _BilleteraScreenState extends State<BilleteraScreen> {
                     leading: const CircleAvatar(
                       radius: 18,
                       backgroundColor: teal,
-                      child: Icon(Icons.credit_card, color: Colors.white, size: 18),
+                      child: IconoVivo(Icons.credit_card, color: Colors.white, size: 18),
                     ),
                     title: const Text('Métodos de pago',
                         style: TextStyle(fontWeight: FontWeight.w700)),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../data/perfiles_repo.dart';
 import '../theme.dart';
+import 'icono_vivo.dart';
 
 /// Hoja para BUSCAR un usuario REGISTRADO del app (por nombre o correo).
 /// Devuelve el perfil elegido `{email, nombre, foto_url, celular}` vía
@@ -192,7 +193,7 @@ class _BuscadorUsuarioSheetState extends State<BuscadorUsuarioSheet> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.person_search, size: 54, color: textoTenue),
+              const IconoVivo(Icons.person_search, size: 54, color: textoTenue),
               const SizedBox(height: 12),
               Text(texto,
                   textAlign: TextAlign.center,

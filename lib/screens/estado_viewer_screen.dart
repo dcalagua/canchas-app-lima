@@ -24,6 +24,7 @@ import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import 'chat_screen.dart';
 import 'llamada_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Visor de ESTADOS / HISTORIAS a pantalla completa (tipo WhatsApp): barras de
 /// progreso arriba, auto-avance, tap izquierda/derecha para retroceder/avanzar,
@@ -950,7 +951,7 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
                   color: pill,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.favorite, color: Colors.white, size: 22),
+                child: const IconoVivo(Icons.favorite, color: Colors.white, size: 22),
               ),
             ),
           ],
@@ -1014,9 +1015,9 @@ class _MusicaSticker extends StatelessWidget {
                     width: 26,
                     height: 26,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.music_note,
+                    errorBuilder: (_, __, ___) => const IconoVivo(Icons.music_note,
                         color: Colors.white, size: 20))
-                : const Icon(Icons.music_note, color: Colors.white, size: 20),
+                : const IconoVivo(Icons.music_note, color: Colors.white, size: 20),
           ),
           const SizedBox(width: 7),
           const _Ecualizador(),

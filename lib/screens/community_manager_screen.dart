@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Community manager con IA (servicio Pichangol). El dueño de un canal elige un
 /// tema y un tono, la IA (Claude, en el backend growth) redacta varios posts, y
@@ -269,7 +270,7 @@ class _CommunityManagerScreenState extends State<CommunityManagerScreen> {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.campaign, color: teal),
+            const IconoVivo(Icons.campaign, color: teal),
             const SizedBox(width: 12),
             Expanded(
               child: Text(

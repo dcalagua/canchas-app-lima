@@ -13,6 +13,7 @@ import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'chat_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// MIS RETOS P2P: retos recibidos (aceptar/rechazar) y enviados; reportar el
 /// resultado de los aceptados (suma al ranking global).
@@ -326,7 +327,7 @@ class _MisRetosScreenState extends State<MisRetosScreen> {
                   child: (_recibidos.isEmpty && _enviados.isEmpty)
                       ? ListView(children: const [
                           SizedBox(height: 80),
-                          Icon(Icons.sports_kabaddi,
+                          IconoVivo(Icons.sports_kabaddi,
                               size: 60, color: textoTenue),
                           SizedBox(height: 12),
                           Padding(
@@ -473,7 +474,7 @@ class _CelebracionGanadorState extends State<_CelebracionGanador>
                           height: 96,
                           decoration: const BoxDecoration(
                               color: amarillo, shape: BoxShape.circle),
-                          child: const Icon(Icons.emoji_events,
+                          child: const IconoVivo(Icons.emoji_events,
                               color: Colors.white, size: 52),
                         ),
                       ),

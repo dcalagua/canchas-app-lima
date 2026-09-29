@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
+import '../widgets/icono_vivo.dart';
 
 /// RECARGA POR QR (Yape directo, sin comisión de pasarela): el usuario yapea
 /// al QR de Pichangol, sube su constancia y el OPERADOR la aprueba en la
@@ -63,12 +64,12 @@ class _RecargaQrScreenState extends State<RecargaQrScreen> {
               ),
             ),
             ListTile(
-                leading: const Icon(Icons.photo_library_outlined,
+                leading: const IconoVivo(Icons.photo_library_outlined,
                     color: bosque),
                 title: const Text('Elegir la captura de la galería'),
                 onTap: () => Navigator.pop(bctx, ImageSource.gallery)),
             ListTile(
-                leading: const Icon(Icons.photo_camera_outlined,
+                leading: const IconoVivo(Icons.photo_camera_outlined,
                     color: bosque),
                 title: const Text('Tomar foto'),
                 onTap: () => Navigator.pop(bctx, ImageSource.camera)),

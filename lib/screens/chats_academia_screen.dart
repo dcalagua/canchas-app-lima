@@ -5,6 +5,7 @@ import '../models/mensaje.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'chat_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Bandeja de chats del PROFE: un hilo por cada cuenta de alumno-app de su
 /// academia, con el último mensaje y un contador de no leídos. En vivo.
@@ -255,7 +256,7 @@ class _ChatsAcademiaScreenState extends State<ChatsAcademiaScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: const [
-              Icon(Icons.forum_outlined, size: 54, color: textoTenue),
+              IconoVivo(Icons.forum_outlined, size: 54, color: textoTenue),
               SizedBox(height: 12),
               Text('Elige una conversación para chatear.',
                   textAlign: TextAlign.center,

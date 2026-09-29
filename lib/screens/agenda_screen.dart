@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
 import 'llenar_cancha_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Agenda REAL del dueño (vista CALENDARIO del hub de Reservas): las franjas del
 /// día de SUS canchas con las reservas reales. Se trabaja dentro de UN local:
@@ -324,7 +325,7 @@ class _AgendaScreenState extends State<AgendaScreen> {
                             ),
                             child: Row(
                               children: [
-                                Icon(Icons.storefront,
+                                IconoVivo(Icons.storefront,
                                     size: 15,
                                     color: sel ? lima : textoTenue),
                                 const SizedBox(width: 6),
@@ -536,7 +537,7 @@ class _HeaderAgenda extends StatelessWidget {
             ?.copyWith(color: Colors.white, fontWeight: FontWeight.w700));
     final barrioW = Row(
       children: [
-        const Icon(Icons.location_on, size: 13, color: Colors.white70),
+        const IconoVivo(Icons.location_on, size: 13, color: Colors.white70),
         const SizedBox(width: 4),
         Flexible(
           child: Text(barrio,
@@ -881,7 +882,7 @@ class _VacioAgenda extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.calendar_month, size: 60, color: verdeClaro),
+            const IconoVivo(Icons.calendar_month, size: 60, color: verdeClaro),
             const SizedBox(height: 14),
             Text('Aún no tienes canchas',
                 style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),

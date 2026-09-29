@@ -16,6 +16,7 @@ import '../utils/moneda.dart';
 import '../widgets/responsive.dart';
 import '../widgets/sesion_requerida.dart';
 import 'chat_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Reservas hechas por el jugador logueado (rediseño premium, handoff v2):
 /// tabs Próximas/Historial + card destacada bosque de la próxima reserva.
@@ -229,7 +230,7 @@ class _PuntosCard extends StatelessWidget {
                   color: limaSuave,
                   borderRadius: BorderRadius.circular(13),
                 ),
-                child: const Icon(Icons.stars, color: bosque, size: 24),
+                child: const IconoVivo(Icons.stars, color: bosque, size: 24),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -259,7 +260,7 @@ class _PuntosCard extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.hourglass_top,
+                  const IconoVivo(Icons.hourglass_top,
                       size: 16, color: Color(0xFF8A5A00)),
                   const SizedBox(width: 8),
                   Expanded(
@@ -1187,7 +1188,7 @@ class _PaseFila extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(
         children: [
-          Icon(icono, size: 18, color: lima),
+          IconoVivo(icono, size: 18, color: lima),
           const SizedBox(width: 12),
           Text(label,
               style: t.bodySmall?.copyWith(color: textoTenueDe(context))),

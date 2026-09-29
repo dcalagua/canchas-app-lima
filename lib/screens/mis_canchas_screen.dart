@@ -23,6 +23,7 @@ import '../widgets/banner_pro.dart';
 import '../widgets/candado_pro.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/vacio_airbnb.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Canchas del dueño agrupadas por LOCAL (un local = varias canchas, posibles
 /// de distintos deportes). Cada local permite agregar más canchas y editar las
@@ -190,7 +191,7 @@ class _CajaHoyCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.point_of_sale, color: lima, size: 20),
+                const IconoVivo(Icons.point_of_sale, color: lima, size: 20),
                 const SizedBox(width: 8),
                 Text('Caja de hoy',
                     style: TextStyle(
@@ -281,7 +282,7 @@ class _SeccionMetricasMes extends StatelessWidget {
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
       child: ExpansionTile(
         tilePadding: EdgeInsets.zero,
-        leading: Icon(Icons.insights_outlined, color: cs.primary),
+        leading: IconoVivo(Icons.insights_outlined, color: cs.primary),
         title: const Text('Resumen del mes y destacar',
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
         subtitle: const Text(
@@ -360,7 +361,7 @@ class _GeneradoCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.trending_up, color: Colors.white, size: 20),
+              const IconoVivo(Icons.trending_up, color: Colors.white, size: 20),
               const SizedBox(width: 8),
               Text('Lo que Pichangol te generó',
                   style: t.titleMedium?.copyWith(
@@ -792,7 +793,7 @@ class _LocalCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.storefront, color: cs.primary, size: 20),
+              IconoVivo(Icons.storefront, color: cs.primary, size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(local.nombre,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Mensaje de BIENVENIDA al dueño (onboarding con el "stack de valor" de la
 /// estrategia comercial: docs/estrategia-comercial-dueno.md). Se muestra UNA
@@ -82,7 +83,7 @@ class _BienvenidaDuenoSheet extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      const Icon(Icons.handshake, color: Colors.white, size: 26),
+                      const IconoVivo(Icons.handshake, color: Colors.white, size: 26),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text('¡Bienvenido, socio!',
@@ -115,7 +116,7 @@ class _BienvenidaDuenoSheet extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.paid_outlined, color: bosque, size: 22),
+                  const IconoVivo(Icons.paid_outlined, color: bosque, size: 22),
                   const SizedBox(width: 10),
                   Expanded(
                     child: RichText(
@@ -176,7 +177,7 @@ class _FilaValor extends StatelessWidget {
             height: 40,
             decoration: BoxDecoration(
                 color: teal, borderRadius: BorderRadius.circular(11)),
-            child: Icon(icono, color: Colors.white, size: 21),
+            child: IconoVivo(icono, color: Colors.white, size: 21),
           ),
           const SizedBox(width: 12),
           Expanded(

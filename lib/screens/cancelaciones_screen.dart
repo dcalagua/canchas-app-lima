@@ -6,6 +6,7 @@ import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../widgets/vacio_airbnb.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Reporte de CANCELACIONES del dueño: qué reservas de sus canchas fueron
 /// canceladas, por quién, cuándo y si había pago de por medio (para hacer
@@ -123,7 +124,7 @@ class _Card extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.event_busy_outlined,
+              const IconoVivo(Icons.event_busy_outlined,
                   size: 18, color: clayOscuro),
               const SizedBox(width: 8),
               Expanded(

@@ -10,6 +10,7 @@ import '../widgets/candado_pro.dart';
 import '../widgets/vacio_airbnb.dart';
 import 'chat_screen.dart';
 import 'reserva_manual_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// BASE DE CLIENTES del dueño (CRM ligero) — refuerzo del panel de gestión al
 /// nivel SaaS de la competencia. No inventa datos ni pide SQL nuevo: agrega las
@@ -558,7 +559,7 @@ class _ClienteCard extends StatelessWidget {
                           ],
                           if (tieneNota) ...[
                             const SizedBox(width: 5),
-                            Icon(Icons.sticky_note_2_outlined,
+                            IconoVivo(Icons.sticky_note_2_outlined,
                                 size: 15, color: textoTenueDe(context)),
                           ],
                           if (badge != null) ...[
@@ -863,7 +864,7 @@ class _DetalleClienteSheetState extends State<_DetalleClienteSheet> {
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.schedule, size: 18, color: clayOscuro),
+                  const IconoVivo(Icons.schedule, size: 18, color: clayOscuro),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -1052,7 +1053,7 @@ class _Dato extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icono, size: 16, color: c),
+          IconoVivo(icono, size: 16, color: c),
           const SizedBox(width: 8),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
