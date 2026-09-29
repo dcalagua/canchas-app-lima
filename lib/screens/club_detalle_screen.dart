@@ -600,6 +600,15 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     if (r == null || !mounted) return;
     final metodo = r.metodo; // 'online' | 'sena' | 'cancha' | 'bono'
     final extras = r.extras;
+    // TUS DATOS confirmados en el resumen. Si la cuenta aún no tenía celular,
+    // queda en su perfil (como hace la web al reservar).
+    final nombreCliente = r.nombre;
+    final celularCliente = r.celular;
+    if (appState.miCelular.trim().isEmpty && celularCliente.isNotEmpty) {
+      unawaited(appState.actualizarMiNombre(
+          appState.usuario?.nombre ?? nombreCliente,
+          celular: celularCliente));
+    }
     // BONO: canje de horas prepagadas. Valida el saldo antes de reservar (no
     // cobra nada; el pago fue al comprar el pack).
     if (metodo == 'bono') {
@@ -658,7 +667,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     if (pagoOnline || esSena) {
       final (resHold, tomadas) = await appState.asegurarBloqueJugador(
           _cancha, _fechaIso, _dia, slots,
-          deporte: _deporteEfectivo);
+          deporte: _deporteEfectivo,
+          nombreCliente: nombreCliente,
+          telefono: celularCliente);
       if (!mounted) return;
       if (resHold == ResultadoReserva.ocupado) {
         setState(() => _slots.clear()); // libera selección; la grilla refresca
@@ -805,7 +816,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         conSena: esSena,
         aseguradas: aseguradas,
         cargo: (pagoOnline || esSena) ? cargo : null,
-        descuentos: descPorHora);
+        descuentos: descPorHora,
+        nombreCliente: nombreCliente,
+        telefono: celularCliente);
     if (!mounted) return;
     if (res == ResultadoReserva.ocupado) {
       if (refFid.isNotEmpty) unawaited(Fidelidad.revertir(refFid));
@@ -1467,8 +1480,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
           ? null
           : _ReservarBar(
               // Sin selección: precio base /hora. Con bloque: TOTAL de las horas.
-              monto: _slots.isEmpty ? _cancha.precioHora : _totalBloque,
-              sufijo: _slots.isEmpty ? ' /hora' : '',
+              monto: _slots.isEmpty ? _cancha.precioVisible : _totalBloque,
+              sufijo: _slots.isEmpty
+                  ? (_cancha.cobraPorTurno ? ' /turno' : ' /hora')
+                  : '',
               moneda: _cancha.monedaSimbolo,
               detalle: _slots.isEmpty
                   ? 'Elige una hora'
@@ -1538,8 +1553,10 @@ class _PanelDueno extends StatelessWidget {
             children: [
               Expanded(
                 child: _DatoDueno(
-                    etiqueta: 'Precio por hora',
-                    valor: '${cancha.monedaSimbolo}${cancha.precioHora.toStringAsFixed(2)}'),
+                    etiqueta: cancha.cobraPorTurno
+                        ? 'Precio por turno'
+                        : 'Precio por hora',
+                    valor: '${cancha.monedaSimbolo}${cancha.precioVisible.toStringAsFixed(2)}'),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1817,6 +1834,9 @@ typedef ResumenResultado = ({
   BoleadorPublico? boleador,
   // ¿Usa su premio de FIDELIDAD del local en esta reserva?
   bool usarFidelidad,
+  // TUS DATOS (obligatorios, como en la web): nombre y celular confirmados.
+  String nombre,
+  String celular,
 });
 
 /// Ícono para un servicio extra según su clave.
@@ -1991,11 +2011,36 @@ class _ResumenReservaState extends State<_ResumenReserva> {
   double get _cargoSena =>
       (_cotSena?.hayCargo ?? false) ? _cotSena!.cargo : 0.0;
 
+  // TUS DATOS: nombre y celular OBLIGATORIOS, igual que en la web. Vienen
+  // prellenados (nombre de la cuenta y celular del perfil) y se pueden editar.
+  late final TextEditingController _nombreCtrl =
+      TextEditingController(text: widget.nombreCliente.trim());
+  late final TextEditingController _celCtrl =
+      TextEditingController(text: appState.miCelular.trim());
+  String? _errDatos;
+
+  /// Misma regla que la web (`validar` de la ficha y `/web/asegurar`):
+  /// nombre ≥ 3 letras, celular ≥ 8 dígitos. null = OK.
+  String? _validarDatos() {
+    if (_nombreCtrl.text.trim().length < 3) return 'Escribe tu nombre.';
+    if (_celCtrl.text.replaceAll(RegExp(r'\D'), '').length < 8) {
+      return 'Escribe un celular válido.';
+    }
+    return null;
+  }
+
   @override
   void initState() {
     super.initState();
     _refrescarCargo();
     _cargarBoleadores();
+  }
+
+  @override
+  void dispose() {
+    _nombreCtrl.dispose();
+    _celCtrl.dispose();
+    super.dispose();
   }
 
   void _refrescarCargo() {
@@ -2026,7 +2071,13 @@ class _ResumenReservaState extends State<_ResumenReserva> {
     }
   }
 
-  void _cerrar(String metodo) => Navigator.of(context).pop((
+  void _cerrar(String metodo) {
+    final err = _validarDatos();
+    if (err != null) {
+      setState(() => _errDatos = err);
+      return;
+    }
+    Navigator.of(context).pop((
         metodo: metodo,
         extras: _elegidos,
         usarPuntos: _usarPuntos,
@@ -2037,15 +2088,16 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                 : null,
         boleador: metodo == 'online' ? _bol : null,
         usarFidelidad: _descFid > 0 && metodo != 'sena' && metodo != 'bono',
+        nombre: _nombreCtrl.text.trim(),
+        celular: _celCtrl.text.trim(),
       ));
+  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final t = Theme.of(context).textTheme;
     final dir = (cancha.direccion ?? '').trim();
-    final cliente =
-        widget.nombreCliente.trim().isEmpty ? 'Ti' : widget.nombreCliente.trim();
     final mon = cancha.monedaSimbolo;
     return Container(
       decoration: BoxDecoration(
@@ -2079,8 +2131,45 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                 '${widget.dia} · ${widget.hora}–${widget.horaFin}  ($_duracion)'),
             if (dir.isNotEmpty)
               _fila(context, Icons.place_outlined, cs.primary, dir),
-            _fila(context, Icons.person_outline, cs.primary,
-                'A nombre de: $cliente'),
+            // TUS DATOS (obligatorios, como en la web): prellenados con la
+            // cuenta; el dueño los ve en su agenda para contactarte.
+            const SizedBox(height: 10),
+            Text('Tus datos',
+                style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _nombreCtrl,
+              textCapitalization: TextCapitalization.words,
+              maxLength: 80,
+              onChanged: (_) {
+                if (_errDatos != null) setState(() => _errDatos = null);
+              },
+              decoration: const InputDecoration(
+                  labelText: 'Nombre y apellido',
+                  hintText: 'Como en tu documento',
+                  counterText: '',
+                  prefixIcon: Icon(Icons.person_outline)),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _celCtrl,
+              keyboardType: TextInputType.phone,
+              maxLength: 20,
+              onChanged: (_) {
+                if (_errDatos != null) setState(() => _errDatos = null);
+              },
+              decoration: InputDecoration(
+                  labelText: 'Celular',
+                  hintText: '${_paisCancha.telLongitud} dígitos',
+                  counterText: '',
+                  prefixIcon: const Icon(Icons.phone_iphone)),
+            ),
+            if (_errDatos != null) ...[
+              const SizedBox(height: 6),
+              Text(_errDatos!,
+                  style: const TextStyle(
+                      color: Colors.redAccent, fontWeight: FontWeight.w700)),
+            ],
             // Servicios extra (si la cancha ofrece): opcionales, suman al total.
             if (cancha.serviciosExtra.isNotEmpty) ...[
               const SizedBox(height: 10),
@@ -2364,6 +2453,13 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                 ),
               ],
             ),
+            if (_errDatos != null) ...[
+              const SizedBox(height: 10),
+              Text('⚠️ $_errDatos Revisa "Tus datos" arriba.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: Colors.redAccent, fontWeight: FontWeight.w700)),
+            ],
             const SizedBox(height: 16),
             // Bono prepagado: si el jugador tiene horas para este local, la
             // opción MÁS conveniente (no paga de nuevo). Descuenta sus horas.
@@ -3666,7 +3762,7 @@ class _FilaDatos extends StatelessWidget {
         dato(Icons.schedule, '${cancha.horaApertura}–${cancha.horaCierre}'),
         dato(Icons.timer_outlined, _dur),
         dato(Icons.payments_outlined,
-            '${cancha.monedaSimbolo}${montoTxt(cancha.precioHora)} /h'),
+            '${cancha.monedaSimbolo}${montoTxt(cancha.precioVisible)} ${cancha.cobraPorTurno ? '/turno' : '/h'}'),
       ],
     );
   }

@@ -587,6 +587,42 @@ def configurar_r8_release():
         print("  R8/minify: no se encontró buildTypes release (sin cambios)")
 
 
+def configurar_simbolos_nativos():
+    """Empaqueta la TABLA DE SÍMBOLOS del código nativo (motor de Flutter y
+    plugins .so) dentro del App Bundle de release.
+
+    Play Console advertía en cada AAB: "Este App Bundle contiene código nativo y
+    no subiste símbolos de depuración". Con `debugSymbolLevel 'SYMBOL_TABLE'`
+    el AGP extrae los símbolos de los .so y los mete en el propio .aab
+    (BUNDLE-METADATA), así Play los toma solo y los crashes/ANR nativos salen
+    con nombres de función. SYMBOL_TABLE (no FULL) para no inflar el bundle.
+    No cambia el APK que se instala.
+
+    La otra advertencia (archivo de desofuscación) NO aplica: R8 está apagado
+    en release (`configurar_r8_release`), el código no se ofusca y no existe
+    mapping.txt que subir."""
+    path = "android/app/build.gradle"
+    if not os.path.exists(path):
+        return
+    with open(path, "r", encoding="utf-8") as f:
+        g = f.read()
+    if "debugSymbolLevel" in g:
+        print("  Símbolos nativos: ya configurados")
+        return
+    nuevo, n = re.subn(
+        r"(buildTypes\s*\{\s*release\s*\{)",
+        r"\1\n            ndk { debugSymbolLevel 'SYMBOL_TABLE' }",
+        g,
+        count=1,
+    )
+    if n:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(nuevo)
+        print("  Símbolos nativos: SYMBOL_TABLE dentro del AAB de release")
+    else:
+        print("  Símbolos nativos: no se encontró buildTypes release (sin cambios)")
+
+
 def excluir_duplicados_media3():
     """El SDK de Jitsi empaqueta su propio react-native-video con clases de
     androidx.media3 (rtsp, etc.); video_player trae esos mismos módulos de
@@ -917,6 +953,7 @@ def main():
     patch("ios/Podfile", ios_podfile)
     configurar_firma_android()
     configurar_r8_release()
+    configurar_simbolos_nativos()
     excluir_duplicados_media3()
     configurar_desugaring()
     configurar_firebase_android()

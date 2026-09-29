@@ -67,11 +67,8 @@ class _LlenarCanchaScreenState extends State<LlenarCanchaScreen> {
   /// Precio del slot (lo que pagaría el cliente). Si el slot está SELECCIONADO y
   /// hay descuento elegido, aplica ese %; si no, la hora feliz normal.
   int _precioSlot(Cancha c, String hora, {bool conDescuento = false}) {
-    if (conDescuento && _descuento > 0) {
-      return (c.precioHora * (100 - _descuento) / 100 * c.duracionSlotMin / 60)
-          .round();
-    }
-    return (c.precioEn(hora) * c.duracionSlotMin / 60).round();
+    return c.precioTurnoEn(hora,
+        pctSlot: conDescuento && _descuento > 0 ? _descuento : 0);
   }
 
   /// Texto del aviso, personalizado con el nombre del cliente.

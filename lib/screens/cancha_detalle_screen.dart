@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../data/reservas_repo.dart';
@@ -73,7 +75,11 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     }
     if (!mounted) return;
 
-    final total = cancha.precioHora * cancha.duracionSlotMin / 60;
+    // Mismo precio que se guarda en la reserva y que cobra la web: turno (o
+    // hora × duración) con hora feliz / descuento puntual, redondeado igual.
+    final total = appState
+        .precioSlotEfectivo(cancha, cancha.fechaRealSlot(_fechaIso, hora), hora)
+        .toDouble();
     // Seña anti no-show: si la cancha la exige, el jugador adelanta un % y paga
     // el resto en la cancha (no reembolsable). Manda sobre el efectivo.
     final exigeSena = cancha.exigeSena;
@@ -95,9 +101,15 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
       if (!mounted) return;
     }
     final cargoSoles = (cargo?.hayCargo ?? false) ? cargo!.cargo : 0.0;
+    // TUS DATOS (obligatorios, como en la web y en la ficha del local):
+    // prellenados con la cuenta, editables.
+    final nombreCtrl =
+        TextEditingController(text: (appState.usuario?.nombre ?? '').trim());
+    final celCtrl = TextEditingController(text: appState.miCelular.trim());
+    String? errDatos;
     final confirmar = await showDialog<bool>(
       context: context,
-      builder: (ctx) => DialogoPichangol(
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setD) => DialogoPichangol(
         titulo: 'Confirmar reserva',
         icono: Icons.event_available,
         contenido: Column(
@@ -138,6 +150,31 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                       : 'Pagas ahora por la app (Yape/tarjeta) para asegurar tu hora.',
               style: const TextStyle(fontSize: 12, color: textoTenue),
             ),
+            const SizedBox(height: 12),
+            const Text('Tus datos',
+                style: TextStyle(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            TextField(
+              controller: nombreCtrl,
+              textCapitalization: TextCapitalization.words,
+              maxLength: 80,
+              decoration: const InputDecoration(
+                  labelText: 'Nombre y apellido', counterText: ''),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: celCtrl,
+              keyboardType: TextInputType.phone,
+              maxLength: 20,
+              decoration:
+                  const InputDecoration(labelText: 'Celular', counterText: ''),
+            ),
+            if (errDatos != null) ...[
+              const SizedBox(height: 6),
+              Text(errDatos!,
+                  style: const TextStyle(
+                      color: Colors.redAccent, fontWeight: FontWeight.w700)),
+            ],
           ],
         ),
         acciones: [
@@ -154,14 +191,34 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                     borderRadius: BorderRadius.circular(12)),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
-            onPressed: () => Navigator.of(ctx).pop(true),
+            onPressed: () {
+              // Misma regla que la web: nombre >= 3 letras, celular >= 8 dígitos.
+              if (nombreCtrl.text.trim().length < 3) {
+                setD(() => errDatos = 'Escribe tu nombre.');
+                return;
+              }
+              if (celCtrl.text.replaceAll(RegExp(r'\D'), '').length < 8) {
+                setD(() => errDatos = 'Escribe un celular válido.');
+                return;
+              }
+              Navigator.of(ctx).pop(true);
+            },
             child: const Text('Reservar',
                 style: TextStyle(fontWeight: FontWeight.w800)),
           ),
         ],
-      ),
+      )),
     );
+    final nombreCliente = nombreCtrl.text.trim();
+    final celularCliente = celCtrl.text.trim();
+    nombreCtrl.dispose();
+    celCtrl.dispose();
     if (confirmar != true || !mounted) return;
+    if (appState.miCelular.trim().isEmpty && celularCliente.isNotEmpty) {
+      unawaited(appState.actualizarMiNombre(
+          appState.usuario?.nombre ?? nombreCliente,
+          celular: celularCliente));
+    }
 
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
@@ -172,7 +229,8 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     Reserva? asegurada;
     if (exigeSena || !efectivo) {
       final (resHold, tomadas) = await appState.asegurarBloqueJugador(
-          cancha, _fechaIso, _dia, [hora]);
+          cancha, _fechaIso, _dia, [hora],
+          nombreCliente: nombreCliente, telefono: celularCliente);
       if (!mounted) return;
       if (resHold == ResultadoReserva.ocupado) {
         setState(() => _hora = null);
@@ -263,7 +321,9 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
         sena: exigeSena ? senaMonto : 0,
         operacionId: operacion,
         asegurada: asegurada,
-        cargo: (exigeSena || !efectivo) ? cargo : null);
+        cargo: (exigeSena || !efectivo) ? cargo : null,
+        nombreCliente: nombreCliente,
+        telefono: celularCliente);
     if (!mounted) return;
 
     if (res == ResultadoReserva.ocupado) {
@@ -377,7 +437,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
                       const Spacer(),
                       if (cancha.registrada) ...[
                         Text(
-                          '${cancha.monedaSimbolo} ${cancha.precioHora.toStringAsFixed(2)}',
+                          '${cancha.monedaSimbolo} ${cancha.precioVisible.toStringAsFixed(2)}',
                           style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 22,

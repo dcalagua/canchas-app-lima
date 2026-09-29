@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/selector_precio.dart';
 import '../widgets/selector_horario.dart';
 import '../widgets/wizard_pichangol.dart';
 import '../utils/moneda.dart';
@@ -25,8 +26,10 @@ class AgregarCanchaScreen extends StatefulWidget {
 
 class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
   final _nombre = TextEditingController();
-  late final TextEditingController _precio =
-      TextEditingController(text: widget.local.precioHora.toStringAsFixed(2));
+  late final TextEditingController _precio = TextEditingController(
+      text: widget.local.precioVisible.toStringAsFixed(2));
+  // Hereda el modo de cobro del local (por hora o por turno); editable.
+  late bool _porTurno = widget.local.cobraPorTurno;
   // Deporte de esta cancha (una cancha = un solo deporte). Fútbol por defecto.
   Deporte _deporte = Deporte.futbol;
   String _superficie = ''; // tipo de piso (opcional, según deporte)
@@ -59,11 +62,15 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
       _avisar('Marca el tipo de piso de la cancha (obligatorio).');
       return;
     }
-    final precio = double.tryParse(_precio.text.trim().replaceAll(',', '.'));
-    if (precio == null || precio <= 0) {
-      _avisar('Pon un precio por hora válido.');
+    final precio = SelectorPrecioCancha.leer(_precio);
+    if (precio == null) {
+      _avisar(_porTurno
+          ? 'Pon un precio por turno válido.'
+          : 'Pon un precio por hora válido.');
       return;
     }
+    final (precioHora, precioTurno) =
+        SelectorPrecioCancha.valores(precio, _porTurno, _duracion);
     final a = horaEnMinutos(_apertura), c = horaEnMinutos(_cierre);
     if (a == null || c == null || c <= a) {
       _avisar('El cierre debe ser después de la apertura.');
@@ -80,7 +87,8 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
       barrio: l.barrio, // misma zona real que el local
       deporte: _deporte,
       deportes: [_deporte],
-      precioHora: precio,
+      precioHora: precioHora,
+      precioTurno: precioTurno,
       ubicacion: l.ubicacion,
       clubFundador: l.clubFundador,
       digitalizada: true,
@@ -226,14 +234,14 @@ class _AgregarCanchaScreenState extends State<AgregarCanchaScreen> {
   }
 
   List<Widget> _hijosPrecio(BuildContext context) => [
-          TextField(
+          // Moneda del local (misma que las otras canchas del local).
+          SelectorPrecioCancha(
             controller: _precio,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: 'Precio por hora',
-              // Moneda del local (misma que las otras canchas del local).
-              prefixText: '${widget.local.monedaSimbolo} ',
-            ),
+            porTurno: _porTurno,
+            onPorTurno: (v) => setState(() => _porTurno = v),
+            duracionMin: _duracion,
+            moneda: widget.local.monedaSimbolo,
+            onCambio: () => setState(() {}),
           ),
           const SizedBox(height: 18),
           SelectorHorario(

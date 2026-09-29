@@ -237,12 +237,12 @@ class ClubCard extends StatelessWidget {
                                     const TextSpan(text: 'desde '),
                                     TextSpan(
                                       text:
-                                          '${club.monedaSimbolo}${club.precioDesde?.toStringAsFixed(2) ?? '--'}',
+                                          '${club.monedaSimbolo}${club.precioVisibleDesde?.toStringAsFixed(2) ?? '--'}',
                                       style: t.titleMedium?.copyWith(
                                           color: cs.onSurface,
                                           fontWeight: FontWeight.w700),
                                     ),
-                                    const TextSpan(text: ' /hora'),
+                                    TextSpan(text: ' ${club.unidadPrecioCorta}'),
                                   ],
                                 ),
                               ),

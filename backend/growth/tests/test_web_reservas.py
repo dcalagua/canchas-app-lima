@@ -758,7 +758,7 @@ def test_reservar_exige_login_con_google_como_el_app(db, monkeypatch):
                                                          "aud": "cid-web", "name": "Ana Pérez",
                                                          "picture": "https://lh3/ana.jpg", "exp": "9999999999"})
     r = cli.post("/web/sesion", json={"credential": "tok"})
-    assert r.json() == {"ok": True, "email": "ana@gmail.com", "nombre": "Ana Pérez", "foto": "https://lh3/ana.jpg"}
+    assert r.json() == {"ok": True, "email": "ana@gmail.com", "nombre": "Ana Pérez", "foto": "https://lh3/ana.jpg", "celular": ""}
     assert sesion.COOKIE in r.cookies and sesion.leer(r.cookies[sesion.COOKIE])["email"] == "ana@gmail.com"
     assert sesion.leer(r.cookies[sesion.COOKIE][:-3] + "abc") is None  # firma alterada
     # Con sesión: la ficha muestra "Reservando como" y la reserva es del correo de Google.

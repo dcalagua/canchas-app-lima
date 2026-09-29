@@ -938,12 +938,23 @@ def _tarjeta(canchas: list[dict] | dict, ratings: dict | tuple | None = None, fe
             sups.append(sp)
     precios = [float(x.get("precio_hora") or 0) for x in cs if float(x.get("precio_hora") or 0) > 0]
     pmin = min(precios) if precios else float(c.get("precio_hora") or 0)
-    desde = "desde " if len(cs) > 1 and len(set(precios)) > 1 else ""
+    # Todas las canchas del local cobran POR TURNO → se muestra el turno más
+    # barato ("S/ 15 por turno de 1 h 30"); si no, el precio por hora. El filtro
+    # de precios (`data-pnum`) siempre compara por hora.
+    todos_turno = all(float(x.get("precio_turno") or 0) > 0 for x in cs)
+    if todos_turno:
+        barato = min(cs, key=lambda x: float(x.get("precio_turno") or 0))
+        pvis, unidad = horarios.precio_publico(barato)
+        vistos = {float(x.get("precio_turno") or 0) for x in cs}
+    else:
+        pvis, unidad, vistos = pmin, "por hora", set(precios)
+    desde = "desde " if len(cs) > 1 and len(vistos) > 1 else ""
     n = len(cs)
     n_txt = f"{n} cancha{'s' if n != 1 else ''}"
     base = f"/reservar/{c['id']}"
     href = base + (f"?fecha={fecha}" if fecha else "")
-    precio_html = f"<b>{e(sim)} {pmin:.0f}</b> <span style='color:var(--tenue)'>por hora</span>"
+    ptxt = f"{pvis:.0f}" if abs(pvis - round(pvis)) < 0.005 else f"{pvis:.2f}"
+    precio_html = f"<b>{e(sim)} {ptxt}</b> <span style='color:var(--tenue)'>{e(unidad)}</span>"
     if desde:
         precio_html = f"<span style='color:var(--tenue)'>desde</span> " + precio_html
     l3 = (f"<div class='l3'>{precio_html}</div>" if ok else
@@ -954,7 +965,7 @@ def _tarjeta(canchas: list[dict] | dict, ratings: dict | tuple | None = None, fe
             f"data-ap='{e(ap_txt)}' data-ci='{e(ci_txt)}' data-paso='{int(c.get('duracion_slot_min') or 60)}' data-pasos='{e(' '.join(str(pv) for pv in pasos))}' "
             f"data-am='{e(' '.join(ams))}' data-sup='{e(' '.join(sups))}' data-mon='{e(sim)}' "
             f"data-deps='{e(' '.join(deps))}' data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(local)}' data-club='{e(c.get('club', ''))}' "
-            f"data-sub='{e(sub)}' data-precio='{e(desde)}{e(sim)} {pmin:.0f}' data-pnum='{pmin:.2f}' data-ok='{1 if ok else 0}'>"
+            f"data-sub='{e(sub)}' data-precio='{e(desde)}{e(sim)} {ptxt}' data-pnum='{pmin:.2f}' data-ok='{1 if ok else 0}'>"
             f"<div class='foto'><div class='fotos'>{fotos}</div>{badge}"
             f"<button class='corazon' aria-label='Guardar'>{_CORAZON}</button>{extra}</div>"
             f"<div class='lb'><div class='l1'><b>{e(local)}</b>{rate}</div>"
@@ -1191,7 +1202,8 @@ def abrir_sesion(req: SesionReq, response: Response) -> dict:
     if not u:
         return {"ok": False, "error": "token_invalido"}
     sesion.poner_cookie(response, sesion.emitir(u))
-    return {"ok": True, **u}
+    # Celular del perfil (el mismo del app) para prellenar "Tus datos".
+    return {"ok": True, **u, "celular": datos.celular_de_perfil(u.get("email", ""))}
 
 
 class SesionPruebaReq(BaseModel):
@@ -1344,11 +1356,9 @@ def _slots_del_dia(c: dict, fecha: str) -> list[dict]:
     out = []
     for h in horas:
         fr = horarios.fecha_real(fecha, c["hora_apertura"], c["hora_cierre"], h)
-        ph = horarios.precio_hora_en(c["precio_hora"], h, c["descuento_valle"],
-                                     c["valle_desde"], c["valle_hasta"])
         out.append({
             "hora": h, "fin": horarios.hora_fin(h, paso), "fecha": fr,
-            "precio": horarios.precio_slot(ph, paso, desc.get((fr, h), 0)),
+            "precio": horarios.precio_turno_de(c, h, desc.get((fr, h), 0)),
             "ocupado": (fr, h) in ocup,
             "valle": c["descuento_valle"] > 0 and horarios.es_valle(h, c["valle_desde"], c["valle_hasta"]),
             "promo": desc.get((fr, h), 0),
@@ -1673,6 +1683,7 @@ _JS_RESERVA = r"""
     C.sesion = u;
     var lb = $('loginBox'), db = $('datosBox'); if(lb) lb.style.display = 'none'; if(db) db.style.display = '';
     if($('nombre') && !$('nombre').value) $('nombre').value = u.nombre || '';
+    if($('celular') && !$('celular').value) $('celular').value = u.celular || '';
     if($('email')) $('email').value = u.email || '';
     if(db && !$('quien')){ db.insertAdjacentHTML('afterbegin', '<div class="quien" id="quien">' + (u.foto ? '<img src="' + esc(u.foto) + '" alt="">' : '') + '<div><b>' + esc(u.nombre || u.email) + '</b><div class="m">' + esc(u.email) + '</div></div><button type="button" class="btn sec" onclick="cerrarSesion()">Cambiar cuenta</button></div>'); }
     pintarResumen();
@@ -1854,7 +1865,7 @@ def _ficha(c: dict, sim: str, pais: str, verificada: bool = True, hermanas: list
             f"<div style='min-width:0'><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>"
             f"<span class='pill gris'>{ui.bandera(pais)} {e(deps)}</span>{sello}</div>"
             f"<h1 style='margin-top:8px'>{e(local)}</h1>{cancha_linea}</div>"
-            f"<div class='precio' style='font-size:22px;white-space:nowrap'>{e(sim)} {c['precio_hora']:.2f} <small>por hora</small></div></div>"
+            f"<div class='precio' style='font-size:22px;white-space:nowrap'>{e(sim)} {horarios.precio_publico(c)[0]:.2f} <small>{e(horarios.precio_publico(c)[1])}</small></div></div>"
             "<ul class='datos'>"
             f"<li>📍 <span>{e(lugar or 'Dirección en la app')} · <a href='#mapaFicha' id='btnLlegar' data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(local)}'>Cómo llegar</a></span></li>"
             f"<li>🕒 <span>{e(c['hora_apertura'])} a {e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min · último turno {e(c['hora_cierre'])}</span></li>"
@@ -1874,7 +1885,7 @@ def _jsonld_cancha(c: dict, sim: str) -> str:
         "address": {"@type": "PostalAddress", "streetAddress": c.get("direccion") or "",
                     "addressLocality": _zona(c), "addressCountry": _pais_de(c)},
         "geo": {"@type": "GeoCoordinates", "latitude": c.get("lat"), "longitude": c.get("lng")},
-        "priceRange": f"{sim} {c['precio_hora']:.2f} por hora",
+        "priceRange": f"{sim} {horarios.precio_publico(c)[0]:.2f} {horarios.precio_publico(c)[1]}",
         "url": f"{config.PUBLIC_BASE_URL.rstrip('/')}/reservar/{c['id']}" if getattr(config, 'PUBLIC_BASE_URL', '') else "",
     }, ensure_ascii=False)
 
@@ -2031,7 +2042,7 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
             f"<div id='datosBox'{'' if ses else ' style=display:none'}>{quien}"
             "<div class='row'><div><label for='nombre'>Nombre y apellido</label>"
             f"<input id='nombre' autocomplete='name' maxlength='80' placeholder='Como en tu documento' value='{e((ses or {}).get('nombre', ''))}'></div>"
-            "<div><label for='celular'>Celular</label><input id='celular' inputmode='tel' autocomplete='tel' maxlength='20' placeholder='9 dígitos'></div></div>"
+            f"<div><label for='celular'>Celular</label><input id='celular' inputmode='tel' autocomplete='tel' maxlength='20' placeholder='9 dígitos' value='{e(datos.celular_de_perfil(ses['email']) if ses else '')}'></div></div>"
             f"<input id='email' type='hidden' value='{e((ses or {}).get('email', ''))}'></div>")
     else:
         paso_datos = (
@@ -2149,8 +2160,12 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
         return {"ok": False, "error": "sesion_requerida"}
     nombre = (req.nombre.strip() or (ses or {}).get("nombre", ""))[:80]
     email = (ses["email"] if ses else req.email.strip().lower())[:120]
-    if len(nombre) < 3 or "@" not in email:
+    # Nombre y celular OBLIGATORIOS, misma regla que el app (`_ResumenReserva`):
+    # nombre ≥ 3 letras y celular con ≥ 8 dígitos.
+    if len(nombre) < 3 or "@" not in email or len(re.sub(r"\D", "", req.celular or "")) < 8:
         return {"ok": False, "error": "datos_invalidos"}
+    if ses:
+        datos.guardar_celular_si_falta(email, nombre, req.celular)
     if not req.horas or len(req.horas) > MAX_SLOTS:
         return {"ok": False, "error": "horas_invalidas"}
     for h in req.horas:

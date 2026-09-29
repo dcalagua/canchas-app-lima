@@ -16,6 +16,7 @@ import '../models/fidelidad.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/selector_precio.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
@@ -41,8 +42,10 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
       TextEditingController(text: widget.cancha.nombre);
   late final TextEditingController _direccion =
       TextEditingController(text: widget.cancha.direccion ?? '');
-  late final TextEditingController _precio =
-      TextEditingController(text: widget.cancha.precioHora.toStringAsFixed(2));
+  late final TextEditingController _precio = TextEditingController(
+      text: widget.cancha.precioVisible.toStringAsFixed(2));
+  // Cobra por hora o por TURNO (monto fijo por turno). Mismo bloque que la web.
+  late bool _porTurno = widget.cancha.cobraPorTurno;
   // "Hora feliz": descuento (%) en horas valle. 0 = sin descuento. La VENTANA
   // (desde/hasta) la configura el dueño; default histórico = hasta mediodía.
   late int _descuentoValle = widget.cancha.descuentoValle;
@@ -355,11 +358,15 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     final club =
         nuevoLocal.isEmpty ? widget.cancha.club : nuevoLocal;
 
+    final precioEscrito = SelectorPrecioCancha.leer(_precio) ??
+        widget.cancha.precioVisible;
+    final (precioHora, precioTurno) =
+        SelectorPrecioCancha.valores(precioEscrito, _porTurno, _duracion);
     final actualizada = widget.cancha.copyWith(
       nombre: nombre,
       club: club,
-      precioHora: double.tryParse(_precio.text.trim().replaceAll(',', '.')) ??
-          widget.cancha.precioHora,
+      precioHora: precioHora,
+      precioTurno: precioTurno,
       deporte: _deporte,
       deportes: _deportes.toList(),
       ubicacion: _ubicacion,
@@ -684,14 +691,14 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          TextField(
+          // Moneda de ESTA cancha (la de su registro), no la del país actual.
+          SelectorPrecioCancha(
             controller: _precio,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: 'Precio por hora',
-              // Moneda de ESTA cancha (la de su registro), no la del país actual.
-              prefixText: '${widget.cancha.monedaSimbolo} ',
-            ),
+            porTurno: _porTurno,
+            onPorTurno: (v) => setState(() => _porTurno = v),
+            duracionMin: _duracion,
+            moneda: widget.cancha.monedaSimbolo,
+            onCambio: () => setState(() {}),
           ),
           const SizedBox(height: 18),
           const Text('Hora feliz (descuento en horas valle)',
@@ -761,9 +768,12 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             ),
             const SizedBox(height: 6),
             Builder(builder: (context) {
-              final base = double.tryParse(
-                      _precio.text.trim().replaceAll(',', '.')) ??
-                  widget.cancha.precioHora;
+              // Vista previa sobre el TURNO (lo que paga el jugador).
+              final base = SelectorPrecioCancha.turnoDe(
+                  SelectorPrecioCancha.leer(_precio) ??
+                      widget.cancha.precioVisible,
+                  _porTurno,
+                  _duracion);
               final conDesc = base * (100 - _descuentoValle) / 100;
               // "Hasta" menor o igual que "Desde" = la ventana cruza medianoche
               // (cancha nocturna): se avisa para que no parezca un error.
@@ -808,14 +818,16 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
           if (_senaPct > 0) ...[
             const SizedBox(height: 6),
             Builder(builder: (context) {
-              final base = double.tryParse(
-                      _precio.text.trim().replaceAll(',', '.')) ??
-                  widget.cancha.precioHora;
+              final base = SelectorPrecioCancha.turnoDe(
+                  SelectorPrecioCancha.leer(_precio) ??
+                      widget.cancha.precioVisible,
+                  _porTurno,
+                  _duracion);
               final mon = widget.cancha.monedaSimbolo;
               final sena = base * _senaPct / 100;
               final resto = base - sena;
               return Text(
-                  'En una hora de $mon ${base.toStringAsFixed(2)}: el jugador '
+                  'En un turno de $mon ${base.toStringAsFixed(2)}: el jugador '
                   'adelanta $mon ${sena.toStringAsFixed(2)} y paga '
                   '$mon ${resto.toStringAsFixed(2)} en la cancha.',
                   style: const TextStyle(

@@ -308,8 +308,7 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
             r = ocup.get((fr, h))
             m = horarios.hora_en_minutos(h) or 0
             pasado = fr < hoy.isoformat() or (fr == hoy.isoformat() and m < ahora.hour * 60 + ahora.minute)
-            ph = horarios.precio_hora_en(c["precio_hora"], h, c["descuento_valle"], c.get("valle_desde"), c.get("valle_hasta"))
-            precio = horarios.precio_slot(ph, paso, desc.get((fr, h), 0))
+            precio = horarios.precio_turno_de(c, h, desc.get((fr, h), 0))
             base = f" data-b='{d.isoformat()}' data-f='{fr}' data-h='{h}' data-fin='{fin}' data-p='{precio}'"
             if r is not None:
                 pag = bool(r.get("pagado"))
@@ -524,8 +523,7 @@ def _reserva_manual(request: Request, _cuerpo_json) -> JSONResponse:
         return JSONResponse({"ok": False, "error": "El correo del cliente no es válido."}, status_code=400)
     sim, _iso = _moneda_de(c)
     desc = datos.descuentos(c["id"], [fr])
-    ph = horarios.precio_hora_en(c["precio_hora"], hora, c["descuento_valle"], c.get("valle_desde"), c.get("valle_hasta"))
-    sugerido = horarios.precio_slot(ph, paso, desc.get((fr, hora), 0))
+    sugerido = horarios.precio_turno_de(c, hora, desc.get((fr, hora), 0))
     try:
         precio = int(round(float(b.get("precio")))) if b.get("precio") not in (None, "") else sugerido
     except (TypeError, ValueError):
@@ -822,7 +820,7 @@ def _fila_cancha_local(c: dict) -> str:
         f"<div class='anf-fila'><span class='ico'>{_deporte(c.get('deporte'))[1]}</span><div style='flex:1;min-width:0'>"
         f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>{e(c['nombre'])}</b>"
         + ("<span class='pill ok' style='font-size:11px'>✓ Verificada</span>" if ok else "<span class='pill warn' style='font-size:11px'>Aún sin verificar</span>") + "</div>"
-        f"<div class='sub' style='margin:2px 0 0'>{e(deps)} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · {c['duracion_slot_min']} min · <b>{e(sim)} {c['precio_hora']:.2f}</b>/h</div>"
+        f"<div class='sub' style='margin:2px 0 0'>{e(deps)} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · {c['duracion_slot_min']} min · <b>{e(sim)} {horarios.precio_publico(c)[0]:.2f}</b> {'/h' if horarios.precio_publico(c)[1] == 'por hora' else '/turno'}</div>"
         "<div class='acciones' style='margin-top:8px'>"
         f"<a class='btn sec' href='/reservar/{e(c['id'])}'>Ver ficha pública</a>"
         f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}'>Calendario</a>"
@@ -928,6 +926,66 @@ def _chips(nombre: str, opciones, sel, *, multi: bool = False, fmt=None) -> str:
     return f"<div class='chips' data-grupo='{e(nombre)}' data-multi='{1 if multi else 0}'>{''.join(out)}</div>"
 
 
+# ── PRECIO POR HORA o POR TURNO (pedido del director, 29-sep-2026: "debo tener
+# la opción de cobrar 15 soles la hora o 15 por 1.5 h") ─────────────────────
+# Espejo del bloque del APK (`editar_cancha_screen`, `_SelectorPrecio`). Con
+# "Por turno" se guarda `precio_turno` y, en `precio_hora`, el equivalente por
+# hora para que los APKs viejos cobren lo mismo (horarios.precio_hora_equivalente).
+MODOS_PRECIO = [("hora", "Por hora"), ("turno", "Por turno")]
+
+
+def _bloque_precio(sim: str, c: dict | None = None, *, mon_id: str = "", placeholder: str = "") -> str:
+    c = c or {}
+    turno = float(c.get("precio_turno") or 0)
+    modo = "turno" if turno > 0 else "hora"
+    valor = turno if turno > 0 else float(c.get("precio_hora") or 0)
+    val_txt = f"{valor:.2f}" if valor > 0 else ""
+    return (f"<label>¿Cómo cobras?</label>{_chips('modo_precio', MODOS_PRECIO, modo)}"
+            f"<label for='precio' id='precioLbl' style='margin-top:12px'>{'Precio por turno' if modo == 'turno' else 'Precio por hora'}</label>"
+            f"<div class='inp-moneda'><span{(' id=' + chr(39) + mon_id + chr(39)) if mon_id else ''}>{e(sim)}</span><input id='precio' name='precio' type='number' min='1' step='0.01' inputmode='decimal' value='{val_txt}'{(' placeholder=' + chr(39) + e(placeholder) + chr(39)) if placeholder else ''}></div>"
+            f"<p class='sub' id='precioPrev' data-sim='{e(sim)}' style='font-size:13px;margin-top:6px'></p>")
+
+
+# Actualiza la etiqueta y la vista previa ("Un turno de 1 h 30 cuesta S/ 22.50").
+# Lee la duración de los chips `duracion_slot_min` o del select del mismo nombre.
+JS_PRECIO = r"""
+(function(){
+  function modo(){var b=document.querySelector(".chip.sel[data-g='modo_precio']");return b?b.dataset.v:'hora'}
+  function dur(){var b=document.querySelector(".chip.sel[data-g='duracion_slot_min']");if(b)return parseInt(b.dataset.v)||60;var s=document.querySelector("select[name='duracion_slot_min']");return s?(parseInt(s.value)||60):60}
+  function txtDur(m){var h=Math.floor(m/60),r=m%60;return h?(h+' h'+(r?' '+(r<10?'0':'')+r:'')):(r+' min')}
+  window.pcgPrecioBody=function(){var p=parseFloat((document.getElementById('precio')||{}).value)||0;return {modo_precio:modo(),precio:p,precio_hora:p}};
+  function pintar(){var lbl=document.getElementById('precioLbl'),pv=document.getElementById('precioPrev'),inp=document.getElementById('precio');if(!pv||!inp)return;
+    var m=modo(),d=dur(),p=parseFloat(inp.value)||0,ms=document.getElementById('monSpan'),sim=(ms&&ms.textContent)||pv.dataset.sim||'S/';
+    if(lbl)lbl.textContent=m==='turno'?'Precio por turno':'Precio por hora';
+    if(p<=0){pv.textContent='';return}
+    var turno=m==='turno'?p:p*d/60, hora=m==='turno'?p*60/d:p;
+    turno=Math.floor(turno+0.5+1e-9);
+    pv.textContent=m==='turno'?('Cada turno de '+txtDur(d)+' cuesta '+sim+' '+turno.toFixed(2)+' (equivale a '+sim+' '+hora.toFixed(2)+' la hora).')
+                              :('Un turno de '+txtDur(d)+' cuesta '+sim+' '+turno.toFixed(2)+'.')}
+  document.addEventListener('click',function(ev){if(ev.target.closest&&ev.target.closest(".chip[data-g='modo_precio'],.chip[data-g='duracion_slot_min']"))setTimeout(pintar,0)});
+  document.addEventListener('input',function(ev){if(ev.target&&ev.target.id==='precio')pintar()});
+  document.addEventListener('change',function(ev){if(ev.target&&ev.target.name==='duracion_slot_min')pintar()});
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',pintar);else pintar();
+})();
+"""
+
+
+def _precio_de_body(b: dict, dur: int) -> tuple[float, float, str]:
+    """(precio_hora, precio_turno, error) desde el cuerpo del editor. Acepta el
+    cuerpo viejo (`precio_hora` a secas = por hora)."""
+    modo = str(b.get("modo_precio") or "hora").strip().lower()
+    crudo = b.get("precio") if b.get("precio") not in (None, "") else b.get("precio_hora")
+    try:
+        precio = round(float(crudo), 2)
+    except (TypeError, ValueError):
+        return 0.0, 0.0, "Pon el precio por turno." if modo == "turno" else "Pon el precio por hora."
+    if not (0 < precio <= 100000):
+        return 0.0, 0.0, "El precio por turno debe ser mayor a 0." if modo == "turno" else "El precio por hora debe ser mayor a 0."
+    if modo == "turno":
+        return horarios.precio_hora_equivalente(precio, dur), precio, ""
+    return precio, 0.0, ""
+
+
 def _select_hora(nombre: str, valor: str) -> str:
     ops = "".join(f"<option value='{h}'{' selected' if h == valor else ''}>{h}</option>" for h in catalogos.HORAS)
     return f"<select name='{nombre}' id='{nombre}'>{ops}</select>"
@@ -1007,8 +1065,7 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
   <div id='supWrap'>{_chips('superficie', superficies, c.get('superficie') or '')}</div>
  </section>
  <section class='panel edit-sec' id='sec-precio'><h2>Precio y promociones</h2>
-  <label for='precio'>Precio por hora</label>
-  <div class='inp-moneda'><span>{e(sim)}</span><input id='precio' name='precio' type='number' min='1' step='0.01' inputmode='decimal' value='{c['precio_hora']:.2f}'></div>
+  {_bloque_precio(sim, c)}
   <label style='margin-top:18px'>⚡ Hora feliz (descuento en horas valle)</label>
   {_chips('descuento_valle', catalogos.DESCUENTOS_VALLE, int(c.get('descuento_valle') or 0), fmt=lambda v: 'Sin descuento' if v == 0 else f'−{v} %')}
   <div id='valleWrap' class='row' style='margin-top:10px'{'' if int(c.get('descuento_valle') or 0) > 0 else ' hidden'}>
@@ -1046,7 +1103,7 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Los cambios se ven al instante en la ficha pública y en la app.</span>
 <button type='button' class='btn' id='btnGuardar'>Guardar cambios</button></div></div>
 <script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script>
-<script>{_JS_EDITAR}</script>"""
+<script>{JS_PRECIO}</script><script>{_JS_EDITAR}</script>"""
     return ui.shell("Editar cancha", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True,
                     titulo_tab=f"Editar {c['nombre']} · Modo anfitrión")
 
@@ -1088,10 +1145,10 @@ $('btnSug').addEventListener('click',async function(){var t=$('sugTxt').value.tr
   try{var r=await fetch('/anfitrion/servicios/sugerir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:t,cancha_id:CFG.id})});var j=await r.json();m.textContent=j.ok?'✅ ¡Gracias! Lo revisamos y te avisamos cuando esté disponible.':(j.error||'No se pudo enviar.');if(j.ok)$('sugTxt').value=''}catch(e){m.textContent='No se pudo enviar. Revisa tu conexión.'}});
 $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las fotos.';return}
   var serv=[];document.querySelectorAll('.serv.sel').forEach(function(r){serv.push({clave:r.dataset.serv,precio:parseFloat(r.querySelector('input').value)||0})});
-  var body={nombre:$('nombre').value,deportes:dep,superficie:sup,precio_hora:parseFloat($('precio').value),
+  var body=Object.assign({nombre:$('nombre').value,deportes:dep,superficie:sup},pcgPrecioBody(),{
     descuento_valle:parseInt(sel('descuento_valle')[0]||'0'),valle_desde:$('valle_desde').value,valle_hasta:$('valle_hasta').value,
     sena_pct:parseInt(sel('sena_pct')[0]||'0'),hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,
-    duracion_slot_min:parseInt(sel('duracion_slot_min')[0]||'60'),servicios_extra:serv,fotos:fotos};
+    duracion_slot_min:parseInt(sel('duracion_slot_min')[0]||'60'),servicios_extra:serv,fotos:fotos});
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Guardando…';
   try{var r=await fetch('/anfitrion/cancha/'+encodeURIComponent(CFG.id)+'/editar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){location.href='/anfitrion/canchas?guardado='+encodeURIComponent(CFG.id);return}
@@ -1125,12 +1182,6 @@ def _validar_edicion(c: dict, b: dict) -> tuple[dict | None, str, str]:
     if superficie not in catalogos.SUPERFICIES.get(principal, []):
         return None, "Marca el tipo de piso de la cancha (obligatorio).", "deportes"
     try:
-        precio = round(float(b.get("precio_hora")), 2)
-    except (TypeError, ValueError):
-        return None, "Pon el precio por hora.", "precio"
-    if not (0 < precio <= 100000):
-        return None, "El precio por hora debe ser mayor a 0.", "precio"
-    try:
         desc = int(b.get("descuento_valle") or 0)
         sena = int(b.get("sena_pct") or 0)
         dur = int(b.get("duracion_slot_min") or 60)
@@ -1142,6 +1193,9 @@ def _validar_edicion(c: dict, b: dict) -> tuple[dict | None, str, str]:
         return None, "Seña no válida.", "precio"
     if dur not in catalogos.DURACIONES:
         return None, "Duración del turno no válida.", "horario"
+    precio, precio_turno, err_precio = _precio_de_body(b, dur)
+    if err_precio:
+        return None, err_precio, "precio"
     horas = {}
     for k, defecto in (("hora_apertura", "07:00"), ("hora_cierre", "23:00"), ("valle_desde", "07:00"), ("valle_hasta", "12:00")):
         v = str(b.get(k) or c.get(k) or defecto)
@@ -1193,7 +1247,7 @@ def _validar_edicion(c: dict, b: dict) -> tuple[dict | None, str, str]:
     fotos = fotos[:catalogos.MAX_FOTOS]
     return {
         "nombre": nombre, "club": club, "deporte": principal, "deportes": deps, "superficie": superficie,
-        "precio_hora": precio, "descuento_valle": desc, "valle_desde": horas["valle_desde"], "valle_hasta": horas["valle_hasta"],
+        "precio_hora": precio, "precio_turno": precio_turno or None, "descuento_valle": desc, "valle_desde": horas["valle_desde"], "valle_hasta": horas["valle_hasta"],
         "sena_pct": sena, "hora_apertura": horas["hora_apertura"], "hora_cierre": horas["hora_cierre"], "duracion_slot_min": dur,
         "amenidades": amen, "servicios_extra": servicios, "fotos": fotos, "foto_url": fotos[0] if fotos else "",
         "_propagar_locales": bool(locales_body),
@@ -1597,7 +1651,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
         direccion = existente.get("direccion") or direccion
         la, ln = (existente.get("lat"), existente.get("lng")) if existente.get("lat") or existente.get("lng") else (la, ln)
         pre = {"deportes": [d for d in _deportes_de(existente) if d in catalogos.DEPORTES_ACTIVOS], "superficie": existente.get("superficie") or "",
-               "precio": f"{existente['precio_hora']:.2f}" if existente.get("precio_hora") else "", "apertura": existente.get("hora_apertura") or "07:00",
+               "precio": f"{existente['precio_hora']:.2f}" if existente.get("precio_hora") else "", "precio_turno": float(existente.get("precio_turno") or 0), "apertura": existente.get("hora_apertura") or "07:00",
                "cierre": existente.get("hora_cierre") or "23:00", "dur": int(existente.get("duracion_slot_min") or 60),
                "nombre_cancha": existente.get("nombre") or "", "zona": existente.get("barrio") or ""}
     elif deporte in catalogos.DEPORTES_ACTIVOS:
@@ -1636,8 +1690,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
   <label for='nombreCancha' style='margin-top:18px'>Nombre de la cancha <span class='req'>opcional</span></label><input id='nombreCancha' maxlength='{catalogos.NOMBRE_MAX}' value='{e(pre['nombre_cancha'])}' placeholder='Ej. Cancha 1 · Grass'>
  </section>
  <section class='panel edit-sec' id='sec-precio'><h2>Precio y horario</h2>
-  <label for='precio'>Precio por hora</label>
-  <div class='inp-moneda'><span id='monSpan'>{e(paises.simbolo_de_moneda(paises.moneda_de_pais(iso)))}</span><input id='precio' type='number' min='1' step='0.01' inputmode='decimal' value='{pre['precio']}' placeholder='120.00'></div>
+  {_bloque_precio(paises.simbolo_de_moneda(paises.moneda_de_pais(iso)), {"precio_hora": float(pre['precio'] or 0), "precio_turno": pre.get('precio_turno') or 0}, mon_id='monSpan', placeholder='120.00')}
   <div class='row' style='margin-top:14px'><div><label for='hora_apertura'>Abre</label>{_select_hora('hora_apertura', pre['apertura'])}</div>
   <div><label for='hora_cierre'>Cierra</label>{_select_hora('hora_cierre', pre['cierre'])}</div></div>
   <p class='sub' style='font-size:13px'>La hora de cierre es la hora en que <b>empieza el último turno</b>: si cierras a las 23:00, el último turno es 23:00–00:00. Un cierre menor o igual a la apertura cae al día siguiente.</p>
@@ -1661,7 +1714,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
 </form></div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Al enviar, tu cancha queda <b>en verificación</b> y te avisamos por WhatsApp y en la app cuando esté activa.</span>
 <button type='button' class='btn' id='btnGuardar'>{'Reclamar mi cancha' if existente else 'Registrar mi cancha'}</button></div></div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_NUEVA}</script>"""
+<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{JS_PRECIO}</script><script>{_JS_NUEVA}</script>"""
     return ui.shell("Pon tu cancha", cuerpo, nav=_cabecera("canchas", ses, tabs_visibles=False), sesion=ses, ancho=True,
                     extra_head=_LEAFLET, titulo_tab="Pon tu cancha · Pichangol")
 
@@ -1727,7 +1780,7 @@ $('inEvid').addEventListener('change',async function(){var f=this.files&&this.fi
 // ── enviar ──
 $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las fotos.';return}
   var body={id:CFG.id,existente:CFG.existente,place:place,nombre_local:$('local').value,direccion:$('direccion').value,lat:lat,lng:lng,zona:$('g3').value,deportes:dep,modo:modo(),superficie:sup,superficies:sups,
-    nombre_cancha:$('nombreCancha').value,precio_hora:parseFloat($('precio').value)||0,hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,duracion_slot_min:+sel('duracion_slot_min')||60,
+    nombre_cancha:$('nombreCancha').value,modo_precio:pcgPrecioBody().modo_precio,precio:pcgPrecioBody().precio,precio_hora:parseFloat($('precio').value)||0,hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,duracion_slot_min:+sel('duracion_slot_min')||60,
     fotos:fotos,whatsapp:$('wa').value,relacion:sel('relacion'),documento:$('doc').value,nota:$('nota').value,evidencia:evid,sol_lat:solLat,sol_lng:solLng};
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Registrando…';
   try{var r=await fetch('/anfitrion/nueva',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
@@ -1780,12 +1833,6 @@ def _validar_registro(b: dict, email: str) -> tuple[list[dict] | None, dict, str
         if s not in union:
             return None, {}, "Marca el tipo de piso de la cancha (obligatorio).", "deportes"
         sups_por_dep = {d: s for d in deps}
-    try:
-        precio = round(float(b.get("precio_hora")), 2)
-    except (TypeError, ValueError):
-        precio = 0
-    if not (0 < precio <= 100000):
-        return None, {}, "Pon el precio por hora.", "precio"
     ap, ci = str(b.get("hora_apertura") or "07:00"), str(b.get("hora_cierre") or "23:00")
     if not (_HORA_RE.match(ap) and _HORA_RE.match(ci)):
         return None, {}, "Hora no válida (usa horas en punto).", "precio"
@@ -1795,6 +1842,9 @@ def _validar_registro(b: dict, email: str) -> tuple[list[dict] | None, dict, str
         dur = 0
     if dur not in catalogos.DURACIONES:
         return None, {}, "Duración del turno no válida.", "precio"
+    precio, precio_turno, err_precio = _precio_de_body(b, dur)
+    if err_precio:
+        return None, {}, err_precio, "precio"
     prefijo = almacen.prefijo_cancha(nuevo_id) if almacen.disponible() else None
     previas = set(_fotos(existente)) if existente else set()
     fotos = []
@@ -1828,7 +1878,7 @@ def _validar_registro(b: dict, email: str) -> tuple[list[dict] | None, dict, str
         sol = (None, None)
     moneda = paises.simbolo_de_moneda(paises.moneda_de_pais(iso))
     nombre_cancha = re.sub(r"\s+", " ", str(b.get("nombre_cancha") or "")).strip()[:catalogos.NOMBRE_MAX]
-    base = {"club": local, "distrito": "", "barrio": zona, "precio_hora": precio, "lat": la, "lng": ln, "club_fundador": False,
+    base = {"club": local, "distrito": "", "barrio": zona, "precio_hora": precio, "precio_turno": precio_turno or None, "lat": la, "lng": ln, "club_fundador": False,
             "digitalizada": True, "direccion": direccion or None, "registrada": True, "foto_url": fotos[0] if fotos else None,
             "fotos": fotos, "dueno": email, "verificada": False, "hora_apertura": ap, "hora_cierre": ci, "duracion_slot_min": dur,
             "eliminada": False, "amenidades": [], "moneda": moneda, "servicios_extra": [], "descuento_valle": 0,
@@ -2031,8 +2081,7 @@ def pagina_agregar_cancha(request: Request, cancha_id: str, deporte: str = "") -
   <p class='sub' style='font-size:12.5px'>Si lo dejas vacío, la nombramos sola por deporte con el siguiente número del local.</p>
  </section>
  <section class='panel edit-sec' id='sec-precio'><h2>Precio y horario</h2><p class='sub'>Vienen del local; cámbialos si esta cancha es distinta.</p>
-  <label for='precio'>Precio por hora</label>
-  <div class='inp-moneda'><span>{e(sim)}</span><input id='precio' type='number' min='1' step='0.01' inputmode='decimal' value='{float(l.get("precio_hora") or 0):.2f}'></div>
+  {_bloque_precio(sim, l)}
   <div class='row' style='margin-top:14px'><div><label for='hora_apertura'>Abre</label>{_select_hora('hora_apertura', l.get('hora_apertura') or '07:00')}</div>
   <div><label for='hora_cierre'>Cierra</label>{_select_hora('hora_cierre', l.get('hora_cierre') or '23:00')}</div></div>
   <p class='sub' style='font-size:13px'>La hora de cierre es la hora en que <b>empieza el último turno</b>.</p>
@@ -2043,7 +2092,7 @@ def pagina_agregar_cancha(request: Request, cancha_id: str, deporte: str = "") -
 </form></div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>{'Queda activa al instante.' if activo else 'Se activa junto con el local.'}</span>
 <button type='button' class='btn' id='btnGuardar'>Agregar cancha</button></div></div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_AGREGAR}</script>"""
+<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{JS_PRECIO}</script><script>{_JS_AGREGAR}</script>"""
     return ui.shell("Agregar cancha", cuerpo, nav=_cabecera("canchas", ses, tabs_visibles=False), sesion=ses, ancho=True,
                     titulo_tab=f"Agregar cancha · {local}")
 
@@ -2063,7 +2112,7 @@ document.addEventListener('click',function(ev){var b=ev.target.closest('.chip[da
   if(g==='deporte'){dep=v;pintarSup()}else if(g==='sup'){sup=v}});
 pintarSup();
 $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');
-  var body={deporte:dep,superficie:sup,nombre:$('nombreCancha').value,precio_hora:parseFloat($('precio').value)||0,hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,duracion_slot_min:+sel('duracion_slot_min')||60};
+  var body={deporte:dep,superficie:sup,nombre:$('nombreCancha').value,modo_precio:pcgPrecioBody().modo_precio,precio:pcgPrecioBody().precio,precio_hora:parseFloat($('precio').value)||0,hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,duracion_slot_min:+sel('duracion_slot_min')||60};
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Agregando…';
   try{var r=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){location.href=j.url||'/anfitrion/canchas';return}msg.classList.add('err');msg.textContent=j.error||'No se pudo agregar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth'})}}
@@ -2084,12 +2133,6 @@ def _validar_agregada(b: dict, l: dict, email: str) -> tuple[dict | None, str, s
     if sup not in catalogos.SUPERFICIES.get(dep, []):
         return None, "Marca el tipo de piso de la cancha (obligatorio).", "cancha"
     nombre = re.sub(r"\s+", " ", str(b.get("nombre") or "")).strip()[:catalogos.NOMBRE_MAX] or _nombre_auto(email, l, dep)
-    try:
-        precio = round(float(b.get("precio_hora")), 2)
-    except (TypeError, ValueError):
-        precio = 0
-    if not (0 < precio <= 100000):
-        return None, "Pon un precio por hora válido.", "precio"
     ap, ci = str(b.get("hora_apertura") or "07:00"), str(b.get("hora_cierre") or "23:00")
     if not (_HORA_RE.match(ap) and _HORA_RE.match(ci)):
         return None, "Hora no válida (usa horas en punto).", "precio"
@@ -2099,10 +2142,13 @@ def _validar_agregada(b: dict, l: dict, email: str) -> tuple[dict | None, str, s
         dur = 0
     if dur not in catalogos.DURACIONES:
         return None, "Duración del turno no válida.", "precio"
+    precio, precio_turno, err_precio = _precio_de_body(b, dur)
+    if err_precio:
+        return None, err_precio, "precio"
     fotos = list(_fotos(l))
     fila = {"id": f"u{int(time.time() * 1000)}", "nombre": nombre, "club": (l.get("club") or "").strip() or l["nombre"],
             "distrito": l.get("distrito") or "", "barrio": l.get("barrio") or "", "deporte": dep, "deportes": [dep], "superficie": sup,
-            "precio_hora": precio, "lat": l.get("lat"), "lng": l.get("lng"), "club_fundador": bool(l.get("club_fundador")),
+            "precio_hora": precio, "precio_turno": precio_turno or None, "lat": l.get("lat"), "lng": l.get("lng"), "club_fundador": bool(l.get("club_fundador")),
             "digitalizada": True, "direccion": l.get("direccion") or None, "registrada": True,
             "foto_url": fotos[0] if fotos else None, "fotos": fotos, "dueno": email,
             "verificada": bool(l.get("verificada")),  # hereda: si el local ya está activo, esta también

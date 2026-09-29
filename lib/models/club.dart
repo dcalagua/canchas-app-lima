@@ -73,6 +73,19 @@ class Club {
     return precios.reduce((a, b) => a < b ? a : b);
   }
 
+  /// ¿TODAS las canchas del local cobran por turno? Entonces la tarjeta muestra
+  /// el turno más barato ("desde S/ 15 /turno"); si no, el precio por hora.
+  /// Espejo de `_tarjeta` del explorador web. `precioDesde` sigue siendo por
+  /// hora (orden y filtros comparan por hora).
+  bool get todasPorTurno =>
+      canchas.isNotEmpty && canchas.every((c) => c.cobraPorTurno);
+  double? get precioVisibleDesde {
+    if (!todasPorTurno) return precioDesde;
+    return canchas.map((c) => c.precioTurno).reduce((a, b) => a < b ? a : b);
+  }
+
+  String get unidadPrecioCorta => todasPorTurno ? '/turno' : '/hora';
+
   /// Moneda del club (la de su cancha principal): todas las canchas del mismo
   /// local comparten país, así que comparten moneda.
   String get monedaSimbolo => principal.monedaSimbolo;
