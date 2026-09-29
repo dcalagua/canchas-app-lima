@@ -535,7 +535,7 @@ _LIBRO_CSS = """
 .libro-cab{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:22px}
 .libro-cab .sello{display:inline-flex;align-items:center;gap:10px;padding:10px 16px;border:2px solid #C8102E;border-radius:12px;color:#C8102E;font-weight:800;font-size:15px}
 .libro-cab .sello svg{width:28px;height:28px}
-.prov{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px 18px;font-size:14px;margin:14px 0 4px}
+.prov{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:6px 18px;font-size:14px;margin:14px 0 4px}
 .prov b{color:var(--noche)}
 .lr h3{margin:22px 0 8px;font-size:16px}
 .lr label{display:block;font-size:13px;font-weight:700;margin:12px 0 5px;color:var(--noche)}

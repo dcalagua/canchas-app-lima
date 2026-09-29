@@ -1917,7 +1917,7 @@ _HTML = r"""<!DOCTYPE html>
     color:var(--green-deep);margin:30px 0 14px;padding-bottom:9px;
     border-bottom:1px solid var(--limaSuave)}
   .sec:first-of-type{margin-top:6px}
-  .cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+  .cfg-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));
     gap:16px;align-items:stretch}
   .cfg-grid > div{display:flex}
   .cfg-grid .card{flex:1;display:flex;flex-direction:column;margin:0}
@@ -1946,7 +1946,7 @@ _HTML = r"""<!DOCTYPE html>
     .md-txt small{display:none}
   }
   /* Dashboard (Resumen): tarjetas KPI clicables */
-  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(210px,100%),1fr));gap:14px}
   .kpi{background:#fff;border:1px solid var(--border);border-radius:16px;padding:18px;
     cursor:pointer;transition:.12s;box-shadow:0 3px 10px rgba(0,0,0,.05);text-align:left;
     font-family:inherit}
@@ -2068,7 +2068,7 @@ _HTML = r"""<!DOCTYPE html>
     justify-content:center;user-select:none;flex-shrink:0}
   .content{max-width:1200px;margin:0;padding:24px 28px 60px}
   .content:has(#redesPanel[style*="block"]){max-width:none}
-  #redesPanel .rd-grid{display:grid;grid-template-columns:minmax(380px,520px) minmax(0,1fr);gap:22px;margin-top:10px}
+  #redesPanel .rd-grid{display:grid;grid-template-columns:minmax(min(380px,100%),520px) minmax(0,1fr);gap:22px;margin-top:10px}
   @media(max-width:1100px){#redesPanel .rd-grid{grid-template-columns:1fr}}
   /* Preloader del pane de Facebook (pedido del director: "agrega un preload siempre"). */
   @keyframes rdgira{to{transform:rotate(360deg)}}

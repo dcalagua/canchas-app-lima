@@ -820,7 +820,7 @@ def _fila_cancha_local(c: dict) -> str:
         f"<div class='anf-fila'><span class='ico'>{_deporte(c.get('deporte'))[1]}</span><div style='flex:1;min-width:0'>"
         f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>{e(c['nombre'])}</b>"
         + ("<span class='pill ok' style='font-size:11px'>✓ Verificada</span>" if ok else "<span class='pill warn' style='font-size:11px'>Aún sin verificar</span>") + "</div>"
-        f"<div class='sub' style='margin:2px 0 0'>{e(deps)} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · {c['duracion_slot_min']} min · <b>{e(sim)} {horarios.precio_publico(c)[0]:.2f}</b> {'/h' if horarios.precio_publico(c)[1] == 'por hora' else '/turno'}</div>"
+        f"<div class='sub' style='margin:2px 0 0'>{e(deps)} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · {c['duracion_slot_min']} min · <b style='white-space:nowrap'>{e(sim)} {horarios.precio_publico(c)[0]:.2f} {'/h' if horarios.precio_publico(c)[1] == 'por hora' else '/turno'}</b></div>"
         "<div class='acciones' style='margin-top:8px'>"
         f"<a class='btn sec' href='/reservar/{e(c['id'])}'>Ver ficha pública</a>"
         f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}'>Calendario</a>"
@@ -896,7 +896,7 @@ def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
                     else "Se activará junto con el local cuando aprobemos la verificación.") + "</div>")
     cuerpo = ("<h1 class='anf-hola'>Mis canchas</h1><p class='sub'>Tus locales en Pichangol, con sus canchas. Edita precio, horario, fotos y servicios aquí o en la app: es la misma cancha.</p>"
               f"{aviso}{_aviso_verificacion(canchas, ses['email'])}"
-              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(420px,1fr));margin-top:16px'>{tarjetas}</div>"
+              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(min(420px,100%),1fr));margin-top:16px'>{tarjetas}</div>"
               "<p style='margin-top:20px'><a class='btn' href='/anfitrion/nueva'>＋ Registrar otro local</a></p>")
     return ui.shell("Canchas", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True, titulo_tab="Canchas · Modo anfitrión")
 

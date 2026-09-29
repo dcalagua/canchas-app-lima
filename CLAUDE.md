@@ -516,6 +516,17 @@ para la API del APK.
   `busq_mini` lleva el bloque `.mov` solo visible en móvil); la compacta
   `.chica` en móvil deja solo la pastilla. Toda pantalla web nueva se prueba
   también a 390 px (Playwright `isMobile`).
+  **RESPONSIVO EN TODA LA WEB (queja del director, 29-sep-2026, captura de
+  Mis canchas: "el botón Editar se sale"):** la grilla usaba
+  `minmax(420px,1fr)` y a 390 px la tarjeta entera desbordaba. Regla: todo
+  mínimo de grilla ≥180 px va como `minmax(min(Npx,100%),1fr)` (14 grillas
+  corregidas en web, legal y torre; test `test_web_responsivo.py`). Además:
+  pestañas del modo anfitrión con márgenes iguales al gutter por ancho
+  (≤744: 24 px, ≤560: 16 px), `.chips .chip` parte el texto largo en vez de
+  empujar la página, y el `.radio-row` del Libro de la portada envuelve.
+  Barrido Playwright `$SP/pw_resp.js` (≈30 páginas a 360/390/768/1024 px;
+  marca todo elemento cuyo borde derecho pase el ancho de la pantalla fuera
+  de un contenedor con scroll): hoy todo en verde. Repetirlo al tocar CSS.
 - **MIS RESERVAS EN LA WEB (sep-2026, pedido del director):** `GET
   /mis-reservas` (router `pagina_mis_reservas`) lista las reservas del CORREO
   de Google con sesión — las mismas que "Mis reservas" del app —

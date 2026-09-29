@@ -212,7 +212,7 @@ def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = ""
     caja = _caja_codigo(bool(no_encontrado))
     sec_participo = ("" if not participo else
                      "<h2 style='margin:26px 0 8px;font-size:18px'>Donde participo</h2>"
-                     "<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(340px,1fr))'>"
+                     "<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr))'>"
                      + "".join(_tarjeta_participo(c, ses["email"]) for c in participo) + "</div>")
     aviso = ("<div class='aviso ok' style='margin-top:14px'>✅ Campeonato guardado. Ya se ve en la app y en su página pública.</div>" if guardado
              else "<div class='aviso ok' style='margin-top:14px'>🗑 Campeonato eliminado.</div>" if eliminado else "")
@@ -234,7 +234,7 @@ def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = ""
               "<div style='display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap'>"
               f"<div><h1 class='anf-hola' style='margin-top:6px'>Mis campeonatos</h1><p class='sub'>{len(lista)} campeonato{'s' if len(lista) != 1 else ''} que organizas. Es lo mismo que ves en la app.</p></div>{boton}</div>"
               f"{aviso}{caja}{sec_participo}<h2 style='margin:26px 0 8px;font-size:18px'>Organizo</h2>"
-              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(340px,1fr))'>{''.join(_tarjeta(c) for c in lista)}</div>{modal_pro}")
+              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr))'>{''.join(_tarjeta(c) for c in lista)}</div>{modal_pro}")
     return ui.shell("Mis campeonatos", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mis campeonatos · Modo anfitrión")
 
 

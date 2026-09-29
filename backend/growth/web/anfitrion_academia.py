@@ -138,7 +138,7 @@ def pagina_academias(request: Request, guardado: str = "") -> HTMLResponse:
               f"<p class='sub'>{len(acads)} academia{'s' if len(acads) != 1 else ''} · {len(mats)} alumno{'s' if len(mats) != 1 else ''}. Edita aquí o en la app: es la misma academia.</p></div>"
               "<a class='btn sec' href='/anfitrion/academia/nueva'>＋ Otra academia</a></div>"
               f"{aviso}"
-              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(360px,1fr));margin-top:16px'>{''.join(_tarjeta(a, por_ac.get(a['id'], 0)) for a in acads)}</div>"
+              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(min(360px,100%),1fr));margin-top:16px'>{''.join(_tarjeta(a, por_ac.get(a['id'], 0)) for a in acads)}</div>"
               + ui.tarjeta_comision('academias', *_simbolo_iso(acads[0])))
     return ui.shell("Mi academia", cuerpo, nav=_cab(ses, "academias"), sesion=ses, ancho=True, titulo_tab="Mi academia · Modo anfitrión")
 
