@@ -248,6 +248,33 @@ class _PichangolAppState extends State<PichangolApp>
         // Banner "QAS" (esquina) + barra "volver a la llamada" (estilo WhatsApp).
         builder: (context, child) {
           Widget contenido = child ?? const SizedBox();
+          // BORDE A BORDE (Android 15/16, targetSdk 36): el sistema dibuja la
+          // app DEBAJO de la barra de navegación y las hojas inferiores, los
+          // diálogos y los botones fijos quedaban tapados (queja del director,
+          // 29-sep-2026: "se pierden las opciones de abajo"). Se reserva ese
+          // espacio UNA vez para toda la app: el contenido termina encima de
+          // la barra y a los widgets se les quita ese padding (no se duplica)
+          // y el teclado se descuenta de la barra que ya se reservó.
+          final mq = MediaQuery.of(context);
+          final barraSistema = mq.viewPadding.bottom;
+          if (barraSistema > 0) {
+            contenido = ColoredBox(
+              color: Theme.of(context).colorScheme.surface,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: barraSistema),
+                child: MediaQuery(
+                  data: mq.copyWith(
+                    padding: mq.padding.copyWith(bottom: 0),
+                    viewPadding: mq.viewPadding.copyWith(bottom: 0),
+                    viewInsets: mq.viewInsets.copyWith(
+                        bottom: (mq.viewInsets.bottom - barraSistema)
+                            .clamp(0.0, double.infinity)),
+                  ),
+                  child: contenido,
+                ),
+              ),
+            );
+          }
           if (kEntorno == 'qas') {
             contenido = Banner(
               message: 'QAS',

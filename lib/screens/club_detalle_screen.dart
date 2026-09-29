@@ -1914,12 +1914,15 @@ class _ResumenReservaState extends State<_ResumenReserva> {
   List<BoleadorPublico>? _boleadores; // null = aún no cargó
   BoleadorPublico? _bol; // el elegido
   bool _bolCargando = false;
-  bool get _bolAplica =>
-      !_soloEfectivo &&
+  // ¿El LOCAL ofrece boleadores para este deporte? Si sí, la sección se
+  // muestra SIEMPRE (como la web): con la lista, con "nadie disponible" o
+  // explicando que se contrata con pago en línea.
+  bool get _bolLocal =>
       cancha.permiteBoleadores &&
       cancha.registrada &&
       cancha.dueno.isNotEmpty &&
       (widget.deporte == Deporte.tenis || widget.deporte == Deporte.padel);
+  bool get _bolAplica => _bolLocal && !_soloEfectivo;
   String get _nombreBol => _paisCancha.nombreBoleador;
 
   Future<void> _cargarBoleadores() async {
@@ -2197,8 +2200,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
             ],
             // BOLEADOR (tenis/pádel): tarjetas por categoría y precio por
             // turno, como en la ficha web. Solo con pago en línea.
-            if (_bolAplica &&
-                (_bolCargando || (_boleadores?.isNotEmpty ?? false))) ...[
+            if (_bolLocal) ...[
               const SizedBox(height: 12),
               Row(
                 children: [
@@ -2217,10 +2219,26 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                   'devolvemos su parte.',
                   style: t.bodySmall?.copyWith(color: textoTenue, height: 1.3)),
               const SizedBox(height: 8),
-              if (_bolCargando && _boleadores == null)
+              if (_soloEfectivo)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(
+                      'Se contrata junto con el pago en línea de la cancha, '
+                      'que aún no está disponible aquí.',
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                )
+              else if (_bolCargando && _boleadores == null)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   child: Text('Buscando ${_nombreBol.toLowerCase()}es disponibles…',
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                )
+              else if ((_boleadores ?? const []).isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(
+                      'Por ahora ningún ${_nombreBol.toLowerCase()} atiende este '
+                      'turno en este local. Prueba otro horario.',
                       style: t.bodySmall?.copyWith(color: textoTenue)),
                 )
               else
