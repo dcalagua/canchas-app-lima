@@ -1910,6 +1910,23 @@ off → redeploy inmediato en cada push). URL pública:
     abre en Explorar → actualizar. Sigue pendiente del director agregar las
     SHA-256 de Play a `ANDROID_CERT_SHA256` para que el enlace tocado en
     WhatsApp abra la app sin pasar por el navegador.
+    **Pase del 29-sep-2026 (autorizado: "pasar a prd, … lo de la web debe
+    reflejarse en el app"):** `prd` = merge `740cae0` (precio por hora o por
+    turno, fórmula única del turno web = app, "Tus datos" obligatorios en la
+    reserva del app, símbolos nativos en el AAB) + 2.º merge con los arreglos
+    del celular del director (commit `81e1954`): `MaterialApp.builder`
+    reserva la barra de navegación de Android para TODA la app (con
+    targetSdk 36 las hojas inferiores quedaban tapadas: "se pierden las
+    opciones de abajo"), la sección de boleador sale SIEMPRE en tenis/pádel
+    si el local los permite (lista, "ningún boleador atiende este turno" o
+    "se contrata con el pago en línea") y mes a mes con 1 mes ya no dice
+    "automático por 0 meses". SQL `supabase_precio_turno.sql` APLICADO en
+    PCG-PRD (`pichangol_precio_turno`) y `pg-backend-prd` REINICIADO (el
+    deploy arrancó antes de la migración y la web cachea por proceso si la
+    columna existe). QAS: `PAGO_ONLINE_ACTIVO=1` en `pg-backend` para probar
+    en el APK el pago en línea, boleador y cargo con llaves de prueba (sin
+    eso el app solo ofrece "pagar en la cancha" y oculta el boleador). El
+    SQL de precio por turno en QAS lo corre el director.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,

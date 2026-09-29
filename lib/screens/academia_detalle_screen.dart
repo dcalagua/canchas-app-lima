@@ -1747,9 +1747,13 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                 if (_mesAMes) ...[
                   const SizedBox(height: 2),
                   Text(
-                      'Luego ${widget.moneda} ${_total.toStringAsFixed(2)} '
-                      'automático por ${_cantidad - 1} '
-                      '${_cantidad - 1 == 1 ? 'mes más' : 'meses más'}.',
+                      // Con 1 mes no queda ningún cobro automático: antes decía
+                      // "automático por 0 meses más".
+                      _cantidad <= 1
+                          ? 'Solo este mes. Súbele meses para que se cobren solos.'
+                          : 'Luego ${widget.moneda} ${_total.toStringAsFixed(2)} '
+                              'automático por ${_cantidad - 1} '
+                              '${_cantidad - 1 == 1 ? 'mes más' : 'meses más'}.',
                       style: const TextStyle(
                           color: bosque,
                           fontWeight: FontWeight.w700,
@@ -1784,7 +1788,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                       style: const TextStyle(
                           color: textoTenue, fontSize: 12.5)),
                 ],
-                if (_mesAMes) ...[
+                if (_mesAMes && _cantidad > 1) ...[
                   const SizedBox(height: 4),
                   const Text('Se cobra automático de tu tarjeta. Cancela cuando quieras.',
                       style: TextStyle(color: textoTenue, fontSize: 12.5)),
