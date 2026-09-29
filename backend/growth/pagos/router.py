@@ -1224,6 +1224,16 @@ def post_cupon_canjear(req: CuponCanjeReq,
     if not email or not codigo:
         raise HTTPException(status_code=400, detail="datos_invalidos")
     _require_usuario(email, x_user_token)
+    return canjear_cupon(email, codigo)
+
+
+def canjear_cupon(email: str, codigo: str) -> dict:
+    """Núcleo del canje de cupón (APK y web, `web/jugador_billetera.py`): el
+    llamador ya comprobó que [email] es el usuario autenticado."""
+    email = (email or "").strip().lower()
+    codigo = _cupon_norm(codigo or "")
+    if not email or not codigo:
+        return {"ok": False, "error": "cupon_invalido"}
     c = stores.cupones.get(codigo)
     if c is None or not c.get("activo", True):
         return {"ok": False, "error": "cupon_invalido"}
@@ -2918,6 +2928,12 @@ def get_movimientos(dueno_id: str,
     Con PAGOS_AUTH_USUARIO=1 (PROD) solo el propio usuario ve sus movimientos.
     """
     _require_usuario(dueno_id, x_user_token)
+    return {"dueno_id": dueno_id, "movimientos": movimientos_de(dueno_id)}
+
+
+def movimientos_de(dueno_id: str) -> list[dict]:
+    """Núcleo de `GET /movimientos/{dueno_id}` (APK) que también usa la web
+    (`web/jugador_billetera.py`, con la sesión de Google ya verificada)."""
     # Trazabilidad del dueño (3 tipos):
     #  - recarga            → entra saldo (+)
     #  - comision_reserva   → sale de su saldo por reserva en efectivo (−)
@@ -2964,7 +2980,7 @@ def get_movimientos(dueno_id: str,
 
     def _fila(p) -> dict:
         base = {"tipo": p.tipo, "creado_en": p.creado_en.isoformat(),
-                "comprobante": p.id,
+                "comprobante": p.id, "moneda": moneda_iso(p.moneda),
                 "concepto": p.concepto or _NOMBRE.get(p.tipo, "Movimiento")}
         # Medio con el que pagó el jugador (yape/tarjeta/sena), si se conoce:
         # el APK lo muestra en el estado de cuenta.
@@ -2999,8 +3015,7 @@ def get_movimientos(dueno_id: str,
 
     # stores.pagos está en orden de inserción (viejo→nuevo); lo invertimos para
     # mostrar el más reciente primero.
-    movimientos = [_fila(p) for p in reversed(propios)]
-    return {"dueno_id": dueno_id, "movimientos": movimientos}
+    return [_fila(p) for p in reversed(propios)]
 
 
 # --- Cobro genérico al jugador (reservas, academias) ---------------------
