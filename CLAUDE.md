@@ -1926,7 +1926,9 @@ off → redeploy inmediato en cada push). URL pública:
     columna existe). QAS: `PAGO_ONLINE_ACTIVO=1` en `pg-backend` para probar
     en el APK el pago en línea, boleador y cargo con llaves de prueba (sin
     eso el app solo ofrece "pagar en la cancha" y oculta el boleador). El
-    SQL de precio por turno en QAS lo corre el director.
+    SQL de precio por turno en QAS lo corre el director. `prd` final =
+    `c86f552`; APK/AAB de PRD = run 1456 (`workflow_dispatch`, `ref=prd`,
+    `entorno=prod`; el 1452 ya no lleva los arreglos del celular). QAS = 1453.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
