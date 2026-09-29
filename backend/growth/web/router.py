@@ -3125,8 +3125,7 @@ def pagina_perfil(request: Request) -> HTMLResponse:
         + "</div></div>")
     tiles = ("<div class='perf-tiles'>"
              "<a class='perf-tile' href='/mis-reservas'><span class='em'>📅</span><b>Mis reservas</b></a>"
-             "<button type='button' class='perf-tile' data-app='Compra y vende raquetas, pelotas e indumentaria con pago seguro y entrega coordinada por chat.' "
-             "data-titulo='Marketplace' data-em='🛍️'><span class='nov'>NOVEDAD</span><span class='em'>🛍️</span><b>Marketplace</b></button>"
+             "<a class='perf-tile' href='/marketplace'><span class='nov'>NOVEDAD</span><span class='em'>🛍️</span><b>Marketplace</b></a>"
              "</div>")
     banner = ("<a class='perf-ban' href='/anfitrion'><span class='em'>🏟️</span><span>"
               "<b>¿Tienes una cancha o academia?</b><small>Publícala y genera ingresos adicionales, ¡es muy sencillo!</small></span></a>")
@@ -3143,12 +3142,11 @@ def pagina_perfil(request: Request) -> HTMLResponse:
 
     menu = ""
     if matriculas:
-        menu += _item_perfil("🎓", "Mis clases y pagos", app="Tus clases, cuotas y pagos de la academia se ven y se pagan desde la app.")
-    menu += _item_perfil("🎟️", "Mis bonos", app="Tus bonos de horas prepagadas se compran y se canjean desde la app.")
-    menu += _item_perfil("🧾", "Mis pagos", app="El historial de todos tus pagos está en la app. Aquí, en Mis reservas, tienes el comprobante de cada reserva.")
+        menu += _item_perfil("🎓", "Mis clases y pagos", href="/mis-clases", sub="Cuotas, pagos y comprobantes de tu academia")
+    menu += _item_perfil("🎟️", "Mis bonos", href="/mis-bonos", sub="Horas prepagadas en tus locales")
+    menu += _item_perfil("🧾", "Mis pagos", href="/mis-pagos", sub="Todo lo que pagaste, con comprobantes")
     menu += _item_perfil("⭐", f"Mis puntos · {puntos} ⭐" if puntos > 0 else "Mis puntos",
-                         sub="100 puntos = 3 de descuento en tu próxima reserva en línea",
-                         app="Ganas 1 punto por cada sol de tus reservas pagadas. Se canjean al pagar una reserva en la app (100 puntos = S/ 3).")
+                         href="/mis-puntos", sub="Ganas puntos con cada reserva pagada")
     menu += _item_perfil("🏆", "Campeonatos", href="/anfitrion/campeonatos", sub="Únete con un código o mira dónde participas")
     tenis = (
         _item_perfil("🥇", "Liga de tenis Pichangol", sub="Ranking, retos y resultados",
@@ -3159,9 +3157,9 @@ def pagina_perfil(request: Request) -> HTMLResponse:
              "<span class='tx'>Mundo tenis<small>Entrena, bolea y compite</small></span>"
              + (f"<span class='bdg'>{retos}</span>" if retos else "") + "<span class='chev'>›</span></summary>"
              f"<div class='perf-sub'>{tenis}</div></details>")
-    menu += _item_perfil("👛", "Mi billetera", app="Tu saldo, recargas y movimientos están en la app. Si tienes cancha o academia, tus ingresos también los ves en Modo anfitrión → Ingresos.")
+    menu += _item_perfil("👛", "Mi billetera", href="/mi-billetera", sub="Saldo, recargas, cupones y movimientos")
     menu += "<div class='perf-sep'></div>"
-    menu += _item_perfil("🌎", "Mi país", app="Tu país define la moneda de tu saldo. Se cambia en la app (Perfil → Mi país) cuando tu saldo está en cero.")
+    menu += _item_perfil("🌎", "Mi país", href="/mi-pais", sub="Define la moneda de tu saldo")
     menu += _item_perfil("⚙️", "Configuración de la cuenta", app="Foto, celular, notificaciones e identidad se configuran desde la app.")
     menu += _item_perfil("🚪", "Cierra la sesión", onclick="window.pcgSalir&&pcgSalir()")
     menu += _item_perfil("🗑️", "Eliminar mi cuenta", href="/legal/eliminar-cuenta", clase="rojo")

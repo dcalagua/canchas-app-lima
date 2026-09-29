@@ -33,6 +33,7 @@ from boleadores import router as boleadores_router
 from fidelidad import router as fidelidad_router
 from web.academia import router as academia_web_router
 from web.jugador_clases import router as jugador_clases_router
+from web.jugador_market import router as jugador_market_router
 from web.jugador_billetera import router as jugador_billetera_router
 from models import ConfigRequest, ConsentimientoRequest
 from marketing.router import router as marketing_router
@@ -134,7 +135,7 @@ app.include_router(marketing_router)
 app.include_router(legal_router)
 app.include_router(web_router)
 app.include_router(academia_web_router)  # ficha pública /academia/{id} + matrícula web
-app.include_router(__import__("web.jugador_market", fromlist=["router"]).router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}
+app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}
 app.include_router(jugador_clases_router)  # /mis-clases: Mis clases y pagos del jugador
 app.include_router(jugador_billetera_router)  # /mi-billetera, /mis-pagos, /mis-puntos, /mi-pais
 app.include_router(anfitrion_academia_router)  # antes del comodín /anfitrion/{modulo}
