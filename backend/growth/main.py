@@ -132,6 +132,7 @@ app.include_router(marketing_router)
 app.include_router(legal_router)
 app.include_router(web_router)
 app.include_router(academia_web_router)  # ficha pública /academia/{id} + matrícula web
+[app.include_router(__import__(f"web.{_m}", fromlist=["router"]).router) for _m in ("jugador_liga", "jugador_cuenta")]  # /mi-nivel, /liga, /cuenta/configuracion, /cuenta/identidad
 app.include_router(anfitrion_academia_router)  # antes del comodín /anfitrion/{modulo}
 app.include_router(anfitrion_tienda_router)
 app.include_router(anfitrion_campeonatos_router)  # antes del comodín /anfitrion/{modulo}
