@@ -1931,6 +1931,11 @@ off → redeploy inmediato en cada push). URL pública:
     SQL de precio por turno en QAS lo corre el director. `prd` final =
     `c86f552`; APK/AAB de PRD = run 1456 (`workflow_dispatch`, `ref=prd`,
     `entorno=prod`; el 1452 ya no lleva los arreglos del celular). QAS = 1453.
+    **Pase del 29-sep-2026 (2.º, autorizado: "Listo pasar a prd y dame el
+    APK para prd"):** `prd` = merge `dadc6ce` ("Resumen de tu pago" en la
+    hoja de pago del APK como en la web + íconos con vida `IconoVivo` en todo
+    el contenido del app). Solo APK: sin SQL, sin Edge, sin variables.
+    APK/AAB de PRD por `workflow_dispatch` (`ref=prd`, `entorno=prod`).
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
