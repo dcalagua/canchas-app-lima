@@ -820,6 +820,16 @@ Future<bool> _pagarMatriculas(
     moneda: academia.monedaSimbolo,
     onToken: (t) => tokenUsado = t,
     onOperacion: (o) => operacionId = o,
+    // "Resumen de tu pago" como en la web: una línea por persona (plan,
+    // meses, descuento familiar) + cargo por servicio ⓘ con el ahorro.
+    detalle: DetallePago(lineas: [
+      for (final x in items)
+        LineaPago(
+            '${x.nombre} · ${x.plan.nombre}'
+            '${x.mesAMes ? ' · mes a mes' : ' · ${x.cantidad} ${x.cantidad == 1 ? 'mes' : 'meses'}'}'
+            '${x.dtoFamiliarPct > 0 ? ' (−${x.dtoFamiliarPct.toStringAsFixed(0)} % familiar)' : ''}',
+            x.total),
+    ], cargo: cot),
   );
   if (!pagado) return false;
 

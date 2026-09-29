@@ -268,6 +268,12 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
         email: appState.usuario?.email ?? '',
         moneda: cancha.monedaSimbolo,
         onOperacion: (o) => operacion = o,
+        detalle: DetallePago(
+            lineas: [
+              LineaPago('Seña · ${cancha.nombre} · $hora', senaMonto.toDouble())
+            ],
+            cargo: cargo,
+            nota: 'El resto (${cancha.monedaSimbolo} ${resto.toStringAsFixed(2)}) lo pagas en la cancha.'),
       );
       if (!pagado) {
         await appState.liberarBloqueAsegurado([asegurada!]);
@@ -289,6 +295,9 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
         email: appState.usuario?.email ?? '',
         moneda: cancha.monedaSimbolo,
         onOperacion: (o) => operacion = o,
+        detalle: DetallePago(lineas: [
+          LineaPago('${cancha.nombre} · $hora–${cancha.horaFinDe(hora)}', total)
+        ], cargo: cargo),
       );
       if (!pagado) {
         await appState.liberarBloqueAsegurado([asegurada!]);

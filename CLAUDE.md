@@ -2885,7 +2885,7 @@ antes del corte.
   pagar hoy" y botón "Continuar con Yape|tarjeta · S/ X" / "Volver". En la
   RESERVA va DESPUÉS de `/web/asegurar` (monto y cargo del servidor; Volver
   → `liberar()`); en la MATRÍCULA antes de `Culqi.open` (`pagar.confirmado`
-  evita el bucle). CSS `.pcg-rp`. Playwright `$SP/pw_resumen.js`. **Fase 1:** `pagos/cargo_servicio.py`
+  evita el bucle). CSS `.pcg-rp`. Playwright `$SP/pw_resumen.js`. **APK igual (queja del director, 29-sep-2026: "no veo el detalle donde se agrega el servicio PCG como en la web"):** `PagoTarjeta.cobrar(detalle: DetallePago(lineas: [LineaPago…], cargo:, nota:))` pinta `ResumenPagoCard` ("Resumen de tu pago": líneas, `FilaCargoServicio` ⓘ con el ahorro, "Total a pagar hoy") dentro de la hoja de Culqi y, en Libélula/PayPhone/simulada, como hoja previa "Continuar con … / Volver" (`_confirmarResumen`). Lo mandan la ficha del local (turnos, premio, extras + boleador, puntos; seña con "el resto lo pagas en la cancha"), el flujo de una hora, el carrito de matrícula y Mi familia/cuotas. La ficha relee `/config/cargo-servicio` al abrirse. Sin el flag de la torre encendido la línea del cargo NO sale (ni en la web ni en el app). **Fase 1:** `pagos/cargo_servicio.py`
   (`cotizar`, `cargo_centimos`, `red_de_seguridad`, `desglose`,
   `publico`, `validar_y_guardar`, `sin_cargo_recientes`; params
   `cargo_<PEN|USD|BOB>_pct|min|tramo|pct_exc|margen_min` y flags
