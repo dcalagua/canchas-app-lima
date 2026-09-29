@@ -6,6 +6,7 @@ mismo precio por slot. Sin dependencias: se prueba solo.
 
 from __future__ import annotations
 
+import math
 from datetime import date, datetime, timedelta, timezone
 
 DIAS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
@@ -99,14 +100,72 @@ def precio_hora_en(precio_hora: float, hora: str, descuento_valle: int,
     return precio_hora
 
 
-def precio_slot(precio_hora: float, paso: int, descuento_slot: int = 0) -> int:
-    """Precio de UN slot (redondeado como en el APK), con el descuento
-    puntual que el dueño pudo poner a ese slot (`pichangol_descuentos_slot`)."""
+def redondear_precio(x: float) -> int:
+    """Redondeo del precio de un turno: .50 va hacia ARRIBA (22.5 → 23),
+    igual que `double.round()` de Dart. OJO: `round()` de Python redondea al
+    par (22.5 → 22) y descuadraba la web con el APP en S/ 1 por turno."""
+    return int(math.floor(float(x) + 0.5 + 1e-9))
+
+
+def precio_base_turno(precio_hora: float, paso: int, precio_turno: float = 0.0) -> float:
+    """Lo que cuesta UN turno sin descuentos. El dueño cobra POR TURNO
+    (`precio_turno` > 0: "S/ 15 el turno de 1 h 30") o POR HORA (precio por
+    hora × duración). Espejo de `Cancha.precioBaseTurno` del APK."""
     paso = paso if paso and paso > 0 else 60
-    p = precio_hora * paso / 60
-    if descuento_slot and descuento_slot > 0:
-        p = p * (100 - min(max(descuento_slot, 0), 90)) / 100
-    return int(round(p))
+    if precio_turno and precio_turno > 0:
+        return float(precio_turno)
+    return float(precio_hora or 0) * paso / 60
+
+
+def precio_slot(precio_hora: float, paso: int, descuento_slot: int = 0, *,
+                precio_turno: float = 0.0, descuento_valle: int = 0,
+                en_valle: bool = False) -> int:
+    """Precio de UN turno: base (por turno o por hora × duración) con UN
+    descuento: el puntual del turno (`pichangol_descuentos_slot`) si lo hay,
+    si no la hora feliz de ese horario. No se acumulan (así lo cobra el APK:
+    `AppState.precioSlotEfectivo`)."""
+    base = precio_base_turno(precio_hora, paso, precio_turno)
+    pct = descuento_slot if descuento_slot and descuento_slot > 0 else (
+        descuento_valle if en_valle and descuento_valle and descuento_valle > 0 else 0)
+    if pct > 0:
+        base = base * (100 - min(max(int(pct), 0), 90)) / 100
+    return redondear_precio(base)
+
+
+def precio_turno_de(c: dict, hora: str, descuento_slot: int = 0) -> int:
+    """Precio del turno `hora` de la cancha `c` (dict de `datos`). Fuente
+    ÚNICA de la web para mostrar, reservar y sugerir precio."""
+    valle = int(c.get("descuento_valle") or 0)
+    return precio_slot(
+        float(c.get("precio_hora") or 0), int(c.get("duracion_slot_min") or 60),
+        descuento_slot, precio_turno=float(c.get("precio_turno") or 0),
+        descuento_valle=valle,
+        en_valle=valle > 0 and es_valle(hora, c.get("valle_desde") or "", c.get("valle_hasta") or ""))
+
+
+def precio_hora_equivalente(precio_turno: float, paso: int) -> float:
+    """Precio por hora que se guarda junto a un precio POR TURNO, para que los
+    APKs viejos (que calculan hora × duración) cobren lo mismo."""
+    paso = paso if paso and paso > 0 else 60
+    return round(float(precio_turno) * 60 / paso, 4)
+
+
+def precio_publico(c: dict) -> tuple[float, str]:
+    """(monto, unidad) que se MUESTRA de una cancha: "15.00", "por turno de
+    1 h 30" si el dueño cobra por turno; si no, precio por hora y "por hora"."""
+    turno = float(c.get("precio_turno") or 0)
+    if turno > 0:
+        return turno, f"por turno de {duracion_texto(int(c.get('duracion_slot_min') or 60))}"
+    return float(c.get("precio_hora") or 0), "por hora"
+
+
+def duracion_texto(paso: int) -> str:
+    """90 → "1 h 30", 60 → "1 h", 120 → "2 h"."""
+    paso = paso if paso and paso > 0 else 60
+    h, m = divmod(paso, 60)
+    if not h:
+        return f"{m} min"
+    return f"{h} h" + (f" {m:02d}" if m else "")
 
 
 def etiqueta_dia(iso: str, hoy: date | None = None) -> str:

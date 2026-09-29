@@ -372,6 +372,14 @@ class Cancha {
   /// descuentoPct, ventanaDias, aplica}`; igual en todas las canchas del
   /// local. Se lee con `FidelidadConfig.de(fidelidad)`. Columna `fidelidad`.
   final Map<String, dynamic> fidelidad;
+
+  /// PRECIO POR TURNO (pedido del director, 29-sep-2026: "cobrar 15 soles la
+  /// hora o 15 por 1.5 h"). > 0 = la cancha cobra este monto por CADA turno
+  /// (`duracionSlotMin`); 0 = cobra por hora (`precioHora` × duración / 60).
+  /// Columna `precio_turno` (SQL `docs/piloto/supabase_precio_turno.sql`). Al
+  /// guardar por turno, `precioHora` lleva el equivalente por hora para APKs
+  /// viejos. Espejo de `web/horarios.py::precio_base_turno`.
+  final double precioTurno;
   /// "Hora feliz": descuento (%) que aplica el dueño a las horas VALLE (mañanas)
   /// para llenar cancha vacía. 0 = sin descuento. Gana el dueño (más ocupación)
   /// y el jugador (más barato).
@@ -421,6 +429,49 @@ class Cancha {
           ? precioHora * (100 - descuentoValle.clamp(0, 90)) / 100
           : precioHora;
 
+  /// ¿El dueño cobra por TURNO (monto fijo por turno) en vez de por hora?
+  bool get cobraPorTurno => precioTurno > 0;
+
+  /// Lo que cuesta UN turno sin descuentos: el monto por turno, o precio por
+  /// hora × duración. Espejo de `horarios.precio_base_turno` de la web.
+  double get precioBaseTurno =>
+      cobraPorTurno ? precioTurno : precioHora * duracionSlotMin / 60;
+
+  /// Precio de UN turno a esa hora con UN descuento: `pctSlot` (descuento
+  /// puntual del turno) si lo hay; si no, la hora feliz. Redondeo de Dart
+  /// (.50 hacia arriba), igual que `horarios.precio_slot` de la web.
+  int precioTurnoEn(String hora, {int pctSlot = 0}) {
+    final pct = pctSlot > 0
+        ? pctSlot
+        : ((descuentoValle > 0 && esValle(hora)) ? descuentoValle : 0);
+    final base = pct > 0
+        ? precioBaseTurno * (100 - pct.clamp(0, 90)) / 100
+        : precioBaseTurno;
+    return base.round();
+  }
+
+  /// Monto y unidad que se MUESTRAN: "S/ 15" + "por turno de 1 h 30", o el
+  /// precio por hora + "por hora". Espejo de `horarios.precio_publico`.
+  double get precioVisible => cobraPorTurno ? precioTurno : precioHora;
+  String get unidadPrecio =>
+      cobraPorTurno ? 'por turno de ${duracionTexto(duracionSlotMin)}' : 'por hora';
+  String get unidadPrecioCorta => cobraPorTurno ? '/turno' : '/h';
+
+  /// 90 → "1 h 30", 60 → "1 h". Espejo de `horarios.duracion_texto`.
+  static String duracionTexto(int min) {
+    final m = min > 0 ? min : 60;
+    final h = m ~/ 60, r = m % 60;
+    if (h == 0) return '$r min';
+    return r == 0 ? '$h h' : '$h h ${r.toString().padLeft(2, '0')}';
+  }
+
+  /// Precio por hora que se guarda junto a un precio POR TURNO (APKs viejos
+  /// calculan hora × duración). Espejo de `horarios.precio_hora_equivalente`.
+  static double precioHoraEquivalente(double precioTurno, int duracionMin) {
+    final d = duracionMin > 0 ? duracionMin : 60;
+    return (precioTurno * 60 / d * 10000).roundToDouble() / 10000;
+  }
+
   const Cancha({
     required this.id,
     required this.nombre,
@@ -449,6 +500,7 @@ class Cancha {
     this.serviciosExtra = const [],
     this.permiteBoleadores = true,
     this.fidelidad = const {},
+    this.precioTurno = 0,
     this.descuentoValle = 0,
     this.valleDesde = '',
     this.valleHasta = '',
@@ -610,6 +662,7 @@ class Cancha {
     List<ServicioExtra>? serviciosExtra,
     bool? permiteBoleadores,
     Map<String, dynamic>? fidelidad,
+    double? precioTurno,
     int? descuentoValle,
     String? valleDesde,
     String? valleHasta,
@@ -643,6 +696,7 @@ class Cancha {
       serviciosExtra: serviciosExtra ?? this.serviciosExtra,
       permiteBoleadores: permiteBoleadores ?? this.permiteBoleadores,
       fidelidad: fidelidad ?? this.fidelidad,
+      precioTurno: precioTurno ?? this.precioTurno,
       descuentoValle: descuentoValle ?? this.descuentoValle,
       valleDesde: valleDesde ?? this.valleDesde,
       valleHasta: valleHasta ?? this.valleHasta,
@@ -679,6 +733,7 @@ class Cancha {
         'serviciosExtra': serviciosExtra.map((s) => s.toJson()).toList(),
         'permiteBoleadores': permiteBoleadores,
         'fidelidad': fidelidad,
+        'precioTurno': precioTurno,
         'descuentoValle': descuentoValle,
         'valleDesde': valleDesde,
         'valleHasta': valleHasta,
@@ -724,6 +779,7 @@ class Cancha {
         fidelidad: j['fidelidad'] is Map
             ? Map<String, dynamic>.from(j['fidelidad'] as Map)
             : const {},
+        precioTurno: ((j['precioTurno'] ?? 0) as num).toDouble(),
         descuentoValle: (j['descuentoValle'] ?? 0) as int,
         valleDesde: (j['valleDesde'] ?? '') as String,
         valleHasta: (j['valleHasta'] ?? '') as String,

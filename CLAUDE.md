@@ -1539,6 +1539,60 @@ para la API del APK.
   Playwright: el Chromium de escritorio no entiende `intent://` y tras el
   intento automático se traga los clics físicos (artefacto del harness, no
   bug): para probar el banner, presembrar `sessionStorage pcg_app_try=1`.
+- **PRECIO POR HORA o POR TURNO + FÓRMULA ÚNICA WEB = APP (pedido del
+  director, 29-sep-2026: "debo tener la opción de cobrar 15 soles la hora o
+  15 por 1.5 h"; "todo el funcionamiento de la web y app debe estar alineado
+  e igual"):** columna `pichangol_canchas.precio_turno` (SQL
+  `docs/piloto/supabase_precio_turno.sql`; NULL/0 = por hora). El dueño elige
+  "¿Cómo cobras? Por hora | Por turno" (web `anfitrion._bloque_precio` +
+  `JS_PRECIO` en Editar cancha, Pon tu cancha y Agregar cancha; APK
+  `widgets/selector_precio.dart::SelectorPrecioCancha` en editar/registrar/
+  agregar) con vista previa "Cada turno de 1 h 30 cuesta S/ 15.00". Por
+  turno se guarda `precio_turno` Y en `precio_hora` el EQUIVALENTE (turno ×
+  60 / duración, `horarios.precio_hora_equivalente` =
+  `Cancha.precioHoraEquivalente`) para que APKs viejos cobren igual; el
+  filtro de precios del explorador sigue comparando por hora. **Fórmula
+  ÚNICA del turno** (`horarios.precio_turno_de` / `precio_slot` en la web =
+  `AppState.precioSlotEfectivo` → `Cancha.precioTurnoEn` en el APK): base =
+  precio por turno o hora × duración; UN descuento: el puntual del turno
+  (`pichangol_descuentos_slot`) MANDA sobre la hora feliz (antes la web los
+  acumulaba y el app no); redondeo .50 hacia ARRIBA en ambos
+  (`horarios.redondear_precio`; `round()` de Python redondea al par y la web
+  cobraba S/ 22 el turno que el app cobraba S/ 23). Textos: web
+  `horarios.precio_publico` ("por turno de 1 h 30" en ficha, JSON-LD, tarjeta
+  del explorador si TODAS las canchas del local cobran por turno, Mis
+  canchas); APK `Cancha.precioVisible/unidadPrecio/unidadPrecioCorta`,
+  `Club.precioVisibleDesde/unidadPrecioCorta` (club_card, mapa, ficha, panel,
+  asistente, búsqueda). **Bug de plata arreglado:** en el APK la liquidación
+  de una reserva online usaba `precioHoraEfectivo` (UNA hora) como monto
+  base → un turno de 90 min liquidaba 2/3 al dueño; ahora va el precio del
+  TURNO cobrado (y el reembolso por "ocupado" igual). `cancha_detalle`
+  (flujo de una hora), `llenar_cancha` y `reserva_manual` ya no calculan a
+  mano. `CanchasRepo` reintenta en 3 niveles (todo → sin `precio_turno` →
+  sin columnas nuevas) para que una base sin el SQL no pierda lo demás; la
+  web lee/escribe la columna solo si existe (`datos._col_cancha_existe`).
+  Test `tests/test_precio_por_turno.py`. **TUS DATOS obligatorios en la
+  reserva del APK (misma queja):** la hoja "Resumen de tu reserva"
+  (`club_detalle._ResumenReserva`) y el diálogo del flujo de una hora
+  (`cancha_detalle`) piden **Nombre y apellido** (prellenado con la cuenta)
+  y **Celular** (prellenado con `appState.miCelular`), editables, con la
+  MISMA regla que la web (nombre ≥ 3, celular ≥ 8 dígitos); viajan a la
+  reserva (`jugador`, `telefono`, también en el bloque asegurado antes de
+  cobrar) y el celular queda en el perfil si la cuenta no tenía. La web
+  ahora PRELLENA el celular desde `pichangol_perfiles` (misma tabla del APK:
+  `datos.celular_de_perfil`, también en la respuesta de `POST /web/sesion`),
+  `/web/asegurar` valida el celular en el servidor y lo guarda en el perfil
+  si faltaba (`datos.guardar_celular_si_falta`, nunca pisa uno existente).
+  `DialogoPichangol` ahora hace scroll (teclado). **Pendiente conocido:**
+  `Reserva.precio` es ENTERO en el APK y en la web (heredado): un turno de
+  $ 7.50 se cobra $ 8; pasar a céntimos es un refactor aparte.
+- **SÍMBOLOS NATIVOS EN EL AAB (advertencia de Play, 29-sep-2026):**
+  `configure_platforms.configurar_simbolos_nativos` inyecta `ndk {
+  debugSymbolLevel 'SYMBOL_TABLE' }` en el buildType release: los símbolos
+  van dentro del bundle y Play deja de advertir "código nativo sin
+  símbolos". La advertencia de "archivo de desofuscación" NO aplica
+  mientras R8 siga apagado en release (`configurar_r8_release`). Validado
+  con el build manual 1449.
 - **LENTITUD EN TODO EL SISTEMA (queja del director, 25-sep-2026: "mucho se
   demora para agregar un simple equipo, y lo mismo sucede en todo el
   sistema"). CAUSA RAÍZ:** el middleware de `main.py` corría, DENTRO de cada

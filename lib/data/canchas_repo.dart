@@ -33,14 +33,20 @@ class CanchasRepo {
       // borrada) la revive en vez de fallar por id duplicado.
       await SupabaseService.client.from(_tabla).upsert(_toRow(c));
     } catch (_) {
-      // Reintento sin columnas nuevas (p. ej. `amenidades`/`superficie` aún no
-      // migradas en la BD): así el guardado del resto no se pierde por una
-      // columna faltante.
+      // Reintento sin la columna MÁS nueva (`precio_turno`) y luego sin todas
+      // las nuevas (`amenidades`/`superficie`… aún no migradas en la BD): así
+      // el guardado del resto no se pierde por una columna faltante.
       try {
         await SupabaseService.client
             .from(_tabla)
-            .upsert(_toRow(c, conAmenidades: false));
-      } catch (_) {}
+            .upsert(_toRow(c, conPrecioTurno: false));
+      } catch (_) {
+        try {
+          await SupabaseService.client
+              .from(_tabla)
+              .upsert(_toRow(c, conAmenidades: false));
+        } catch (_) {}
+      }
     }
   }
 
@@ -65,9 +71,15 @@ class CanchasRepo {
       try {
         await SupabaseService.client
             .from(_tabla)
-            .upsert(_toRow(c, conAmenidades: false));
-      } catch (e2) {
-        ultimoErrorGuardado = e2.toString();
+            .upsert(_toRow(c, conPrecioTurno: false));
+      } catch (_) {
+        try {
+          await SupabaseService.client
+              .from(_tabla)
+              .upsert(_toRow(c, conAmenidades: false));
+        } catch (e2) {
+          ultimoErrorGuardado = e2.toString();
+        }
       }
     }
   }
@@ -189,7 +201,9 @@ class CanchasRepo {
     return 'No se pudo subir la foto. Detalle: $e';
   }
 
-  static Map<String, dynamic> _toRow(Cancha c, {bool conAmenidades = true}) => {
+  static Map<String, dynamic> _toRow(Cancha c,
+          {bool conAmenidades = true, bool conPrecioTurno = true}) =>
+      {
         'id': c.id,
         'nombre': c.nombre,
         'club': c.club,
@@ -227,6 +241,10 @@ class CanchasRepo {
         if (conAmenidades) 'valle_hasta': c.valleHasta,
         if (conAmenidades) 'sena_pct': c.senaPct,
         if (conAmenidades) 'barrio': c.barrio,
+        // PRECIO POR TURNO: su propio nivel de reintento, para que una base
+        // sin esta columna no se lleve de encuentro al resto de columnas.
+        if (conAmenidades && conPrecioTurno)
+          'precio_turno': c.cobraPorTurno ? c.precioTurno : null,
       };
 
   static Cancha _fromRow(Map<String, dynamic> r) => Cancha(
@@ -273,6 +291,7 @@ class CanchasRepo {
         valleDesde: (r['valle_desde'] ?? '') as String,
         valleHasta: (r['valle_hasta'] ?? '') as String,
         senaPct: ((r['sena_pct'] ?? 0) as num).toInt(),
+        precioTurno: ((r['precio_turno'] ?? 0) as num).toDouble(),
       );
 
   static Distrito _enumDistrito(String? s) {

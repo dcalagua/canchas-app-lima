@@ -116,7 +116,7 @@ class BusquedaLocal {
   }
 
   static String _motivo(Cancha c, LatLng? centro, bool barato) {
-    if (barato) return 'De las más económicas · ${precio(c.precioHora)}/h';
+    if (barato) return 'De las más económicas · ${precio(c.precioVisible)}${c.unidadPrecioCorta}';
     final zona = c.zonaMostrable;
     if (centro != null) {
       final d = distanciaKm(centro, c.ubicacion);

@@ -2534,8 +2534,8 @@ class AppState extends ChangeNotifier {
       for (final ca in c.canchas)
         {
           'nombre': ca.nombre,
-          'precio': ca.precioHora,
-          'sufijo': ' /hora',
+          'precio': ca.precioVisible,
+          'sufijo': ca.cobraPorTurno ? ' /turno' : ' /hora',
         }
     ];
     return {
@@ -2634,8 +2634,8 @@ class AppState extends ChangeNotifier {
       for (final ca in cl.canchas) {
         planes.add({
           'nombre': '${ca.nombre} · ${cl.nombre}',
-          'precio': ca.precioHora,
-          'sufijo': ' /hora',
+          'precio': ca.precioVisible,
+          'sufijo': ca.cobraPorTurno ? ' /turno' : ' /hora',
         });
       }
     }
@@ -5131,9 +5131,12 @@ class AppState extends ChangeNotifier {
   }
 
   /// Precio del SLOT (lo que paga el cliente por el bloque) en una fecha, con el
-  /// descuento efectivo aplicado.
+  /// descuento efectivo aplicado. FUENTE ÚNICA del precio de un turno en el
+  /// app: base por turno o por hora × duración, UN descuento (el puntual del
+  /// turno manda sobre la hora feliz). Espejo exacto de la web
+  /// (`horarios.precio_turno_de`); test `test_precio_por_turno.py`.
   int precioSlotEfectivo(Cancha c, String fecha, String hora) =>
-      (precioHoraEfectivo(c, fecha, hora) * c.duracionSlotMin / 60).round();
+      c.precioTurnoEn(hora, pctSlot: descuentoSlotPct(c.id, fecha, hora));
 
   /// El dueño aplica (pct>0) o quita (pct<=0) el descuento de un slot. Persiste
   /// local + nube para que valga en todos los dispositivos.
@@ -5544,6 +5547,7 @@ class AppState extends ChangeNotifier {
         serviciosExtra: r.serviciosExtra,
         permiteBoleadores: r.permiteBoleadores,
         fidelidad: r.fidelidad,
+        precioTurno: r.precioTurno,
       );
     }
   }
@@ -5853,6 +5857,7 @@ class AppState extends ChangeNotifier {
           final f = x.copyWith(
             duracionSlotMin: c.duracionSlotMin,
             precioHora: c.precioHora,
+            precioTurno: c.precioTurno,
             horaApertura: c.horaApertura,
             horaCierre: c.horaCierre,
             senaPct: c.senaPct,
@@ -7726,7 +7731,11 @@ class AppState extends ChangeNotifier {
       // PREMIO DE FIDELIDAD del local aplicado a ESTE turno (soles enteros):
       // hora gratis = todo el precio; descuento = el % del turno. El local lo
       // asume: el precio guardado y la liquidación van ya descontados.
-      int descuento = 0}) async {
+      int descuento = 0,
+      // DATOS DEL CLIENTE que confirmó en "Tus datos" (obligatorios, como en
+      // la web): nombre a mostrar al dueño y celular. '' = los de la cuenta.
+      String nombreCliente = '',
+      String telefono = ''}) async {
     final pagoAdelantado = cobro == 'online' || cobro == 'sena';
     final notaReembolso = pagoAdelantado
         ? ' Tu pago quedó registrado para reembolso.'
@@ -7764,7 +7773,10 @@ class AppState extends ChangeNotifier {
       id: asegurada?.id ??
           'jug_${DateTime.now().millisecondsSinceEpoch}_${_contadorJugador++}',
       canchaId: cancha.id,
-      jugador: usuario?.nombre ?? 'Jugador',
+      jugador: nombreCliente.trim().isNotEmpty
+          ? nombreCliente.trim()
+          : (usuario?.nombre ?? 'Jugador'),
+      telefono: telefono.trim().isNotEmpty ? telefono.trim() : miCelular,
       nivel: 'Intermedio 3.5',
       fecha: fecha,
       dia: diaLabel,
@@ -7851,9 +7863,9 @@ class AppState extends ChangeNotifier {
         ? cancha.nombre
         : '$local · ${cancha.nombre}';
     final accion = _accionContable(cancha, cobro,
-        montoBase: descuento > 0
-            ? precio.toDouble()
-            : precioHoraEfectivo(cancha, fecha, hora),
+        // Lo que se liquida es el TURNO cobrado (antes iba el precio de UNA
+        // hora: un turno de 90 min liquidaba 2/3 al dueño).
+        montoBase: precio.toDouble(),
         sena: sena,
         reservaId: reserva.id,
         etiqueta: quien.isEmpty
@@ -7919,7 +7931,7 @@ class AppState extends ChangeNotifier {
     if (cobro != 'online' && cobro != 'sena') return;
     final monto = cobro == 'sena'
         ? sena.toDouble()
-        : precioHoraEfectivo(cancha, fecha, hora);
+        : precioSlotEfectivo(cancha, fecha, hora).toDouble();
     _registrarReembolso('ocupado_${cancha.id}_${fecha}_$hora', monto,
         'Horario ya tomado (pagado por adelantado)');
   }
@@ -7946,7 +7958,9 @@ class AppState extends ChangeNotifier {
       // Cargo por servicio del pago (una sola vez por bloque, en la 1.ª hora).
       CotizacionCargo? cargo,
       // Premio de FIDELIDAD por hora (hora → soles descontados), si se usó.
-      Map<String, int> descuentos = const {}}) async {
+      Map<String, int> descuentos = const {},
+      String nombreCliente = '',
+      String telefono = ''}) async {
     if (horas.isEmpty) return ResultadoReserva.error;
     final ordenadas = [...horas]..sort();
     // Datos del BLOQUE para los avisos al jugador (un solo aviso por bloque).
@@ -8008,6 +8022,8 @@ class AppState extends ChangeNotifier {
         medioPago: medioPago,
         sena: senaSlot,
         descuento: descuentos[h] ?? 0,
+        nombreCliente: nombreCliente,
+        telefono: telefono,
         grupoReservaId: grupo,
         // El aviso al dueño se manda UNA sola vez para todo el bloque (abajo),
         // no una vez por hora.
@@ -8083,7 +8099,7 @@ class AppState extends ChangeNotifier {
   /// `sinConexion` / `error` sin haber tocado la plata del jugador.
   Future<(ResultadoReserva, List<Reserva>)> asegurarBloqueJugador(
       Cancha cancha, String fecha, String diaLabel, List<String> horas,
-      {Deporte? deporte}) async {
+      {Deporte? deporte, String nombreCliente = '', String telefono = ''}) async {
     if (horas.isEmpty) return (ResultadoReserva.error, const <Reserva>[]);
     final ordenadas = [...horas]..sort();
     // Chequeo local rápido (lo ya visible en este equipo).
@@ -8102,7 +8118,10 @@ class AppState extends ChangeNotifier {
       final r = Reserva(
         id: 'jug_${DateTime.now().millisecondsSinceEpoch}_${_contadorJugador++}',
         canchaId: cancha.id,
-        jugador: usuario?.nombre ?? 'Jugador',
+        jugador: nombreCliente.trim().isNotEmpty
+            ? nombreCliente.trim()
+            : (usuario?.nombre ?? 'Jugador'),
+        telefono: telefono.trim().isNotEmpty ? telefono.trim() : miCelular,
         nivel: 'Intermedio 3.5',
         fecha: fh,
         dia: diaLabel,

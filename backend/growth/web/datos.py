@@ -28,24 +28,36 @@ _COLS = [c.strip() for c in COLS_CANCHA.split(",")]
 _col_fid_cache: dict = {}
 
 
-def col_fidelidad_disponible() -> bool:
-    if "ok" in _col_fid_cache:
-        return _col_fid_cache["ok"]
+def _col_cancha_existe(nombre: str) -> bool:
+    """¿Existe la columna `nombre` en `pichangol_canchas`? (cacheado). Las
+    columnas nuevas se leen/escriben solo si su SQL ya corrió en esta base."""
+    if nombre in _col_fid_cache:
+        return _col_fid_cache[nombre]
     if not pg.habilitado:
         return False
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' "
-                        "AND table_name = 'pichangol_canchas' AND column_name = 'fidelidad'")
+                        "AND table_name = 'pichangol_canchas' AND column_name = %s", (nombre,))
             ok = int(cur.fetchone()[0]) == 1
     except Exception:  # noqa: BLE001
         return False
-    _col_fid_cache["ok"] = ok
+    _col_fid_cache[nombre] = ok
     return ok
 
 
+def col_fidelidad_disponible() -> bool:
+    return _col_cancha_existe("fidelidad")
+
+
+def col_precio_turno_disponible() -> bool:
+    """PRECIO POR TURNO (SQL `docs/piloto/supabase_precio_turno.sql`)."""
+    return _col_cancha_existe("precio_turno")
+
+
 def _cols_cancha() -> list[str]:
-    return _COLS + (["fidelidad"] if col_fidelidad_disponible() else [])
+    return (_COLS + (["fidelidad"] if col_fidelidad_disponible() else [])
+            + (["precio_turno"] if col_precio_turno_disponible() else []))
 
 
 def _sel_cancha() -> str:
@@ -88,6 +100,7 @@ def _norm_cancha(d: dict) -> dict:
         s for s in _json_list(d.get("servicios_extra")) if isinstance(s, dict)]
     d["amenidades"] = _json_list(d.get("amenidades"))
     d["precio_hora"] = float(d.get("precio_hora") or 0)
+    d["precio_turno"] = float(d.get("precio_turno") or 0)
     d["lat"] = float(d.get("lat") or 0)
     d["lng"] = float(d.get("lng") or 0)
     d["duracion_slot_min"] = int(d.get("duracion_slot_min") or 60)
@@ -210,7 +223,7 @@ COLS_EDITABLES = {
     "nombre", "club", "deporte", "deportes", "precio_hora", "hora_apertura",
     "hora_cierre", "duracion_slot_min", "descuento_valle", "valle_desde",
     "valle_hasta", "sena_pct", "superficie", "amenidades", "servicios_extra",
-    "fotos", "foto_url", "direccion", "fidelidad",
+    "fotos", "foto_url", "direccion", "fidelidad", "precio_turno",
 }
 _COLS_JSON = {"deportes", "amenidades", "servicios_extra", "fotos", "fidelidad"}
 
@@ -221,6 +234,10 @@ def actualizar_cancha(cancha_id: str, dueno: str, campos: dict) -> bool:
     una cancha ajena aunque conozca el id. Devuelve True si cambió 1 fila."""
     dueno = (dueno or "").strip().lower()
     sets = {k: v for k, v in (campos or {}).items() if k in COLS_EDITABLES}
+    if "precio_turno" in sets and not col_precio_turno_disponible():
+        sets.pop("precio_turno")  # sin el SQL, precio_hora ya lleva el equivalente
+    if "fidelidad" in sets and not col_fidelidad_disponible():
+        sets.pop("fidelidad")
     if not pg.habilitado or not cancha_id or not dueno or not sets:
         return False
     cols = sorted(sets)
@@ -254,7 +271,7 @@ def insertar_canchas(filas: list[dict]) -> bool:
     si son canchas separadas). Todo o nada: si una falla, ninguna queda."""
     if not pg.habilitado or not filas:
         return False
-    cols = COLS_REGISTRO
+    cols = COLS_REGISTRO + (["precio_turno"] if col_precio_turno_disponible() else [])
     marcas = ", ".join("%s::jsonb" if c in _COLS_JSON else "%s" for c in cols)
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
@@ -288,7 +305,7 @@ def borrar_canchas(ids: list[str], dueno: str) -> int:
 
 
 COLS_ADOPCION = {"nombre", "club", "deporte", "deportes", "superficie", "precio_hora", "hora_apertura", "hora_cierre",
-                 "duracion_slot_min", "barrio", "direccion", "fotos", "foto_url", "moneda"}
+                 "duracion_slot_min", "barrio", "direccion", "fotos", "foto_url", "moneda", "precio_turno"}
 
 
 def adoptar_cancha(cancha_id: str, dueno: str, campos: dict) -> bool:
@@ -297,6 +314,8 @@ def adoptar_cancha(cancha_id: str, dueno: str, campos: dict) -> bool:
     lo que el dueño completó. Solo si sigue sin dueño y sin verificar."""
     dueno = (dueno or "").strip().lower()
     sets = {k: v for k, v in (campos or {}).items() if k in COLS_ADOPCION}
+    if "precio_turno" in sets and not col_precio_turno_disponible():
+        sets.pop("precio_turno")
     if not pg.habilitado or not cancha_id or not dueno:
         return False
     cols = sorted(sets)
@@ -1617,6 +1636,41 @@ def actualizar_canje(canje_id: str, estado: str, solo_si: tuple = ()) -> bool:
             n = cur.rowcount
             conn.commit()
             return n == 1
+    except Exception:  # noqa: BLE001
+        return False
+
+
+# ── Celular del PERFIL (`pichangol_perfiles`, la misma tabla del APK) ─────────
+# La ficha web lo PRELLENA (como el app, que usa `appState.miCelular`) y, si la
+# cuenta aún no tenía celular, el que escribe al reservar queda en su perfil.
+
+def celular_de_perfil(email: str) -> str:
+    e = (email or "").strip().lower()
+    if not pg.habilitado or not e:
+        return ""
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT celular FROM pichangol_perfiles WHERE email = %s", (e,))
+            f = cur.fetchone()
+            return str((f[0] if f else "") or "").strip()
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def guardar_celular_si_falta(email: str, nombre: str, celular: str) -> bool:
+    """Deja el celular en el perfil SOLO si no tenía (nunca pisa uno puesto
+    por el usuario en el app). Fail-safe."""
+    e, cel = (email or "").strip().lower(), (celular or "").strip()[:20]
+    if not pg.habilitado or not e or not cel:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO pichangol_perfiles (email, nombre, celular) VALUES (%s, %s, %s) "
+                        "ON CONFLICT (email) DO UPDATE SET celular = EXCLUDED.celular "
+                        "WHERE coalesce(pichangol_perfiles.celular, '') = ''",
+                        (e, (nombre or "").strip()[:80] or e.split("@")[0], cel))
+            conn.commit()
+            return True
     except Exception:  # noqa: BLE001
         return False
 

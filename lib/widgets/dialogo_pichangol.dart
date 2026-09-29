@@ -36,7 +36,10 @@ class DialogoPichangol extends StatelessWidget {
       backgroundColor: cs.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-      child: Padding(
+      // Scroll: con campos de texto (p. ej. "Tus datos") el teclado no tapa
+      // ni desborda el diálogo.
+      child: SingleChildScrollView(
+        child: Padding(
         padding: const EdgeInsets.fromLTRB(22, 24, 22, 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -86,6 +89,7 @@ class DialogoPichangol extends StatelessWidget {
             ),
           ],
         ),
+      ),
       ),
     );
   }

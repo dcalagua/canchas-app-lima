@@ -113,7 +113,7 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
     // dueño para la hora elegida (si ya eligió una).
     final p = _hora != null
         ? appState.precioSlotEfectivo(c, _isoFecha, _hora!)
-        : (c.precioHora * c.duracionSlotMin / 60).round();
+        : c.precioBaseTurno.round();
     _precio.text = p.toString();
   }
 

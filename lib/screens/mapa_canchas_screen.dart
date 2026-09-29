@@ -199,7 +199,7 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
   /// lugar aún no tiene precio (descubierto en Google, sin reclamar), la
   /// PELOTA del deporte — con filtro activo, la del deporte BUSCADO.
   String _etiqueta(Club cl) {
-    final p = cl.precioDesde;
+    final p = cl.precioVisibleDesde;
     if (p != null && p > 0) {
       final txt = p == p.roundToDouble() ? p.round().toString() : precio(p);
       return '${cl.monedaSimbolo} $txt';
@@ -663,9 +663,9 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                     const SizedBox(height: 2),
                     Text(
                       sel.verificada
-                          ? (sel.precioDesde != null
+                          ? (sel.precioVisibleDesde != null
                               ? 'Desde ${sel.monedaSimbolo} '
-                                  '${precio(sel.precioDesde!)} /h · toca para reservar'
+                                  '${precio(sel.precioVisibleDesde!)} ${sel.todasPorTurno ? '/turno' : '/h'} · toca para reservar'
                               : 'Reservable · toca para ver')
                           : 'En Google · toca para ver y reclamar',
                       maxLines: 1,

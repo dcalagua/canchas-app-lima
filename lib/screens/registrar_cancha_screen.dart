@@ -16,6 +16,7 @@ import '../services/propiedad_service.dart';
 import '../services/sport_detector.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/selector_precio.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/wizard_pichangol.dart';
 import '../widgets/responsive.dart';
@@ -44,6 +45,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   final _nombreCancha = TextEditingController(); // nombre de la cancha (opcional)
   final _direccion = TextEditingController();
   final _precio = TextEditingController(text: '120.00');
+  // Cobra por hora o por TURNO (mismo bloque que la web).
+  bool _porTurno = false;
   final _contacto = TextEditingController(); // WhatsApp del dueño (obligatorio)
   final _dni = TextEditingController(); // DNI del reclamante (OPCIONAL)
   final _nota = TextEditingController(); // nota para el equipo (OPCIONAL)
@@ -411,8 +414,8 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       return;
     }
     if (!mounted) return;
-    final precio =
-        double.tryParse(_precio.text.trim().replaceAll(',', '.')) ?? 100;
+    final (precio, precioTurno) = SelectorPrecioCancha.valores(
+        SelectorPrecioCancha.leer(_precio) ?? 100, _porTurno, _duracion);
     final direccion = _direccion.text.trim();
 
     // Regla: el envío real (geolocaliza la zona, sube la foto y crea el reclamo
@@ -455,6 +458,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
           deporte: principal,
           deportes: deportes, // todos los deportes jugables en esta loza
           precioHora: precio,
+          precioTurno: precioTurno,
           ubicacion: _ubicacion!,
           clubFundador: false,
           digitalizada: true,
@@ -487,6 +491,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             deporte: dep,
             deportes: [dep],
             precioHora: precio,
+            precioTurno: precioTurno,
             ubicacion: _ubicacion!,
             clubFundador: false,
             digitalizada: true,
@@ -934,13 +939,13 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
               ],
             ],
             const SizedBox(height: 4),
-            TextField(
+            SelectorPrecioCancha(
               controller: _precio,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(
-                labelText: 'Precio por hora',
-                prefixText: '$monedaSimbolo ',
-              ),
+              porTurno: _porTurno,
+              onPorTurno: (v) => setState(() => _porTurno = v),
+              duracionMin: _duracion,
+              moneda: monedaSimbolo,
+              onCambio: () => setState(() {}),
             ),
             const SizedBox(height: 18),
             SelectorHorario(
