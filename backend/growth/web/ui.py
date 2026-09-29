@@ -905,7 +905,7 @@ def chip_sesion(ses: dict | None, volver: str = "/") -> str:
     if ses:
         foto = (f"<img class='avatar' src='{e(ses.get('foto'))}' alt=''>" if ses.get("foto")
                 else f"<span class='avatar ini'>{e((ses.get('nombre') or ses.get('email') or '?')[:1].upper())}</span>")
-        return (f"<a class='yo' href='/entrar' title='{e(ses.get('email'))}' onclick='return false'>{foto}"
+        return (f"<a class='yo' href='/perfil' title='{e(ses.get('email'))}'>{foto}"
                 f"<span class='nom'>{e((ses.get('nombre') or ses.get('email') or '').split(' ')[0])}</span></a>")
     if not _s.activo():
         return ""
@@ -925,9 +925,9 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
     if ses:
         nombre = ses.get("nombre") or ses.get("email") or ""
         cuenta = (f"<div class='yo'>{_avatar(ses)}<div><b>{e(nombre)}</b><small>{e(ses.get('email'))}</small></div></div>"
-                  "<hr><a class='b' href='/mis-reservas'>📅 Mis reservas</a>"
+                  "<hr><a class='b' href='/perfil'>👤 Perfil</a><a class='b' href='/mis-reservas'>📅 Mis reservas</a>"
                   "<button type='button' onclick='window.pcgSalir&&pcgSalir()'>Cerrar sesión</button>")
-        avatar = f"<a class='redondo' href='#' onclick='return false' title='{e(ses.get('email'))}' aria-label='Tu cuenta'>{_avatar(ses)}</a>"
+        avatar = f"<a class='redondo' href='/perfil' title='{e(ses.get('email'))}' aria-label='Tu perfil'>{_avatar(ses)}</a>"
     else:
         if _s.activo():
             cuenta = f"<a class='b' href='{entrar}'>Iniciar sesión o registrarse</a>"

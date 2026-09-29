@@ -578,6 +578,28 @@ para la API del APK.
   `ajuste_cancelacion` pasa a `aplicado`). El comprobante `/reserva/{ref}` muestra "Cancelar reserva" al
   dueño de la reserva (modal `_MODAL_CANCELAR` + `JS_CANCELAR`, compartidos
   con Mis reservas) y la política con las horas configuradas.
+- **PERFIL EN LA WEB (29-sep-2026, pedido del director con captura del
+  Perfil del app: "esto no lo veo en la web"):** `GET /perfil`
+  (`web/router.py::pagina_perfil`, sin sesión → `/entrar?volver=/perfil`) =
+  pantalla Perfil del app: tarjeta de identidad (foto de Google, 👑 PRO =
+  `stores.pro_activo`, ✓ = `datos.esta_verificado`) con Reservas
+  (`reservas_de_usuario`), Deportes con nivel (`datos.niveles_de`,
+  `pichangol_niveles`) y Retos pendientes (misma cuenta que
+  `cargarRetosPendientes`: recibidos pendiente/aceptado + enviados
+  aceptados, `stores.retos`); atajos Mis reservas / Marketplace (NOVEDAD),
+  banner "¿Tienes una cancha o academia?" → `/anfitrion`, tarjeta de nivel y
+  el MISMO menú: Mis clases y pagos (solo con matrículas,
+  `datos.tiene_matriculas`), Mis bonos, Mis pagos, Mis puntos · N ⭐
+  (`datos.puntos_de` = `misPuntosDisponibles`: reservas traídas por la app y
+  pagadas 12 meses + bodega con saldo − canjes), Campeonatos →
+  `/anfitrion/campeonatos`, 🎾 Mundo tenis (`<details>` con Liga y Ser/Soy
+  boleador → `/anfitrion/boleador`), Mi billetera, Mi país, Configuración,
+  Cierra la sesión (`pcgSalir`), Eliminar mi cuenta →
+  `/legal/eliminar-cuenta` + botón flotante "Cambiar a modo anfitrión". Lo
+  que la web aún no tiene lleva pill "En la app" y abre `pcgConfirmar`
+  ("Abrir la app" → Play), nunca un enlace roto. El avatar de la cabecera y
+  "👤 Perfil" del menú ☰ llevan aquí. `/perfil` NO está en las rutas de
+  "abrir en la app" (no hace falta APK). Test `tests/test_web_perfil.py`.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
   que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
   `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`

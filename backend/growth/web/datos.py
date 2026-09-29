@@ -1674,3 +1674,80 @@ def guardar_celular_si_falta(email: str, nombre: str, celular: str) -> bool:
     except Exception:  # noqa: BLE001
         return False
 
+
+
+# --- Perfil del jugador (web = pantalla Perfil del app) ----------------------
+
+def niveles_de(email: str) -> list[dict]:
+    """Niveles del jugador por deporte (`pichangol_niveles`, = `NivelesRepo.
+    deJugador`). Fail-safe: sin base o sin tabla, lista vacía."""
+    e = (email or "").strip().lower()
+    if not pg.habilitado or not e:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT deporte, nivel, partidos, victorias FROM pichangol_niveles "
+                        "WHERE lower(email) = %s ORDER BY deporte", (e,))
+            return [{"deporte": str(f[0] or ""), "nivel": float(f[1] or 3.0),
+                     "partidos": int(f[2] or 0), "victorias": int(f[3] or 0)} for f in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def puntos_de(email: str) -> dict:
+    """Puntos Pichangol DISPONIBLES, misma cuenta que `AppState.
+    misPuntosDisponibles`: 1 punto por S/ 1 de precio + extras de las reservas
+    TRAÍDAS POR LA APP y PAGADAS de los últimos 12 meses (sin no-show) + los
+    pedidos de bodega pagados con saldo y entregados, menos lo canjeado
+    (`pichangol_puntos_canjes`). Cada parte es fail-safe por separado."""
+    e = (email or "").strip().lower()
+    from datetime import datetime, timedelta, timezone
+    out = {"ganados": 0, "canjeados": 0, "disponibles": 0}
+    if not pg.habilitado or not e:
+        return out
+    desde = (datetime.now(timezone.utc) - timedelta(days=365))
+    ganados = 0
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT precio, extras, fecha FROM pichangol_reservas WHERE lower(usuario) = %s "
+                "AND coalesce(traida_por_app, true) AND coalesce(pagado, false) "
+                "AND coalesce(estado, '') NOT IN ('noShow', 'no_show')", (e,))
+            lim = desde.date().isoformat()
+            for precio, extras, fecha in cur.fetchall():
+                if str(fecha or "") < lim:
+                    continue
+                tot = float(precio or 0) + sum(float((x or {}).get("precio") or 0) for x in _json_list(extras) if isinstance(x, dict))
+                ganados += int(round(tot))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT coalesce(sum(total), 0) FROM pichangol_bodega_pedidos WHERE lower(cliente) = %s "
+                        "AND pagado AND estado = 'entregado' AND creado >= %s", (e, desde))
+            ganados += int(round(float((cur.fetchone() or [0])[0] or 0)))
+    except Exception:  # noqa: BLE001
+        pass
+    canjeados = 0
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT coalesce(sum(puntos), 0) FROM pichangol_puntos_canjes WHERE lower(email) = %s", (e,))
+            canjeados = int((cur.fetchone() or [0])[0] or 0)
+    except Exception:  # noqa: BLE001
+        pass
+    out.update(ganados=ganados, canjeados=canjeados, disponibles=max(0, ganados - canjeados))
+    return out
+
+
+def tiene_matriculas(email: str) -> bool:
+    """¿Paga (o es) alumno de alguna academia? (= `appState.misMatriculas`)."""
+    e = (email or "").strip().lower()
+    if not pg.habilitado or not e:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM pichangol_matriculas WHERE (lower(email) = %s "
+                        "OR lower(data->>'emailAlumno') = %s) AND coalesce(eliminada,false) = false LIMIT 1", (e, e))
+            return cur.fetchone() is not None
+    except Exception:  # noqa: BLE001
+        return False
