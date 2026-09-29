@@ -13,6 +13,7 @@ import '../widgets/club_card.dart';
 import 'academias_screen.dart';
 import 'busqueda_guiada_screen.dart';
 import 'club_detalle_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Mapa de canchas estilo Airbnb:
 ///  - Arriba: buscador flotante (zona actual) + chips de filtro por deporte,
@@ -431,7 +432,7 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                   width: 22,
                   height: 22,
                   child: CircularProgressIndicator(strokeWidth: 2))
-              : const Icon(Icons.my_location, size: 22, color: bosque),
+              : const IconoVivo(Icons.my_location, size: 22, color: bosque),
         ),
       ),
     );
@@ -956,7 +957,7 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                                   fontWeight: FontWeight.w800,
                                   fontSize: 14.5)),
                           SizedBox(width: 7),
-                          Icon(Icons.map_outlined,
+                          IconoVivo(Icons.map_outlined,
                               color: Colors.white, size: 18),
                         ],
                       ),

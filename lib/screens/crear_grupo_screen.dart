@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'chat_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Crea un grupo de chat: nombre + miembros. Los miembros se buscan por NOMBRE o
 /// CORREO (como al buscar un jugador) y se agregan con un toque; no se puede
@@ -167,7 +168,7 @@ class _CrearGrupoScreenState extends State<CrearGrupoScreen> {
                     decoration: const InputDecoration(
                       labelText: 'Nombre del grupo',
                       hintText: 'Ej. Fútbol de los martes',
-                      prefixIcon: Icon(Icons.groups_outlined),
+                      prefixIcon: IconoVivo(Icons.groups_outlined),
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -422,7 +423,7 @@ class _Ayuda extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.person_search_outlined, size: 48, color: textoTenue),
+            IconoVivo(Icons.person_search_outlined, size: 48, color: textoTenue),
             const SizedBox(height: 12),
             Text(texto,
                 textAlign: TextAlign.center,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
+import 'icono_vivo.dart';
 
 /// Estado VACÍO estilo Airbnb — REGLA de UI para todas las secciones del modo
 /// anfitrión (y donde aplique en el jugador): objeto/ícono "flotante" centrado
@@ -59,7 +60,7 @@ class VacioAirbnb extends StatelessWidget {
                         offset: Offset(0, 2)),
                   ],
                 ),
-                child: Icon(icono, size: 52, color: colorIcono ?? lima),
+                child: IconoVivo(icono, size: 52, color: colorIcono ?? lima),
               ),
               const SizedBox(height: 30),
               Text(

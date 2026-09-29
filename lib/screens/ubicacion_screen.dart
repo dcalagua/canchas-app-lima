@@ -3,6 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../services/location_service.dart';
 import '../theme.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Lo que devuelve [UbicacionScreen] al chat: el punto elegido y, si es en vivo,
 /// la duración. `envivo == null` → ubicación estática (un solo envío).
@@ -102,7 +103,7 @@ class _UbicacionScreenState extends State<UbicacionScreen> {
             ),
             for (final (etiqueta, dur) in opciones)
               ListTile(
-                leading: const Icon(Icons.access_time, color: teal),
+                leading: const IconoVivo(Icons.access_time, color: teal),
                 title: Text('Durante $etiqueta'),
                 onTap: () => Navigator.of(context).pop(dur),
               ),
@@ -167,7 +168,7 @@ class _UbicacionScreenState extends State<UbicacionScreen> {
                     backgroundColor: cs.surface,
                     foregroundColor: teal,
                     onPressed: _recentrar,
-                    child: const Icon(Icons.my_location),
+                    child: const IconoVivo(Icons.my_location),
                   ),
                 ),
               ],
@@ -184,7 +185,7 @@ class _UbicacionScreenState extends State<UbicacionScreen> {
                   ListTile(
                     leading: const CircleAvatar(
                         backgroundColor: teal,
-                        child: Icon(Icons.near_me, color: Colors.white)),
+                        child: IconoVivo(Icons.near_me, color: Colors.white)),
                     title: Text(_movido
                         ? 'Enviar la ubicación seleccionada'
                         : 'Enviar tu ubicación actual'),
@@ -202,7 +203,7 @@ class _UbicacionScreenState extends State<UbicacionScreen> {
                   ListTile(
                     leading: const CircleAvatar(
                         backgroundColor: Color(0xFF2ECC71),
-                        child: Icon(Icons.my_location, color: Colors.white)),
+                        child: IconoVivo(Icons.my_location, color: Colors.white)),
                     title: const Text('Compartir ubicación en tiempo real'),
                     subtitle: const Text('Se mueve contigo (15 min · 1 h · 8 h)'),
                     onTap: _yo == null ? null : _enVivo,

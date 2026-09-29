@@ -5,6 +5,7 @@ import '../models/resena.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/icono_vivo.dart';
 
 /// ANALÍTICA DE OCUPACIÓN del dueño (pestaña "Ocupación" del hub de Reportes).
 /// Inteligencia de negocio estilo Playtomic/dashboards, calculada sobre las
@@ -697,7 +698,7 @@ class _Reputacion extends StatelessWidget {
     if (!resumen.hay) {
       return Row(
         children: [
-          const Icon(Icons.reviews_outlined, color: teal),
+          const IconoVivo(Icons.reviews_outlined, color: teal),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -789,7 +790,7 @@ class _AvisoVacio extends StatelessWidget {
           const CircleAvatar(
               radius: 18,
               backgroundColor: teal,
-              child: Icon(Icons.insights, size: 19, color: Colors.white)),
+              child: IconoVivo(Icons.insights, size: 19, color: Colors.white)),
           const SizedBox(width: 12),
           Expanded(
             child: Text(

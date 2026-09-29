@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Reportes REALES del dueño: ingresos del mes (cobrado), reservas, por cobrar
 /// y ocupación de hoy, calculados sobre sus canchas y reservas reales. Sin
@@ -155,7 +156,7 @@ class ReportesScreen extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        const Icon(Icons.today, color: verde),
+                        const IconoVivo(Icons.today, color: verde),
                         const SizedBox(width: 8),
                         Text('Ocupación de hoy',
                             style: t.titleSmall
@@ -197,7 +198,7 @@ class ReportesScreen extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      const CircleAvatar(radius: 16, backgroundColor: teal, child: Icon(Icons.insights, size: 17, color: Colors.white)),
+                      const CircleAvatar(radius: 16, backgroundColor: teal, child: IconoVivo(Icons.insights, size: 17, color: Colors.white)),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(

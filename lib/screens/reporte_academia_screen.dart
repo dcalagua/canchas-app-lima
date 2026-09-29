@@ -8,6 +8,7 @@ import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Reporte de pagos de la academia: dashboard (cobrado / por cobrar / vencido),
 /// gráfico de ingresos por mes y lista de cuotas, con filtro por fecha.
@@ -372,7 +373,7 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
         chip('3 meses', _Rango.tresMeses),
         chip('Todo', _Rango.todo),
         ActionChip(
-          avatar: const Icon(Icons.event, size: 18),
+          avatar: const IconoVivo(Icons.event, size: 18),
           label: Text(_sel == _Rango.personalizado && _custom != null
               ? '${_custom!.start.day}/${_custom!.start.month} – ${_custom!.end.day}/${_custom!.end.month}'
               : 'Fechas…'),
@@ -475,7 +476,7 @@ class _DesgloseSede extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.store_mall_directory_outlined,
+              const IconoVivo(Icons.store_mall_directory_outlined,
                   size: 18, color: lima),
               const SizedBox(width: 8),
               Text('Cobrado y alumnos por sede',
@@ -675,7 +676,7 @@ class _ComisionDigitalState extends State<_ComisionDigital> {
         children: [
           Row(
             children: [
-              const Icon(Icons.point_of_sale, size: 18, color: lima),
+              const IconoVivo(Icons.point_of_sale, size: 18, color: lima),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -762,7 +763,7 @@ class _LiquidacionClub extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.account_balance_outlined, size: 18, color: lima),
+              const IconoVivo(Icons.account_balance_outlined, size: 18, color: lima),
               const SizedBox(width: 8),
               Expanded(
                 child: Text('Liquidación al club · $pct%',

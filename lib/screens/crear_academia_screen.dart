@@ -22,6 +22,7 @@ import '../widgets/selector_ubicacion.dart';
 import '../widgets/wizard_pichangol.dart';
 import '../config/pais.dart';
 import 'servicios_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Crea o edita la academia del profe (marca independiente). Fase 1: nombre,
 /// deporte, sede actual (texto), WhatsApp, descripción y planes.
@@ -153,7 +154,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.place, size: 18, color: lima),
+              const IconoVivo(Icons.place, size: 18, color: lima),
               const SizedBox(width: 8),
               Expanded(
                 child: Column(
@@ -273,7 +274,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   decoration: const InputDecoration(
                     labelText: 'Dirección',
                     hintText: 'Escribe y elige de la lista',
-                    prefixIcon: Icon(Icons.place_outlined),
+                    prefixIcon: IconoVivo(Icons.place_outlined),
                   ),
                 ),
                 optionsViewBuilder: (c, onSel, options) => Align(
@@ -778,7 +779,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
         backgroundColor: const Color(0xFFD64545),
         behavior: SnackBarBehavior.floating,
         content: Row(children: [
-          const Icon(Icons.error_outline, color: Colors.white, size: 20),
+          const IconoVivo(Icons.error_outline, color: Colors.white, size: 20),
           const SizedBox(width: 10),
           Expanded(
               child: Text(m,
@@ -1088,7 +1089,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   labelText: '¿Dónde entrenas ahora? (sede actual)',
                   hintText: 'Escribe tu sede o dirección y elige de la lista',
                   helperText: 'Elige una sugerencia para fijar la ubicación 📍',
-                  prefixIcon: const Icon(Icons.place_outlined),
+                  prefixIcon: const IconoVivo(Icons.place_outlined),
                   errorText: _errSede,
                 ),
               );
@@ -1107,7 +1108,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                       for (final o in options)
                         ListTile(
                           dense: true,
-                          leading: Icon(Icons.place,
+                          leading: IconoVivo(Icons.place,
                               size: 18,
                               color: Theme.of(context).colorScheme.primary),
                           title: Text(o.nombre,
@@ -1192,7 +1193,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                     child: const Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.add_a_photo_outlined, color: bosque),
+                        IconoVivo(Icons.add_a_photo_outlined, color: bosque),
                         SizedBox(height: 4),
                         Text('Agregar',
                             style: TextStyle(color: bosque, fontSize: 12)),
@@ -1530,7 +1531,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Enlace de la landing',
                   hintText: 'https://…',
-                  prefixIcon: Icon(Icons.public, size: 20),
+                  prefixIcon: IconoVivo(Icons.public, size: 20),
                   isDense: true,
                 ),
               ),
@@ -1661,7 +1662,7 @@ class _LogoPicker extends StatelessWidget {
                 padding: const EdgeInsets.all(6),
                 decoration: const BoxDecoration(
                     color: lima, shape: BoxShape.circle),
-                child: const Icon(Icons.photo_camera,
+                child: const IconoVivo(Icons.photo_camera,
                     size: 16, color: Colors.white),
               ),
             ],

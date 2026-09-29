@@ -17,6 +17,7 @@ import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/cuenta_cobro_sheet.dart';
 import '../widgets/ilustracion_pichangol.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Cuenta del club: saldo prepago (modelo inDrive), recargas y movimientos.
 class CuentaScreen extends StatefulWidget {
@@ -235,7 +236,7 @@ class _CuentaScreenState extends State<CuentaScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.warning_amber_rounded, color: clayOscuro),
+                      const IconoVivo(Icons.warning_amber_rounded, color: clayOscuro),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
@@ -267,7 +268,7 @@ class _CuentaScreenState extends State<CuentaScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.account_balance_wallet_outlined,
+                      const IconoVivo(Icons.account_balance_wallet_outlined,
                           color: teal),
                       const SizedBox(width: 10),
                       Expanded(
@@ -370,7 +371,7 @@ class _CuentaScreenState extends State<CuentaScreen> {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.hourglass_top,
+                      const IconoVivo(Icons.hourglass_top,
                           color: Color(0xFF8A5A00)),
                       const SizedBox(width: 10),
                       Expanded(
@@ -614,7 +615,7 @@ class _AccionBilletera extends StatelessWidget {
                       color: color.withOpacity(0.14),
                       shape: BoxShape.circle,
                     ),
-                    child: Icon(icono, color: color, size: 24),
+                    child: IconoVivo(icono, color: color, size: 24),
                   ),
                   if (insignia > 0)
                     Positioned(
@@ -1467,7 +1468,7 @@ class _SeccionMov extends StatelessWidget {
         const SizedBox(height: 18),
         Row(
           children: [
-            Icon(icono, size: 18, color: color),
+            IconoVivo(icono, size: 18, color: color),
             const SizedBox(width: 6),
             Text(titulo,
                 style: t.titleSmall

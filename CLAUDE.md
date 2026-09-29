@@ -968,11 +968,13 @@ para la API del APK.
   `ANDROID_CERT_SHA256` ya está en Railway QAS y PRD con la huella del
   keystore del CI (`21:E5:AD:A0:…:EC:28`, la que imprime el paso "Verificar
   firma del APK"); `/.well-known/assetlinks.json` acepta huellas con o sin
-  dos puntos (`_huella_con_dos_puntos`) y varias por coma. **PENDIENTE del
-  director:** agregar a esa variable (coma) las SHA-256 de las llaves de
-  firma de Play (Play Console → Firma de apps: la actual, la poscuántica y la
-  ANTERIOR rotada) para que el link de WhatsApp abra la app instalada desde
-  Play sin pasar por el navegador; sin eso el botón intent:// cubre igual.
+  dos puntos (`_huella_con_dos_puntos`) y varias por coma. **HECHO el
+  29-sep-2026 (QAS y PRD, autorizado):** la variable lleva además las 3
+  SHA-256 de Play (Protegido con Play → Firma de apps, `/keymanagement`):
+  `51:1A:B0:19…1E:1D` (la que Play pone en su propio JSON de Digital Asset
+  Links), `A0:71:77:CE…16:4D` y `E1:0C:68:18…3A:B1` (clásica/poscuántica/
+  anterior). Así el enlace tocado en WhatsApp abre la app instalada desde
+  Play sin pasar por el navegador; Android verifica al instalar/actualizar.
   Solo Android: en iPhone (sin app iOS) se queda en la web. Tests
   `test_enlace_del_capitan_une_directo_al_equipo`,
   `test_descarga_va_a_play_en_produccion`,
@@ -1524,8 +1526,8 @@ para la API del APK.
   `www.pichangol.app`, `pichangol.app` y `pg.ebim.pe`, `path` exacto `/` y
   `/canchas` + `pathPrefix` de las mismas rutas (antes solo `/c/`), así un
   enlace tocado en WhatsApp abre la app SIN pasar por el navegador
-  (requiere las SHA-256 de Play en `ANDROID_CERT_SHA256`, pendiente del
-  director). (4) **APK** `EnlacesService` (`rutaWebDe(uri)`: https → path;
+  (las SHA-256 de Play ya están en `ANDROID_CERT_SHA256` desde el
+  29-sep-2026). (4) **APK** `EnlacesService` (`rutaWebDe(uri)`: https → path;
   `pichangol://c/ID` → `/c/ID`; `pichangol://www.pichangol.app/...` → path)
   enruta `/c/{id}[?equipo=]` → ficha del campeonato (como antes),
   `/reservar/{canchaId}` → `ClubDetalleScreen` del LOCAL con esa cancha
@@ -1926,7 +1928,9 @@ off → redeploy inmediato en cada push). URL pública:
     columna existe). QAS: `PAGO_ONLINE_ACTIVO=1` en `pg-backend` para probar
     en el APK el pago en línea, boleador y cargo con llaves de prueba (sin
     eso el app solo ofrece "pagar en la cancha" y oculta el boleador). El
-    SQL de precio por turno en QAS lo corre el director.
+    SQL de precio por turno en QAS lo corre el director. `prd` final =
+    `c86f552`; APK/AAB de PRD = run 1456 (`workflow_dispatch`, `ref=prd`,
+    `entorno=prod`; el 1452 ya no lleva los arreglos del celular). QAS = 1453.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -2770,6 +2774,22 @@ no inventar layouts propios. Rasgos Airbnb:
   ni el logo de PCG ni la burbuja con la "P" (ambas se probaron y se
   revirtieron). El globo de chat de las fichas (ChatBurbuja) sí usa el pin de
   Pichangol como fallback sin logo del local.
+- **ÍCONOS CON VIDA = EMOJI A COLOR en el contenido (pedido del director,
+  29-sep-2026: "a todo el app ponle íconos o imágenes como los de Agregar
+  servicios"):** `widgets/icono_vivo.dart::IconoVivo(icono, size:, color:)`
+  pinta el emoji del concepto (📅 fecha, 📍 dirección, 🏆 campeonatos, 👛
+  billetera, 🎓 academia, 🏪 tienda, 🧾 pagos, ⚙️ ajustes…) desde UN mapa
+  (`_mapa`, por `codePoint` de Material); si el ícono no está, dibuja el
+  `Icon` de siempre. Se aplicó a todo `Icon(Icons.x)` de CONTENIDO (filas,
+  menús de Perfil / Modo anfitrión / Ajustes / billetera, pases, vacíos,
+  `leading`, `avatar`, `prefixIcon`) y a los widgets de fila que reciben
+  `IconData`. **Se quedan con ícono de línea:** botones y barras de
+  navegación (`icon:` / `selectedIcon:` / `suffixIcon:`), acciones (cerrar,
+  agregar, flechas, editar, borrar, ⓘ de información), estrellas de
+  calificación, llamada/mic/video, la marca (`widgets/marca.dart`), el
+  loader del pin, el globo de chat y el `verified` lima. Toda pantalla
+  nueva usa `IconoVivo` para sus íconos de contenido; para un concepto nuevo
+  se agrega el par al mapa (un solo lugar para todo el app).
 - **Avatares SIEMPRE con foto real:** cualquier avatar de jugador (ranking,
   jugadores disponibles, retos —incluido el reto de dobles—, chat, perfil, etc.)
   DEBE mostrar la foto del perfil (`appState.fotoDe(email)` o `usuario.fotoUrl`),
@@ -2883,7 +2903,7 @@ antes del corte.
   pagar hoy" y botón "Continuar con Yape|tarjeta · S/ X" / "Volver". En la
   RESERVA va DESPUÉS de `/web/asegurar` (monto y cargo del servidor; Volver
   → `liberar()`); en la MATRÍCULA antes de `Culqi.open` (`pagar.confirmado`
-  evita el bucle). CSS `.pcg-rp`. Playwright `$SP/pw_resumen.js`. **Fase 1:** `pagos/cargo_servicio.py`
+  evita el bucle). CSS `.pcg-rp`. Playwright `$SP/pw_resumen.js`. **APK igual (queja del director, 29-sep-2026: "no veo el detalle donde se agrega el servicio PCG como en la web"):** `PagoTarjeta.cobrar(detalle: DetallePago(lineas: [LineaPago…], cargo:, nota:))` pinta `ResumenPagoCard` ("Resumen de tu pago": líneas, `FilaCargoServicio` ⓘ con el ahorro, "Total a pagar hoy") dentro de la hoja de Culqi y, en Libélula/PayPhone/simulada, como hoja previa "Continuar con … / Volver" (`_confirmarResumen`). Lo mandan la ficha del local (turnos, premio, extras + boleador, puntos; seña con "el resto lo pagas en la cancha"), el flujo de una hora, el carrito de matrícula y Mi familia/cuotas. La ficha relee `/config/cargo-servicio` al abrirse. Sin el flag de la torre encendido la línea del cargo NO sale (ni en la web ni en el app). **Fase 1:** `pagos/cargo_servicio.py`
   (`cotizar`, `cargo_centimos`, `red_de_seguridad`, `desglose`,
   `publico`, `validar_y_guardar`, `sin_cargo_recientes`; params
   `cargo_<PEN|USD|BOB>_pct|min|tramo|pct_exc|margen_min` y flags

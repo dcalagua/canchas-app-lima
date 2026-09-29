@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/chips.dart';
 import '../utils/moneda.dart';
+import '../widgets/icono_vivo.dart';
 
 class ReservasScreen extends StatelessWidget {
   const ReservasScreen({super.key});
@@ -86,7 +87,7 @@ class _ReservaCard extends StatelessWidget {
                   const EtiquetaChip('Cliente de siempre', fondo: Color(0xFF6B7B72)),
                 if (reserva.sena > 0) ...[
                   const SizedBox(width: 8),
-                  const Icon(Icons.credit_card, color: arena, size: 18),
+                  const IconoVivo(Icons.credit_card, color: arena, size: 18),
                   const SizedBox(width: 4),
                   Text(
                     'Seña ${reserva.monedaSimbolo} ${reserva.sena}',

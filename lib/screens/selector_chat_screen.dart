@@ -6,6 +6,7 @@ import '../models/mensaje.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Un destino al que se puede REENVIAR (o compartir) un mensaje: lleva todo lo
 /// necesario para construir el mensaje en ese hilo.
@@ -214,7 +215,7 @@ class _SelectorChatScreenState extends State<SelectorChatScreen> {
                                   ? NetworkImage(foto)
                                   : null,
                               child: d.tipo == 'grupo'
-                                  ? const Icon(Icons.groups, color: teal)
+                                  ? const IconoVivo(Icons.groups, color: teal)
                                   : (foto == null || foto.isEmpty)
                                       ? Text(ini,
                                           style: const TextStyle(

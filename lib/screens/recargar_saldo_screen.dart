@@ -15,6 +15,7 @@ import '../widgets/responsive.dart';
 import '../widgets/sesion_requerida.dart';
 import '../utils/moneda.dart';
 import 'recarga_qr_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Recarga de saldo del dueño con Culqi (tarjeta o Yape). Tokeniza con la llave
 /// pública en el celular y confirma el cobro contra el backend. Devuelve el monto
@@ -565,7 +566,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
               color: limaSuave, borderRadius: BorderRadius.circular(14)),
           child: Row(
             children: [
-              const Icon(Icons.lock_outline, color: bosque, size: 20),
+              const IconoVivo(Icons.lock_outline, color: bosque, size: 20),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -617,7 +618,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
             height: 84,
             decoration: BoxDecoration(
                 color: limaSuave, shape: BoxShape.circle),
-            child: const Icon(Icons.schedule, size: 40, color: bosque),
+            child: const IconoVivo(Icons.schedule, size: 40, color: bosque),
           ),
         ),
         const SizedBox(height: 18),
@@ -703,7 +704,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
           inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(9)],
           decoration: const InputDecoration(
               labelText: 'Celular Yape', prefixText: '+51 ',
-              prefixIcon: Icon(Icons.phone_android)),
+              prefixIcon: IconoVivo(Icons.phone_android)),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -728,7 +729,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
           decoration: const InputDecoration(
               labelText: 'Número de tarjeta',
               hintText: '1234 5678 9012 3456',
-              prefixIcon: Icon(Icons.credit_card)),
+              prefixIcon: IconoVivo(Icons.credit_card)),
         ),
         const SizedBox(height: 12),
         Row(

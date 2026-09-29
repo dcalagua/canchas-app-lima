@@ -9,6 +9,7 @@ import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'convocatorias_screen.dart' show EstadoChip, ModoChip;
 import 'login_google_sheet.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Ficha de una convocatoria: el jugador ve su estado y se anota / cancela; el
 /// dueño (admin) cierra la convocatoria, la reabre y marca asistencia.
@@ -413,7 +414,7 @@ class _PanelAdmin extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(Icons.admin_panel_settings, size: 18, color: bosque),
+              IconoVivo(Icons.admin_panel_settings, size: 18, color: bosque),
               const SizedBox(width: 8),
               const Text('Panel del dueño',
                   style: TextStyle(fontWeight: FontWeight.w800)),
@@ -479,7 +480,7 @@ class _ListaInscritos extends StatelessWidget {
       children: [
         Row(
           children: [
-            Icon(icono, size: 18, color: color),
+            IconoVivo(icono, size: 18, color: color),
             const SizedBox(width: 8),
             Text('$titulo (${inscritos.length})',
                 style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
@@ -641,7 +642,7 @@ class _ErrorCarga extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.cloud_off, size: 44, color: textoTenue),
+          IconoVivo(Icons.cloud_off, size: 44, color: textoTenue),
           const SizedBox(height: 12),
           const Text('No se pudo cargar la pichanga'),
           const SizedBox(height: 12),

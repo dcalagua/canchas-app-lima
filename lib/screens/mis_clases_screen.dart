@@ -140,6 +140,10 @@ class MisClasesScreen extends StatelessWidget {
       email: appState.usuario?.email ?? '',
       moneda: mon,
       onOperacion: (o) => operacionId = o,
+      detalle: DetallePago(lineas: [
+        for (final x in sel)
+          LineaPago('${x.alumno.nombre} · ${x.cuota.concepto}', x.cuota.monto),
+      ], cargo: cot),
     );
     if (!pagado) return;
     final porAcademia = <String, List<_CuotaFamilia>>{};
@@ -314,6 +318,9 @@ class MisClasesScreen extends StatelessWidget {
       email: appState.usuario?.email ?? '',
       moneda: mon,
       onOperacion: (o) => operacionId = o,
+      detalle: DetallePago(lineas: [
+        for (final c in cuotas) LineaPago(c.concepto, c.monto),
+      ], cargo: cot),
     );
     if (!pagado) return;
     // Cobro digital para la academia (congela comisión POS, neto "por recibir").

@@ -7,6 +7,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'campeonato_detalle_screen.dart';
 import 'login_google_sheet.dart';
+import '../widgets/icono_vivo.dart';
 
 /// "Unirme a un campeonato": el invitado pega el **enlace** (o el **código/id**)
 /// que le compartieron, la app trae ese campeonato de la nube y abre su ficha
@@ -124,7 +125,7 @@ class _UnirseSheetState extends State<_UnirseSheet> {
         children: [
           Row(
             children: [
-              const Icon(Icons.emoji_events, color: amarillo),
+              const IconoVivo(Icons.emoji_events, color: amarillo),
               const SizedBox(width: 8),
               Text('Unirme a un campeonato',
                   style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800)),

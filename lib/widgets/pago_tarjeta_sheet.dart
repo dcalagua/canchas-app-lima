@@ -8,7 +8,9 @@ import '../screens/pago_sheet.dart';
 import '../services/pagos_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../models/cargo_servicio.dart';
 import 'cargando_pichangol.dart';
+import 'cargo_servicio_info.dart';
 import 'dialogo_pichangol.dart';
 import '../utils/input_formatos.dart';
 import 'marcas_pago.dart';
@@ -16,6 +18,7 @@ import 'pago_libelula.dart';
 import 'pago_payphone.dart';
 import 'pago_procesando.dart';
 import '../utils/moneda.dart';
+import 'icono_vivo.dart';
 
 /// Flujo de cobro reutilizable al jugador (reservas, matrículas). Deja elegir
 /// una **tarjeta guardada** (Culqi One Click) o **una nueva**, tokeniza, cobra
@@ -24,6 +27,128 @@ import '../utils/moneda.dart';
 ///
 /// Si Culqi no está configurado (o no hay backend), cae a la pasarela SIMULADA
 /// para no romper la demo.
+/// Una línea del "Resumen de tu pago" (espejo de `pcgResumenPago` de la web):
+/// turnos, servicios extra, boleador, descuentos (monto negativo).
+class LineaPago {
+  const LineaPago(this.texto, this.monto);
+  final String texto;
+  final double monto;
+}
+
+/// Detalle que el checkout muestra ANTES de pagar, igual que la web: las
+/// líneas de lo que se compra, el cargo por servicio Pichangol con su ⓘ
+/// (solo si está encendido en la torre) y el total que se cobra hoy.
+class DetallePago {
+  const DetallePago({this.lineas = const [], this.cargo, this.nota = ''});
+  final List<LineaPago> lineas;
+  final CotizacionCargo? cargo;
+  final String nota;
+  bool get vacio => lineas.isEmpty && !(cargo?.hayCargo ?? false);
+}
+
+/// Tarjeta "Resumen de tu pago" (mismo contenido que el modal de la web).
+class ResumenPagoCard extends StatelessWidget {
+  const ResumenPagoCard(
+      {super.key, required this.detalle, required this.moneda, required this.total});
+  final DetallePago detalle;
+  final String moneda;
+  final num total;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final cargo = detalle.cargo;
+    String m(num v) => '${v < 0 ? '−' : ''}$moneda ${v.abs().toStringAsFixed(2)}';
+    Widget fila(String a, String b, {bool fuerte = false, Color? color}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                  child: Text(a,
+                      style: t.bodyMedium?.copyWith(
+                          color: color,
+                          fontWeight: fuerte ? FontWeight.w800 : FontWeight.w500))),
+              const SizedBox(width: 10),
+              Text(b,
+                  style: t.bodyMedium?.copyWith(
+                      color: color,
+                      fontWeight: fuerte ? FontWeight.w800 : FontWeight.w600)),
+            ],
+          ),
+        );
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Resumen de tu pago',
+              style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          for (final l in detalle.lineas)
+            fila(l.texto, m(l.monto), color: l.monto < 0 ? pino : null),
+          if (cargo != null && cargo.hayCargo)
+            FilaCargoServicio(
+                cot: cargo,
+                simbolo: moneda,
+                compacta: true,
+                nota: cargo.ahorro > 0
+                    ? 'Ahorras $moneda ${cargo.ahorro.toStringAsFixed(2)} pagando todo junto.'
+                    : null),
+          Divider(color: trazo, height: 14),
+          fila('Total a pagar hoy', m(total), fuerte: true),
+          if (detalle.nota.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(detalle.nota,
+                style: t.bodySmall?.copyWith(color: textoTenue)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Para las pasarelas HOSPEDADAS (Libélula, PayPhone) y la simulada, que no
+/// pasan por la hoja de Culqi: muestra el resumen y pide "Continuar" antes de
+/// salir a la página de pago (como `pcgResumenPago` en la web).
+Future<bool> _confirmarResumen(BuildContext context, DetallePago d,
+    String moneda, num total, String medio) async {
+  final ok = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+    builder: (ctx) => SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ResumenPagoCard(detalle: d, moneda: moneda, total: total),
+            const SizedBox(height: 14),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text('Continuar con $medio · $moneda ${total.toStringAsFixed(2)}'),
+            ),
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Volver')),
+          ],
+        ),
+      ),
+    ),
+  );
+  return ok == true;
+}
+
 class PagoTarjeta {
   /// Último medio con el que se cobró OK ('yape' | 'tarjeta'). Lo lee el flujo de
   /// reserva para guardar la trazabilidad del pago. Se resetea en cada cobro.
@@ -42,12 +167,23 @@ class PagoTarjeta {
     String moneda = '',
     ValueChanged<String>? onToken, // recibe el token (tkn_/crd_) usado si el pago fue OK
     ValueChanged<String>? onOperacion, // recibe el N.º de operación (charge_id)
+    DetallePago? detalle, // "Resumen de tu pago" (líneas + cargo por servicio)
   }) async {
     ultimoMetodo = ''; // se setea a 'yape'/'tarjeta' si el cobro por Culqi sale OK
     ultimoError = ''; // se setea con el motivo si la pasarela RECHAZA el cobro
     // BOLIVIA: la pasarela es Libélula (no Culqi). Se detecta por el país actual
     // (GPS/selección). El pago se hace en la página hospedada de Libélula dentro
     // de un WebView (QR · tarjeta · Tigo Money).
+    final monTxt = moneda.isNotEmpty ? moneda : monedaSimbolo;
+    if (detalle != null && !detalle.vacio && paisActual.pasarela != 'culqi') {
+      final medio = paisActual.pasarela == 'libelula'
+          ? 'Libélula'
+          : (paisActual.pasarela == 'payphone' ? 'PayPhone' : 'el pago');
+      if (!await _confirmarResumen(context, detalle, monTxt, monto, medio)) {
+        return false;
+      }
+      if (!context.mounted) return false;
+    }
     if (paisActual.pasarela == 'libelula') {
       return PagoLibelula.cobrar(context,
           monto: monto, concepto: concepto, email: email,
@@ -82,6 +218,12 @@ class PagoTarjeta {
       }
       // dev/QAS: pasarela SIMULADA, para poder recorrer el flujo completo sin
       // llaves reales. Nunca sale de estos entornos.
+      if (detalle != null && !detalle.vacio && paisActual.pasarela == 'culqi') {
+        if (!await _confirmarResumen(context, detalle, monTxt, monto, 'el pago')) {
+          return false;
+        }
+        if (!context.mounted) return false;
+      }
       final r = await PagoSheet.mostrar(context,
           monto: monto, concepto: concepto, moneda: moneda);
       return r != null && r.exito;
@@ -123,6 +265,7 @@ class PagoTarjeta {
         moneda: moneda,
         onToken: onToken,
         onOperacion: onOperacion,
+        detalle: detalle,
       ),
     );
     return ok == true;
@@ -144,7 +287,9 @@ class _PagoTarjetaSheet extends StatefulWidget {
     this.moneda = '',
     this.onToken,
     this.onOperacion,
+    this.detalle,
   });
+  final DetallePago? detalle;
   final num monto;
   final String concepto;
   final String email;
@@ -321,7 +466,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
           ? const Padding(
               padding: EdgeInsets.all(30),
               child: CargandoPichangol())
-          : Column(
+          : SingleChildScrollView(child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -344,6 +489,11 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: textoTenue, fontSize: 13)),
                 const SizedBox(height: 16),
+                if (widget.detalle != null && !widget.detalle!.vacio) ...[
+                  ResumenPagoCard(
+                      detalle: widget.detalle!, moneda: _mon, total: widget.monto),
+                  const SizedBox(height: 16),
+                ],
 
                 // Selector de método: Yape o Tarjeta.
                 Row(
@@ -398,7 +548,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                     ],
                     decoration: const InputDecoration(
                         labelText: 'Celular Yape', prefixText: '+51 ',
-                        prefixIcon: Icon(Icons.phone_android)),
+                        prefixIcon: IconoVivo(Icons.phone_android)),
                   ),
                   const SizedBox(height: 10),
                   TextField(
@@ -439,7 +589,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                     decoration: const InputDecoration(
                         labelText: 'Número de tarjeta',
                         hintText: '1234 5678 9012 3456',
-                        prefixIcon: Icon(Icons.credit_card)),
+                        prefixIcon: IconoVivo(Icons.credit_card)),
                   ),
                   const SizedBox(height: 10),
                   Row(
@@ -508,7 +658,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                       style: TextStyle(color: textoTenue, fontSize: 12)),
                 ),
               ],
-            ),
+            ))
     );
   }
 }
@@ -547,7 +697,7 @@ class _FilaCard extends StatelessWidget {
                   ? const VisaMark(alto: 15)
                   : esMaster
                       ? const MastercardMark(alto: 22)
-                      : Icon(Icons.credit_card,
+                      : IconoVivo(Icons.credit_card,
                           color: Theme.of(context).colorScheme.primary),
             ),
             const SizedBox(width: 12),
@@ -639,7 +789,7 @@ class _FilaNueva extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.add_card, color: Theme.of(context).colorScheme.primary),
+            IconoVivo(Icons.add_card, color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 12),
             Expanded(
               child: Text('Usar otra tarjeta',

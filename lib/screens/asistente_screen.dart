@@ -12,6 +12,7 @@ import '../theme.dart';
 import '../utils/geo.dart';
 import 'cancha_detalle_screen.dart';
 import '../utils/moneda.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Asistente Pichangol: chat estilo WhatsApp donde el jugador escribe en
 /// lenguaje natural ("fútbol mañana 8pm por Surco") y se le sugieren canchas.
@@ -199,7 +200,7 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
                       offset: Offset(0, 2)),
                 ],
               ),
-              child: const Icon(Icons.auto_awesome, color: bosque, size: 21),
+              child: const IconoVivo(Icons.auto_awesome, color: bosque, size: 21),
             ),
             const SizedBox(width: 11),
             Column(
@@ -375,7 +376,7 @@ class _AvatarBot extends StatelessWidget {
       width: 32,
       height: 32,
       decoration: const BoxDecoration(color: lima, shape: BoxShape.circle),
-      child: const Icon(Icons.auto_awesome, color: Colors.white, size: 17),
+      child: const IconoVivo(Icons.auto_awesome, color: Colors.white, size: 17),
     );
   }
 }

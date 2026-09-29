@@ -11,6 +11,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/wizard_pichangol.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Publicar o editar un producto del Marketplace Pichangol. El vendedor pone
 /// foto, nombre, precio, categoría y (opcional) stock. Al guardar, sube la foto
@@ -212,7 +213,7 @@ class _EditarProductoScreenState extends State<EditarProductoScreen> {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.add_a_photo_outlined,
+                          IconoVivo(Icons.add_a_photo_outlined,
                               size: 34, color: textoTenue),
                           SizedBox(height: 8),
                           Text('Agregar foto',

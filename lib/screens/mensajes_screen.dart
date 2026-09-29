@@ -17,6 +17,7 @@ import 'crear_grupo_screen.dart';
 import 'llamadas_screen.dart';
 import 'login_google_sheet.dart';
 import 'novedades_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Inbox unificado "Mensajes": junta en UN solo lugar todas las conversaciones
 /// del usuario logueado (como profe de sus academias y como alumno de las que
@@ -862,7 +863,7 @@ class _MensajesScreenState extends State<MensajesScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: const [
-              Icon(Icons.forum_outlined, size: 54, color: textoTenue),
+              IconoVivo(Icons.forum_outlined, size: 54, color: textoTenue),
               SizedBox(height: 12),
               Text('Elige una conversación para chatear.',
                   textAlign: TextAlign.center,
@@ -1005,21 +1006,21 @@ class _MensajesScreenState extends State<MensajesScreen> {
                   value: 'buscar',
                   child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.contacts_outlined),
+                      leading: IconoVivo(Icons.contacts_outlined),
                       title: Text('Mis contactos')),
                 ),
                 PopupMenuItem(
                   value: 'grupo',
                   child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.group_add),
+                      leading: IconoVivo(Icons.group_add),
                       title: Text('Nuevo grupo')),
                 ),
                 PopupMenuItem(
                   value: 'recado',
                   child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.mode_comment_outlined),
+                      leading: IconoVivo(Icons.mode_comment_outlined),
                       title: Text('Mi recado')),
                 ),
               ],
@@ -1576,7 +1577,7 @@ class _FilaConv extends StatelessWidget {
             children: [
               // Campana silenciada (como WhatsApp: junto al contador).
               if (silenciado) ...[
-                const Icon(Icons.notifications_off, size: 15, color: textoTenue),
+                const IconoVivo(Icons.notifications_off, size: 15, color: textoTenue),
                 const SizedBox(width: 4),
               ],
               if (fijado) ...[

@@ -4,6 +4,7 @@ import '../services/payments_service.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
 import '../widgets/marcas_pago.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Hoja de pago estilo checkout (Yape o tarjeta). Demo: usa [PasarelaSimulada].
 /// Devuelve el [PagoResult] por Navigator.pop (o null si se cancela).
@@ -162,7 +163,7 @@ class _PagoSheetState extends State<PagoSheet> {
               decoration: const InputDecoration(
                 labelText: 'Número de celular Yape',
                 hintText: '9XX XXX XXX',
-                prefixIcon: Icon(Icons.phone_iphone),
+                prefixIcon: IconoVivo(Icons.phone_iphone),
               ),
             )
           else ...[
@@ -172,7 +173,7 @@ class _PagoSheetState extends State<PagoSheet> {
               decoration: const InputDecoration(
                 labelText: 'Número de tarjeta',
                 hintText: '4111 1111 1111 1111',
-                prefixIcon: Icon(Icons.credit_card),
+                prefixIcon: IconoVivo(Icons.credit_card),
               ),
             ),
             const SizedBox(height: 12),

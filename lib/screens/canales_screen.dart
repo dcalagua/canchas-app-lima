@@ -10,6 +10,7 @@ import '../widgets/responsive.dart';
 import 'canal_detalle_screen.dart';
 import 'crear_canal_screen.dart';
 import 'login_google_sheet.dart';
+import '../widgets/icono_vivo.dart';
 
 /// CANALES (tipo WhatsApp Channels): lista los canales que sigo + descubrir
 /// otros + crear el mío. Difusión uno-a-muchos.
@@ -133,7 +134,7 @@ class _CanalesScreenState extends State<CanalesScreen> {
                         padding: const EdgeInsets.fromLTRB(28, 60, 28, 20),
                         child: Column(
                           children: [
-                            const Icon(Icons.campaign_outlined,
+                            const IconoVivo(Icons.campaign_outlined,
                                 size: 56, color: lima),
                             const SizedBox(height: 12),
                             Text(
@@ -189,7 +190,7 @@ class _CanalesScreenState extends State<CanalesScreen> {
         backgroundColor: limaSuave,
         backgroundImage: foto.isNotEmpty ? CachedNetworkImageProvider(foto) : null,
         child: foto.isEmpty
-            ? const Icon(Icons.campaign, color: lima)
+            ? const IconoVivo(Icons.campaign, color: lima)
             : null,
       ),
       title: Row(

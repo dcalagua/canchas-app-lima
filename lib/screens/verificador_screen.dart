@@ -10,6 +10,7 @@ import '../services/location_service.dart';
 import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import 'validar_reclamo_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Mini-app del VERIFICADOR: cola de visitas (priorizada por demanda), captura de
 /// fotos GEO del sitio + ubicación + firma → confirma la cancha por carril físico.
@@ -93,7 +94,7 @@ class _VerificadorScreenState extends State<VerificadorScreen> {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.verified_user_outlined,
+                      const IconoVivo(Icons.verified_user_outlined,
                           size: 18, color: bosque),
                       const SizedBox(width: 8),
                       Expanded(
@@ -240,7 +241,7 @@ class _VisitaCard extends StatelessWidget {
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          Icon(Icons.directions_walk,
+                          IconoVivo(Icons.directions_walk,
                               size: 14, color: bosque),
                           const SizedBox(width: 3),
                           Text(_distancia(visita['distancia_m']),

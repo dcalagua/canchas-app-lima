@@ -21,6 +21,7 @@ import 'recargar_saldo_screen.dart';
 import 'servicios_screen.dart';
 import '../utils/moneda.dart';
 import '../config/pais.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Panel del PROFE: su academia, alumnos y cobros (Fase 1). Sin pasarela: marca
 /// pagos en efectivo y manda recordatorios por WhatsApp.
@@ -574,7 +575,7 @@ class _DestacarCardState extends State<_DestacarCard> {
           const SizedBox(height: 6),
           Row(
             children: [
-              const Icon(Icons.account_balance_wallet,
+              const IconoVivo(Icons.account_balance_wallet,
                   size: 14, color: Colors.white70),
               const SizedBox(width: 6),
               Expanded(
@@ -671,7 +672,7 @@ class _AccesoRanking extends StatelessWidget {
                     color: limaSuave,
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.leaderboard, color: bosque),
+                  child: const IconoVivo(Icons.leaderboard, color: bosque),
                 ),
                 const SizedBox(width: 12),
                 const Expanded(
@@ -753,7 +754,7 @@ class _CodigoCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            Icon(Icons.qr_code_2, color: cs.primary, size: 20),
+            IconoVivo(Icons.qr_code_2, color: cs.primary, size: 20),
             const SizedBox(width: 8),
             Text('Código de tu academia',
                 style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
@@ -892,7 +893,7 @@ class _Header extends StatelessWidget {
           const SizedBox(height: 2),
           Row(
             children: [
-              const Icon(Icons.place, size: 16, color: Colors.white70),
+              const IconoVivo(Icons.place, size: 16, color: Colors.white70),
               const SizedBox(width: 4),
               Text(
                   academia.sedeClub.isEmpty
@@ -940,7 +941,7 @@ class _SaldoPill extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.account_balance_wallet,
+              const IconoVivo(Icons.account_balance_wallet,
                   size: 18, color: Colors.white),
               const SizedBox(width: 8),
               Flexible(
@@ -1404,7 +1405,7 @@ class AlumnoDetalleScreen extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 2),
                   child: Row(
                     children: [
-                      const Icon(Icons.place, size: 14, color: textoTenue),
+                      const IconoVivo(Icons.place, size: 14, color: textoTenue),
                       const SizedBox(width: 4),
                       Text('Sede: $sedeNombre',
                           style: const TextStyle(
@@ -1872,7 +1873,7 @@ class _CmPostDelDiaTile extends StatelessWidget {
         child: ListTile(
           leading: const CircleAvatar(
             backgroundColor: morado,
-            child: Icon(Icons.auto_awesome, color: Colors.white),
+            child: IconoVivo(Icons.auto_awesome, color: Colors.white),
           ),
           title: const Text('Community Manager · Post del día',
               style: TextStyle(fontWeight: FontWeight.w800)),

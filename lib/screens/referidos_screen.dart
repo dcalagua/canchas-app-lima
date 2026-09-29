@@ -10,6 +10,7 @@ import '../utils/compartir_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'login_google_sheet.dart';
+import '../widgets/icono_vivo.dart';
 
 const _kReleaseUrl =
     'https://github.com/dcalagua/canchas-app-lima/releases/tag/v0.1.0';
@@ -101,7 +102,7 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.card_giftcard, size: 56, color: lima),
+                const IconoVivo(Icons.card_giftcard, size: 56, color: lima),
                 const SizedBox(height: 12),
                 Text('Inicia sesión para tener tu código',
                     style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800),
@@ -146,7 +147,7 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
                 ),
                 child: Column(
                   children: [
-                    const Icon(Icons.card_giftcard,
+                    const IconoVivo(Icons.card_giftcard,
                         color: Colors.white, size: 40),
                     const SizedBox(height: 10),
                     Text('Tu código',
@@ -218,7 +219,7 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
                 ),
                 child: Row(
                   children: [
-                    const CircleAvatar(radius: 16, backgroundColor: morado, child: Icon(Icons.groups, size: 17, color: Colors.white)),
+                    const CircleAvatar(radius: 16, backgroundColor: morado, child: IconoVivo(Icons.groups, size: 17, color: Colors.white)),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(

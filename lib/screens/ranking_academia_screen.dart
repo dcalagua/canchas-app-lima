@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import 'hazte_pro_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// CIRCUITO / RANKING interno de una academia (Fase 0 de Pichangol Circuito).
 /// Tabla de posiciones de los alumnos + carnet del jugador. El dueño (profe)
@@ -191,7 +192,7 @@ class _Explicacion extends StatelessWidget {
           const CircleAvatar(
               radius: 18,
               backgroundColor: teal,
-              child: Icon(Icons.emoji_events, color: Colors.white, size: 20)),
+              child: IconoVivo(Icons.emoji_events, color: Colors.white, size: 20)),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

@@ -4,6 +4,7 @@ import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/candado_pro.dart';
+import '../widgets/icono_vivo.dart';
 
 /// El DUEÑO cierra horas de su cancha (mantenimiento, walk-in, clase) para que
 /// nadie las reserve. Antes esto solo vivía en la ficha pública (inalcanzable
@@ -212,12 +213,12 @@ class _SlotBloqueo extends StatelessWidget {
             if (reservado)
               Padding(
                 padding: const EdgeInsets.only(right: 5),
-                child: Icon(Icons.event_busy, size: 14, color: fg),
+                child: IconoVivo(Icons.event_busy, size: 14, color: fg),
               )
             else if (bloqueado)
               const Padding(
                 padding: EdgeInsets.only(right: 5),
-                child: Icon(Icons.lock, size: 14, color: clayOscuro),
+                child: IconoVivo(Icons.lock, size: 14, color: clayOscuro),
               ),
             Text(hora,
                 style: TextStyle(

@@ -17,6 +17,7 @@ import 'chat_screen.dart';
 import 'convocatorias_screen.dart';
 import 'login_google_sheet.dart';
 import 'ranking_global_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// "Partidos abiertos" — el **Match** del benchmark: cualquier jugador publica un
 /// partido con cupos ("busco 2 para completar fulbito el sábado") y otros se
@@ -204,7 +205,7 @@ class _PartidosScreenState extends State<PartidosScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.event_available,
+                          const IconoVivo(Icons.event_available,
                               color: Colors.white, size: 18),
                           const SizedBox(width: 8),
                           Text('Pichangas de mi club',
@@ -308,7 +309,7 @@ class _CircuitoPreview extends StatelessWidget {
                           decoration: BoxDecoration(
                               color: limaSuave,
                               borderRadius: BorderRadius.circular(11)),
-                          child: const Icon(Icons.emoji_events,
+                          child: const IconoVivo(Icons.emoji_events,
                               color: bosque, size: 21),
                         ),
                         const SizedBox(width: 12),
@@ -479,7 +480,7 @@ class _Vacio extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 32),
       child: Column(
         children: [
-          Icon(Icons.sports_soccer, size: 56, color: lima.withOpacity(0.6)),
+          IconoVivo(Icons.sports_soccer, size: 56, color: lima.withOpacity(0.6)),
           const SizedBox(height: 14),
           const Text('Todavía no hay partidos abiertos',
               textAlign: TextAlign.center,
@@ -657,7 +658,7 @@ class _Linea extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icono, size: 16, color: textoTenueDe(context)),
+          IconoVivo(icono, size: 16, color: textoTenueDe(context)),
           const SizedBox(width: 8),
           Expanded(
             child: Text(texto,
@@ -859,7 +860,7 @@ class _CrearPartidoSheetState extends State<_CrearPartidoSheet> {
                   decoration: const InputDecoration(
                       labelText: '¿Dónde se juega?',
                       hintText: 'Cancha o lugar (ej.: La Molina)',
-                      prefixIcon: Icon(Icons.place_outlined)),
+                      prefixIcon: IconoVivo(Icons.place_outlined)),
                 );
               },
             ),

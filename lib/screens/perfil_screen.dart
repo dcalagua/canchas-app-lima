@@ -29,6 +29,7 @@ import 'mis_campeonatos_screen.dart';
 import 'boleador_screen.dart';
 import '../models/boleador.dart';
 import 'editar_perfil_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Pestaña PERFIL del jugador, rediseñada al UI/UX de Airbnb:
 ///  - Título "Perfil" grande + acción arriba a la derecha.
@@ -511,7 +512,7 @@ class _TarjetaIdentidad extends StatelessWidget {
                           ? NetworkImage(u!.fotoUrl!)
                           : null,
                       child: u?.fotoUrl == null
-                          ? const Icon(Icons.person, size: 42, color: bosque)
+                          ? const IconoVivo(Icons.person, size: 42, color: bosque)
                           : null,
                     ),
                     // Sello verificado (como el escudo rosado de Airbnb).
@@ -522,7 +523,7 @@ class _TarjetaIdentidad extends StatelessWidget {
                         child: CircleAvatar(
                           radius: 14,
                           backgroundColor: bosque,
-                          child: Icon(Icons.verified_user,
+                          child: IconoVivo(Icons.verified_user,
                               size: 15, color: Colors.white),
                         ),
                       ),
@@ -549,7 +550,7 @@ class _TarjetaIdentidad extends StatelessWidget {
                           child: const Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.workspace_premium,
+                              IconoVivo(Icons.workspace_premium,
                                   size: 13, color: Color(0xFFD9B45A)),
                               SizedBox(width: 3),
                               Text('PRO',
@@ -776,7 +777,7 @@ class _NivelCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.military_tech, color: lima),
+              const IconoVivo(Icons.military_tech, color: lima),
               const SizedBox(width: 8),
               const Text('Tu nivel de jugador',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
@@ -849,7 +850,7 @@ class _ItemAirbnb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Widget lead =
-        Icon(icono, size: 26, color: destructivo ? clayOscuro : tinta);
+        IconoVivo(icono, size: 26, color: destructivo ? clayOscuro : tinta);
     if (badge > 0) {
       lead = Badge.count(
         count: badge,

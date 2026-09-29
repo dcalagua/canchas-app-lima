@@ -4,6 +4,7 @@ import '../screens/login_google_sheet.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import 'google_logo.dart';
+import 'icono_vivo.dart';
 
 /// Estado "necesitas iniciar sesión" reutilizable para pantallas de SOLO
 /// LECTURA que sin cuenta quedan vacías (Mis reservas, Métodos de pago,
@@ -36,7 +37,7 @@ class SesionRequerida extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icono, size: 60, color: verdeClaro),
+            IconoVivo(icono, size: 60, color: verdeClaro),
             const SizedBox(height: 16),
             Text(titulo ?? 'Inicia sesión para continuar',
                 textAlign: TextAlign.center,

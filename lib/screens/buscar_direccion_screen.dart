@@ -8,6 +8,7 @@ import '../services/location_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/geo.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Resultado de la búsqueda: centro geográfico + etiqueta para mostrar.
 class ResultadoBusqueda {
@@ -251,7 +252,7 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
                   padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                   child: Row(
                     children: [
-                      Icon(Icons.my_location, color: verdeCancha),
+                      IconoVivo(Icons.my_location, color: verdeCancha),
                       SizedBox(width: 12),
                       Text('Usar mi ubicación actual',
                           style: TextStyle(
@@ -272,7 +273,7 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
                 style: TextStyle(color: textoTenue, fontSize: 12)),
             Row(
               children: [
-                const Icon(Icons.social_distance, size: 20, color: verdeCancha),
+                const IconoVivo(Icons.social_distance, size: 20, color: verdeCancha),
                 const SizedBox(width: 8),
                 Text('${_radioKm.round()} km',
                     style: const TextStyle(
@@ -334,7 +335,7 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
                   if (_zonas.isNotEmpty)
                     for (final z in _zonas)
                       ActionChip(
-                        avatar: const Icon(Icons.place,
+                        avatar: const IconoVivo(Icons.place,
                             size: 18, color: verdeCancha),
                         label: Text(z.nombre),
                         onPressed: () => Navigator.of(context)
@@ -343,7 +344,7 @@ class _BuscarDireccionScreenState extends State<BuscarDireccionScreen> {
                   else
                     for (final e in _distritosRespaldo.entries)
                       ActionChip(
-                        avatar: const Icon(Icons.place,
+                        avatar: const IconoVivo(Icons.place,
                             size: 18, color: verdeCancha),
                         label: Text(e.key),
                         onPressed: () => Navigator.of(context)

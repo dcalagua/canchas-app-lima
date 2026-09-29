@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Crea un canal de difusión (tipo WhatsApp): nombre, descripción y foto.
 class CrearCanalScreen extends StatefulWidget {
@@ -95,7 +96,7 @@ class _CrearCanalScreenState extends State<CrearCanalScreen> {
                   backgroundImage:
                       _foto != null ? MemoryImage(_foto!) : null,
                   child: _foto == null
-                      ? const Icon(Icons.add_a_photo_outlined,
+                      ? const IconoVivo(Icons.add_a_photo_outlined,
                           color: lima, size: 34)
                       : null,
                 ),

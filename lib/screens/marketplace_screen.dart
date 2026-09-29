@@ -9,6 +9,7 @@ import '../widgets/responsive.dart';
 import 'mis_ordenes_screen.dart';
 import 'mis_productos_screen.dart';
 import 'producto_detalle_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Marketplace Pichangol (comprador): feed único de productos que publican los
 /// dueños de cancha y academias. Buscador por nombre + filtro por categoría,
@@ -176,7 +177,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
   Widget _vacio() => ListView(
         children: [
           const SizedBox(height: 90),
-          const Icon(Icons.storefront_outlined,
+          const IconoVivo(Icons.storefront_outlined,
               size: 64, color: textoTenue),
           const SizedBox(height: 14),
           const Text('Aún no hay productos',
@@ -224,7 +225,7 @@ class _Card extends StatelessWidget {
                     : Container(
                         color: const Color(0xFFF0F0F0),
                         child: const Center(
-                            child: Icon(Icons.image, color: textoTenue))),
+                            child: IconoVivo(Icons.image, color: textoTenue))),
               ),
             ),
             Padding(

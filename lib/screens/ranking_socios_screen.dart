@@ -5,6 +5,7 @@ import '../theme.dart';
 import '../widgets/responsive.dart';
 import '../widgets/cargando_pichangol.dart';
 import 'convocatorias_screen.dart' show EstadoChip;
+import '../widgets/icono_vivo.dart';
 
 /// Ranking de recurrencia por socio (la trazabilidad pedida): quién se inscribe
 /// más, cuántas veces jugó, cuántas quedó en espera y no-shows. Vista del dueño.
@@ -52,7 +53,7 @@ class _RankingSociosScreenState extends State<RankingSociosScreen> {
               return ListView(
                 children: [
                   const SizedBox(height: 100),
-                  Icon(Icons.leaderboard_outlined,
+                  IconoVivo(Icons.leaderboard_outlined,
                       size: 52, color: sage.withOpacity(0.6)),
                   const SizedBox(height: 14),
                   const Center(

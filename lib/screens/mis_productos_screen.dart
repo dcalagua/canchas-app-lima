@@ -12,6 +12,7 @@ import 'editar_producto_screen.dart';
 import 'login_google_sheet.dart';
 import 'mis_ordenes_screen.dart';
 import 'verificar_identidad_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// "Mi tienda": el vendedor (dueño/academia) gestiona sus productos del
 /// Marketplace Pichangol — publicar, editar, pausar y borrar.
@@ -152,7 +153,7 @@ class _MisProductosScreenState extends State<MisProductosScreen> {
             CircleAvatar(
                 radius: 18,
                 backgroundColor: lima,
-                child: Icon(Icons.storefront, color: Colors.white, size: 20)),
+                child: IconoVivo(Icons.storefront, color: Colors.white, size: 20)),
             SizedBox(width: 12),
             Expanded(
               child: Text(
@@ -202,7 +203,7 @@ class _Item extends StatelessWidget {
                     width: 62,
                     height: 62,
                     color: const Color(0xFFF0F0F0),
-                    child: const Icon(Icons.image, color: textoTenue)),
+                    child: const IconoVivo(Icons.image, color: textoTenue)),
           ),
           const SizedBox(width: 12),
           Expanded(

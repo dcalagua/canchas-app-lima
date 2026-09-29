@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Toma de ASISTENCIA por día: el profe marca quién vino (upsert por alumno+día)
 /// y con un tap AVISA a los padres — por la app (chat + push) a quienes tienen
@@ -404,7 +405,7 @@ class _Cabecera extends StatelessWidget {
                 onTap: onFecha,
                 child: Row(
                   children: [
-                    const Icon(Icons.event, color: Colors.white70, size: 18),
+                    const IconoVivo(Icons.event, color: Colors.white70, size: 18),
                     const SizedBox(width: 6),
                     Text(etiqueta,
                         style: t.titleMedium?.copyWith(
@@ -463,7 +464,7 @@ class _FilaAsistencia extends StatelessWidget {
                 style: const TextStyle(color: textoTenue, fontSize: 12.5)),
             if (avisado) ...[
               const SizedBox(width: 8),
-              const Icon(Icons.notifications_active, size: 13, color: lima),
+              const IconoVivo(Icons.notifications_active, size: 13, color: lima),
               const SizedBox(width: 2),
               const Text('avisado',
                   style: TextStyle(

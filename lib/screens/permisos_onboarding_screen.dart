@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../brand.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Onboarding de permisos (una sola vez, al instalar). Explica y pide los
 /// permisos que Pichangol necesita para chatear y llamar sin problemas:
@@ -86,7 +87,7 @@ class _PermisosOnboardingScreenState extends State<PermisosOnboardingScreen> {
                     color: limaSuave,
                     borderRadius: BorderRadius.circular(16),
                   ),
-                  child: const Icon(Icons.verified_user_outlined,
+                  child: const IconoVivo(Icons.verified_user_outlined,
                       color: bosque, size: 30),
                 ),
                 const SizedBox(height: 18),
@@ -201,7 +202,7 @@ class _PermisoItem extends StatelessWidget {
               color: color.withOpacity(0.14),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(icono, color: color, size: 22),
+            child: IconoVivo(icono, color: color, size: 22),
           ),
           const SizedBox(width: 14),
           Expanded(

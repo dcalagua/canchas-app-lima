@@ -10,6 +10,7 @@ import '../widgets/responsive.dart';
 import '../utils/input_formatos.dart';
 import '../widgets/marcas_pago.dart';
 import '../widgets/sesion_requerida.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Métodos de pago del usuario: tarjetas guardadas (Culqi One Click). El usuario
 /// agrega una tarjeta una vez y luego paga sin re-tipear. No se guarda el número
@@ -111,7 +112,7 @@ class _MetodosPagoScreenState extends State<MetodosPagoScreen> {
                             border: Border.all(color: trazo)),
                         child: Column(
                           children: [
-                            const Icon(Icons.credit_card_off,
+                            const IconoVivo(Icons.credit_card_off,
                                 color: textoTenue, size: 36),
                             const SizedBox(height: 10),
                             Text('Aún no tienes tarjetas guardadas',
@@ -182,7 +183,7 @@ class _TarjetaGuardada extends StatelessWidget {
                 ? const VisaMark(alto: 16)
                 : esMaster
                     ? const MastercardMark(alto: 24)
-                    : Icon(Icons.credit_card, color: cs.primary),
+                    : IconoVivo(Icons.credit_card, color: cs.primary),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -365,7 +366,7 @@ class _AgregarTarjetaSheetState extends State<_AgregarTarjetaSheet> {
             decoration: const InputDecoration(
                 labelText: 'Número de tarjeta',
                 hintText: '1234 5678 9012 3456',
-                prefixIcon: Icon(Icons.credit_card)),
+                prefixIcon: IconoVivo(Icons.credit_card)),
           ),
           const SizedBox(height: 12),
           Row(
@@ -397,7 +398,7 @@ class _AgregarTarjetaSheetState extends State<_AgregarTarjetaSheet> {
             textCapitalization: TextCapitalization.words,
             decoration: const InputDecoration(
                 labelText: 'Nombre del titular (opcional)',
-                prefixIcon: Icon(Icons.person_outline)),
+                prefixIcon: IconoVivo(Icons.person_outline)),
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),

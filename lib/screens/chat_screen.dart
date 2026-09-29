@@ -44,6 +44,7 @@ import '../widgets/dialogo_pichangol.dart';
 import 'grupo_info_screen.dart';
 import 'selector_chat_screen.dart';
 import 'ubicacion_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 // ── Paleta estilo WhatsApp (theme-aware) ─────────────────────────────────────
 // Se calcula según el brillo del tema. Fondo del chat, burbujas y barra imitan
@@ -271,7 +272,7 @@ class _ChatScreenState extends State<ChatScreen> {
               backgroundImage:
                   (foto != null && foto.isNotEmpty) ? CachedNetworkImageProvider(foto) : null,
               child: (foto == null || foto.isEmpty)
-                  ? Icon(Icons.person_add_alt_1, color: wa.send, size: 18)
+                  ? IconoVivo(Icons.person_add_alt_1, color: wa.send, size: 18)
                   : null,
             ),
             const SizedBox(width: 10),
@@ -1410,7 +1411,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 child: (fotoPerfil != null && fotoPerfil.isNotEmpty)
                     ? null
                     : (esGrupo
-                        ? const Icon(Icons.groups, color: Colors.white, size: 20)
+                        ? const IconoVivo(Icons.groups, color: Colors.white, size: 20)
                         : Text(inicial,
                             style: const TextStyle(
                                 color: Colors.white,
@@ -1555,7 +1556,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     value: 'info',
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.person_outline),
+                      leading: IconoVivo(Icons.person_outline),
                       title: Text('Ver contacto'),
                     ),
                   ),
@@ -1564,7 +1565,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       value: 'llamar_tel',
                       child: ListTile(
                         contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.phone_outlined),
+                        leading: IconoVivo(Icons.phone_outlined),
                         title: Text('Llamar al número'),
                       ),
                     ),
@@ -1595,7 +1596,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     child: ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading:
-                          Icon(Icons.block, color: bloq ? null : clayOscuro),
+                          IconoVivo(Icons.block, color: bloq ? null : clayOscuro),
                       title: Text(
                           bloq ? 'Desbloquear contacto' : 'Bloquear contacto',
                           style: TextStyle(color: bloq ? null : clayOscuro)),
@@ -2095,7 +2096,7 @@ class _Burbuja extends StatelessWidget {
                           padding: const EdgeInsets.all(10),
                           child: Row(
                             children: [
-                              const Icon(Icons.map_outlined,
+                              const IconoVivo(Icons.map_outlined,
                                   size: 18, color: teal),
                               const SizedBox(width: 8),
                               Expanded(
@@ -2416,7 +2417,7 @@ class _BarraBloqueado extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.block, size: 18, color: clayOscuro),
+            const IconoVivo(Icons.block, size: 18, color: clayOscuro),
             const SizedBox(width: 8),
             const Flexible(
               child: Text('Bloqueaste a este contacto.',
@@ -2965,7 +2966,7 @@ class _MapaMini extends StatelessWidget {
       height: height,
       color: const Color(0xFFDCE7DA),
       child: const Center(
-          child: Icon(Icons.location_on, color: clayOscuro, size: 42)),
+          child: IconoVivo(Icons.location_on, color: clayOscuro, size: 42)),
     );
     final url = PlacesService.mapaEstaticoUrl(lat, lng);
     if (url.isEmpty) return placeholder;
@@ -3385,7 +3386,7 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
                                 ? CachedNetworkImageProvider(foto)
                                 : null,
                             child: (foto == null || foto.isEmpty)
-                                ? const Icon(Icons.person,
+                                ? const IconoVivo(Icons.person,
                                     color: Colors.white, size: 18)
                                 : null,
                           ),
@@ -3450,7 +3451,7 @@ class _UbicacionVivoCardState extends State<_UbicacionVivoCard> {
                       InkWell(
                         onTap: _pos == null ? null : _abrirMapa,
                         child: const Row(children: [
-                          Icon(Icons.map_outlined, size: 16, color: teal),
+                          IconoVivo(Icons.map_outlined, size: 16, color: teal),
                           SizedBox(width: 4),
                           Text('Ver mapa',
                               style: TextStyle(

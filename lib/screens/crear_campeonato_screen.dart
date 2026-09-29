@@ -11,6 +11,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/wizard_pichangol.dart';
 import '../widgets/responsive.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Una categoría estándar de campeonato. Las de edad auto-setean edadMin/edadMax
 /// (Sub-N = hasta N años; +N = desde N). Al inscribirse, el sistema valida la
@@ -889,7 +890,7 @@ class _SelectorLogo extends StatelessWidget {
                     shape: BoxShape.circle,
                     border: Border.all(color: cs.surface, width: 2),
                   ),
-                  child: const Icon(Icons.photo_camera,
+                  child: const IconoVivo(Icons.photo_camera,
                       size: 16, color: Colors.white),
                 ),
               ),
@@ -1025,7 +1026,7 @@ class _SelectorSedeState extends State<_SelectorSede> {
                     itemBuilder: (_, i) {
                       final c = res[i];
                       return ListTile(
-                        leading: Icon(Icons.place,
+                        leading: IconoVivo(Icons.place,
                             color: Theme.of(context).colorScheme.primary),
                         title: Text(c.nombre,
                             maxLines: 1, overflow: TextOverflow.ellipsis),

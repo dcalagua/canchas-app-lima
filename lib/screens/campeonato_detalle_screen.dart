@@ -27,6 +27,7 @@ import 'ranking_global_screen.dart';
 import 'recargar_saldo_screen.dart';
 import '../utils/moneda.dart';
 import '../config/pais.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Detalle de un campeonato: participantes, fixture (llave o tabla), carga de
 /// resultados y compartir por WhatsApp. Los controles de edición se muestran
@@ -1944,7 +1945,7 @@ class _Participantes extends StatelessWidget {
                   width: double.infinity,
                   child: OutlinedButton.icon(
                     icon: sel == null
-                        ? const Icon(Icons.person_search, size: 18)
+                        ? const IconoVivo(Icons.person_search, size: 18)
                         : CircleAvatar(
                             radius: 10,
                             backgroundColor: teal,
@@ -2225,7 +2226,7 @@ class _Participantes extends StatelessWidget {
             for (final p in c.participantes)
               InputChip(
                 avatar: p.esEquipo
-                    ? Icon(Icons.groups,
+                    ? IconoVivo(Icons.groups,
                         size: 18,
                         color: c.equipoCompleto(p) ? lima : bosque)
                     : p.esApp
@@ -3115,7 +3116,7 @@ class _InvitarCard extends StatelessWidget {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.add_photo_alternate_outlined,
+              leading: const IconoVivo(Icons.add_photo_alternate_outlined,
                   color: bosque),
               title: const Text('Usar una foto mía'),
               subtitle: const Text('De tu galería: tu cancha, tu equipo, '
@@ -3123,7 +3124,7 @@ class _InvitarCard extends StatelessWidget {
               onTap: () => Navigator.pop(bctx, 'foto'),
             ),
             ListTile(
-              leading: const Icon(Icons.auto_awesome, color: teal),
+              leading: const IconoVivo(Icons.auto_awesome, color: teal),
               title: const Text('Elegir el arte IA (galería)'),
               subtitle: const Text('Mira 5 propuestas generadas por IA y '
                   'elige la que más te guste'),
@@ -3413,7 +3414,7 @@ class _InvitarCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.person_add_alt_1, color: teal),
+              const IconoVivo(Icons.person_add_alt_1, color: teal),
               const SizedBox(width: 8),
               Text('Invitar a inscribirse',
                   style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
@@ -3587,7 +3588,7 @@ class _LogoCampeonato extends StatelessWidget {
                 border: Border.all(
                     color: Theme.of(context).colorScheme.surface, width: 2),
               ),
-              child: const Icon(Icons.photo_camera,
+              child: const IconoVivo(Icons.photo_camera,
                   size: 12, color: Colors.white),
             ),
           ),
@@ -3636,7 +3637,7 @@ class _AuspiciadoresCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.handshake_outlined, color: teal),
+              const IconoVivo(Icons.handshake_outlined, color: teal),
               const SizedBox(width: 8),
               Text('Auspiciadores',
                   style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
@@ -3697,7 +3698,7 @@ class _AuspiciadoresCard extends StatelessWidget {
                   child: const Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.add_photo_alternate_outlined, color: bosque),
+                      IconoVivo(Icons.add_photo_alternate_outlined, color: bosque),
                       SizedBox(height: 2),
                       Text('Logo',
                           style: TextStyle(color: bosque, fontSize: 11)),
@@ -3839,7 +3840,7 @@ class _GaleriaCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.photo_library_outlined, color: teal),
+              const IconoVivo(Icons.photo_library_outlined, color: teal),
               const SizedBox(width: 8),
               Text('Galería del torneo',
                   style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
@@ -3908,7 +3909,7 @@ class _GaleriaCard extends StatelessWidget {
                     child: const Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.add_photo_alternate_outlined,
+                        IconoVivo(Icons.add_photo_alternate_outlined,
                             color: bosque),
                         SizedBox(height: 2),
                         Text('Foto',
@@ -4171,7 +4172,7 @@ class _ArmarGruposSheetState extends State<_ArmarGruposSheet> {
                           for (final p in _ps)
                             if ((_asig[p.id] ?? 0) == g)
                               InputChip(
-                                avatar: const Icon(Icons.groups, size: 16),
+                                avatar: const IconoVivo(Icons.groups, size: 16),
                                 label: Text(p.nombre),
                                 onPressed: () => _mover(p),
                               ),

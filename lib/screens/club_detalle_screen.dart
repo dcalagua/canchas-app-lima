@@ -34,6 +34,7 @@ import 'editar_cancha_screen.dart';
 import '../utils/moneda.dart';
 import '../utils/ubicacion_share.dart';
 import 'login_google_sheet.dart';
+import '../widgets/icono_vivo.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import 'registrar_cancha_screen.dart';
 import 'reservas_dueno_screen.dart';
@@ -104,6 +105,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // cambio al instante, no el snapshot con el que se abrió la ficha.
     _cancha = appState.canchaVigente(_cancha);
     _cargarFidelidad();
+    // ¿El cargo por servicio está encendido en la torre? Se relee al abrir la
+    // ficha (no solo al arrancar la app) para que el resumen de pago muestre
+    // la línea apenas el operador lo active, igual que la web.
+    appState.cargarCargoServicio();
     // Al abrir la ficha, sincroniza el estado REAL de la cancha con el backend:
     // - pendiente → puede pasar a verificada (quita el cartel "pendiente").
     // - verificada → puede DEGRADARSE si el admin la rechazó/revocó (quita los
@@ -235,7 +240,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.hourglass_top, color: lima),
+                    const IconoVivo(Icons.hourglass_top, color: lima),
                     const SizedBox(width: 8),
                     Text('Lista de espera · $h',
                         style: t.titleMedium
@@ -714,6 +719,38 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       }
     }
     final cargoSoles = (cargo?.hayCargo ?? false) ? cargo!.cargo : 0.0;
+    // "Resumen de tu pago" en la hoja de pago (igual que la web): turnos,
+    // premio, servicios extra/boleador, puntos y el cargo por servicio ⓘ.
+    final lineasPago = <LineaPago>[];
+    if (esSena) {
+      lineasPago.add(LineaPago(
+          'Seña ${_cancha.senaPct.round()} % · ${_cancha.nombre} · $etiqueta',
+          senaMonto.toDouble()));
+    } else {
+      for (final h in slots) {
+        lineasPago.add(LineaPago(
+            '${_cancha.nombre} · $h–${_cancha.horaFinDe(h)}',
+            appState.precioSlotEfectivo(_cancha, _fechaSlot(h), h).toDouble()));
+      }
+      if (descFid > 0) {
+        lineasPago.add(LineaPago('🎁 Premio de fidelidad', -descFid.toDouble()));
+      }
+      for (final x in extras) {
+        lineasPago.add(LineaPago(
+            '${x.emoji.isNotEmpty ? '${x.emoji} ' : ''}${x.nombre}'
+            '${x.cantidad > 1 ? ' × ${x.cantidad}' : ''}',
+            x.precio));
+      }
+      if (descuentoPuntos > 0) {
+        lineasPago.add(LineaPago('⭐ Canje de puntos', -descuentoPuntos));
+      }
+    }
+    final detallePago = DetallePago(
+        lineas: lineasPago,
+        cargo: cargo,
+        nota: esSena
+            ? 'El resto ($mon ${(total - senaMonto).toStringAsFixed(2)}) lo pagas en la cancha.'
+            : '');
     // FIDELIDAD: con el bloque asegurado, el servidor APARTA el premio para
     // esta reserva antes de cobrar (si otro equipo lo usó un segundo antes,
     // se libera el horario y se avisa; nunca se cobra de menos sin premio).
@@ -759,6 +796,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         email: appState.usuario?.email ?? '',
         moneda: mon,
         onOperacion: (o) => operacion = o,
+        detalle: detallePago,
       );
       if (!pagado) {
         await appState.liberarBloqueAsegurado(aseguradas!);
@@ -782,6 +820,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         email: appState.usuario?.email ?? '',
         moneda: mon,
         onOperacion: (o) => operacion = o,
+        detalle: detallePago,
       );
       if (!pagado) {
         await appState.liberarBloqueAsegurado(aseguradas!);
@@ -1245,7 +1284,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.celebration, color: lima),
+                            const IconoVivo(Icons.celebration, color: lima),
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
@@ -1290,7 +1329,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          Icon(Icons.touch_app_outlined,
+                          IconoVivo(Icons.touch_app_outlined,
                               size: 15, color: textoTenueDe(context)),
                           const SizedBox(width: 6),
                           Expanded(
@@ -1531,7 +1570,7 @@ class _PanelDueno extends StatelessWidget {
                 decoration: BoxDecoration(
                     color: limaSuave,
                     borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.verified_user, size: 19, color: pino),
+                child: const IconoVivo(Icons.verified_user, size: 19, color: pino),
               ),
               const SizedBox(width: 11),
               Expanded(
@@ -1742,7 +1781,7 @@ class _FilaAmenities extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(a.icono, size: 17, color: cs.primary),
+                    IconoVivo(a.icono, size: 17, color: cs.primary),
                     const SizedBox(width: 7),
                     Text(a.etiqueta,
                         style: t.bodySmall?.copyWith(
@@ -2151,7 +2190,9 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                   labelText: 'Nombre y apellido',
                   hintText: 'Como en tu documento',
                   counterText: '',
-                  prefixIcon: Icon(Icons.person_outline)),
+                  prefixIcon: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: IconoVivo(Icons.person_outline, size: 22))),
             ),
             const SizedBox(height: 10),
             TextField(
@@ -2165,7 +2206,9 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                   labelText: 'Celular',
                   hintText: '${_paisCancha.telLongitud} dígitos',
                   counterText: '',
-                  prefixIcon: const Icon(Icons.phone_iphone)),
+                  prefixIcon: const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: IconoVivo(Icons.phone_iphone, size: 22))),
             ),
             if (_errDatos != null) ...[
               const SizedBox(height: 6),
@@ -2363,7 +2406,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.stars, size: 18, color: bosque),
+                    const IconoVivo(Icons.stars, size: 18, color: bosque),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -2403,7 +2446,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.shield_outlined, size: 18, color: pino),
+                        IconoVivo(Icons.shield_outlined, size: 18, color: pino),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -2455,7 +2498,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.lock_outline, size: 15, color: textoTenue),
+                IconoVivo(Icons.lock_outline, size: 15, color: textoTenue),
                 const SizedBox(width: 6),
                 // La pasarela y la moneda las decide el PAÍS DE LA CANCHA
                 // (sus coordenadas), no el GPS del jugador: una cancha de
@@ -2614,7 +2657,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icono, size: 20, color: color),
+          IconoVivo(icono, size: 20, color: color),
           const SizedBox(width: 12),
           Expanded(
             child: Text(texto,
@@ -3037,7 +3080,7 @@ class _SlotChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.lock, size: 14, color: Colors.white),
+              const IconoVivo(Icons.lock, size: 14, color: Colors.white),
               const SizedBox(width: 5),
               Text(hora,
                   style: const TextStyle(
@@ -3069,10 +3112,10 @@ class _SlotChip extends StatelessWidget {
                           enEspera ? null : TextDecoration.lineThrough)),
               if (enEspera) ...[
                 const SizedBox(width: 5),
-                const Icon(Icons.hourglass_top, size: 13, color: lima),
+                const IconoVivo(Icons.hourglass_top, size: 13, color: lima),
               ] else if (nEspera > 0) ...[
                 const SizedBox(width: 5),
-                Icon(Icons.hourglass_top, size: 12, color: textoTenueDe(context)),
+                IconoVivo(Icons.hourglass_top, size: 12, color: textoTenueDe(context)),
                 Text('$nEspera',
                     style: TextStyle(
                         fontSize: 11,
@@ -3267,7 +3310,7 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
         children: [
           Row(
             children: [
-              const Icon(Icons.lock_clock, color: clayOscuro),
+              const IconoVivo(Icons.lock_clock, color: clayOscuro),
               const SizedBox(width: 8),
               Expanded(
                 child: Text('Cancha ya reclamada',
@@ -3291,7 +3334,7 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
         children: [
           Row(
             children: [
-              Icon(Icons.travel_explore,
+              IconoVivo(Icons.travel_explore,
                   color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 8),
               Expanded(
@@ -3317,7 +3360,7 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.add_location_alt),
+                  : const IconoVivo(Icons.add_location_alt),
               label: Text(_cargando
                   ? 'Verificando disponibilidad…'
                   : 'Reclamar / registrar esta cancha'),
@@ -3894,7 +3937,7 @@ class _SeccionBonosState extends State<_SeccionBonos> {
           children: [
             Row(
               children: [
-                const Icon(Icons.confirmation_number_outlined, color: teal),
+                const IconoVivo(Icons.confirmation_number_outlined, color: teal),
                 const SizedBox(width: 8),
                 Text('Bonos de horas',
                     style:

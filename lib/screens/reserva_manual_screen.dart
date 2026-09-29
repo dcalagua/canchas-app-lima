@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../widgets/buscador_usuario_sheet.dart';
 import '../widgets/candado_pro.dart';
 import '../widgets/cargando_pichangol.dart';
+import '../widgets/icono_vivo.dart';
 
 /// RESERVA MANUAL del dueño: registra la reserva de un cliente que llamó por
 /// teléfono/WhatsApp (digitaliza el cuaderno). Queda como `traidaPorApp: false`
@@ -276,7 +277,7 @@ class _ReservaManualScreenState extends State<ReservaManualScreen> {
                     decoration: _dec(),
                     child: Row(
                       children: [
-                        const Icon(Icons.calendar_month, size: 20),
+                        const IconoVivo(Icons.calendar_month, size: 20),
                         const SizedBox(width: 10),
                         Text(_diaLabel == _isoFecha
                             ? _isoFecha
@@ -416,7 +417,7 @@ class _SelectorCliente extends StatelessWidget {
         child: vacio
             ? Row(
                 children: [
-                  const Icon(Icons.person_search, color: textoTenue),
+                  const IconoVivo(Icons.person_search, color: textoTenue),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text('Buscar cliente registrado…',

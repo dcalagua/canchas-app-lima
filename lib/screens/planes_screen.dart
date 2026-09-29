@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/dialogo_pichangol.dart';
 import 'plan_detalle_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Planes de TRABAJO del profe: la malla de clases por deporte + evaluación de
 /// alumnos. Usa la plantilla de Pichangol (editable) o crea/duplica la suya.
@@ -163,7 +164,7 @@ class _CardPlan extends StatelessWidget {
           height: 44,
           decoration: BoxDecoration(
               color: limaSuave, borderRadius: BorderRadius.circular(12)),
-          child: const Icon(Icons.assignment_outlined, color: bosque),
+          child: const IconoVivo(Icons.assignment_outlined, color: bosque),
         ),
         title: Text(plan.nombre,
             maxLines: 1,
@@ -213,7 +214,7 @@ class _CardPlantilla extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+              const IconoVivo(Icons.auto_awesome, color: Colors.white, size: 20),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(plan.nombre,

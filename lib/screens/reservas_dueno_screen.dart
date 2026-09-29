@@ -15,6 +15,7 @@ import 'recordar_reservas_screen.dart';
 import 'reportes_hub_screen.dart';
 import 'reserva_manual_screen.dart';
 import 'reservas_fijas_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Panel de RESERVAS del dueño (vista LISTA del hub de Reservas): lista las
 /// reservas reales de sus canchas, con botones para registrar el pago en
@@ -666,7 +667,7 @@ class _ReservaCard extends StatelessWidget {
             const SizedBox(height: 4),
             Row(
               children: [
-                const Icon(Icons.shield_outlined, size: 15, color: pino),
+                const IconoVivo(Icons.shield_outlined, size: 15, color: pino),
                 const SizedBox(width: 5),
                 Expanded(
                   child: Text(

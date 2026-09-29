@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Reporte de cobros del DUEÑO de canchas (panel SaaS): facturación por rango de
 /// fechas, reservas, ticket promedio, ingresos por mes y desglose por cancha.
@@ -168,7 +169,7 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
                     color: limaSuave, borderRadius: BorderRadius.circular(14)),
                 child: Row(
                   children: [
-                    const Icon(Icons.confirmation_number_outlined,
+                    const IconoVivo(Icons.confirmation_number_outlined,
                         color: bosque, size: 20),
                     const SizedBox(width: 10),
                     Expanded(
@@ -363,7 +364,7 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
         chip('3 meses', _Rango.tresMeses),
         chip('Todo', _Rango.todo),
         ActionChip(
-          avatar: const Icon(Icons.event, size: 18),
+          avatar: const IconoVivo(Icons.event, size: 18),
           label: Text(_sel == _Rango.personalizado && _custom != null
               ? '${_custom!.start.day}/${_custom!.start.month} – ${_custom!.end.day}/${_custom!.end.month}'
               : 'Fechas…'),
@@ -589,7 +590,7 @@ class _LocalHeaderRep extends StatelessWidget {
       padding: const EdgeInsets.only(top: 4, bottom: 2),
       child: Row(
         children: [
-          const Icon(Icons.stadium_outlined, size: 17, color: bosque),
+          const IconoVivo(Icons.stadium_outlined, size: 17, color: bosque),
           const SizedBox(width: 8),
           Expanded(
             child: Text(pais.isEmpty ? club : '$club · $pais',

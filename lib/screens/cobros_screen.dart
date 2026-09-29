@@ -8,6 +8,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart';
 import 'mi_academia_screen.dart' show AlumnoDetalleScreen;
+import '../widgets/icono_vivo.dart';
 
 /// TABLERO DE COBROS de la academia: lo que el profe abre a diario para cobrar.
 /// Muestra cuánto tiene por cobrar / vencido / cobrado este mes, la lista de
@@ -378,7 +379,7 @@ class _CardRecordatorios extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(Icons.notifications_active, color: bosque),
+          const IconoVivo(Icons.notifications_active, color: bosque),
           const SizedBox(width: 10),
           Expanded(
             child: Text(

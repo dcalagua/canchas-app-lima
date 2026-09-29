@@ -11,6 +11,7 @@ import '../theme.dart';
 import '../widgets/reto_flow.dart';
 import 'chat_screen.dart';
 import 'login_google_sheet.dart';
+import '../widgets/icono_vivo.dart';
 
 /// BUSCAR USUARIO (tipo WhatsApp): encuentra a un jugador por nombre o correo,
 /// chatéale directo y guárdalo como contacto. Con la búsqueda vacía muestra tus
@@ -256,7 +257,7 @@ class _FilaUsuario extends StatelessWidget {
             ListTile(
               leading: const CircleAvatar(
                   backgroundColor: naranja,
-                  child: Icon(Icons.sports_kabaddi, color: Colors.white)),
+                  child: IconoVivo(Icons.sports_kabaddi, color: Colors.white)),
               title: const Text('Retar a un partido'),
               subtitle: const Text('Le llega una notificación del reto'),
               onTap: () {
@@ -267,7 +268,7 @@ class _FilaUsuario extends StatelessWidget {
             ListTile(
               leading: const CircleAvatar(
                   backgroundColor: teal,
-                  child: Icon(Icons.chat_bubble, color: Colors.white)),
+                  child: IconoVivo(Icons.chat_bubble, color: Colors.white)),
               title: const Text('Chatear para coordinar'),
               subtitle: const Text('Ponte de acuerdo en cancha y hora'),
               onTap: () {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../screens/hazte_pro_screen.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import 'icono_vivo.dart';
 
 /// Banner "Hazte Pro" — visible en los puntos de mayor tráfico (pedido del
 /// director: que la membresía se vea en toda la app):
@@ -69,7 +70,7 @@ class BannerPro extends StatelessWidget {
                         color: lima,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      child: const Icon(Icons.workspace_premium,
+                      child: const IconoVivo(Icons.workspace_premium,
                           color: Colors.white, size: 24),
                     ),
                     const SizedBox(width: 12),
@@ -136,7 +137,7 @@ class BannerPro extends StatelessWidget {
             ),
             child: Row(
               children: [
-                const Icon(Icons.workspace_premium,
+                const IconoVivo(Icons.workspace_premium,
                     color: Color(0xFFD9B45A), size: 20),
                 const SizedBox(width: 8),
                 const Expanded(

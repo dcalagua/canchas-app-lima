@@ -14,6 +14,7 @@ import 'canales_screen.dart';
 import 'estado_composer_screen.dart';
 import 'estado_viewer_screen.dart';
 import 'login_google_sheet.dart';
+import '../widgets/icono_vivo.dart';
 
 /// NOVEDADES (tipo WhatsApp "Novedades/Estados"): pantalla dedicada donde el
 /// usuario sube su historia (24 h) y ve las de sus conocidos. "Mi estado" arriba
@@ -164,7 +165,7 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
         backgroundColor: limaSuave,
         backgroundImage:
             foto.isNotEmpty ? CachedNetworkImageProvider(foto) : null,
-        child: foto.isEmpty ? const Icon(Icons.campaign, color: lima) : null,
+        child: foto.isEmpty ? const IconoVivo(Icons.campaign, color: lima) : null,
       ),
       title: Text(c.nombre,
           maxLines: 1,
@@ -247,14 +248,14 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
             ListTile(
               leading: const CircleAvatar(
                   backgroundColor: limaSuave,
-                  child: Icon(Icons.photo_library_outlined, color: teal)),
+                  child: IconoVivo(Icons.photo_library_outlined, color: teal)),
               title: const Text('Galería'),
               onTap: () => Navigator.pop(context, 'galeria'),
             ),
             ListTile(
               leading: const CircleAvatar(
                   backgroundColor: limaSuave,
-                  child: Icon(Icons.photo_camera_outlined, color: teal)),
+                  child: IconoVivo(Icons.photo_camera_outlined, color: teal)),
               title: const Text('Cámara'),
               onTap: () => Navigator.pop(context, 'camara'),
             ),
@@ -421,7 +422,7 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
                       },
                       leading: const CircleAvatar(
                           backgroundColor: limaSuave,
-                          child: Icon(Icons.campaign, color: lima)),
+                          child: IconoVivo(Icons.campaign, color: lima)),
                       title: const Text('Sigue canales',
                           style: TextStyle(fontWeight: FontWeight.w700)),
                       subtitle: const Text(
@@ -477,7 +478,7 @@ class _NovedadesScreenState extends State<NovedadesScreen> {
           ? FloatingActionButton(
               backgroundColor: lima,
               onPressed: _agregar,
-              child: const Icon(Icons.camera_alt, color: Colors.white),
+              child: const IconoVivo(Icons.camera_alt, color: Colors.white),
             )
           : null,
     );

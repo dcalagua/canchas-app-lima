@@ -11,6 +11,7 @@ import 'mis_retos_screen.dart';
 import 'perfil_global_screen.dart';
 import 'ranking_global_screen.dart';
 import 'reto_dobles_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// CIRCUITO (hub del deporte). Agrupa TODO lo competitivo del circuito —ranking,
 /// retos, jugadores disponibles y la membresía Pro— en un solo lugar. Hoy el
@@ -250,7 +251,7 @@ class _CircuitoTile extends StatelessWidget {
     Widget avatar = CircleAvatar(
       radius: 20,
       backgroundColor: color,
-      child: Icon(icon, color: Colors.white, size: 20),
+      child: IconoVivo(icon, color: Colors.white, size: 20),
     );
     if (badge > 0) {
       avatar = Badge.count(

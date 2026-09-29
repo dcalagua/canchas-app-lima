@@ -12,6 +12,7 @@ import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'verificar_identidad_screen.dart';
+import '../widgets/icono_vivo.dart';
 
 /// "Soy boleador" (Perfil → Ser boleador; módulo Boleadores, sep-2026). Mismo
 /// flujo que `/anfitrion/boleador` de la web: solicitudes PENDIENTES arriba
@@ -662,7 +663,7 @@ class _Candado extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.verified_user_outlined, size: 20, color: clayOscuro),
+              const IconoVivo(Icons.verified_user_outlined, size: 20, color: clayOscuro),
               const SizedBox(width: 8),
               Expanded(
                 child: Text('Verifica tu identidad para ser ${nombre.toLowerCase()}',
