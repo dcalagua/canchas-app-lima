@@ -2795,6 +2795,13 @@ no inventar layouts propios. Rasgos Airbnb:
   loader del pin, el globo de chat y el `verified` lima. Toda pantalla
   nueva usa `IconoVivo` para sus íconos de contenido; para un concepto nuevo
   se agrega el par al mapa (un solo lugar para todo el app).
+  **MUNDO TENIS en Perfil (pedido del director, 29-sep-2026: "agrupa esas 3
+  raquetas en un menú que diga Mundo tenis y ponle figuras distintas"):**
+  un solo ítem 🎾 "Mundo tenis" (badge = solicitudes de boleo + retos) abre
+  la hoja `_abrirMundoTenis` con 🥇 Liga de tenis Pichangol (si
+  `usaCircuito`), 🥎 Ser/Soy boleador y 🤖 Entrenador virtual (solo QAS).
+  `_ItemAirbnb(emoji:)` permite un emoji propio cuando varios ítems
+  comparten concepto.
 - **Avatares SIEMPRE con foto real:** cualquier avatar de jugador (ranking,
   jugadores disponibles, retos —incluido el reto de dobles—, chat, perfil, etc.)
   DEBE mostrar la foto del perfil (`appState.fotoDe(email)` o `usuario.fotoUrl`),
