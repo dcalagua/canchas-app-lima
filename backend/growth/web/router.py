@@ -3133,12 +3133,11 @@ def pagina_perfil(request: Request) -> HTMLResponse:
         chips = "".join(f"<span>{_EMOJI_DEP.get(n['deporte'].lower(), '🏅')} {e(n['deporte'].capitalize())} · {n['nivel']:.1f}</span>" for n in niveles)
         nivel = ("<div class='perf-nivel'><h3>📈 Tu nivel de jugador</h3>"
                  "<p>Sube o baja solo con tus resultados en retos y campeonatos.</p>"
-                 f"<div class='perf-niv'>{chips}</div></div>")
+                 f"<div class='perf-niv'>{chips}</div><a class='btn sec' style='margin-top:12px' href='/mi-nivel'>Reevaluar / agregar deporte</a></div>")
     else:
         nivel = ("<div class='perf-nivel'><h3>📈 Tu nivel de jugador</h3>"
                  "<p>Autoevalúate en 30 segundos y encuentra rivales de tu nivel.</p>"
-                 "<button type='button' class='btn sec' data-app='La autoevaluación de nivel está en la app: toma 30 segundos y te empareja con rivales de tu nivel.' "
-                 "data-titulo='Tu nivel de jugador' data-em='📈'>Autoevaluarme en la app</button></div>")
+                 "<a class='btn sec' href='/mi-nivel'>Autoevaluarme</a></div>")
 
     menu = ""
     if matriculas:
@@ -3149,8 +3148,7 @@ def pagina_perfil(request: Request) -> HTMLResponse:
                          href="/mis-puntos", sub="Ganas puntos con cada reserva pagada")
     menu += _item_perfil("🏆", "Campeonatos", href="/anfitrion/campeonatos", sub="Únete con un código o mira dónde participas")
     tenis = (
-        _item_perfil("🥇", "Liga de tenis Pichangol", sub="Ranking, retos y resultados",
-                     app="La Liga de tenis (ranking, retos y resultados) está en la app.")
+        _item_perfil("🥇", "Liga de tenis Pichangol", href="/liga", sub="Ranking, retos y resultados")
         + _item_perfil("🥎", "Soy boleador" if es_boleador else "Ser boleador", href="/anfitrion/boleador",
                        sub="Bolea en las canchas de tu zona y cobra por turno"))
     menu += ("<details class='perf-grp'><summary class='perf-it'><span class='em'>🎾</span>"
@@ -3160,7 +3158,7 @@ def pagina_perfil(request: Request) -> HTMLResponse:
     menu += _item_perfil("👛", "Mi billetera", href="/mi-billetera", sub="Saldo, recargas, cupones y movimientos")
     menu += "<div class='perf-sep'></div>"
     menu += _item_perfil("🌎", "Mi país", href="/mi-pais", sub="Define la moneda de tu saldo")
-    menu += _item_perfil("⚙️", "Configuración de la cuenta", app="Foto, celular, notificaciones e identidad se configuran desde la app.")
+    menu += _item_perfil("⚙️", "Configuración de la cuenta", href="/cuenta/configuracion", sub="Foto, nombre, celular e identidad")
     menu += _item_perfil("🚪", "Cierra la sesión", onclick="window.pcgSalir&&pcgSalir()")
     menu += _item_perfil("🗑️", "Eliminar mi cuenta", href="/legal/eliminar-cuenta", clase="rojo")
 

@@ -76,7 +76,7 @@ def test_perfil_sin_matriculas_ni_nivel(monkeypatch):
     monkeypatch.setattr(datos, "boleador", lambda e: {"email": "bo@x.com"})
     html = _cli(monkeypatch, "bo@x.com").get("/perfil").text
     assert "Mis clases y pagos" not in html and "👑 PRO" not in html
-    assert "<b>0</b><small>Reservas</small>" in html and "Autoevalúate en 30 segundos" in html
+    assert "<b>0</b><small>Reservas</small>" in html and "Autoevalúate en 30 segundos" in html and "href='/mi-nivel'" in html
     assert "Soy boleador" in html and ">Mis puntos<" in html
 
 
