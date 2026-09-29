@@ -588,7 +588,8 @@ para la API del APK.
   `cargarRetosPendientes`: recibidos pendiente/aceptado + enviados
   aceptados, `stores.retos`); atajos Mis reservas / Marketplace (NOVEDAD),
   banner "¿Tienes una cancha o academia?" → `/anfitrion`, tarjeta de nivel y
-  el MISMO menú: Mis clases y pagos (solo con matrículas,
+  el MISMO menú (desde la fase 1 del lado jugador cada ítem enlaza a su
+  página web; ver "LADO JUGADOR DEL APP EN LA WEB"): Mis clases y pagos (solo con matrículas,
   `datos.tiene_matriculas`), Mis bonos, Mis pagos, Mis puntos · N ⭐
   (`datos.puntos_de` = `misPuntosDisponibles`: reservas traídas por la app y
   pagadas 12 meses + bodega con saldo − canjes), Campeonatos →
@@ -600,6 +601,48 @@ para la API del APK.
   ("Abrir la app" → Play), nunca un enlace roto. El avatar de la cabecera y
   "👤 Perfil" del menú ☰ llevan aquí. `/perfil` NO está en las rutas de
   "abrir en la app" (no hace falta APK). Test `tests/test_web_perfil.py`.
+- **LADO JUGADOR DEL APP EN LA WEB · FASE 1 (29-sep-2026, pedido del
+  director: "en la web implementa las mismas funcionalidades que existen en
+  el app"):** cuatro módulos propios (`web/jugador_*.py`, registrados en
+  `main.py`), cada uno espejo de su pantalla Dart, con las MISMAS tablas y
+  las funciones de `pagos/router.py` para la plata (nada de contabilidad
+  paralela); cobro web solo PEN (Culqi v4 + selector Yape/Tarjeta +
+  `pcgResumenPago`), en $/Bs "hazlo en la app". El Perfil web ya enlaza
+  todo; lo que sigue solo en el app se lista al final. Tests
+  `tests/test_web_jugador_{billetera,market,clases,liga}.py`.
+  (1) `web/jugador_billetera.py`: `/mi-billetera` (= `cuenta_screen`: saldo,
+  regalo, por recibir por moneda, recarga Culqi vía `post_recarga` con bono,
+  cupón vía `pagos.router.canjear_cupon` —bloqueado si la billetera no es en
+  soles—, movimientos vía `pagos.router.movimientos_de` que ahora trae
+  `moneda` por fila), `/mi-billetera/estado-de-cuenta` (imprimible),
+  `/mis-pagos`, `/mis-puntos` (usa `datos.puntos_de`), `/mi-pais` (solo con
+  saldo y regalo en 0; se guarda en `stores.clientes_pago[correo].pais_casa`
+  —el APK aún NO lo lee, su país de casa vive en SharedPreferences—).
+  (2) `web/jugador_market.py`: `/marketplace`, `/marketplace/{id}` (compra:
+  UPDATE atómico del stock → cargo → `post_venta` con `venta_id` = charge →
+  push "¡Te compraron!"), `/mis-ordenes` (Recibido / Problema vía
+  `ventas.router.marcar_recibido|abrir_disputa`; WhatsApp del vendedor solo
+  tras pagar), `/mis-bonos`, `/bonos/{cancha_id}` + `POST /web/bonos/comprar`
+  (crédito `bono_<operación>` idempotente). **Diferencia con el APK:** la web
+  DESCUENTA stock al vender; el APK no (pendiente llevarlo al app/backend).
+  El canje del bono al reservar sigue solo en el app.
+  (3) `web/jugador_clases.py`: `/mis-clases` (= `mis_clases_screen`:
+  matrículas que pago o donde soy alumno, cuotas, débito automático con
+  cancelar, "Mi familia · un solo pago"), `POST /web/mis-clases/pagar`
+  (revalida y recalcula en el servidor con `FOR UPDATE`, un cargo, cargo por
+  servicio con partes, `post_matricula` por academia, cuotas con el formato de
+  `marcarCuotaPagada`; NO deja pagar a mano cuotas con débito automático
+  activo, para evitar doble cobro), comprobante imprimible.
+  (4) `web/jugador_liga.py` + `web/jugador_cuenta.py`: `/mi-nivel`
+  (= `nivel_onboarding_screen`, misma fórmula `Nivel.seedDesde`; al
+  reevaluar NO borra partidos/victorias —el app sí, conviene alinear—),
+  `/liga?tab=ranking|retos|retar|dobles` (port de `rankingGlobal`/dobles/
+  temporadas/campeón, retos con `retos/router.py`, correos de otros jugadores
+  viajan CIFRADOS), `/cuenta/configuracion` (foto al bucket `chat/perfiles/`,
+  nombre, celular por país, bio por selección; re-emite la cookie) y
+  `/cuenta/identidad` (PE/EC con `post_verificar_dni`; BO solo en el app por
+  la lectura del documento + selfie). Quedan en el app: Pro, tarjetas
+  guardadas, recarga $/Bs y QR, ELO por retos, chat.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
   que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
   `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`
