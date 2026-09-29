@@ -968,11 +968,13 @@ para la API del APK.
   `ANDROID_CERT_SHA256` ya está en Railway QAS y PRD con la huella del
   keystore del CI (`21:E5:AD:A0:…:EC:28`, la que imprime el paso "Verificar
   firma del APK"); `/.well-known/assetlinks.json` acepta huellas con o sin
-  dos puntos (`_huella_con_dos_puntos`) y varias por coma. **PENDIENTE del
-  director:** agregar a esa variable (coma) las SHA-256 de las llaves de
-  firma de Play (Play Console → Firma de apps: la actual, la poscuántica y la
-  ANTERIOR rotada) para que el link de WhatsApp abra la app instalada desde
-  Play sin pasar por el navegador; sin eso el botón intent:// cubre igual.
+  dos puntos (`_huella_con_dos_puntos`) y varias por coma. **HECHO el
+  29-sep-2026 (QAS y PRD, autorizado):** la variable lleva además las 3
+  SHA-256 de Play (Protegido con Play → Firma de apps, `/keymanagement`):
+  `51:1A:B0:19…1E:1D` (la que Play pone en su propio JSON de Digital Asset
+  Links), `A0:71:77:CE…16:4D` y `E1:0C:68:18…3A:B1` (clásica/poscuántica/
+  anterior). Así el enlace tocado en WhatsApp abre la app instalada desde
+  Play sin pasar por el navegador; Android verifica al instalar/actualizar.
   Solo Android: en iPhone (sin app iOS) se queda en la web. Tests
   `test_enlace_del_capitan_une_directo_al_equipo`,
   `test_descarga_va_a_play_en_produccion`,
@@ -1524,8 +1526,8 @@ para la API del APK.
   `www.pichangol.app`, `pichangol.app` y `pg.ebim.pe`, `path` exacto `/` y
   `/canchas` + `pathPrefix` de las mismas rutas (antes solo `/c/`), así un
   enlace tocado en WhatsApp abre la app SIN pasar por el navegador
-  (requiere las SHA-256 de Play en `ANDROID_CERT_SHA256`, pendiente del
-  director). (4) **APK** `EnlacesService` (`rutaWebDe(uri)`: https → path;
+  (las SHA-256 de Play ya están en `ANDROID_CERT_SHA256` desde el
+  29-sep-2026). (4) **APK** `EnlacesService` (`rutaWebDe(uri)`: https → path;
   `pichangol://c/ID` → `/c/ID`; `pichangol://www.pichangol.app/...` → path)
   enruta `/c/{id}[?equipo=]` → ficha del campeonato (como antes),
   `/reservar/{canchaId}` → `ClubDetalleScreen` del LOCAL con esa cancha
