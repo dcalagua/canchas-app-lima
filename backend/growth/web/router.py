@@ -3144,6 +3144,8 @@ def pagina_perfil(request: Request) -> HTMLResponse:
              "<a class='perf-tile' href='/marketplace'><span class='nov'>NOVEDAD</span><span class='em'>🛍️</span><b>Marketplace</b></a>"
              "<a class='perf-tile' href='/mensajes'><span class='nov' data-badge-mensajes hidden style='background:#E0245E'></span><span class='em'>💬</span><b>Mensajes</b></a>"
              "<a class='perf-tile' href='/mis-pedidos-bodega'><span class='em'>🧃</span><b>Pedidos a la cancha</b></a>"
+             "<a class='perf-tile' href='/novedades'><span class='em'>📰</span><b>Novedades</b></a>"
+             "<a class='perf-tile' href='/canales'><span class='em'>📢</span><b>Canales</b></a>"
              "</div>")
     banner = ("<a class='perf-ban' href='/anfitrion'><span class='em'>🏟️</span><span>"
               "<b>¿Tienes una cancha o academia?</b><small>Publícala y genera ingresos adicionales, ¡es muy sencillo!</small></span></a>")

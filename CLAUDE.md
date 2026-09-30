@@ -760,6 +760,18 @@ para la API del APK.
   libres de hoy/mañana con descuento real en `pichangol_descuentos_slot` +
   aviso por chat o WhatsApp; en el MENU anfitrión). Perfil: Partidos,
   Pichangas de mi club, Invita y gana. Test `tests/test_web_jugador_partidos.py`.
+- **NOVEDADES Y CANALES EN LA WEB (30-sep-2026):** `web/jugador_novedades.py`.
+  `/novedades` (feed de historias de MIS CONTACTOS de `pichangol_agenda`, sin
+  bloqueados, 24 h; visor con barras, 5 s foto/texto, 15 s con música, video
+  ≤30 s; responder = mensaje directo citando, "Visto por N", eliminar; limpia
+  mis vencidas como `limpiarVencidosDe`), `/novedades/estado/nuevo?tipo=texto|
+  foto|video` (8 fondos ARGB del app, música iTunes vía backend), `/canales`,
+  `/canales/nuevo`, `/canales/{id}` (seguir, reacciones con los 8 emojis,
+  publicar texto/foto/video ≤60 s) y `/canales/{id}/editar`. Mismas tablas y
+  buckets (`estados/<st_id>`, `canales/<ch_id>/…`); correos ajenos nunca van
+  al navegador. Video solo MP4/MOV (tope 50 MB, supuesto web). "Ocultar sus
+  historias" y la última vista de cada canal son locales (como en el app). En
+  el menú ☰ y el Perfil. Test `tests/test_web_novedades.py`.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
   que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
   `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`
