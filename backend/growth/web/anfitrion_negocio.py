@@ -1627,7 +1627,8 @@ def pagina_cobros(request: Request, academia: str = "") -> HTMLResponse:
            if por_recordar else "")
         + "<h2 class='ng-h2'>Quién debe</h2>"
         + (f"<div class='ng-lista' id='morosos'>{filas}</div>" if filas else "<div class='anf-vacio'>Todos al día 🎉</div>")
-        + f"<p style='margin-top:16px'><a class='btn sec' href='/anfitrion/academia/alumnos?academia={e(a['id'])}'>Ver todos los alumnos</a></p>"
+        + f"<p style='margin-top:16px;display:flex;gap:10px;flex-wrap:wrap'><a class='btn' href='/anfitrion/cobros/agregar?academia={e(a['id'])}'>➕ Agregar cuota</a>"
+          f"<a class='btn sec' href='/anfitrion/academia/alumnos?academia={e(a['id'])}'>Ver todos los alumnos</a></p>"
         + f"<script>window.__cob={json.dumps({'academia': a['id'], 'moneda': sim, 'fichas': fichas, 'porRecordar': [t[0]['id'] for t in por_recordar]}, ensure_ascii=False)};{JS_COBROS}</script>")
     return _pagina("Cobros de academia", cuerpo, ses, "cobros")
 
@@ -1684,6 +1685,239 @@ def cobrar_cuota(request: Request, body: dict = Body(default_factory=dict)) -> J
                           "academia")
     print(f"[cobros-web] {ses['email']} cobró {c.get('id')} de {m['id']}", flush=True)
     return _json_ok()
+
+
+# ── Agregar cuota (mi_academia_screen._inscribir / _claseSuelta) ────────────
+
+def _precio_final(a: dict, plan: dict, al: dict) -> tuple[float, float]:
+    """= `Academia.precioFinal(plan, socio: esSocioSede, ordenHermano, prepago)`:
+    (monto de cada cuota, % de descuento aplicado)."""
+    from web.academia import dto_familiar_pct
+    base = float(plan["precioMes"]) + (0.0 if al.get("esSocioSede", True) is not False else float(a.get("recargoInvitado") or 0))
+    try:
+        orden = int(al.get("ordenHermano") or 1)
+    except (TypeError, ValueError):
+        orden = 1
+    dto = dto_familiar_pct(a, orden) + (float(a.get("descuentoPrepago") or 0) if plan["tipo"] == "prepago" else 0.0)
+    dto = min(dto, 100.0)
+    return max(0.0, round(base * (1 - dto / 100.0), 2)), dto
+
+
+def _mes_anio(d: datetime) -> str:
+    """`AppState._mesNombre`: "Setiembre 2026"."""
+    return f"{MESES_LARGO[d.month - 1].capitalize()} {d.year}"
+
+
+def cuotas_nuevas(a: dict, al: dict, tipo: str, plan: dict | None, meses: int, monto: float, ahora: datetime) -> list[dict]:
+    """Cuotas POR COBRAR con el formato de `Cuota.toJson` del app:
+    plan mensual/prepago = `AppState.inscribir` (N cuotas, vencen el mismo día
+    de cada mes a medianoche, concepto "Plan · Setiembre 2026 (−10%)");
+    plan por clase o clase suelta = `agregarClaseSuelta` (una cuota hoy)."""
+    from web.academia import _sumar_meses
+    us = time.time_ns() // 1000
+    base = {"academiaId": a["id"], "alumnoId": al["id"], "pagada": False}
+    if tipo == "suelta":
+        return [dict(base, id=f"cu_{us}", concepto=f"Clase suelta {ahora.day}/{ahora.month}", monto=round(monto, 2),
+                     vencimiento=ahora.isoformat())]
+    if plan["tipo"] == "porClase":
+        return [dict(base, id=f"cu_{us}", concepto=plan["nombre"], monto=round(plan["precioMes"], 2), vencimiento=ahora.isoformat())]
+    precio, dto = _precio_final(a, plan, al)
+    suf = f" (−{dto:.0f}%)" if dto > 0 else ""
+    dia = datetime(ahora.year, ahora.month, ahora.day)
+    out = []
+    for i in range(meses):
+        v = _sumar_meses(dia, i)
+        out.append(dict(base, id=f"cu_{us}_{i}", concepto=f"{plan['nombre']} · {_mes_anio(v)}{suf}", monto=precio,
+                        vencimiento=v.isoformat()))
+    return out
+
+
+def agregar_cuotas_db(email: str, academia_id: str, alumno_id: str, armar) -> list[dict] | None:
+    """Agrega cuotas a la matrícula bajo `FOR UPDATE`, SOLO si la academia es
+    del correo (`pichangol_academias.dueno`). [armar](data) → cuotas nuevas.
+    None si no existe / no es suya / falló."""
+    if not pg.habilitado:
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT m.data FROM pichangol_matriculas m JOIN pichangol_academias a ON a.id = m.academia_id "
+                        "WHERE m.id = %s AND m.academia_id = %s AND lower(a.dueno) = %s "
+                        "AND coalesce(m.eliminada,false) = false AND coalesce(a.eliminada,false) = false FOR UPDATE OF m",
+                        (alumno_id, academia_id, email.lower()))
+            row = cur.fetchone()
+            if not row:
+                conn.rollback()
+                return None
+            data = row[0] if isinstance(row[0], dict) else json.loads(row[0] or "{}")
+            data.setdefault("id", alumno_id)
+            nuevas = armar(data)
+            if not nuevas:
+                conn.rollback()
+                return None
+            data["cuotas"] = [c for c in (data.get("cuotas") or []) if isinstance(c, dict)] + nuevas
+            cur.execute("UPDATE pichangol_matriculas SET data = %s::jsonb, updated_at = now() WHERE id = %s",
+                        (json.dumps(data), alumno_id))
+            conn.commit()
+            return nuevas
+    except Exception as ex:  # noqa: BLE001
+        print(f"[cobros-web] no se pudo agregar cuota a {alumno_id}: {ex}", flush=True)
+        return None
+
+
+@router.get("/anfitrion/cobros/agregar", response_class=HTMLResponse)
+def pagina_agregar_cuota(request: Request, academia: str = "", alumno: str = "") -> HTMLResponse:
+    from web.academia import _planes
+    from web.anfitrion_academia import _mias, _moneda
+    ses, resp = _sesion_o_entrar(request, "/anfitrion/cobros/agregar")
+    if resp is not None:
+        return resp
+    acads = _mias(ses["email"])
+    if not acads:
+        return _pagina("Agregar cuota", "<h1 class='anf-hola'>Agregar cuota</h1><div class='anf-vacio' style='margin-top:16px'>Aún no tienes una academia. "
+                       "<a href='/anfitrion/academia'>Créala aquí</a>.</div>", ses, "cobros")
+    a = next((x for x in acads if x["id"] == academia), acads[0])
+    sim = _moneda(a)
+    mats = sorted(datos.matriculas_de_academias([a["id"]]), key=lambda m: str(m.get("nombre") or "").lower())
+    planes = _planes(a)
+    chips = ("<div class='chips' style='margin-top:12px'>" + "".join(
+        f"<a class='chip{' sel' if x['id'] == a['id'] else ''}' href='?academia={e(x['id'])}'>{e(x.get('nombre') or 'Academia')}</a>" for x in acads)
+        + "</div>") if len(acads) > 1 else ""
+    if not mats:
+        cuerpo = (f"<h1 class='anf-hola'>Agregar cuota</h1>{chips}<div class='anf-vacio' style='margin-top:16px'>Aún no tienes alumnos en esta academia. "
+                  "Cuando se matriculen (desde la app o la web) podrás agregarles cuotas aquí.</div>")
+        return _pagina("Agregar cuota", cuerpo, ses, "cobros")
+    opts = "".join(f"<option value='{e(m['id'])}'{' selected' if m['id'] == alumno else ''}>{e(m.get('nombre') or 'Alumno')}"
+                   f"{' · ' + e(m['apoderadoNombre']) if m.get('apoderadoNombre') else ''}</option>" for m in mats)
+    grupos: dict[str, list[dict]] = {}
+    for p in planes:
+        grupos.setdefault(p["programa"], []).append(p)
+    tarjetas = ""
+    for prog, lst in grupos.items():
+        tarjetas += f"<div class='ag-prog'>{e(prog)}</div>" if prog else ""
+        for p in sorted(lst, key=lambda x: x["frecuenciaSemana"]):
+            tit = (f"{p['frecuenciaSemana']}x por semana" if prog and p["frecuenciaSemana"] else p["nombre"])
+            sub = (f"Por clase · {sim} {p['precioMes']:.2f}" if p["tipo"] == "porClase" else
+                   (f"Mensual · {sim} {p['precioMes']:.2f}/mes" if p["tipo"] == "mensual" else
+                    f"Prepago {p['meses']} meses · {sim} {p['precioMes']:.2f}/mes"))
+            tarjetas += (f"<label class='ag-op'><input type='radio' name='agPlan' value='{e(p['id'])}'>"
+                         f"<span><b>{e(tit)}</b><small>{e(sub)}</small></span></label>")
+    tarjetas += ("<label class='ag-op'><input type='radio' name='agPlan' value='__suelta'>"
+                 "<span><b>🎾 Clase suelta</b><small>Una cuota de hoy por el monto que indiques</small></span></label>")
+    cfg = {"academia": a["id"], "moneda": sim,
+           "planes": {p["id"]: {"tipo": p["tipo"], "precio": p["precioMes"], "meses": p["meses"], "nombre": p["nombre"]} for p in planes},
+           "alumnos": {m["id"]: {"socio": m.get("esSocioSede", True) is not False, "orden": int(m.get("ordenHermano") or 1)} for m in mats},
+           "recargo": float(a.get("recargoInvitado") or 0), "h2": float(a.get("descuentoHermano2") or 0),
+           "h3": float(a.get("descuentoHermano3") or 0), "prepago": float(a.get("descuentoPrepago") or 0)}
+    meses = "".join(f"<option value='{n}'>{n} {'mes' if n == 1 else 'meses'}</option>" for n in range(1, 13))
+    cuerpo = (
+        f"<a class='anf-back' href='/anfitrion/cobros?academia={e(a['id'])}'>‹ Cobros</a>"
+        f"<h1 class='anf-hola'>Agregar cuota · {e(a.get('nombre') or 'Mi academia')}</h1>"
+        "<p class='sub'>Inscribe a un alumno en un plan (genera sus cuotas mensuales por cobrar) o regístrale una clase suelta. "
+        "Aparece al instante en su app, en “Mis clases y pagos”.</p>" + chips
+        + "<div class='ng-card ag-card'><label class='ag-l' for='agAl'>Alumno</label>"
+        f"<select id='agAl'>{opts}</select>"
+        "<div class='ag-l'>¿Qué le cobras?</div>"
+        + (tarjetas if planes else "<p class='sub'>Tu academia aún no tiene planes con precio. <a href='/anfitrion/academia'>Agrégalos</a> o registra una clase suelta.</p>" + tarjetas)
+        + f"<div id='agMesesBox' hidden><label class='ag-l' for='agMeses'>¿Por cuántos meses?</label><select id='agMeses'>{meses}</select></div>"
+        f"<div id='agMontoBox' hidden><label class='ag-l' for='agMonto'>Monto</label><div class='inp-moneda' style='max-width:220px'><span>{e(sim)}</span>"
+        "<input id='agMonto' inputmode='decimal' maxlength='9' placeholder='0.00'></div></div>"
+        "<div class='ag-prev' id='agPrev' hidden></div>"
+        "<button type='button' class='btn' id='agOk' disabled style='margin-top:14px;width:100%'>Agregar</button></div>"
+        + "<style>.ag-card select{width:100%;max-width:420px;padding:11px;border-radius:12px;border:1px solid var(--trazo);font:inherit;background:#fff}"
+          ".ag-l{display:block;font-weight:800;margin:16px 0 8px}.ag-prog{font-weight:800;margin:12px 0 6px;color:var(--tenue);font-size:13px}"
+          ".ag-op{display:flex;gap:10px;align-items:center;border:1px solid var(--trazo);border-radius:14px;padding:11px 13px;margin-bottom:8px;cursor:pointer;min-width:0}"
+          ".ag-op input{width:auto;flex:none}.ag-op small{display:block;color:var(--tenue)}.ag-op:has(input:checked){background:#EBEBEB;border-color:#D8D8D8}"
+          ".ag-prev{margin-top:14px;background:#EEF7E3;color:#14463A;border-radius:14px;padding:12px;font-size:14px;line-height:1.45}</style>"
+        + f"<script>window.__ag={json.dumps(cfg, ensure_ascii=False)};{JS_AGREGAR_CUOTA}</script>")
+    return _pagina("Agregar cuota", cuerpo, ses, "cobros")
+
+
+@router.post("/anfitrion/cobros/agregar")
+def agregar_cuota(request: Request, body: dict = Body(default_factory=dict)) -> JSONResponse:
+    """Inscribir en plan / clase suelta desde la web (el total lo recalcula el
+    servidor con los datos de la academia y del alumno)."""
+    from web.academia import _planes
+    from web.anfitrion_academia import _mia, _moneda
+    ses = sesion.de_request(request)
+    if not ses:
+        return _err("sesion_requerida", 401)
+    email = ses["email"].lower()
+    a = _mia(email, str(body.get("academia_id") or ""))
+    if a is None:
+        return _err("Esa academia no es tuya.", 404)
+    tipo = "suelta" if body.get("plan_id") == "__suelta" else "plan"
+    plan = None
+    meses = 1
+    monto = 0.0
+    if tipo == "plan":
+        plan = next((p for p in _planes(a) if p["id"] == str(body.get("plan_id") or "")), None)
+        if plan is None:
+            return _err("Elige un plan de tu academia.")
+        try:
+            meses = int(body.get("meses") or 1)
+        except (TypeError, ValueError):
+            meses = 0
+        if plan["tipo"] != "porClase" and not 1 <= meses <= 12:
+            return _err("Elige entre 1 y 12 meses.")
+    else:
+        try:
+            monto = round(float(str(body.get("monto") or "").replace(",", ".")), 2)
+        except ValueError:
+            monto = 0.0
+        if not 0 < monto <= 100000:
+            return _err("Escribe un monto válido.")
+    ahora = datetime.now()
+    nuevas = agregar_cuotas_db(email, a["id"], str(body.get("alumno_id") or ""),
+                               lambda data: cuotas_nuevas(a, data, tipo, plan, meses, monto, ahora))
+    if nuevas is None:
+        return _err("No se pudo agregar. Ese alumno no es de tu academia o hubo un problema; reintenta.", 409)
+    sim = _moneda(a)
+    total = sum(float(c["monto"]) for c in nuevas)
+    print(f"[cobros-web] {email} agregó {len(nuevas)} cuota(s) {sim} {total:.2f} a {body.get('alumno_id')}", flush=True)
+    return _json_ok(cuotas=len(nuevas), total=round(total, 2), moneda=sim)
+
+
+JS_AGREGAR_CUOTA = r"""
+(function(){
+  var C = window.__ag || {}, $ = function(id){ return document.getElementById(id); };
+  function plan(){ var r = document.querySelector("input[name='agPlan']:checked"); return r ? r.value : ''; }
+  function fmt(n){ return C.moneda + ' ' + Number(n || 0).toFixed(2); }
+  function calc(){
+    var pid = plan(), al = C.alumnos[$('agAl').value] || {socio: true, orden: 1}, prev = $('agPrev'), ok = $('agOk');
+    $('agMesesBox').hidden = !(pid && pid !== '__suelta' && C.planes[pid].tipo !== 'porClase');
+    $('agMontoBox').hidden = pid !== '__suelta';
+    if(!pid){ prev.hidden = true; ok.disabled = true; return; }
+    if(pid === '__suelta'){ var m = Number(($('agMonto').value || '').replace(',', '.')); ok.disabled = !(m > 0); prev.hidden = !(m > 0);
+      prev.textContent = 'Se agrega 1 cuota por cobrar de ' + fmt(m) + ' (clase suelta de hoy).'; ok.textContent = 'Agregar clase suelta'; return; }
+    var p = C.planes[pid];
+    if(p.tipo === 'porClase'){ prev.hidden = false; ok.disabled = false; prev.textContent = 'Se agrega 1 cuota por cobrar de ' + fmt(p.precio) + ' (' + p.nombre + ').'; ok.textContent = 'Agregar cuota'; return; }
+    var base = p.precio + (al.socio ? 0 : C.recargo), dto = (al.orden >= 3 ? C.h3 : (al.orden === 2 ? C.h2 : 0)) + (p.tipo === 'prepago' ? C.prepago : 0);
+    dto = Math.min(dto, 100); var cu = Math.max(0, Math.round(base * (1 - dto / 100) * 100) / 100), n = Number($('agMeses').value || 1);
+    prev.hidden = false; ok.disabled = false;
+    prev.innerHTML = 'Se generan <b>' + n + ' cuota' + (n === 1 ? '' : 's') + '</b> mensual' + (n === 1 ? '' : 'es') + ' de <b>' + fmt(cu) + '</b>' + (dto > 0 ? ' (−' + dto.toFixed(0) + '%)' : '') + (al.socio ? '' : ' · tarifa invitado') + '. Total por cobrar: <b>' + fmt(cu * n) + '</b>.';
+    ok.textContent = 'Inscribir y generar ' + n + ' cuota' + (n === 1 ? '' : 's');
+  }
+  document.querySelectorAll("input[name='agPlan']").forEach(function(r){ r.addEventListener('change', calc); });
+  ['agAl', 'agMeses'].forEach(function(id){ $(id).addEventListener('change', calc); });
+  $('agMonto').addEventListener('input', calc);
+  $('agOk').addEventListener('click', function(){
+    var al = $('agAl'), nom = al.options[al.selectedIndex].text;
+    pcgConfirmar({titulo: 'Agregar a ' + nom, icono: '🧾', mensaje: $('agPrev').textContent, confirmar: 'Agregar', cancelar: 'Volver'}).then(function(ok){
+      if(!ok) return;
+      pcgCargando('Guardando…');
+      fetch('/anfitrion/cobros/agregar', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({academia_id: C.academia, alumno_id: al.value, plan_id: plan(), meses: Number($('agMeses').value || 1), monto: $('agMonto').value})})
+        .then(function(r){ return r.json(); }).then(function(j){
+          pcgCargando(false);
+          if(j.ok) pcgAvisar({titulo: 'Listo ✅', icono: '🧾', confirmar: 'Ver cobros', mensaje: 'Se agregó ' + j.cuotas + ' cuota' + (j.cuotas === 1 ? '' : 's') + ' por ' + j.moneda + ' ' + Number(j.total).toFixed(2) + ' a ' + nom + '.'})
+            .then(function(){ pcgIr('/anfitrion/cobros?academia=' + encodeURIComponent(C.academia), 'Abriendo cobros…'); });
+          else pcgAvisar({titulo: 'No se pudo', icono: '⚠️', mensaje: j.mensaje || 'Reintenta.'});
+        }).catch(function(){ pcgCargando(false); pcgAvisar({titulo: 'Sin conexión', icono: '⚠️', mensaje: 'Reintenta.'}); });
+    });
+  });
+  calc();
+})();
+"""
 
 
 # ── estilos y scripts ───────────────────────────────────────────────────────

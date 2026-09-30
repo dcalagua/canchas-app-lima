@@ -675,8 +675,8 @@ def pagina_billetera(request: Request) -> HTMLResponse:
     acciones = (
         "<div class='bil-acc'>"
         "<a href='#recargar'><span class='bur' style='background:#7CB51824'>➕</span><small>Recargar</small></a>"
-        "<button type='button' data-titulo='Tus tarjetas' data-em='💳' data-app='Tus tarjetas guardadas (pago en un toque) se administran desde la app.'>"
-        "<span class='bur' style='background:#14463A1F'>💳</span><small>Tarjetas</small></button>"
+        "<a href='/cuenta/tarjetas'>"
+        "<span class='bur' style='background:#14463A1F'>💳</span><small>Tarjetas</small></a>"
         f"<a href='/mis-puntos'><span class='bur' style='background:#B089081F'>⭐</span>{ins}<small>Puntos</small></a>"
         "<a href='/mi-billetera/estado-de-cuenta'><span class='bur' style='background:#067A381F'>🧾</span><small>Estado<br>de cuenta</small></a>"
         "</div>")
