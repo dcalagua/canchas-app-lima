@@ -37,6 +37,8 @@ from web.jugador_market import router as jugador_market_router
 from web.jugador_billetera import router as jugador_billetera_router
 from web.jugador_liga import router as jugador_liga_router
 from web.jugador_cuenta import router as jugador_cuenta_router
+from web.jugador_bodega import router as jugador_bodega_router
+from web.anfitrion_bodega import router as anfitrion_bodega_router
 from models import ConfigRequest, ConsentimientoRequest
 from marketing.router import router as marketing_router
 from pagos.router import (procesar_renovaciones, procesar_renovaciones_alumnos,
@@ -142,8 +144,10 @@ app.include_router(jugador_clases_router)  # /mis-clases: Mis clases y pagos del
 app.include_router(jugador_billetera_router)  # /mi-billetera, /mis-pagos, /mis-puntos, /mi-pais
 app.include_router(jugador_liga_router)  # /mi-nivel, /liga
 app.include_router(jugador_cuenta_router)  # /cuenta/configuracion, /cuenta/identidad
+app.include_router(jugador_bodega_router)  # /bodega/{cancha_id}/pedir, /mis-pedidos-bodega
 app.include_router(anfitrion_academia_router)  # antes del comodín /anfitrion/{modulo}
 app.include_router(anfitrion_tienda_router)
+app.include_router(anfitrion_bodega_router)  # /anfitrion/bodega (antes del comodín /anfitrion/{modulo})
 app.include_router(anfitrion_campeonatos_router)  # antes del comodín /anfitrion/{modulo}
 app.include_router(anfitrion_boleadores_router)  # antes del comodín /anfitrion/{modulo}
 app.include_router(anfitrion_router)
