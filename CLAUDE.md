@@ -652,6 +652,37 @@ para la API del APK.
   por `moneda_billetera`) y cuotas con débito automático activo no se pagan a
   mano en el app (`AppState.cuotaSeCobraAutomatico`). Test
   `tests/test_apk_alineado_web.py`.
+- **FASE 2-3 DEL APP EN LA WEB (30-sep-2026, pedido del director: "dale
+  todas las fases de manera continua"):** (1) **Mensajería**
+  (`web/jugador_mensajes.py`): `/mensajes` (bandeja con "una persona = un
+  chat", no leídos por `pichangol_lecturas`, fijar/archivar/silenciar/
+  eliminar en `pichangol_chat_prefs` con la misma semántica del app),
+  `/mensajes/{clave}` (chat con todos los hilos de la fila, texto y foto al
+  bucket `chat`, ✓✓, sondeo 4,5 s solo con la pestaña visible, bandeja en
+  `localStorage` para pintar al instante), `/mensajes/nuevo?cancha=|
+  academia=|persona=`, grupos (`/mensajes/grupo/nuevo`, `/mensajes/grupo/
+  {id}`). El navegador NUNCA ve correos ajenos: la clave del hilo va cifrada
+  (AES-GCM determinista) y las personas como `ref` opaco. El push lo dispara
+  el trigger de `pichangol_mensajes` (no se duplica). Solo en el app:
+  llamadas, notas de voz, documentos, GIF, ubicación, reenviar, bloquear.
+  Badge de no leídos `data-badge-mensajes` (ui.shell inyecta
+  `JS_BADGE_MENSAJES` cuando la página lo trae) en el menú ☰ y el Perfil;
+  "💬 Escribir al local" en la ficha `/reservar/{id}` (`router._acciones_
+  local`, solo local verificado con dueño y nunca al dueño) y "✉️ Escribir
+  al profe" en `/academia/{id}`. Test `tests/test_web_mensajes.py`.
+  (2) **Mi bodega** (`web/anfitrion_bodega.py` dueño, `web/jugador_bodega.py`
+  jugador, `web/bodega_datos.py` = mismas 5 tablas y candados `UPDATE …
+  WHERE estado = esperado` que `BodegaRepo`): `/anfitrion/bodega?tab=caja|
+  productos|reporte|pedidos|cuentas` (candado Pro, carta `/b/{id}` + QR,
+  stock descontado EN EL SERVIDOR dentro de la transacción de la venta),
+  `/bodega/{cancha_id}/pedir` (GPS ≤250 m obligatorio, zona, prepago con
+  saldo vía `pagos.router.cobrar_bodega_con_saldo` —extraído de `POST
+  /pagos/bodega-pago`, que ahora guarda `moneda`; vacío = PEN para APKs
+  viejos—, reembolso al rechazar/cancelar) y `/mis-pedidos-bodega`. MENU
+  anfitrión "🧃 Mi bodega"; "🧃 Bodega del local" en la ficha. Test
+  `tests/test_web_bodega.py`. OJO: el SQL de bodega y mensajería no se pudo
+  probar contra Postgres real en el entorno de desarrollo (tests con doble
+  en memoria): probar en QAS antes de PRD.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
   que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
   `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`

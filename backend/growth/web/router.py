@@ -1841,7 +1841,22 @@ def _hermanas(c: dict, ses: dict | None = None) -> list[dict]:
     return out or [c]
 
 
-def _ficha(c: dict, sim: str, pais: str, verificada: bool = True, hermanas: list[dict] | None = None) -> str:
+def _acciones_local(c: dict, ses: dict | None) -> str:
+    """"Escribir al local" (mensajería web) y "Bodega del local" (pedir a la
+    cancha), como en `club_detalle` del app: solo en locales verificados con
+    dueño y nunca al propio dueño."""
+    dueno = (c.get("dueno") or "").strip().lower()
+    yo = ((ses or {}).get("email") or "").strip().lower()
+    if not datos.reservable(c) or not dueno or dueno == yo:
+        return ""
+    cid = quote(c["id"], safe="")
+    return ("<div class='acciones' style='margin:6px 0 14px'>"
+            f"<a class='btn sec' href='/mensajes/nuevo?cancha={cid}'>💬 Escribir al local</a>"
+            f"<a class='btn sec' href='/bodega/{cid}/pedir'>🧃 Bodega del local</a></div>")
+
+
+def _ficha(c: dict, sim: str, pais: str, verificada: bool = True, hermanas: list[dict] | None = None,
+          ses: dict | None = None) -> str:
     """Cabecera de la ficha pública: como `club_detalle_screen` del app, el
     TÍTULO es el LOCAL y la cancha va debajo (antes salía "Cancha-01" grande
     y el local chico; queja del director, sep-2026). Con varias canchas en el
@@ -1872,6 +1887,7 @@ def _ficha(c: dict, sim: str, pais: str, verificada: bool = True, hermanas: list
             + (f"<li>⚡ <span>Hora feliz −{c['descuento_valle']} % de {e(c['valle_desde'] or '00:00')} a {e(c['valle_hasta'] or '12:00')}</span></li>" if c['descuento_valle'] > 0 else "")
             + (f"<li>🏟️ <span>{e(c['superficie'])}</span></li>" if c.get("superficie") else "")
             + "</ul>"
+            + _acciones_local(c, ses) +
             "<div class='mapa-ficha' id='mapaFicha'><div class='mapa' id='mapaFichaMapa' aria-label='Mapa de la cancha'></div>"
             f"<div class='pie-mapa'><span>📍 {e(lugar or local)}</span><a href='{_maps(c)}' target='_blank' rel='noopener'>Abrir en Google Maps</a>"
             f"<a href='https://www.google.com/maps/dir/?api=1&destination={c.get('lat')},{c.get('lng')}' target='_blank' rel='noopener'>Indicaciones paso a paso</a></div></div>"
@@ -1942,7 +1958,7 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
     sim, iso = _moneda_de(c)
     pais = _pais_de(c)
     hermanas = _hermanas(c, ses)
-    ficha = _ficha(c, sim, pais, verificada=datos.reservable(c), hermanas=hermanas)
+    ficha = _ficha(c, sim, pais, verificada=datos.reservable(c), hermanas=hermanas, ses=ses)
     titulo = _titulo_local(c)
     canonical = (f"{config.PUBLIC_BASE_URL.rstrip('/')}/reservar/{c['id']}"
                  if getattr(config, "PUBLIC_BASE_URL", "") else "")
@@ -3126,6 +3142,8 @@ def pagina_perfil(request: Request) -> HTMLResponse:
     tiles = ("<div class='perf-tiles'>"
              "<a class='perf-tile' href='/mis-reservas'><span class='em'>📅</span><b>Mis reservas</b></a>"
              "<a class='perf-tile' href='/marketplace'><span class='nov'>NOVEDAD</span><span class='em'>🛍️</span><b>Marketplace</b></a>"
+             "<a class='perf-tile' href='/mensajes'><span class='nov' data-badge-mensajes hidden style='background:#E0245E'></span><span class='em'>💬</span><b>Mensajes</b></a>"
+             "<a class='perf-tile' href='/mis-pedidos-bodega'><span class='em'>🧃</span><b>Pedidos a la cancha</b></a>"
              "</div>")
     banner = ("<a class='perf-ban' href='/anfitrion'><span class='em'>🏟️</span><span>"
               "<b>¿Tienes una cancha o academia?</b><small>Publícala y genera ingresos adicionales, ¡es muy sencillo!</small></span></a>")

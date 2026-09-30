@@ -57,6 +57,7 @@ MENU = [
     ("academia", "Mi academia", "Soy profe: alumnos, cuotas y cobros", "#E07A3F", "📣", "/anfitrion/academia", True),
     ("campeonatos", "Mis campeonatos", "Organiza torneos (fútbol, tenis…), invita y sortea", "#D4B048", "🏆", "/anfitrion/campeonatos", True),
     ("tienda", "Mi tienda", "Vende en el Marketplace Pichangol: raquetas, pelotas y más", "#7B61FF", "🏪", "/anfitrion/tienda", True),
+    ("bodega", "Mi bodega", "Caja rápida, stock, pedidos a la cancha y carta con QR (Pro)", "#E07A3F", "🧃", "/anfitrion/bodega", True),
     ("boleador", "Soy boleador", "Peloteo por turno: pon tu categoría, tu tarifa y dónde atiendes", "#0E8F67", "🎾", "/anfitrion/boleador", True),
     ("verificador", "Verificador", "Rol de campo: visitas con foto, GPS y firma", "#0E8F67", "🛡️", "/anfitrion/verificador", False),
 ]

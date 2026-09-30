@@ -925,7 +925,7 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
     if ses:
         nombre = ses.get("nombre") or ses.get("email") or ""
         cuenta = (f"<div class='yo'>{_avatar(ses)}<div><b>{e(nombre)}</b><small>{e(ses.get('email'))}</small></div></div>"
-                  "<hr><a class='b' href='/perfil'>👤 Perfil</a><a class='b' href='/mis-reservas'>📅 Mis reservas</a>"
+                  "<hr><a class='b' href='/perfil'>👤 Perfil</a><a class='b' href='/mensajes'>💬 Mensajes <span class='bdg-msj' data-badge-mensajes hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:11px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/mis-reservas'>📅 Mis reservas</a>"
                   "<button type='button' onclick='window.pcgSalir&&pcgSalir()'>Cerrar sesión</button>")
         avatar = f"<a class='redondo' href='/perfil' title='{e(ses.get('email'))}' aria-label='Tu perfil'>{_avatar(ses)}</a>"
     else:
@@ -1174,4 +1174,8 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         f"<main class='{'wrap-xl' if ancho else 'wrap'}'>{cuerpo}</main>"
         f"{footer()}"
         "</body></html>")
+    if "data-badge-mensajes" in page:
+        # Badge de no leídos (mensajería web): pinta el último valor y lo refresca.
+        from web.jugador_mensajes import JS_BADGE_MENSAJES
+        page = page.replace("</body></html>", JS_BADGE_MENSAJES + "</body></html>")
     return HTMLResponse(page, headers={"Cache-Control": "no-store"})
