@@ -1005,6 +1005,9 @@ class BodegaPagoReq(BaseModel):
     monto_soles: float
     pedido_id: str             # idempotencia (un cobro por pedido)
     concepto: str | None = None
+    # Moneda del pedido (ISO o símbolo). Vacío = PEN (APKs viejos): así el
+    # egreso y el "por recibir" guardan la moneda REAL del local (multi-país).
+    moneda: str = ""
 
 
 @router.post("/bodega-pago", dependencies=_APP)
@@ -1013,11 +1016,23 @@ def post_bodega_pago(req: BodegaPagoReq,
     """Debita el saldo del cliente y deja el monto completo por recibir del
     dueño. Idempotente por pedido_id."""
     cliente = req.cliente.strip().lower()
+    if not cliente or not req.dueno_id.strip() or not req.pedido_id.strip() \
+            or req.monto_soles <= 0:
+        raise HTTPException(status_code=400, detail="datos_invalidos")
+    _require_usuario(cliente, x_user_token)  # PROD: solo su propio saldo
+    return cobrar_bodega_con_saldo(req)
+
+
+def cobrar_bodega_con_saldo(req: BodegaPagoReq) -> dict:
+    """Núcleo del cobro de un pedido de bodega con saldo (sin la auth HTTP del
+    APK): lo usan `POST /pagos/bodega-pago` y la web (`web/jugador_bodega`),
+    que ya autenticó al cliente con su sesión de Google."""
+    cliente = req.cliente.strip().lower()
     dueno = req.dueno_id.strip().lower()
     pid = req.pedido_id.strip()
     if not cliente or not dueno or not pid or req.monto_soles <= 0:
         raise HTTPException(status_code=400, detail="datos_invalidos")
-    _require_usuario(cliente, x_user_token)  # PROD: solo su propio saldo
+    mon = moneda_iso(req.moneda)
     ref = f"bod_{pid}"
     ya = stores.pago_por_charge(ref)
     if ya is not None:
@@ -1030,13 +1045,13 @@ def post_bodega_pago(req: BodegaPagoReq,
     stores.debitar(cliente, cent)
     # Egreso del CLIENTE (visible en su billetera).
     stores.registrar_pago(
-        tipo="bodega_pago", monto_centimos=cent, moneda="PEN",
+        tipo="bodega_pago", monto_centimos=cent, moneda=mon,
         estado="aprobado", dueno_id=cliente,
         culqi_charge_id=f"{ref}_deb",
         concepto=req.concepto or "Pedido de bodega", medio="saldo")
     # POR RECIBIR del DUEÑO, monto completo (comisión congelada en 0).
     stores.registrar_pago(
-        tipo="venta_bodega", monto_centimos=cent, moneda="PEN",
+        tipo="venta_bodega", monto_centimos=cent, moneda=mon,
         estado="aprobado", dueno_id=dueno, culqi_charge_id=ref,
         comision_centimos=0,
         concepto=req.concepto or "Pedido de bodega (pagado con saldo)",
@@ -1071,7 +1086,7 @@ def post_bodega_reembolso(req: BodegaReembolsoReq) -> dict:
         stores.acreditar(deb.dueno_id, deb.monto_centimos)
         _aviso_push_usuario(
             deb.dueno_id, "Te devolvimos tu saldo 💸",
-            f"Tu pedido de bodega no procedió: +S/ "
+            f"Tu pedido de bodega no procedió: +{moneda_simbolo(deb.moneda)} "
             f"{deb.monto_centimos / 100:.2f} de vuelta en tu saldo.",
             tipo="recarga")
     return {"ok": True, "duplicada": False, "cliente": cliente}
