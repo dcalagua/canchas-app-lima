@@ -772,6 +772,27 @@ para la API del APK.
   al navegador. Video solo MP4/MOV (tope 50 MB, supuesto web). "Ocultar sus
   historias" y la última vista de cada canal son locales (como en el app). En
   el menú ☰ y el Perfil. Test `tests/test_web_novedades.py`.
+- **PRO, TARJETAS, BÚSQUEDA GUIADA Y RECORDATORIOS EN LA WEB (30-sep-2026):**
+  `web/jugador_pro.py`. `/pro` (= `hazte_pro_screen`: se paga SOLO con saldo,
+  como el app; precio/moneda del país de la billetera; `post_pro_suscribir`;
+  sin saldo → `/mi-billetera#recargar`) + **cancelar/reactivar la
+  renovación automática** (`POST /web/pro/renovacion`; NUEVO en backend:
+  `procesar_renovaciones_pro` salta `auto_renovar=False` y `get_pro_estado`
+  devuelve `renueva` — el APK aún no lo ofrece), `/pro/planes` (Gratis vs Pro
+  con los candados reales), `/cuenta/tarjetas` (= `metodos_pago_screen`:
+  Culqi v4 tokeniza en el navegador, el servidor solo guarda `crd_` + marca +
+  últimos 4; tope 10), `/buscar` (= búsqueda guiada/asistente por reglas,
+  público: turnos libres reales, 1 por local, 50 km) y
+  `/anfitrion/recordatorios` (= `recordar_reservas_screen`: chat del local o
+  WhatsApp, "ya recordado" desde la nube). Cobros de academia suma "➕ Agregar
+  cuota" (`/anfitrion/cobros/agregar` = `_inscribir`/`_claseSuelta`, escribe
+  en `pichangol_matriculas` con `FOR UPDATE`; **el APK guarda esas cuotas
+  solo en el teléfono**). Todos los "Actívalo en la app" de Pro (bodega,
+  campeonatos, calendario, liga) ahora llevan a `/pro`. Pendientes del
+  backend detectados: `post_pro_suscribir`/`procesar_renovaciones_pro`
+  registran `moneda="PEN"` aunque el país sea EC/BO. `planes_screen` es el
+  "plan de trabajo" del profe (solo en el teléfono), no Pro. Test
+  `tests/test_web_jugador_pro.py`.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
   que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
   `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`

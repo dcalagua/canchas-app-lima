@@ -57,6 +57,7 @@ MENU = [
     ("mis-canchas", "Mis canchas", "Registra y administra: canchas, agenda, reservas, cuenta", "#0B7A55", "🏬", "/anfitrion/mis-canchas", True),
     ("reportes", "Reportes", "Resumen, ocupación, cobros y cancelaciones", "#2F6FDE", "📊", "/anfitrion/reportes", True),
     ("llenar", "Llenar cancha", "Horas libres de hoy y mañana: ponles promo y avisa a tus clientes", "#F28C28", "📣", "/anfitrion/llenar", True),
+    ("recordatorios", "Recordar reservas", "Avisa a tus clientes de hoy y mañana por chat o WhatsApp", "#2F6FDE", "🔔", "/anfitrion/recordatorios", True),
     ("caja", "Caja del día", "Cobrado, por cobrar y cierre de caja", "#0B8A3E", "🧾", "/anfitrion/caja", True),
     ("clientes", "Clientes", "Tu base de clientes: frecuentes, VIP, en riesgo y deudores", "#7B61FF", "👥", "/anfitrion/clientes", True),
     ("bonos", "Bonos", "Packs de horas prepagadas de tu local", "#E07A3F", "🎟️", "/anfitrion/bonos", True),
@@ -297,7 +298,7 @@ def _pro_ok(email: str) -> bool:
 
 
 _RESP_PRO = {"ok": False, "error": "requiere_pro",
-             "mensaje": "La reserva manual y el bloqueo de horas son parte de Pichangol Pro. Actívalo en la app (Perfil → Hazte Pro)."}
+             "mensaje": "La reserva manual y el bloqueo de horas son parte de Pichangol Pro. Actívalo en Perfil → 👑 Pichangol Pro."}
 
 
 @router.get("/anfitrion/calendario", response_class=HTMLResponse)
@@ -407,7 +408,7 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
         f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}&desde={sig}'>Semana siguiente ›</a>"
         f"<span class='sub' style='margin:0 0 0 auto'>{e(c['nombre'])} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min</span></div>"
         f"<div class='cal-sem cal-act'><table><thead><tr><th></th>{cab}</tr></thead><tbody>{filas_html}</tbody></table></div>"
-        + ("" if cfg["pro"] else "<p class='aviso warn' style='margin-top:12px'>📝 La reserva manual y el bloqueo de horas son parte de <b>Pichangol Pro</b>. Actívalo en la app (Perfil → Hazte Pro).</p>")
+        + ("" if cfg["pro"] else "<p class='aviso warn' style='margin-top:12px'>📝 La reserva manual y el bloqueo de horas son parte de <b>Pichangol Pro</b>. Actívalo en Perfil → 👑 Pichangol Pro.</p>")
         + modal
         + f"<script>var CAL={json.dumps(cfg, ensure_ascii=False)};var RES={json.dumps(res_json, ensure_ascii=False)};</script><script>{_JS_CAL}</script>")
     return ui.shell("Calendario", cuerpo, nav=_cabecera("calendario", ses), sesion=ses, ancho=True, titulo_tab="Calendario · Modo anfitrión")
@@ -423,7 +424,7 @@ function abrir(td){cel=td;modo=td.dataset.t;err('');['calLibre','calBloqueado','
   $('calSub').textContent=CAL.nombre+' · '+fechaTxt(td.dataset.f)+' · '+td.dataset.h+'–'+td.dataset.fin;
   var si=$('calSi');si.hidden=false;si.disabled=false;
   if(modo==='libre'){$('calTit').textContent='Turno libre';$('calLibre').hidden=false;setAcc('manual');$('mCli').value='';$('mNom').value='';$('mTel').value='';$('mEm').value='';$('mPre').value=td.dataset.p;$('mPag').checked=false;
-    if(!CAL.pro){$('calLibre').hidden=true;si.hidden=true;err('La reserva manual y el bloqueo de horas son parte de Pichangol Pro. Actívalo en la app.')}}
+    if(!CAL.pro){$('calLibre').hidden=true;si.hidden=true;err('La reserva manual y el bloqueo de horas son parte de Pichangol Pro. Actívalo en Perfil → Pichangol Pro (/pro).')}}
   else if(modo==='bloq'){$('calTit').textContent='Turno bloqueado';$('calBloqueado').hidden=false;si.textContent='Desbloquear'}
   else{var r=RES[td.dataset.rid];$('calTit').textContent='Reserva';$('calRes').hidden=false;si.hidden=true;
     $('rAv').textContent=(r.jugador||r.usuario||'?').charAt(0).toUpperCase();$('rNom').textContent=r.jugador||r.usuario||'Reserva';

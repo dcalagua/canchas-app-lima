@@ -3178,6 +3178,8 @@ def pagina_perfil(request: Request) -> HTMLResponse:
              "<span class='tx'>Mundo tenis<small>Entrena, bolea y compite</small></span>"
              + (f"<span class='bdg'>{retos}</span>" if retos else "") + "<span class='chev'>›</span></summary>"
              f"<div class='perf-sub'>{tenis}</div></details>")
+    menu += _item_perfil("👑", "Pichangol Pro", href="/pro", sub="Retos sin límite, campeonatos, bodega y más")
+    menu += _item_perfil("💳", "Métodos de pago", href="/cuenta/tarjetas", sub="Tus tarjetas guardadas")
     menu += _item_perfil("👛", "Mi billetera", href="/mi-billetera", sub="Saldo, recargas, cupones y movimientos")
     menu += "<div class='perf-sep'></div>"
     menu += _item_perfil("🌎", "Mi país", href="/mi-pais", sub="Define la moneda de tu saldo")

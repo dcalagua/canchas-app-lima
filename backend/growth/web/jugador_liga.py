@@ -1392,8 +1392,8 @@ function post(url, body, msg){
 function fallo(j, t){ pcgAvisar({titulo: t || 'No se pudo', mensaje: (j && j.mensaje) || 'Reintenta en un momento.', icono: '⚠️'}); }
 function av(nombre, foto){ return foto ? "<img class='lg-av' src='" + esc(foto) + "' alt='' referrerpolicy='no-referrer'>" : "<span class='lg-av ini'>" + esc((nombre || '?').trim().charAt(0).toUpperCase() || '?') + "</span>"; }
 window.lgPro = function(){
-  pcgConfirmar({titulo: 'Pichangol Pro', icono: '⭐', mensaje: 'Tu carnet oficial, el ranking del circuito y retos sin límite. La membresía se activa desde la app.', confirmar: 'Abrir la app', cancelar: 'Ahora no'})
-    .then(function(ok){ if(ok) window.open(C.play, '_blank', 'noopener'); });
+  pcgConfirmar({titulo: 'Pichangol Pro', icono: '⭐', mensaje: 'Tu carnet oficial, el ranking del circuito y retos sin límite. Actívala aquí mismo con tu saldo.', confirmar: 'Ver Pichangol Pro', cancelar: 'Ahora no'})
+    .then(function(ok){ if(ok) location.href = '/pro'; });
 };
 function limite(j){
   pcgConfirmar({titulo: 'Llegaste a tu límite de retos', icono: '👑', mensaje: j.mensaje, confirmar: 'Ver Pro', cancelar: 'Ahora no'})

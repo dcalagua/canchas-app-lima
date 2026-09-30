@@ -247,8 +247,8 @@ def _vista_pro(ses: dict) -> HTMLResponse:
               "<div style='font-size:44px'>🧃🍺</div><h1 style='font-size:22px;margin:10px 0 6px'>Administra tu bodega</h1>"
               "<p class='sub'>Caja rápida, stock con alertas de reposición, reportes de venta y la carta digital con QR para tus "
               "clientes. Tú cobras con tu Yape o efectivo, como siempre.</p>"
-              "<p class='sub'>La bodega es parte de <b>Pichangol Pro</b>. Actívalo en la app (Perfil → Hazte Pro) y vuelve aquí.</p>"
-              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}' rel='noopener'>👑 Activar con Pichangol Pro</a>"
+              "<p class='sub'>La bodega es parte de <b>Pichangol Pro</b>. Actívalo en Perfil → 👑 Pichangol Pro y vuelve aquí.</p>"
+              f"<div class='acciones' style='justify-content:center'><a class='btn' href='/pro'>👑 Activar con Pichangol Pro</a>"
               "<a class='btn sec' href='/anfitrion'>Volver al menú</a></div></div>")
     return ui.shell("Mi bodega", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mi bodega · Modo anfitrión",
                     extra_head=f"<style>{CSS}</style>")

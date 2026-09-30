@@ -221,8 +221,8 @@ def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = ""
              "<button type='button' class='btn' onclick=\"document.getElementById('modalPro').classList.add('open')\">＋ Organizar</button>")
     modal_pro = ("<div class='modal' id='modalPro' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:460px'>"
                  "<div class='modal-cab'><button type='button' class='cerrar' onclick=\"this.closest('.modal').classList.remove('open')\">✕</button><h3>Es Pichangol Pro</h3></div>"
-                 "<div class='modal-cuerpo'><section><p class='sub' style='margin:0 0 12px'>Crear y administrar tus propios campeonatos (fixture, inscripciones, resultados) es parte de <b>Pichangol Pro</b>. Actívalo en la app (Perfil → Hazte Pro) y vuelve aquí.</p>"
-                 f"<a class='btn' href='{PLAY_URL}' rel='noopener'>Abrir la app</a></section></div></div></div>")
+                 "<div class='modal-cuerpo'><section><p class='sub' style='margin:0 0 12px'>Crear y administrar tus propios campeonatos (fixture, inscripciones, resultados) es parte de <b>Pichangol Pro</b>. Actívalo en Perfil → 👑 Pichangol Pro y vuelve aquí.</p>"
+                 f"<a class='btn' href='/pro'>👑 Ver Pichangol Pro</a></section></div></div></div>")
     if not lista:
         cuerpo = (f"<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>{aviso}<div style='max-width:760px;margin:24px auto 0;text-align:center'>"
                   "<div style='font-size:52px'>🏆</div><h1 class='anf-hola' style='margin-top:8px'>Aún no tienes campeonatos</h1>"
@@ -530,7 +530,7 @@ def guardar(request: Request, b: dict | None = Body(None)) -> JSONResponse:
     if actual is None and datos.campeonato_existe(cid):
         return _err("Este campeonato no está a tu nombre.", 404)
     if actual is None and not _pro(ses["email"]):
-        return JSONResponse({"ok": False, "error": "requiere_pro", "mensaje": "Crear campeonatos es parte de Pichangol Pro. Actívalo en la app."}, status_code=402)
+        return JSONResponse({"ok": False, "error": "requiere_pro", "mensaje": "Crear campeonatos es parte de Pichangol Pro. Actívalo en Perfil → Pichangol Pro (/pro)."}, status_code=402)
     data, msg, paso = _validar(b, actual, ses["email"])
     if data is None:
         return JSONResponse({"ok": False, "error": msg, "paso": paso}, status_code=400)
@@ -1242,7 +1242,7 @@ def duplicar(request: Request, cid: str) -> JSONResponse:
     if err is not None:
         return err
     if not _pro(ses["email"]):
-        return JSONResponse({"ok": False, "error": "Crear campeonatos es parte de Pichangol Pro. Actívalo en la app."}, status_code=402)
+        return JSONResponse({"ok": False, "error": "Crear campeonatos es parte de Pichangol Pro. Actívalo en Perfil → Pichangol Pro (/pro)."}, status_code=402)
     nuevo = {k: c[k] for k in ("academiaId", "nombre", "deporte", "formato", "categoria", "sede", "sedeLat", "sedeLng", "costoInscripcion", "moneda",
                                "relampago", "exigeDni", "edadMin", "edadMax", "logoUrl", "minJugadoresEquipo", "premios", "auspiciador",
                                "auspiciadoresLogos", "aficheFondoUrl", "aficheVariante", "aficheTema") if c.get(k) not in (None, "", [], 0, False)}
