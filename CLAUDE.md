@@ -725,6 +725,24 @@ para la API del APK.
   del equipo (y `verificar_propiedad_screen` no está enlazada en el APK). Los
   avisos de Mis canchas llevan "Ver estado y opciones ›". Test
   `tests/test_web_anfitrion_verificador.py`.
+- **OPERACIÓN DE ACADEMIA EN LA WEB (30-sep-2026):**
+  `web/anfitrion_academia_ops.py` (registrado antes de
+  `anfitrion_academia_router`): `/anfitrion/academia/asistencia` (Vino/Faltó,
+  "Avisar a los padres" por el chat `<aid>|<correo>` o WhatsApp),
+  `/evaluaciones` (rúbrica Inicial/En proceso/Logrado con la plantilla del
+  deporte extraída a `web/planes_semilla.json` + bitácora por chips),
+  `/ranking` (3 pts victoria / 1 derrota, partidos con el formato
+  `PartidoRanking.toJson` → el ranking global web los lee), `/reportes`
+  (cobrado/por cobrar/vencido, morosidad, por programa y sede, comisión digital
+  vía `get_matricula_resumen`, boletas B-000N), `/chats` (bandeja de la
+  academia → `/mensajes/{clave}`), `/sedes` (sedes con mapa, horario por sede y
+  programa, precio por sede y plan; merge sobre `data` con `FOR UPDATE`).
+  Cobros → `/anfitrion/cobros?academia=` (no se duplicó). Accesos en la
+  tarjeta de cada academia de Mi academia. **Asistencia, evaluaciones y
+  bitácora** van a 3 tablas NUEVAS (SQL `docs/piloto/supabase_academia_
+  operacion.sql`, RLS sin políticas; sin ellas las páginas avisan): el APK las
+  guarda solo en el teléfono, así que web y app no las comparten todavía.
+  Test `tests/test_web_academia_ops.py`.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
   que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
   `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`

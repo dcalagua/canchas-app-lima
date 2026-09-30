@@ -102,7 +102,13 @@ def _tarjeta(a: dict, n_alumnos: int) -> str:
             f"<a class='btn' href='/anfitrion/academia/{e(a['id'])}/editar'>✏️ Editar</a>"
             f"<a class='btn sec' href='/anfitrion/academia/alumnos?academia={e(a['id'])}'>🎓 Alumnos</a>"
             f"<a class='btn sec' href='/l/{e(a['id'])}' target='_blank' rel='noopener'>🌐 Landing</a>"
-            "</div></div></div>")
+            "</div><div class='acciones' style='margin-top:8px'>"
+            + "".join(f"<a class='btn sec' href='{ruta}?academia={e(a['id'])}'>{txt}</a>" for txt, ruta in (
+                ("💰 Cobros", "/anfitrion/cobros"), ("✅ Asistencia", "/anfitrion/academia/asistencia"),
+                ("📋 Evaluación", "/anfitrion/academia/evaluaciones"), ("🏆 Ranking", "/anfitrion/academia/ranking"),
+                ("📊 Reportes", "/anfitrion/academia/reportes"), ("💬 Chats", "/anfitrion/academia/chats"),
+                ("📍 Sedes y horarios", "/anfitrion/academia/sedes")))
+            + "</div></div></div>")
 
 
 def _simbolo_iso(a: dict) -> tuple[str, str]:
@@ -293,7 +299,7 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
   <label>Descuento por prepago</label>{_chips('descuentoPrepago', catalogos.DESCUENTOS_ACADEMIA, int(float(a.get('descuentoPrepago') or 0)), pct)}
   <label>Desde cuántos meses adelantados aplica</label>{_chips('mesesMinPrepago', catalogos.MESES_MIN_PREPAGO, int(a.get('mesesMinPrepago') or 3), lambda v: f"{v} mes{'es' if v != 1 else ''}")}
   <label for='retri'>Retribución al club / sede <span class='req'>% de lo cobrado · 0 = no aplica</span></label><div class='inp-moneda' style='max-width:160px'><input id='retri' type='number' min='0' max='50' step='1' value='{float(a.get('retribucionClubPct') or 0):.0f}'><span>%</span></div>
-  <p class='sub' style='font-size:12.5px;margin-top:14px'>Sedes adicionales, horarios y precios por sede y el ranking interno se configuran en la app y se conservan al guardar aquí.</p>
+  <p class='sub' style='font-size:12.5px;margin-top:14px'>Sedes adicionales, horarios y precios por sede se editan en «📍 Sedes y horarios» y el ranking interno en «🏆 Ranking» (en la tarjeta de tu academia); se conservan al guardar aquí.</p>
  </section>
 </form></div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Los cambios se ven al instante en la app y en tu landing.</span>
