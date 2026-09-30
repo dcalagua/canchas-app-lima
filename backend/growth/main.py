@@ -29,6 +29,7 @@ from web.anfitrion_academia import router as anfitrion_academia_router
 from web.anfitrion_tienda import router as anfitrion_tienda_router
 from web.anfitrion_campeonatos import router as anfitrion_campeonatos_router
 from web.anfitrion_boleadores import router as anfitrion_boleadores_router
+from web.anfitrion_negocio import router as anfitrion_negocio_router
 from boleadores import router as boleadores_router
 from fidelidad import router as fidelidad_router
 from web.academia import router as academia_web_router
@@ -152,6 +153,7 @@ app.include_router(anfitrion_tienda_router)
 app.include_router(anfitrion_bodega_router)  # /anfitrion/bodega (antes del comodín /anfitrion/{modulo})
 app.include_router(anfitrion_campeonatos_router)  # antes del comodín /anfitrion/{modulo}
 app.include_router(anfitrion_boleadores_router)  # antes del comodín /anfitrion/{modulo}
+app.include_router(anfitrion_negocio_router)  # reportes, caja, clientes, bonos, fijas, disponibilidad, cobros (antes del comodín)
 app.include_router(anfitrion_router)
 app.include_router(boleadores_router)  # /boleadores/* (APK + ficha web)
 app.include_router(fidelidad_router)  # /fidelidad/* (tarjeta de fidelidad del local)

@@ -138,10 +138,14 @@ def _hoy(canchas: list[dict]) -> date:
 
 
 def _tarjeta_res(r: dict, c: dict | None, hoy: date) -> str:
+    from web.anfitrion_negocio import es_noshow, grupo_medio  # filtro Online/Efectivo/Manual y no-show (reservas_dueno_screen)
     sim = r.get("moneda") or (c and _moneda_de(c)[0]) or "S/"
     pagado = bool(r.get("pagado"))
     medio = str(r.get("medio_pago") or "")
-    if pagado and medio in ("yape", "tarjeta"):
+    noshow = es_noshow(r)
+    if noshow:
+        pill = "<span class='pill bad'>No vino (no-show)</span>"
+    elif pagado and medio in ("yape", "tarjeta"):
         pill = f"<span class='pill ok'>Pagada en línea · {medio}</span>"
     elif pagado:
         pill = "<span class='pill ok'>Cobrada</span>"
@@ -154,17 +158,19 @@ def _tarjeta_res(r: dict, c: dict | None, hoy: date) -> str:
     dia = horarios.etiqueta_dia(fecha, hoy)
     dia = (dia + " · ") if dia in ("Hoy", "Mañana") else ""
     web = str(r.get("id") or "").startswith("web_")
-    return (f"<div class='anf-res' data-fecha='{e(fecha)}' data-pagado='{1 if pagado else 0}'>"
+    medio_txt = {"yape": "📱 Yape", "tarjeta": "💳 Tarjeta", "efectivo": "💵 Efectivo", "sena": "🔒 Seña", "manual": "✍️ Manual", "bono": "🎟️ Bono"}.get(medio, "")
+    return (f"<div class='anf-res' data-fecha='{e(fecha)}' data-pagado='{1 if pagado else 0}' data-medio='{grupo_medio(r)}'>"
             f"<div style='display:flex;justify-content:space-between;gap:8px;align-items:baseline'><span class='hora'>{e(r.get('hora_inicio'))}–{e(r.get('hora_fin'))}</span>"
             f"<span class='sub' style='margin:0;font-weight:700'>{e(dia)}{e(horarios.fecha_larga(fecha))}</span></div>"
             f"<div class='sub' style='margin:2px 0 0;font-weight:700;color:var(--noche)'>{e((c or {}).get('nombre') or 'Cancha')}</div>"
             f"<div class='quien'><span class='av'>{e(ini)}</span><div style='min-width:0'><b>{e(jugador)}</b>"
             f"<div class='sub' style='margin:0;font-size:12.5px'>{e(r.get('usuario') or '')}{(' · ' + e(tel)) if tel else ''}{' · reserva web' if web else ''}</div></div>"
             f"<b style='margin-left:auto;white-space:nowrap'>{e(sim)} {int(r.get('precio') or 0):.2f}</b></div>"
-            f"<div class='acc'>{pill}"
+            f"<div class='acc'>{pill}" + (f"<span class='pill gris'>{medio_txt}</span>" if medio_txt else "")
             + (f"<a class='btn sec' href='https://wa.me/{e(''.join(ch for ch in tel if ch.isdigit()))}' target='_blank' rel='noopener'>💬 WhatsApp</a>" if tel else "")
-            + (f"<button type='button' class='btn' data-pagar='{e(r.get('id'))}' data-v='1'>✅ Marcar pagada</button>" if not pagado
-               else (f"<button type='button' class='btn sec' data-pagar='{e(r.get('id'))}' data-v='0'>↩ Marcar por cobrar</button>" if medio not in ("yape", "tarjeta") else ""))
+            + ("" if noshow else (f"<button type='button' class='btn' data-pagar='{e(r.get('id'))}' data-v='1'>✅ Marcar pagada</button>" if not pagado
+               else (f"<button type='button' class='btn sec' data-pagar='{e(r.get('id'))}' data-v='0'>↩ Marcar por cobrar</button>" if medio not in ("yape", "tarjeta") else "")))
+            + ("" if noshow or (pagado and medio in ("yape", "tarjeta")) else f"<button type='button' class='btn sec' data-noshow='{e(r.get('id'))}'>No-show</button>")
             + "</div></div>")
 
 
@@ -240,8 +246,19 @@ def pagina_reservas(request: Request) -> HTMLResponse:
                 out += f"<h3 style='margin:16px 0 8px'>{e(horarios.etiqueta_dia(f, hoy))} · {e(horarios.fecha_larga(f))}</h3><div class='anf-grid'>"
                 out += "".join(_tarjeta_res(x, por_id.get(x.get("cancha_id")), hoy) for x in lst if str(x.get("fecha")) == f) + "</div>"
         return out
+    # Filtro por ORIGEN del cobro + mini libro de caja (reservas_dueno_screen); se aplica en el navegador.
+    from web.anfitrion_negocio import JS_FILTRO_RESERVAS, es_noshow
+    sim = _moneda_de(canchas[0])[0] if canchas else "S/"
+    cobrado = sum(int(r.get("precio") or 0) for r in filas if r.get("pagado") and not es_noshow(r))
+    pend = sum(int(r.get("precio") or 0) for r in filas if not r.get("pagado") and not es_noshow(r))
+    filtros = ("<div class='chips' id='filMedio' style='margin-top:14px'>" + "".join(
+        f"<button type='button' class='chip{' sel' if k == 'todos' else ''}' data-medio='{k}'>{n}</button>"
+        for k, n in (("todos", "Todos"), ("online", "Online"), ("efectivo", "Efectivo"), ("manual", "Manual"))) + "</div>"
+        f"<div class='kpis'><div class='kpi'><small>Cobrado</small><b>{e(sim)} {cobrado}</b></div>"
+        f"<div class='kpi'><small>Por cobrar</small><b>{e(sim)} {pend}</b></div></div>")
     cuerpo = ("<h1 class='anf-hola'>Reservas</h1><p class='sub'>Las reservas de tus canchas: en línea (web y app) y las que registraste a mano.</p>"
-              + bloque("Próximas", prox, "Sin reservas próximas.") + bloque("Pasadas (30 días)", pas, "Sin reservas en los últimos 30 días."))
+              + filtros + bloque("Próximas", prox, "Sin reservas próximas.") + bloque("Pasadas (30 días)", pas, "Sin reservas en los últimos 30 días.")
+              + f"<script>{JS_PAGAR}{JS_FILTRO_RESERVAS}</script>")
     return ui.shell("Reservas", cuerpo, nav=_cabecera("reservas", ses), sesion=ses, ancho=True, titulo_tab="Reservas · Modo anfitrión")
 
 
@@ -251,6 +268,10 @@ document.addEventListener('click',async function(ev){var b=ev.target.closest('[d
   try{var r=await fetch('/anfitrion/reserva/'+encodeURIComponent(id)+'/pagado',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pagado:v})});var j=await r.json();
     if(j.ok){pcgToast(v?'✅ Pago registrado':'↩ Marcada por cobrar');if(window.alPagar){window.alPagar(id,v);return}location.reload();return}
     pcgToast(j.error||'No se pudo guardar.')}catch(e){pcgToast('No se pudo guardar. Revisa tu conexión.')} b.disabled=false;b.innerHTML=txt});
+document.addEventListener('click',async function(ev){var b=ev.target.closest('[data-noshow]');if(!b||b.disabled)return;
+  var ok=await pcgConfirmar({titulo:'¿El jugador no vino?',mensaje:'Se marca como no-show: libera la cuenta de por cobrar y, si pagó seña, queda a tu favor.',confirmar:'Marcar no-show',destructivo:true,icono:'🚫'});if(!ok)return;
+  b.disabled=true;try{var r=await fetch('/anfitrion/reserva/'+encodeURIComponent(b.dataset.noshow)+'/noshow',{method:'POST'});var j=await r.json();
+    if(j.ok){pcgRecargar('Marcado como no-show');return}pcgAvisar({titulo:'No se pudo',mensaje:j.error||'Reintenta.'})}catch(e){pcgToast('No se pudo guardar. Revisa tu conexión.')} b.disabled=false});
 """
 
 
