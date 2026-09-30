@@ -54,7 +54,14 @@ SECCIONES = [("hoy", "Hoy", "/anfitrion/mis-canchas", "📅"), ("calendario", "C
 # anfitrión): ícono en círculo de color, título, descripción y chevron.
 MENU = [
     ("mis-canchas", "Mis canchas", "Registra y administra: canchas, agenda, reservas, cuenta", "#0B7A55", "🏬", "/anfitrion/mis-canchas", True),
+    ("reportes", "Reportes", "Resumen, ocupación, cobros y cancelaciones", "#2F6FDE", "📊", "/anfitrion/reportes", True),
+    ("caja", "Caja del día", "Cobrado, por cobrar y cierre de caja", "#0B8A3E", "🧾", "/anfitrion/caja", True),
+    ("clientes", "Clientes", "Tu base de clientes: frecuentes, VIP, en riesgo y deudores", "#7B61FF", "👥", "/anfitrion/clientes", True),
+    ("bonos", "Bonos", "Packs de horas prepagadas de tu local", "#E07A3F", "🎟️", "/anfitrion/bonos", True),
+    ("fijas", "Reservas fijas", "Pensionados: el mismo día y hora, cada semana", "#067A38", "🔁", "/anfitrion/fijas", True),
+    ("disponibilidad", "Disponibilidad", "Abre o cierra turnos de tus canchas", "#7CB518", "🟢", "/anfitrion/disponibilidad", True),
     ("academia", "Mi academia", "Soy profe: alumnos, cuotas y cobros", "#E07A3F", "📣", "/anfitrion/academia", True),
+    ("cobros", "Cobros de academia", "Quién debe, recordatorios y cobro en efectivo", "#D4B048", "💳", "/anfitrion/cobros", True),
     ("campeonatos", "Mis campeonatos", "Organiza torneos (fútbol, tenis…), invita y sortea", "#D4B048", "🏆", "/anfitrion/campeonatos", True),
     ("tienda", "Mi tienda", "Vende en el Marketplace Pichangol: raquetas, pelotas y más", "#7B61FF", "🏪", "/anfitrion/tienda", True),
     ("bodega", "Mi bodega", "Caja rápida, stock, pedidos a la cancha y carta con QR (Pro)", "#E07A3F", "🧃", "/anfitrion/bodega", True),

@@ -683,6 +683,27 @@ para la API del APK.
   `tests/test_web_bodega.py`. OJO: el SQL de bodega y mensajería no se pudo
   probar contra Postgres real en el entorno de desarrollo (tests con doble
   en memoria): probar en QAS antes de PRD.
+- **NEGOCIO DEL DUEÑO EN LA WEB (30-sep-2026, fase 3):**
+  `web/anfitrion_negocio.py` = `reportes_hub/reportes/reporte_canchas`
+  (`/anfitrion/reportes[/cobros(.csv)]`, "Cuánto vas a recibir"),
+  `analitica_ocupacion` (`/anfitrion/ocupacion`, calor hora×día),
+  `cancelaciones` (`/anfitrion/cancelaciones`), `caja_dia` (`/anfitrion/caja`,
+  misma lógica que `cajaDia`: bono no suma, seña cuenta como cobrada; cierre y
+  reapertura), `clientes` (`/anfitrion/clientes`, segmentos VIP/recurrentes/
+  nuevos/en riesgo/deudores, notas privadas), `bonos_dueno`
+  (`/anfitrion/bonos`, `pichangol_bonos`), `reservas_fijas`
+  (`/anfitrion/fijas`, serie de 4 semanas = filas manuales `man_…`, respeta
+  bloqueos y turnos pasados, recuerda lo generado), `disponibilidad` (real
+  sobre `pichangol_bloqueos`) y `cobros` de academia (`/anfitrion/cobros`,
+  recordar por mensaje en `<academia>|<correo>` o WhatsApp, marcar cuota
+  cobrada con `FOR UPDATE`). Reservas del dueño web: chip de medio de pago,
+  filtro Online/Efectivo/Manual y "No-show" (no en pagadas en línea).
+  Multi-moneda con selector `?m=PEN|USD|BOB`. Cierres de caja, fijas, notas
+  y último recordatorio viven en `stores.negocio_web[correo]` (snapshot):
+  **el APK los guarda solo en el teléfono**, así que web y app no los
+  comparten todavía (unificar = tabla en Supabase + APK). MENU anfitrión con
+  Reportes, Caja del día, Clientes, Bonos, Reservas fijas, Disponibilidad y
+  Cobros de academia. Test `tests/test_web_anfitrion_negocio.py`.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
   que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
   `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`
