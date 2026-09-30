@@ -118,10 +118,15 @@ def solicitar(cancha_id: str, telefono: str) -> dict:
 
 
 def confirmar(cancha_id: str, codigo: str, solicitante_id: str,
-              telefono_publico: str | None = None) -> dict:
+              telefono_publico: str | None = None, activar: bool = True) -> dict:
     """Valida el OTP. Si coincide, decide el estado de propiedad y registra la
     confirmación (auditable). Borra el OTP tras un intento exitoso o al agotar
-    intentos (no-retención)."""
+    intentos (no-retención).
+
+    [activar]=False (web, `web/anfitrion_verificador.py`): el código solo
+    PRUEBA que el reclamante controla ese WhatsApp; queda como evidencia para
+    la torre y NO marca la cancha verificada (existir/tener el teléfono ≠ ser
+    el dueño: la propiedad la confiere el reclamo aprobado)."""
     otp = stores.otps.get(cancha_id)
     if otp is None:
         return {"ok": False, "error": "sin_otp"}
@@ -163,7 +168,7 @@ def confirmar(cancha_id: str, codigo: str, solicitante_id: str,
     stores.confirmaciones_propiedad.append(conf)
     stores.otps.pop(cancha_id, None)  # no-retención: se borra al usarse
 
-    if estado == "confirmada":
+    if estado == "confirmada" and activar:
         c = stores.cancha(cancha_id)
         c.verificada = True
         c.metodo_verificacion = "documental"  # OTP = vía no presencial
