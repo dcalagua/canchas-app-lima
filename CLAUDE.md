@@ -704,6 +704,27 @@ para la API del APK.
   comparten todavía (unificar = tabla en Supabase + APK). MENU anfitrión con
   Reportes, Caja del día, Clientes, Bonos, Reservas fijas, Disponibilidad y
   Cobros de academia. Test `tests/test_web_anfitrion_negocio.py`.
+- **VERIFICADOR Y ESTADO DE VERIFICACIÓN EN LA WEB (30-sep-2026):**
+  `web/anfitrion_verificador.py`. `/anfitrion/verificador` (antes "está en la
+  app") = `verificador_screen` + `validar_reclamo_screen`: cola de visitas de
+  `verificacion_fisica.service.visitas` ordenada por cercanía al GPS (chips
+  25/50/100 km), captura con fotos (`canchas/verif/…`), firma y GPS →
+  `service.captura`; y validar por código + GPS → `reclamos.validar_en_sitio`
+  (fotos opcionales en `canchas/validacion/…`). Cualquier cuenta con sesión
+  puede ser verificador (como el app; la seguridad es código + GPS), pero
+  NADIE valida su propio reclamo y hay topes de intentos en memoria (8
+  códigos malos / 30 min, 12 capturas fallidas / 30 min, 5 OTP / hora).
+  `/anfitrion/verificacion/{cancha_id}` (solo canchas propias) = panel
+  "pendiente" del app: línea de tiempo del reclamo, "Verificar estado ahora"
+  (repara la nube con `datos.marcar_verificada` si ya estaba aprobado),
+  "Reenviar solicitud" (`reclamos.crear_reclamo` o recordatorio al admin) y
+  OTP por WhatsApp (`propiedad.service.solicitar/confirmar`). **Decisión de
+  seguridad pendiente de validar con el director:** en la web el OTP NO
+  activa la cancha (`confirmar(…, activar=False)`): queda como evidencia en el
+  reclamo y avisa al admin; el APK, con `confirmada`, la activaba sin revisión
+  del equipo (y `verificar_propiedad_screen` no está enlazada en el APK). Los
+  avisos de Mis canchas llevan "Ver estado y opciones ›". Test
+  `tests/test_web_anfitrion_verificador.py`.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
   que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
   `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`
@@ -809,8 +830,9 @@ para la API del APK.
   nunca quedaba reservable. Ahora `reclamos._nube_verificada` (llamado en
   `aprobar_directo`, `activar_admin`, `validar_en_sitio` y
   `_revocar_cancha_al_rechazar`) hace `datos.marcar_verificada(cancha_id,
-  dueno, bool)` sobre la reclamada y sus hermanas `u<ts>_*` (fail-safe). OTP
-  por WhatsApp y verificación de existencia (IA) siguen solo en el app. Test
+  dueno, bool)` sobre la reclamada y sus hermanas `u<ts>_*` (fail-safe). El OTP por
+  WhatsApp ya está en la web (`/anfitrion/verificacion/{id}`); la verificación
+  de existencia (IA) sigue solo en el app. Test
   `test_registrar_y_reclamar_cancha_desde_la_web_como_el_app`.
   **AGREGAR CANCHA A UN LOCAL EXISTENTE (pedido del director, 23-sep-2026:
   "¿cómo registro otra cancha, y de otro deporte?"):** `GET/POST

@@ -31,6 +31,7 @@ def _leer_json(v):
     if v is _JSON_INVALIDO:
         raise ValueError("json inválido")
     return v
+from urllib.parse import quote
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
@@ -66,7 +67,7 @@ MENU = [
     ("tienda", "Mi tienda", "Vende en el Marketplace Pichangol: raquetas, pelotas y más", "#7B61FF", "🏪", "/anfitrion/tienda", True),
     ("bodega", "Mi bodega", "Caja rápida, stock, pedidos a la cancha y carta con QR (Pro)", "#E07A3F", "🧃", "/anfitrion/bodega", True),
     ("boleador", "Soy boleador", "Peloteo por turno: pon tu categoría, tu tarifa y dónde atiendes", "#0E8F67", "🎾", "/anfitrion/boleador", True),
-    ("verificador", "Verificador", "Rol de campo: visitas con foto, GPS y firma", "#0E8F67", "🛡️", "/anfitrion/verificador", False),
+    ("verificador", "Verificador", "Rol de campo: visitas con foto, GPS y firma", "#0E8F67", "🛡️", "/anfitrion/verificador", True),
 ]
 
 
@@ -2017,7 +2018,7 @@ _ESTADO_RECLAMO = {
     "aprobado_triage": ("warn", "Aprobada, falta validar", "Falta la validación en sitio (código + ubicación) para activarla."),
     "pendiente_validacion": ("warn", "Aprobada, falta validar", "Falta la validación en sitio (código + ubicación) para activarla."),
     "validada_pendiente_admin": ("warn", "Validada, activación pendiente", "El equipo la activa en breve."),
-    "rechazada": ("err", "No aprobada", "No pudimos confirmar la propiedad. Escríbenos por WhatsApp o vuelve a enviar la solicitud desde la app."),
+    "rechazada": ("err", "No aprobada", "No pudimos confirmar la propiedad. Escríbenos por WhatsApp o vuelve a enviarla desde «Ver estado y opciones»."),
     "reclamada_por_otro": ("err", "Reclamada por otra cuenta", "Otra persona ya tiene este local a su nombre. Si es tuyo, escríbenos."),
 }
 
@@ -2236,8 +2237,8 @@ def _aviso_verificacion(canchas: list[dict], email: str) -> str:
             est = reclamos.estado(c["id"], email)
         except Exception:  # noqa: BLE001
             est = {}
-        clase, tit, txt = _ESTADO_RECLAMO.get(str(est.get("estado") or ""), ("warn", "Sin solicitud de verificación", "No encontramos tu solicitud. Vuelve a enviarla desde la app (ficha de la cancha → Reenviar solicitud)."))
-        filas.append(f"<div class='aviso {clase}' style='margin:12px 0 0'><b>{e(c.get('club') or c['nombre'])}</b> · {tit}. <span class='sub' style='margin:0'>{txt}</span></div>")
+        clase, tit, txt = _ESTADO_RECLAMO.get(str(est.get("estado") or ""), ("warn", "Sin solicitud de verificación", "No encontramos tu solicitud. Toca «Ver estado y opciones» para reenviarla."))
+        filas.append(f"<div class='aviso {clase}' style='margin:12px 0 0'><b>{e(c.get('club') or c['nombre'])}</b> · {tit}. <span class='sub' style='margin:0'>{txt}</span> <a href='/anfitrion/verificacion/{quote(c['id'], safe='')}' style='font-weight:700;white-space:nowrap'>Ver estado y opciones ›</a></div>")
     return "".join(filas)
 
 
