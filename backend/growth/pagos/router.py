@@ -1377,7 +1377,9 @@ def get_pro_config(pais: str = "PE") -> dict:
 def get_pro_estado(email: str, pais: str = "PE") -> dict:
     activa, hasta = _pro_estado(email)
     c = _pro_precio_centimos(pais)
+    m = stores.membresias_pro.get(email.strip().lower()) or {}
     return {"email": email, "activa": activa, "hasta": hasta,
+            "renueva": bool(m) and not m.get("cortesia") and m.get("auto_renovar") is not False,
             "precio_centimos": c, "precio_soles": c / 100.0}
 
 
@@ -1448,6 +1450,10 @@ def procesar_renovaciones_pro() -> dict:
             # renueva solo debitando la billetera del dueño (ahí está la plata
             # de sus liquidaciones). Vencida la cortesía, simplemente expira;
             # si quiere seguir, se suscribe pagando como cualquier usuario.
+            continue
+        if m.get("auto_renovar") is False:
+            # El jugador CANCELÓ la renovación automática (web /pro): al vencer
+            # no se debita nada; pagar de nuevo a mano la reactiva.
             continue
         precio = _pro_precio_centimos(m.get("pais", "PE"))
         if stores.saldo_centimos(email) >= precio:
