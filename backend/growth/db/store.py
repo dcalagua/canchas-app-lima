@@ -645,6 +645,10 @@ class Stores:
         self.reclamaciones: list[dict] = []
         # Cancelaciones hechas desde la WEB (historial + estado del reembolso).
         self.cancelaciones_web: list[dict] = []
+        # MARKETPLACE: unidades APARTADAS por el APK antes de cobrar
+        # (`pagos/stock_productos.py`): apartado_id → {producto_id, email,
+        # estado: apartado|vendido|devuelto|vencido, ilimitado, en}.
+        self.apartados_stock: dict[str, dict] = {}
         # CATÁLOGO GLOBAL de servicios extra (add-ons de pago de la reserva),
         # administrado desde la torre (`servicios_extra.py`): clave → fila.
         # `version` sube en cada cambio (el APK lo cachea por versión).
@@ -1150,6 +1154,7 @@ class Stores:
                 k: dict(v) for k, v in self.payphone_pagos.items()},
             "reclamaciones": [dict(r) for r in self.reclamaciones],
             "cancelaciones_web": [dict(r) for r in self.cancelaciones_web],
+            "apartados_stock": {k: dict(v) for k, v in self.apartados_stock.items()},
             "publicaciones_redes": [dict(r) for r in self.publicaciones_redes],
             "admin_accesos": [dict(r) for r in self.admin_accesos],
             "agente_fb": {"borradores": [dict(b) for b in self.agente_fb.get("borradores", [])], "corridas": [dict(c) for c in self.agente_fb.get("corridas", [])]},
@@ -1251,6 +1256,7 @@ class Stores:
         }
         self.reclamaciones = [dict(r) for r in (data.get("reclamaciones") or [])]
         self.cancelaciones_web = [dict(r) for r in (data.get("cancelaciones_web") or [])]
+        self.apartados_stock = {k: dict(v) for k, v in (data.get("apartados_stock") or {}).items()}
         self.publicaciones_redes = [dict(r) for r in (data.get("publicaciones_redes") or [])]
         self.admin_accesos = [dict(r) for r in (data.get("admin_accesos") or [])]
         ag = data.get("agente_fb") or {}

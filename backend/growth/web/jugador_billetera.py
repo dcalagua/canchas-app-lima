@@ -33,7 +33,8 @@ elegido → Perú (la web no tiene el GPS del teléfono). El país de casa del A
 vive solo en SharedPreferences; en la nube no hay columna para él, así que la
 web lo guarda de forma ADITIVA en la ficha del cliente del snapshot
 (`stores.clientes_pago[correo]["pais_casa" | "pais_casa_en"]`, privada y
-persistida). El APK aún no lo lee.
+persistida). El APK lo lee y escribe con `GET/POST /pagos/pais-casa`
+(`AppState.sincronizarPaisCasa`), así el país de casa es el mismo en web y app.
 
 Todo endpoint que escribe exige la sesión de Google (`web/sesion.py`) y opera
 solo sobre el correo de esa sesión.

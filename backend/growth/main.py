@@ -271,6 +271,26 @@ async def _iniciar_cron_boleadores() -> None:
 
 
 @app.on_event("startup")
+async def _iniciar_cron_stock_marketplace() -> None:
+    """MARKETPLACE: cada 5 min devuelve al stock las unidades que un APK apartó
+    y nunca cobró (`pagos/stock_productos.liberar_vencidos`, en un hilo: toca
+    Postgres). Fail-safe."""
+    async def _loop() -> None:
+        await asyncio.sleep(120)
+        while True:
+            try:
+                from pagos.router import liberar_apartados_vencidos
+                n = await asyncio.to_thread(liberar_apartados_vencidos)
+                if n:
+                    pg.persistir_en_segundo_plano(stores)
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(300)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
 async def _iniciar_cron_storage() -> None:
     """RECOLECTOR DE BASURA del Storage: cada N horas borra los archivos que
     quedaron sin dueño. El APK ya borra en caliente al eliminar una cancha, un

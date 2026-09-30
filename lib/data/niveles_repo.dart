@@ -103,4 +103,42 @@ class NivelesRepo {
       return false;
     }
   }
+
+  /// REEVALUACIÓN del auto-cuestionario (= `/mi-nivel` de la web): si la fila
+  /// ya existe cambia SOLO `nivel` y `actualizado` — conserva partidos,
+  /// victorias y confiabilidad (antes el upsert de la fila completa los ponía
+  /// en 0). Si no existe, la crea. Devuelve la fila resultante (null si falló).
+  static Future<Nivel?> reevaluar(
+      String email, String deporte, double nivel) async {
+    final e = email.trim().toLowerCase();
+    if (!disponible || e.isEmpty || deporte.isEmpty) return null;
+    final ahora = DateTime.now();
+    Future<Nivel?> actualizar() async {
+      final rows = await SupabaseService.client
+          .from(_tabla)
+          .update({'nivel': nivel, 'actualizado': ahora.toIso8601String()})
+          .eq('email', e)
+          .eq('deporte', deporte)
+          .select();
+      final list = rows as List;
+      if (list.isEmpty) return null;
+      return Nivel.fromRow(list.first as Map<String, dynamic>);
+    }
+
+    try {
+      final ya = await actualizar();
+      if (ya != null) return ya;
+      final nuevo =
+          Nivel(email: e, deporte: deporte, nivel: nivel, actualizado: ahora);
+      try {
+        await SupabaseService.client.from(_tabla).insert(nuevo.toRow());
+        return nuevo;
+      } catch (_) {
+        // Otra sesión la creó entre medio (UNIQUE email+deporte): actualiza.
+        return await actualizar();
+      }
+    } catch (_) {
+      return null;
+    }
+  }
 }

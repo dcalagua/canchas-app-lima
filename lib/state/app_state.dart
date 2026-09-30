@@ -303,17 +303,28 @@ class AppState extends ChangeNotifier {
   }) async {
     final email = (usuario?.email ?? '').toLowerCase();
     if (email.isEmpty || deporte.isEmpty) return;
-    final n = Nivel(
-      email: email,
-      deporte: deporte,
-      nivel: Nivel.seedDesde(
-          anios: anios, frecuenciaSemana: frecuenciaSemana, compite: compite),
-      actualizado: DateTime.now(),
-    );
+    final seed = Nivel.seedDesde(
+        anios: anios, frecuenciaSemana: frecuenciaSemana, compite: compite);
+    // Reevaluar NO borra la historia: conserva partidos, victorias y
+    // confiabilidad (igual que `/mi-nivel` en la web); solo cambia el nivel.
+    final previo = _misNiveles[deporte];
+    final n = previo != null
+        ? previo.copyWith(nivel: seed, actualizado: DateTime.now())
+        : Nivel(
+            email: email,
+            deporte: deporte,
+            nivel: seed,
+            actualizado: DateTime.now(),
+          );
     _misNiveles[deporte] = n;
     notifyListeners();
     await _guardarMisNivelesCache();
-    await NivelesRepo.guardar(n);
+    final remoto = await NivelesRepo.reevaluar(email, deporte, seed);
+    if (remoto != null) {
+      _misNiveles[deporte] = remoto;
+      notifyListeners();
+      await _guardarMisNivelesCache();
+    }
   }
 
   /// Ajusta MI nivel tras un resultado real (reto/campeonato) con ELO suave, y
@@ -3795,6 +3806,9 @@ class AppState extends ChangeNotifier {
       String alumnoId) async {
     final estado = await PagosService.estadoSuscripcionAlumno(alumnoId);
     if (estado == null) return null;
+    final activa = estado['activa'] == true;
+    final cambioDebito = _debitoActivo[alumnoId] != activa;
+    _debitoActivo[alumnoId] = activa;
     final hechos = (estado['cobros_hechos'] as num?)?.toInt() ?? 0;
     final pagadasEsperadas = 1 + hechos; // 1.er mes (signup) + cobros del cron
     final auto = cuotas
@@ -3814,9 +3828,21 @@ class AppState extends ChangeNotifier {
     if (cambio) {
       notifyListeners();
       _persistirDatos();
+    } else if (cambioDebito) {
+      notifyListeners();
     }
     return estado;
   }
+
+  /// Débito automático ACTIVO por alumno (lo trae [reconciliarSuscripcionAlumno]).
+  final Map<String, bool> _debitoActivo = {};
+
+  /// ¿Esta cuota la cobra el CRON en su fecha? (mes a mes con la suscripción
+  /// activa). Entonces NO se ofrece pagarla a mano: evitaría el doble cobro
+  /// (misma regla que la web, `jugador_clases._auto_bloqueada`). Mientras no
+  /// se conoce el estado de la suscripción se asume activa (lado seguro).
+  bool cuotaSeCobraAutomatico(Cuota c) =>
+      c.autoDebito && !c.pagada && (_debitoActivo[c.alumnoId] ?? true);
 
   // ── Invitaciones (invitar por correo / teléfono) ──────────────────────────
 
@@ -6338,14 +6364,81 @@ class AppState extends ChangeNotifier {
   /// para que la próxima recarga la fije en la nueva.
   Future<bool> cambiarPaisCasa(PaisConfig p) async {
     if (!puedeCambiarPaisCasa) return false;
+    // El país de casa vive TAMBIÉN en el backend (el mismo que usa la web en
+    // Perfil → Mi país). El backend manda sobre el saldo: si dice que hay
+    // plata, no se cambia. Sin red se guarda local y se sube luego
+    // ([sincronizarPaisCasa]).
+    final email = (usuario?.email ?? '').trim().toLowerCase();
+    if (email.isNotEmpty && PagosService.disponible) {
+      final r = await PagosService.guardarPaisCasa(email, p.iso);
+      if (r != null && r['ok'] != true) return false;
+    }
     await setPaisCasa(p);
+    await _guardarPaisCasaEn(DateTime.now().toUtc());
+    await _descongelarMonedaSaldo();
+    notifyListeners();
+    return true;
+  }
+
+  static const _kPaisCasaEn = 'pais_casa_en';
+
+  Future<void> _guardarPaisCasaEn(DateTime? en) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (en == null) {
+        await prefs.remove(_kPaisCasaEn);
+      } else {
+        await prefs.setString(_kPaisCasaEn, en.toIso8601String());
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _descongelarMonedaSaldo() async {
     monedaSaldo = '';
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_kMonedaSaldo);
     } catch (_) {}
+  }
+
+  /// PAÍS DE CASA compartido app ↔ web: SharedPreferences es la caché; el
+  /// backend (`GET/POST /pagos/pais-casa`) es la fuente común. Gana la
+  /// elección MÁS RECIENTE: si se cambió en la web, el app la adopta (y, con
+  /// saldo 0, descongela la moneda como `cambiarPaisCasa`); si se cambió en el
+  /// app sin red, se sube ahora. El país que puso el GPS al instalar no es
+  /// una elección y nunca pisa al del backend.
+  Future<void> sincronizarPaisCasa() async {
+    final email = (usuario?.email ?? '').trim().toLowerCase();
+    if (email.isEmpty || !PagosService.disponible) return;
+    final r = await PagosService.paisCasa(email);
+    if (r == null) return;
+    final remoto = paisesSoportados[(r['pais_casa'] ?? '').toString()];
+    final remotoEn = DateTime.tryParse((r['pais_casa_en'] ?? '').toString());
+    DateTime? localEn;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      localEn = DateTime.tryParse(prefs.getString(_kPaisCasaEn) ?? '');
+    } catch (_) {}
+    final local = paisCasa;
+    final localMasNuevo = localEn != null &&
+        (remotoEn == null || localEn.isAfter(remotoEn));
+    if (localMasNuevo) {
+      if (local != null && local.iso != remoto?.iso) {
+        final g = await PagosService.guardarPaisCasa(email, local.iso);
+        if (g != null && g['ok'] != true && remoto != null) {
+          // El backend no aceptó (hay saldo): vale el del backend.
+          await setPaisCasa(remoto);
+          await _guardarPaisCasaEn(remotoEn);
+          notifyListeners();
+        }
+      }
+      return;
+    }
+    if (remoto == null || remoto.iso == local?.iso) return;
+    await setPaisCasa(remoto);
+    await _guardarPaisCasaEn(remotoEn);
+    if (puedeCambiarPaisCasa) await _descongelarMonedaSaldo();
     notifyListeners();
-    return true;
   }
   // Virgen (como PRD): sin movimientos demo. El historial real baja del backend.
   final List<MovimientoSaldo> movimientos = [];
@@ -6572,6 +6665,8 @@ class AppState extends ChangeNotifier {
         _persistirDatos();
       }
     }
+    // País de casa elegido en la web o en otro equipo (best-effort).
+    unawaited(sincronizarPaisCasa());
     // Historial de movimientos del backend (recargas): sobrevive a reinstalar,
     // a diferencia del historial local del teléfono. Si el backend responde con
     // recargas. IMPORTANTE (privacidad): refleja SIEMPRE lo que devuelve el

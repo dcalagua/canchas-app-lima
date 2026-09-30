@@ -36,6 +36,7 @@ from . import pozos
 from . import cuentas_cobro as _cc
 from . import tarifas_pasarela as _tp
 from . import cargo_servicio as _cs
+from . import stock_productos as _stock
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
@@ -293,6 +294,9 @@ class VentaProductoReq(BaseModel):
     comprador_nombre: str = ""
     vendedor_nombre: str = ""
     moneda: str = "PEN"        # moneda del producto (mínimo de comisión por moneda)
+    # Unidad apartada antes de cobrar (`POST /pagos/venta/apartar`): al
+    # registrar la venta queda `vendido` (no vuelve al stock). Vacío = APK viejo.
+    apartado_id: str = ""
 
 
 class MarcarLiquidacionReq(BaseModel):
@@ -1166,6 +1170,9 @@ class CuponCrearReq(BaseModel):
 class CuponCanjeReq(BaseModel):
     email: str
     codigo: str
+    # Moneda de la billetera según el APK (`paisBilletera.monedaIso`); vacío =
+    # APK viejo → el backend la deduce (`moneda_billetera`).
+    moneda: str = ""
 
 
 def _cupon_norm(codigo: str) -> str:
@@ -1224,12 +1231,44 @@ def post_cupon_canjear(req: CuponCanjeReq,
     if not email or not codigo:
         raise HTTPException(status_code=400, detail="datos_invalidos")
     _require_usuario(email, x_user_token)
-    return canjear_cupon(email, codigo)
+    return canjear_cupon(email, codigo, moneda=req.moneda)
 
 
-def canjear_cupon(email: str, codigo: str) -> dict:
+# Mismo texto que la web (`web/jugador_billetera._MSJ_CUPON`).
+MSJ_CUPON_OTRA_MONEDA = "Los cupones son en soles: tu billetera es de otro país."
+_ISO_MONEDA_POR_PAIS = {"PE": "PEN", "EC": "USD", "BO": "BOB"}
+
+
+def moneda_billetera(email: str) -> str:
+    """ISO de la moneda de la billetera de [email] = `AppState.paisBilletera`
+    (recarga congelada → 1.ª cancha → país de casa → PEN). Reusa la función de
+    la web para que ambos lados decidan igual; si no carga, cae a la recarga
+    y al país de casa del snapshot."""
+    email = (email or "").strip().lower()
+    try:
+        from web.jugador_billetera import pais_billetera
+        iso, _ = pais_billetera(email)
+        return _ISO_MONEDA_POR_PAIS.get(iso, "PEN")
+    except Exception:  # noqa: BLE001
+        pass
+    ult = None
+    for p in stores.pagos:
+        if p.tipo == "recarga" and p.estado == "aprobado" and p.dueno_id == email:
+            if ult is None or p.creado_en >= ult.creado_en:
+                ult = p
+    if ult is not None:
+        return moneda_iso(ult.moneda)
+    casa = str((stores.clientes_pago.get(email) or {}).get("pais_casa") or "").upper()
+    return _ISO_MONEDA_POR_PAIS.get(casa, "PEN")
+
+
+def canjear_cupon(email: str, codigo: str, moneda: str = "") -> dict:
     """Núcleo del canje de cupón (APK y web, `web/jugador_billetera.py`): el
-    llamador ya comprobó que [email] es el usuario autenticado."""
+    llamador ya comprobó que [email] es el usuario autenticado.
+
+    Los cupones valen en SOLES (`valor_soles`, pago PEN): no se acreditan a una
+    billetera en $ o Bs. Se rechaza si la moneda que manda el APK O la que
+    deduce el backend no es la del cupón (`cupon_solo_soles`)."""
     email = (email or "").strip().lower()
     codigo = _cupon_norm(codigo or "")
     if not email or not codigo:
@@ -1237,6 +1276,9 @@ def canjear_cupon(email: str, codigo: str) -> dict:
     c = stores.cupones.get(codigo)
     if c is None or not c.get("activo", True):
         return {"ok": False, "error": "cupon_invalido"}
+    mon_cupon = moneda_iso(c.get("moneda") or "PEN")
+    if (moneda.strip() and moneda_iso(moneda) != mon_cupon) or moneda_billetera(email) != mon_cupon:
+        return {"ok": False, "error": "cupon_solo_soles", "mensaje": MSJ_CUPON_OTRA_MONEDA}
     usados = c.setdefault("usados", [])
     if email in usados:
         return {"ok": False, "error": "ya_lo_canjeaste"}
@@ -1849,6 +1891,8 @@ def post_venta(req: VentaProductoReq) -> dict:
     iso = moneda_iso(req.moneda)
     comision = comision_centimos(req.monto_soles, iso)
     ya = stores.pago_por_charge(req.venta_id)
+    if req.apartado_id.strip():
+        _stock.marcar_vendido(req.apartado_id, req.comprador_email)
     if ya is not None and ya.tipo == "venta_producto":
         com = comision_centimos(ya.monto_centimos / 100.0, ya.moneda)
         return {"ok": True, "duplicada": True, "bruto_centimos": ya.monto_centimos,
@@ -1871,6 +1915,93 @@ def post_venta(req: VentaProductoReq) -> dict:
         creado_en=ahora(), estado="pagado"))
     return {"ok": True, "duplicada": False, "bruto_centimos": bruto,
             "comision_centimos": comision, "neto_centimos": bruto - comision}
+
+
+class ApartarReq(BaseModel):
+    apartado_id: str           # id del intento de compra (idempotencia)
+    producto_id: str = ""
+    email: str                 # comprador
+
+
+@router.post("/venta/apartar", dependencies=_APP)
+def post_venta_apartar(req: ApartarReq,
+                       x_user_token: str | None = Header(default=None)) -> dict:
+    """MARKETPLACE (APK): aparta 1 unidad ANTES de `PagoTarjeta.cobrar` con el
+    mismo UPDATE atómico que la web (`pagos/stock_productos.py`). Idempotente
+    por `apartado_id`. {ok:false, error:agotado, mensaje:"Se agotó…"} si ya no
+    hay; nada se cobró."""
+    email = req.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="datos_invalidos")
+    _require_usuario(email, x_user_token)
+    return _stock.apartar(req.apartado_id, req.producto_id, email)
+
+
+@router.post("/venta/devolver", dependencies=_APP)
+def post_venta_devolver(req: ApartarReq,
+                        x_user_token: str | None = Header(default=None)) -> dict:
+    """El cobro no pasó (rechazado / cancelado): la unidad vuelve al stock. Una
+    sola vez por `apartado_id` (idempotente)."""
+    email = req.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="datos_invalidos")
+    _require_usuario(email, x_user_token)
+    return _stock.devolver(req.apartado_id, email)
+
+
+def liberar_apartados_vencidos() -> int:
+    """Cron: devuelve al stock lo apartado por un APK que nunca cobró."""
+    return _stock.liberar_vencidos()
+
+
+# ── PAÍS DE CASA (billetera) compartido app ↔ web ────────────────────────────
+# Mismo dato que escribe la web en Perfil → Mi país (`web/jugador_billetera.
+# cambiar_mi_pais`): `stores.clientes_pago[correo]["pais_casa" | "pais_casa_en"]`.
+_PAISES_CASA = ("PE", "BO", "EC")
+
+
+class PaisCasaReq(BaseModel):
+    email: str
+    iso: str
+
+
+def _puede_cambiar_pais(email: str) -> bool:
+    return stores.saldo_centimos(email) <= 0 and stores.saldo_promo_centimos(email) <= 0
+
+
+@router.get("/pais-casa/{email}", dependencies=_APP)
+def get_pais_casa(email: str, x_user_token: str | None = Header(default=None)) -> dict:
+    """País de casa guardado en el backend (el mismo que ve la web)."""
+    e = email.strip().lower()
+    if not e:
+        raise HTTPException(status_code=400, detail="datos_invalidos")
+    _require_usuario(e, x_user_token)
+    f = stores.clientes_pago.get(e) or {}
+    iso = str(f.get("pais_casa") or "").upper()
+    return {"pais_casa": iso if iso in _PAISES_CASA else "",
+            "pais_casa_en": f.get("pais_casa_en") or "",
+            "puede_cambiar": _puede_cambiar_pais(e)}
+
+
+@router.post("/pais-casa", dependencies=_APP)
+def post_pais_casa(req: PaisCasaReq, x_user_token: str | None = Header(default=None)) -> dict:
+    """= `AppState.cambiarPaisCasa` / `POST /web/mi-pais`: SOLO con saldo real y
+    regalo en 0 (cambiar la moneda con plata adentro sería convertir S/ en $
+    por decreto)."""
+    e = req.email.strip().lower()
+    iso = req.iso.strip().upper()
+    if not e or iso not in _PAISES_CASA:
+        raise HTTPException(status_code=400, detail="datos_invalidos")
+    _require_usuario(e, x_user_token)
+    ficha = stores.clientes_pago.setdefault(e, {})
+    if str(ficha.get("pais_casa") or "").upper() == iso:
+        return {"ok": True, "iso": iso, "pais_casa_en": ficha.get("pais_casa_en") or "", "sin_cambio": True}
+    if not _puede_cambiar_pais(e):
+        return {"ok": False, "error": "tiene_saldo",
+                "mensaje": "Tienes saldo en tu billetera. Para cambiar tu país primero úsalo o solicita su liquidación."}
+    ficha["pais_casa"] = iso
+    ficha["pais_casa_en"] = datetime.now(timezone.utc).isoformat()
+    return {"ok": True, "iso": iso, "pais_casa_en": ficha["pais_casa_en"]}
 
 
 # ------ Servicios de marketing (landing/redes): SUSCRIPCIÓN recurrente --------

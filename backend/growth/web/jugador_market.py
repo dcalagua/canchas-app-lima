@@ -53,6 +53,7 @@ import config
 import empresa
 from db import pg
 from pagos import culqi
+from pagos.stock_productos import apartar_unidad, devolver_unidad  # noqa: F401 (tests los monkeypatchean aquí)
 from web import catalogos, datos, sesion, ui
 from web.router import PLAY_URL, _moneda_de, _no_encontrada, _pago_web_disponible
 
@@ -148,33 +149,8 @@ def perfiles(emails: list[str]) -> dict[str, dict]:
         return {}
 
 
-def apartar_unidad(producto_id: str) -> bool:
-    """Aparta 1 unidad ANTES de cobrar: solo si sigue publicado y con stock
-    (stock NULL = ilimitado, no se toca). Atómico: dos compradores no se
-    llevan la última unidad."""
-    if not pg.habilitado:
-        return False
-    try:
-        with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute("UPDATE pichangol_productos SET stock = CASE WHEN stock IS NULL THEN NULL ELSE stock - 1 END "
-                        "WHERE id = %s AND activo = true AND (stock IS NULL OR stock > 0)", (producto_id,))
-            n = cur.rowcount
-            conn.commit()
-            return n == 1
-    except Exception:  # noqa: BLE001
-        return False
-
-
-def devolver_unidad(producto_id: str) -> None:
-    """El cobro no pasó: la unidad apartada vuelve al stock."""
-    if not pg.habilitado:
-        return
-    try:
-        with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute("UPDATE pichangol_productos SET stock = stock + 1 WHERE id = %s AND stock IS NOT NULL", (producto_id,))
-            conn.commit()
-    except Exception:  # noqa: BLE001
-        pass
+# Apartar / devolver la unidad vive en `pagos/stock_productos.py` (compartido
+# con el APK: `POST /pagos/venta/apartar|devolver`).
 
 
 _COLS_OFERTA = ["id", "dueno", "club", "nombre", "horas", "precio", "activo", "creado"]
