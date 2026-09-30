@@ -26,6 +26,7 @@ from legal.router import router as legal_router
 from web.router import router as web_router
 from web.anfitrion import router as anfitrion_router
 from web.anfitrion_academia import router as anfitrion_academia_router
+from web.anfitrion_academia_ops import router as anfitrion_academia_ops_router
 from web.anfitrion_tienda import router as anfitrion_tienda_router
 from web.anfitrion_campeonatos import router as anfitrion_campeonatos_router
 from web.anfitrion_boleadores import router as anfitrion_boleadores_router
@@ -148,6 +149,7 @@ app.include_router(jugador_liga_router)  # /mi-nivel, /liga
 app.include_router(jugador_cuenta_router)  # /cuenta/configuracion, /cuenta/identidad
 app.include_router(jugador_bodega_router)  # /bodega/{cancha_id}/pedir, /mis-pedidos-bodega
 app.include_router(jugador_mensajes_router)  # /mensajes: bandeja, chat, grupos (mensajería del app)
+app.include_router(anfitrion_academia_ops_router)  # asistencia, evaluación, ranking, reportes, chats y sedes de la academia
 app.include_router(anfitrion_academia_router)  # antes del comodín /anfitrion/{modulo}
 app.include_router(anfitrion_tienda_router)
 app.include_router(anfitrion_bodega_router)  # /anfitrion/bodega (antes del comodín /anfitrion/{modulo})
