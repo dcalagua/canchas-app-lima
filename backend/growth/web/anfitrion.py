@@ -56,6 +56,7 @@ SECCIONES = [("hoy", "Hoy", "/anfitrion/mis-canchas", "📅"), ("calendario", "C
 MENU = [
     ("mis-canchas", "Mis canchas", "Registra y administra: canchas, agenda, reservas, cuenta", "#0B7A55", "🏬", "/anfitrion/mis-canchas", True),
     ("reportes", "Reportes", "Resumen, ocupación, cobros y cancelaciones", "#2F6FDE", "📊", "/anfitrion/reportes", True),
+    ("llenar", "Llenar cancha", "Horas libres de hoy y mañana: ponles promo y avisa a tus clientes", "#F28C28", "📣", "/anfitrion/llenar", True),
     ("caja", "Caja del día", "Cobrado, por cobrar y cierre de caja", "#0B8A3E", "🧾", "/anfitrion/caja", True),
     ("clientes", "Clientes", "Tu base de clientes: frecuentes, VIP, en riesgo y deudores", "#7B61FF", "👥", "/anfitrion/clientes", True),
     ("bonos", "Bonos", "Packs de horas prepagadas de tu local", "#E07A3F", "🎟️", "/anfitrion/bonos", True),

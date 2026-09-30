@@ -743,6 +743,23 @@ para la API del APK.
   operacion.sql`, RLS sin políticas; sin ellas las páginas avisan): el APK las
   guarda solo en el teléfono, así que web y app no las comparten todavía.
   Test `tests/test_web_academia_ops.py`.
+- **PARTIDOS, PICHANGAS, REFERIDOS Y CARNET EN LA WEB (30-sep-2026):**
+  `web/jugador_partidos.py`. `/partidos` (= `partidos_screen`, pestaña
+  "Match": `pichangol_partidos` + grupo de chat con el mismo id; cupo con
+  bloqueo de fila; "Coordinar" → `/mensajes/{clave}`), `/pichangas[/nueva|
+  /{id}|/ranking]` (= convocatorias; NO `/convocatorias`, que es la API JSON
+  del APK; llama a `convocatorias/service.py`: orden de llegada / sorteo /
+  equidad, lista de espera, asistencia por posición). Organiza solo el dueño
+  de un local o quien creó la pichanga — **en el APK nadie puede organizar**
+  (depende de un login de club heredado que nunca se activa; conviene
+  alinearlo). `/referidos` (código `PCGxxxxxx`; el CANJE sigue en el app y
+  **el bono de 10 del app solo existe en el teléfono** —no llega a la
+  billetera del backend y `sincronizarSaldo` lo pisa—: bug del APK, moverlo
+  al backend como cupón), `/jugador/{ref}` (carnet = `perfilGlobalDe`; el
+  nombre en el ranking de `/liga` enlaza aquí) y `/anfitrion/llenar` (horas
+  libres de hoy/mañana con descuento real en `pichangol_descuentos_slot` +
+  aviso por chat o WhatsApp; en el MENU anfitrión). Perfil: Partidos,
+  Pichangas de mi club, Invita y gana. Test `tests/test_web_jugador_partidos.py`.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
   que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
   `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`

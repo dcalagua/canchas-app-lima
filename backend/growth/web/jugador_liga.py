@@ -973,7 +973,9 @@ def _tab_ranking(email: str, mi_circ: dict | None, deporte: str, modalidad: str,
         filas += (f"<div class='lg-fila{' yo' if f['email'] and f['email'] == email else ''}'>"
                   f"<span class='n{' med' if med else ''}'>{med or pos}</span>"
                   + avatar(nombre, "" if dobles else p.get("foto_url", ""))
-                  + f"<div class='q'><b><span class='t'>{e(nombre)}</span>{corona}{pro}</b><small>{e(sub)}</small></div>"
+                  + (f"<div class='q'><b><a class='t' href='/jugador/{e(ref_de(f['email']))}?deporte={e(dep)}' style='color:inherit'>{e(nombre)}</a>{corona}{pro}</b><small>{e(sub)}</small></div>"
+                     if (not dobles and f["email"]) else
+                     f"<div class='q'><b><span class='t'>{e(nombre)}</span>{corona}{pro}</b><small>{e(sub)}</small></div>") +
                   f"<div class='lg-st'><div><b>{f['pj']}</b><small>PJ</small></div><div class='g'><b>{f['pg']}</b><small>G</small></div>"
                   f"<div class='p'><b>{f['pp']}</b><small>P</small></div><div class='pts'><b>{f['puntos']}</b><small>Pts</small></div></div>"
                   f"{retar}</div>")
