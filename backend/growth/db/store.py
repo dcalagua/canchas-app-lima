@@ -645,6 +645,10 @@ class Stores:
         self.reclamaciones: list[dict] = []
         # Cancelaciones hechas desde la WEB (historial + estado del reembolso).
         self.cancelaciones_web: list[dict] = []
+        # PANEL DEL NEGOCIO web (`web/anfitrion_negocio.py`), por correo del
+        # dueño: {fijas: [ReservaFija.toJson], cierres: [CierreCaja.toJson],
+        #  notas: {clave_cliente: texto}, recordados: {alumno_id: iso}}.
+        self.negocio_web: dict[str, dict] = {}
         # MARKETPLACE: unidades APARTADAS por el APK antes de cobrar
         # (`pagos/stock_productos.py`): apartado_id → {producto_id, email,
         # estado: apartado|vendido|devuelto|vencido, ilimitado, en}.
@@ -1154,6 +1158,7 @@ class Stores:
                 k: dict(v) for k, v in self.payphone_pagos.items()},
             "reclamaciones": [dict(r) for r in self.reclamaciones],
             "cancelaciones_web": [dict(r) for r in self.cancelaciones_web],
+            "negocio_web": {k: dict(v) for k, v in self.negocio_web.items()},
             "apartados_stock": {k: dict(v) for k, v in self.apartados_stock.items()},
             "publicaciones_redes": [dict(r) for r in self.publicaciones_redes],
             "admin_accesos": [dict(r) for r in self.admin_accesos],
@@ -1256,6 +1261,7 @@ class Stores:
         }
         self.reclamaciones = [dict(r) for r in (data.get("reclamaciones") or [])]
         self.cancelaciones_web = [dict(r) for r in (data.get("cancelaciones_web") or [])]
+        self.negocio_web = {k: dict(v) for k, v in (data.get("negocio_web") or {}).items()}
         self.apartados_stock = {k: dict(v) for k, v in (data.get("apartados_stock") or {}).items()}
         self.publicaciones_redes = [dict(r) for r in (data.get("publicaciones_redes") or [])]
         self.admin_accesos = [dict(r) for r in (data.get("admin_accesos") or [])]
