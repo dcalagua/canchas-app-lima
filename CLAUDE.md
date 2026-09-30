@@ -617,14 +617,17 @@ para la API del APK.
   `moneda` por fila), `/mi-billetera/estado-de-cuenta` (imprimible),
   `/mis-pagos`, `/mis-puntos` (usa `datos.puntos_de`), `/mi-pais` (solo con
   saldo y regalo en 0; se guarda en `stores.clientes_pago[correo].pais_casa`
-  —el APK aún NO lo lee, su país de casa vive en SharedPreferences—).
+  —el APK lo lee y escribe desde el 30-sep-2026 vía `GET/POST
+  /pagos/pais-casa`, gana la elección más reciente; SharedPreferences es caché—).
   (2) `web/jugador_market.py`: `/marketplace`, `/marketplace/{id}` (compra:
   UPDATE atómico del stock → cargo → `post_venta` con `venta_id` = charge →
   push "¡Te compraron!"), `/mis-ordenes` (Recibido / Problema vía
   `ventas.router.marcar_recibido|abrir_disputa`; WhatsApp del vendedor solo
   tras pagar), `/mis-bonos`, `/bonos/{cancha_id}` + `POST /web/bonos/comprar`
-  (crédito `bono_<operación>` idempotente). **Diferencia con el APK:** la web
-  DESCUENTA stock al vender; el APK no (pendiente llevarlo al app/backend).
+  (crédito `bono_<operación>` idempotente). **Stock:** web y APK apartan la
+  unidad con el MISMO UPDATE atómico (`pagos/stock_productos.py`; APK vía
+  `POST /pagos/venta/apartar|devolver`, idempotente por `apartado_id`,
+  `stores.apartados_stock`; cron 5 min devuelve apartados >30 min sin venta).
   El canje del bono al reservar sigue solo en el app.
   (3) `web/jugador_clases.py`: `/mis-clases` (= `mis_clases_screen`:
   matrículas que pago o donde soy alumno, cuotas, débito automático con
@@ -635,14 +638,20 @@ para la API del APK.
   activo, para evitar doble cobro), comprobante imprimible.
   (4) `web/jugador_liga.py` + `web/jugador_cuenta.py`: `/mi-nivel`
   (= `nivel_onboarding_screen`, misma fórmula `Nivel.seedDesde`; al
-  reevaluar NO borra partidos/victorias —el app sí, conviene alinear—),
+  reevaluar NO borra partidos/victorias, igual que el APK desde el
+  30-sep-2026 con `NivelesRepo.reevaluar`),
   `/liga?tab=ranking|retos|retar|dobles` (port de `rankingGlobal`/dobles/
   temporadas/campeón, retos con `retos/router.py`, correos de otros jugadores
   viajan CIFRADOS), `/cuenta/configuracion` (foto al bucket `chat/perfiles/`,
   nombre, celular por país, bio por selección; re-emite la cookie) y
   `/cuenta/identidad` (PE/EC con `post_verificar_dni`; BO solo en el app por
   la lectura del documento + selfie). Quedan en el app: Pro, tarjetas
-  guardadas, recarga $/Bs y QR, ELO por retos, chat.
+  guardadas, recarga $/Bs y QR, ELO por retos, chat. **APK alineado
+  (30-sep-2026):** cupón solo si la billetera es en soles (backend
+  `canjear_cupon(…, moneda)` → `cupon_solo_soles`, también para APKs viejos
+  por `moneda_billetera`) y cuotas con débito automático activo no se pagan a
+  mano en el app (`AppState.cuotaSeCobraAutomatico`). Test
+  `tests/test_apk_alineado_web.py`.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
   que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
   `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`
