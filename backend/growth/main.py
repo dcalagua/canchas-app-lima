@@ -39,6 +39,7 @@ from web.jugador_clases import router as jugador_clases_router
 from web.jugador_market import router as jugador_market_router
 from web.jugador_billetera import router as jugador_billetera_router
 from web.jugador_liga import router as jugador_liga_router
+from web.jugador_campeonatos import router as jugador_campeonatos_router
 from web.jugador_cuenta import router as jugador_cuenta_router
 from web.jugador_bodega import router as jugador_bodega_router
 from web.anfitrion_bodega import router as anfitrion_bodega_router
@@ -171,6 +172,7 @@ app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bo
 app.include_router(jugador_clases_router)  # /mis-clases: Mis clases y pagos del jugador
 app.include_router(jugador_billetera_router)  # /mi-billetera, /mis-pagos, /mis-puntos, /mi-pais
 app.include_router(jugador_liga_router)  # /mi-nivel, /liga
+app.include_router(jugador_campeonatos_router)  # /torneo/{id}: inscribirse / crear o unirse a un equipo pagando con saldo
 app.include_router(jugador_cuenta_router)  # /cuenta/configuracion, /cuenta/identidad
 app.include_router(jugador_bodega_router)  # /bodega/{cancha_id}/pedir, /mis-pedidos-bodega
 app.include_router(jugador_mensajes_router)  # /mensajes: bandeja, chat, grupos (mensajería del app)

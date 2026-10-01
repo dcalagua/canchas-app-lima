@@ -1204,6 +1204,33 @@ def campeonato(campeonato_id: str) -> dict | None:
         return None
 
 
+def mutar_campeonato(campeonato_id: str, fn):
+    """Lee el campeonato con `SELECT … FOR UPDATE` (la fila queda bloqueada
+    hasta el commit: dos jugadores que se unen al mismo equipo a la vez se
+    atienden de uno en uno) y llama `fn(data)`, que devuelve `(guardar,
+    resultado)`. Con `guardar` se escribe `data` en la MISMA transacción.
+    Devuelve `(encontrado, resultado)`. Una excepción dentro de `fn` o al
+    guardar deshace la transacción y se propaga (el llamador revierte lo que
+    `fn` hizo fuera de la base, p. ej. un débito de saldo)."""
+    if not pg.habilitado or not campeonato_id:
+        return False, None
+    with pg.conexion() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id, academia_id, dueno, data FROM pichangol_campeonatos WHERE id = %s "
+                    "AND coalesce(eliminado,false) = false FOR UPDATE", (campeonato_id,))
+        f = cur.fetchone()
+        if not f:
+            return False, None
+        d = _json_dict(f[3])
+        d["id"] = f[0]
+        d.setdefault("academiaId", f[1] or "")
+        d.setdefault("dueno", f[2] or "")
+        guardar, resultado = fn(d)
+        if guardar:
+            cur.execute("UPDATE pichangol_campeonatos SET data = %s::jsonb, updated_at = now() WHERE id = %s",
+                        (json.dumps(d), campeonato_id))
+    return True, resultado
+
+
 def campeonato_existe(campeonato_id: str) -> bool:
     if not pg.habilitado or not campeonato_id:
         return False

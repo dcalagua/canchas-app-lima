@@ -291,6 +291,29 @@ def _en_segundo_plano(fn, *args) -> None:
     threading.Thread(target=fn, args=args, daemon=True).start()
 
 
+def verificar_existencia(cancha_id: str, direccion: str, lat, lng) -> dict | None:
+    """= `AppState.verificarVenue` → `POST /verificacion-fisica/evaluar` del
+    APK (carril informal): la IA del módulo de existencia puntúa el local y, si
+    no concluye, agenda una visita del verificador por zona. Confirma
+    EXISTENCIA, no propiedad. Best-effort: cualquier error se registra y se
+    ignora (el registro ya quedó hecho)."""
+    try:
+        from verificacion_fisica import service as vf_service
+        r = vf_service.evaluar(cancha_id, direccion or "", None,
+                               float(lat) if lat is not None else None, float(lng) if lng is not None else None,
+                               None, None, None, "sin_documentos")
+        print(f"[existencia-web] {cancha_id}: score {r.get('score')} via {r.get('via')}", flush=True)
+        try:
+            from db import pg
+            pg.persistir_en_segundo_plano(stores)
+        except Exception:  # noqa: BLE001
+            pass
+        return r
+    except Exception as ex:  # noqa: BLE001
+        print(f"[existencia-web] {cancha_id}: no se pudo evaluar ({ex})", flush=True)
+        return None
+
+
 def _pro_ok(email: str) -> bool:
     """Candado Pro de reserva manual / bloqueos (fail-open: solo si la env
     `WEB_MANUAL_REQUIERE_PRO=1`, igual que CM_REQUIERE_PRO)."""
@@ -1984,6 +2007,11 @@ def _registrar_cancha_web(request: Request, _cuerpo_json) -> JSONResponse:
                if r.get("error") == "ya_reclamada" else "No pudimos registrar el reclamo. Inténtalo de nuevo.")
         return JSONResponse({"ok": False, "error": msg, "campo": "local"}, status_code=409)
     print(f"[registro-web] {ses['email']} registró {rec['nombre_local']!r}: {[f['id'] for f in filas]} · reclamo #{r.get('reclamo_id')}", flush=True)
+    # Verificación de EXISTENCIA (IA) en segundo plano, como `verificarVenue`
+    # del APK: confirma que el local es real; NO da la propiedad (eso sigue
+    # siendo el reclamo). Nunca bloquea ni hace fallar el registro.
+    _en_segundo_plano(verificar_existencia, rec["cancha_id"], str(filas[0].get("direccion") or rec["nombre_local"] or ""),
+                      rec["lat"], rec["lng"])
     return JSONResponse({"ok": True, "url": f"/anfitrion/canchas?registrada={filas[0]['id']}", "reclamo_id": r.get("reclamo_id"), "ids": [f["id"] for f in filas]})
 
 

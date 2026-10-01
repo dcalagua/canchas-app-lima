@@ -11,7 +11,9 @@ quitar, equipos con su plantel), generar o regenerar el fixture, cargar
 resultados, pruebas y tiempos de natación, afiche (fondo propio o arte IA),
 auspiciadores, galería, duplicar (nueva edición), eliminar, compartir
 (WhatsApp, enlace, código). La INSCRIPCIÓN del jugador (con pago desde su
-saldo) sigue en el app: la página pública `/c/{id}` lo manda ahí.
+saldo: individual, crear equipo, unirse, completar el pozo) vive en
+`web/jugador_campeonatos.py` (`/torneo/{id}`), enlazada desde la página
+pública `/c/{id}` y desde "Donde participo".
 """
 
 from __future__ import annotations
@@ -167,7 +169,7 @@ def _tarjeta_participo(c: dict, email: str) -> str:
     dep = str(c.get("deporte") or "tenis")
     sub = f"{_rol_en(c, email)} · {_NOMBRE.get(dep, dep)} · {L.FORMATOS[L.formato_de(c)]}"
     logo = f"<img src='{e(c['logoUrl'])}' alt=''>" if c.get("logoUrl") else f"<span>{_EMOJI.get(dep, '🏆')}</span>"
-    return (f"<a class='anf-cancha' href='/c/{e(c['id'])}' style='text-decoration:none;color:inherit;align-items:center'>"
+    return (f"<a class='anf-cancha' href='/torneo/{e(c['id'])}' style='text-decoration:none;color:inherit;align-items:center'>"
             f"<div class='f'>{logo}</div><div style='flex:1;min-width:0'><b style='font-size:16px'>{e(c.get('nombre') or 'Campeonato')}</b>"
             f"<div class='sub' style='margin:2px 0 6px'>{e(sub)}</div>{_estado_pill(c)}</div><span style='color:var(--tenue);font-size:22px'>›</span></a>")
 
@@ -176,7 +178,7 @@ def _caja_codigo(no_encontrado: bool) -> str:
     """"Unirme a un campeonato" del app (pedido del director, 26-sep-2026:
     "acá también debería ingresar el código y ver el campeonato"): código del
     TORNEO o de tu EQUIPO → página pública `/c/{id}` (con `?equipo=` si es de
-    equipo: desde ahí "Unirme al equipo en la app")."""
+    equipo: desde ahí "Unirme al equipo aquí" —web, con saldo— o en la app)."""
     err = ("<p class='sub' style='color:#B42318;margin:8px 0 0'>No encontramos ese código. Revísalo o pídeselo de nuevo a quien te invitó.</p>"
            if no_encontrado else "")
     return (f"<form class='anf-cancha' method='get' action='{BASE}/unirme' style='align-items:center;gap:14px;margin-top:14px'>"
@@ -190,7 +192,7 @@ def _caja_codigo(no_encontrado: bool) -> str:
 @router.get(BASE + "/unirme")
 def unirme_por_codigo(request: Request, codigo: str = "") -> RedirectResponse:
     """Código del torneo → `/c/{id}`; código de equipo (fútbol) → `/c/{id}?equipo=`
-    (la página ofrece "Unirme al equipo en la app"). No existe → vuelve con aviso."""
+    (la página ofrece unirse aquí, con saldo, o en la app). No existe → vuelve con aviso."""
     ses, resp = _sesion_o_entrar(request, BASE)
     if resp is not None:
         return resp
