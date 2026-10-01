@@ -12,8 +12,10 @@ import 'ranking_socios_screen.dart';
 import '../widgets/icono_vivo.dart';
 
 /// Lista de "pichangas" (convocatorias) de un club. Es la puerta de entrada del
-/// módulo: el jugador ve las convocatorias y se anota; el dueño (admin del club)
-/// crea nuevas y entra al ranking de recurrencia.
+/// módulo: el jugador ve las convocatorias y se anota; el dueño de un local del
+/// club (sus canchas reales, `appState.esDuenoDeClub`) crea nuevas y entra al
+/// ranking de recurrencia. [clubId] vacío = pichangas de TODOS los clubes (el
+/// jugador sin local propio), como la web `/pichangas`.
 class ConvocatoriasScreen extends StatefulWidget {
   final String clubId;
   final String clubNombre;
@@ -30,7 +32,28 @@ class ConvocatoriasScreen extends StatefulWidget {
 class _ConvocatoriasScreenState extends State<ConvocatoriasScreen> {
   late Future<List<Convocatoria>> _futuro;
 
-  bool get _esAdmin => appState.sesionIniciada;
+  // Organiza quien es DUEÑO de un local de este club (misma regla que la web).
+  bool get _esAdmin => appState.esDuenoDeClub(widget.clubId);
+  bool get _todos => widget.clubId.isEmpty;
+
+  /// Nombre legible de un club por su slug: el `club` de alguna cancha
+  /// conocida; si no, el slug en título (como la web `_nombre_club`).
+  String _nombreClub(String slug) {
+    final propio = appState.misClubesPropios[slug];
+    if (propio != null) return propio;
+    for (final cn in appState.canchasRemotas) {
+      final nom = (cn.club.trim().isNotEmpty ? cn.club : cn.nombre).trim();
+      if (nom.isNotEmpty && ConvocatoriasService.slugClub(nom) == slug) {
+        return nom;
+      }
+    }
+    final t = slug.replaceAll('_', ' ').trim();
+    if (t.isEmpty) return 'Club';
+    return t
+        .split(' ')
+        .map((w) => w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}')
+        .join(' ');
+  }
 
   @override
   void initState() {
@@ -116,7 +139,9 @@ class _ConvocatoriasScreenState extends State<ConvocatoriasScreen> {
                         );
                       }
                       return _ConvocatoriaCard(
-                          conv: lista[i - 1], onTap: () => _abrir(lista[i - 1]));
+                          conv: lista[i - 1],
+                          club: _todos ? _nombreClub(lista[i - 1].clubId) : null,
+                          onTap: () => _abrir(lista[i - 1]));
                     },
                   );
                 },
@@ -128,8 +153,9 @@ class _ConvocatoriasScreenState extends State<ConvocatoriasScreen> {
 
 class _ConvocatoriaCard extends StatelessWidget {
   final Convocatoria conv;
+  final String? club; // nombre del club (solo en "Todos los clubes")
   final VoidCallback onTap;
-  const _ConvocatoriaCard({required this.conv, required this.onTap});
+  const _ConvocatoriaCard({required this.conv, required this.onTap, this.club});
 
   @override
   Widget build(BuildContext context) {
@@ -166,6 +192,12 @@ class _ConvocatoriaCard extends StatelessWidget {
                         texto: conv.categoria!,
                         bg: estadoInfoBg,
                         fg: estadoInfoFg),
+                  if (club != null)
+                    EstadoChip(
+                        texto: club!,
+                        bg: estadoNeutroBg,
+                        fg: estadoNeutroFg,
+                        icono: Icons.storefront),
                   ModoChip(modo: conv.modo),
                   if (conv.fechaPartido != null && conv.fechaPartido!.isNotEmpty)
                     EstadoChip(

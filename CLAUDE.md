@@ -84,7 +84,16 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
     GUARDAN en el pago, así el desglose de liquidaciones recalcula con la
     moneda real. El APK la manda desde el país de las coordenadas de la
     cancha (`_accionContable`) o la moneda del producto. Test
-    `test_comision_moneda.py`. Pendiente: la cuota de torneo sigue en PEN.
+    `test_comision_moneda.py`. La cuota individual de torneo
+    (`/pagos/torneo/inscribir`) recibe `moneda` = `Campeonato.monedaSimbolo`
+    desde el APK (vacío = PEN para APKs viejos; saldo en otra moneda →
+    `moneda_distinta`), comisión con el mínimo de esa moneda (1-oct-2026).
+    Pro, su renovación, la cortesía, la recarga por QR, el bono de recarga, el
+    regalo de saldo y la matrícula (`/pagos/matricula`, por `pais`) también
+    guardan su moneda real; los `moneda="PEN"` que quedan en
+    `pagos/router.py` son cargos de Culqi (solo soles) o Servicios Pichangol
+    (oculto, tarifa en soles) y llevan un comentario. Test
+    `tests/test_pro_moneda_elo.py`.
   - **Montos de recarga por país:** `PaisConfig.recargas` (chips) +
     `recargaMin`/`recargaMax` ("Otro monto"): S/ 20-200 (10-1000), \$ 5-50
     (1-300), Bs 50-500 (20-3000). Para PRD subir el mínimo de EC a \$ 5.
@@ -646,7 +655,20 @@ para la API del APK.
   nombre, celular por país, bio por selección; re-emite la cookie) y
   `/cuenta/identidad` (PE/EC con `post_verificar_dni`; BO solo en el app por
   la lectura del documento + selfie). Quedan en el app: Pro, tarjetas
-  guardadas, recarga $/Bs y QR, ELO por retos, chat. **APK alineado
+  guardadas, recarga $/Bs y QR, chat. **ELO de retos EN EL SERVIDOR
+  (1-oct-2026):** `retos/elo.py` lo aplica UNA vez por reto al pasar a
+  jugado (confirmar, sin doble confirmación o auto-confirmado), con la fórmula
+  de `Nivel.calcularElo` (K 0.15, divisor 2, 1.0–7.0, sin fila = 3.0; ambos
+  niveles con los de ANTES del partido), +1 partido/+1 victoria, escribe
+  `pichangol_niveles` en una transacción con `FOR UPDATE` (conserva
+  confiabilidad); dobles se omite (como el APK). Idempotencia
+  `stores.retos_elo` (snapshot: pendiente/aplicado/omitido; base caída →
+  pendiente y se reintenta al listar). **Migración:** solo entran los retos
+  que pasan a jugado DESDE este cambio; los ya jugados no se aplican (el APK
+  ya los aplicó en cada teléfono). El APK ya no calcula ELO
+  (`aplicarEloDeRetos` → `refrescarNivelesTrasRetos`, solo baja niveles). OJO:
+  un APK anterior sigue aplicándolo en el teléfono → doble ajuste en retos
+  nuevos hasta actualizar. **APK alineado
   (30-sep-2026):** cupón solo si la billetera es en soles (backend
   `canjear_cupon(…, moneda)` → `cupon_solo_soles`, también para APKs viejos
   por `moneda_billetera`) y cuotas con débito automático activo no se pagan a
@@ -769,9 +791,13 @@ para la API del APK.
   /{id}|/ranking]` (= convocatorias; NO `/convocatorias`, que es la API JSON
   del APK; llama a `convocatorias/service.py`: orden de llegada / sorteo /
   equidad, lista de espera, asistencia por posición). Organiza solo el dueño
-  de un local o quien creó la pichanga — **en el APK nadie puede organizar**
-  (depende de un login de club heredado que nunca se activa; conviene
-  alinearlo). `/referidos` (código `PCGxxxxxx` + CANJE del código de un amigo,
+  de un local o quien creó la pichanga. **APK alineado (1-oct-2026):** ya no
+  depende del login de club huérfano (`sesionIniciada`): "Pichangas de mi
+  club" sale de `appState.misClubesPropios` (clubs de SUS canchas con
+  `dueno == correo`; uno → directo, varios → chips, ninguno → todos los
+  clubes para anotarse), crear/ranking = `esDuenoDeClub`, panel admin del
+  detalle = `esAdminDePichanga` (creador o dueño del club, =
+  `jugador_partidos.es_admin`; `Convocatoria.creadoPor`). `/referidos` (código `PCGxxxxxx` + CANJE del código de un amigo,
   `POST /web/referidos/canjear`). **BONO DE REFERIDOS EN EL BACKEND (1-oct-
   2026, pedido del director):** antes el bono de 10 vivía solo en el teléfono
   y `sincronizarSaldo` lo borraba. Ahora `backend/growth/referidos.py`
@@ -814,7 +840,13 @@ para la API del APK.
   sin saldo → `/mi-billetera#recargar`) + **cancelar/reactivar la
   renovación automática** (`POST /web/pro/renovacion`; NUEVO en backend:
   `procesar_renovaciones_pro` salta `auto_renovar=False` y `get_pro_estado`
-  devuelve `renueva` — el APK aún no lo ofrece), `/pro/planes` (Gratis vs Pro
+  devuelve `renueva` + `cortesia`; el APK lo ofrece desde el 1-oct-2026:
+  interruptor "Renovación automática" en `hazte_pro_screen` →
+  `AppState.cambiarRenovacionPro` → `POST /pagos/pro/renovacion {email,
+  renovar}` (X-App-Key + `_require_usuario`; núcleo único
+  `pagos.router.cambiar_renovacion_pro` que también usa la web; apagar pide
+  `confirmarPichangol`); el APK paga Pro con el país de la BILLETERA
+  (`paisBilletera`), como la web), `/pro/planes` (Gratis vs Pro
   con los candados reales), `/cuenta/tarjetas` (= `metodos_pago_screen`:
   Culqi v4 tokeniza en el navegador, el servidor solo guarda `crd_` + marca +
   últimos 4; tope 10), `/buscar` (= búsqueda guiada/asistente por reglas,
@@ -824,9 +856,9 @@ para la API del APK.
   cuota" (`/anfitrion/cobros/agregar` = `_inscribir`/`_claseSuelta`, escribe
   en `pichangol_matriculas` con `FOR UPDATE`; **el APK guarda esas cuotas
   solo en el teléfono**). Todos los "Actívalo en la app" de Pro (bodega,
-  campeonatos, calendario, liga) ahora llevan a `/pro`. Pendientes del
-  backend detectados: `post_pro_suscribir`/`procesar_renovaciones_pro`
-  registran `moneda="PEN"` aunque el país sea EC/BO. `planes_screen` es el
+  campeonatos, calendario, liga) ahora llevan a `/pro`.
+  `post_pro_suscribir`/`procesar_renovaciones_pro` registran la moneda del
+  país del precio (arreglado 1-oct-2026). `planes_screen` es el
   "plan de trabajo" del profe (solo en el teléfono), no Pro. Test
   `tests/test_web_jugador_pro.py`.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
@@ -1289,8 +1321,9 @@ para la API del APK.
   `pozos_incompletos` → modal "Generar con todos / Excluirlos y devolver"
   (`{con_todos}` / `{excluir:[ids]}`), quitar equipo devuelve; publicidad y
   página pública dicen "cada jugador pone S/ 10". Tests
-  `test_pozo_equipo.py`, `test_vaquita_del_equipo_en_la_web`. Pendiente:
-  la cuota individual (`/torneo/inscribir`) sigue en PEN.
+  `test_pozo_equipo.py`, `test_vaquita_del_equipo_en_la_web`. La cuota
+  individual (`/torneo/inscribir`) va en la moneda del campeonato desde el
+  1-oct-2026.
   **EL NETO DEL TORNEO ES "POR RECIBIR", NO SALDO (decisión del director,
   26-sep-2026: "PCG le debe transferir de manera automática, así como hace
   con los dueños de cancha; ¿qué pasa si el operador se olvida?"):** antes

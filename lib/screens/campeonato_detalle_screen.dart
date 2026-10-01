@@ -1047,6 +1047,9 @@ class CampeonatoDetalleScreen extends StatelessWidget {
           academiaDueno: c.dueno,
           cuotaSoles: c.costoInscripcion,
           concepto: 'Inscripción ${c.nombre}',
+          // Moneda del campeonato (la de su sede): el backend la guarda en el
+          // pago y aplica el mínimo de comisión de esa moneda.
+          moneda: c.monedaSimbolo,
         ),
         texto: 'Procesando tu inscripción…',
       );
@@ -1071,6 +1074,15 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                     duenoId: email, titulo: 'Recargar saldo')));
             await appState.sincronizarSaldo();
           }
+        } else if (r['error'] == 'moneda_distinta') {
+          await avisarPichangol(
+            context,
+            titulo: 'Tu saldo es de otro país',
+            mensaje: 'La inscripción se paga en ${c.monedaSimbolo} y tu saldo '
+                'Pichangol está en ${appState.monedaSaldoSimbolo}. Inscríbete '
+                'con una cuenta cuya billetera sea de ese país.',
+            icono: Icons.account_balance_wallet_outlined,
+          );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text(
