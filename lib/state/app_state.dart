@@ -1169,6 +1169,23 @@ class AppState extends ChangeNotifier {
             'cargo_ajuste': cargo.ajusteCentimos,
           },
         };
+      case 'bono':
+        // BONO con servicios extra pagados EN LÍNEA (igual que la web): los
+        // turnos ya se le pagaron al dueño con el pack; se liquidan SOLO los
+        // extras ([montoBase]) con el medio real (yape/tarjeta) y el cargo.
+        if (montoBase <= 0) return null;
+        return {
+          'kind': 'liquidacion', 'dueno': cancha.dueno, 'monto': montoBase,
+          'reserva_id': reservaId,
+          'concepto': 'Servicios extra (bono) · $etiqueta',
+          'online': true, 'medio': medio, 'moneda': moneda,
+          'charge_id': chargeId,
+          if (cargo != null && cargo.hayCargo) ...{
+            'cargo_centimos': cargo.cargoCentimos,
+            'cargo_desglose': cargo.desgloseJson,
+            'cargo_ajuste': cargo.ajusteCentimos,
+          },
+        };
       case 'sena':
         return {
           'kind': 'liquidacion', 'dueno': cancha.dueno,
@@ -8282,8 +8299,14 @@ class AppState extends ChangeNotifier {
       // DATOS DEL CLIENTE que confirmó en "Tus datos" (obligatorios, como en
       // la web): nombre a mostrar al dueño y celular. '' = los de la cuenta.
       String nombreCliente = '',
-      String telefono = ''}) async {
-    final pagoAdelantado = cobro == 'online' || cobro == 'sena';
+      String telefono = '',
+      // BONO con servicios extra: los [extras] de esta hora se PAGARON EN
+      // LÍNEA ([medioPago] = yape/tarjeta, [operacionId] = el cargo) y se
+      // liquidan al dueño, como en la web. La fila queda con medio 'bono'.
+      bool extrasEnLinea = false}) async {
+    final bonoConExtras = cobro == 'bono' && extrasEnLinea;
+    final pagoAdelantado =
+        cobro == 'online' || cobro == 'sena' || bonoConExtras;
     final notaReembolso = pagoAdelantado
         ? ' Tu pago quedó registrado para reembolso.'
         : '';
@@ -8297,7 +8320,8 @@ class AppState extends ChangeNotifier {
         r.horaInicio == hora &&
         r.id != asegurada?.id);
     if (yaLocal) {
-      _reembolsoSiPagado(cobro, cancha, fecha, hora, sena);
+      _reembolsoSiPagado(cobro, cancha, fecha, hora, sena,
+          extrasPagados: bonoConExtras ? extras : const []);
       if (avisarJugador) {
         _avisarJugadorReserva(
           clave: '${cancha.id}_${fecha}_$hora',
@@ -8370,7 +8394,8 @@ class AppState extends ChangeNotifier {
     if (res == ResultadoReserva.ocupado) {
       // Se cobró por adelantado (online/seña) pero el slot ya lo tomó otro →
       // registra el reembolso (no nos quedamos la plata).
-      _reembolsoSiPagado(cobro, cancha, fecha, hora, sena);
+      _reembolsoSiPagado(cobro, cancha, fecha, hora, sena,
+          extrasPagados: bonoConExtras ? extras : const []);
       if (avisarJugador) {
         _avisarJugadorReserva(
           clave: '${cancha.id}_${fecha}_$hora',
@@ -8411,14 +8436,19 @@ class AppState extends ChangeNotifier {
         : '$local · ${cancha.nombre}';
     final accion = _accionContable(cancha, cobro,
         // Lo que se liquida es el TURNO cobrado (antes iba el precio de UNA
-        // hora: un turno de 90 min liquidaba 2/3 al dueño).
-        montoBase: precio.toDouble(),
+        // hora: un turno de 90 min liquidaba 2/3 al dueño). Con BONO, solo los
+        // servicios extra pagados en línea (0 = sin contabilidad).
+        montoBase: cobro == 'bono'
+            ? (bonoConExtras
+                ? extras.fold(0.0, (a, s) => a + s.precio)
+                : 0.0)
+            : precio.toDouble(),
         sena: sena,
         reservaId: reserva.id,
         etiqueta: quien.isEmpty
             ? '$lugar · $diaLabel $hora'
             : '$lugar · $quien · $diaLabel $hora',
-        medio: reserva.medioPago,
+        medio: cobro == 'bono' ? medioPago : reserva.medioPago,
         chargeId: operacionId,
         cargo: cargo);
     if (res == ResultadoReserva.ok) {
@@ -8474,7 +8504,17 @@ class AppState extends ChangeNotifier {
   /// asegurar (ocupado), registra el reembolso pendiente para no quedarnos con la
   /// plata del jugador.
   void _reembolsoSiPagado(
-      String cobro, Cancha cancha, String fecha, String hora, int sena) {
+      String cobro, Cancha cancha, String fecha, String hora, int sena,
+      {List<ServicioExtra> extrasPagados = const []}) {
+    if (cobro == 'bono') {
+      // Bono: los turnos no se pagaron ahora; solo los extras en línea.
+      final m = extrasPagados.fold(0.0, (a, s) => a + s.precio);
+      if (m > 0) {
+        _registrarReembolso('ocupado_${cancha.id}_${fecha}_$hora', m,
+            'Horario ya tomado (servicios extra pagados con el bono)');
+      }
+      return;
+    }
     if (cobro != 'online' && cobro != 'sena') return;
     final monto = cobro == 'sena'
         ? sena.toDouble()
@@ -8507,7 +8547,9 @@ class AppState extends ChangeNotifier {
       // Premio de FIDELIDAD por hora (hora → soles descontados), si se usó.
       Map<String, int> descuentos = const {},
       String nombreCliente = '',
-      String telefono = ''}) async {
+      String telefono = '',
+      // BONO con servicios extra pagados en línea (ver agregarReservaJugador).
+      bool extrasEnLinea = false}) async {
     if (horas.isEmpty) return ResultadoReserva.error;
     final ordenadas = [...horas]..sort();
     // Datos del BLOQUE para los avisos al jugador (un solo aviso por bloque).
@@ -8582,6 +8624,7 @@ class AppState extends ChangeNotifier {
             .cast<Reserva?>()
             .firstWhere((r) => r!.horaInicio == h, orElse: () => null),
         cargo: i == 0 ? cargo : null,
+        extrasEnLinea: i == 0 && extrasEnLinea,
       );
       if (res == ResultadoReserva.ocupado) {
         _avisarJugadorReserva(

@@ -27,9 +27,10 @@ usados) si la cancelación tiene devolución según la política publicada.
 """
 from __future__ import annotations
 
+import re
 import time
 
-from web import datos
+from web import datos, horarios
 
 PUNTOS_CANJE = 100          # = 100 pts por canje (economía aprobada)
 DESCUENTO_PUNTOS = 3        # = S/ 3 de descuento
@@ -139,11 +140,63 @@ def soltar(ref: str = "", ids: list[str] | None = None) -> int:
     return n
 
 
+def _refs_puntos_app(filas: list[dict], c: dict | None) -> list[str]:
+    """Referencias con las que el APK pudo escribir el canje de puntos de esta
+    reserva: `<cancha>_<fecha>_<hora>` de cada turno con su fecha REAL (como la
+    web y el APK desde oct-2026) y, en turnos de madrugada, también con el día
+    BASE (APKs anteriores usaban la fecha de la sesión, no la real)."""
+    out: list[str] = []
+    for f in filas:
+        cid, fecha, hora = str(f.get("cancha_id") or ""), str(f.get("fecha") or ""), str(f.get("hora_inicio") or "")
+        if not cid or not fecha or not hora:
+            continue
+        out.append(f"{cid}_{fecha}_{hora}")
+        if c and horarios.slot_es_madrugada(str(c.get("hora_apertura") or ""), str(c.get("hora_cierre") or ""), hora):
+            try:
+                from datetime import date, timedelta
+                out.append(f"{cid}_{(date.fromisoformat(fecha) - timedelta(days=1)).isoformat()}_{hora}")
+            except ValueError:
+                pass
+    return list(dict.fromkeys(out))
+
+
+# Margen hacia atrás desde que se creó la reserva: el canje del APK se escribe
+# DESPUÉS de confirmar, pero el reloj del teléfono puede ir adelantado.
+_MARGEN_CANJE_S = 2 * 3600
+# Medios en los que el APK nunca canjea puntos (solo pago total en línea).
+_SIN_PUNTOS = {"bono", "sena", "efectivo", "manual", "fidelidad", ""}
+
+
+def _creada_en(filas: list[dict]) -> float | None:
+    """Epoch (s) en que se creó la reserva, leído de su id (`jug_<ms>_n`,
+    `web_<ms>_n`, `grp_<ms>`). None si no se puede leer."""
+    for v in [filas[0].get("grupo_reserva_id"), *[f.get("id") for f in filas]]:
+        m = re.search(r"(\d{12,14})", str(v or ""))
+        if m:
+            return int(m.group(1)) / 1000.0
+    return None
+
+
+def _puntos_app(filas: list[dict], c: dict | None) -> tuple[int, float, list[str], float | None]:
+    """Puntos que el APK canjeó en esta reserva (sin libro web): (puntos,
+    soles, referencias, desde). 0 si no hubo canje o ya se devolvió."""
+    if not filas or str(filas[0].get("medio_pago") or "") in _SIN_PUNTOS or not all(f.get("pagado") for f in filas):
+        return 0, 0.0, [], None
+    email = str(filas[0].get("usuario") or "").strip().lower()
+    refs = _refs_puntos_app(filas, c)
+    creada = _creada_en(filas)
+    desde = (creada - _MARGEN_CANJE_S) if creada else None
+    pts, soles = datos.puntos_canje_neto(email, refs, desde)
+    return pts, soles, refs, desde
+
+
 def devolver_por_cancelacion(ref: str, filas: list[dict], c: dict | None, email: str) -> dict:
     """Cancelación CON devolución: horas de bono a los mismos créditos y
-    puntos de vuelta (fila negativa en `pichangol_puntos_canjes`). Una reserva
-    hecha con bono en el APK (sin registro web) devuelve sus horas a los
-    créditos del local. Devuelve {'horas': n, 'puntos': n}."""
+    puntos de vuelta (fila negativa en `pichangol_puntos_canjes`). Vale para
+    reservas de la web (libro `pichangol_canjes_web`) y del APK: una reserva
+    con bono del app (sin libro) devuelve sus horas a los créditos del local
+    y un canje de puntos del app (escrito directo en la tabla de canjes) se
+    devuelve con la misma fila negativa. Devuelve {'horas': n, 'puntos': n}."""
     out = {"horas": 0, "puntos": 0}
     canjes = datos.canjes_web_de_ref(ref)
     for cj in canjes:
@@ -156,14 +209,20 @@ def devolver_por_cancelacion(ref: str, filas: list[dict], c: dict | None, email:
     if not any(cj["tipo"] == "bono" for cj in canjes) and c and str(filas[0].get("medio_pago") or "") == "bono":
         club, dueno = local_de(c)
         out["horas"] += datos.bono_devolver_horas(email, club, dueno, len(filas))
+    if not any(cj["tipo"] == "puntos" for cj in canjes):
+        pts, _s, refs, desde = _puntos_app(filas, c)
+        if pts > 0:
+            owner = str(filas[0].get("usuario") or email).strip().lower()
+            out["puntos"] += datos.puntos_devolver_neto(owner, refs, referencia_puntos(filas), desde)
     return out
 
 
-def ajustes(filas: list[dict]) -> dict:
+def ajustes(filas: list[dict], c: dict | None = None) -> dict:
     """Cómo leer el dinero de una reserva con beneficios: `bono_cubre` = precio
     de los turnos que pagó el bono (la fila guarda el precio de lista, como el
-    app), `puntos_desc` = soles descontados por puntos. `pagado_centimos` lo
-    calcula quien llama: total − bono_cubre − puntos_desc."""
+    app), `puntos_desc` = soles descontados por puntos (canje de la web o del
+    APK). `pagado_centimos` lo calcula quien llama: total − bono_cubre −
+    puntos_desc. [c] (la cancha) afina las referencias de madrugada del APK."""
     if not filas:
         return {"bono_horas": 0, "bono_cubre": 0, "puntos": 0, "puntos_desc": 0}
     ref = (filas[0].get("grupo_reserva_id") or "").strip() or str(filas[0]["id"])
@@ -176,6 +235,11 @@ def ajustes(filas: list[dict]) -> dict:
     if cj["puntos"] is not None:
         out["puntos"] = int(cj["puntos"]["puntos"])
         out["puntos_desc"] = int(round(cj["puntos"]["descuento"]))
+    else:
+        pts, soles, _r, _d = _puntos_app(filas, c)
+        if pts > 0:
+            out["puntos"] = pts
+            out["puntos_desc"] = int(round(soles)) if soles > 0 else DESCUENTO_PUNTOS
     return out
 
 

@@ -1351,8 +1351,10 @@ para la API del APK.
   `devolver` regresa cada parte a cada jugador (`aporte_equipo_devolucion`);
   ya liquidado → `ya_liquidado` y la devolución queda de lado del
   organizador (aviso en app y web). El JSON del campeonato espeja
-  `Integrante.aporteCentimos` solo para mostrar. **App:** `_aportarPozo`
-  (falta saldo → Recargar), "Crear mi equipo · pones S/ 10" (paga ANTES de
+  `Integrante.aporteCentimos` solo para mostrar. Saldo en otra moneda que la
+  del pozo → `moneda_distinta` sin cobrar (en `pozos.aportar`, para app y
+  web). **App:** `_aportarPozo`
+  (falta saldo → Recargar; otra moneda → aviso), "Crear mi equipo · pones S/ 10" (paga ANTES de
   crear, id `eq_<µs>` generado en la pantalla), `_confirmarYUnirme` (código
   o enlace: valida lleno/repetido, confirma con la parte, cobra, une),
   `_PozoEquipo` (barra + faltante) y "Completar S/ X" en la tarjeta del
@@ -1567,9 +1569,10 @@ para la API del APK.
   `pichangol_bonos_comprados` y el libro en la MISMA transacción), fila con
   precio de lista, `pagado`, `medio_pago='bono'`, SIN liquidación ni Culqi
   (el dueño cobró al vender el pack); no se combina con seña, fidelidad,
-  puntos ni boleador (`bono_con_boleador`). Diferencia consciente con el app:
-  los servicios extra con bono se COBRAN en línea y se liquidan al dueño (en
-  el APK quedan en la fila sin cobrarse: conviene alinearlo). **Puntos** =
+  puntos ni boleador (`bono_con_boleador`). Los servicios extra con bono se
+  COBRAN en línea y se liquidan al dueño (solo los extras, medio real
+  yape/tarjeta, `charge_id` y cargo por servicio); el APK hace lo MISMO desde
+  el 1-oct-2026 (ver "APP = WEB EN BONO, PUNTOS Y POZO"). **Puntos** =
   `_usarPuntos` del app: 100 pts = S/ 3, solo pago total en línea en soles,
   total > S/ 3, sin seña/bono/premio de fidelidad; el dueño liquida el precio
   COMPLETO (lo pone Pichangol) y el cargo por servicio se cotiza sobre lo
@@ -1589,6 +1592,42 @@ para la API del APK.
   SQL probado contra Postgres 16 real (concurrencia de puntos incluida).
   **Pendiente:** correr el SQL en QAS (director) y, con autorización, en
   PRD. Tests `tests/test_web_bono_puntos.py`; Playwright `$SP/bp_pw.js`.
+- **APP = WEB EN BONO, PUNTOS Y POZO (1-oct-2026, pedido del director:
+  "alinea el APK y el backend para que app y web se comporten igual"):**
+  (1) **Bono + servicios extra en el APK** (`club_detalle._reservar`): con
+  extras, asegura el bloque ANTES de cobrar, cobra SOLO los extras (+ cargo
+  por servicio si está activo) con `PagoTarjeta.cobrar` (resumen con
+  "🎟️ Pagado con tu bono · N horas"), la fila queda `medio_pago='bono'`,
+  `pagado` y con su cargo, y `agregarReservasJugadorMulti(extrasEnLinea:)`
+  → `_accionContable` caso `'bono'` liquida al dueño SOLO los extras con el
+  medio real y el `charge_id` (igual que `/web/pagar`). Bono con boleador →
+  aviso y no sigue; extras sin pago en línea disponible → aviso "quítalos
+  para usar tu bono" (la hoja ya lo explica en vez del botón). Pago fallido
+  → se libera el horario y el bono queda intacto. (2) **Cancelar una
+  reserva con bono desde el APK** pasa por el backend
+  (`mis_reservas._pagadaEnLinea` incluye `esBono` → `/pagos/reserva/
+  cancelacion|cancelar` = el motor `_cancelar_reserva` de la web): a tiempo
+  vuelven las horas (`bono_horas_devueltas`, el app recarga `cargarMisBonos`)
+  y la plata de los extras; tarde, nada. La hoja dice "con tu bono (N h)" y
+  qué vuelve. (3) **Puntos en cancelaciones** (motor compartido): una reserva
+  del APK con canje de puntos se detecta leyendo el NETO de
+  `pichangol_puntos_canjes` por referencia `<cancha>_<fecha>_<hora>` (fecha
+  real; en madrugada también el día base de APKs viejos) + `devolucion:<ref>`,
+  solo canjes creados desde ~2 h antes de la reserva (id `jug_<ms>`/`grp_<ms>`;
+  descarta canjes viejos de otra reserva del mismo turno)
+  (`beneficios._puntos_app`, `datos.puntos_canje_neto`); con devolución vuelven
+  con una fila negativa (`datos.puntos_devolver_neto`, candado por correo +
+  relectura = idempotente). **Nunca se devuelve más de lo cobrado:** el monto
+  a devolver se topa con el cargo de la pasarela (`cobro_web` o el `chr_` del
+  app) tanto a saldo como al medio original, y una reserva con bono sin ningún
+  cobro (APK viejo: extras en la fila SIN cobrarse) devuelve 0 en plata. El
+  APK escribe ahora la referencia del canje con la fecha REAL del primer turno
+  (como la web). `estado_cancelacion` trae `monto_centimos`. (4) **Pozo del
+  equipo en otra moneda:** `pozos.aportar` (APK `/pagos/torneo/equipo/
+  aportar|completar` y web) responde `moneda_distinta` si la billetera
+  (`moneda_billetera`) no es la moneda del pozo, ANTES de crear el pozo o
+  cobrar; el APK lo avisa con `avisarPichangol` en `_aportarPozo`. Test
+  `tests/test_alineacion_bono_puntos.py`.
 - **"CADA CLIC DEMORA" (queja del director, 1-oct-2026) — CAUSA RAÍZ:**
   `pg-backend-prd` corre en Railway **us-west2 (California)** y PCG-PRD está
   en **sa-east-1 (São Paulo)**: ~180 ms por ida y vuelta. psycopg abría una
@@ -3708,7 +3747,9 @@ auth por usuario en `/pagos/movimientos` (PROD).
   S/, 1 canje por reserva; el descuento lo absorbe la comisión PCG (la
   liquidación al dueño va con el precio completo). La WEB lo ofrece igual
   desde el 1-oct-2026 (`web/beneficios.py`); una cancelación web con
-  devolución inserta una fila NEGATIVA (−100) que devuelve los puntos. UI: tarjeta en Mis reservas
+  devolución inserta una fila NEGATIVA (−100) que devuelve los puntos; desde
+  el 1-oct-2026 también para canjes hechos en el APK (y la devolución en plata
+  nunca supera lo cobrado). UI: tarjeta en Mis reservas
   (`_PuntosCard`) + pantalla "Mis puntos" en Perfil (`mis_puntos_screen.dart`).
   SQL: `docs/piloto/supabase_puntos_canjes.sql`. OJO: el backend growth
   `/puntos/*` es el motor de INCENTIVOS growth (traer_cancha, etc.; ahora con

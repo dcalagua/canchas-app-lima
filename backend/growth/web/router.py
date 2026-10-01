@@ -2770,16 +2770,28 @@ def estado_cancelacion(filas: list[dict], c: dict | None, email: str, cancela_an
     sim = filas[0].get("moneda") or "S/"
     # Lo que el jugador PAGÓ en plata: sin los turnos que cubrió su bono ni
     # los S/ 3 de puntos (esos vuelven como horas / puntos, no como dinero).
-    aj = beneficios.ajustes(filas)
-    precio = max(0, _total_de(filas) - aj["bono_cubre"] - aj["puntos_desc"])
+    aj = beneficios.ajustes(filas, c)
+    precio_c = max(0, _total_de(filas) - aj["bono_cubre"] - aj["puntos_desc"]) * 100
     cobro = _cobro_web(_ref_de(filas))
     liq, cargo_app = (None, None) if cobro is not None else _cargo_app([str(f["id"]) for f in filas])
     cargo_c, _desg = _cargo_pagado(filas, cobro)
     if cargo_c <= 0 and liq is not None:
         cargo_c = max(int(getattr(liq, "cargo_servicio_centimos", 0) or 0), 0)
+    # NUNCA se devuelve más plata de la que entró: (1) con bono, si no hay
+    # ningún cobro registrado (APKs anteriores dejaban los servicios extra en
+    # la fila SIN cobrarlos) no hay plata pagada; (2) con el cargo de la
+    # pasarela a la mano, lo pagado tope = ese cargo (precio + cargo).
+    fila_pago = cobro if cobro is not None else cargo_app
+    if aj["bono_horas"] and fila_pago is None and liq is None:
+        precio_c, cargo_c = 0, 0
+    if fila_pago is not None and int(getattr(fila_pago, "monto_centimos", 0) or 0) > 0:
+        tope = int(fila_pago.monto_centimos)
+        cargo_c = min(cargo_c, tope)
+        precio_c = min(precio_c, max(0, tope - cargo_c))
+    precio = precio_c // 100 if precio_c % 100 == 0 else precio_c / 100.0
     pol = _dev.resumen(pagado=pagado, horas_para_inicio=horas,
                        horas_desde_pago=_horas_desde_pago(cobro if cobro is not None else (cargo_app or liq)),
-                       precio_centimos=precio * 100, cargo_centimos=cargo_c, simbolo=sim, cancela_anfitrion=cancela_anfitrion)
+                       precio_centimos=precio_c, cargo_centimos=cargo_c, simbolo=sim, cancela_anfitrion=cancela_anfitrion)
     # ¿La devolución al medio original sale sola por Culqi (tenemos el cargo)
     # o la coordina el operador (pago viejo del app sin cargo ligado)?
     directo = cobro is not None or cargo_app is not None
@@ -2790,12 +2802,13 @@ def estado_cancelacion(filas: list[dict], c: dict | None, email: str, cancela_an
                               "Se devuelve el precio de la reserva; el cargo por servicio no se devuelve. ")
                              + "Te escribimos para coordinar la devolución.")
     reembolsable = pol["motivo"] in ("plazo", "arrepentimiento", "anfitrion")
-    if precio <= 0 and cargo_c <= 0:
+    if precio_c <= 0 and cargo_c <= 0:
         pol["opciones"] = []  # todo con bono: no hay plata que devolver, solo horas
     return {"puede": True, "horas": round(horas, 1), "pagado": pagado, "pagado_online": pagado_online,
             "bono_horas": aj["bono_horas"], "puntos": aj["puntos"],
             "reembolsable": reembolsable, "minimo_horas": config.WEB_CANCELACION_HORAS,
-            "monto": precio, "moneda": sim, "cargo_centimos": cargo_c, "total_pagado": precio + cargo_c / 100.0,
+            "monto": precio, "monto_centimos": precio_c, "moneda": sim, "cargo_centimos": cargo_c,
+            "total_pagado": (precio_c + cargo_c) / 100.0,
             "reembolso_directo": directo, "politica": pol}
 
 
@@ -2828,15 +2841,18 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
         return {"ok": False, "error": est.get("motivo"), "mensaje": msgs.get(est.get("motivo"), "No se pudo cancelar.")}
     ref = _ref_de(filas)
     ids = [str(f["id"]) for f in filas]
-    monto = int(est["monto"]); sim = est["moneda"]; iso = _moneda_de(c)[1] if c else "PEN"
+    monto = est["monto"]; monto_c = int(est["monto_centimos"]); sim = est["moneda"]; iso = _moneda_de(c)[1] if c else "PEN"
     pol = est["politica"]; mot = pol["motivo"]
     cargo_c = int(est["cargo_centimos"])
-    monto_dev, incluye_cargo = _dev.monto_devolucion(mot, medio, monto * 100, cargo_c)
+    monto_dev, incluye_cargo = _dev.monto_devolucion(mot, medio, monto_c, cargo_c)
     cobro = _cobro_web(ref)
     _liq, cargo_app = (None, None) if cobro is not None else _cargo_app(ids)
     # Fila del cargo de Culqi que se reembolsa: el `cobro_web` (web) o el cargo
     # del app ligado a la liquidación (`chr_…`). Sin ninguno → manual.
     fila_cargo = cobro if cobro is not None else cargo_app
+    if fila_cargo is not None and int(fila_cargo.monto_centimos or 0) > 0:
+        # Ni a saldo ni al medio original se devuelve más de lo cobrado.
+        monto_dev = min(monto_dev, int(fila_cargo.monto_centimos))
     reembolso, refund_id, detalle = "no_aplica", None, ""
     medio_pago = str(filas[0].get("medio_pago") or "")
     if est["pagado"] and monto_dev > 0:
@@ -2896,7 +2912,7 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
             # Culpa del anfitrión: el costo de la pasarela de esa devolución
             # (Culqi no devuelve su comisión) se le descuenta en la siguiente
             # liquidación. A saldo no hay costo.
-            base_pasarela = fila_cargo.monto_centimos if fila_cargo is not None else monto * 100 + cargo_c
+            base_pasarela = fila_cargo.monto_centimos if fila_cargo is not None else monto_c + cargo_c
             costo_pasarela = _tp.costo_centimos(base_pasarela, iso, medio_pago or "tarjeta", "liquidacion_online")
             deuda += costo_pasarela
         if deuda > 0:
@@ -3515,7 +3531,7 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         desglose_guardado = list(raw or []) if isinstance(raw, list) else []
     # BONO / PUNTOS: los turnos que cubrió el bono y los S/ 3 de puntos no se
     # pagaron en plata (la fila guarda el precio de lista, como el app).
-    aj = beneficios.ajustes(filas)
+    aj = beneficios.ajustes(filas, c)
     pagado = max(0, total - aj["bono_cubre"] - aj["puntos_desc"]) + cargo_c / 100.0
     # SEÑA: se pagó solo la seña (+ su cargo); el resto se paga en la cancha.
     sena_c = sum(int(f.get("sena") or 0) for f in filas) if str(filas[0].get("medio_pago") or "") == "sena" else 0
