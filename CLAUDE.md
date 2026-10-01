@@ -1459,6 +1459,29 @@ para la API del APK.
   "yo" del carrito (o la primera). Tests
   `test_cargo_lleva_los_datos_reales_del_cliente_para_culqi` + asserts en
   `test_reserva_web_completa` y `test_ficha_de_academia…`.
+- **"CADA CLIC DEMORA" (queja del director, 1-oct-2026) — CAUSA RAÍZ:**
+  `pg-backend-prd` corre en Railway **us-west2 (California)** y PCG-PRD está
+  en **sa-east-1 (São Paulo)**: ~180 ms por ida y vuelta. psycopg abría una
+  transacción implícita (BEGIN = 1 viaje) y `commit()` al salir (otro viaje) →
+  cada lectura costaba 3 viajes (~550 ms); `/` tardaba 1,7 s, la ficha 1,8 s,
+  `/web/disponibilidad` 2 s, el badge de mensajes 3-4 s, la bandeja 4,6 s, un
+  chat 8 s (logs `[perf]`). Arreglo: (1) **transacción perezosa** en
+  `pg.conexion()` (`_ConexionPerezosa`): el pool va en AUTOCOMMIT y BEGIN se
+  manda recién con la 1.ª escritura / `FOR UPDATE` (`pg.es_lectura`); lectura =
+  1 viaje; escrituras siguen atómicas (mismo resultado bajo READ COMMITTED);
+  probado contra Postgres 16 real; test `tests/test_pg_perezoso.py`. (2) Pool
+  tibio: hilo `pcg-pool` (`pg.iniciar_tibias`) hace `SELECT 1` cada 60 s y
+  mantiene ≥2 conexiones (abrir una nueva = TLS + login ≈ 1 s); `POOL_MAX` 8.
+  (3) Badge `/web/mensajes/no-leidos` con caché de 20 s por cuenta (se borra
+  al leer un chat). (4) **PRELOAD EN TODO** (`ui.JS_NAV`): barra fina verde
+  arriba (`#pcgBarra`, `pcgBarra(on)`) al instante en cada clic a un enlace
+  interno / envío de formulario + velo "Cargando…" si la página tarda > 450 ms
+  (se quita solo a los 15 s o al volver con el botón atrás); todo `fetch` que
+  tarde > 250 ms muestra la barra, salvo los sondeos de fondo (`FONDO`: badge,
+  hilo, bandeja, foto, descubrir). Excluir un enlace: `data-sin-carga`.
+  Playwright `$SP/pw_preload.js`. **Recomendado (infra, pendiente de
+  autorización):** mover `pg-backend-prd` a **us-east4 (Virginia)**: ~115 ms
+  a São Paulo y más cerca de Lima.
 - **APARTADOS WEB VENCIDOS NO OCUPAN (caso real PRD, 1-oct-2026: las 20:00
   de "Campo deportivo Edu Jr." salían "Ocupado" sin ningún pago; era un
   apartado `web_hold` de 10 min que el cliente abandonó y que solo se borraba

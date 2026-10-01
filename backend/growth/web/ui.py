@@ -551,6 +551,7 @@ body.sin-scroll{overflow:hidden}
 .pcg-dlg .caja::before{content:'';display:block;width:40px;height:4px;border-radius:2px;background:#DDDDDD;margin:0 auto 12px;flex:none}
 .pcg-dlg .ico{width:44px;height:44px;font-size:21px;margin-bottom:8px}.pcg-dlg h3{font-size:17px}.pcg-dlg p,.pcg-dlg .msg{font-size:14px;margin-bottom:14px}.pcg-dlg .btn{padding:13px 16px;font-size:15px}.pcg-dlg .txt{padding:10px;font-size:14.5px}}
 @keyframes subir{0%{transform:translateY(40px);opacity:0}100%{transform:none;opacity:1}}
+.pcg-barra{position:fixed;top:0;left:0;right:0;height:3px;z-index:120;pointer-events:none;opacity:0;transition:opacity .25s}.pcg-barra.on{opacity:1}.pcg-barra i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--esmeralda),#7CB518);box-shadow:0 0 8px rgba(11,138,62,.5)}.pcg-barra.on i{animation:pcgBarra 8s cubic-bezier(.1,.7,.2,1) forwards}.pcg-barra.fin i{animation:none;width:100%;transition:width .2s}@keyframes pcgBarra{0%{width:0}20%{width:45%}60%{width:75%}100%{width:92%}}
 .pcg-velo{display:none;position:fixed;inset:0;background:rgba(10,27,61,.35);backdrop-filter:blur(2px);z-index:90;align-items:center;justify-content:center;padding:16px}.pcg-velo.open{display:flex}
 .pcg-velo .tarjeta{background:var(--blanco);border-radius:20px;padding:24px 28px;display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--noche);font-weight:700;font-size:15px;box-shadow:0 12px 40px rgba(10,27,61,.3);min-width:220px;text-align:center}
 .pcg-velo .aro{width:46px;height:46px;border-radius:50%;border:4px solid var(--gris);border-top-color:var(--esmeralda);animation:pcgGiro .8s linear infinite}@keyframes pcgGiro{to{transform:rotate(360deg)}}
@@ -1070,7 +1071,37 @@ JS_NAV = r"""
     if(demora) veloT = setTimeout(abrir, demora); else abrir(); };
   window.pcgRecargar = function(msg){ pcgCargando(msg || 'Actualizando…'); location.reload(); };
   window.pcgIr = function(url, msg){ pcgCargando(msg || 'Un momento…'); location.href = url; };
-  window.addEventListener('pageshow', function(ev){ if(ev.persisted) pcgCargando(false); });
+  window.addEventListener('pageshow', function(ev){ if(ev.persisted){ pcgCargando(false); barra(false); } });
+  // PRELOAD EN TODO (pedido del director, 1-oct-2026: "en cada clic se demora;
+  // en todo debe considerar el preload"): (1) barra fina arriba al instante en
+  // cada navegación y en cada fetch que tarde > 250 ms; (2) si la página
+  // siguiente tarda > 450 ms, el velo con spinner "Cargando…". Los sondeos de
+  // fondo (badge, chat, fotos) no muestran nada.
+  var nBar = 0, barT = null;
+  function barra(on){ var b = document.getElementById('pcgBarra'); if(!b){ b = document.createElement('div'); b.id = 'pcgBarra'; b.className = 'pcg-barra'; b.innerHTML = '<i></i>'; document.body.appendChild(b); }
+    if(on){ b.classList.remove('fin'); b.classList.add('on'); } else { b.classList.add('fin'); setTimeout(function(){ b.classList.remove('on', 'fin'); }, 260); } }
+  window.pcgBarra = barra;
+  var navT = null;
+  function navegando(){ barra(true); pcgCargando('Cargando…', {demora: 450}); clearTimeout(navT); navT = setTimeout(function(){ pcgCargando(false); barra(false); }, 15000); }
+  document.addEventListener('click', function(e){
+    if(e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var a = e.target.closest && e.target.closest('a[href]'); if(!a) return;
+    if((a.target && a.target !== '_self') || a.hasAttribute('download') || a.dataset.sinCarga !== undefined) return;
+    var h = a.getAttribute('href') || ''; if(!h || h.charAt(0) === '#' || /^(javascript|mailto|tel|intent|whatsapp|sms):/i.test(h)) return;
+    var u; try { u = new URL(a.href, location.href); } catch(_){ return; }
+    if(u.origin !== location.origin) return;
+    if(u.pathname === location.pathname && u.search === location.search && u.hash) return;
+    if(/\.(csv|ics|txt|pdf|png|jpe?g|zip)$/i.test(u.pathname) || /[?&](descargar|csv)=/.test(u.search)) return;
+    setTimeout(function(){ if(!e.defaultPrevented) navegando(); }, 0);
+  });
+  document.addEventListener('submit', function(e){ if(!e.defaultPrevented && !(e.target.target && e.target.target !== '_self')) navegando(); });
+  var FONDO = /\/web\/(mensajes\/(no-leidos|hilo|bandeja)|foto|descubrir|sesion$)|\/static\//;
+  if(window.fetch && !window.fetch.__pcg){ var f0 = window.fetch; var fw = function(rec, op){ var url = typeof rec === 'string' ? rec : ((rec && rec.url) || '');
+      if(FONDO.test(url)) return f0.apply(this, arguments);
+      nBar++; var t = setTimeout(function(){ if(nBar > 0) barra(true); }, 250);
+      var fin = function(){ clearTimeout(t); nBar = Math.max(0, nBar - 1); if(!nBar) barra(false); };
+      return f0.apply(this, arguments).then(function(r){ fin(); return r; }, function(err){ fin(); throw err; }); };
+    fw.__pcg = true; window.fetch = fw; }
   if(!window.pcgToast){ window.pcgToast = function(t){ var el = document.createElement('div'); el.className = 'toast'; el.textContent = t; document.body.appendChild(el); setTimeout(function(){ el.classList.add('on'); }, 10); setTimeout(function(){ el.classList.remove('on'); setTimeout(function(){ el.remove(); }, 300); }, 2600); }; }
 })();
 """

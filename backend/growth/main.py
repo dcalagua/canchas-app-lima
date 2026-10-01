@@ -186,6 +186,9 @@ async def _iniciar_correos() -> None:
         return
     import correos
     correos.iniciar_hilo()
+    # Conexiones del pool siempre "tibias" (la base está lejos: abrir una nueva
+    # cuesta ~1 s; ver `pg._mantener_tibias`).
+    pg.iniciar_tibias()
 
 
 @app.on_event("startup")

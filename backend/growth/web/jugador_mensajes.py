@@ -673,6 +673,7 @@ def insertar_mensaje(fila: dict) -> dict | None:
 def marcar_leido(hilos: list[str], email: str) -> None:
     """`LecturasRepo.marcarLeido` (entregado y leído hasta ahora)."""
     em = _low(email)
+    _BADGE_CACHE.pop(em, None)  # al leer, el badge baja al instante
     if not pg.habilitado or not em or not hilos:
         return
     try:
@@ -1726,13 +1727,34 @@ def api_bandeja(request: Request) -> JSONResponse:
                         headers={"Cache-Control": "no-store"})
 
 
+import time as _time_badge
+
+_BADGE_CACHE: dict[str, tuple[float, int]] = {}
+
+
+def olvidar_badge(email: str) -> None:
+    _BADGE_CACHE.pop(_low(email), None)
+
+
 @router.get("/web/mensajes/no-leidos")
 def api_no_leidos(request: Request) -> JSONResponse:
     """Para el badge de "💬 Mensajes" (cabecera / Perfil)."""
     ses = sesion.de_request(request)
     if not ses or not ses.get("email"):
         return JSONResponse({"ok": True, "n": 0})
-    return JSONResponse({"ok": True, "n": no_leidos_total(ses["email"])}, headers={"Cache-Control": "no-store"})
+    # Se pide en CADA página (badge del menú): caché de 20 s por cuenta para no
+    # recalcular la bandeja entera (5 consultas) en cada clic.
+    yo = _low(ses["email"])
+    ahora = _time_badge.time()
+    hit = _BADGE_CACHE.get(yo)
+    if hit and ahora - hit[0] < 20:
+        n = hit[1]
+    else:
+        n = no_leidos_total(yo)
+        _BADGE_CACHE[yo] = (ahora, n)
+        if len(_BADGE_CACHE) > 5000:
+            _BADGE_CACHE.clear()
+    return JSONResponse({"ok": True, "n": n}, headers={"Cache-Control": "no-store"})
 
 
 @router.get("/web/mensajes/hilo")
