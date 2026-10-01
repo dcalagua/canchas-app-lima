@@ -872,17 +872,7 @@ def _otp_confirmar(ses: dict, cancha_id: str, body) -> dict:
     _otp_de.pop(cancha_id, None)
     mask = otp_svc._mask(tel)
     # Evidencia para la torre (el reclamo es lo que decide la propiedad).
-    r.telefono_contacto = tel or r.telefono_contacto
-    marca = f"✓ WhatsApp {mask} confirmado por código (web)"
-    if marca not in (r.nota_reclamante or ""):
-        r.nota_reclamante = (f"{r.nota_reclamante} · {marca}" if r.nota_reclamante else marca)[:600]
-    try:
-        reclamos._notificar_admin(
-            f"🔐 El reclamante confirmó por código el WhatsApp del local\nLocal: {r.nombre_local}\n"
-            f"Cuenta: {r.solicitante_id}\nTeléfono: {mask}\nCódigo del reclamo: {r.codigo}\n"
-            f"Para activarla responde: APROBAR {r.codigo}")
-    except Exception:  # noqa: BLE001
-        pass
+    reclamos.registrar_evidencia_otp(cancha_id, email, mask, tel, origen="web")
     print(f"[verificacion-web] {email} confirmó OTP {mask} para {cancha_id} (reclamo #{r.id})", flush=True)
     return {"ok": True, "estado": res.get("estado")}
 

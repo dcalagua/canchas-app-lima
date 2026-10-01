@@ -173,7 +173,9 @@ def test_mi_pais_solo_con_saldo_cero_y_descongela_la_moneda(monkeypatch):
 
 
 def test_mis_pagos_como_el_app_con_comprobantes(monkeypatch):
-    hoy = datetime.now(timezone.utc)
+    # "Hoy/Ayer" son días de LIMA: entre 19:00 y 24:00 de Lima ya es otro día en
+    # UTC y el test fallaba según la hora a la que corría.
+    hoy = datetime.now(timezone(timedelta(hours=-5)))
     monkeypatch.setattr(jb, "bonos_comprados", lambda e: [
         {"id": "b1", "club": "Club Sol", "horas_total": 5, "horas_usadas": 1, "precio": 200.0, "creado": hoy - timedelta(days=3)}])
     monkeypatch.setattr(jb, "monedas_de_clubes", lambda c: {"Club Sol": "S/"})
