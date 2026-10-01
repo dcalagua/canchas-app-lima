@@ -35,11 +35,28 @@ class ReservasRepo {
       final rows = await SupabaseService.client.from(_tabla).select();
       ultimoFetchOk = true;
       return (rows as List)
-          .map((r) => _fromRow(r as Map<String, dynamic>))
+          .cast<Map<String, dynamic>>()
+          .where((r) => !esHoldWebVencido(r))
+          .map(_fromRow)
           .toList();
     } catch (_) {
       return [];
     }
+  }
+
+  /// Apartado de la WEB que nunca se pagó (`web_<epoch_ms>_n`, estado
+  /// `nueva`, sin pagar) y ya pasó sus 10 min: NO ocupa el turno ni es una
+  /// reserva (caso real PRD, 1-oct-2026: un apartado sin pago bloqueó las 20:00
+  /// toda la noche). El backend los borra cada minuto; esto cubre el intervalo.
+  static bool esHoldWebVencido(Map<String, dynamic> r, {DateTime? ahora}) {
+    final id = (r['id'] ?? '').toString();
+    if (!id.startsWith('web_')) return false;
+    if ((r['estado'] ?? '').toString() != 'nueva') return false;
+    if (r['pagado'] == true) return false;
+    final ms = int.tryParse(id.split('_').length > 1 ? id.split('_')[1] : '');
+    if (ms == null) return false;
+    final ref = (ahora ?? DateTime.now()).millisecondsSinceEpoch;
+    return ref - ms > 10 * 60 * 1000;
   }
 
   /// Inserta una reserva validando el slot contra el constraint UNIQUE. Es el

@@ -64,6 +64,16 @@ def _sel_cancha() -> str:
     return ", ".join(_cols_cancha())
 
 PREFIJO_ID_WEB = "web_"
+# Un apartado web sin pagar con más de HOLD_SEGUNDOS NO ocupa el turno (caso
+# real PRD, 1-oct-2026: uno abandonado bloqueó las 20:00 toda la noche porque
+# solo se borraba cuando otro cliente intentaba reservar esa cancha).
+_SQL_SIN_HOLD_VENCIDO = (
+    " AND NOT (coalesce(estado,'') = 'nueva' AND NOT coalesce(pagado,false) AND id LIKE 'web\\_%%' "
+    "AND (CASE WHEN split_part(id, '_', 2) ~ '^[0-9]+$' THEN split_part(id, '_', 2)::bigint ELSE NULL END) < %s)")
+
+
+def _corte_hold() -> int:
+    return int((time.time() - HOLD_SEGUNDOS) * 1000)
 HOLD_SEGUNDOS = 10 * 60  # una reserva web sin pagar se libera a los 10 min
 
 
@@ -507,7 +517,7 @@ def ocupados(cancha_id: str, fechas: list[str]) -> set[tuple[str, str]]:
             cur.execute(
                 "SELECT fecha, hora_inicio FROM pichangol_reservas "
                 "WHERE cancha_id = %s AND fecha = ANY(%s) "
-                "AND coalesce(estado,'') <> 'noShow'", (cancha_id, fechas))
+                "AND coalesce(estado,'') <> 'noShow'" + _SQL_SIN_HOLD_VENCIDO, (cancha_id, fechas, _corte_hold()))
             out.update((str(f), str(h)) for f, h in cur.fetchall())
             try:
                 cur.execute(
@@ -532,7 +542,7 @@ def ocupados_varias(ids: list[str], fechas: list[str]) -> dict[str, set[tuple[st
             cur.execute(
                 "SELECT cancha_id, fecha, hora_inicio FROM pichangol_reservas "
                 "WHERE cancha_id = ANY(%s) AND fecha = ANY(%s) "
-                "AND coalesce(estado,'') <> 'noShow'", (ids, fechas))
+                "AND coalesce(estado,'') <> 'noShow'" + _SQL_SIN_HOLD_VENCIDO, (ids, fechas, _corte_hold()))
             for cid, f, h in cur.fetchall():
                 out.setdefault(str(cid), set()).add((str(f), str(h)))
             try:
@@ -582,6 +592,26 @@ def liberar_holds_vencidos(cancha_id: str) -> int:
             return n
     except Exception:  # noqa: BLE001
         return 0
+
+
+def liberar_holds_vencidos_todos() -> list[dict]:
+    """Borra los apartados web vencidos de TODAS las canchas (cron de 1 min en
+    `main.py`). Devuelve lo borrado (para el log)."""
+    if not pg.habilitado:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM pichangol_reservas WHERE estado = 'nueva' AND NOT coalesce(pagado,false) "
+                "AND id LIKE %s AND split_part(id, '_', 2) ~ '^[0-9]+$' "
+                "AND split_part(id, '_', 2)::bigint < %s RETURNING id, cancha_id, fecha, hora_inicio",
+                (PREFIJO_ID_WEB.replace("_", "\\_") + "%", _corte_hold()))
+            filas = [{"id": a, "cancha_id": b, "fecha": str(c), "hora": str(d)} for a, b, c, d in cur.fetchall()]
+            conn.commit()
+            return filas
+    except Exception as ex:  # noqa: BLE001
+        print(f"[holds] no se pudo liberar: {ex}", flush=True)
+        return []
 
 
 def insertar_reservas(filas: list[dict]) -> str:

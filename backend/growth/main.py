@@ -289,6 +289,30 @@ async def _iniciar_cron_boleadores() -> None:
 
 
 @app.on_event("startup")
+async def _iniciar_cron_holds_web() -> None:
+    """RESERVA WEB: cada minuto borra los apartados web sin pagar que pasaron
+    sus 10 min (`datos.liberar_holds_vencidos_todos`, en un hilo) y devuelve
+    el premio de fidelidad que tuvieran apartado. Antes solo se borraban
+    cuando otro cliente intentaba reservar ESA cancha (caso PRD 1-oct-2026)."""
+    async def _loop() -> None:
+        await asyncio.sleep(30)
+        while True:
+            try:
+                from web import datos as _datos
+                filas = await asyncio.to_thread(_datos.liberar_holds_vencidos_todos)
+                if filas:
+                    import fidelidad as _fid
+                    for f in filas:
+                        await asyncio.to_thread(_fid.revertir_canje, "", [f["id"]])
+                    print("[holds] liberados: " + ", ".join(f"{f['cancha_id']} {f['fecha']} {f['hora']}" for f in filas), flush=True)
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(60)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
 async def _iniciar_cron_stock_marketplace() -> None:
     """MARKETPLACE: cada 5 min devuelve al stock las unidades que un APK apartó
     y nunca cobró (`pagos/stock_productos.liberar_vencidos`, en un hilo: toca
