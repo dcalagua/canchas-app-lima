@@ -1007,7 +1007,9 @@ para la API del APK.
   `_revocar_cancha_al_rechazar`) hace `datos.marcar_verificada(cancha_id,
   dueno, bool)` sobre la reclamada y sus hermanas `u<ts>_*` (fail-safe). El OTP por
   WhatsApp ya está en la web (`/anfitrion/verificacion/{id}`); la verificación
-  de existencia (IA) sigue solo en el app. Test
+  de existencia (IA) también corre al registrar/adoptar desde la web
+  (`anfitrion.verificar_existencia` → `verificacion_fisica.service.evaluar`
+  en segundo plano, como `verificarVenue` del APK; nunca bloquea). Test
   `test_registrar_y_reclamar_cancha_desde_la_web_como_el_app`.
   **AGREGAR CANCHA A UN LOCAL EXISTENTE (pedido del director, 23-sep-2026:
   "¿cómo registro otra cancha, y de otro deporte?"):** `GET/POST
@@ -1229,7 +1231,8 @@ para la API del APK.
   `participante[/{pid}/eliminar]`, `fixture`, `resultado`, `prueba[/{pid}/
   eliminar]`, `marca`, `ranking`, `duplicar`, `eliminar`); todos exigen
   sesión y que el campeonato sea del correo (404 si no). La INSCRIPCIÓN del
-  jugador (con pago desde su saldo) sigue en el app. **Trampa CSS:** el
+  jugador (con pago desde su saldo) también está en la web: ver
+  "INSCRIPCIÓN A CAMPEONATOS EN LA WEB". **Trampa CSS:** el
   shell global tiene `.paso span{…círculo azul}` (pasos numerados de la
   reserva): el asistente usa la clase `.wz-p`, NO `.paso`; y `input` es
   `width:100%` global → radios/checkbox con `width:auto;flex:none`. Tests
@@ -1676,12 +1679,48 @@ para la API del APK.
   codigo`) → `GET /anfitrion/campeonatos/unirme?codigo=` →
   `datos.campeonato_por_codigo` (código del TORNEO `data->>'codigo'` o de un
   EQUIPO por contención jsonb en `participantes`) → 303 a la página pública
-  `/c/{id}` (con `?equipo=COD` si era de equipo: ahí "Unirme al equipo en la
-  app"; la web no cobra la parte); inexistente → `?no_encontrado=1` con
+  `/c/{id}` (con `?equipo=COD` si era de equipo: ahí "Unirme al equipo
+  aquí" —web, con saldo— o en la app); inexistente → `?no_encontrado=1` con
   aviso. Sección "Donde participo" (`datos.campeonatos_donde_participa`:
   prefiltro `data::text LIKE %email%` + `participa_en`; tarjeta con rol
-  `_rol_en` → `/c/{id}`) y "Organizo". El vacío dice "Aún no tienes
+  `_rol_en` → `/torneo/{id}`) y "Organizo". El vacío dice "Aún no tienes
   campeonatos". Test `test_web_unirme_con_codigo_y_donde_participo`.
+- **INSCRIPCIÓN A CAMPEONATOS EN LA WEB (1-oct-2026, pedido del director:
+  "en un campeonato el jugador debe poder hacer en la web todo lo que hace en
+  el app, pagando de su saldo"):** `web/jugador_campeonatos.py`. `GET
+  /torneo/{id}[?equipo=COD]` (sin sesión → `/entrar?volver=`) = panel del
+  jugador de `campeonato_detalle_screen`: chips del torneo, "Tu saldo",
+  "Ya estás inscrito", inscripción INDIVIDUAL (Yo / Mi hijo(a) con nombre,
+  edad opcional, WhatsApp y consentimiento; "Inscribir a otro hijo(a)") y en
+  FÚTBOL crear mi equipo (pagando primero mi parte), unirme por código, por
+  el enlace del capitán o tocando el equipo (pozo lleno = gratis), y
+  "Completar S/ X" para los del plantel; cada equipo muestra pozo, plantel
+  con "pagó / sin pagar" y el MOTIVO si no se puede unir
+  (`L.motivo_plantel_cerrado`, organizador, lleno, sin código). JSON con
+  sesión: `POST /web/torneo/{id}/inscribir` (→ `pagos.router.
+  post_torneo_inscribir`, los MISMOS pagos `inscripcion_torneo` +
+  `inscripcion_torneo_ingreso` por recibir del APK; pasa `moneda` si el
+  modelo la tiene), `/equipo/crear`, `/equipo/unirme {codigo|equipo_id}`,
+  `/equipo/{eid}/completar` (→ `pozos.aportar`, mismo pozo/comisión/
+  liquidación que `/pagos/torneo/equipo/*`), `/documento {para: yo|hijo,
+  numero, nacimiento}` (`exigeDni`: PE/EC contra el registro —yo con
+  `post_verificar_dni` + queda verificado; hijo solo consulta—, BO CI + fecha;
+  valida la edad de la categoría con los textos del app y devuelve un token
+  firmado de 30 min; "yo" ya verificado pasa directo, como
+  `jugadorVerificado`). Reglas espejo en `campeonatos_logica`
+  (`puede_inscribirse`, `aporte_siguiente`, `pozo_completo`,
+  `agregar_inscripcion`, `crear_equipo`, `unir_al_plantel`,
+  `registrar_aporte` = mismo JSON que `AppState`). Se valida TODO antes de
+  cobrar; la billetera debe estar en la moneda del torneo
+  (`moneda_billetera`, 409 `moneda_distinta`); sin saldo → 402 `falta_saldo`
+  → modal "Recargar saldo" (`/mi-billetera#recargar`). **Concurrencia:**
+  `datos.mutar_campeonato` (`SELECT … FOR UPDATE` + UPDATE en la misma
+  transacción) + candado por correo; si el JSON no se guarda tras mover
+  plata, se compensa (`pozos.revertir_aporte`, anular pagos de la
+  inscripción y devolver al saldo). Push "Nuevo jugador en tu equipo ⚽" al
+  capitán. La página pública `/c/{id}` lleva "Inscribirme aquí" / "Unirme
+  al equipo aquí" (→ `/torneo/…`) como botón principal y la app como
+  secundario. Test `tests/test_web_campeonato_inscripcion.py`.
 - **PAGO FAMILIAR EN ACADEMIAS (pedido del director, 26-sep-2026: "yo pago
   la academia de tenis de mi esposa, de mis hijos y mi propia mensualidad,
   hago un solo pago por ellos"; "Sí, familiar, implementa los tres puntos"):**
