@@ -216,6 +216,7 @@ ul.datos li{margin:6px 0;display:flex;gap:8px;align-items:flex-start}
 .pin-precio{background:var(--blanco);color:var(--noche);font-weight:800;font-size:12.5px;padding:5px 9px;border-radius:999px;box-shadow:0 2px 8px rgba(15,27,45,.25);border:1px solid var(--trazo);white-space:nowrap;font-family:"DM Sans",system-ui,sans-serif}
 .pin-precio.yo{background:var(--esmeralda);color:#fff;border-color:var(--esmeralda)}
 .pin-precio.pend{background:var(--gris);color:var(--tenue)}
+.btn-zona{position:absolute;top:12px;left:50%;transform:translateX(-50%);z-index:500;background:var(--blanco);color:var(--noche);font-weight:700;font-size:13.5px;padding:9px 16px;border-radius:999px;border:1px solid var(--trazo);box-shadow:0 2px 10px rgba(15,27,45,.22);cursor:pointer;font-family:"DM Sans",system-ui,sans-serif;white-space:nowrap}
 .card.pend img,.card.pend .sinfoto{filter:saturate(.6)}
 .leaflet-popup-content-wrapper{border-radius:14px;font-family:"DM Sans",system-ui,sans-serif}
 .leaflet-popup-content{margin:12px 14px;font-size:13.5px}.leaflet-popup-content b{font-size:14px}

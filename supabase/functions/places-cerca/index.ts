@@ -11,6 +11,84 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const KEY = Deno.env.get("PLACES_API_KEY") ?? "";
+// CACHÉ de consultas (oct-2026, factura de Google): tabla
+// `pichangol_places_consultas` (SQL docs/piloto/supabase_places_consultas.sql).
+// Cada llamada sin caché son ~18 "Text Search Pro" (≈ USD 0.60). Con caché,
+// cualquier punto a ≤ 3 km de una zona consultada en los últimos 30 días
+// (1 día si pide fotos) reusa la respuesta: APK nuevo, APK viejo y web.
+// Sin la tabla o sin service role, la función sigue como antes (fail-open).
+const SB_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const TABLA = "pichangol_places_consultas";
+const CACHE_KM = 3;
+const CACHE_DIAS = 30;
+const CACHE_DIAS_FOTOS = 1;
+
+function kmEntre(a: number, b: number, c: number, d: number): number {
+  const r = Math.PI / 180;
+  const x = Math.sin(((c - a) * r) / 2) ** 2 +
+    Math.cos(a * r) * Math.cos(c * r) * Math.sin(((d - b) * r) / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(x));
+}
+
+// deno-lint-ignore no-explicit-any
+async function leerCache(region: string, lat: number, lng: number, radio: number, dias: number, fotos: boolean | null): Promise<any[] | null> {
+  if (!SB_URL || !SB_KEY) return null;
+  try {
+    const d = 0.03; // ~3.3 km
+    const desde = new Date(Date.now() - dias * 86400000).toISOString();
+    const q = new URLSearchParams();
+    q.set("select", "lat,lng,radio,places");
+    q.set("region", `eq.${region}`);
+    q.append("lat", `gte.${lat - d}`);
+    q.append("lat", `lte.${lat + d}`);
+    q.append("lng", `gte.${lng - d}`);
+    q.append("lng", `lte.${lng + d}`);
+    q.set("creado_en", `gte.${desde}`);
+    if (fotos !== null) q.set("fotos", `eq.${fotos}`);
+    q.set("order", "creado_en.desc");
+    q.set("limit", "20");
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLA}?${q}`, {
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    });
+    if (!r.ok) return null;
+    // deno-lint-ignore no-explicit-any
+    const filas: any[] = await r.json();
+    for (const f of filas) {
+      if (Number(f.radio) >= radio * 0.75 &&
+          kmEntre(lat, lng, Number(f.lat), Number(f.lng)) <= CACHE_KM) {
+        return Array.isArray(f.places) ? f.places : [];
+      }
+    }
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function guardarCache(region: string, lat: number, lng: number, radio: number, fotos: boolean, places: unknown[]): Promise<void> {
+  if (!SB_URL || !SB_KEY) return;
+  try {
+    await fetch(`${SB_URL}/rest/v1/${TABLA}`, {
+      method: "POST",
+      headers: {
+        apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`,
+        "Content-Type": "application/json", Prefer: "return=minimal",
+      },
+      body: JSON.stringify({ region, lat, lng, radio, fotos, places }),
+    });
+    if (Math.random() < 0.02) {
+      // Limpieza ocasional de lo vencido.
+      const viejo = new Date(Date.now() - (CACHE_DIAS + 5) * 86400000).toISOString();
+      await fetch(`${SB_URL}/rest/v1/${TABLA}?creado_en=lt.${viejo}`, {
+        method: "DELETE",
+        headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+      });
+    }
+  } catch (_) {
+    // fail-open: sin caché la respuesta igual sale
+  }
+}
 
 // 10 consultas (antes 19): las quitadas se solapaban casi al 100% con estas.
 // Cada consulta = 1 request de cuota SearchText de Places.
@@ -98,6 +176,18 @@ serve(async (req) => {
         region = b.region.trim().toUpperCase();
       }
     }
+    const radio = Number(radius ?? 4000);
+    // 1) CACHÉ: con fotos, una respuesta con fotos de ≤1 día; sin fotos,
+    //    cualquiera de ≤30 días (sin las URLs de fotos, que caducan).
+    if (conFotos) {
+      const c = await leerCache(region, lat, lng, radio, CACHE_DIAS_FOTOS, true);
+      if (c) return json({ places: c, diag: { cache: "fotos" } });
+    }
+    const cacheBase = await leerCache(region, lat, lng, radio, CACHE_DIAS, null);
+    if (cacheBase && !conFotos) {
+      // deno-lint-ignore no-explicit-any
+      return json({ places: cacheBase.map((p: any) => { const { fotos: _f, ...r } = p; return r; }), diag: { cache: "zona" } });
+    }
     // Las consultas de texto salen en PARALELO. Además de los lugares, capturamos
     // el STATUS y el primer error crudo de Google (diag): antes un rechazo
     // (billing, key inválida, API no habilitada) se tragaba en silencio y la
@@ -112,7 +202,7 @@ serve(async (req) => {
     const PAGINAS_EXTRA: Record<string, number> = {
       "canchas de fútbol": 2, "campo deportivo": 2, "complejo deportivo": 1, "grass sintético": 1,
     };
-    const respuestas = await Promise.all(
+    const respuestas = cacheBase ? [{ places: cacheBase }] : await Promise.all(
       CONSULTAS.map(async (q) => {
         const places: unknown[] = [];
         let pageToken: string | undefined;
@@ -178,7 +268,10 @@ serve(async (req) => {
     // Modo rápido (default): devuelve las canchas SIN resolver fotos. La app las
     // muestra al instante y vuelve a pedir con fotos=true para enriquecerlas.
     // `diag` viaja siempre: la app lo ignora y el Test del dashboard lo muestra.
-    if (!conFotos) return json({ places: lista, diag });
+    if (!conFotos) {
+      await guardarCache(region, lat, lng, radio, false, lista);
+      return json({ places: lista, diag });
+    }
 
     // Modo con fotos: resuelve las fotos reales de los primeros lugares.
     const conFoto = await Promise.all(
@@ -190,7 +283,9 @@ serve(async (req) => {
     );
     const resto = lista.slice(MAX_LUGARES_CON_FOTO);
 
-    return json({ places: [...conFoto, ...resto], diag });
+    const conTodo = [...conFoto, ...resto];
+    await guardarCache(region, lat, lng, radio, true, conTodo);
+    return json({ places: conTodo, diag });
   } catch (e) {
     return json({ places: [], error: String(e) }, 500);
   }

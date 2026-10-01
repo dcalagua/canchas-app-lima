@@ -3454,6 +3454,30 @@ antes del corte.
      nacimiento. **Ojo build:** agregar plugin nativo puede romper Flutter 3.24.5
      → probar en CI aislado antes de mergear. Alternativa sin plugin: OCR en la
      nube (Google Vision), pero cuesta y viaja el dato personal.
+- **COSTO DE GOOGLE PLACES (factura del director, 1-oct-2026: USD 247.64,
+  previsión USD 460 en octubre; el SKU dominante era "Places API Text Search
+  Pro"):** cada llamada a la Edge `places-cerca` hace ~18 Text Search Pro (12
+  frases + páginas extra) ≈ USD 0.60. Causas: la web llamaba DOS veces por
+  visita (sin y con `fotos=1`), re-descubría al mover el mapa cada ~1 km, su
+  caché vivía solo en memoria (se borraba en cada despliegue) y no leía la
+  cosecha del APK; el APK llama a Google en cada apertura de Explorar si la
+  zona tiene < 8 canchas cosechadas; sin `robots.txt`. Arreglos: (1)
+  `web/descubrir.py`: cosecha compartida `pichangol_canchas_cache` primero
+  (lee y escribe, mismo formato que `CanchasCacheRepo`), Google solo si no
+  hay consulta a ≤ 3 km en 30 días (`stores.places_zonas` {zona: {t, lat,
+  lng}} en el SNAPSHOT, sobrevive despliegues; se persiste en segundo plano
+  porque llega por GET), una sola llamada SIN fotos, candado por zona, tope
+  diario `places_web_tope_dia` (120, `stores.places_uso`), logs `[places]`;
+  (2) explorador web: una llamada por visita y botón "🔎 Buscar canchas en
+  esta zona" al mover el mapa (`.btn-zona`) en vez de buscar solo; (3)
+  `GET /robots.txt` bloquea `/web/`, `/admin`, `/pagos/`, `/anfitrion`…; (4)
+  la Edge `places-cerca` guarda cada respuesta en `pichangol_places_consultas`
+  (SQL `docs/piloto/supabase_places_consultas.sql`, sin políticas: solo
+  service role) y la reusa para cualquier punto a ≤ 3 km (30 días; 1 día si
+  pide fotos) → también ahorra con APKs VIEJOS. Fail-open sin la tabla.
+  **Hay que correr el SQL y redesplegar la Edge en cada ambiente** (QAS: el
+  director por CLI, el conector no ve QAS; PRD: con autorización). Tests
+  `tests/test_places_costo.py`.
 - **Explorar carga rápida (idea del usuario, para más adelante):**
   1. **GPS colgado con mala señal:** Explorar se queda en "Detectando tu
      ubicación…" indefinidamente. Fix: timeout al GPS + caer a última ubicación

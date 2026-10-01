@@ -239,6 +239,148 @@ def _fotos_directo(place_id: str, nombre: str, club: str, lat: float, lng: float
 
 _cache: dict[tuple, tuple[float, list[dict]]] = {}
 _lock = threading.Lock()
+# Un candado por zona: dos visitantes simultáneos en una zona nueva pagan UNA
+# consulta a Google, no dos.
+_locks_zona: dict[tuple, threading.Lock] = {}
+
+# ── COSTO DE GOOGLE (oct-2026, factura de USD 247 / previsión 460 al mes) ──
+# Cada llamada a la Edge `places-cerca` son ~20 Text Search Pro (12 frases +
+# páginas extra) ≈ USD 0.65. Antes la web llamaba DOS veces por visita (sin y
+# con fotos), al mover el mapa cada ~1 km, con una caché que vivía solo en
+# memoria (se borraba en cada despliegue) y sin mirar la COSECHA del APK. Ahora:
+#  1. Primero la COSECHA compartida con el APK (`pichangol_canchas_cache`).
+#  2. Google solo si la ZONA (~5 km) no se consultó en `ZONA_VIGENCIA_DIAS`
+#     (registro persistente `stores.places_zonas`, sobrevive despliegues).
+#  3. Una sola llamada, SIN fotos (las fotos de cada tarjeta visible las trae
+#     /web/foto, que las guarda 30 días en `pichangol_lugares_fotos`).
+#  4. Tope diario de llamadas desde la web (`places_web_tope_dia`, torre):
+#     pasado el tope, solo cosecha.
+ZONA_GRADOS = 0.05          # ~5.5 km: la consulta es de 8 km de radio
+ZONA_VIGENCIA_DIAS = 30     # = refresco de la cosecha del APK (ToS de Google)
+TOPE_DIA_DEFAULT = 120
+
+
+def _zona(lat: float, lng: float, region: str) -> str:
+    return f"{region}:{math.floor(lat / ZONA_GRADOS)}:{math.floor(lng / ZONA_GRADOS)}"
+
+
+def _stores():
+    from db.store import stores
+    return stores
+
+
+COBERTURA_KM = 3.0  # un punto a ≤3 km de una consulta de 8 km ya está cubierto
+
+
+def _zonas_vecinas(zona: str) -> list[str]:
+    reg, a, b = zona.split(":")
+    a, b = int(a), int(b)
+    return [f"{reg}:{a + i}:{b + j}" for i in (-1, 0, 1) for j in (-1, 0, 1)]
+
+
+def _zona_vigente(zona: str, lat: float | None = None, lng: float | None = None) -> bool:
+    """¿Ya se consultó Google cerca (≤ COBERTURA_KM) hace menos de 30 días?
+    Mira la zona y sus 8 vecinas (un punto en el borde no paga otra vez)."""
+    try:
+        reg = getattr(_stores(), "places_zonas", {}) or {}
+        ahora = time.time()
+        for z in _zonas_vecinas(zona):
+            v = reg.get(z)
+            if not isinstance(v, dict):
+                continue
+            if ahora - float(v.get("t") or 0) >= ZONA_VIGENCIA_DIAS * 86400:
+                continue
+            if lat is None or _km(lat, lng, float(v["lat"]), float(v["lng"])) <= COBERTURA_KM:
+                return True
+        return False
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _marcar_zona(zona: str, lat: float | None = None, lng: float | None = None) -> None:
+    try:
+        st = _stores()
+        if not isinstance(getattr(st, "places_zonas", None), dict):
+            st.places_zonas = {}
+        if lat is None:
+            _, a, b = zona.split(":")
+            lat, lng = (int(a) + 0.5) * ZONA_GRADOS, (int(b) + 0.5) * ZONA_GRADOS
+        st.places_zonas[zona] = {"t": time.time(), "lat": round(lat, 5), "lng": round(lng, 5)}
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def _tope_dia() -> int:
+    try:
+        return max(0, int(float(_stores().config.get("places_web_tope_dia", TOPE_DIA_DEFAULT))))
+    except Exception:  # noqa: BLE001
+        return TOPE_DIA_DEFAULT
+
+
+def _consumir_cupo() -> bool:
+    """Cuenta UNA llamada a Google desde la web hoy (hora de Lima). False si ya
+    se alcanzó el tope diario."""
+    try:
+        st = _stores()
+        hoy = time.strftime("%Y-%m-%d", time.gmtime(time.time() - 5 * 3600))
+        uso = getattr(st, "places_uso", None)
+        if not isinstance(uso, dict) or uso.get("dia") != hoy:
+            uso = {"dia": hoy, "llamadas": 0}
+        if uso["llamadas"] >= _tope_dia():
+            st.places_uso = uso
+            return False
+        uso["llamadas"] += 1
+        st.places_uso = uso
+        return True
+    except Exception:  # noqa: BLE001
+        return True
+
+
+def leer_cosecha(lat: float, lng: float, radio_m: float = RADIO_M) -> list[dict]:
+    """Canchas cosechadas (APK + web) en un cuadro de `radio_m` alrededor."""
+    try:
+        from db import pg
+        if not pg.habilitado:
+            return []
+        d = radio_m / 111000.0
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, nombre, coalesce(direccion,''), lat, lng, deporte "
+                "FROM pichangol_canchas_cache WHERE lat BETWEEN %s AND %s "
+                "AND lng BETWEEN %s AND %s LIMIT 400",
+                (lat - d, lat + d, lng - d, lng + d))
+            filas = cur.fetchall()
+    except Exception:  # noqa: BLE001
+        return []
+    out = []
+    for f in filas:
+        if not f[0] or not f[1] or f[3] is None or f[4] is None:
+            continue
+        out.append({"id": str(f[0]), "nombre": str(f[1]), "direccion": str(f[2] or ""),
+                    "lat": float(f[3]), "lng": float(f[4]), "deporte": str(f[5] or "futbol"),
+                    "fotos": []})
+    return out
+
+
+def guardar_cosecha(lista: list[dict]) -> None:
+    """Upsert en la cosecha compartida (misma tabla y formato que el APK).
+    Sin fotos de Google (caducan + licencia). Best-effort."""
+    if not lista:
+        return
+    try:
+        from db import pg
+        if not pg.habilitado:
+            return
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.executemany(
+                "INSERT INTO pichangol_canchas_cache (id, nombre, direccion, lat, lng, deporte, visto_en) "
+                "VALUES (%s, %s, %s, %s, %s, %s, now()) ON CONFLICT (id) DO UPDATE SET "
+                "nombre = excluded.nombre, direccion = excluded.direccion, lat = excluded.lat, "
+                "lng = excluded.lng, deporte = excluded.deporte, visto_en = now()",
+                [(c["id"], c["nombre"], c.get("direccion") or "", c["lat"], c["lng"], c["deporte"])
+                 for c in lista])
+    except Exception as ex:  # noqa: BLE001
+        print(f"[places] no se pudo guardar la cosecha: {ex}", flush=True)
 
 
 def _celda(lat: float, lng: float) -> tuple[int, int]:
@@ -249,30 +391,33 @@ def descubrir_cerca(lat: float, lng: float, region: str = "PE", fotos: bool = Fa
                     registradas: list[dict] | None = None) -> list[dict]:
     """Canchas de Google alrededor de (lat, lng), ya filtradas por la heurística,
     sin duplicar las REGISTRADAS en Pichangol (mismo nombre a <120 m), ordenadas
-    por distancia. Con caché por celda/país/fotos."""
+    por distancia. Cosecha primero; Google solo para zonas sin consultar (ver
+    arriba). `fotos` se ignora: las fotos van por /web/foto (una por tarjeta
+    visible, guardadas 30 días)."""
     try:
         lat, lng = float(lat), float(lng)
     except (TypeError, ValueError):
         return []
-    key = (_celda(lat, lng), (region or "PE").upper(), bool(fotos))
+    region = (region or "PE").upper()
+    key = (_celda(lat, lng), region)
     ahora = time.time()
     with _lock:
         hit = _cache.get(key)
     if hit and ahora - hit[0] < TTL_SEG:
         lista = hit[1]
     else:
-        try:
-            crudos = _llamar_edge(lat, lng, RADIO_M, (region or "PE").upper(), fotos)
-        except Exception:  # noqa: BLE001
-            crudos = []
-        vistos: dict[str, dict] = {}
-        for p in crudos:
-            c = a_cancha(p) if isinstance(p, dict) else None
-            if c:
-                vistos[c["id"]] = c
-        lista = list(vistos.values())
+        zona = _zona(lat, lng, region)
         with _lock:
-            _cache[key] = (ahora, lista)
+            lz = _locks_zona.setdefault(zona, threading.Lock())
+        with lz:
+            with _lock:
+                hit = _cache.get(key)
+            if hit and time.time() - hit[0] < TTL_SEG:
+                lista = hit[1]
+            else:
+                lista = _descubrir_sin_cache(lat, lng, region, zona)
+                with _lock:
+                    _cache[key] = (time.time(), lista)
     # Quitar las que ya están registradas en Pichangol (por nombre + cercanía).
     reg = []
     for r in (registradas or []):
@@ -291,6 +436,41 @@ def descubrir_cerca(lat: float, lng: float, region: str = "PE", fotos: bool = Fa
         out.append(c)
     out.sort(key=lambda c: c["km"])
     return out[:MAX_RESULTADOS]
+
+
+def _descubrir_sin_cache(lat: float, lng: float, region: str, zona: str) -> list[dict]:
+    cosecha = leer_cosecha(lat, lng)
+    if _zona_vigente(zona, lat, lng):
+        return cosecha
+    if not _consumir_cupo():
+        print(f"[places] tope diario de la web alcanzado: zona {zona} solo con cosecha "
+              f"({len(cosecha)} lugares)", flush=True)
+        return cosecha
+    try:
+        crudos = _llamar_edge(lat, lng, RADIO_M, region, False)
+        ok = True
+    except Exception as ex:  # noqa: BLE001
+        print(f"[places] Edge sin respuesta en zona {zona}: {ex}", flush=True)
+        crudos, ok = [], False
+    vistos: dict[str, dict] = {c["id"]: c for c in cosecha}
+    nuevos = []
+    for p in crudos:
+        c = a_cancha(p) if isinstance(p, dict) else None
+        if c:
+            vistos[c["id"]] = c
+            nuevos.append(c)
+    if ok:
+        _marcar_zona(zona, lat, lng)  # aunque venga vacía: no volver a pagar por ella
+        guardar_cosecha(nuevos)
+    try:  # llega por GET: el middleware solo persiste tras POST/PUT/DELETE
+        from db import pg
+        if pg.habilitado:
+            pg.persistir_en_segundo_plano(_stores())
+    except Exception:  # noqa: BLE001
+        pass
+    print(f"[places] Google consultado (web) zona {zona}: {len(nuevos)} lugares; "
+          f"cosecha previa {len(cosecha)}", flush=True)
+    return list(vistos.values())
 
 
 # ── Buscar un lugar POR NOMBRE (para "Pon tu cancha": el dueño escribe el
@@ -512,6 +692,13 @@ _sin_foto_visto: dict[str, float] = {}
 
 
 def limpiar_cache() -> None:
+    """Vacía cachés en memoria (tests y torre). También olvida las zonas
+    consultadas y el uso del día."""
+    try:
+        _stores().places_zonas = {}
+        _stores().places_uso = {}
+    except Exception:  # noqa: BLE001
+        pass
     with _lock:
         _cache.clear()
         _cache_fotos.clear()

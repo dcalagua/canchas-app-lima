@@ -43,6 +43,9 @@ CONFIG_DEFAULT: dict[str, str] = {
     "referido_tope_referidor": "50",
     # Correos de pago (`correos.py`): "0" = corte de emergencia (no se envía nada).
     "correos_activo": "1",
+    # Tope diario de consultas a Google Places desde la WEB (web/descubrir.py):
+    # cada una ≈ 20 Text Search Pro ≈ USD 0.65. Pasado el tope, solo cosecha.
+    "places_web_tope_dia": "120",
     # TARIFA DE LA PASARELA (lo que Culqi / PayPhone / Libélula cobran a
     # Pichangol por cobro): porcentaje + fijo + impuesto sobre la tarifa,
     # editable en la torre → Cobros → "Tarifas de pasarela"; con esto la torre
@@ -659,6 +662,12 @@ class Stores:
         # autorizacion, fecha_pago, creado_en}. Se crea pendiente al preparar;
         # se marca pagado al CONFIRMAR con PayPhone (nunca por un GET suelto).
         self.payphone_pagos: dict[str, dict] = {}
+        # COSTO GOOGLE PLACES (oct-2026): zonas (~5 km) que la web ya consultó
+        # en Google; no se vuelve a pagar por ellas en 30 días
+        # (web/descubrir.py). Valor {t, lat, lng} del centro consultado. Y el uso del día {dia, llamadas} contra el tope
+        # `places_web_tope_dia`.
+        self.places_zonas: dict[str, dict] = {}
+        self.places_uso: dict = {}
         # LIBRO DE RECLAMACIONES (Ley 29571 / D.S. 011-2011-PCM): hojas
         # registradas desde la home pública. INDECOPI exige que esté integrado
         # en la web (no un formulario externo) y responder en 15 días hábiles.
@@ -1185,6 +1194,8 @@ class Stores:
                 k: dict(v) for k, v in self.membresias_pro.items()},
             "libelula_deudas": {
                 k: dict(v) for k, v in self.libelula_deudas.items()},
+            "places_zonas": dict(self.places_zonas),
+            "places_uso": dict(self.places_uso),
             "payphone_pagos": {
                 k: dict(v) for k, v in self.payphone_pagos.items()},
             "reclamaciones": [dict(r) for r in self.reclamaciones],
@@ -1291,6 +1302,10 @@ class Stores:
         self.libelula_deudas = {
             k: dict(v) for k, v in (data.get("libelula_deudas") or {}).items()
         }
+        self.places_zonas = {
+            str(k): dict(v) for k, v in (data.get("places_zonas") or {}).items()
+            if isinstance(v, dict)}
+        self.places_uso = dict(data.get("places_uso") or {})
         self.payphone_pagos = {
             k: dict(v) for k, v in (data.get("payphone_pagos") or {}).items()
         }
