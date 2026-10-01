@@ -34,7 +34,6 @@ import '../models/boleador.dart';
 import '../models/fidelidad.dart';
 import '../data/bloqueos_repo.dart';
 import '../data/descuentos_repo.dart';
-import '../data/referidos_repo.dart';
 import '../data/bonos_repo.dart';
 import '../data/espera_repo.dart';
 import '../data/resenas_repo.dart';
@@ -6785,10 +6784,14 @@ class AppState extends ChangeNotifier {
   }
 
   // ── REFERIDOS (invita y gana) ─────────────────────────────────────────────
-  /// Bono (en la moneda local) que gana cada lado de un referido.
-  static const bonoReferido = 10;
+  // Desde el 1-oct-2026 el canje y los bonos viven en el BACKEND
+  // (`referidos.py`): el bono cae en la billetera única del correo como un
+  // cupón (pago `bono_referido`). Antes se sumaba solo al saldo LOCAL y
+  // `sincronizarSaldo` lo borraba. Aquí ya no se acredita nada a mano: se pide
+  // al backend y se re-sincroniza el saldo.
 
   /// Código de referido del usuario: estable y derivado de su correo.
+  /// ESPEJO de `referidos.codigo_referido` del backend.
   String get codigoReferido {
     final e = usuario?.email.trim().toLowerCase() ?? '';
     if (e.isEmpty) return '';
@@ -6797,45 +6800,38 @@ class AppState extends ChangeNotifier {
     return 'PCG${s.substring(s.length - 6)}';
   }
 
-  /// Acredita un bono de saldo en el país actual (+ movimiento).
-  void _acreditarBono(int monto, String concepto) {
-    if (monto <= 0) return;
-    if (monedaSaldo.isEmpty) monedaSaldo = paisActual.moneda;
-    final iso = paisActual.iso;
-    if (iso == 'PE') {
-      saldoClub += monto;
-    } else {
-      _saldoOtrosPaises[iso] = (_saldoOtrosPaises[iso] ?? 0) + monto;
-    }
-    movimientos.insert(
-      0,
-      MovimientoSaldo(
-          tipo: TipoMovimiento.recarga,
-          monto: monto,
-          concepto: concepto,
-          cuando: 'Ahora'),
-    );
-    notifyListeners();
-    _persistirDatos();
-  }
-
-  /// El usuario canjea el código de referido de un amigo. Acredita el bono al
-  /// invitado (a él). Devuelve false si el código es el suyo, vacío, o ya canjeó.
-  Future<bool> canjearReferido(String codigo) async {
+  /// El usuario canjea el código de referido de un amigo en el backend.
+  /// Devuelve la respuesta ({ok, bono_centimos, simbolo} o {ok:false,
+  /// error, mensaje}); null si no hubo conexión.
+  Future<Map<String, dynamic>?> canjearReferido(String codigo) async {
     final e = usuario?.email.trim().toLowerCase() ?? '';
     final c = codigo.trim().toUpperCase();
-    if (e.isEmpty || c.isEmpty || c == codigoReferido) return false;
-    final ok = await ReferidosRepo.canjear(invitadoEmail: e, codigo: c);
-    if (!ok) return false;
-    _acreditarBono(bonoReferido, 'Bono de bienvenida (referido)');
-    return true;
+    if (e.isEmpty || c.isEmpty) {
+      return {'ok': false, 'mensaje': 'Escribe el código de tu amigo.'};
+    }
+    if (c == codigoReferido) {
+      return {
+        'ok': false,
+        'error': 'codigo_propio',
+        'mensaje': 'Ese es tu propio código: compártelo con tus amigos.'
+      };
+    }
+    final r = await PagosService.canjearReferido(email: e, codigo: c);
+    if (r != null && r['ok'] == true) await sincronizarSaldo();
+    return r;
   }
 
-  /// Reclama los bonos de las personas que usaron MI código (self-credit).
-  Future<int> reclamarBonosReferidor() async {
-    final n = await ReferidosRepo.reclamarReferidor(codigoReferido);
-    if (n > 0) _acreditarBono(bonoReferido * n, 'Bono por invitar amigos');
-    return n;
+  /// Estado de "Invita y gana" desde el backend (código, invitados, lo ganado,
+  /// bono por moneda). Abrirlo también importa canjes del APK viejo y los
+  /// acredita; por eso re-sincroniza el saldo si hubo alguno.
+  Future<Map<String, dynamic>?> estadoReferidos() async {
+    final e = usuario?.email.trim().toLowerCase() ?? '';
+    if (e.isEmpty) return null;
+    final r = await PagosService.referidosEstado(e);
+    if (r != null && ((r['importados'] as num?)?.toInt() ?? 0) > 0) {
+      await sincronizarSaldo();
+    }
+    return r;
   }
 
   /// Recarga el saldo prepago del club.

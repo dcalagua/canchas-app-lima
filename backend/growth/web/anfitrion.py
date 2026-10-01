@@ -724,7 +724,7 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
                 f"{(' · ' + e(x['medio'])) if x.get('medio') else ''}</small></div>"
                 f"<div style='text-align:right'><b>{e(sim)} {x['neto_soles']:.2f}</b><small>bruto {x['bruto_soles']:.2f} · comisión {x['comision_soles']:.2f}{(' · cargo por servicio del jugador ' + format(x.get('cargo_servicio_soles') or 0, '.2f')) if x.get('cargo_servicio_soles') else ''}</small></div></div>")
     def fila_mov(p) -> str:
-        signo = "+" if p.tipo in ("recarga", "bono_recarga", "bono_bienvenida", "cupon") else ("−" if p.tipo in ("comision_reserva", "comision_efectivo", "pro", "suscripcion") else "")
+        signo = "+" if p.tipo in ("recarga", "bono_recarga", "bono_bienvenida", "cupon", "bono_referido") else ("−" if p.tipo in ("comision_reserva", "comision_efectivo", "pro", "suscripcion") else "")
         return (f"<div class='mov'><div><b>{e(p.concepto or p.tipo)}</b><small>{e(p.tipo)} · {e(p.creado_en.isoformat()[:10])} · {e(p.estado)}</small></div>"
                 f"<b>{signo}{e(sim)} {p.monto_centimos / 100.0:.2f}</b></div>")
     cuerpo = (

@@ -345,6 +345,11 @@ def crear_solicitud(*, boleador: dict, cliente_email: str, cliente_nombre: str, 
               f"Le avisamos a {boleador.get('nombre') or 'tu boleador'} para el {horarios.fecha_larga(fecha)} {hora_inicio}. "
               "Si no puede, te devolvemos su parte automáticamente.")
     sol["vence_en"] = sol["vence_en"].isoformat()
+    try:  # correo al boleador: "Te contrataron" con lo que gana (correos.py)
+        import correos
+        correos.encolar("boleo_solicitud", datos=dict(sol))
+    except Exception:  # noqa: BLE001
+        pass
     return sol
 
 

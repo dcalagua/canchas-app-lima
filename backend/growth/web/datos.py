@@ -645,7 +645,8 @@ def insertar_reservas(filas: list[dict]) -> str:
         return "error"
 
 
-def confirmar_reservas(ids: list[str], medio_pago: str, cargo_soles: float = 0.0, cargo_desglose: list | None = None) -> bool:
+def confirmar_reservas(ids: list[str], medio_pago: str, cargo_soles: float = 0.0, cargo_desglose: list | None = None,
+                       pagado: bool = True) -> bool:
     """Confirma el bloque pagado. El CARGO POR SERVICIO (si lo hubo) queda en la
     PRIMERA fila del bloque (como los extras), si la base tiene las columnas."""
     if not pg.habilitado or not ids:
@@ -653,8 +654,8 @@ def confirmar_reservas(ids: list[str], medio_pago: str, cargo_soles: float = 0.0
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
-                "UPDATE pichangol_reservas SET estado = 'confirmada', pagado = true, "
-                "medio_pago = %s WHERE id = ANY(%s)", (medio_pago, ids))
+                "UPDATE pichangol_reservas SET estado = 'confirmada', pagado = %s, "
+                "medio_pago = %s WHERE id = ANY(%s)", (bool(pagado), medio_pago, ids))
             if cargo_soles and cargo_soles > 0 and col_cargo_disponible():
                 cur.execute("UPDATE pichangol_reservas SET cargo_servicio = %s, cargo_desglose = %s WHERE id = %s",
                             (round(float(cargo_soles), 2), json.dumps(cargo_desglose or []), ids[0]))
@@ -893,6 +894,35 @@ def matricula(alumno_id: str) -> dict | None:
             return d
     except Exception:  # noqa: BLE001
         return None
+
+
+def matriculas_por_operacion(academia_id: str, operacion: str) -> list[dict]:
+    """Matrículas de la academia con alguna cuota pagada con ese N.º de
+    operación (`cuotas[].operacionId`): las personas de UN pago (carrito,
+    familia o cuotas sueltas). Para el correo de pago (`correos.py`)."""
+    operacion = (operacion or "").strip()
+    if not pg.habilitado or not operacion or len(operacion) < 6:
+        return []
+    patron = "%" + operacion.replace("\\", "").replace("%", "").replace("_", "\\_") + "%"
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            if academia_id:
+                cur.execute("SELECT id, academia_id, email, data FROM pichangol_matriculas WHERE academia_id = %s "
+                            "AND coalesce(eliminada,false) = false AND data::text LIKE %s ORDER BY id LIMIT 20",
+                            (academia_id, patron))
+            else:
+                cur.execute("SELECT id, academia_id, email, data FROM pichangol_matriculas WHERE "
+                            "coalesce(eliminada,false) = false AND data::text LIKE %s ORDER BY id LIMIT 20", (patron,))
+            out = []
+            for mid, aid, em, data in cur.fetchall():
+                d = _json_dict(data)
+                d["id"] = mid
+                d["academiaId"] = aid
+                d.setdefault("email", em or "")
+                out.append(d)
+            return out
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def academias_de_dueno(email: str) -> list[dict]:

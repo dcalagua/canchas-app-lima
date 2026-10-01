@@ -1443,6 +1443,11 @@ def _es_iso(s: str) -> bool:
 _JS_RESERVA = r"""
 (function(){
   var C = window.__cancha, sel = {}, slots = [], hold = null, fechaSel = C.fecha || C.hoy;
+  // SEÑA del dueño (como el app): por defecto se adelanta la seña y el resto se paga en la
+  // cancha; el cliente puede elegir "Pagar todo ahora". Con boleador todo va en línea.
+  var modoPago = (C.senaPct > 0) ? 'sena' : 'total';
+  function esSena(){ return C.senaPct > 0 && modoPago === 'sena' && !bolLinea(); }
+  function senaTotal(){ var t = 0; Object.keys(sel).forEach(function(k){ t += Math.floor(sel[k].precio * C.senaPct / 100 + 0.5); }); return t; }
   var $ = function(id){ return document.getElementById(id); };
   var fmt = function(n){ return C.moneda + ' ' + Number(n).toFixed(2); };
   var esc = function(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
@@ -1508,7 +1513,7 @@ _JS_RESERVA = r"""
   // servidor recalcula todo en /web/asegurar; aquí solo se muestra.
   var fid = null, usarFid = true;
   function fidDescuento(){
-    if(!C.fidelidad || !fid || !fid.disponible || !usarFid) return 0;
+    if(!C.fidelidad || !fid || !fid.disponible || !usarFid || esSena()) return 0;
     var ps = Object.keys(sel).map(function(k){ return sel[k].precio; });
     if(!ps.length) return 0;
     if(fid.premio === 'hora_gratis') return Math.round(Math.min.apply(null, ps));
@@ -1568,12 +1573,15 @@ _JS_RESERVA = r"""
     return h;
   }
   document.addEventListener('click', function(ev){
+    var op = ev.target && ev.target.closest ? ev.target.closest('.op-sena') : null;
+    if(op){ ev.preventDefault(); if(modoPago !== op.dataset.modo){ modoPago = op.dataset.modo; pintarResumen(); } return; }
     var b = ev.target && ev.target.closest ? ev.target.closest('#btnCargoInfo') : null;
     if(b && cot && window.pcgAvisar) pcgAvisar({titulo: cot.titulo || 'Cargo por servicio Pichangol', html: htmlDesglose(cot), confirmar: 'Entendido', icono: '🛡️'});
   });
   function pintarResumen(){
     var ks = Object.keys(sel).sort(), n = ks.length, t = total();
-    cotizar(t);
+    var sn = esSena() ? senaTotal() : 0, base = sn > 0 ? sn : t;
+    cotizar(base);
     var cargo = (cot && cot.activo && cot.cargo_centimos > 0) ? cot.cargo_centimos / 100 : 0;
     var h = '';
     if(!n){ h = '<div class="linea"><span style="color:var(--tenue)">Elige un horario para ver tu resumen.</span></div>'; }
@@ -1583,13 +1591,25 @@ _JS_RESERVA = r"""
       extrasSel().forEach(function(x){ h += '<div class="linea"><span>' + esc(x.nombre) + (x.cantidad > 1 ? ' × ' + x.cantidad : '') + '</span><b>' + fmt(x.precio) + '</b></div>'; });
       var bl = bolLinea(); if(bl) h += '<div class="linea"><span>🎾 ' + esc(bl.nombre) + (bl.cantidad > 1 ? ' × ' + bl.cantidad : '') + '</span><b>' + fmt(bl.precio) + '</b></div>';
       var fd = fidDescuento(); if(fd > 0) h += '<div class="linea" style="color:var(--verde)"><span>🎁 ' + esc(fid.premioCorto) + ' · fidelidad</span><b>−' + fmt(fd) + '</b></div>';
-      if(C.cargo && t > 0) h += '<div class="linea" id="lineaCargo"><span>Cargo por servicio Pichangol ' + BTN_INFO + '</span><b>' + (cot ? fmt(cargo) : '…') + '</b></div>';
+      if(C.senaPct > 0){
+        if(bl) h += '<div class="linea" style="color:var(--tenue);font-size:13px"><span>Con ' + esc(C.nombreBoleador.toLowerCase()) + ' la reserva se paga completa en línea (quítalo si prefieres solo la seña).</span></div>';
+        else {
+          var op = function(m, tit, sub){ var on = modoPago === m; return '<label class="op-sena" data-modo="' + m + '" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1.5px solid ' + (on ? 'var(--esmeralda)' : 'var(--trazo)') + ';border-radius:14px;cursor:pointer;background:' + (on ? '#EEF8F1' : '#fff') + '"><input type="radio" name="modoPago" ' + (on ? 'checked' : '') + ' style="width:auto;flex:none;margin-top:3px;accent-color:#0B8A3E"><span><b>' + tit + '</b><br><small style="color:var(--tenue)">' + sub + '</small></span></label>'; };
+          h += '<div style="display:grid;gap:8px;margin:10px 0 4px">' +
+            op('sena', 'Pagar seña ' + C.senaPct + ' % ahora · ' + fmt(senaTotal()), 'Asegura tu hora; el resto (' + fmt(t - senaTotal()) + ') lo pagas en la cancha.') +
+            op('total', 'Pagar todo ahora · ' + fmt(t), 'No pagas nada en la cancha.') + '</div>';
+          if(sn > 0) h += '<div class="linea" style="color:var(--tenue);font-size:12.5px"><span>La seña no es reembolsable: si no llegas, queda a favor de la cancha.</span></div>';
+          if(sn > 0) h += '<div class="linea"><span>Seña ' + C.senaPct + ' % (pagas hoy)</span><b>' + fmt(sn) + '</b></div><div class="linea" style="color:var(--tenue)"><span>Resto en la cancha</span><b>' + fmt(t - sn) + '</b></div>';
+        }
+      }
+      if(C.cargo && base > 0) h += '<div class="linea" id="lineaCargo"><span>Cargo por servicio Pichangol ' + BTN_INFO + '</span><b>' + (cot ? fmt(cargo) : '…') + '</b></div>';
     }
     $('lineas').innerHTML = h;
     cargarBoleadores();
-    var tt = t + (t > 0 ? cargo : 0);
+    var tt = base + (base > 0 ? cargo : 0);
     $('tot').textContent = fmt(tt); $('totBarra').textContent = fmt(tt);
-    var txt = n ? (tt > 0 ? ('Reservar y pagar ' + fmt(tt)) : 'Reservar gratis 🎁') : 'Elige un horario';
+    $('totLbl').textContent = sn > 0 ? 'A pagar hoy' : 'Total'; if($('totBarraLbl')) $('totBarraLbl').textContent = sn > 0 ? 'Seña hoy' : 'Total';
+    var txt = n ? (sn > 0 ? ('Pagar seña ' + fmt(tt) + ' y reservar') : tt > 0 ? ('Reservar y pagar ' + fmt(tt)) : 'Reservar gratis 🎁') : 'Elige un horario';
     ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = !n; $(id).textContent = txt; });
   }
   function pintarDias(){
@@ -1713,7 +1733,7 @@ _JS_RESERVA = r"""
     ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = true; $(id).textContent = 'Reservando tu horario…'; });
     var blSel = bolLinea();
     fetch('/web/asegurar', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({cancha_id: C.id, horas: horas, extras: extras, deporte: deporte, nombre: d.nombre, celular: d.celular, email: d.email, boleador: blSel ? blSel.slug : '', fidelidad: fidDescuento() > 0})})
+      body: JSON.stringify({cancha_id: C.id, horas: horas, extras: extras, deporte: deporte, nombre: d.nombre, celular: d.celular, email: d.email, boleador: blSel ? blSel.slug : '', fidelidad: fidDescuento() > 0, pago: esSena() ? 'sena' : 'total'})})
       .then(function(r){ return r.json(); })
       .then(function(j){
         if(!j.ok){
@@ -1791,9 +1811,10 @@ _JS_RESERVA = r"""
         extrasSel().forEach(function(x){ lineas.push({t: esc(x.nombre) + (x.cantidad > 1 ? ' × ' + x.cantidad : ''), m: x.precio}); });
         if(blSel) lineas.push({t: '🎾 ' + esc(blSel.nombre) + (blSel.cantidad > 1 ? ' × ' + blSel.cantidad : ''), m: blSel.precio});
         if(fdTxt) lineas.push(fdTxt);
+        if(j.pago === 'sena') lineas = [{t: 'Seña ' + j.sena_pct + ' % de ' + fmt(j.total) + ' (asegura tu hora)', m: j.sena}];
         var cj = j.cargo && j.cargo_centimos > 0 ? {monto: j.cargo_centimos / 100, titulo: j.cargo.titulo, html: htmlDesglose(j.cargo)} : null;
         pcgResumenPago({moneda: C.moneda, medio: m, lineas: lineas, cargo: cj, total: j.total_centimos / 100,
-                        nota: 'El horario queda reservado para ti mientras pagas (' + Math.round((j.hold_segundos || 600) / 60) + ' min).' + (blSel ? ' El ' + C.nombreBoleador.toLowerCase() + ' confirma después; si no puede, te devolvemos su parte.' : '')})
+                        nota: (j.pago === 'sena' ? 'El resto (' + fmt(j.resto) + ') lo pagas en la cancha. ' : '') + 'El horario queda reservado para ti mientras pagas (' + Math.round((j.hold_segundos || 600) / 60) + ' min).' + (blSel ? ' El ' + C.nombreBoleador.toLowerCase() + ' confirma después; si no puede, te devolvemos su parte.' : '')})
           .then(function(ok){ if(ok){ abrirCulqi(); } else { liberar(); pintarResumen(); } });
       }).catch(function(){ pintarResumen(); mostrarError('No pudimos reservar el horario. Inténtalo de nuevo.'); });
   }
@@ -2037,6 +2058,8 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
                       "logo": "", "hoy": dias[0]["iso"], "dias": dias, "etiquetas": etiquetas,
                       # Cargo por servicio (fase 2): con el flag apagado el JS no cotiza ni pinta la línea.
                       "cargo": _cs.activo("reservas"), "deporteBase": (_deportes_de(c) or [""])[0],
+                      # SEÑA que configuró el dueño (% del precio de los turnos), como el app.
+                      "senaPct": int(c.get("sena_pct") or 0),
                       # Día preseleccionado desde el buscador de la portada (solo si cae en la tira).
                       "fecha": fecha if any(d["iso"] == fecha for d in dias) else "",
                       # Hora buscada en la portada: se marca el turno libre que la cubre.
@@ -2083,13 +2106,13 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
         "<h3>Resumen de tu reserva</h3>"
         f"<div class='sub' style='margin-bottom:10px'>{e(c['nombre'])}{(' · ' + e(c.get('club'))) if c.get('club') else ''}</div>"
         "<div id='lineas'></div>"
-        "<div class='total'><span>Total</span><span id='tot'></span></div>"
+        "<div class='total'><span id='totLbl'>Total</span><span id='tot'></span></div>"
         f"<div style='margin-top:14px'>{ui.selector_medio_pago()}</div>"
         "<div style='margin-top:14px'><button class='btn lg' id='btnPagar' disabled>Elige un horario</button></div>"
         "<div class='sub' style='font-size:12.5px;margin-top:12px'>Reserva confirmada al instante; el local la ve en su agenda. "
         "Cancelación con más de 6 horas de anticipación: devolución del 100 %. <a href='/#devoluciones'>Ver política</a>.</div>"
         "</div></aside></div>"
-        "<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0'>Total</div><div class='t' id='totBarra'></div></div>"
+        "<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0' id='totBarraLbl'>Total</div><div class='t' id='totBarra'></div></div>"
         f"{ui.medio_pago_mini()}<button class='btn' id='btnPagarBarra' disabled>Elige un horario</button></div>"
         f"<script>window.__cancha={cfg};var CORREO_SOPORTE={json.dumps(empresa.valores()['empresa_correo'])};</script>"
         "<script src='https://checkout.culqi.com/js/v4'></script>"
@@ -2118,6 +2141,9 @@ class AsegurarReq(BaseModel):
     email: str
     boleador: str = ""  # slug del boleador elegido (sparring por turno, opcional)
     fidelidad: bool = False  # usar el premio de la tarjeta de fidelidad del local
+    # "sena" = adelanta la SEÑA del dueño (% de los turnos) y el resto se paga en
+    # la cancha; "total" = todo ahora. Vacío = total (navegadores con JS viejo).
+    pago: str = ""
 
 
 _contador = {"n": 0}
@@ -2154,6 +2180,14 @@ def web_cotizar(linea: str = "reservas", moneda: str = "PEN", base: str = "0", d
 def _nuevo_id() -> str:
     _contador["n"] = (_contador["n"] + 1) % 100000
     return f"{datos.PREFIJO_ID_WEB}{int(time.time() * 1000)}_{_contador['n']}"
+
+
+def sena_de(precio_turno: int, pct: int) -> int:
+    """Seña de UN turno = `Cancha.senaDe` del app: % del precio redondeado al
+    entero (mitad hacia arriba, como `.round()` de Dart)."""
+    if pct <= 0:
+        return 0
+    return int(precio_turno * min(pct, 100) / 100 + 0.5)
 
 
 @router.post("/web/asegurar")
@@ -2235,7 +2269,13 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
     import fidelidad as _fid
     desc_por = [0] * len(pedidos)
     desc_total = 0
-    if req.fidelidad and _fid.activa_en(c):
+    # SEÑA (como `club_detalle._ResumenReserva` del app): solo si el dueño la
+    # configuró, el cliente la eligió y no lleva boleador (con boleador todo va
+    # en línea). La seña es % del precio de los TURNOS (sin extras) y no se
+    # combina con el premio de fidelidad.
+    sena_pct = max(0, min(100, int(c.get("sena_pct") or 0)))
+    con_sena = sena_pct > 0 and (req.pago or "").strip() == "sena" and not (req.boleador or "").strip()
+    if req.fidelidad and not con_sena and _fid.activa_en(c):
         if not _fid.estado(email, c)["disponible"]:
             return {"ok": False, "error": "sin_premio"}
         desc_total, desc_por = _fid.descuento_para(_fid.config_de(c), [validos[k]["precio"] for k in sorted(pedidos)])
@@ -2259,7 +2299,8 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
             "id": _nuevo_id(), "cancha_id": c["id"], "jugador": nombre, "nivel": "",
             "fecha": s["fecha"], "dia": horarios.etiqueta_dia(s["fecha"], hoy),
             "hora_inicio": s["hora"], "hora_fin": s["fin"], "estado": "nueva",
-            "traida_por_app": True, "precio": max(0, int(s["precio"]) - int(desc_por[i])), "sena": 0, "pagado": False,
+            "traida_por_app": True, "precio": max(0, int(s["precio"]) - int(desc_por[i])),
+            "sena": sena_de(int(s["precio"]), sena_pct) if con_sena else 0, "pagado": False,
             "usuario": email, "deporte": deporte, "moneda": sim,
             "extras": extras_ok if i == 0 else [],
             "telefono": req.celular.strip()[:20], "grupo_reserva_id": grupo,
@@ -2286,12 +2327,16 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
     # Cargo por servicio (si la línea está activa): el total a cobrar lo decide
     # el servidor; el navegador solo lo muestra y se lo pasa a Culqi. Con
     # total 0 (hora gratis sin extras) no hay cargo ni pasarela.
-    if total > 0:
-        cot = _cotizacion_reserva(c, total, deporte)
+    sena_total = sum(int(f["sena"]) for f in filas)
+    base_cobro = sena_total if con_sena else total
+    if base_cobro > 0:
+        cot = _cotizacion_reserva(c, base_cobro, deporte)
         total_c, cargo_c, cargo_d = cot.total_centimos, cot.cargo_centimos, (cot.dict() if cot.activo else None)
     else:
         total_c, cargo_c, cargo_d = 0, 0, None
     return {"ok": True, "ids": ids, "grupo": grupo, "firma": _firma(ids),
+            "pago": "sena" if con_sena else "total", "sena": sena_total if con_sena else 0,
+            "sena_pct": sena_pct if con_sena else 0, "resto": (total - sena_total) if con_sena else 0,
             "total": total, "total_centimos": total_c, "moneda": sim,
             "cargo_centimos": cargo_c, "cargo": cargo_d,
             "fidelidad": fid_out, "sin_pago": total_c == 0,
@@ -2349,7 +2394,7 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
     if not filas or len(filas) != len(req.ids):
         return {"ok": False, "error": "hold_vencido",
                 "mensaje": "El horario ya no está reservado para ti (pasaron más de 10 minutos). Vuelve a elegirlo."}
-    if all(f.get("pagado") for f in filas):
+    if all(f.get("pagado") or f.get("estado") == "confirmada" for f in filas):
         return {"ok": True, "url": _url_comprobante(filas)}
     c = datos.cancha(filas[0]["cancha_id"]) or {}
     sim, iso = _moneda_de(c) if c else ("S/", "PEN")
@@ -2379,9 +2424,14 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
         return {"ok": True, "url": _url_comprobante(filas), "charge_id": ""}
     # Cargo por servicio: se RECALCULA aquí (misma regla que en /web/asegurar);
     # lo que se cobra = precio + cargo. El dueño recibe sobre el precio.
-    cot = _cotizacion_reserva(c, total, str(filas[0].get("deporte") or ""))
+    # SEÑA: la fijó /web/asegurar en cada fila; se cobra solo eso (+ su cargo
+    # por servicio) y el resto queda "por cobrar en la cancha" (pagado=false).
+    sena_total = sum(int(f.get("sena") or 0) for f in filas)
+    es_sena = sena_total > 0
+    base_cobro = sena_total if es_sena else total
+    cot = _cotizacion_reserva(c, base_cobro, str(filas[0].get("deporte") or ""))
     monto_cobro = cot.total_centimos
-    concepto = f"Reserva {c.get('nombre', 'cancha')} {filas[0]['fecha']} {filas[0]['hora_inicio']}"
+    concepto = f"{'Seña · ' if es_sena else ''}Reserva {c.get('nombre', 'cancha')} {filas[0]['fecha']} {filas[0]['hora_inicio']}"
     # Datos del pagador para el antifraude de Culqi: nombre de Google (real) o
     # el que escribió en la reserva, celular de la reserva, país de la cancha.
     from db.store import stores as _st
@@ -2402,7 +2452,10 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
                 "mensaje": "El pago fue rechazado por tu banco o billetera. No se te cobró nada y el "
                            "horario quedó libre para que lo intentes de nuevo." + (f" ({msg[:80]})" if msg else "")}
     medio = "yape" if req.medio == "yape" else "tarjeta"
-    datos.confirmar_reservas(req.ids, medio, cot.cargo_centimos / 100.0, list(cot.desglose or []))
+    # Con seña la reserva queda confirmada pero NO pagada (el dueño cobra el
+    # resto en la cancha), medio 'sena' como en el app.
+    datos.confirmar_reservas(req.ids, "sena" if es_sena else medio, cot.cargo_centimos / 100.0, list(cot.desglose or []),
+                             pagado=not es_sena)
     if canje:
         _fid.confirmar_canje(ref_fid)  # el premio queda USADO con el pago aprobado
     try:
@@ -2424,16 +2477,17 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
         try:
             from pagos.router import LiquidacionOnlineReq, post_liquidacion_online, _aviso_push_usuario
             post_liquidacion_online(LiquidacionOnlineReq(
-                dueno_id=dueno, monto_soles=total_dueno, reserva_id=filas[0]["id"],
-                concepto=f"Reserva web · {c.get('nombre', '')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}",
-                medio=medio, moneda=iso, charge_id=str(cargo.get("charge_id") or ""),
+                dueno_id=dueno, monto_soles=(float(sena_total) if es_sena else total_dueno), reserva_id=filas[0]["id"],
+                concepto=f"{'Seña' if es_sena else 'Reserva'} web · {c.get('nombre', '')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}",
+                medio=("sena" if es_sena else medio), moneda=iso, charge_id=str(cargo.get("charge_id") or ""),
                 cargo_servicio_centimos=cot.cargo_centimos, cargo_desglose=list(cot.desglose or []),
                 cargo_ajuste_centimos=cot.ajuste_seguridad_centimos))
             rango = f"{filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"
             _aviso_push_usuario(
                 dueno, "Nueva reserva 📅",
                 f"{filas[0]['jugador']} · {c.get('nombre', '')} · {horarios.fecha_larga(filas[0]['fecha'])} {rango} · "
-                f"pagó {sim} {total:.2f} por la web" + (" · usó su premio de fidelidad" if canje else ""), tipo="reserva")
+                + (f"pagó la seña de {sim} {sena_total:.2f} por la web · cobra {sim} {total - sena_total:.2f} en la cancha" if es_sena
+                 else f"pagó {sim} {total:.2f} por la web") + (" · usó su premio de fidelidad" if canje else ""), tipo="reserva")
         except Exception:  # noqa: BLE001 — la contabilidad nunca deshace un cobro
             pass
     if linea_bol and bol_soles > 0:
@@ -2783,7 +2837,8 @@ JS_CANCELAR = r"""
     var pol = document.getElementById('cancPol'), opc = document.getElementById('cancOpc'), lista = document.getElementById('cancOpcLista');
     var opciones = []; try { opciones = JSON.parse(datos.opciones || '[]'); } catch(e){ opciones = []; }
     opc.style.display = 'none'; lista.innerHTML = '';
-    if(datos.pagado !== '1'){ pol.className = 'estado ok'; pol.textContent = 'Pagabas en la cancha: cancelar no tiene costo. El horario queda libre para otro jugador.'; }
+    if(datos.pagado !== '1' && parseInt(datos.sena || '0') > 0){ pol.className = 'estado'; pol.textContent = 'Adelantaste una seña de ' + fmt(datos.moneda || 'S/', datos.sena) + ': la seña no es reembolsable (queda a favor de la cancha). El horario queda libre para otro jugador.'; }
+    else if(datos.pagado !== '1'){ pol.className = 'estado ok'; pol.textContent = 'Pagabas en la cancha: cancelar no tiene costo. El horario queda libre para otro jugador.'; }
     else if(datos.reembolsable === '1' && opciones.length){
       pol.className = 'estado ok';
       pol.textContent = (datos.motivo === 'arrepentimiento' ? 'Pagaste hace menos de ' + (datos.arrep || '1') + ' h y faltan más de 24 h: te devolvemos el 100 %, cargo por servicio incluido, por el medio que elijas.'
@@ -2840,6 +2895,7 @@ def _boton_cancelar(filas: list[dict], c: dict | None, ses: dict | None, clase: 
                           ensure_ascii=False)
     return (f"<button type='button' class='{clase}' data-cancelar='{e(_ref_de(filas))}' data-nombre='{e((c or {}).get('nombre') or 'la reserva')}' "
             f"data-cuando='{e(cuando)}' data-monto='{est['monto']}' data-moneda='{e(est['moneda'])}' data-pagado='{1 if est['pagado'] else 0}' "
+            f"data-sena='{sum(int(f.get('sena') or 0) for f in filas) if str(filas[0].get('medio_pago') or '') == 'sena' else 0}' "
             f"data-reembolsable='{1 if est['reembolsable'] else 0}' data-horas='{est['horas']}' data-minimo='{int(est['minimo_horas'])}' "
             f"data-motivo='{e(pol.get('motivo') or '')}' data-arrep='{pol.get('arrepentimiento_horas', 1):g}' data-opciones='{e(opciones)}'>Cancelar reserva</button>")
 
@@ -3275,6 +3331,12 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
                 raw = []
         desglose_guardado = list(raw or []) if isinstance(raw, list) else []
     pagado = total + cargo_c / 100.0
+    # SEÑA: se pagó solo la seña (+ su cargo); el resto se paga en la cancha.
+    sena_c = sum(int(f.get("sena") or 0) for f in filas) if str(filas[0].get("medio_pago") or "") == "sena" else 0
+    resto_cancha = 0.0
+    if sena_c > 0:
+        resto_cancha = max(0.0, total - sena_c)
+        pagado = sena_c + cargo_c / 100.0
     extras = [x for f in filas for x in (f.get("extras") or [])]
     # Estado del BOLEADOR (si lo contrató): Esperando confirmación / Confirmado / devuelto.
     estado_bol = ""
@@ -3312,7 +3374,7 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         f"Reservé en {c.get('nombre', 'una cancha')} por Pichangol: "
         f"{horarios.fecha_larga(filas[0]['fecha'])} {filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}. "
         f"Comprobante: {base}/reserva/{ref}", etiqueta="💬 Compartir", clase="btn sec")
-    medio = {"yape": "Yape", "tarjeta": "tarjeta", "fidelidad": "tu premio de fidelidad 🎁"}.get(str(filas[0].get("medio_pago") or ""), "en línea")
+    medio = {"yape": "Yape", "tarjeta": "tarjeta", "fidelidad": "tu premio de fidelidad 🎁", "sena": "seña en línea"}.get(str(filas[0].get("medio_pago") or ""), "en línea")
     cuerpo = (
         "<div style='max-width:640px;margin:26px auto 0'>"
         f"<div class='panel' style='text-align:center'>{ui.check_svg()}"
@@ -3321,7 +3383,11 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         f"<h3 style='margin-top:16px'>{e(c.get('nombre') or 'Cancha')}</h3>"
         f"<div class='sub'>{e(c.get('club'))}{(' · ' + e(lugar)) if lugar else ''}</div>"
         f"<div style='text-align:left;margin-top:16px'>{lineas}"
-        f"<div class='total'><span>Total pagado</span><span>{e(sim)} {pagado:.2f}</span></div>{detalle_cargo}</div>"
+        + (f"<div class='linea'><span>Total de la reserva</span><b>{e(sim)} {total:.2f}</b></div>" if sena_c else "")
+        + f"<div class='total'><span>{'Pagaste hoy (seña)' if sena_c else 'Total pagado'}</span><span>{e(sim)} {pagado:.2f}</span></div>"
+        + (f"<div class='linea' style='font-weight:700'><span>Por pagar en la cancha</span><b>{e(sim)} {resto_cancha:.2f}</b></div>"
+           "<div class='sub' style='font-size:12.5px'>La seña no es reembolsable: si no llegas, queda a favor de la cancha.</div>" if sena_c else "")
+        + f"{detalle_cargo}</div>"
         f"<div class='sub' style='margin-top:12px'>A nombre de <b>{e(filas[0].get('jugador'))}</b> · {e(filas[0].get('usuario'))}. "
         "Guarda este enlace: es tu comprobante.</div>"
         "<div class='acciones'>"

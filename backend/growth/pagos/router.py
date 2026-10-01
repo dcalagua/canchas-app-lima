@@ -3099,7 +3099,7 @@ def movimientos_de(dueno_id: str) -> list[dict]:
     # `venta_producto` = venta del marketplace Y canje/compra de BONO de horas:
     # Pichangol cobró al comprador y le debe el NETO al dueño (misma
     # contabilidad que una reserva online). DEBE aparecer en el historial.
-    _INCLUIR = ("recarga", "bono_recarga", "bono_bienvenida", "cupon",
+    _INCLUIR = ("recarga", "bono_recarga", "bono_bienvenida", "cupon", "bono_referido",
                 "aporte_equipo_devolucion", "devolucion_saldo",
                 "liquidacion_online", "liquidacion_full",
                 "venta_producto", "venta_bodega",
@@ -3114,6 +3114,7 @@ def movimientos_de(dueno_id: str) -> list[dict]:
         "bono_recarga": "Bono de recarga 🎁",
         "bono_bienvenida": "Regalo de bienvenida 🎁",
         "cupon": "Cupón canjeado 🎁",
+        "bono_referido": "Bono Invita y gana 🎁",
         "comision_reserva": "Comisión de reserva",
         "suscripcion": "Servicio de marketing",
         "suscripcion_pro": "Pichangol Pro",

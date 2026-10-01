@@ -670,6 +670,18 @@ para la API del APK.
   "💬 Escribir al local" en la ficha `/reservar/{id}` (`router._acciones_
   local`, solo local verificado con dueño y nunca al dueño) y "✉️ Escribir
   al profe" en `/academia/{id}`. Test `tests/test_web_mensajes.py`.
+  **Layout tipo WhatsApp (queja del director, 1-oct-2026, captura del
+  celular: la cabecera pegajosa del sitio tapaba el chat y el pie salía bajo
+  el compositor):** `ui.shell(pantalla="chat")` (chat y chat de grupo) = sin
+  pie y, en ≤899 px, sin cabecera del sitio: `.mj-chat` es `position:fixed`
+  a toda la pantalla (cabecera ‹ + contacto arriba, mensajes con scroll
+  propio que arrancan abajo, compositor abajo con safe-area); el alto sigue
+  al `visualViewport` (`--mj-vh/--mj-top`) + `interactive-widget=
+  resizes-content` para que el teclado no tape el compositor. En escritorio
+  la caja mide `100dvh − --cab-h` (alto real de la cabecera medido por JS).
+  `pantalla="mensajes"` (bandeja, nuevo, grupos) quita la pastilla de
+  búsqueda en móvil (cabecera de una fila). Test
+  `test_chat_web_pantalla_completa_en_movil_como_whatsapp`.
   (2) **Mi bodega** (`web/anfitrion_bodega.py` dueño, `web/jugador_bodega.py`
   jugador, `web/bodega_datos.py` = mismas 5 tablas y candados `UPDATE …
   WHERE estado = esperado` que `BodegaRepo`): `/anfitrion/bodega?tab=caja|
@@ -759,10 +771,27 @@ para la API del APK.
   equidad, lista de espera, asistencia por posición). Organiza solo el dueño
   de un local o quien creó la pichanga — **en el APK nadie puede organizar**
   (depende de un login de club heredado que nunca se activa; conviene
-  alinearlo). `/referidos` (código `PCGxxxxxx`; el CANJE sigue en el app y
-  **el bono de 10 del app solo existe en el teléfono** —no llega a la
-  billetera del backend y `sincronizarSaldo` lo pisa—: bug del APK, moverlo
-  al backend como cupón), `/jugador/{ref}` (carnet = `perfilGlobalDe`; el
+  alinearlo). `/referidos` (código `PCGxxxxxx` + CANJE del código de un amigo,
+  `POST /web/referidos/canjear`). **BONO DE REFERIDOS EN EL BACKEND (1-oct-
+  2026, pedido del director):** antes el bono de 10 vivía solo en el teléfono
+  y `sincronizarSaldo` lo borraba. Ahora `backend/growth/referidos.py`
+  (`GET /referidos/estado?email`, `POST /referidos/canjear`, X-App-Key +
+  `_require_usuario`) acredita a AMBOS lados en la billetera única como un
+  cupón (`stores.acreditar` + pago `bono_referido`, sale en movimientos del
+  app y de la web), en la moneda de la billetera de cada uno
+  (`referido_bono_soles|usd|bob` = 10 / 2.5 / 15 en `CONFIG_DEFAULT`; 0 =
+  apagado), un canje por cuenta, no el propio, el código debe ser de una
+  cuenta real (`stores.referidos_codigos`, que llena "Invita y gana" al
+  abrirse, o correos conocidos/`pichangol_perfiles`), tope
+  `referido_tope_referidor` (50; pasado el tope solo el invitado cobra),
+  candado de hilo e idempotencia por `referido_inv|ref:<correo>`. Canjes en
+  `stores.referidos` (snapshot) + espejo en `pichangol_referidos`
+  (`referidor_dado=true`). **Migración:** las filas que dejó el APK viejo
+  (bono nunca acreditado) se pagan una vez al abrir "Invita y gana" de
+  cualquiera de los dos lados (`sincronizar`, `origen: app_anterior`). APK:
+  `AppState.canjearReferido/estadoReferidos` → `PagosService.
+  canjearReferido/referidosEstado` + `sincronizarSaldo`; se borró
+  `ReferidosRepo` y el `_acreditarBono` local. Test `tests/test_referidos.py`, `/jugador/{ref}` (carnet = `perfilGlobalDe`; el
   nombre en el ranking de `/liga` enlaza aquí) y `/anfitrion/llenar` (horas
   libres de hoy/mañana con descuento real en `pichangol_descuentos_slot` +
   aviso por chat o WhatsApp; en el MENU anfitrión). Perfil: Partidos,
@@ -1430,6 +1459,95 @@ para la API del APK.
   "yo" del carrito (o la primera). Tests
   `test_cargo_lleva_los_datos_reales_del_cliente_para_culqi` + asserts en
   `test_reserva_web_completa` y `test_ficha_de_academia…`.
+- **SEÑA EN LA RESERVA WEB (caso real PRD, 1-oct-2026: "Campo deportivo Edu
+  Jr." tenía seña 50 % y la web cobraba siempre el total):** la web ahora
+  hace lo mismo que `club_detalle._ResumenReserva` del app. Config
+  `senaPct` en la ficha; el resumen ofrece "Pagar seña N % ahora · S/ X" (por
+  defecto) o "Pagar todo ahora", con "Seña (pagas hoy)", "Resto en la
+  cancha", aviso "la seña no es reembolsable" y total "A pagar hoy". Con
+  boleador todo va en línea (como el app); la seña no se combina con el
+  premio de fidelidad. `AsegurarReq.pago` ("sena" | "total"; vacío = total
+  para JS viejo); seña por turno `router.sena_de` (= `Cancha.senaDe`, mitad
+  hacia arriba) guardada en la columna `sena` de cada fila; responde `pago`,
+  `sena`, `sena_pct`, `resto`. `/web/pagar` cobra seña + su cargo por
+  servicio, confirma con `medio_pago='sena'` y `pagado=false`
+  (`datos.confirmar_reservas(pagado=)`), liquida al dueño SOLO la seña
+  (`medio sena`) y el push dice cuánto cobra en la cancha; un 2.º `/web/pagar`
+  no recobra (filas `confirmada`). Comprobante: "Total de la reserva",
+  "Pagaste hoy (seña)", "Por pagar en la cancha"; el modal de cancelar avisa
+  que la seña no se devuelve. Test
+  `test_sena_del_dueno_en_la_reserva_web_como_el_app`; Playwright
+  `$SP/pw_sena.js`.
+- **"CADA CLIC DEMORA" (queja del director, 1-oct-2026) — CAUSA RAÍZ:**
+  `pg-backend-prd` corre en Railway **us-west2 (California)** y PCG-PRD está
+  en **sa-east-1 (São Paulo)**: ~180 ms por ida y vuelta. psycopg abría una
+  transacción implícita (BEGIN = 1 viaje) y `commit()` al salir (otro viaje) →
+  cada lectura costaba 3 viajes (~550 ms); `/` tardaba 1,7 s, la ficha 1,8 s,
+  `/web/disponibilidad` 2 s, el badge de mensajes 3-4 s, la bandeja 4,6 s, un
+  chat 8 s (logs `[perf]`). Arreglo: (1) **transacción perezosa** en
+  `pg.conexion()` (`_ConexionPerezosa`): el pool va en AUTOCOMMIT y BEGIN se
+  manda recién con la 1.ª escritura / `FOR UPDATE` (`pg.es_lectura`); lectura =
+  1 viaje; escrituras siguen atómicas (mismo resultado bajo READ COMMITTED);
+  probado contra Postgres 16 real; test `tests/test_pg_perezoso.py`. (2) Pool
+  tibio: hilo `pcg-pool` (`pg.iniciar_tibias`) hace `SELECT 1` cada 60 s y
+  mantiene ≥2 conexiones (abrir una nueva = TLS + login ≈ 1 s); `POOL_MAX` 8.
+  (3) Badge `/web/mensajes/no-leidos` con caché de 20 s por cuenta (se borra
+  al leer un chat). (4) **PRELOAD EN TODO** (`ui.JS_NAV`): barra fina verde
+  arriba (`#pcgBarra`, `pcgBarra(on)`) al instante en cada clic a un enlace
+  interno / envío de formulario + velo "Cargando…" si la página tarda > 450 ms
+  (se quita solo a los 15 s o al volver con el botón atrás); todo `fetch` que
+  tarde > 250 ms muestra la barra, salvo los sondeos de fondo (`FONDO`: badge,
+  hilo, bandeja, foto, descubrir). Excluir un enlace: `data-sin-carga`.
+  Playwright `$SP/pw_preload.js`. **HECHO 1-oct-2026 (autorizado):**
+  `pg-backend-prd` movido a **us-east4 (Virginia)** (~115 ms a São Paulo,
+  más cerca de Lima) y el arreglo pasado a PRD (`prd` = 420be2a).
+- **APARTADOS WEB VENCIDOS NO OCUPAN (caso real PRD, 1-oct-2026: las 20:00
+  de "Campo deportivo Edu Jr." salían "Ocupado" sin ningún pago; era un
+  apartado `web_hold` de 10 min que el cliente abandonó y que solo se borraba
+  cuando OTRO cliente intentaba reservar esa cancha):** `datos.ocupados` y
+  `ocupados_varias` excluyen (`_SQL_SIN_HOLD_VENCIDO`) las filas `nueva` sin
+  pagar con id `web_<ms>` más viejo que `HOLD_SEGUNDOS`; cron de 1 min en
+  `main.py::_iniciar_cron_holds_web` → `datos.liberar_holds_vencidos_todos`
+  (borra en todas las canchas + devuelve el premio de fidelidad, log
+  `[holds]`); APK `ReservasRepo.esHoldWebVencido` las descarta al bajar
+  reservas. Test `tests/test_holds_web.py`.
+- **CORREOS DE PAGO OBLIGATORIOS (pedido del director, 1-oct-2026: "todo
+  pago debe mandar correo al que pagó con el detalle de su recibo y al dueño
+  de cancha / academia / boleador a quien va dirigido"):**
+  `backend/growth/correos.py`. Enganche ÚNICO en `stores.registrar_pago` →
+  `correos.al_pago(p)` (solo encola; app y web pasan por la misma
+  contabilidad): `liquidacion_online|full` → reserva, `matricula_online` →
+  matrícula/cuotas/débito automático, `venta_producto` → marketplace y bonos,
+  `recarga`, `suscripcion_pro`, `suscripcion`, `venta_bodega` (+ `<ref>_deb`
+  del cliente), `inscripcion_torneo[_ingreso]`, `aporte_equipo`,
+  `liquidacion_boleador`; más `encolar("boleo_solicitud")` en
+  `boleadores.crear_solicitud` ("Te contrataron"). Comisiones, bonos,
+  cupones, devoluciones y rechazados NO mandan correo. Reserva y matrícula
+  esperan 40 s (el APK liquida turno por turno; la web escribe la orden
+  después) y arman UN correo por grupo (`grupo_reserva_id`) / por N.º de
+  operación (base del `chr_…#k`, `datos.matriculas_por_operacion`) con datos
+  REALES: turnos, extras (boleador "por confirmar"), cargo por servicio,
+  "Pagaste hoy" (= fila del cargo `cobro_web|reserva|academia|cobro` si
+  existe), "Por pagar en la cancha" (seña), N.º de operación, botón al
+  comprobante; al que recibe: precio, comisión Pichangol y "Recibes" (=
+  `_liquidacion_dict`). Bandeja `stores.correos` + eventos
+  `stores.correos_eventos` en el SNAPSHOT (clave única por destinatario
+  `reserva:<grupo>:cliente|dueno` → nunca se repite; reintentos 1 min → 6 h,
+  `fallo` al 6.º, `vencido` a las 48 h; el HTML se borra al enviarse). Hilo
+  `pcg-correos` (cada 5 s, `main.py::_iniciar_correos`, no corre en pytest).
+  Proveedor: **Resend** (`RESEND_API_KEY`, HTTP con `Idempotency-Key`) o
+  **SMTP** (`SMTP_HOST`, `SMTP_PORT` 587/465, `SMTP_USUARIO`, `SMTP_CLAVE`);
+  `CORREO_REMITENTE` (default "Pichangol <no-responder@pichangol.app>"),
+  `CORREO_RESPONDER_A` (default = correo de la empresa de la torre). Sin
+  proveedor → estado `sin_proveedor` (nada se rompe). Corte de emergencia:
+  `stores.config[correos_activo]="0"`. Torre → Comunicación → **"✉️ Correos
+  de pago"** (`GET /admin/api/correos`, `POST …/prueba {para}`, `POST
+  …/{id}/reintentar`). Plantilla tabla + estilos en línea (Gmail/Outlook),
+  pie con razón social/RUC de `empresa.datos()`, "constancia, no comprobante
+  electrónico". Privacidad declara el proveedor de correo. Test
+  `tests/test_correos.py`. **PENDIENTE del director:** cuenta de Resend con
+  el dominio `pichangol.app` verificado (DNS SPF/DKIM) y la llave en Railway
+  QAS (y PRD con "pasa a PRD").
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
   VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
   Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el

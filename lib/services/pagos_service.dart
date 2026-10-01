@@ -1742,6 +1742,52 @@ class PagosService {
     }
   }
 
+  // --- REFERIDOS ("Invita y gana") ----------------------------------------
+  // El canje y los bonos viven en el backend (`referidos.py`): el bono cae en
+  // la billetera única del correo, como un cupón (antes solo en el teléfono y
+  // `sincronizarSaldo` lo borraba).
+
+  /// Estado de "Invita y gana": {codigo, invitados, ganado_centimos, moneda,
+  /// simbolo, bono_centimos, canjeado, tope_alcanzado}. null sin red.
+  static Future<Map<String, dynamic>?> referidosEstado(String email) async {
+    if (!disponible || email.trim().isEmpty) return null;
+    try {
+      final r = await http
+          .get(
+              Uri.parse('$_baseUrl/referidos/estado').replace(
+                  queryParameters: {'email': email.trim().toLowerCase()}),
+              headers: await _headersUsuario())
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Canjea el código de un amigo. {ok, bono_centimos, moneda, simbolo} o
+  /// {ok:false, error, mensaje}. null sin red.
+  static Future<Map<String, dynamic>?> canjearReferido({
+    required String email,
+    required String codigo,
+  }) async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/referidos/canjear'),
+              headers: await _headersUsuario(json: true),
+              body: jsonEncode({
+                'email': email.trim().toLowerCase(),
+                'codigo': codigo.trim(),
+              }))
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Deja la billetera del [duenoId] en virgen EN EL BACKEND (saldo 0 y sin
   /// movimientos). Necesario porque el saldo/pagos viven en el servidor y
   /// volverían al re-sincronizar. La usa "Dejar en virgen". Best-effort.

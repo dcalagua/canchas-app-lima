@@ -25,9 +25,8 @@ de las pantallas del app (fase 2-3 del lado jugador, pedido del director:
   `ConvocatoriasService.slugClub`), y solo un dueño con canchas crea.
 · `/referidos` = `referidos_screen.dart`: código `PCGxxxxxx` (misma fórmula
   que `AppState.codigoReferido`), invitar por WhatsApp y cuántos usaron tu
-  código (`pichangol_referidos`). El CANJE y el cobro del bono quedan en la
-  app: el bono del app se acredita en el saldo LOCAL del teléfono (no en la
-  billetera del backend), así que la web no puede darlo sin inventar plata.
+  código y CANJE del código de un amigo: desde el 1-oct-2026 el bono vive en
+  el backend (`referidos.py`, billetera única del correo), igual que el APK.
 · `/jugador/{ref}` = `perfil_global_screen.dart` (carnet): stats
   consolidadas de academias + retos (`AppState.perfilGlobalDe`), puesto en
   el ranking global del deporte, PRO, bio, desglose por academia, últimos
@@ -1127,79 +1126,46 @@ def _avisar_promovidos(antes: dict, despues: dict) -> None:
 
 # ════════════════════════════════ REFERIDOS ═══════════════════════════════════
 
-BONO_REFERIDO = 10  # `AppState.bonoReferido` (en la moneda local)
-
-
-def codigo_referido(email: str) -> str:
-    """`AppState.codigoReferido`: hash de las unidades UTF-16 del correo."""
-    em = _low(email)
-    if not em:
-        return ""
-    h = 7
-    u = em.encode("utf-16-le")
-    for i in range(0, len(u), 2):
-        h = (h * 31 + (u[i] | (u[i + 1] << 8))) & 0x7FFFFFFF
-    dig = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    s = ""
-    n = h
-    while True:
-        n, r = divmod(n, 36)
-        s = dig[r] + s
-        if n == 0:
-            break
-    s = s.rjust(6, "0")
-    return "PCG" + s[-6:]
-
-
-def invitados(codigo: str) -> tuple[int, int]:
-    """(cuántos usaron el código, cuántos aún sin bono cobrado por el referidor)."""
-    if not pg.habilitado or not codigo:
-        return 0, 0
-    try:
-        with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute("SELECT count(*), count(*) FILTER (WHERE NOT coalesce(referidor_dado,false)) "
-                        "FROM pichangol_referidos WHERE referido_codigo = %s", (codigo.upper(),))
-            n, p = cur.fetchone()
-            return int(n or 0), int(p or 0)
-    except Exception:  # noqa: BLE001
-        return 0, 0
-
-
-def mi_canje(email: str) -> str:
-    """Código que canjeé yo (o '')."""
-    if not pg.habilitado:
-        return ""
-    try:
-        with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute("SELECT referido_codigo FROM pichangol_referidos WHERE invitado_email = %s", (_low(email),))
-            f = cur.fetchone()
-            return str(f[0]) if f else ""
-    except Exception:  # noqa: BLE001
-        return ""
+# El código, el canje y los bonos viven en `referidos.py` (backend): el bono
+# se acredita en la billetera única del correo (antes solo en el teléfono).
+from referidos import codigo_referido  # noqa: E402  (reexporta para tests/otros módulos)
+import referidos as _ref  # noqa: E402
 
 
 @router.get("/referidos", response_class=HTMLResponse)
 def pagina_referidos(request: Request) -> HTMLResponse:
-    """`ReferidosScreen` ("Invita y gana")."""
+    """`ReferidosScreen` ("Invita y gana"): código, invitar, conteo, lo ganado y
+    el CANJE del código de un amigo (con bono real en la billetera)."""
     ses = sesion.de_request(request)
     if not ses:
         return sin_sesion(request, "/referidos", "Invita y gana", "Tu código de referido")
     yo = _low(ses["email"])
-    cod = codigo_referido(yo)
-    n, pend = invitados(cod)
-    canje = mi_canje(yo)
-    iso = _pais_usuario(yo)
-    sim = paises.simbolo_de_moneda(paises.moneda_de_pais(iso))
+    est = _ref.estado(yo)
+    cod = est.get("codigo") or codigo_referido(yo)
+    n = int(est.get("invitados") or 0)
+    sim = est.get("simbolo") or "S/"
+    bono = int(est.get("bono_centimos") or 0)
+    bono_txt = _ref._fmt(bono, est.get("moneda") or "PEN") if bono else ""
+    ganado = int(est.get("ganado_centimos") or 0)
     msg = ("¡Juega conmigo en Pichangol! 🎾⚽\n\nReserva canchas de fútbol, tenis y más cerca de ti.\n"
            f"Usa mi código *{cod}* al registrarte y ambos ganamos un bono. 🎁\n\nDescárgala: {config.APP_DOWNLOAD_URL}")
-    estado = (f"{n} {'persona ya usó' if n == 1 else 'personas ya usaron'} tu código." if n else "Aún nadie usó tu código. ¡Comparte y gana!")
-    pend_html = (f"<div class='jp-banner' style='background:#FFF6E0;color:#8a5a00'><span class='em'>🎁</span><div><b>{pend} bono{'s' if pend != 1 else ''} por cobrar</b>"
-                 "<small>Tus bonos por invitar se cobran al abrir “Invita y gana” en la app Pichangol.</small></div></div>") if pend else ""
+    estado_txt = (f"{n} {'persona ya usó' if n == 1 else 'personas ya usaron'} tu código." if n else "Aún nadie usó tu código. ¡Comparte y gana!")
+    ganado_html = (f"<div class='jp-banner' style='background:#FFF6E0;color:#8a5a00'><span class='em'>🎁</span><div><b>Llevas "
+                   f"{e(_ref._fmt(ganado, est.get('moneda') or 'PEN'))} ganados con Invita y gana</b>"
+                   "<small>Ya están en tu saldo Pichangol (Mi billetera).</small></div></div>") if ganado else ""
+    tope_html = ("<div class='jp-banner' style='background:#F4F4F4;color:#555'><span class='em'>ℹ️</span><div><b>Llegaste al tope de invitados con bono</b>"
+                 "<small>Tus amigos igual reciben su bono de bienvenida.</small></div></div>") if est.get("tope_alcanzado") else ""
+    canje = est.get("canjeado") or ""
     canje_html = (f"<div class='jp-banner' style='background:#EAF7EF;color:#067A38'><span class='em'>✅</span><div><b>Ya canjeaste el código {e(canje)}</b>"
                   "<small>Solo se puede canjear un código por cuenta.</small></div></div>") if canje else (
-        "<div class='jp-card'><b>¿Tienes el código de un amigo?</b><p class='sub' style='margin:4px 0 10px'>El bono de bienvenida se acredita en el "
-        "saldo de tu app, por eso el canje se hace desde la app Pichangol (Ajustes → Invita y gana). Solo puedes canjear un código una vez, y no el tuyo.</p>"
-        "<button type='button' class='btn sec' onclick='rfApp()'>Canjear en la app <span class='pill gris'>En la app</span></button></div>")
+        "<div class='jp-card'><b>¿Tienes el código de un amigo?</b><p class='sub' style='margin:4px 0 10px'>"
+        + (f"Canjéalo y te sumamos {e(bono_txt)} a tu saldo (a tu amigo también). " if bono_txt else "")
+        + "Solo puedes canjear un código una vez, y no el tuyo.</p>"
+        "<div style='display:flex;gap:8px'><input id='rfAmigo' maxlength='12' autocomplete='off' placeholder='PCG······' "
+        "style='flex:1;min-width:0;text-transform:uppercase;letter-spacing:1px'>"
+        "<button type='button' class='btn' id='rfBtn' onclick='rfCanjear()'>Canjear</button></div></div>")
+    regla = (f"Comparte tu código. Cuando un amigo lo canjea, {e(bono_txt)} para cada uno, directo a tu saldo. 🎁"
+             if bono_txt else "Comparte tu código con tus amigos para que juegue contigo en Pichangol.")
     cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap' style='max-width:600px'><a class='jp-volver' href='/perfil'>‹ Perfil</a>"
               "<h1>Invita y gana</h1>"
               "<div class='jp-hero' style='text-align:center;background:linear-gradient(135deg,#7CB518,#0B8A3E)'>"
@@ -1207,14 +1173,29 @@ def pagina_referidos(request: Request) -> HTMLResponse:
               f"<div class='jp-cod' id='rfCod'>{e(cod)}</div>"
               + ui.boton_whatsapp(msg, etiqueta="💬 Invitar por WhatsApp", clase="btn", extra="style='background:#fff;color:#0B8A3E;width:100%'")
               + "<button type='button' class='btn sec' style='margin-top:8px;width:100%;background:transparent;color:#fff;border-color:rgba(255,255,255,.6)' onclick='rfCopiar()'>⧉ Copiar código</button></div>"
-              f"<p class='sub'>Comparte tu código. Cuando un amigo lo canjea al registrarse, {BONO_REFERIDO} {e(sim)} para cada uno. 🎁</p>"
-              f"<div class='jp-banner' style='background:#EAF7EF;color:#14463A'><span class='em'>👥</span><div><b>{e(estado)}</b></div></div>"
-              f"{pend_html}{canje_html}</div>"
-              f"<script>window.RF={_js({'cod': cod, 'play': PLAY_URL})};</script><script>{_JS_BASE}"
+              f"<p class='sub'>{regla}</p>"
+              f"<div class='jp-banner' style='background:#EAF7EF;color:#14463A'><span class='em'>👥</span><div><b>{e(estado_txt)}</b></div></div>"
+              f"{ganado_html}{tope_html}{canje_html}</div>"
+              f"<script>window.RF={_js({'cod': cod, 'sim': sim})};</script><script>{_JS_BASE}"
               "window.rfCopiar=function(){ try{ navigator.clipboard.writeText(RF.cod).then(function(){ pcgToast('Código copiado'); }); }catch(_){ pcgToast(RF.cod); } };"
-              "window.rfApp=function(){ pcgConfirmar({titulo: 'Canjea en la app', icono: '🎁', mensaje: 'Abre Pichangol → Ajustes → Invita y gana y escribe el código de tu amigo. El bono cae a tu saldo al instante.', confirmar: 'Abrir la app', cancelar: 'Ahora no'}).then(function(ok){ if(ok) window.open(RF.play, '_blank', 'noopener'); }); };"
+              "window.rfCanjear=function(){ var i=document.getElementById('rfAmigo'); var c=(i&&i.value||'').trim().toUpperCase();"
+              " if(!c){ pcgAvisar({titulo: 'Escribe el código', mensaje: 'Pídele a tu amigo su código PCG…', icono: '🎁'}); return; }"
+              " pcgCargando('Canjeando…'); fetch('/web/referidos/canjear', {method: 'POST', headers: {'Content-Type': 'application/json'}, credentials: 'same-origin', body: JSON.stringify({codigo: c})})"
+              " .then(function(r){ return r.json(); }).then(function(j){ pcgCargando(false);"
+              "  if(j.ok){ pcgAvisar({titulo: '¡Bono acreditado! 🎁', mensaje: j.bono_centimos ? ('Te sumamos ' + RF.sim + ' ' + (j.bono_centimos/100).toFixed(2) + ' a tu saldo. Tu amigo también recibe su bono.') : 'Código canjeado.', icono: '🎁'}).then(function(){ pcgRecargar(); }); }"
+              "  else { pcgAvisar({titulo: 'No se pudo canjear', mensaje: j.mensaje || 'Revisa el código e inténtalo otra vez.', icono: '⚠️'}); } })"
+              " .catch(function(){ pcgCargando(false); pcgAvisar({titulo: 'Sin conexión', mensaje: 'No pudimos canjear. Inténtalo otra vez.', icono: '⚠️'}); }); };"
               "</script>")
     return ui.shell("Invita y gana", cuerpo, sesion=ses, titulo_tab="Invita y gana · Pichangol")
+
+
+@router.post("/web/referidos/canjear")
+def api_referidos_canjear(request: Request, body: dict | None = Body(None)) -> JSONResponse:
+    ses = sesion.de_request(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión para canjear."}, status_code=401)
+    codigo = str((body or {}).get("codigo") or "") if isinstance(body, dict) else ""
+    return JSONResponse(_ref.canjear(ses["email"], codigo, origen="web"))
 
 
 # ═══════════════════════════ CARNET DEL JUGADOR ═══════════════════════════════

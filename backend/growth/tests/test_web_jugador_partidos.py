@@ -186,11 +186,12 @@ def _codigo_ref(email):
 def test_invita_y_gana_como_el_app(monkeypatch, aislado):
     assert JP.codigo_referido(" Ana@Gmail.com ") == _codigo_ref("ana@gmail.com")
     cod = JP.codigo_referido("ana@gmail.com")
-    monkeypatch.setattr(JP, "invitados", lambda c: (3, 1) if c == cod else (0, 0))
-    monkeypatch.setattr(JP, "mi_canje", lambda e: "")
+    monkeypatch.setattr(JP._ref, "estado", lambda e: {
+        "ok": True, "codigo": cod, "invitados": 3, "ganado_centimos": 3000, "moneda": "PEN",
+        "simbolo": "S/", "bono_centimos": 1000, "canjeado": "", "tope_alcanzado": False})
     html = _cli(monkeypatch).get("/referidos").text
-    assert cod in html and "3 personas ya usaron tu código." in html and "1 bono por cobrar" in html
-    assert "wa.me" in html and "10 S/" in html and "Canjear en la app" in html and _sin_popups_nativos(html)
+    assert cod in html and "3 personas ya usaron tu código." in html and "S/ 30 ganados" in html
+    assert "wa.me" in html and "S/ 10 para cada uno" in html and "rfCanjear" in html and _sin_popups_nativos(html)
 
 
 # ═══════════════════════════════ CARNET ═══════════════════════════════════════
