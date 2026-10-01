@@ -745,3 +745,39 @@ def listar(estado_filtro: str | None = None) -> list[dict]:
     if estado_filtro:
         rs = [r for r in rs if r.estado == estado_filtro]
     return [_enriquecer(r) for r in rs]
+
+
+# --- OTP por WhatsApp = EVIDENCIA, nunca activación (decisión del director,
+# 1-oct-2026: "ciérralo igual en el app"). Tener el código del WhatsApp del
+# local prueba que el reclamante controla ese número, no que sea el dueño: la
+# propiedad la da el reclamo APROBADO por el equipo. La usan el APK
+# (`POST /propiedad/otp/confirmar`) y la web (`/anfitrion/verificacion`).
+_RECLAMO_ABIERTO = ("pendiente_triage", "aprobado_triage", "pendiente_validacion",
+                    "validada_pendiente_admin")
+
+
+def registrar_evidencia_otp(cancha_id: str, solicitante_id: str, telefono_enmascarado: str,
+                            telefono: str = "", origen: str = "app") -> ReclamoPropiedad | None:
+    """Suma al reclamo ABIERTO más reciente de esa cuenta sobre el lugar la marca
+    "WhatsApp confirmado por código" y avisa al admin con el código para aprobar.
+    Sin reclamo abierto no hace nada (la confirmación queda igual registrada en
+    `stores.confirmaciones_propiedad`). Devuelve el reclamo tocado o None."""
+    em = (solicitante_id or "").strip().lower()
+    pool = [r for r in _reclamos_del_lugar(cancha_id)
+            if (r.solicitante_id or "").strip().lower() == em and r.estado in _RECLAMO_ABIERTO]
+    if not pool:
+        return None
+    r = max(pool, key=lambda x: x.id)
+    if telefono:
+        r.telefono_contacto = telefono
+    marca = f"✓ WhatsApp {telefono_enmascarado} confirmado por código ({origen})"
+    if marca not in (r.nota_reclamante or ""):
+        r.nota_reclamante = (f"{r.nota_reclamante} · {marca}" if r.nota_reclamante else marca)[:600]
+    try:
+        _notificar_admin(
+            f"🔐 El reclamante confirmó por código el WhatsApp del local\nLocal: {r.nombre_local}\n"
+            f"Cuenta: {r.solicitante_id}\nTeléfono: {telefono_enmascarado}\nCódigo del reclamo: {r.codigo}\n"
+            f"Para activarla responde: APROBAR {r.codigo}")
+    except Exception:  # noqa: BLE001
+        pass
+    return r

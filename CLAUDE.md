@@ -718,11 +718,18 @@ para la API del APK.
   "pendiente" del app: línea de tiempo del reclamo, "Verificar estado ahora"
   (repara la nube con `datos.marcar_verificada` si ya estaba aprobado),
   "Reenviar solicitud" (`reclamos.crear_reclamo` o recordatorio al admin) y
-  OTP por WhatsApp (`propiedad.service.solicitar/confirmar`). **Decisión de
-  seguridad pendiente de validar con el director:** en la web el OTP NO
-  activa la cancha (`confirmar(…, activar=False)`): queda como evidencia en el
-  reclamo y avisa al admin; el APK, con `confirmada`, la activaba sin revisión
-  del equipo (y `verificar_propiedad_screen` no está enlazada en el APK). Los
+  OTP por WhatsApp (`propiedad.service.solicitar/confirmar`). **OTP =
+  EVIDENCIA, NUNCA ACTIVA (decisión del director, 1-oct-2026: "ciérralo igual
+  en el app"):** `service.confirmar` tiene `activar=False` POR DEFECTO; web y
+  APK (`POST /propiedad/otp/confirmar`) llaman a
+  `reclamos.registrar_evidencia_otp` (marca "✓ WhatsApp … confirmado por
+  código (app|web)" en el reclamo abierto + aviso al admin con "APROBAR
+  <código>"). El endpoint del app responde `estado: pendiente_revision`,
+  `verificada: false` aunque el código sea correcto, así un APK viejo (que
+  activaba en local con `confirmada`) tampoco se auto-verifica;
+  `verificar_propiedad_screen` ya no llama a `confirmarPropiedad`. La
+  propiedad la da SOLO el reclamo aprobado. Test
+  `test_otp_del_app_no_activa_y_queda_como_evidencia_en_el_reclamo`. Los
   avisos de Mis canchas llevan "Ver estado y opciones ›". Test
   `tests/test_web_anfitrion_verificador.py`.
 - **OPERACIÓN DE ACADEMIA EN LA WEB (30-sep-2026):**
@@ -2174,7 +2181,13 @@ off → redeploy inmediato en cada push). URL pública:
     `pichangol_descuentos_slot` (`supabase_descuentos_slot.sql`: la tabla
     NUNCA se había creado en PRD; el APK fallaba en silencio al poner
     descuentos de "Llenar cancha"). Sin Edge ni variables nuevas. CAMBIÓ
-    `lib/` → APK/AAB de PRD por `workflow_dispatch`.
+    `lib/` → APK/AAB de PRD = run 1476 (`workflow_dispatch`).
+    **Pase del 1-oct-2026 (2.º, autorizado: "ciérralo igual en el app … pásalo
+    a PRD"):** OTP por WhatsApp = evidencia también en el APK (backend
+    `/propiedad/otp/confirmar` ya no activa; pantalla del app sin
+    `confirmarPropiedad`). El SQL de descuentos por turno ya corrió en QAS
+    (director) y PRD. Sin variables nuevas. CAMBIÓ `lib/` → APK/AAB de PRD por
+    `workflow_dispatch`.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,

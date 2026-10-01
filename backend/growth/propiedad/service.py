@@ -118,15 +118,16 @@ def solicitar(cancha_id: str, telefono: str) -> dict:
 
 
 def confirmar(cancha_id: str, codigo: str, solicitante_id: str,
-              telefono_publico: str | None = None, activar: bool = True) -> dict:
+              telefono_publico: str | None = None, activar: bool = False) -> dict:
     """Valida el OTP. Si coincide, decide el estado de propiedad y registra la
     confirmación (auditable). Borra el OTP tras un intento exitoso o al agotar
     intentos (no-retención).
 
-    [activar]=False (web, `web/anfitrion_verificador.py`): el código solo
-    PRUEBA que el reclamante controla ese WhatsApp; queda como evidencia para
-    la torre y NO marca la cancha verificada (existir/tener el teléfono ≠ ser
-    el dueño: la propiedad la confiere el reclamo aprobado)."""
+    [activar]=False (POR DEFECTO desde el 1-oct-2026, app y web): el código
+    solo PRUEBA que el reclamante controla ese WhatsApp; queda como evidencia
+    para la torre y NO marca la cancha verificada (existir/tener el teléfono ≠
+    ser el dueño: la propiedad la confiere el reclamo aprobado). `True` queda
+    solo para usos internos/tests que quieran el comportamiento viejo."""
     otp = stores.otps.get(cancha_id)
     if otp is None:
         return {"ok": False, "error": "sin_otp"}
@@ -176,8 +177,9 @@ def confirmar(cancha_id: str, codigo: str, solicitante_id: str,
     return {
         "ok": True,
         "estado": estado,
-        "verificada": estado == "confirmada",
+        "verificada": estado == "confirmada" and activar,
         "confirmacion_id": conf.id,
+        "telefono_enmascarado": conf.telefono_enmascarado,
     }
 
 

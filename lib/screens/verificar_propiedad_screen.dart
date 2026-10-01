@@ -118,21 +118,17 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
       setState(() => _msg = 'No se pudo confirmar. Revisa tu conexión.');
       return;
     }
-    if (r['ok'] == true && r['estado'] == 'confirmada') {
-      // La propiedad quedó probada: habilita la cancha localmente también.
-      appState.confirmarPropiedad(widget.cancha.id,
-          via: 'otp_whatsapp', dueno: email);
-      Navigator.of(context).pop(true);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        backgroundColor: lima,
-        content: Text('✅ Propiedad verificada. Tu cancha ya acepta reservas.',
-            style: TextStyle(color: Colors.white)),
-      ));
-    } else if (r['ok'] == true && r['estado'] == 'pendiente_revision') {
+    if (r['ok'] == true) {
+      // El código SOLO prueba que controlas el WhatsApp del local (1-oct-2026,
+      // igual que la web): NUNCA activa la cancha en el teléfono. Queda como
+      // evidencia en tu solicitud y el equipo la aprueba desde la torre; la
+      // activación llega por [AppState.sincronizarPropiedades].
       Navigator.of(context).pop(false);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        backgroundColor: lima,
         content: Text(
-            'Código correcto. Como el número no coincide con el del local, lo revisará nuestro equipo.'),
+            '✅ WhatsApp confirmado. Lo sumamos a tu solicitud para que el equipo la apruebe más rápido.',
+            style: TextStyle(color: Colors.white)),
       ));
     } else {
       final err = r['error'];
@@ -158,7 +154,7 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
           const SizedBox(height: 8),
           Text(
               'Te enviaremos un código por WhatsApp o SMS al teléfono del local. '
-              'Solo quien lo recibe puede activar la cancha para recibir reservas.',
+              'Confirmarlo acelera la revisión de tu solicitud; la cancha se activa cuando el equipo la aprueba.',
               style: t.bodyMedium?.copyWith(color: textoTenueDe(context))),
           if (!PropiedadService.disponible) ...[
             const SizedBox(height: 16),

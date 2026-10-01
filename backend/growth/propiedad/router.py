@@ -271,10 +271,22 @@ def post_solicitar(req: OtpSolicitarRequest) -> dict:
 
 @router.post("/otp/confirmar", dependencies=_APP)
 def post_confirmar(req: OtpConfirmarRequest) -> dict:
-    """Valida el código. Si coincide (y el número prueba propiedad), marca la
-    cancha como verificada por su dueño."""
-    return service.confirmar(
-        req.cancha_id, req.codigo, req.solicitante_id, req.telefono_publico)
+    """Valida el código del WhatsApp del local. Ya NO activa la cancha (1-oct-
+    2026, igual que la web): queda como EVIDENCIA en el reclamo abierto y avisa
+    al admin para que apruebe. Responde `estado: pendiente_revision` aunque el
+    código sea correcto, así un APK viejo (que activaba en local con
+    `confirmada`) muestra "lo revisará nuestro equipo" y no se auto-verifica."""
+    otp = stores.otps.get(req.cancha_id)
+    tel = otp.telefono if otp else ""
+    res = service.confirmar(
+        req.cancha_id, req.codigo, req.solicitante_id, req.telefono_publico, activar=False)
+    if not res.get("ok"):
+        return res
+    r = reclamos.registrar_evidencia_otp(
+        req.cancha_id, req.solicitante_id, res.get("telefono_enmascarado") or "", tel, origen="app")
+    return {"ok": True, "estado": "pendiente_revision", "verificada": False,
+            "codigo_confirmado": True, "en_reclamo": r is not None,
+            "confirmacion_id": res.get("confirmacion_id")}
 
 
 @router.post("/aprobar-manual", dependencies=_ADMIN)
