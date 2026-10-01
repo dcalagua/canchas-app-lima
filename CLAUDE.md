@@ -516,6 +516,17 @@ para la API del APK.
   `busq_mini` lleva el bloque `.mov` solo visible en móvil); la compacta
   `.chica` en móvil deja solo la pastilla. Toda pantalla web nueva se prueba
   también a 390 px (Playwright `isMobile`).
+  **RESPONSIVO EN TODA LA WEB (queja del director, 29-sep-2026, captura de
+  Mis canchas: "el botón Editar se sale"):** la grilla usaba
+  `minmax(420px,1fr)` y a 390 px la tarjeta entera desbordaba. Regla: todo
+  mínimo de grilla ≥180 px va como `minmax(min(Npx,100%),1fr)` (14 grillas
+  corregidas en web, legal y torre; test `test_web_responsivo.py`). Además:
+  pestañas del modo anfitrión con márgenes iguales al gutter por ancho
+  (≤744: 24 px, ≤560: 16 px), `.chips .chip` parte el texto largo en vez de
+  empujar la página, y el `.radio-row` del Libro de la portada envuelve.
+  Barrido Playwright `$SP/pw_resp.js` (≈30 páginas a 360/390/768/1024 px;
+  marca todo elemento cuyo borde derecho pase el ancho de la pantalla fuera
+  de un contenedor con scroll): hoy todo en verde. Repetirlo al tocar CSS.
 - **MIS RESERVAS EN LA WEB (sep-2026, pedido del director):** `GET
   /mis-reservas` (router `pagina_mis_reservas`) lista las reservas del CORREO
   de Google con sesión — las mismas que "Mis reservas" del app —
@@ -567,6 +578,221 @@ para la API del APK.
   `ajuste_cancelacion` pasa a `aplicado`). El comprobante `/reserva/{ref}` muestra "Cancelar reserva" al
   dueño de la reserva (modal `_MODAL_CANCELAR` + `JS_CANCELAR`, compartidos
   con Mis reservas) y la política con las horas configuradas.
+- **PERFIL EN LA WEB (29-sep-2026, pedido del director con captura del
+  Perfil del app: "esto no lo veo en la web"):** `GET /perfil`
+  (`web/router.py::pagina_perfil`, sin sesión → `/entrar?volver=/perfil`) =
+  pantalla Perfil del app: tarjeta de identidad (foto de Google, 👑 PRO =
+  `stores.pro_activo`, ✓ = `datos.esta_verificado`) con Reservas
+  (`reservas_de_usuario`), Deportes con nivel (`datos.niveles_de`,
+  `pichangol_niveles`) y Retos pendientes (misma cuenta que
+  `cargarRetosPendientes`: recibidos pendiente/aceptado + enviados
+  aceptados, `stores.retos`); atajos Mis reservas / Marketplace (NOVEDAD),
+  banner "¿Tienes una cancha o academia?" → `/anfitrion`, tarjeta de nivel y
+  el MISMO menú (desde la fase 1 del lado jugador cada ítem enlaza a su
+  página web; ver "LADO JUGADOR DEL APP EN LA WEB"): Mis clases y pagos (solo con matrículas,
+  `datos.tiene_matriculas`), Mis bonos, Mis pagos, Mis puntos · N ⭐
+  (`datos.puntos_de` = `misPuntosDisponibles`: reservas traídas por la app y
+  pagadas 12 meses + bodega con saldo − canjes), Campeonatos →
+  `/anfitrion/campeonatos`, 🎾 Mundo tenis (`<details>` con Liga y Ser/Soy
+  boleador → `/anfitrion/boleador`), Mi billetera, Mi país, Configuración,
+  Cierra la sesión (`pcgSalir`), Eliminar mi cuenta →
+  `/legal/eliminar-cuenta` + botón flotante "Cambiar a modo anfitrión". Lo
+  que la web aún no tiene lleva pill "En la app" y abre `pcgConfirmar`
+  ("Abrir la app" → Play), nunca un enlace roto. El avatar de la cabecera y
+  "👤 Perfil" del menú ☰ llevan aquí. `/perfil` NO está en las rutas de
+  "abrir en la app" (no hace falta APK). Test `tests/test_web_perfil.py`.
+- **LADO JUGADOR DEL APP EN LA WEB · FASE 1 (29-sep-2026, pedido del
+  director: "en la web implementa las mismas funcionalidades que existen en
+  el app"):** cuatro módulos propios (`web/jugador_*.py`, registrados en
+  `main.py`), cada uno espejo de su pantalla Dart, con las MISMAS tablas y
+  las funciones de `pagos/router.py` para la plata (nada de contabilidad
+  paralela); cobro web solo PEN (Culqi v4 + selector Yape/Tarjeta +
+  `pcgResumenPago`), en $/Bs "hazlo en la app". El Perfil web ya enlaza
+  todo; lo que sigue solo en el app se lista al final. Tests
+  `tests/test_web_jugador_{billetera,market,clases,liga}.py`.
+  (1) `web/jugador_billetera.py`: `/mi-billetera` (= `cuenta_screen`: saldo,
+  regalo, por recibir por moneda, recarga Culqi vía `post_recarga` con bono,
+  cupón vía `pagos.router.canjear_cupon` —bloqueado si la billetera no es en
+  soles—, movimientos vía `pagos.router.movimientos_de` que ahora trae
+  `moneda` por fila), `/mi-billetera/estado-de-cuenta` (imprimible),
+  `/mis-pagos`, `/mis-puntos` (usa `datos.puntos_de`), `/mi-pais` (solo con
+  saldo y regalo en 0; se guarda en `stores.clientes_pago[correo].pais_casa`
+  —el APK lo lee y escribe desde el 30-sep-2026 vía `GET/POST
+  /pagos/pais-casa`, gana la elección más reciente; SharedPreferences es caché—).
+  (2) `web/jugador_market.py`: `/marketplace`, `/marketplace/{id}` (compra:
+  UPDATE atómico del stock → cargo → `post_venta` con `venta_id` = charge →
+  push "¡Te compraron!"), `/mis-ordenes` (Recibido / Problema vía
+  `ventas.router.marcar_recibido|abrir_disputa`; WhatsApp del vendedor solo
+  tras pagar), `/mis-bonos`, `/bonos/{cancha_id}` + `POST /web/bonos/comprar`
+  (crédito `bono_<operación>` idempotente). **Stock:** web y APK apartan la
+  unidad con el MISMO UPDATE atómico (`pagos/stock_productos.py`; APK vía
+  `POST /pagos/venta/apartar|devolver`, idempotente por `apartado_id`,
+  `stores.apartados_stock`; cron 5 min devuelve apartados >30 min sin venta).
+  El canje del bono al reservar sigue solo en el app.
+  (3) `web/jugador_clases.py`: `/mis-clases` (= `mis_clases_screen`:
+  matrículas que pago o donde soy alumno, cuotas, débito automático con
+  cancelar, "Mi familia · un solo pago"), `POST /web/mis-clases/pagar`
+  (revalida y recalcula en el servidor con `FOR UPDATE`, un cargo, cargo por
+  servicio con partes, `post_matricula` por academia, cuotas con el formato de
+  `marcarCuotaPagada`; NO deja pagar a mano cuotas con débito automático
+  activo, para evitar doble cobro), comprobante imprimible.
+  (4) `web/jugador_liga.py` + `web/jugador_cuenta.py`: `/mi-nivel`
+  (= `nivel_onboarding_screen`, misma fórmula `Nivel.seedDesde`; al
+  reevaluar NO borra partidos/victorias, igual que el APK desde el
+  30-sep-2026 con `NivelesRepo.reevaluar`),
+  `/liga?tab=ranking|retos|retar|dobles` (port de `rankingGlobal`/dobles/
+  temporadas/campeón, retos con `retos/router.py`, correos de otros jugadores
+  viajan CIFRADOS), `/cuenta/configuracion` (foto al bucket `chat/perfiles/`,
+  nombre, celular por país, bio por selección; re-emite la cookie) y
+  `/cuenta/identidad` (PE/EC con `post_verificar_dni`; BO solo en el app por
+  la lectura del documento + selfie). Quedan en el app: Pro, tarjetas
+  guardadas, recarga $/Bs y QR, ELO por retos, chat. **APK alineado
+  (30-sep-2026):** cupón solo si la billetera es en soles (backend
+  `canjear_cupon(…, moneda)` → `cupon_solo_soles`, también para APKs viejos
+  por `moneda_billetera`) y cuotas con débito automático activo no se pagan a
+  mano en el app (`AppState.cuotaSeCobraAutomatico`). Test
+  `tests/test_apk_alineado_web.py`.
+- **FASE 2-3 DEL APP EN LA WEB (30-sep-2026, pedido del director: "dale
+  todas las fases de manera continua"):** (1) **Mensajería**
+  (`web/jugador_mensajes.py`): `/mensajes` (bandeja con "una persona = un
+  chat", no leídos por `pichangol_lecturas`, fijar/archivar/silenciar/
+  eliminar en `pichangol_chat_prefs` con la misma semántica del app),
+  `/mensajes/{clave}` (chat con todos los hilos de la fila, texto y foto al
+  bucket `chat`, ✓✓, sondeo 4,5 s solo con la pestaña visible, bandeja en
+  `localStorage` para pintar al instante), `/mensajes/nuevo?cancha=|
+  academia=|persona=`, grupos (`/mensajes/grupo/nuevo`, `/mensajes/grupo/
+  {id}`). El navegador NUNCA ve correos ajenos: la clave del hilo va cifrada
+  (AES-GCM determinista) y las personas como `ref` opaco. El push lo dispara
+  el trigger de `pichangol_mensajes` (no se duplica). Solo en el app:
+  llamadas, notas de voz, documentos, GIF, ubicación, reenviar, bloquear.
+  Badge de no leídos `data-badge-mensajes` (ui.shell inyecta
+  `JS_BADGE_MENSAJES` cuando la página lo trae) en el menú ☰ y el Perfil;
+  "💬 Escribir al local" en la ficha `/reservar/{id}` (`router._acciones_
+  local`, solo local verificado con dueño y nunca al dueño) y "✉️ Escribir
+  al profe" en `/academia/{id}`. Test `tests/test_web_mensajes.py`.
+  (2) **Mi bodega** (`web/anfitrion_bodega.py` dueño, `web/jugador_bodega.py`
+  jugador, `web/bodega_datos.py` = mismas 5 tablas y candados `UPDATE …
+  WHERE estado = esperado` que `BodegaRepo`): `/anfitrion/bodega?tab=caja|
+  productos|reporte|pedidos|cuentas` (candado Pro, carta `/b/{id}` + QR,
+  stock descontado EN EL SERVIDOR dentro de la transacción de la venta),
+  `/bodega/{cancha_id}/pedir` (GPS ≤250 m obligatorio, zona, prepago con
+  saldo vía `pagos.router.cobrar_bodega_con_saldo` —extraído de `POST
+  /pagos/bodega-pago`, que ahora guarda `moneda`; vacío = PEN para APKs
+  viejos—, reembolso al rechazar/cancelar) y `/mis-pedidos-bodega`. MENU
+  anfitrión "🧃 Mi bodega"; "🧃 Bodega del local" en la ficha. Test
+  `tests/test_web_bodega.py`. OJO: el SQL de bodega y mensajería no se pudo
+  probar contra Postgres real en el entorno de desarrollo (tests con doble
+  en memoria): probar en QAS antes de PRD.
+- **NEGOCIO DEL DUEÑO EN LA WEB (30-sep-2026, fase 3):**
+  `web/anfitrion_negocio.py` = `reportes_hub/reportes/reporte_canchas`
+  (`/anfitrion/reportes[/cobros(.csv)]`, "Cuánto vas a recibir"),
+  `analitica_ocupacion` (`/anfitrion/ocupacion`, calor hora×día),
+  `cancelaciones` (`/anfitrion/cancelaciones`), `caja_dia` (`/anfitrion/caja`,
+  misma lógica que `cajaDia`: bono no suma, seña cuenta como cobrada; cierre y
+  reapertura), `clientes` (`/anfitrion/clientes`, segmentos VIP/recurrentes/
+  nuevos/en riesgo/deudores, notas privadas), `bonos_dueno`
+  (`/anfitrion/bonos`, `pichangol_bonos`), `reservas_fijas`
+  (`/anfitrion/fijas`, serie de 4 semanas = filas manuales `man_…`, respeta
+  bloqueos y turnos pasados, recuerda lo generado), `disponibilidad` (real
+  sobre `pichangol_bloqueos`) y `cobros` de academia (`/anfitrion/cobros`,
+  recordar por mensaje en `<academia>|<correo>` o WhatsApp, marcar cuota
+  cobrada con `FOR UPDATE`). Reservas del dueño web: chip de medio de pago,
+  filtro Online/Efectivo/Manual y "No-show" (no en pagadas en línea).
+  Multi-moneda con selector `?m=PEN|USD|BOB`. Cierres de caja, fijas, notas
+  y último recordatorio viven en `stores.negocio_web[correo]` (snapshot):
+  **el APK los guarda solo en el teléfono**, así que web y app no los
+  comparten todavía (unificar = tabla en Supabase + APK). MENU anfitrión con
+  Reportes, Caja del día, Clientes, Bonos, Reservas fijas, Disponibilidad y
+  Cobros de academia. Test `tests/test_web_anfitrion_negocio.py`.
+- **VERIFICADOR Y ESTADO DE VERIFICACIÓN EN LA WEB (30-sep-2026):**
+  `web/anfitrion_verificador.py`. `/anfitrion/verificador` (antes "está en la
+  app") = `verificador_screen` + `validar_reclamo_screen`: cola de visitas de
+  `verificacion_fisica.service.visitas` ordenada por cercanía al GPS (chips
+  25/50/100 km), captura con fotos (`canchas/verif/…`), firma y GPS →
+  `service.captura`; y validar por código + GPS → `reclamos.validar_en_sitio`
+  (fotos opcionales en `canchas/validacion/…`). Cualquier cuenta con sesión
+  puede ser verificador (como el app; la seguridad es código + GPS), pero
+  NADIE valida su propio reclamo y hay topes de intentos en memoria (8
+  códigos malos / 30 min, 12 capturas fallidas / 30 min, 5 OTP / hora).
+  `/anfitrion/verificacion/{cancha_id}` (solo canchas propias) = panel
+  "pendiente" del app: línea de tiempo del reclamo, "Verificar estado ahora"
+  (repara la nube con `datos.marcar_verificada` si ya estaba aprobado),
+  "Reenviar solicitud" (`reclamos.crear_reclamo` o recordatorio al admin) y
+  OTP por WhatsApp (`propiedad.service.solicitar/confirmar`). **Decisión de
+  seguridad pendiente de validar con el director:** en la web el OTP NO
+  activa la cancha (`confirmar(…, activar=False)`): queda como evidencia en el
+  reclamo y avisa al admin; el APK, con `confirmada`, la activaba sin revisión
+  del equipo (y `verificar_propiedad_screen` no está enlazada en el APK). Los
+  avisos de Mis canchas llevan "Ver estado y opciones ›". Test
+  `tests/test_web_anfitrion_verificador.py`.
+- **OPERACIÓN DE ACADEMIA EN LA WEB (30-sep-2026):**
+  `web/anfitrion_academia_ops.py` (registrado antes de
+  `anfitrion_academia_router`): `/anfitrion/academia/asistencia` (Vino/Faltó,
+  "Avisar a los padres" por el chat `<aid>|<correo>` o WhatsApp),
+  `/evaluaciones` (rúbrica Inicial/En proceso/Logrado con la plantilla del
+  deporte extraída a `web/planes_semilla.json` + bitácora por chips),
+  `/ranking` (3 pts victoria / 1 derrota, partidos con el formato
+  `PartidoRanking.toJson` → el ranking global web los lee), `/reportes`
+  (cobrado/por cobrar/vencido, morosidad, por programa y sede, comisión digital
+  vía `get_matricula_resumen`, boletas B-000N), `/chats` (bandeja de la
+  academia → `/mensajes/{clave}`), `/sedes` (sedes con mapa, horario por sede y
+  programa, precio por sede y plan; merge sobre `data` con `FOR UPDATE`).
+  Cobros → `/anfitrion/cobros?academia=` (no se duplicó). Accesos en la
+  tarjeta de cada academia de Mi academia. **Asistencia, evaluaciones y
+  bitácora** van a 3 tablas NUEVAS (SQL `docs/piloto/supabase_academia_
+  operacion.sql`, RLS sin políticas; sin ellas las páginas avisan): el APK las
+  guarda solo en el teléfono, así que web y app no las comparten todavía.
+  Test `tests/test_web_academia_ops.py`.
+- **PARTIDOS, PICHANGAS, REFERIDOS Y CARNET EN LA WEB (30-sep-2026):**
+  `web/jugador_partidos.py`. `/partidos` (= `partidos_screen`, pestaña
+  "Match": `pichangol_partidos` + grupo de chat con el mismo id; cupo con
+  bloqueo de fila; "Coordinar" → `/mensajes/{clave}`), `/pichangas[/nueva|
+  /{id}|/ranking]` (= convocatorias; NO `/convocatorias`, que es la API JSON
+  del APK; llama a `convocatorias/service.py`: orden de llegada / sorteo /
+  equidad, lista de espera, asistencia por posición). Organiza solo el dueño
+  de un local o quien creó la pichanga — **en el APK nadie puede organizar**
+  (depende de un login de club heredado que nunca se activa; conviene
+  alinearlo). `/referidos` (código `PCGxxxxxx`; el CANJE sigue en el app y
+  **el bono de 10 del app solo existe en el teléfono** —no llega a la
+  billetera del backend y `sincronizarSaldo` lo pisa—: bug del APK, moverlo
+  al backend como cupón), `/jugador/{ref}` (carnet = `perfilGlobalDe`; el
+  nombre en el ranking de `/liga` enlaza aquí) y `/anfitrion/llenar` (horas
+  libres de hoy/mañana con descuento real en `pichangol_descuentos_slot` +
+  aviso por chat o WhatsApp; en el MENU anfitrión). Perfil: Partidos,
+  Pichangas de mi club, Invita y gana. Test `tests/test_web_jugador_partidos.py`.
+- **NOVEDADES Y CANALES EN LA WEB (30-sep-2026):** `web/jugador_novedades.py`.
+  `/novedades` (feed de historias de MIS CONTACTOS de `pichangol_agenda`, sin
+  bloqueados, 24 h; visor con barras, 5 s foto/texto, 15 s con música, video
+  ≤30 s; responder = mensaje directo citando, "Visto por N", eliminar; limpia
+  mis vencidas como `limpiarVencidosDe`), `/novedades/estado/nuevo?tipo=texto|
+  foto|video` (8 fondos ARGB del app, música iTunes vía backend), `/canales`,
+  `/canales/nuevo`, `/canales/{id}` (seguir, reacciones con los 8 emojis,
+  publicar texto/foto/video ≤60 s) y `/canales/{id}/editar`. Mismas tablas y
+  buckets (`estados/<st_id>`, `canales/<ch_id>/…`); correos ajenos nunca van
+  al navegador. Video solo MP4/MOV (tope 50 MB, supuesto web). "Ocultar sus
+  historias" y la última vista de cada canal son locales (como en el app). En
+  el menú ☰ y el Perfil. Test `tests/test_web_novedades.py`.
+- **PRO, TARJETAS, BÚSQUEDA GUIADA Y RECORDATORIOS EN LA WEB (30-sep-2026):**
+  `web/jugador_pro.py`. `/pro` (= `hazte_pro_screen`: se paga SOLO con saldo,
+  como el app; precio/moneda del país de la billetera; `post_pro_suscribir`;
+  sin saldo → `/mi-billetera#recargar`) + **cancelar/reactivar la
+  renovación automática** (`POST /web/pro/renovacion`; NUEVO en backend:
+  `procesar_renovaciones_pro` salta `auto_renovar=False` y `get_pro_estado`
+  devuelve `renueva` — el APK aún no lo ofrece), `/pro/planes` (Gratis vs Pro
+  con los candados reales), `/cuenta/tarjetas` (= `metodos_pago_screen`:
+  Culqi v4 tokeniza en el navegador, el servidor solo guarda `crd_` + marca +
+  últimos 4; tope 10), `/buscar` (= búsqueda guiada/asistente por reglas,
+  público: turnos libres reales, 1 por local, 50 km) y
+  `/anfitrion/recordatorios` (= `recordar_reservas_screen`: chat del local o
+  WhatsApp, "ya recordado" desde la nube). Cobros de academia suma "➕ Agregar
+  cuota" (`/anfitrion/cobros/agregar` = `_inscribir`/`_claseSuelta`, escribe
+  en `pichangol_matriculas` con `FOR UPDATE`; **el APK guarda esas cuotas
+  solo en el teléfono**). Todos los "Actívalo en la app" de Pro (bodega,
+  campeonatos, calendario, liga) ahora llevan a `/pro`. Pendientes del
+  backend detectados: `post_pro_suscribir`/`procesar_renovaciones_pro`
+  registran `moneda="PEN"` aunque el país sea EC/BO. `planes_screen` es el
+  "plan de trabajo" del profe (solo en el teléfono), no Pro. Test
+  `tests/test_web_jugador_pro.py`.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
   que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
   `main.py`). El enlace "Modo anfitrión" de la cabecera abre `/anfitrion`
@@ -672,8 +898,9 @@ para la API del APK.
   nunca quedaba reservable. Ahora `reclamos._nube_verificada` (llamado en
   `aprobar_directo`, `activar_admin`, `validar_en_sitio` y
   `_revocar_cancha_al_rechazar`) hace `datos.marcar_verificada(cancha_id,
-  dueno, bool)` sobre la reclamada y sus hermanas `u<ts>_*` (fail-safe). OTP
-  por WhatsApp y verificación de existencia (IA) siguen solo en el app. Test
+  dueno, bool)` sobre la reclamada y sus hermanas `u<ts>_*` (fail-safe). El OTP por
+  WhatsApp ya está en la web (`/anfitrion/verificacion/{id}`); la verificación
+  de existencia (IA) sigue solo en el app. Test
   `test_registrar_y_reclamar_cancha_desde_la_web_como_el_app`.
   **AGREGAR CANCHA A UN LOCAL EXISTENTE (pedido del director, 23-sep-2026:
   "¿cómo registro otra cancha, y de otro deporte?"):** `GET/POST
@@ -1931,6 +2158,23 @@ off → redeploy inmediato en cada push). URL pública:
     SQL de precio por turno en QAS lo corre el director. `prd` final =
     `c86f552`; APK/AAB de PRD = run 1456 (`workflow_dispatch`, `ref=prd`,
     `entorno=prod`; el 1452 ya no lleva los arreglos del celular). QAS = 1453.
+    **Pase del 29-sep-2026 (2.º, autorizado: "Listo pasar a prd y dame el
+    APK para prd"):** `prd` = merge `dadc6ce` ("Resumen de tu pago" en la
+    hoja de pago del APK como en la web + íconos con vida `IconoVivo` en todo
+    el contenido del app). Solo APK: sin SQL, sin Edge, sin variables.
+    APK/AAB de PRD por `workflow_dispatch` (`ref=prd`, `entorno=prod`).
+    **Pase del 1-oct-2026 (autorizado: "Ya corrí el SQL en QAS, pasa a PRD"):**
+    `prd` = merge del lado jugador y del negocio del dueño en la web (fases
+    1-3: perfil, billetera, marketplace, clases, liga, mensajes, bodega,
+    reportes/caja/clientes, verificador, operación de academia, partidos,
+    pichangas, novedades, canales, Pro, tarjetas) + APK alineado (cupón solo
+    en soles, país de casa en el backend, stock apartado, débito automático).
+    SQL APLICADOS en PCG-PRD vía `apply_migration`:
+    `pichangol_academia_operacion` (`supabase_academia_operacion.sql`) y
+    `pichangol_descuentos_slot` (`supabase_descuentos_slot.sql`: la tabla
+    NUNCA se había creado en PRD; el APK fallaba en silencio al poner
+    descuentos de "Llenar cancha"). Sin Edge ni variables nuevas. CAMBIÓ
+    `lib/` → APK/AAB de PRD por `workflow_dispatch`.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -2790,6 +3034,13 @@ no inventar layouts propios. Rasgos Airbnb:
   loader del pin, el globo de chat y el `verified` lima. Toda pantalla
   nueva usa `IconoVivo` para sus íconos de contenido; para un concepto nuevo
   se agrega el par al mapa (un solo lugar para todo el app).
+  **MUNDO TENIS en Perfil (pedido del director, 29-sep-2026: "agrupa esas 3
+  raquetas en un menú que diga Mundo tenis y ponle figuras distintas"):**
+  un solo ítem 🎾 "Mundo tenis" (badge = solicitudes de boleo + retos) abre
+  la hoja `_abrirMundoTenis` con 🥇 Liga de tenis Pichangol (si
+  `usaCircuito`), 🥎 Ser/Soy boleador y 🤖 Entrenador virtual (solo QAS).
+  `_ItemAirbnb(emoji:)` permite un emoji propio cuando varios ítems
+  comparten concepto.
 - **Avatares SIEMPRE con foto real:** cualquier avatar de jugador (ranking,
   jugadores disponibles, retos —incluido el reto de dobles—, chat, perfil, etc.)
   DEBE mostrar la foto del perfil (`appState.fotoDe(email)` o `usuario.fotoUrl`),

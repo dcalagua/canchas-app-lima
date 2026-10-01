@@ -26,12 +26,26 @@ from legal.router import router as legal_router
 from web.router import router as web_router
 from web.anfitrion import router as anfitrion_router
 from web.anfitrion_academia import router as anfitrion_academia_router
+from web.anfitrion_academia_ops import router as anfitrion_academia_ops_router
 from web.anfitrion_tienda import router as anfitrion_tienda_router
 from web.anfitrion_campeonatos import router as anfitrion_campeonatos_router
 from web.anfitrion_boleadores import router as anfitrion_boleadores_router
+from web.anfitrion_negocio import router as anfitrion_negocio_router
+from web.anfitrion_verificador import router as anfitrion_verificador_router
 from boleadores import router as boleadores_router
 from fidelidad import router as fidelidad_router
 from web.academia import router as academia_web_router
+from web.jugador_clases import router as jugador_clases_router
+from web.jugador_market import router as jugador_market_router
+from web.jugador_billetera import router as jugador_billetera_router
+from web.jugador_liga import router as jugador_liga_router
+from web.jugador_cuenta import router as jugador_cuenta_router
+from web.jugador_bodega import router as jugador_bodega_router
+from web.anfitrion_bodega import router as anfitrion_bodega_router
+from web.jugador_mensajes import router as jugador_mensajes_router
+from web.jugador_partidos import router as jugador_partidos_router
+from web.jugador_novedades import router as jugador_novedades_router
+from web.jugador_pro import router as jugador_pro_router
 from models import ConfigRequest, ConsentimientoRequest
 from marketing.router import router as marketing_router
 from pagos.router import (procesar_renovaciones, procesar_renovaciones_alumnos,
@@ -132,10 +146,24 @@ app.include_router(marketing_router)
 app.include_router(legal_router)
 app.include_router(web_router)
 app.include_router(academia_web_router)  # ficha pública /academia/{id} + matrícula web
+app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}
+app.include_router(jugador_clases_router)  # /mis-clases: Mis clases y pagos del jugador
+app.include_router(jugador_billetera_router)  # /mi-billetera, /mis-pagos, /mis-puntos, /mi-pais
+app.include_router(jugador_liga_router)  # /mi-nivel, /liga
+app.include_router(jugador_cuenta_router)  # /cuenta/configuracion, /cuenta/identidad
+app.include_router(jugador_bodega_router)  # /bodega/{cancha_id}/pedir, /mis-pedidos-bodega
+app.include_router(jugador_mensajes_router)  # /mensajes: bandeja, chat, grupos (mensajería del app)
+app.include_router(anfitrion_academia_ops_router)  # asistencia, evaluación, ranking, reportes, chats y sedes de la academia
+app.include_router(jugador_partidos_router)  # /partidos, /pichangas, /referidos, /jugador/{ref}, /anfitrion/llenar (antes del comodín)
+app.include_router(jugador_novedades_router)  # /novedades (estados/historias) y /canales
+app.include_router(jugador_pro_router)  # /pro, /pro/planes, /cuenta/tarjetas, /buscar, /anfitrion/recordatorios (antes del comodín)
 app.include_router(anfitrion_academia_router)  # antes del comodín /anfitrion/{modulo}
 app.include_router(anfitrion_tienda_router)
+app.include_router(anfitrion_bodega_router)  # /anfitrion/bodega (antes del comodín /anfitrion/{modulo})
 app.include_router(anfitrion_campeonatos_router)  # antes del comodín /anfitrion/{modulo}
 app.include_router(anfitrion_boleadores_router)  # antes del comodín /anfitrion/{modulo}
+app.include_router(anfitrion_negocio_router)  # reportes, caja, clientes, bonos, fijas, disponibilidad, cobros (antes del comodín)
+app.include_router(anfitrion_verificador_router)  # /anfitrion/verificador, /anfitrion/verificacion/{id} (antes del comodín)
 app.include_router(anfitrion_router)
 app.include_router(boleadores_router)  # /boleadores/* (APK + ficha web)
 app.include_router(fidelidad_router)  # /fidelidad/* (tarjeta de fidelidad del local)
@@ -251,6 +279,26 @@ async def _iniciar_cron_boleadores() -> None:
             try:
                 import boleadores as _bol
                 n = await asyncio.to_thread(_bol.vencer_pendientes)
+                if n:
+                    pg.persistir_en_segundo_plano(stores)
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(300)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_stock_marketplace() -> None:
+    """MARKETPLACE: cada 5 min devuelve al stock las unidades que un APK apartó
+    y nunca cobró (`pagos/stock_productos.liberar_vencidos`, en un hilo: toca
+    Postgres). Fail-safe."""
+    async def _loop() -> None:
+        await asyncio.sleep(120)
+        while True:
+            try:
+                from pagos.router import liberar_apartados_vencidos
+                n = await asyncio.to_thread(liberar_apartados_vencidos)
                 if n:
                     pg.persistir_en_segundo_plano(stores)
             except Exception:  # noqa: BLE001

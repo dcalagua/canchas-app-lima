@@ -67,6 +67,39 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
       return;
     }
     setState(() => _comprando = true);
+    // 0) APARTA la unidad ANTES de cobrar (mismo UPDATE atómico que la web):
+    //    dos compradores no se llevan la última. Si el cobro no pasa, vuelve.
+    var apartadoId = '';
+    if (PagosService.disponible) {
+      final id = 'ap_${p.id}_${DateTime.now().microsecondsSinceEpoch}';
+      final ap = await conPreload(
+          context,
+          () => PagosService.apartarProducto(
+              apartadoId: id, productoId: p.id, email: u.email),
+          texto: 'Reservando tu unidad…');
+      if (!mounted) return;
+      if (ap == null) {
+        setState(() => _comprando = false);
+        _msg('Sin conexión. Intenta de nuevo; no se te cobró nada.');
+        return;
+      }
+      if (ap['ok'] != true) {
+        setState(() => _comprando = false);
+        final error = (ap['error'] ?? '').toString();
+        final mensaje = (ap['mensaje'] ?? '').toString();
+        await avisarPichangol(
+          context,
+          titulo: error == 'agotado' ? 'Se agotó 😔' : 'No se pudo comprar',
+          mensaje: mensaje.isNotEmpty
+              ? mensaje
+              : 'Este producto ya no está disponible. No se te cobró nada.',
+          icono: Icons.shopping_bag_outlined,
+        );
+        return;
+      }
+      apartadoId = id;
+    }
+    if (!mounted) return;
     // 1) Cobro al comprador (Culqi/Libélula según país). El sheet recibe el
     //    monto EN LA MONEDA LOCAL (S//Bs/$), él lo pasa a céntimos y lo muestra
     //    tal cual. NO multiplicar por 100 aquí (si no, se cobraría 100× de más).
@@ -81,7 +114,12 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
     );
     if (!mounted) return;
     if (!pagado) {
-      setState(() => _comprando = false);
+      // El cobro no pasó (rechazado o cancelado): la unidad vuelve al stock.
+      if (apartadoId.isNotEmpty) {
+        PagosService.devolverProducto(
+            apartadoId: apartadoId, email: u.email);
+      }
+      if (mounted) setState(() => _comprando = false);
       return;
     }
     // 2) Registra la venta: Pichangol se queda la comisión y le debe el neto al
@@ -102,6 +140,7 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
         compradorEmail: u.email.toLowerCase(),
         compradorNombre: u.nombre,
         vendedorNombre: p.vendedorNombre,
+        apartadoId: apartadoId,
       );
       // Avisa al vendedor que le compraron (push best-effort).
       AvisosService.ventaNueva(

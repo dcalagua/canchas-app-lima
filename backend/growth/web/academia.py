@@ -267,6 +267,8 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
                      + (f" · <a href='#mapaFicha' id='btnLlegar'>Cómo llegar</a>" if con_mapa else "") + "</span></li>")
     if tel:
         datos_li += f"<li>💬 <span><a href='https://wa.me/{tel}?text=Hola,%20vi%20tu%20academia%20en%20Pichangol' target='_blank' rel='noopener'>WhatsApp de la academia</a></span></li>"
+    if (a.get("dueno") or "").strip().lower() and (a.get("dueno") or "").strip().lower() != ((ses or {}).get("email") or "").lower():
+        datos_li += f"<li>✉️ <span><a href='/mensajes/nuevo?academia={e(academia_id)}'>Escribir al profe por Pichangol</a></span></li>"
     if a.get("horarioTexto"):
         datos_li += f"<li>🕒 <span>{e(a['horarioTexto'])}</span></li>"
     mapa = ""

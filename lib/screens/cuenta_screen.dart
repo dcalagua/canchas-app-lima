@@ -16,6 +16,7 @@ import 'recargar_saldo_screen.dart';
 import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/cuenta_cobro_sheet.dart';
+import '../widgets/dialogo_pichangol.dart';
 import '../widgets/ilustracion_pichangol.dart';
 import '../widgets/icono_vivo.dart';
 
@@ -57,10 +58,23 @@ class _CuentaScreenState extends State<CuentaScreen> {
     });
   }
 
+  static const _msjCuponOtraMoneda =
+      'Los cupones son en soles: tu billetera es de otro país.';
+
   /// Canjea un CUPÓN de saldo (código de campaña): acredita al instante.
   Future<void> _canjearCupon() async {
     final email = (appState.usuario?.email ?? '').toLowerCase();
     if (email.isEmpty) return;
+    // Los cupones valen en SOLES: no se acreditan a una billetera en $ o Bs
+    // (mismo candado y texto que la web; el backend también lo rechaza).
+    final monedaBilletera = appState.paisBilletera.monedaIso;
+    if (monedaBilletera != 'PEN') {
+      await avisarPichangol(context,
+          titulo: 'Cupón no disponible',
+          mensaje: _msjCuponOtraMoneda,
+          icono: Icons.confirmation_number_outlined);
+      return;
+    }
     final ctrl = TextEditingController();
     final codigo = await showDialog<String>(
       context: context,
@@ -91,7 +105,8 @@ class _CuentaScreenState extends State<CuentaScreen> {
       ),
     );
     if (codigo == null || codigo.trim().isEmpty || !mounted) return;
-    final r = await PagosService.canjearCupon(email: email, codigo: codigo);
+    final r = await PagosService.canjearCupon(
+        email: email, codigo: codigo, moneda: monedaBilletera);
     if (!mounted) return;
     if (r == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -117,6 +132,7 @@ class _CuentaScreenState extends State<CuentaScreen> {
       final msj = switch ((r['error'] ?? '').toString()) {
         'ya_lo_canjeaste' => 'Ese cupón ya lo canjeaste antes.',
         'cupon_agotado' => 'Ese cupón ya se agotó 😔',
+        'cupon_solo_soles' => _msjCuponOtraMoneda,
         _ => 'Código inválido o vencido. Revísalo e intenta de nuevo.',
       };
       ScaffoldMessenger.of(context)

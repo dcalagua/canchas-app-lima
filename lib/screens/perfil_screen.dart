@@ -175,15 +175,6 @@ class PerfilScreen extends StatelessWidget {
             onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const MisPuntosScreen())),
           ),
-          // Entrenador virtual: se prueba en QAS y aún no sale a producción,
-          // así que el APK de PROD no muestra la entrada (features.dart).
-          if (kEntrenadorVirtualActivo)
-            _ItemAirbnb(
-              icono: Icons.sports_tennis_outlined,
-              titulo: 'Entrenador virtual',
-              onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const EntrenadorScreen())),
-            ),
           // Campeonatos para CUALQUIER jugador (fútbol incluido): unirse con
           // código/enlace, ver los torneos donde participa u organizar. Antes
           // la única entrada estaba dentro de la Liga de tenis.
@@ -193,34 +184,21 @@ class PerfilScreen extends StatelessWidget {
             onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const MisCampeonatosScreen())),
           ),
-          // BOLEADORES (sep-2026): registrarse como boleador/sparring de
-          // tenis o pádel y responder solicitudes. El badge son las
-          // solicitudes por responder (push "Te contrataron 🎾").
+          // MUNDO TENIS (pedido del director, 29-sep-2026: "agrupa esas 3
+          // raquetas en un menú que diga Mundo tenis y ponle figuras
+          // distintas"): Entrenador virtual, Ser/Soy boleador y la Liga de
+          // tenis viven en una hoja propia, cada uno con su emoji. El badge
+          // suma las solicitudes de boleo y los retos por responder.
           ValueListenableBuilder<int>(
             valueListenable: Boleadores.pendientes,
-            builder: (_, pend, __) => ValueListenableBuilder<PerfilBoleador?>(
-              valueListenable: Boleadores.perfil,
-              builder: (_, perfil, __) => _ItemAirbnb(
-                icono: Icons.sports_tennis_outlined,
-                titulo: perfil == null
-                    ? 'Ser ${paisActual.nombreBoleadorMin}'
-                    : 'Soy ${paisActual.nombreBoleadorMin}',
-                badge: pend,
-                onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const BoleadorScreen())),
-              ),
+            builder: (_, pend, __) => _ItemAirbnb(
+              icono: Icons.sports_tennis,
+              emoji: '🎾',
+              titulo: 'Mundo tenis',
+              badge: pend + (appState.usaCircuito ? appState.retosPendientes : 0),
+              onTap: () => _abrirMundoTenis(context),
             ),
           ),
-          if (appState.usaCircuito)
-            _ItemAirbnb(
-              icono: Icons.sports_tennis,
-              titulo: 'Liga de tenis Pichangol',
-              badge: appState.retosPendientes,
-              onTap: () => Navigator.of(context)
-                  .push(MaterialPageRoute(
-                      builder: (_) => const CircuitoScreen()))
-                  .then((_) => appState.cargarRetosPendientes()),
-            ),
           _ItemAirbnb(
             icono: Icons.account_balance_wallet_outlined,
             titulo: 'Mi billetera',
@@ -261,6 +239,87 @@ class PerfilScreen extends StatelessWidget {
             onTap: () => _eliminarCuenta(context),
           ),
       ];
+
+  /// Hoja "Mundo tenis": lo que es solo de raqueta, agrupado para que el
+  /// Perfil no repita tres veces el mismo ícono.
+  void _abrirMundoTenis(BuildContext context) {
+    final nav = Navigator.of(context);
+    void ir(Widget pantalla, {VoidCallback? alVolver}) {
+      nav.pop();
+      nav
+          .push(MaterialPageRoute(builder: (_) => pantalla))
+          .then((_) => alVolver?.call());
+    }
+
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: const Color(0xFFDDDDDD),
+                      borderRadius: BorderRadius.circular(99)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text('🎾 Mundo tenis',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 2),
+              const Text('Entrena, bolea y compite.',
+                  style: TextStyle(color: textoTenue)),
+              const SizedBox(height: 6),
+              if (appState.usaCircuito)
+                _ItemAirbnb(
+                  icono: Icons.leaderboard,
+                  emoji: '🥇',
+                  titulo: 'Liga de tenis Pichangol',
+                  badge: appState.retosPendientes,
+                  onTap: () => ir(const CircuitoScreen(),
+                      alVolver: appState.cargarRetosPendientes),
+                ),
+              ValueListenableBuilder<int>(
+                valueListenable: Boleadores.pendientes,
+                builder: (_, pend, __) =>
+                    ValueListenableBuilder<PerfilBoleador?>(
+                  valueListenable: Boleadores.perfil,
+                  builder: (_, perfil, __) => _ItemAirbnb(
+                    icono: Icons.sports_tennis_outlined,
+                    emoji: '🥎',
+                    titulo: perfil == null
+                        ? 'Ser ${paisActual.nombreBoleadorMin}'
+                        : 'Soy ${paisActual.nombreBoleadorMin}',
+                    badge: pend,
+                    onTap: () => ir(const BoleadorScreen()),
+                  ),
+                ),
+              ),
+              // Entrenador virtual: se prueba en QAS y aún no sale a
+              // producción, así que el APK de PROD no lo muestra.
+              if (kEntrenadorVirtualActivo)
+                _ItemAirbnb(
+                  icono: Icons.videocam_outlined,
+                  emoji: '🤖',
+                  titulo: 'Entrenador virtual',
+                  onTap: () => ir(const EntrenadorScreen()),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   /// Doble confirmación y borrado. La primera explica QUÉ se borra y qué se
   /// conserva (igual que la página pública); la segunda evita el toque
@@ -836,9 +895,14 @@ class _ItemAirbnb extends StatelessWidget {
       {required this.icono,
       required this.titulo,
       required this.onTap,
+      this.emoji,
       this.badge = 0,
       this.destructivo = false});
   final IconData icono;
+
+  /// Emoji propio del ítem (manda sobre el del mapa de `IconoVivo`): para
+  /// distinguir entradas que comparten concepto, como las de Mundo tenis.
+  final String? emoji;
   final String titulo;
   final VoidCallback onTap;
   final int badge;
@@ -849,8 +913,15 @@ class _ItemAirbnb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget lead =
-        IconoVivo(icono, size: 26, color: destructivo ? clayOscuro : tinta);
+    Widget lead = emoji != null
+        ? SizedBox(
+            width: 26,
+            height: 26,
+            child: Center(
+                child: Text(emoji!,
+                    textScaler: TextScaler.noScaling,
+                    style: const TextStyle(fontSize: 22, height: 1.0))))
+        : IconoVivo(icono, size: 26, color: destructivo ? clayOscuro : tinta);
     if (badge > 0) {
       lead = Badge.count(
         count: badge,

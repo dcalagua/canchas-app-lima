@@ -31,6 +31,7 @@ def _leer_json(v):
     if v is _JSON_INVALIDO:
         raise ValueError("json inválido")
     return v
+from urllib.parse import quote
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
@@ -54,11 +55,21 @@ SECCIONES = [("hoy", "Hoy", "/anfitrion/mis-canchas", "📅"), ("calendario", "C
 # anfitrión): ícono en círculo de color, título, descripción y chevron.
 MENU = [
     ("mis-canchas", "Mis canchas", "Registra y administra: canchas, agenda, reservas, cuenta", "#0B7A55", "🏬", "/anfitrion/mis-canchas", True),
+    ("reportes", "Reportes", "Resumen, ocupación, cobros y cancelaciones", "#2F6FDE", "📊", "/anfitrion/reportes", True),
+    ("llenar", "Llenar cancha", "Horas libres de hoy y mañana: ponles promo y avisa a tus clientes", "#F28C28", "📣", "/anfitrion/llenar", True),
+    ("recordatorios", "Recordar reservas", "Avisa a tus clientes de hoy y mañana por chat o WhatsApp", "#2F6FDE", "🔔", "/anfitrion/recordatorios", True),
+    ("caja", "Caja del día", "Cobrado, por cobrar y cierre de caja", "#0B8A3E", "🧾", "/anfitrion/caja", True),
+    ("clientes", "Clientes", "Tu base de clientes: frecuentes, VIP, en riesgo y deudores", "#7B61FF", "👥", "/anfitrion/clientes", True),
+    ("bonos", "Bonos", "Packs de horas prepagadas de tu local", "#E07A3F", "🎟️", "/anfitrion/bonos", True),
+    ("fijas", "Reservas fijas", "Pensionados: el mismo día y hora, cada semana", "#067A38", "🔁", "/anfitrion/fijas", True),
+    ("disponibilidad", "Disponibilidad", "Abre o cierra turnos de tus canchas", "#7CB518", "🟢", "/anfitrion/disponibilidad", True),
     ("academia", "Mi academia", "Soy profe: alumnos, cuotas y cobros", "#E07A3F", "📣", "/anfitrion/academia", True),
+    ("cobros", "Cobros de academia", "Quién debe, recordatorios y cobro en efectivo", "#D4B048", "💳", "/anfitrion/cobros", True),
     ("campeonatos", "Mis campeonatos", "Organiza torneos (fútbol, tenis…), invita y sortea", "#D4B048", "🏆", "/anfitrion/campeonatos", True),
     ("tienda", "Mi tienda", "Vende en el Marketplace Pichangol: raquetas, pelotas y más", "#7B61FF", "🏪", "/anfitrion/tienda", True),
+    ("bodega", "Mi bodega", "Caja rápida, stock, pedidos a la cancha y carta con QR (Pro)", "#E07A3F", "🧃", "/anfitrion/bodega", True),
     ("boleador", "Soy boleador", "Peloteo por turno: pon tu categoría, tu tarifa y dónde atiendes", "#0E8F67", "🎾", "/anfitrion/boleador", True),
-    ("verificador", "Verificador", "Rol de campo: visitas con foto, GPS y firma", "#0E8F67", "🛡️", "/anfitrion/verificador", False),
+    ("verificador", "Verificador", "Rol de campo: visitas con foto, GPS y firma", "#0E8F67", "🛡️", "/anfitrion/verificador", True),
 ]
 
 
@@ -137,10 +148,14 @@ def _hoy(canchas: list[dict]) -> date:
 
 
 def _tarjeta_res(r: dict, c: dict | None, hoy: date) -> str:
+    from web.anfitrion_negocio import es_noshow, grupo_medio  # filtro Online/Efectivo/Manual y no-show (reservas_dueno_screen)
     sim = r.get("moneda") or (c and _moneda_de(c)[0]) or "S/"
     pagado = bool(r.get("pagado"))
     medio = str(r.get("medio_pago") or "")
-    if pagado and medio in ("yape", "tarjeta"):
+    noshow = es_noshow(r)
+    if noshow:
+        pill = "<span class='pill bad'>No vino (no-show)</span>"
+    elif pagado and medio in ("yape", "tarjeta"):
         pill = f"<span class='pill ok'>Pagada en línea · {medio}</span>"
     elif pagado:
         pill = "<span class='pill ok'>Cobrada</span>"
@@ -153,17 +168,19 @@ def _tarjeta_res(r: dict, c: dict | None, hoy: date) -> str:
     dia = horarios.etiqueta_dia(fecha, hoy)
     dia = (dia + " · ") if dia in ("Hoy", "Mañana") else ""
     web = str(r.get("id") or "").startswith("web_")
-    return (f"<div class='anf-res' data-fecha='{e(fecha)}' data-pagado='{1 if pagado else 0}'>"
+    medio_txt = {"yape": "📱 Yape", "tarjeta": "💳 Tarjeta", "efectivo": "💵 Efectivo", "sena": "🔒 Seña", "manual": "✍️ Manual", "bono": "🎟️ Bono"}.get(medio, "")
+    return (f"<div class='anf-res' data-fecha='{e(fecha)}' data-pagado='{1 if pagado else 0}' data-medio='{grupo_medio(r)}'>"
             f"<div style='display:flex;justify-content:space-between;gap:8px;align-items:baseline'><span class='hora'>{e(r.get('hora_inicio'))}–{e(r.get('hora_fin'))}</span>"
             f"<span class='sub' style='margin:0;font-weight:700'>{e(dia)}{e(horarios.fecha_larga(fecha))}</span></div>"
             f"<div class='sub' style='margin:2px 0 0;font-weight:700;color:var(--noche)'>{e((c or {}).get('nombre') or 'Cancha')}</div>"
             f"<div class='quien'><span class='av'>{e(ini)}</span><div style='min-width:0'><b>{e(jugador)}</b>"
             f"<div class='sub' style='margin:0;font-size:12.5px'>{e(r.get('usuario') or '')}{(' · ' + e(tel)) if tel else ''}{' · reserva web' if web else ''}</div></div>"
             f"<b style='margin-left:auto;white-space:nowrap'>{e(sim)} {int(r.get('precio') or 0):.2f}</b></div>"
-            f"<div class='acc'>{pill}"
+            f"<div class='acc'>{pill}" + (f"<span class='pill gris'>{medio_txt}</span>" if medio_txt else "")
             + (f"<a class='btn sec' href='https://wa.me/{e(''.join(ch for ch in tel if ch.isdigit()))}' target='_blank' rel='noopener'>💬 WhatsApp</a>" if tel else "")
-            + (f"<button type='button' class='btn' data-pagar='{e(r.get('id'))}' data-v='1'>✅ Marcar pagada</button>" if not pagado
-               else (f"<button type='button' class='btn sec' data-pagar='{e(r.get('id'))}' data-v='0'>↩ Marcar por cobrar</button>" if medio not in ("yape", "tarjeta") else ""))
+            + ("" if noshow else (f"<button type='button' class='btn' data-pagar='{e(r.get('id'))}' data-v='1'>✅ Marcar pagada</button>" if not pagado
+               else (f"<button type='button' class='btn sec' data-pagar='{e(r.get('id'))}' data-v='0'>↩ Marcar por cobrar</button>" if medio not in ("yape", "tarjeta") else "")))
+            + ("" if noshow or (pagado and medio in ("yape", "tarjeta")) else f"<button type='button' class='btn sec' data-noshow='{e(r.get('id'))}'>No-show</button>")
             + "</div></div>")
 
 
@@ -239,8 +256,19 @@ def pagina_reservas(request: Request) -> HTMLResponse:
                 out += f"<h3 style='margin:16px 0 8px'>{e(horarios.etiqueta_dia(f, hoy))} · {e(horarios.fecha_larga(f))}</h3><div class='anf-grid'>"
                 out += "".join(_tarjeta_res(x, por_id.get(x.get("cancha_id")), hoy) for x in lst if str(x.get("fecha")) == f) + "</div>"
         return out
+    # Filtro por ORIGEN del cobro + mini libro de caja (reservas_dueno_screen); se aplica en el navegador.
+    from web.anfitrion_negocio import JS_FILTRO_RESERVAS, es_noshow
+    sim = _moneda_de(canchas[0])[0] if canchas else "S/"
+    cobrado = sum(int(r.get("precio") or 0) for r in filas if r.get("pagado") and not es_noshow(r))
+    pend = sum(int(r.get("precio") or 0) for r in filas if not r.get("pagado") and not es_noshow(r))
+    filtros = ("<div class='chips' id='filMedio' style='margin-top:14px'>" + "".join(
+        f"<button type='button' class='chip{' sel' if k == 'todos' else ''}' data-medio='{k}'>{n}</button>"
+        for k, n in (("todos", "Todos"), ("online", "Online"), ("efectivo", "Efectivo"), ("manual", "Manual"))) + "</div>"
+        f"<div class='kpis'><div class='kpi'><small>Cobrado</small><b>{e(sim)} {cobrado}</b></div>"
+        f"<div class='kpi'><small>Por cobrar</small><b>{e(sim)} {pend}</b></div></div>")
     cuerpo = ("<h1 class='anf-hola'>Reservas</h1><p class='sub'>Las reservas de tus canchas: en línea (web y app) y las que registraste a mano.</p>"
-              + bloque("Próximas", prox, "Sin reservas próximas.") + bloque("Pasadas (30 días)", pas, "Sin reservas en los últimos 30 días."))
+              + filtros + bloque("Próximas", prox, "Sin reservas próximas.") + bloque("Pasadas (30 días)", pas, "Sin reservas en los últimos 30 días.")
+              + f"<script>{JS_PAGAR}{JS_FILTRO_RESERVAS}</script>")
     return ui.shell("Reservas", cuerpo, nav=_cabecera("reservas", ses), sesion=ses, ancho=True, titulo_tab="Reservas · Modo anfitrión")
 
 
@@ -250,6 +278,10 @@ document.addEventListener('click',async function(ev){var b=ev.target.closest('[d
   try{var r=await fetch('/anfitrion/reserva/'+encodeURIComponent(id)+'/pagado',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pagado:v})});var j=await r.json();
     if(j.ok){pcgToast(v?'✅ Pago registrado':'↩ Marcada por cobrar');if(window.alPagar){window.alPagar(id,v);return}location.reload();return}
     pcgToast(j.error||'No se pudo guardar.')}catch(e){pcgToast('No se pudo guardar. Revisa tu conexión.')} b.disabled=false;b.innerHTML=txt});
+document.addEventListener('click',async function(ev){var b=ev.target.closest('[data-noshow]');if(!b||b.disabled)return;
+  var ok=await pcgConfirmar({titulo:'¿El jugador no vino?',mensaje:'Se marca como no-show: libera la cuenta de por cobrar y, si pagó seña, queda a tu favor.',confirmar:'Marcar no-show',destructivo:true,icono:'🚫'});if(!ok)return;
+  b.disabled=true;try{var r=await fetch('/anfitrion/reserva/'+encodeURIComponent(b.dataset.noshow)+'/noshow',{method:'POST'});var j=await r.json();
+    if(j.ok){pcgRecargar('Marcado como no-show');return}pcgAvisar({titulo:'No se pudo',mensaje:j.error||'Reintenta.'})}catch(e){pcgToast('No se pudo guardar. Revisa tu conexión.')} b.disabled=false});
 """
 
 
@@ -266,7 +298,7 @@ def _pro_ok(email: str) -> bool:
 
 
 _RESP_PRO = {"ok": False, "error": "requiere_pro",
-             "mensaje": "La reserva manual y el bloqueo de horas son parte de Pichangol Pro. Actívalo en la app (Perfil → Hazte Pro)."}
+             "mensaje": "La reserva manual y el bloqueo de horas son parte de Pichangol Pro. Actívalo en Perfil → 👑 Pichangol Pro."}
 
 
 @router.get("/anfitrion/calendario", response_class=HTMLResponse)
@@ -376,7 +408,7 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
         f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}&desde={sig}'>Semana siguiente ›</a>"
         f"<span class='sub' style='margin:0 0 0 auto'>{e(c['nombre'])} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min</span></div>"
         f"<div class='cal-sem cal-act'><table><thead><tr><th></th>{cab}</tr></thead><tbody>{filas_html}</tbody></table></div>"
-        + ("" if cfg["pro"] else "<p class='aviso warn' style='margin-top:12px'>📝 La reserva manual y el bloqueo de horas son parte de <b>Pichangol Pro</b>. Actívalo en la app (Perfil → Hazte Pro).</p>")
+        + ("" if cfg["pro"] else "<p class='aviso warn' style='margin-top:12px'>📝 La reserva manual y el bloqueo de horas son parte de <b>Pichangol Pro</b>. Actívalo en Perfil → 👑 Pichangol Pro.</p>")
         + modal
         + f"<script>var CAL={json.dumps(cfg, ensure_ascii=False)};var RES={json.dumps(res_json, ensure_ascii=False)};</script><script>{_JS_CAL}</script>")
     return ui.shell("Calendario", cuerpo, nav=_cabecera("calendario", ses), sesion=ses, ancho=True, titulo_tab="Calendario · Modo anfitrión")
@@ -392,7 +424,7 @@ function abrir(td){cel=td;modo=td.dataset.t;err('');['calLibre','calBloqueado','
   $('calSub').textContent=CAL.nombre+' · '+fechaTxt(td.dataset.f)+' · '+td.dataset.h+'–'+td.dataset.fin;
   var si=$('calSi');si.hidden=false;si.disabled=false;
   if(modo==='libre'){$('calTit').textContent='Turno libre';$('calLibre').hidden=false;setAcc('manual');$('mCli').value='';$('mNom').value='';$('mTel').value='';$('mEm').value='';$('mPre').value=td.dataset.p;$('mPag').checked=false;
-    if(!CAL.pro){$('calLibre').hidden=true;si.hidden=true;err('La reserva manual y el bloqueo de horas son parte de Pichangol Pro. Actívalo en la app.')}}
+    if(!CAL.pro){$('calLibre').hidden=true;si.hidden=true;err('La reserva manual y el bloqueo de horas son parte de Pichangol Pro. Actívalo en Perfil → Pichangol Pro (/pro).')}}
   else if(modo==='bloq'){$('calTit').textContent='Turno bloqueado';$('calBloqueado').hidden=false;si.textContent='Desbloquear'}
   else{var r=RES[td.dataset.rid];$('calTit').textContent='Reserva';$('calRes').hidden=false;si.hidden=true;
     $('rAv').textContent=(r.jugador||r.usuario||'?').charAt(0).toUpperCase();$('rNom').textContent=r.jugador||r.usuario||'Reserva';
@@ -820,7 +852,7 @@ def _fila_cancha_local(c: dict) -> str:
         f"<div class='anf-fila'><span class='ico'>{_deporte(c.get('deporte'))[1]}</span><div style='flex:1;min-width:0'>"
         f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>{e(c['nombre'])}</b>"
         + ("<span class='pill ok' style='font-size:11px'>✓ Verificada</span>" if ok else "<span class='pill warn' style='font-size:11px'>Aún sin verificar</span>") + "</div>"
-        f"<div class='sub' style='margin:2px 0 0'>{e(deps)} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · {c['duracion_slot_min']} min · <b>{e(sim)} {horarios.precio_publico(c)[0]:.2f}</b> {'/h' if horarios.precio_publico(c)[1] == 'por hora' else '/turno'}</div>"
+        f"<div class='sub' style='margin:2px 0 0'>{e(deps)} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · {c['duracion_slot_min']} min · <b style='white-space:nowrap'>{e(sim)} {horarios.precio_publico(c)[0]:.2f} {'/h' if horarios.precio_publico(c)[1] == 'por hora' else '/turno'}</b></div>"
         "<div class='acciones' style='margin-top:8px'>"
         f"<a class='btn sec' href='/reservar/{e(c['id'])}'>Ver ficha pública</a>"
         f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}'>Calendario</a>"
@@ -896,7 +928,7 @@ def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
                     else "Se activará junto con el local cuando aprobemos la verificación.") + "</div>")
     cuerpo = ("<h1 class='anf-hola'>Mis canchas</h1><p class='sub'>Tus locales en Pichangol, con sus canchas. Edita precio, horario, fotos y servicios aquí o en la app: es la misma cancha.</p>"
               f"{aviso}{_aviso_verificacion(canchas, ses['email'])}"
-              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(420px,1fr));margin-top:16px'>{tarjetas}</div>"
+              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(min(420px,100%),1fr));margin-top:16px'>{tarjetas}</div>"
               "<p style='margin-top:20px'><a class='btn' href='/anfitrion/nueva'>＋ Registrar otro local</a></p>")
     return ui.shell("Canchas", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True, titulo_tab="Canchas · Modo anfitrión")
 
@@ -1988,7 +2020,7 @@ _ESTADO_RECLAMO = {
     "aprobado_triage": ("warn", "Aprobada, falta validar", "Falta la validación en sitio (código + ubicación) para activarla."),
     "pendiente_validacion": ("warn", "Aprobada, falta validar", "Falta la validación en sitio (código + ubicación) para activarla."),
     "validada_pendiente_admin": ("warn", "Validada, activación pendiente", "El equipo la activa en breve."),
-    "rechazada": ("err", "No aprobada", "No pudimos confirmar la propiedad. Escríbenos por WhatsApp o vuelve a enviar la solicitud desde la app."),
+    "rechazada": ("err", "No aprobada", "No pudimos confirmar la propiedad. Escríbenos por WhatsApp o vuelve a enviarla desde «Ver estado y opciones»."),
     "reclamada_por_otro": ("err", "Reclamada por otra cuenta", "Otra persona ya tiene este local a su nombre. Si es tuyo, escríbenos."),
 }
 
@@ -2207,8 +2239,8 @@ def _aviso_verificacion(canchas: list[dict], email: str) -> str:
             est = reclamos.estado(c["id"], email)
         except Exception:  # noqa: BLE001
             est = {}
-        clase, tit, txt = _ESTADO_RECLAMO.get(str(est.get("estado") or ""), ("warn", "Sin solicitud de verificación", "No encontramos tu solicitud. Vuelve a enviarla desde la app (ficha de la cancha → Reenviar solicitud)."))
-        filas.append(f"<div class='aviso {clase}' style='margin:12px 0 0'><b>{e(c.get('club') or c['nombre'])}</b> · {tit}. <span class='sub' style='margin:0'>{txt}</span></div>")
+        clase, tit, txt = _ESTADO_RECLAMO.get(str(est.get("estado") or ""), ("warn", "Sin solicitud de verificación", "No encontramos tu solicitud. Toca «Ver estado y opciones» para reenviarla."))
+        filas.append(f"<div class='aviso {clase}' style='margin:12px 0 0'><b>{e(c.get('club') or c['nombre'])}</b> · {tit}. <span class='sub' style='margin:0'>{txt}</span> <a href='/anfitrion/verificacion/{quote(c['id'], safe='')}' style='font-weight:700;white-space:nowrap'>Ver estado y opciones ›</a></div>")
     return "".join(filas)
 
 

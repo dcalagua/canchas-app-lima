@@ -481,6 +481,7 @@ class PagosService {
     String compradorNombre = '',
     String vendedorNombre = '',
     String moneda = '', // ISO/símbolo del producto; vacío = PEN en el backend
+    String apartadoId = '', // unidad apartada con [apartarProducto]
   }) async {
     if (!disponible || vendedorId.isEmpty) return null;
     try {
@@ -499,6 +500,7 @@ class PagosService {
               'comprador_email': compradorEmail,
               'comprador_nombre': compradorNombre,
               'vendedor_nombre': vendedorNombre,
+              if (apartadoId.isNotEmpty) 'apartado_id': apartadoId,
             }),
           )
           .timeout(const Duration(seconds: 15));
@@ -506,6 +508,91 @@ class PagosService {
         return jsonDecode(r.body) as Map<String, dynamic>;
       }
       return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// MARKETPLACE: aparta 1 unidad del producto ANTES de cobrar (mismo UPDATE
+  /// atómico que la web). Idempotente por [apartadoId]. Devuelve el JSON
+  /// ({ok, estado} o {ok:false, error: agotado|no_disponible|propio…,
+  /// mensaje}) o null sin red.
+  static Future<Map<String, dynamic>?> apartarProducto({
+    required String apartadoId,
+    required String productoId,
+    required String email,
+  }) async {
+    if (!disponible) return null;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/venta/apartar'),
+              headers: await _headersUsuario(json: true),
+              body: jsonEncode({
+                'apartado_id': apartadoId,
+                'producto_id': productoId,
+                'email': email.trim().toLowerCase(),
+              }))
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// El cobro no pasó: la unidad apartada vuelve al stock (idempotente; si no
+  /// llega, el backend la devuelve sola a los 30 min).
+  static Future<bool> devolverProducto({
+    required String apartadoId,
+    required String email,
+  }) async {
+    if (!disponible) return false;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/venta/devolver'),
+              headers: await _headersUsuario(json: true),
+              body: jsonEncode({
+                'apartado_id': apartadoId,
+                'email': email.trim().toLowerCase(),
+              }))
+          .timeout(const Duration(seconds: 12));
+      return r.statusCode == 200;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// PAÍS DE CASA guardado en el backend (el mismo que usa la web):
+  /// {pais_casa: 'PE'|'BO'|'EC'|'', pais_casa_en: ISO, puede_cambiar} o null.
+  static Future<Map<String, dynamic>?> paisCasa(String email) async {
+    final e = email.trim().toLowerCase();
+    if (!disponible || e.isEmpty) return null;
+    try {
+      final r = await http
+          .get(Uri.parse('$_baseUrl/pagos/pais-casa/${Uri.encodeComponent(e)}'),
+              headers: await _headersUsuario())
+          .timeout(const Duration(seconds: 10));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Guarda el país de casa en el backend (solo con saldo 0; si no,
+  /// {ok:false, error:'tiene_saldo'}). null sin red.
+  static Future<Map<String, dynamic>?> guardarPaisCasa(
+      String email, String iso) async {
+    final e = email.trim().toLowerCase();
+    if (!disponible || e.isEmpty) return null;
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/pais-casa'),
+              headers: await _headersUsuario(json: true),
+              body: jsonEncode({'email': e, 'iso': iso}))
+          .timeout(const Duration(seconds: 10));
+      if (r.statusCode != 200) return null;
+      return jsonDecode(r.body) as Map<String, dynamic>;
     } catch (_) {
       return null;
     }
@@ -1635,6 +1722,7 @@ class PagosService {
   static Future<Map<String, dynamic>?> canjearCupon({
     required String email,
     required String codigo,
+    String moneda = '', // ISO de la billetera (`paisBilletera.monedaIso`)
   }) async {
     if (!disponible) return null;
     try {
@@ -1644,6 +1732,7 @@ class PagosService {
               body: jsonEncode({
                 'email': email.trim().toLowerCase(),
                 'codigo': codigo.trim(),
+                if (moneda.isNotEmpty) 'moneda': moneda,
               }))
           .timeout(const Duration(seconds: 12));
       if (r.statusCode != 200) return null;

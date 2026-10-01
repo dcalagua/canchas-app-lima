@@ -89,7 +89,10 @@ class MisClasesScreen extends StatelessWidget {
           .firstWhere((a) => a?.id == al.academiaId, orElse: () => null);
       if (academia == null) continue;
       final mon = academia.monedaSimbolo;
-      final pend = appState.cuotasDeAlumno(al.id).where((c) => !c.pagada).toList()
+      final pend = appState
+          .cuotasDeAlumno(al.id)
+          .where((c) => !c.pagada && !appState.cuotaSeCobraAutomatico(c))
+          .toList()
         ..sort((a, b) => a.vencimiento.compareTo(b.vencimiento));
       for (final c in pend) {
         porMoneda
@@ -199,8 +202,15 @@ class MisClasesScreen extends StatelessWidget {
     final cuotas = appState.cuotasDeAlumno(al.id)
       ..sort((a, b) => b.vencimiento.compareTo(a.vencimiento));
     final pagadas = cuotas.where((c) => c.pagada).toList();
-    final proximas = cuotas.where((c) => !c.pagada).toList()
+    final pendientes = cuotas.where((c) => !c.pagada).toList()
       ..sort((a, b) => a.vencimiento.compareTo(b.vencimiento));
+    // Las del débito automático ACTIVO las cobra el cron en su fecha: no se
+    // pagan a mano (evita el doble cobro, igual que la web).
+    final automaticas =
+        pendientes.where(appState.cuotaSeCobraAutomatico).toList();
+    final proximas = pendientes
+        .where((c) => !appState.cuotaSeCobraAutomatico(c))
+        .toList();
     final totalPagado =
         pagadas.fold<double>(0, (s, c) => s + c.monto);
 
@@ -257,6 +267,16 @@ class MisClasesScreen extends StatelessWidget {
                     style: const TextStyle(
                         fontWeight: FontWeight.w800, fontSize: 14, color: lima)),
                 _SuscripcionMesAMes(alumnoId: al.id, moneda: mon),
+                if (automaticas.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  for (final c in automaticas)
+                    _fila(
+                        c.concepto,
+                        'Se cobra automático el ${_fecha(c.vencimiento)}',
+                        '$mon ${c.monto.toStringAsFixed(2)}',
+                        trailingIcon: Icons.autorenew,
+                        color: textoTenue),
+                ],
                 if (proximas.isNotEmpty && academia != null)
                   _ProximosPagos(
                     cuotas: proximas,
@@ -295,7 +315,11 @@ class MisClasesScreen extends StatelessWidget {
   /// Cobra una o varias cuotas pendientes con tarjeta/Yape (Culqi). Al aprobar,
   /// las marca pagadas (se propaga al profe) y registra el neto en la academia.
   Future<void> _pagarCuotas(BuildContext context, Academia ac,
-      List<Cuota> cuotas, String mon) async {
+      List<Cuota> seleccion, String mon) async {
+    // Defensa: nunca cobrar a mano una cuota del débito automático activo.
+    final cuotas = seleccion
+        .where((c) => !appState.cuotaSeCobraAutomatico(c))
+        .toList();
     if (cuotas.isEmpty) return;
     final total = cuotas.fold<double>(0, (s, c) => s + c.monto);
     if (total <= 0) return;
