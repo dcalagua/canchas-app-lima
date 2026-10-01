@@ -1984,7 +1984,17 @@ para la API del APK.
   `with pg.conexion() as conn` (hasta 4 conexiones reutilizadas, TTL 4 min,
   commit al salir / rollback+descarte si falló). Los caminos del snapshot
   siguen con `_conn()`.
-- El apex `pichangol.app` (sin `www`) sigue libre (podría redirigir al `www`).
+- **APEX `pichangol.app` → `www` (pedido del director, 1-oct-2026: "la gente
+  escribe pichangol.app y no carga"):** el "URL Redirect Record" de Namecheap
+  NO sirve: `.app` está en la lista HSTS (el navegador exige HTTPS) y el
+  redirector de Namecheap no tiene certificado → la página no carga. Ahora el
+  apex es un custom domain de `pg-backend-prd` en Railway (puerto 8080,
+  Railway emite el certificado; DNS en Namecheap: **ALIAS `@` →
+  `nbizx7zo.up.railway.app`** + TXT `_railway-verify` y SIN el URL Redirect)
+  y `main.py::_raiz_a_www` responde 301 (GET/HEAD) / 308 (resto) a
+  `https://www.<host><ruta>?<query>` para los hosts de `DOMINIOS_A_WWW`
+  (default `pichangol.app`), excepto `/.well-known/` (assetlinks de los App
+  Links del apex, sin redirección). Test `tests/test_dominio_raiz.py`.
 
 ## Estrategia de ambientes (piloto → prod)
 
