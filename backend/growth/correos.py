@@ -65,7 +65,7 @@ def _env(nombre: str) -> str:
 
 
 def remitente() -> str:
-    return _env("CORREO_REMITENTE") or "Pichangol <no-responder@pichangol.app>"
+    return _env("CORREO_REMITENTE") or "Pichangol <no-reply@pichangol.app>"
 
 
 def proveedor() -> str:

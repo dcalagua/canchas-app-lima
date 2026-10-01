@@ -1537,7 +1537,7 @@ para la API del APK.
   `pcg-correos` (cada 5 s, `main.py::_iniciar_correos`, no corre en pytest).
   Proveedor: **Resend** (`RESEND_API_KEY`, HTTP con `Idempotency-Key`) o
   **SMTP** (`SMTP_HOST`, `SMTP_PORT` 587/465, `SMTP_USUARIO`, `SMTP_CLAVE`);
-  `CORREO_REMITENTE` (default "Pichangol <no-responder@pichangol.app>"),
+  `CORREO_REMITENTE` (default "Pichangol <no-reply@pichangol.app>"),
   `CORREO_RESPONDER_A` (default = correo de la empresa de la torre). Sin
   proveedor → estado `sin_proveedor` (nada se rompe). Corte de emergencia:
   `stores.config[correos_activo]="0"`. Torre → Comunicación → **"✉️ Correos
