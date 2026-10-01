@@ -2163,6 +2163,18 @@ off → redeploy inmediato en cada push). URL pública:
     hoja de pago del APK como en la web + íconos con vida `IconoVivo` en todo
     el contenido del app). Solo APK: sin SQL, sin Edge, sin variables.
     APK/AAB de PRD por `workflow_dispatch` (`ref=prd`, `entorno=prod`).
+    **Pase del 1-oct-2026 (autorizado: "Ya corrí el SQL en QAS, pasa a PRD"):**
+    `prd` = merge del lado jugador y del negocio del dueño en la web (fases
+    1-3: perfil, billetera, marketplace, clases, liga, mensajes, bodega,
+    reportes/caja/clientes, verificador, operación de academia, partidos,
+    pichangas, novedades, canales, Pro, tarjetas) + APK alineado (cupón solo
+    en soles, país de casa en el backend, stock apartado, débito automático).
+    SQL APLICADOS en PCG-PRD vía `apply_migration`:
+    `pichangol_academia_operacion` (`supabase_academia_operacion.sql`) y
+    `pichangol_descuentos_slot` (`supabase_descuentos_slot.sql`: la tabla
+    NUNCA se había creado en PRD; el APK fallaba en silencio al poner
+    descuentos de "Llenar cancha"). Sin Edge ni variables nuevas. CAMBIÓ
+    `lib/` → APK/AAB de PRD por `workflow_dispatch`.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
