@@ -508,6 +508,14 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
   .cab-logo .wm{white-space:nowrap}
 }
 @media(max-width:560px){.cab-logo .wm{font-size:20px!important}.cab-der .av{width:34px;height:34px}}
+/* pantallas de app (shell(pantalla=…)): en móvil la mensajería no lleva la pastilla de búsqueda y el chat
+   ocupa toda la pantalla con su propia cabecera (como WhatsApp / la bandeja de Airbnb en el celular) */
+@media(max-width:899px){
+  body.pcg-msj .cab.simple{grid-template-columns:1fr auto;grid-template-areas:"logo der";padding-bottom:8px}
+  body.pcg-msj .cab.simple .cab-mini{display:none}
+  body.pcg-chat header.nav,body.pcg-chat #abrirApp{display:none}
+  body.pcg-chat{overflow:hidden;overscroll-behavior:none}
+}
 @media(max-width:560px){.busq .seg{padding:0 9px}.busq .seg small{font-size:11px}.busq .seg input{font-size:13px}.busq .seg.donde{flex:1.5}.busq .seg.hora{flex:.8}.cab-tabs{margin:0 -16px;padding:0 16px}.cat{padding:12px 8px 10px}}
 /* filtros del explorador (botón + chips) */
 .filtros{flex:none;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--trazo);border-radius:14px;padding:10px 14px;font-weight:700;font-size:13.5px;background:var(--blanco);cursor:pointer;color:var(--noche);font-family:inherit}
@@ -1150,12 +1158,23 @@ def nav_simple(ses: dict | None = None, volver: str = "/canchas") -> str:
 def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
           canonical: str = "", og_image: str = "/static/brand/logo_pichangol.png",
           con_barra: bool = False, jsonld: str = "", nav: str = "",
-          ancho: bool = False, titulo_tab: str = "", sesion: dict | None = None) -> HTMLResponse:
+          ancho: bool = False, titulo_tab: str = "", sesion: dict | None = None,
+          pantalla: str = "") -> HTMLResponse:
     """Envuelve una página pública. [nav] = cabecera propia (la raíz lleva el
-    buscador tipo Airbnb); [ancho] = contenedor 1440 px (grilla de canchas)."""
+    buscador tipo Airbnb); [ancho] = contenedor 1440 px (grilla de canchas).
+    [pantalla] = modo "pantalla de app" (opcional, por defecto nada cambia):
+      - "chat": conversación tipo WhatsApp. SIN pie del sitio; en móvil
+        (≤899 px) tampoco cabecera del sitio: la conversación ocupa 100dvh con
+        su propia cabecera (‹ + contacto) y el teclado redimensiona la página
+        (`interactive-widget=resizes-content`).
+      - "mensajes": bandeja / nuevo chat / grupos: en móvil la cabecera queda
+        en UNA fila (logo + avatar + ☰), sin la pastilla de búsqueda."""
+    clases = " ".join(c for c in ("con-barra" if con_barra else "",
+                                  {"chat": "pcg-chat", "mensajes": "pcg-msj"}.get(pantalla, "")) if c)
+    vp_extra = ",interactive-widget=resizes-content" if pantalla == "chat" else ""
     page = (
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
-        "<meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover'>"
+        f"<meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover{vp_extra}'>"
         f"<title>{e(titulo_tab or (titulo + ' · Pichangol'))}</title>"
         f"<meta name='description' content='{e(desc or titulo)}'>"
         f"<meta property='og:title' content='{e(titulo)} · Pichangol'>"
@@ -1169,10 +1188,10 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         "<link href='https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700;9..40,800&display=swap' rel='stylesheet'>"
         f"<style>{CSS}</style>{extra_head}"
         + (f"<script type='application/ld+json'>{jsonld}</script>" if jsonld else "")
-        + f"</head><body{' class=con-barra' if con_barra else ''}>"
+        + "</head><body" + (f" class='{clases}'" if clases else "") + ">"
         f"{nav or nav_simple(sesion)}"
         f"<main class='{'wrap-xl' if ancho else 'wrap'}'>{cuerpo}</main>"
-        f"{footer()}"
+        + ("" if pantalla == "chat" else footer()) +
         "</body></html>")
     if "data-badge-mensajes" in page:
         # Badge de no leídos (mensajería web): pinta el último valor y lo refresca.

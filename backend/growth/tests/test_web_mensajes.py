@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 import config
 from main import app
-from web import almacen, datos, sesion
+from web import almacen, datos, sesion, ui
 from web import jugador_mensajes as M
 
 YO = "ana@gmail.com"
@@ -400,3 +400,24 @@ def test_badge_de_no_leidos(monkeypatch, fk):
     fk.add(M.hilo_directo(YO, "eva@x.com"), "eva@x.com", "hola", 1)
     assert _cli(monkeypatch).get("/web/mensajes/no-leidos").json() == {"ok": True, "n": 2}
     assert TestClient(app, base_url="https://testserver").get("/web/mensajes/no-leidos").json()["n"] == 0
+
+
+def test_chat_web_pantalla_completa_en_movil_como_whatsapp(monkeypatch, fk):
+    """Queja del director (1-oct-2026, celular): la cabecera pegajosa del sitio tapaba el chat
+    y el pie quedaba debajo del compositor. El chat va con shell(pantalla="chat"): sin pie, y en
+    móvil sin cabecera del sitio (la conversación ocupa 100dvh con su cabecera ‹ + contacto)."""
+    hc = M.hilo_cancha("dueno@x.com", YO)
+    fk.add(hc, YO, "¿Tienen turno?", 0)
+    cli = _cli(monkeypatch)
+    html = cli.get(f"/mensajes/{quote(M.clave_de([hc]), safe='')}").text
+    assert "class='pcg-chat'" in html and "interactive-widget=resizes-content" in html
+    assert "<footer class='pie'>" not in html                       # sin pie del sitio
+    assert "class='vol' href='/mensajes'" in html and "Club Sabor Golazo" in html  # ‹ + contacto
+    assert "--mj-vh" in html and "visualViewport" in html            # el teclado no tapa el compositor
+    assert "body.pcg-chat header.nav" in html                        # cabecera del sitio fuera en móvil
+    # Bandeja / nuevo: cabecera en una fila sin la pastilla en móvil; el pie se queda.
+    for ruta in ("/mensajes", "/mensajes/nuevo"):
+        h = cli.get(ruta).text
+        assert "class='pcg-msj'" in h and "<footer class='pie'>" in h
+    # El resto de la web no cambia.
+    assert "<body>" in ui.shell("x", "y").body.decode()
