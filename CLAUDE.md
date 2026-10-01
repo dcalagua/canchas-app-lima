@@ -1459,6 +1459,16 @@ para la API del APK.
   "yo" del carrito (o la primera). Tests
   `test_cargo_lleva_los_datos_reales_del_cliente_para_culqi` + asserts en
   `test_reserva_web_completa` y `test_ficha_de_academia…`.
+- **APARTADOS WEB VENCIDOS NO OCUPAN (caso real PRD, 1-oct-2026: las 20:00
+  de "Campo deportivo Edu Jr." salían "Ocupado" sin ningún pago; era un
+  apartado `web_hold` de 10 min que el cliente abandonó y que solo se borraba
+  cuando OTRO cliente intentaba reservar esa cancha):** `datos.ocupados` y
+  `ocupados_varias` excluyen (`_SQL_SIN_HOLD_VENCIDO`) las filas `nueva` sin
+  pagar con id `web_<ms>` más viejo que `HOLD_SEGUNDOS`; cron de 1 min en
+  `main.py::_iniciar_cron_holds_web` → `datos.liberar_holds_vencidos_todos`
+  (borra en todas las canchas + devuelve el premio de fidelidad, log
+  `[holds]`); APK `ReservasRepo.esHoldWebVencido` las descarta al bajar
+  reservas. Test `tests/test_holds_web.py`.
 - **CORREOS DE PAGO OBLIGATORIOS (pedido del director, 1-oct-2026: "todo
   pago debe mandar correo al que pagó con el detalle de su recibo y al dueño
   de cancha / academia / boleador a quien va dirigido"):**
