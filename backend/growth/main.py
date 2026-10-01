@@ -416,6 +416,23 @@ async def _iniciar_cron_storage() -> None:
     asyncio.create_task(_loop())
 
 
+@app.get("/robots.txt", include_in_schema=False)
+def robots_txt():
+    """Los robots pueden indexar las páginas públicas, pero NO llamar a las
+    rutas JSON ni a la torre: un buscador que ejecuta el JS de la portada
+    disparaba consultas pagadas a Google Places (oct-2026)."""
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(
+        "User-agent: *\n"
+        "Disallow: /web/\n"
+        "Disallow: /admin\n"
+        "Disallow: /pagos/\n"
+        "Disallow: /anfitrion\n"
+        "Disallow: /entrar\n"
+        "Disallow: /mensajes\n",
+        headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.get("/health")
 def health() -> dict:
     return {"ok": True}

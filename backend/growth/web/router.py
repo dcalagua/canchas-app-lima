@@ -607,19 +607,25 @@ _JS_EXPLORAR = r"""
     if(descubiertas[k]) return; descubiertas[k] = true;
     var sec = $('descubiertas'); if(sec){ sec.style.display = ''; if(!Object.keys(descAcum).length) $('gridDesc').innerHTML = '<span class="skel"></span><span class="skel"></span><span class="skel"></span>'; }
     var qd = '&deporte=' + encodeURIComponent(C.dep || '');
+    // UNA sola llamada (antes había una 2.ª con fotos=1: el doble de Google).
+    // Las fotos de cada tarjeta visible las trae /web/foto (guardadas 30 días).
     fetch('/web/descubrir?lat=' + lat + '&lng=' + lng + qd).then(function(r){ return r.json(); })
-      .then(function(j){ pintarDescubiertas(j.canchas || [], false);
-        if((j.canchas || []).length) fetch('/web/descubrir?lat=' + lat + '&lng=' + lng + qd + '&fotos=1').then(function(r){ return r.json(); }).then(function(j2){ if((j2.canchas || []).length) pintarDescubiertas(j2.canchas, true); }).catch(function(){}); })
+      .then(function(j){ pintarDescubiertas(j.canchas || [], false); })
       .catch(function(){ if(sec && !Object.keys(descAcum).length) sec.style.display = 'none'; });
   }
   // ── mapa (se dibuja al mostrarlo; split view en escritorio, pantalla completa en móvil) ──
   function pintarMapa(){
     if(mapa || !window.L || !$('mapa')) return;
     mapa = L.map('mapa', {scrollWheelZoom: true}).setView(C.centro, 12);
-    // Al mover el mapa a otra zona se descubren también las canchas de AHÍ
-    // (antes solo se buscaba alrededor del usuario: un local a 3 km no salía).
-    var tMove = null;
-    mapa.on('moveend', function(){ if(mapa.getZoom() < 12) return; clearTimeout(tMove); tMove = setTimeout(function(){ var c = mapa.getCenter(); descubrir(c.lat, c.lng); }, 500); });
+    // Mover el mapa NO busca solo (cada búsqueda nueva en Google cuesta): sale
+    // el botón "Buscar en esta zona", como en Airbnb (oct-2026, factura Places).
+    var btnZona = document.createElement('button');
+    btnZona.type = 'button'; btnZona.className = 'btn-zona'; btnZona.textContent = '🔎 Buscar canchas en esta zona';
+    btnZona.style.display = 'none';
+    $('mapa').appendChild(btnZona);
+    L.DomEvent.disableClickPropagation(btnZona);
+    btnZona.addEventListener('click', function(){ var c = mapa.getCenter(); btnZona.style.display = 'none'; descubrir(c.lat, c.lng); });
+    mapa.on('moveend', function(){ if(mapa.getZoom() < 12) { btnZona.style.display = 'none'; return; } var c = mapa.getCenter(); btnZona.style.display = descubiertas[c.lat.toFixed(2) + ',' + c.lng.toFixed(2)] ? 'none' : ''; });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap'}).addTo(mapa);
     var pts = [];
     cards().forEach(function(c){
