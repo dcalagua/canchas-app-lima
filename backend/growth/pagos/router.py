@@ -31,7 +31,8 @@ from db.store import stores, es_liquidacion_torneo
 
 from . import culqi
 from . import libelula
-from . import payphone
+from . import payphone  # noqa: F401 — los cobros en USD pasan por la fachada `pasarela_ec`
+from . import pasarela_ec
 from . import pozos
 from . import cuentas_cobro as _cc
 from . import tarifas_pasarela as _tp
@@ -441,36 +442,68 @@ def post_bo_deuda(req: DeudaBoReq) -> dict:
     email = (req.email or "").strip().lower()
     if not email:
         return {"ok": False, "error": "correo_requerido"}
-    ident = uuid.uuid4().hex
     base = (config.PUBLIC_BASE_URL or "").rstrip("/")
+    return registrar_deuda_bo(
+        email=email, monto_bs=req.monto_bs, concepto=req.concepto, nombre=req.nombre,
+        apellido=req.apellido, tipo=req.tipo, ref=req.ref, dueno_id=req.dueno_id,
+        retorno=(f"{base}/pagos/bo/retorno?id={{ident}}" if base else ""), base=base)
+
+
+def registrar_deuda_bo(*, email: str, monto_bs: float, concepto: str, tipo: str = "", ref: str = "",
+                       dueno_id: str = "", nombre: str = "", apellido: str = "", retorno: str = "",
+                       base: str = "", orden_web: str = "") -> dict:
+    """Núcleo de `POST /pagos/bo/deuda` (APK) que también usa el COBRO WEB en
+    bolivianos (`web/pago_hospedado.py`): registra la deuda en Libélula y la
+    guarda PENDIENTE en `stores.libelula_deudas`. `retorno` admite `{ident}`
+    (lo reemplaza por el identificador). `orden_web` liga la deuda con la
+    orden web: al pagarse, `_marcar_pagada` ejecuta la acción de esa orden."""
+    email = (email or "").strip().lower()
+    ident = uuid.uuid4().hex
+    base = (base or config.PUBLIC_BASE_URL or "").rstrip("/")
     callback = f"{base}/pagos/bo/callback" if base else ""
-    retorno = f"{base}/pagos/bo/retorno?id={ident}" if base else ""
+    url_ret = (retorno or "").replace("{ident}", ident)
     r = libelula.registrar_deuda(
-        identificador=ident, email=email, monto_bs=req.monto_bs,
-        concepto=req.concepto, callback_url=callback, url_retorno=retorno,
-        nombre=req.nombre, apellido=req.apellido)
+        identificador=ident, email=email, monto_bs=monto_bs,
+        concepto=concepto, callback_url=callback, url_retorno=url_ret,
+        nombre=nombre, apellido=apellido)
     if not r.get("ok"):
         return r
     stores.libelula_deudas[ident] = {
         "identificador": ident,
         "id_transaccion": r.get("id_transaccion"),
         "email": email,
-        "monto_bs": round(float(req.monto_bs), 2),
-        "concepto": req.concepto,
-        "tipo": req.tipo,
-        "ref": req.ref,
-        "dueno_id": (req.dueno_id or "").strip().lower(),
+        "monto_bs": round(float(monto_bs), 2),
+        "concepto": concepto,
+        "tipo": tipo,
+        "ref": ref,
+        "dueno_id": (dueno_id or "").strip().lower(),
         "pagado": False,
         "fecha_pago": None,
         "creado_en": _ahora_iso(),
+        "orden_web": orden_web or "",
     }
     return {
         "ok": True,
         "identificador": ident,
         "url_pasarela": r.get("url_pasarela"),
         "qr_url": r.get("qr_url"),
-        "retorno": retorno,
+        "retorno": url_ret,
     }
+
+
+def _al_pagar_orden_web(d: dict) -> None:
+    """Pago APROBADO por la pasarela (PayPhone confirmado / Libélula pagada)
+    de una ORDEN WEB (`web/pago_hospedado.py`): ejecuta su acción (confirmar
+    la reserva…) una sola vez. Llega por cualquier camino: retorno del
+    navegador, callback de Libélula, sondeo de la página o el barrido."""
+    orden = str(d.get("orden_web") or "")
+    if not orden:
+        return
+    try:
+        from web import pago_hospedado
+        pago_hospedado.al_pagar(orden)
+    except Exception as ex:  # noqa: BLE001 — el barrido lo reintenta
+        print(f"[pago-web] {orden} no se pudo finalizar al pagar: {ex}", flush=True)
 
 
 def _marcar_pagada(ident: str) -> dict | None:
@@ -495,6 +528,7 @@ def _marcar_pagada(ident: str) -> dict | None:
                 # PROMO bono de recarga (los umbrales aplican en Bs).
                 _aplicar_bono_recarga(
                     d["dueno_id"], centimos / 100.0, f"lib_{ident}")
+        _al_pagar_orden_web(d)
     return d
 
 
@@ -516,6 +550,9 @@ def bo_callback(transaction_id: str = "") -> dict:
     est = libelula.consultar_por_identificador(ident)
     if est.get("ok") and est.get("pagado"):
         _marcar_pagada(ident)
+        # Llega por GET (lo llama Libélula): el middleware no persiste, y un
+        # saldo/reserva acreditado solo en memoria se perdería en un redeploy.
+        _persistir_ahora()
         return {"ok": True}
     return {"ok": False}
 
@@ -531,6 +568,7 @@ def get_bo_deuda(identificador: str) -> dict:
         est = libelula.consultar_por_identificador(identificador)
         if est.get("ok") and est.get("pagado"):
             _marcar_pagada(identificador)
+            _persistir_ahora()  # GET: el middleware no guarda
     return {"ok": True, "pagado": bool(d.get("pagado")),
             "monto_bs": d.get("monto_bs"), "concepto": d.get("concepto")}
 
@@ -569,14 +607,14 @@ class PagoEcReq(BaseModel):
 @router.get("/ec/config", dependencies=_APP)
 def get_ec_config() -> dict:
     """¿Está activa la pasarela de Ecuador? (el APK decide si puede cobrar)."""
-    return {"disponible": payphone.disponible(), "moneda": "USD"}
+    return {"disponible": pasarela_ec.disponible(), "moneda": "USD"}
 
 
 @router.post("/ec/pago", dependencies=_APP)
 def post_ec_pago(req: PagoEcReq) -> dict:
     """Prepara el pago en PayPhone y devuelve las URLs hospedadas donde el APK
     (WebView) manda a pagar. Guarda el pago como PENDIENTE."""
-    if not payphone.disponible():
+    if not pasarela_ec.disponible():
         return {"ok": False, "error": "no_configurado"}
     email = (req.email or "").strip().lower()
     if not email:
@@ -584,15 +622,30 @@ def post_ec_pago(req: PagoEcReq) -> dict:
     monto = round(float(req.monto_usd), 2)
     if monto <= 0:
         return {"ok": False, "error": "monto_invalido"}
-    ident = uuid.uuid4().hex[:16]  # PayPhone sugiere ids cortos y únicos
     base = (config.PUBLIC_BASE_URL or "").rstrip("/")
     if not base:
         return {"ok": False, "error": "sin_base_url"}
-    r = payphone.preparar(
-        client_tx_id=ident, monto_usd=monto, concepto=req.concepto,
-        response_url=f"{base}/pagos/ec/retorno",
-        cancel_url=f"{base}/pagos/ec/cancelado",
-        email=email, telefono=req.telefono, documento=req.documento)
+    return preparar_pago_ec(
+        email=email, monto_usd=monto, concepto=req.concepto, tipo=req.tipo, ref=req.ref,
+        dueno_id=req.dueno_id, telefono=req.telefono, documento=req.documento,
+        response_url=f"{base}/pagos/ec/retorno", cancel_url=f"{base}/pagos/ec/cancelado", base=base)
+
+
+def preparar_pago_ec(*, email: str, monto_usd: float, concepto: str, response_url: str, cancel_url: str,
+                     base: str, tipo: str = "", ref: str = "", dueno_id: str = "", telefono: str = "",
+                     documento: str = "", orden_web: str = "") -> dict:
+    """Núcleo de `POST /pagos/ec/pago` (APK) que también usa el COBRO WEB en
+    dólares (`web/pago_hospedado.py`, con su propio `response_url`): prepara
+    en PayPhone y guarda el pago PENDIENTE en `stores.payphone_pagos`. Se
+    confirma con `_confirmar_ec` (retorno / sondeo, regla de los 5 min)."""
+    email = (email or "").strip().lower()
+    monto = round(float(monto_usd), 2)
+    ident = uuid.uuid4().hex[:16]  # PayPhone sugiere ids cortos y únicos
+    base = (base or "").rstrip("/")
+    r = pasarela_ec.preparar(
+        client_tx_id=ident, monto_usd=monto, concepto=concepto,
+        response_url=response_url, cancel_url=cancel_url,
+        email=email, telefono=telefono, documento=documento)
     if not r.get("ok"):
         return r
     stores.payphone_pagos[ident] = {
@@ -604,15 +657,16 @@ def post_ec_pago(req: PagoEcReq) -> dict:
         "url_payphone": r.get("url_payphone"),
         "email": email,
         "monto_usd": monto,
-        "concepto": req.concepto,
-        "tipo": req.tipo,
-        "ref": req.ref,
-        "dueno_id": (req.dueno_id or "").strip().lower(),
+        "concepto": concepto,
+        "tipo": tipo,
+        "ref": ref,
+        "dueno_id": (dueno_id or "").strip().lower(),
         "pagado": False,
         "estado": "pendiente",
         "autorizacion": None,
         "fecha_pago": None,
         "creado_en": _ahora_iso(),
+        "orden_web": orden_web or "",
     }
     return {
         "ok": True,
@@ -622,7 +676,7 @@ def post_ec_pago(req: PagoEcReq) -> dict:
         # El APK abre ESTA (nuestro dominio), no la de PayPhone directo: la
         # página de PayPhone exige llegar desde un dominio autorizado.
         "url_lanzador": f"{base}/pagos/ec/ir/{ident}",
-        "retorno": f"{base}/pagos/ec/retorno",
+        "retorno": response_url,
     }
 
 
@@ -656,7 +710,7 @@ def ec_ir(identificador: str, request: Request,
             "<meta name=referrer content=origin>"
             "<title>Pago Pichangol</title></head>"
             "<body style='font-family:system-ui;text-align:center;padding:44px;"
-            "color:#14463A'><p>Abriendo el pago seguro de PayPhone…</p>"
+            f"color:#14463A'><p>Abriendo el pago seguro de {_html.escape(pasarela_ec.nombre())}…</p>"
             f"<p><a href=\"{u}\" style='display:inline-block;margin-top:12px;"
             "padding:12px 20px;border-radius:12px;background:#AEEA94;"
             "color:#14463A;font-weight:700;text-decoration:none'>"
@@ -708,7 +762,7 @@ def _confirmar_ec(ident: str, transaction_id: str) -> dict | None:
 
 def _confirmar_ec_inner(d: dict, ident: str, tx: str) -> dict:
     d["transaction_id"] = tx
-    c = payphone.confirmar(transaction_id=tx, client_tx_id=ident)
+    c = pasarela_ec.confirmar(transaction_id=tx, client_tx_id=ident)
     if not c.get("ok"):
         d["estado"] = f"error: {c.get('error', '')}"[:80]
         return d
@@ -718,21 +772,22 @@ def _confirmar_ec_inner(d: dict, ident: str, tx: str) -> dict:
         return d
     # Defensa: si PayPhone reporta un monto y no cuadra, NO se da por pagado.
     mc = c.get("monto_centavos")
-    if isinstance(mc, (int, float)) and int(mc) != payphone.centavos(d["monto_usd"]):
+    if isinstance(mc, (int, float)) and int(mc) != pasarela_ec.centavos(d["monto_usd"]):
         d["estado"] = "monto_no_cuadra"
         return d
     d["pagado"] = True
     d["fecha_pago"] = _ahora_iso()
     if d.get("tipo") == "recarga" and d.get("dueno_id"):
-        cts = payphone.centavos(d["monto_usd"])
+        cts = pasarela_ec.centavos(d["monto_usd"])
         if cts > 0:
             stores.acreditar(d["dueno_id"], cts)
             stores.registrar_pago(
                 tipo="recarga", monto_centimos=cts, moneda="USD",
                 estado="aprobado", dueno_id=d["dueno_id"],
-                email=d.get("email", ""), concepto="Recarga (PayPhone)")
+                email=d.get("email", ""), concepto=f"Recarga ({pasarela_ec.nombre()})")
             # PROMO bono de recarga (los umbrales aplican en USD).
             _aplicar_bono_recarga(d["dueno_id"], cts / 100.0, f"pp_{ident}")
+    _al_pagar_orden_web(d)
     return d
 
 
@@ -759,7 +814,7 @@ def ec_retorno(id: str = "", clientTransactionId: str = "") -> HTMLResponse:
                           "Pichangol: tu pago ya quedó confirmado.")
     if d:
         return _pagina_ec("Pago no aprobado",
-                          "PayPhone no aprobó el cobro. Puedes intentarlo de "
+                          f"{pasarela_ec.nombre()} no aprobó el cobro. Puedes intentarlo de "
                           "nuevo desde la app; no se te cobró nada.")
     return _pagina_ec("Pago no encontrado",
                       "Vuelve a Pichangol e intenta otra vez.")

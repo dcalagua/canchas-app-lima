@@ -664,6 +664,14 @@ class Stores:
         # autorizacion, fecha_pago, creado_en}. Se crea pendiente al preparar;
         # se marca pagado al CONFIRMAR con PayPhone (nunca por un GET suelto).
         self.payphone_pagos: dict[str, dict] = {}
+        # COBRO WEB en pasarela HOSPEDADA (PayPhone · Ecuador, Libélula ·
+        # Bolivia, o la simulada de QAS): ÓRDENES de la web
+        # (`web/pago_hospedado.py`), clave = id no adivinable. {id, email,
+        # pasarela, moneda, monto_centimos, concepto, accion{tipo: reserva |
+        # recarga, …}, estado: pendiente → aprobado | rechazado | cancelado |
+        # vencido | aprobado_sin_reserva, ref_pasarela, creado_en, vence_en, …}.
+        # En el snapshot: un reinicio no pierde un pago en curso.
+        self.pagos_web: dict[str, dict] = {}
         # LIBRO DE RECLAMACIONES (Ley 29571 / D.S. 011-2011-PCM): hojas
         # registradas desde la home pública. INDECOPI exige que esté integrado
         # en la web (no un formulario externo) y responder en 15 días hábiles.
@@ -1194,6 +1202,7 @@ class Stores:
                 k: dict(v) for k, v in self.libelula_deudas.items()},
             "payphone_pagos": {
                 k: dict(v) for k, v in self.payphone_pagos.items()},
+            "pagos_web": {k: dict(v) for k, v in self.pagos_web.items()},
             "reclamaciones": [dict(r) for r in self.reclamaciones],
             "cancelaciones_web": [dict(r) for r in self.cancelaciones_web],
             "negocio_web": {k: dict(v) for k, v in self.negocio_web.items()},
@@ -1304,6 +1313,7 @@ class Stores:
         self.payphone_pagos = {
             k: dict(v) for k, v in (data.get("payphone_pagos") or {}).items()
         }
+        self.pagos_web = {k: dict(v) for k, v in (data.get("pagos_web") or {}).items()}
         self.reclamaciones = [dict(r) for r in (data.get("reclamaciones") or [])]
         self.cancelaciones_web = [dict(r) for r in (data.get("cancelaciones_web") or [])]
         self.negocio_web = {k: dict(v) for k, v in (data.get("negocio_web") or {}).items()}

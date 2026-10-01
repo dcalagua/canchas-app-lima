@@ -11,8 +11,10 @@ cuatro pantallas del APK, con los MISMOS datos y la MISMA plata:
   chips por país (`PaisConfig.recargas`) + "Otro monto" (`recargaMin/Max`),
   resumen `pcgResumenPago` y Culqi Checkout v4 (SOLO PEN: la recarga web pasa
   por `pagos.router.post_recarga`, que cobra, acredita, aplica el bono y es
-  idempotente por cargo). En $ / Bs se muestra la pasarela del país y "hazlo
-  desde la app" (PayPhone y Libélula viven en el APK).
+  idempotente por cargo). En $ / Bs la recarga va por la pasarela HOSPEDADA
+  del país (`web/pago_hospedado.py`, `POST /web/billetera/recargar-pasarela`:
+  PayPhone vía `pagos/pasarela_ec.py` o Libélula, que acreditan saldo + bono
+  al confirmar, como en el APK); sin pasarela configurada, "desde la app".
 - `GET /mi-billetera/estado-de-cuenta` = PDF "Estado de cuenta" del APK
   (versión imprimible: "Imprimir / guardar PDF").
 - `GET /mis-pagos` = `mis_pagos_screen.dart`: bonos comprados + reservas
@@ -55,7 +57,7 @@ from paises import pais_de_coordenadas
 from pagos import cuentas_cobro as _cc
 from pagos import culqi
 from pagos import router as _pagos
-from web import datos, sesion, ui
+from web import datos, pago_hospedado, sesion, ui
 from web.ui import PLAY_URL, e
 
 router = APIRouter()
@@ -558,6 +560,7 @@ _JS_BILLETERA = r"""
   function recargar(){
     err('');
     if(!(st.monto >= C.min && st.monto <= C.max && Math.floor(st.monto) === st.monto)){ err('Entre ' + C.moneda + ' ' + C.min + ' y ' + C.moneda + ' ' + C.max + ', sin decimales.'); return; }
+    if(C.pasarela){ recargarPasarela(); return; }
     if(!C.pk || !window.Culqi){ err('El pago en línea no está disponible por ahora.'); return; }
     var m = window.pcgMedioPago ? pcgMedioPago() : 'yape', monto = st.monto, bv = bono(monto);
     pcgResumenPago({moneda: C.moneda, medio: m, lineas: [{t: 'Recarga de saldo Pichangol', m: monto}], total: monto,
@@ -588,6 +591,25 @@ _JS_BILLETERA = r"""
         };
         Culqi.open();
       });
+  }
+  // $ / Bs: la recarga se paga en la página de la pasarela del país y vuelve a /web/pago/{orden}.
+  function recargarPasarela(){
+    var monto = st.monto, bv = bono(monto);
+    pcgResumenPago({moneda: C.moneda, medio: C.pasarela, medioNombre: C.pasarelaNombre, lineas: [{t: 'Recarga de saldo Pichangol', m: monto}], total: monto,
+                    nota: (bv > 0 ? '🎁 Además recibes +' + fmt(bv) + ' de bono (lo pone Pichangol). ' : '') + 'Te llevamos a la página segura de ' + C.pasarelaNombre + '; al confirmarse el pago, el saldo se acredita en tu billetera, la misma de la app.'})
+      .then(function(ok){
+        if(!ok) return;
+        pcgCargando('Abriendo el pago seguro de ' + C.pasarelaNombre + '…');
+        fetch('/web/billetera/recargar-pasarela', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({monto: monto})})
+          .then(function(r){ return r.json(); })
+          .then(function(p){ if(p.ok && p.url){ window.location.href = p.url; return; } pcgCargando(false); err(p.mensaje || 'No pudimos abrir el pago. Inténtalo de nuevo.'); })
+          .catch(function(){ pcgCargando(false); err('Sin conexión. Inténtalo de nuevo.'); });
+      });
+  }
+  if(C.recargaOk){
+    try { window.history.replaceState(null, '', window.location.pathname); } catch(e){}
+    pcgAvisar({titulo: '¡Recarga exitosa! ✅', icono: '👛', confirmar: 'Listo',
+               mensaje: 'Se acreditaron ' + fmt(C.recargaOk.monto) + (C.recargaOk.bono > 0 ? ' + ' + fmt(C.recargaOk.bono) + ' de bono 🎁' : '') + ' a tu saldo. Nuevo saldo: ' + fmt(C.recargaOk.saldo) + '.'});
   }
   var br = $('btnRecargar'); if(br) br.addEventListener('click', recargar);
   // Cupón (código de campaña): acredita al instante.
@@ -702,6 +724,23 @@ def pagina_billetera(request: Request) -> HTMLResponse:
         recargar = ("<section class='bil-rec' id='recargar'><h2>Recargar saldo</h2>"
                     "<p class='h2sub'>El pago en línea no está disponible en la web por ahora. Puedes recargar desde la app.</p>"
                     f"<a class='btn sec' href='{PLAY_URL}' target='_blank' rel='noopener'>Recargar en la app</a></section>")
+    elif pago_hospedado.pasarela_para(P["iso_mon"]):
+        # $ / Bs (oct-2026): la recarga va por la pasarela HOSPEDADA del país
+        # (Ecuador: `pasarela_ec`; Bolivia: Libélula; QAS sin llaves: simulada),
+        # con el mismo módulo y el mismo bono de recarga que el APK.
+        pas = pago_hospedado.pasarela_para(P["iso_mon"])
+        chips = "".join(f"<button type='button' class='chip' data-monto='{m}'>{e(sim)} {m}</button>" for m in P["recargas"])
+        recargar = (
+            "<section class='bil-rec' id='recargar'><h2>Recargar saldo</h2>"
+            f"<p class='h2sub'>Tu billetera es de {ui.bandera(iso)} {e(P['nombre'])} ({e(sim)}). ¿Cuánto quieres recargar?</p>"
+            f"<div class='chips' id='recChips'>{chips}<button type='button' class='chip' id='chipOtro'>Otro monto</button></div>"
+            f"<div class='otro' id='recOtro'><span>{e(sim)}</span><input id='montoOtro' type='number' inputmode='numeric' "
+            f"min='{P['min']}' max='{P['max']}' step='1' placeholder='{P['recargas'][0]}' aria-label='Otro monto'>"
+            f"<small class='sub' style='font-size:12.5px'>Entre {e(sim)} {P['min']} y {e(sim)} {P['max']}, sin decimales.</small></div>"
+            "<div class='bono' id='recBono'></div>"
+            f"<div style='margin-top:16px'>{pago_hospedado.selector(pas)}</div>"
+            "<div class='err' id='recErr' role='alert'></div>"
+            "<button class='btn lg' id='btnRecargar' disabled>Elige un monto</button></section>")
     else:
         recargar = ("<section class='bil-rec' id='recargar'><h2>Recargar saldo</h2>"
                     f"<p class='h2sub'>Tu billetera es de {ui.bandera(iso)} {e(P['nombre'])} ({e(sim)}). En {e(P['nombre'])} se recarga con "
@@ -721,16 +760,30 @@ def pagina_billetera(request: Request) -> HTMLResponse:
         if mios:
             lista += ("<h2>Mi saldo</h2><p class='h2sub'>Tu monedero: recargas y gastos (comisiones, servicios, Pro).</p>"
                       + "".join(_fila_mov(m) for m in mios))
+    pas_h = "" if P["pasarela"] == "culqi" else pago_hospedado.pasarela_para(P["iso_mon"])
     cfg = {"moneda": sim, "recargas": P["recargas"], "min": P["min"], "max": P["max"], "pk": config.CULQI_PUBLIC_KEY,
-           "bono": {"pct": pct, "min": minimo, "tope": tope}, "play": PLAY_URL}
+           "bono": {"pct": pct, "min": minimo, "tope": tope}, "play": PLAY_URL,
+           "pasarela": pas_h, "pasarelaNombre": pago_hospedado.nombre_pasarela(pas_h) if pas_h else "",
+           "recargaOk": _recarga_ok(request, email)}
     cuerpo = (f"<style>{_CSS}</style><div class='bil'>{_nav('billetera')}<h1>Mi billetera</h1>"
               + tarjeta + avisos + acciones + cupon + recargar
               + f"<h2 style='margin-top:30px'>Movimientos</h2>{lista}"
               + "<p class='sub' style='font-size:13px;margin-top:18px'>¿Buscas lo que pagaste en reservas y academias? "
                 "Está en <a href='/mis-pagos'>Mis pagos</a>.</p></div>"
               + f"<script>window.__billetera={json.dumps(cfg)};</script><script>{_JS_BILLETERA}</script>")
-    head = "<script src='https://checkout.culqi.com/js/v4'></script>" if "btnRecargar" in recargar else ""
+    head = "<script src='https://checkout.culqi.com/js/v4'></script>" if ("btnRecargar" in recargar and P["pasarela"] == "culqi") else ""
     return ui.shell("Mi billetera", cuerpo, sesion=ses, titulo_tab="Mi billetera · Pichangol", extra_head=head)
+
+
+def _recarga_ok(request: Request, email: str) -> dict | None:
+    """`/mi-billetera?recarga=<orden>` al volver de la pasarela: si esa orden
+    es de esta cuenta y quedó acreditada, el aviso de "Recarga exitosa"."""
+    oid = str(request.query_params.get("recarga") or "")
+    o = pago_hospedado.orden(oid) if oid else None
+    if not o or o.get("email") != email or o.get("estado") != "aprobado" or (o.get("accion") or {}).get("tipo") != "recarga":
+        return None
+    return {"monto": int(o["monto_centimos"]) / 100.0, "bono": pago_hospedado.bono_de(o),
+            "saldo": stores.saldo_centimos(email) / 100.0}
 
 
 @router.get("/mi-billetera/estado-de-cuenta", response_class=HTMLResponse)

@@ -249,7 +249,10 @@ def barrer_vencidos() -> int:
     usados; si no, vuelven al jugador. Cubre los holds que se borran sin
     pasar por `/web/liberar` (vencidos en `liberar_holds_vencidos`)."""
     n = 0
+    from web import pago_hospedado
     for cj in datos.canjes_web_reservados_viejos(BARRIDO_SEGUNDOS):
+        if pago_hospedado.ref_pendiente(str(cj.get("reserva_ref") or ""), list(cj.get("reserva_ids") or [])):
+            continue  # pagando en la pasarela hospedada: lo resuelve la orden
         filas = datos.reservas_de(cj.get("reserva_ids") or [])
         if filas and all(str(f.get("estado") or "") == "confirmada" for f in filas):
             datos.canje_web_usar(cj["id"], referencia_puntos(filas))
