@@ -1045,7 +1045,7 @@ def _titulo_conv(conv: dict, yo: str) -> dict:
 _CSS = """
 <style>
 .mj{display:grid;grid-template-columns:minmax(0,1fr);gap:0;max-width:1180px;margin:0 auto}
-@media(min-width:900px){.mj.dos{grid-template-columns:minmax(300px,380px) minmax(0,1fr);border:1px solid var(--trazo);border-radius:var(--r-lg);overflow:hidden;background:#fff;height:calc(100dvh - 190px);min-height:520px}
+@media(min-width:900px){.mj.dos{grid-template-columns:minmax(300px,380px) minmax(0,1fr);border:1px solid var(--trazo);border-radius:var(--r-lg);overflow:hidden;background:#fff;height:calc(100dvh - var(--cab-h,81px) - 36px);min-height:460px;margin-top:16px}
   .mj.dos .mj-lista{border-right:1px solid var(--trazo);overflow:auto}.mj.dos .mj-chat{height:100%}}
 @media(max-width:899px){.mj.dos .mj-lista{display:none}}
 .mj-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 14px;flex-wrap:wrap}
@@ -1076,15 +1076,22 @@ _CSS = """
 .mj-arch{display:flex;align-items:center;gap:10px;padding:12px 10px;border-radius:14px;cursor:pointer;font-weight:700;border:0;background:transparent;font:inherit;width:100%;text-align:left;color:var(--noche)}
 .mj-arch:hover{background:#F7F7F7}
 /* ── chat ── */
-.mj-chat{display:flex;flex-direction:column;background:#fff;min-width:0;height:calc(100dvh - 150px);min-height:480px}
-@media(max-width:899px){.mj-chat{height:calc(100dvh - 128px);margin:0 -16px;border-top:1px solid var(--trazo)}}
-.mj-cab{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--trazo);min-width:0}
+.mj-chat{display:flex;flex-direction:column;background:#fff;min-width:0;min-height:0}
+/* MÓVIL = pantalla completa tipo WhatsApp (shell pantalla="chat" quita cabecera y pie del sitio): cabecera del
+   contacto arriba, mensajes con scroll propio al medio, compositor abajo. La altura sigue al visualViewport
+   (--mj-vh, lo pone el JS) para que el teclado no tape el compositor. */
+@media(max-width:899px){
+  .mj-chat{position:fixed;left:0;right:0;top:var(--mj-top,0px);height:var(--mj-vh,100dvh);z-index:30}
+  .mj-cab{padding-top:calc(8px + env(safe-area-inset-top));background:#fff}
+}
+.mj-cab{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--trazo);min-width:0;flex:none}
 .mj-cab .vol{text-decoration:none;font-size:22px;color:var(--noche);padding:4px 8px;border-radius:50%}.mj-cab .vol:hover{background:#F2F2F2}
 @media(min-width:900px){.mj.dos .mj-cab .vol{display:none}}
 .mj-cab .who{flex:1;min-width:0;text-decoration:none;color:inherit;display:flex;align-items:center;gap:10px}
 .mj-cab .who b{display:block;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mj-cab .who small{display:block;color:var(--tenue);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mj-cab .ib{border:0;background:transparent;font-size:19px;padding:8px;border-radius:50%;cursor:pointer}.mj-cab .ib:hover{background:#F2F2F2}
-.mj-msgs{flex:1;overflow-y:auto;padding:14px 14px 8px;background:#F7F7F7;display:flex;flex-direction:column;gap:3px;overscroll-behavior:contain}
+.mj-msgs{flex:1;min-height:0;overflow-y:auto;padding:14px 14px 8px;background:#F7F7F7;display:flex;flex-direction:column;gap:3px;overscroll-behavior:contain}
+.mj-msgs>:first-child{margin-top:auto}
 .mj-dia{align-self:center;background:#fff;border-radius:999px;padding:4px 12px;font-size:12px;font-weight:700;color:var(--tenue);margin:10px 0 6px;box-shadow:0 1px 2px rgba(0,0,0,.06)}
 .mj-b{max-width:min(78%,560px);padding:8px 11px 6px;border-radius:16px;background:#fff;box-shadow:0 1px 1.5px rgba(0,0,0,.08);align-self:flex-start;position:relative;overflow-wrap:anywhere;font-size:15px;line-height:1.38}
 .mj-b.mio{align-self:flex-end;background:var(--tinte)}
@@ -1104,7 +1111,7 @@ _CSS = """
 @media(hover:none){.mj-b .resp{opacity:.85;right:-30px}.mj-b.mio .resp{left:-30px}}
 .mj-b.pend{opacity:.7}
 .mj-mas-ant{align-self:center;border:1px solid var(--trazo);background:#fff;border-radius:999px;padding:7px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer;margin:4px 0 8px}
-.mj-comp{border-top:1px solid var(--trazo);padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:#fff}
+.mj-comp{border-top:1px solid var(--trazo);padding:8px 10px calc(8px + env(safe-area-inset-bottom));background:#fff;flex:none}
 .mj-cit{display:none;align-items:center;gap:8px;background:#F2F2F2;border-left:3px solid var(--esmeralda);border-radius:10px;padding:6px 10px;margin-bottom:6px;font-size:13px}
 .mj-cit.on{display:flex}.mj-cit div{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mj-cit button{border:0;background:transparent;font-size:18px;cursor:pointer}
 .mj-fila2{display:flex;align-items:flex-end;gap:8px}
@@ -1295,7 +1302,7 @@ def pagina_mensajes(request: Request) -> HTMLResponse:
     cfg = {"cache": _clave_cache(yo), "inicial": inicial, "fresca": True, "cada": 12000}
     cuerpo = (_CSS + "<div class='mj-panel' style='max-width:760px'>" + _cabecera_bandeja() + _lista_html(b) + "</div>"
               + f"<script>window.MJ = {json.dumps(cfg, ensure_ascii=False)};</script>" + _JS_COMUN + _JS_BANDEJA)
-    return ui.shell("Mensajes", cuerpo, sesion=ses, titulo_tab="Mensajes · Pichangol")
+    return ui.shell("Mensajes", cuerpo, sesion=ses, titulo_tab="Mensajes · Pichangol", pantalla="mensajes")
 
 
 _JS_CHAT = r"""
@@ -1331,7 +1338,20 @@ function pintar(abajo){ var cerca = caja.scrollHeight - caja.scrollTop - caja.cl
   if(abajo === 'mantener') caja.scrollTop = top + (caja.scrollHeight - alto); else if(abajo || cerca) caja.scrollTop = caja.scrollHeight; }
 function sumar(lista){ var nuevos = 0; (lista || []).forEach(function(m){ if(vistos[m.id]) return;
   msgs = msgs.filter(function(x){ return !(x.pend && x.mio && m.mio && x.texto === m.texto && x.c === m.c); }); vistos[m.id] = 1; msgs.push(m); nuevos++; }); return nuevos; }
+// Alto real de la pantalla: en escritorio la caja del chat descuenta la cabecera del sitio (--cab-h); en móvil la
+// conversación sigue al visualViewport (--mj-vh/--mj-top) para que el teclado no tape el compositor. Si estaba
+// abajo, se queda abajo (último mensaje siempre visible), como WhatsApp.
+function medir(){ var R = document.documentElement.style, cab = document.querySelector('header.nav'), vv = window.visualViewport;
+  var abajo = caja.scrollHeight - caja.scrollTop - caja.clientHeight < 120;
+  R.setProperty('--cab-h', ((cab && cab.offsetHeight) || 0) + 'px');
+  if(vv && window.innerWidth < 900){ R.setProperty('--mj-vh', Math.round(vv.height) + 'px'); R.setProperty('--mj-top', Math.round(vv.offsetTop) + 'px'); }
+  else { R.removeProperty('--mj-vh'); R.removeProperty('--mj-top'); }
+  if(abajo) caja.scrollTop = caja.scrollHeight; }
+medir(); window.addEventListener('resize', medir);
+if(window.visualViewport){ visualViewport.addEventListener('resize', medir); visualViewport.addEventListener('scroll', medir); }
 sumar(C.mensajes); pintar(true);
+// Las fotos cargan después: si el usuario estaba abajo, seguir abajo cuando crecen.
+caja.addEventListener('load', function(ev){ if(ev.target.tagName === 'IMG' && caja.scrollHeight - caja.scrollTop - caja.clientHeight < 400) caja.scrollTop = caja.scrollHeight; }, true);
 caja.addEventListener('click', function(ev){ var r = ev.target.closest('[data-r]');
   if(r){ var m = msgs.filter(function(x){ return x.id === r.dataset.r; })[0]; if(!m) return; resp = m;
     $('mjCitT').innerHTML = '<b>' + mjEsc(m.mio ? 'Tú' : (m.autor || C.titulo)) + '</b> · ' + mjEsc(m.c === 'foto' ? (m.texto || '📷 Foto') : (m.c === 'audio' ? '🎤 Nota de voz' : (m.c === 'gif' ? '🎞️ GIF' : m.texto)));
@@ -1441,7 +1461,7 @@ def pagina_nuevo(request: Request, cancha: str = "", academia: str = "", persona
               "<div class='mj-res' id='mjRes'></div>"
               + ("<div class='mj-sec'>Mis contactos</div><div class='mj-res'>" + "".join(f for _, f in filas) + "</div>" if filas else "")
               + "</div>" + _JS_COMUN + _JS_BUSCAR.replace("__MODO__", "chat"))
-    return ui.shell("Nuevo chat", cuerpo, sesion=ses, titulo_tab="Nuevo chat · Pichangol")
+    return ui.shell("Nuevo chat", cuerpo, sesion=ses, titulo_tab="Nuevo chat · Pichangol", pantalla="mensajes")
 
 
 def _av_html(nombre: str, foto: str, cls: str = "mj-av") -> str:
@@ -1475,7 +1495,7 @@ def _abrir_con(ses: dict, yo: str, cancha: str = "", academia: str = "", persona
         cuerpo = (f"<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'><h1 style='font-size:22px'>{e(titulo)}</h1>"
                   f"<p class='sub'>{e(msg)}</p><div class='acciones' style='justify-content:center'>"
                   f"<a class='btn' href='{e(href or '/mensajes')}'>{e(btn or 'Ir a Mensajes')}</a></div></div>")
-        return ui.shell(titulo, cuerpo, sesion=ses)
+        return ui.shell(titulo, cuerpo, sesion=ses, pantalla="mensajes")
 
     principal = ""
     persona_em = ""
@@ -1546,7 +1566,7 @@ def pagina_nuevo_grupo(request: Request):
               + (f"<div class='mj-sec'>Mis contactos</div><div class='mj-res' id='mjSug'>{sug}</div>" if sug else "")
               + "<div class='acciones' style='margin-top:16px'><button class='btn lg' id='mjGCrear' type='button'>Crear grupo</button></div></div></div>"
               + _JS_COMUN + _JS_BUSCAR.replace("__MODO__", "grupo") + _JS_GRUPO_NUEVO)
-    return ui.shell("Nuevo grupo", cuerpo, sesion=ses, titulo_tab="Nuevo grupo · Pichangol")
+    return ui.shell("Nuevo grupo", cuerpo, sesion=ses, titulo_tab="Nuevo grupo · Pichangol", pantalla="mensajes")
 
 
 _JS_GRUPO_NUEVO = r"""
@@ -1584,7 +1604,7 @@ def pagina_info_grupo(request: Request, grupo_id: str):
         cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'><h1 style='font-size:22px'>Grupo no disponible</h1>"
                   "<p class='sub'>No existe o ya no eres parte de este grupo.</p><div class='acciones' style='justify-content:center'>"
                   "<a class='btn' href='/mensajes'>Ir a Mensajes</a></div></div>")
-        return ui.shell("Info del grupo", cuerpo, sesion=ses, titulo_tab="Grupo · Pichangol")
+        return ui.shell("Info del grupo", cuerpo, sesion=ses, titulo_tab="Grupo · Pichangol", pantalla="mensajes")
     ag = agenda_de(yo)
     perf = perfiles(g["miembros"])
     miembros = []
@@ -1616,7 +1636,7 @@ def pagina_info_grupo(request: Request, grupo_id: str):
               + "<div class='acciones' style='margin-top:18px'><button type='button' class='btn sec' id='mjGLlamar' onclick='mjLlamadas()'>📹 Llamada grupal (en la app)</button>"
               "<button type='button' class='btn sec' id='mjGSalir' style='color:var(--rojo)'>🚪 Salir del grupo</button></div></div></div>"
               f"<script>window.MJG = {json.dumps(cfg)};</script>" + _JS_COMUN + _JS_BUSCAR.replace("__MODO__", "grupo") + _JS_GRUPO_INFO)
-    return ui.shell("Info del grupo", cuerpo, sesion=ses, titulo_tab=f"{g['nombre'] or 'Grupo'} · Pichangol")
+    return ui.shell("Info del grupo", cuerpo, sesion=ses, titulo_tab=f"{g['nombre'] or 'Grupo'} · Pichangol", pantalla="mensajes")
 
 
 _JS_GRUPO_INFO = r"""
@@ -1660,7 +1680,7 @@ def pagina_chat(request: Request, clave: str):
         cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'><h1 style='font-size:22px'>Chat no disponible</h1>"
                   "<p class='sub'>Este chat no existe o no eres parte de él.</p><div class='acciones' style='justify-content:center'>"
                   "<a class='btn' href='/mensajes'>Ir a Mensajes</a></div></div>")
-        return ui.shell("Mensajes", cuerpo, sesion=ses, titulo_tab="Mensajes · Pichangol")
+        return ui.shell("Mensajes", cuerpo, sesion=ses, titulo_tab="Mensajes · Pichangol", pantalla="mensajes")
     hilos = conv["hilos"]
     k = clave_de(hilos)
     tit = _titulo_conv(conv, yo)
@@ -1690,7 +1710,8 @@ def pagina_chat(request: Request, clave: str):
               + f"<script>window.MJ = {json.dumps(cfg_b, ensure_ascii=False)}; window.MJC = {json.dumps(cfg, ensure_ascii=False)}; "
               + f"window.MJ_ABIERTA = {json.dumps(fila_json(fila)['k'] if fila else '')};</script>"
               + _JS_COMUN + _JS_BANDEJA + _JS_CHAT)
-    return ui.shell(tit["titulo"], cuerpo, sesion=ses, titulo_tab=f"{tit['titulo']} · Mensajes · Pichangol")
+    return ui.shell(tit["titulo"], cuerpo, sesion=ses, titulo_tab=f"{tit['titulo']} · Mensajes · Pichangol",
+                    pantalla="chat")
 
 
 # ═══════════════════════════ Endpoints JSON ══════════════════════════════════

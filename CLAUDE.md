@@ -670,6 +670,18 @@ para la API del APK.
   "💬 Escribir al local" en la ficha `/reservar/{id}` (`router._acciones_
   local`, solo local verificado con dueño y nunca al dueño) y "✉️ Escribir
   al profe" en `/academia/{id}`. Test `tests/test_web_mensajes.py`.
+  **Layout tipo WhatsApp (queja del director, 1-oct-2026, captura del
+  celular: la cabecera pegajosa del sitio tapaba el chat y el pie salía bajo
+  el compositor):** `ui.shell(pantalla="chat")` (chat y chat de grupo) = sin
+  pie y, en ≤899 px, sin cabecera del sitio: `.mj-chat` es `position:fixed`
+  a toda la pantalla (cabecera ‹ + contacto arriba, mensajes con scroll
+  propio que arrancan abajo, compositor abajo con safe-area); el alto sigue
+  al `visualViewport` (`--mj-vh/--mj-top`) + `interactive-widget=
+  resizes-content` para que el teclado no tape el compositor. En escritorio
+  la caja mide `100dvh − --cab-h` (alto real de la cabecera medido por JS).
+  `pantalla="mensajes"` (bandeja, nuevo, grupos) quita la pastilla de
+  búsqueda en móvil (cabecera de una fila). Test
+  `test_chat_web_pantalla_completa_en_movil_como_whatsapp`.
   (2) **Mi bodega** (`web/anfitrion_bodega.py` dueño, `web/jugador_bodega.py`
   jugador, `web/bodega_datos.py` = mismas 5 tablas y candados `UPDATE …
   WHERE estado = esperado` que `BodegaRepo`): `/anfitrion/bodega?tab=caja|
