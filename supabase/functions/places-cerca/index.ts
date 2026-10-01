@@ -268,8 +268,11 @@ serve(async (req) => {
     // Modo rápido (default): devuelve las canchas SIN resolver fotos. La app las
     // muestra al instante y vuelve a pedir con fotos=true para enriquecerlas.
     // `diag` viaja siempre: la app lo ignora y el Test del dashboard lo muestra.
+    // Nunca se guarda una respuesta con error de Google (cuota, facturación):
+    // quedaría vacía 30 días.
+    const sinError = !!cacheBase || !diag.primerError;
     if (!conFotos) {
-      await guardarCache(region, lat, lng, radio, false, lista);
+      if (sinError) await guardarCache(region, lat, lng, radio, false, lista);
       return json({ places: lista, diag });
     }
 
@@ -284,7 +287,7 @@ serve(async (req) => {
     const resto = lista.slice(MAX_LUGARES_CON_FOTO);
 
     const conTodo = [...conFoto, ...resto];
-    await guardarCache(region, lat, lng, radio, true, conTodo);
+    if (sinError) await guardarCache(region, lat, lng, radio, true, conTodo);
     return json({ places: conTodo, diag });
   } catch (e) {
     return json({ places: [], error: String(e) }, 500);

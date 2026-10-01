@@ -2594,6 +2594,16 @@ off → redeploy inmediato en cada push). URL pública:
     "mueve PRD a Virginia"):** `prd` = 420be2a (transacción perezosa, pool
     tibio, badge con caché, preload en toda la web) + cherry-pick de
     apartados web vencidos (64eccf2); `pg-backend-prd` movido a us-east4.
+    **Pase del 1-oct-2026 (5.º, autorizado: "pasa a PRD lo de Google
+    Places"):** `prd` = cherry-pick SOLO del ahorro de Google Places (web lee
+    la cosecha, una consulta por zona cada 30 días, tope diario, botón
+    "Buscar en esta zona", robots.txt) + Edge `places-cerca` v7 en PCG-PRD
+    (`deploy_edge_function`, `verify_jwt=false`; caché por zona en
+    `pichangol_places_consultas`, nunca guarda respuestas con error de
+    Google). SQL `pichangol_places_consultas` APLICADO en PCG-PRD vía
+    `apply_migration`. Sin APK ni variables. NO incluye el cobro web en
+    USD/BOB (fase 2), que sigue solo en QAS. En QAS falta que el director
+    corra el SQL y redespliegue la Edge por CLI.
     **Pase del 1-oct-2026 (4.º, autorizado: "pasando a PRD y esto aún queda
     pendiente" = correos sin llave):** `prd` = 3e00618 (seña en la reserva
     web, correos de pago, chat móvil tipo WhatsApp, bono de referidos en el
