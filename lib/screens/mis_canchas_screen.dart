@@ -46,8 +46,9 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
     // (duración/precio/horario) que se editó en OTRO equipo del mismo dueño.
     // Sin esto, la copia local de la tablet se quedaba con el valor viejo.
     appState.cargarCanchasRemotas();
-    // Cierre de caja: auto-cierra días pasados sin cerrar (respaldo, etiquetado)
-    // y programa el recordatorio diario ~23:00 para que el dueño la cierre.
+    // Negocio del dueño (backend = lo mismo que la web): cierres de caja (el
+    // servidor auto-cierra días pasados sin cerrar), fijas, notas y
+    // recordatorios. Y programa el recordatorio diario ~23:00 de cierre.
     appState.autocerrarCajasPendientes();
     if (appState.misCanchas.isNotEmpty) {
       RecordatorioService.programarRecordatorioCierreDiario();
@@ -164,11 +165,12 @@ class _CajaHoyCard extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final tenue = textoTenueDe(context);
     final iso = appState.isoDe(DateTime.now());
-    final caja = appState.cajaDia(iso);
-    final mon = appState.misCanchas.isEmpty
-        ? 'S/'
-        : appState.misCanchas.first.monedaSimbolo;
-    final cerrada = appState.cierreDe(iso) != null;
+    // Caja de la moneda principal del dueño (la pantalla de caja muestra las
+    // demás monedas por separado, como la web).
+    final monIso = appState.monedasNegocio.first;
+    final caja = appState.cajaDia(iso, moneda: monIso);
+    final mon = appState.simboloDeMonedaIso(monIso);
+    final cerrada = appState.cierreDe(iso, moneda: monIso) != null;
     // Tarjeta BLANCA (estilo Airbnb): se despega del header verde "Mis canchas"
     // que va justo arriba, así el label "Caja de hoy" ya no se funde con él.
     return InkWell(

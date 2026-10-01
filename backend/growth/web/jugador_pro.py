@@ -663,14 +663,11 @@ def marcar_recordatorio(request: Request, body: dict = Body(default_factory=dict
     _c, filas = _validar_reservas(email, str(body.get("fecha") or ""), ids)
     if not filas:
         return _err("Esas reservas no son de tus canchas.", 404)
-    m = _marcas(email)
-    ahora = datetime.now(timezone.utc).isoformat()
+    # Misma marca que escribe el APK (`/negocio/recordados`); las de más de
+    # 10 días se limpian solas.
+    from web.anfitrion_negocio import marcar_recordado_de
     for r in filas:
-        m[f"res:{r['id']}"] = ahora
-    # Limpieza: las marcas de reservas viejas no se acumulan.
-    corte = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
-    for k in [k for k, v in m.items() if k.startswith("res:") and str(v) < corte]:
-        m.pop(k, None)
+        marcar_recordado_de(email, f"res:{r['id']}")
     return JSONResponse({"ok": True})
 
 

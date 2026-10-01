@@ -26,6 +26,13 @@ class CobrosScreen extends StatefulWidget {
 class _CobrosScreenState extends State<CobrosScreen> {
   String get _id => widget.academiaId;
 
+  @override
+  void initState() {
+    super.initState();
+    // "Recordado hace X": las marcas del backend (también las de la web).
+    appState.sincronizarNegocio();
+  }
+
   String get _moneda {
     final ac = appState.miAcademia;
     return (ac != null && ac.id == _id) ? ac.monedaSimbolo : 'S/';

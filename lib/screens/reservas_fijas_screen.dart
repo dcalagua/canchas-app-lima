@@ -206,13 +206,17 @@ class ReservasFijasScreen extends StatelessWidget {
                           setSt(() => error = 'Escribe el nombre del cliente.');
                           return;
                         }
-                        await appState.agregarReservaFija(
+                        final err = await appState.agregarReservaFija(
                           canchaId: canchaId,
                           diaSemana: dia,
                           hora: hora!,
                           clienteNombre: nombre.text,
                           clienteTelefono: tel.text,
                         );
+                        if (err != null) {
+                          setSt(() => error = err);
+                          return;
+                        }
                         if (ctx.mounted) Navigator.pop(ctx);
                       },
                       child: const Text('Guardar y generar reservas',

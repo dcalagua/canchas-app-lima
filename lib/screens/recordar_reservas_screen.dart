@@ -22,6 +22,13 @@ class _RecordarReservasScreenState extends State<RecordarReservasScreen> {
   int _dia = 1; // 0 = hoy, 1 = mañana (lo típico: recordar la víspera)
   bool _enviando = false;
 
+  @override
+  void initState() {
+    super.initState();
+    // "Ya recordada": también las que se marcaron desde la web.
+    appState.sincronizarNegocio();
+  }
+
   DateTime get _fecha => DateTime.now().add(Duration(days: _dia));
   String get _iso => appState.isoDe(_fecha);
   String get _diaLabel => _dia == 0 ? 'hoy' : 'mañana';
