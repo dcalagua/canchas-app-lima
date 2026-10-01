@@ -1459,6 +1459,25 @@ para la API del APK.
   "yo" del carrito (o la primera). Tests
   `test_cargo_lleva_los_datos_reales_del_cliente_para_culqi` + asserts en
   `test_reserva_web_completa` y `test_ficha_de_academia…`.
+- **SEÑA EN LA RESERVA WEB (caso real PRD, 1-oct-2026: "Campo deportivo Edu
+  Jr." tenía seña 50 % y la web cobraba siempre el total):** la web ahora
+  hace lo mismo que `club_detalle._ResumenReserva` del app. Config
+  `senaPct` en la ficha; el resumen ofrece "Pagar seña N % ahora · S/ X" (por
+  defecto) o "Pagar todo ahora", con "Seña (pagas hoy)", "Resto en la
+  cancha", aviso "la seña no es reembolsable" y total "A pagar hoy". Con
+  boleador todo va en línea (como el app); la seña no se combina con el
+  premio de fidelidad. `AsegurarReq.pago` ("sena" | "total"; vacío = total
+  para JS viejo); seña por turno `router.sena_de` (= `Cancha.senaDe`, mitad
+  hacia arriba) guardada en la columna `sena` de cada fila; responde `pago`,
+  `sena`, `sena_pct`, `resto`. `/web/pagar` cobra seña + su cargo por
+  servicio, confirma con `medio_pago='sena'` y `pagado=false`
+  (`datos.confirmar_reservas(pagado=)`), liquida al dueño SOLO la seña
+  (`medio sena`) y el push dice cuánto cobra en la cancha; un 2.º `/web/pagar`
+  no recobra (filas `confirmada`). Comprobante: "Total de la reserva",
+  "Pagaste hoy (seña)", "Por pagar en la cancha"; el modal de cancelar avisa
+  que la seña no se devuelve. Test
+  `test_sena_del_dueno_en_la_reserva_web_como_el_app`; Playwright
+  `$SP/pw_sena.js`.
 - **"CADA CLIC DEMORA" (queja del director, 1-oct-2026) — CAUSA RAÍZ:**
   `pg-backend-prd` corre en Railway **us-west2 (California)** y PCG-PRD está
   en **sa-east-1 (São Paulo)**: ~180 ms por ida y vuelta. psycopg abría una
@@ -1479,9 +1498,9 @@ para la API del APK.
   (se quita solo a los 15 s o al volver con el botón atrás); todo `fetch` que
   tarde > 250 ms muestra la barra, salvo los sondeos de fondo (`FONDO`: badge,
   hilo, bandeja, foto, descubrir). Excluir un enlace: `data-sin-carga`.
-  Playwright `$SP/pw_preload.js`. **Recomendado (infra, pendiente de
-  autorización):** mover `pg-backend-prd` a **us-east4 (Virginia)**: ~115 ms
-  a São Paulo y más cerca de Lima.
+  Playwright `$SP/pw_preload.js`. **HECHO 1-oct-2026 (autorizado):**
+  `pg-backend-prd` movido a **us-east4 (Virginia)** (~115 ms a São Paulo,
+  más cerca de Lima) y el arreglo pasado a PRD (`prd` = 420be2a).
 - **APARTADOS WEB VENCIDOS NO OCUPAN (caso real PRD, 1-oct-2026: las 20:00
   de "Campo deportivo Edu Jr." salían "Ocupado" sin ningún pago; era un
   apartado `web_hold` de 10 min que el cliente abandonó y que solo se borraba

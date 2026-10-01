@@ -73,10 +73,10 @@ class FakeDB:
             self.reservas[f["id"]] = dict(f)
         return ""
 
-    def confirmar_reservas(self, ids, medio, cargo_soles=0.0, cargo_desglose=None):
+    def confirmar_reservas(self, ids, medio, cargo_soles=0.0, cargo_desglose=None, pagado=True):
         for i in ids:
             if i in self.reservas:
-                self.reservas[i].update(estado="confirmada", pagado=True, medio_pago=medio)
+                self.reservas[i].update(estado="confirmada", pagado=pagado, medio_pago=medio)
         if cargo_soles and ids and ids[0] in self.reservas:
             self.reservas[ids[0]].update(cargo_servicio=cargo_soles, cargo_desglose=list(cargo_desglose or []))
         return True
@@ -2224,3 +2224,47 @@ def test_yape_es_la_pestana_principal_del_checkout_web(db, monkeypatch):
         assert "id='pcgDlgMsg'" in html and "<div class='msg' id='pcgDlgMsg'>" in html, url
         assert ".pcg-dlg .msg{width:100%;min-height:0;flex:0 1 auto;overflow-y:auto" in html, url
         assert "@media (max-width:600px){.pcg-dlg{align-items:flex-end;padding:0}" in html, url
+
+
+def test_sena_del_dueno_en_la_reserva_web_como_el_app(db, monkeypatch):
+    """Caso real PRD (1-oct-2026): el dueño configuró seña 50 % y la web cobraba
+    siempre el total. Ahora, como el app: se adelanta la seña (o todo, si el
+    cliente lo elige), el resto queda "por cobrar en la cancha"."""
+    cargos, pushes = [], []
+    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: (cargos.append(kw) or {"ok": True, "charge_id": "chr_sena"}))
+    import pagos.router as pr
+    monkeypatch.setattr(pr, "_aviso_push_usuario", lambda *a, **k: pushes.append(a))
+    db.canchas["c_lima"]["sena_pct"] = 50
+    assert '"senaPct": 50' in client.get("/reservar/c_lima").text
+    f = _manana()
+    # Seña de 2 turnos de S/ 60 (sin extras: la seña es sobre los turnos).
+    j = client.post("/web/asegurar", json={
+        "cancha_id": "c_lima", "horas": [{"fecha": f, "hora": h} for h in ("15:00", "16:00")],
+        "extras": ["arbitro"], "nombre": "Ana Pérez", "celular": "999888777", "email": "ana@x.com", "pago": "sena"}).json()
+    assert j["ok"] and j["pago"] == "sena" and j["sena"] == 60 and j["resto"] == 90 and j["total"] == 150
+    assert j["total_centimos"] == 6000
+    assert [db.reservas[i]["sena"] for i in j["ids"]] == [30, 30]
+    p = client.post("/web/pagar", json={"ids": j["ids"], "firma": j["firma"], "token": "tkn", "medio": "yape"}).json()
+    assert p["ok"] and cargos[0]["monto_centimos"] == 6000
+    for i in j["ids"]:
+        r = db.reservas[i]
+        assert r["estado"] == "confirmada" and r["pagado"] is False and r["medio_pago"] == "sena"
+    liq = stores.pago_por_charge(j["ids"][0])
+    assert liq.monto_centimos == 6000 and liq.medio == "sena"
+    assert any("seña" in a[2] and "S/ 90.00 en la cancha" in a[2] for a in pushes)
+    # Comprobante: lo pagado hoy y lo que falta en la cancha.
+    r = client.get(p["url"]).text
+    assert "Pagaste hoy (seña)" in r and "Por pagar en la cancha" in r and "S/ 90.00" in r and "S/ 60.00" in r
+    # Pagar de nuevo no vuelve a cobrar (la fila sigue pagado=false pero confirmada).
+    assert client.post("/web/pagar", json={"ids": j["ids"], "firma": j["firma"], "token": "t2"}).json()["ok"] and len(cargos) == 1
+    # "Pagar todo ahora" → cobra el total, como antes.
+    j2 = client.post("/web/asegurar", json={
+        "cancha_id": "c_lima", "horas": [{"fecha": f, "hora": "18:00"}], "extras": [], "nombre": "Ana Pérez",
+        "celular": "999888777", "email": "ana@x.com", "pago": "total"}).json()
+    assert j2["pago"] == "total" and j2["total_centimos"] == 6000 and db.reservas[j2["ids"][0]]["sena"] == 0
+    # Sin seña configurada, pedir "sena" no cambia nada.
+    db.canchas["c_lima"]["sena_pct"] = 0
+    j3 = client.post("/web/asegurar", json={
+        "cancha_id": "c_lima", "horas": [{"fecha": f, "hora": "19:00"}], "extras": [], "nombre": "Ana Pérez",
+        "celular": "999888777", "email": "ana@x.com", "pago": "sena"}).json()
+    assert j3["pago"] == "total" and j3["sena"] == 0

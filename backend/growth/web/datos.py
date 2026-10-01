@@ -645,7 +645,8 @@ def insertar_reservas(filas: list[dict]) -> str:
         return "error"
 
 
-def confirmar_reservas(ids: list[str], medio_pago: str, cargo_soles: float = 0.0, cargo_desglose: list | None = None) -> bool:
+def confirmar_reservas(ids: list[str], medio_pago: str, cargo_soles: float = 0.0, cargo_desglose: list | None = None,
+                       pagado: bool = True) -> bool:
     """Confirma el bloque pagado. El CARGO POR SERVICIO (si lo hubo) queda en la
     PRIMERA fila del bloque (como los extras), si la base tiene las columnas."""
     if not pg.habilitado or not ids:
@@ -653,8 +654,8 @@ def confirmar_reservas(ids: list[str], medio_pago: str, cargo_soles: float = 0.0
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
-                "UPDATE pichangol_reservas SET estado = 'confirmada', pagado = true, "
-                "medio_pago = %s WHERE id = ANY(%s)", (medio_pago, ids))
+                "UPDATE pichangol_reservas SET estado = 'confirmada', pagado = %s, "
+                "medio_pago = %s WHERE id = ANY(%s)", (bool(pagado), medio_pago, ids))
             if cargo_soles and cargo_soles > 0 and col_cargo_disponible():
                 cur.execute("UPDATE pichangol_reservas SET cargo_servicio = %s, cargo_desglose = %s WHERE id = %s",
                             (round(float(cargo_soles), 2), json.dumps(cargo_desglose or []), ids[0]))
