@@ -19,6 +19,7 @@ class HazteProScreen extends StatefulWidget {
 
 class _HazteProScreenState extends State<HazteProScreen> {
   bool _procesando = false;
+  bool _cambiandoRenovacion = false;
 
   static const _mesesCorto = [
     'ene', 'feb', 'mar', 'abr', 'may', 'jun',
@@ -55,7 +56,8 @@ class _HazteProScreenState extends State<HazteProScreen> {
         context,
         titulo: '¡Ya eres Pro! 🎾',
         mensaje: 'Tu membresía Pichangol Pro está activa hasta el '
-            '${_fecha(r['hasta'] as String?)}. Se renueva sola desde tu saldo.',
+            '${_fecha(r['hasta'] as String?)}.'
+            '${appState.proRenueva ? ' Se renueva sola desde tu saldo.' : ''}',
         textoBoton: 'Genial',
         icono: Icons.workspace_premium,
       );
@@ -81,6 +83,93 @@ class _HazteProScreenState extends State<HazteProScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text((r['error'] ?? 'No se pudo activar. Reintenta.').toString())));
     }
+  }
+
+  /// Interruptor "Renovación automática" (mismo núcleo que la web /pro):
+  /// apagarlo pide confirmación; al vencer no se debita nada del saldo.
+  Future<void> _cambiarRenovacion(bool renovar) async {
+    if (_cambiandoRenovacion) return;
+    if (!renovar) {
+      final ok = await confirmarPichangol(
+        context,
+        titulo: '¿Cancelar la renovación?',
+        mensaje: 'Sigues siendo Pro hasta el ${_fecha(appState.proHasta)}. '
+            'Después ya no se cobrará de tu saldo y tu membresía vencerá. '
+            'Puedes reactivarla cuando quieras.',
+        textoConfirmar: 'Cancelar renovación',
+        textoCancelar: 'Mantener',
+        destructivo: true,
+        icono: Icons.autorenew,
+      );
+      if (!ok || !mounted) return;
+    }
+    setState(() => _cambiandoRenovacion = true);
+    Map<String, dynamic> r;
+    try {
+      r = await conPreload(context, () => appState.cambiarRenovacionPro(renovar),
+          texto: renovar ? 'Reactivando…' : 'Cancelando…');
+    } finally {
+      if (mounted) setState(() => _cambiandoRenovacion = false);
+    }
+    if (!mounted) return;
+    if (r['ok'] == true) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(renovar
+              ? 'Listo: tu Pro se renovará solo desde tu saldo.'
+              : 'Listo: tu Pro no se renovará. Vence el ${_fecha(appState.proHasta)}.')));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text((r['mensaje'] ?? 'No se pudo cambiar. Reintenta.')
+              .toString())));
+    }
+  }
+
+  Widget _tarjetaRenovacion() {
+    final cortesia = appState.proCortesia;
+    final renueva = appState.proRenueva;
+    final detalle = cortesia
+        ? 'Tu Pro es de cortesía: no se renueva solo ni se cobra de tu saldo. '
+            'Al vencer, actívalo pagando si quieres seguir.'
+        : renueva
+            ? 'Al vencer (${_fecha(appState.proHasta)}) se cobra 1 mes de tu '
+                'saldo Pichangol.'
+            : 'Cancelada: vence el ${_fecha(appState.proHasta)} y no se cobrará '
+                'nada más.';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 8, 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0F000000), blurRadius: 10, offset: Offset(0, 2)),
+        ],
+      ),
+      child: Row(
+        children: [
+          const IconoVivo(Icons.autorenew, size: 22, color: bosque),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Renovación automática',
+                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+                const SizedBox(height: 2),
+                Text(detalle,
+                    style: const TextStyle(
+                        color: textoTenue, fontSize: 12.5, height: 1.3)),
+              ],
+            ),
+          ),
+          if (!cortesia)
+            Switch(
+              value: renueva,
+              activeColor: lima,
+              onChanged: _cambiandoRenovacion ? null : _cambiarRenovacion,
+            ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -166,6 +255,10 @@ class _HazteProScreenState extends State<HazteProScreen> {
                   ],
                 ),
               ),
+              if (activo) ...[
+                const SizedBox(height: 14),
+                _tarjetaRenovacion(),
+              ],
               const SizedBox(height: 18),
               const Text('Qué incluye',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
@@ -193,7 +286,8 @@ class _HazteProScreenState extends State<HazteProScreen> {
                     Expanded(
                       child: Text(
                           'Se cobra de tu saldo Pichangol (la misma billetera). '
-                          'Tu saldo hoy: $mon $saldo. Se renueva solo cada mes.',
+                          'Tu saldo hoy: $mon $saldo.'
+                          '${activo && !appState.proRenueva ? '' : ' Se renueva solo cada mes.'}',
                           style: const TextStyle(
                               color: bosque, fontSize: 12.5, height: 1.3)),
                     ),

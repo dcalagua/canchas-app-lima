@@ -60,6 +60,7 @@ import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../services/avisos_service.dart';
 import '../services/circuito_service.dart';
+import '../services/convocatorias_service.dart';
 import '../services/pagos_service.dart';
 import '../services/retos_service.dart';
 import '../services/push_service.dart';
@@ -327,64 +328,14 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Ajusta MI nivel tras un resultado real (reto/campeonato) con ELO suave, y
-  /// suma partido/victoria. Persiste local + Supabase.
-  Future<void> registrarResultadoNivel(
-    String deporte, {
-    required double rivalNivel,
-    required bool gane,
-  }) async {
-    final email = (usuario?.email ?? '').toLowerCase();
-    if (email.isEmpty || deporte.isEmpty) return;
-    final actual =
-        _misNiveles[deporte] ?? Nivel(email: email, deporte: deporte);
-    final nuevo = actual.copyWith(
-      nivel: Nivel.calcularElo(
-          miNivel: actual.nivel, rivalNivel: rivalNivel, gane: gane),
-      partidos: actual.partidos + 1,
-      victorias: actual.victorias + (gane ? 1 : 0),
-      actualizado: DateTime.now(),
-    );
-    _misNiveles[deporte] = nuevo;
-    notifyListeners();
-    await _guardarMisNivelesCache();
-    await NivelesRepo.guardar(nuevo);
-  }
-
-  static const _kRetosElo = 'retos_elo_aplicados';
-
-  /// Aplica el ELO a MI nivel por CADA reto ya JUGADO que aún no procesé
-  /// (idempotente por id de reto → nunca se aplica dos veces). Cada jugador
-  /// actualiza SU propio nivel en su dispositivo, con el nivel actual del rival.
-  /// Sólo singles (el dobles necesita lógica de equipo). Se llama al abrir "Mis
-  /// retos": así el nivel sube/baja SOLO con resultados reales (Playtomic).
-  Future<void> aplicarEloDeRetos(List<Map<String, dynamic>> retos) async {
-    final yo = (usuario?.email ?? '').toLowerCase();
-    if (yo.isEmpty || retos.isEmpty) return;
-    final prefs = await SharedPreferences.getInstance();
-    final hechos = (prefs.getStringList(_kRetosElo) ?? <String>[]).toSet();
-    var cambio = false;
-    for (final r in retos) {
-      if ((r['estado'] ?? '').toString() != 'jugado') continue;
-      if ((r['modalidad'] ?? 'singles').toString() == 'dobles') continue;
-      final ganador = (r['ganador_email'] ?? '').toString().toLowerCase();
-      if (ganador.isEmpty) continue;
-      final id = r['id']?.toString() ?? '';
-      if (id.isEmpty || hechos.contains(id)) continue;
-      final deporte = (r['deporte'] ?? '').toString();
-      if (deporte.isEmpty) continue;
-      final retador = (r['retador_email'] ?? '').toString().toLowerCase();
-      final retado = (r['retado_email'] ?? '').toString().toLowerCase();
-      final rival = yo == retador ? retado : (yo == retado ? retador : '');
-      if (rival.isEmpty) continue;
-      final nivRival = await NivelesRepo.de(rival, deporte);
-      await registrarResultadoNivel(deporte,
-          rivalNivel: nivRival?.nivel ?? 3.0, gane: ganador == yo);
-      hechos.add(id);
-      cambio = true;
-    }
-    if (cambio) await prefs.setStringList(_kRetosElo, hechos.toList());
-  }
+  /// Refresca MIS niveles tras ver mis retos. El ELO de los retos JUGADOS ya
+  /// NO se calcula en el teléfono: lo aplica el BACKEND una sola vez por reto
+  /// en cuanto queda confirmado (`backend/growth/retos/elo.py`, misma fórmula
+  /// que `Nivel.calcularElo`), así app y web muestran el mismo nivel. Aquí
+  /// solo se baja `pichangol_niveles` (device-first). El conjunto local viejo
+  /// `retos_elo_aplicados` ya no se usa: los retos jugados antes de este cambio
+  /// el servidor no los vuelve a aplicar.
+  Future<void> refrescarNivelesTrasRetos() => cargarMisNiveles();
 
   // ── Bloqueados (tipo WhatsApp): correos que el usuario bloqueó ─────────────
   final Set<String> _bloqueados = {};
@@ -6234,6 +6185,36 @@ class AppState extends ChangeNotifier {
     return _dedupPorLugar(map.values.toList());
   }
 
+  /// Locales (clubes) que son MÍOS de verdad: nombre del `club` de cada cancha
+  /// con `dueno == mi correo` (NO el legado reclamable de [misCanchas]).
+  /// Mapa slug → nombre (slug = `ConvocatoriasService.slugClub`, el mismo de la
+  /// web `mis_clubs`). Sin sesión, vacío.
+  Map<String, String> get misClubesPropios {
+    final email = (usuario?.email ?? '').trim().toLowerCase();
+    if (email.isEmpty) return const {};
+    final out = <String, String>{};
+    for (final c in misCanchas) {
+      if (c.dueno.trim().toLowerCase() != email) continue;
+      final nom = (c.club.trim().isNotEmpty ? c.club : c.nombre).trim();
+      if (nom.isEmpty) continue;
+      out.putIfAbsent(ConvocatoriasService.slugClub(nom), () => nom);
+    }
+    return out;
+  }
+
+  /// ¿Soy dueño de un local de este club (slug)? Puede convocar pichangas.
+  bool esDuenoDeClub(String clubId) =>
+      clubId.isNotEmpty && misClubesPropios.containsKey(clubId);
+
+  /// Admin de una pichanga = quien la CREÓ o dueño de un local de ese club
+  /// (misma regla que la web `jugador_partidos.es_admin`).
+  bool esAdminDePichanga(String clubId, String creadoPor) {
+    final email = (usuario?.email ?? '').trim().toLowerCase();
+    if (email.isEmpty) return false;
+    return (creadoPor.isNotEmpty && creadoPor.trim().toLowerCase() == email) ||
+        esDuenoDeClub(clubId);
+  }
+
   /// Resuelve a qué cancha del DUEÑO pertenece una reserva, AUNQUE la reserva
   /// apunte a un id duplicado del mismo local (pasa cuando la cancha se
   /// re-registró/re-reclamó y quedó con varios ids: `misCanchas` deduplica por
@@ -7013,6 +6994,10 @@ class AppState extends ChangeNotifier {
   bool proActivo = false; // ¿el usuario tiene la membresía Pro vigente?
   String? proHasta; // ISO de vigencia (si activa)
   double proPrecio = 12; // precio mensual (se refresca del backend)
+  // ¿Se renueva sola desde el saldo al vencer? (false si el jugador la
+  // canceló o si es Pro de cortesía, que nunca se renueva sola).
+  bool proRenueva = false;
+  bool proCortesia = false; // Pro regalado por la torre (marcha blanca)
 
   // Correos con Pichangol Pro vigente (para la insignia PRO en el ranking).
   Set<String> _proEmails = {};
@@ -7034,11 +7019,15 @@ class AppState extends ChangeNotifier {
   Future<void> sincronizarPro() async {
     final email = usuario?.email;
     if (email == null || email.isEmpty || !PagosService.disponible) return;
-    final est = await PagosService.proEstado(email, pais: paisActual.iso);
+    // Pro se paga con el SALDO: precio y moneda del país de la BILLETERA
+    // (igual que la web /pro), no del país que se explora.
+    final est = await PagosService.proEstado(email, pais: paisBilletera.iso);
     if (est == null) return;
     proActivo = est['activa'] == true;
     proHasta = est['hasta'] as String?;
     proPrecio = (est['precio_soles'] as num?)?.toDouble() ?? proPrecio;
+    proRenueva = est['renueva'] == true;
+    proCortesia = est['cortesia'] == true;
     // Mantén el set de Pro coherente con mi propio estado al instante.
     final mail = email.trim().toLowerCase();
     if (proActivo) {
@@ -7054,12 +7043,27 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>> suscribirPro() async {
     final email = usuario?.email ?? '';
     if (email.isEmpty) return {'ok': false, 'error': 'Inicia sesión primero.'};
-    final r = await PagosService.proSuscribir(email, pais: paisActual.iso);
+    final r = await PagosService.proSuscribir(email, pais: paisBilletera.iso);
     if (r['ok'] == true) {
       proActivo = true;
       proHasta = r['hasta'] as String?;
       notifyListeners();
       await sincronizarSaldo(); // el saldo bajó (se debitó el mes)
+      await sincronizarPro(); // renovación / cortesía reales
+    }
+    return r;
+  }
+
+  /// Cancela ([renovar] false) o reactiva la renovación automática de Pro
+  /// (`POST /pagos/pro/renovacion`, mismo núcleo que la web). Devuelve el
+  /// JSON del backend: {ok:true, renueva} o {ok:false, mensaje}.
+  Future<Map<String, dynamic>> cambiarRenovacionPro(bool renovar) async {
+    final email = usuario?.email ?? '';
+    if (email.isEmpty) return {'ok': false, 'mensaje': 'Inicia sesión primero.'};
+    final r = await PagosService.proRenovacion(email, renovar: renovar);
+    if (r['ok'] == true) {
+      proRenueva = r['renueva'] == true;
+      notifyListeners();
     }
     return r;
   }
@@ -8019,6 +8023,8 @@ class AppState extends ChangeNotifier {
     // El estado real de la cuenta nueva lo baja sincronizarPro del backend.
     proActivo = false;
     proHasta = null;
+    proRenueva = false;
+    proCortesia = false;
     // PUNTOS: los ganados se derivan de misReservas (ya se limpian); lo
     // CANJEADO también es por cuenta → reset (la cuenta nueva lo baja de
     // Supabase en cargarPuntosCanjeados).

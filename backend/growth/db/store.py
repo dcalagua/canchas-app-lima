@@ -540,6 +540,11 @@ class Stores:
         self.inscripciones: list[Inscripcion] = []
         # RETOS P2P (jugador reta a jugador; el resultado suma al ranking).
         self.retos: list[Reto] = []
+        # ELO DE RETOS aplicado en el SERVIDOR (1-oct-2026, `retos/elo.py`):
+        # str(reto_id) -> {estado: pendiente|aplicado|omitido, en, cambios}.
+        # Solo entran los retos que pasan a JUGADO desde este cambio: los
+        # anteriores ya los aplicó el APK en el teléfono de cada jugador.
+        self.retos_elo: dict[str, dict] = {}
         # VENTAS del Marketplace (escrow: retenido hasta que el comprador confirme).
         self.ventas: list[Venta] = []
         # POZOS DE EQUIPO (cuota de torneo repartida entre el plantel; ver
@@ -876,6 +881,7 @@ class Stores:
         }
         self.pagos = []
         self.retos = []
+        self.retos_elo = {}
         self.ventas = []
         self.correos_eventos = []
         self.correos = []
@@ -1161,6 +1167,7 @@ class Stores:
             "modo_aprobacion_overrides": dict(self.modo_aprobacion_overrides),
             "convocatorias": [como_dict(c) for c in self.convocatorias],
             "retos": [como_dict(r) for r in self.retos],
+            "retos_elo": {k: dict(v) for k, v in self.retos_elo.items()},
             "ventas": [como_dict(v) for v in self.ventas],
             "pozos_equipo": {k: dict(v) for k, v in self.pozos_equipo.items()},
             "dni_verificados": dict(self.dni_verificados),
@@ -1243,6 +1250,9 @@ class Stores:
             data.get("modo_aprobacion_overrides") or {})
         self.convocatorias = [_conv_from(d) for d in data.get("convocatorias", [])]
         self.retos = [_reto_from(d) for d in data.get("retos", [])]
+        self.retos_elo = {
+            str(k): dict(v) for k, v in (data.get("retos_elo") or {}).items()
+            if isinstance(v, dict)}
         self.ventas = [_venta_from(d) for d in data.get("ventas", [])]
         self.pozos_equipo = {
             str(k): dict(v) for k, v in (data.get("pozos_equipo") or {}).items()

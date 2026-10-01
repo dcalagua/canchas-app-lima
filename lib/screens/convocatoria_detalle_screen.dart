@@ -27,7 +27,14 @@ class _ConvocatoriaDetalleScreenState extends State<ConvocatoriaDetalleScreen> {
   bool _cargando = true;
   bool _ocupado = false; // acción en curso (anotarse/cancelar/cerrar)
 
-  bool get _esAdmin => appState.sesionIniciada;
+  // Admin = quien CREÓ la pichanga o dueño de un local de ese club (sus
+  // canchas reales), igual que la web `es_admin`.
+  bool get _esAdmin {
+    final d = _detalle;
+    if (d == null) return false;
+    return appState.esAdminDePichanga(
+        d.convocatoria.clubId, d.convocatoria.creadoPor);
+  }
   String? get _miEmail => appState.usuario?.email;
 
   @override

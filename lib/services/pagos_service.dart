@@ -759,14 +759,42 @@ class PagosService {
     }
   }
 
+  /// Cancela / reactiva la renovación automática de Pro (mismo núcleo que la
+  /// web `/web/pro/renovacion`). {ok:true, renueva} o {ok:false, error,
+  /// mensaje} (sin Pro vigente / cortesía).
+  static Future<Map<String, dynamic>> proRenovacion(String email,
+      {required bool renovar}) async {
+    final e = email.trim().toLowerCase();
+    if (!disponible || e.isEmpty) {
+      return {'ok': false, 'mensaje': 'Pagos no disponibles.'};
+    }
+    try {
+      final r = await http
+          .post(Uri.parse('$_baseUrl/pagos/pro/renovacion'),
+              headers: await _headersUsuario(json: true),
+              body: jsonEncode({'email': e, 'renovar': renovar}))
+          .timeout(const Duration(seconds: 15));
+      if (r.statusCode != 200) {
+        return {'ok': false, 'mensaje': 'No se pudo cambiar. Reintenta.'};
+      }
+      return jsonDecode(r.body) as Map<String, dynamic>;
+    } catch (_) {
+      return {'ok': false, 'mensaje': 'Sin conexión con el servidor de pagos.'};
+    }
+  }
+
   /// Inscribe a un torneo cobrando la cuota del SALDO del jugador (billetera
-  /// única) y acreditando el neto al profe. {ok:true,...} o {ok:false,
-  /// falta_saldo:true, requerido_soles}.
+  /// única) y acreditando el neto al profe. [moneda] = la del campeonato
+  /// (`Campeonato.moneda`, símbolo o ISO): el backend la guarda en el pago y
+  /// calcula la comisión con el mínimo de esa moneda. {ok:true,...} o
+  /// {ok:false, falta_saldo:true, requerido_soles} / {ok:false,
+  /// error:'moneda_distinta'}.
   static Future<Map<String, dynamic>> inscribirTorneo({
     required String email,
     required String academiaDueno,
     required double cuotaSoles,
     String concepto = '',
+    String moneda = '',
   }) async {
     if (!disponible) return {'ok': false, 'error': 'Pagos no disponibles.'};
     try {
@@ -777,6 +805,7 @@ class PagosService {
             'academia_dueno': academiaDueno,
             'cuota_soles': cuotaSoles,
             'concepto': concepto,
+            'moneda': moneda,
           })).timeout(const Duration(seconds: 20));
       return jsonDecode(r.body) as Map<String, dynamic>;
     } catch (_) {
