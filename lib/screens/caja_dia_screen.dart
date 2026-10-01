@@ -11,6 +11,10 @@ import '../widgets/icono_vivo.dart';
 /// CAJA DEL DÍA del dueño: la plata de hoy de un vistazo (cobrado, por cobrar,
 /// reservas, ocupación), la lista de reservas del día con "marcar pagado", y el
 /// CIERRE DE CAJA (arqueo). Es lo que el dueño abre a diario para cuadrar.
+///
+/// Los cierres viven en el backend (los mismos que la caja de la web) y van
+/// POR MONEDA: un dueño con canchas en dos países ve y cierra cada moneda por
+/// separado (chips arriba), nunca se suman soles con dólares.
 class CajaDiaScreen extends StatefulWidget {
   const CajaDiaScreen({super.key});
 
@@ -20,21 +24,26 @@ class CajaDiaScreen extends StatefulWidget {
 
 class _CajaDiaScreenState extends State<CajaDiaScreen> {
   DateTime _fecha = DateTime.now();
+  String _moneda = ''; // ISO elegido ('' = la principal del dueño)
 
   @override
   void initState() {
     super.initState();
-    // Cierre automático de respaldo de días pasados sin cerrar (idempotente).
+    // Trae los cierres del backend (los mismos de la web) y deja que el
+    // servidor haga el cierre automático de días pasados sin cerrar.
     appState.autocerrarCajasPendientes();
+  }
+
+  /// Moneda en pantalla (ISO). Si la elegida ya no aplica, la principal.
+  String get _iso4217 {
+    final ms = appState.monedasNegocio;
+    return ms.contains(_moneda) ? _moneda : ms.first;
   }
 
   String get _iso => appState.isoDe(_fecha);
   bool get _esHoy => appState.isoDe(DateTime.now()) == _iso;
 
-  String get _mon {
-    final c = appState.misCanchas;
-    return c.isEmpty ? 'S/' : c.first.monedaSimbolo;
-  }
+  String get _mon => appState.simboloDeMonedaIso(_iso4217);
 
   static const _dias = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
   static const _meses = [
@@ -68,9 +77,9 @@ class _CajaDiaScreenState extends State<CajaDiaScreen> {
       };
 
   Future<void> _cerrarCaja() async {
-    final c = appState.cajaDia(_iso);
+    final c = appState.cajaDia(_iso, moneda: _iso4217);
     // El arqueo muestra POR DÓNDE entró la plata (efectivo vs digital).
-    final medios = appState.cajaDiaPorMedio(_iso);
+    final medios = appState.cajaDiaPorMedio(_iso, moneda: _iso4217);
     final desglose = medios.isEmpty
         ? ''
         : '\n${medios.entries.map((e) => '${_medioEtiqueta(e.key)}: $_mon ${e.value}').join('\n')}';
@@ -84,12 +93,19 @@ class _CajaDiaScreenState extends State<CajaDiaScreen> {
       icono: Icons.point_of_sale,
     );
     if (ok) {
-      appState.cerrarCaja(_iso);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            backgroundColor: lima,
-            content: Text('Caja cerrada: cobraste $_mon ${c.cobrado}.')));
-      }
+      final err = await appState.cerrarCaja(_iso, moneda: _iso4217);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: err == null ? lima : clayOscuro,
+          content: Text(err ?? 'Caja cerrada: cobraste $_mon ${c.cobrado}.')));
+    }
+  }
+
+  Future<void> _reabrir() async {
+    final err = await appState.reabrirCaja(_iso, moneda: _iso4217);
+    if (err != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(backgroundColor: clayOscuro, content: Text(err)));
     }
   }
 
@@ -110,11 +126,35 @@ class _CajaDiaScreenState extends State<CajaDiaScreen> {
               ),
             );
           }
-          final caja = appState.cajaDia(_iso);
-          final reservas = appState.reservasDelDiaDueno(_iso);
-          final cierre = appState.cierreDe(_iso);
+          final mon = _iso4217;
+          final monedas = appState.monedasNegocio;
+          final caja = appState.cajaDia(_iso, moneda: mon);
+          final porMedio = appState.cajaDiaPorMedio(_iso, moneda: mon);
+          final reservas = appState.reservasDelDiaDueno(_iso, moneda: mon);
+          final cierre = appState.cierreDe(_iso, moneda: mon);
           return Column(
             children: [
+              // Una caja por moneda (dueño con canchas en varios países).
+              if (monedas.length > 1)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      for (final m in monedas)
+                        ChoiceChip(
+                          label: Text(
+                              '${appState.simboloDeMonedaIso(m)} · $m',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700)),
+                          selected: m == mon,
+                          onSelected: (_) => setState(() => _moneda = m),
+                        ),
+                    ],
+                  ),
+                ),
               // Navegación de día.
               Padding(
                 padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
@@ -172,15 +212,14 @@ class _CajaDiaScreenState extends State<CajaDiaScreen> {
                           ),
                           // Desglose del cobrado por MEDIO (para el arqueo:
                           // cuánto entró por cada canal). Etiqueta por país.
-                          if (appState.cajaDiaPorMedio(_iso).isNotEmpty) ...[
+                          if (porMedio.isNotEmpty) ...[
                             const Divider(height: 22),
                             Wrap(
                               spacing: 8,
                               runSpacing: 8,
                               alignment: WrapAlignment.center,
                               children: [
-                                for (final e
-                                    in appState.cajaDiaPorMedio(_iso).entries)
+                                for (final e in porMedio.entries)
                                   Container(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 10, vertical: 6),
@@ -239,7 +278,7 @@ class _CajaDiaScreenState extends State<CajaDiaScreen> {
                             ),
                             if (cierre.automatico)
                               TextButton(
-                                onPressed: () => appState.reabrirCaja(_iso),
+                                onPressed: _reabrir,
                                 style: TextButton.styleFrom(
                                     foregroundColor: clayOscuro,
                                     padding: const EdgeInsets.symmetric(

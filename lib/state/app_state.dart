@@ -59,6 +59,7 @@ import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../services/avisos_service.dart';
 import '../services/circuito_service.dart';
+import '../services/negocio_service.dart';
 import '../services/pagos_service.dart';
 import '../services/retos_service.dart';
 import '../services/push_service.dart';
@@ -96,27 +97,28 @@ class AppState extends ChangeNotifier {
 
   // Notas privadas del DUEÑO por cliente (clave = correo, o 'n:nombre' para el
   // walk-in sin cuenta), tipo "cuaderno del club": prefiere efectivo, juega los
-  // martes, cancha 2, etc. Device-first (SharedPreferences); solo las ve el dueño.
+  // martes, cancha 2, etc. Viven en el BACKEND (`/negocio/notas`, las mismas que
+  // la web en Clientes); aquí van en caché (device-first). Solo las ve el dueño.
   final Map<String, String> _notasCliente = {};
 
   /// Nota privada que el dueño le puso a un cliente (vacío si no hay).
-  String notaCliente(String clave) => _notasCliente[clave.trim()] ?? '';
+  String notaCliente(String clave) =>
+      _notasCliente[clave.trim().toLowerCase()] ?? '';
 
-  /// Guarda (o borra, si queda vacía) la nota privada de un cliente y persiste.
+  /// Guarda (o borra, si queda vacía) la nota privada de un cliente: al
+  /// instante en el teléfono y luego en el backend (cola si no hay red).
   Future<void> guardarNotaCliente(String clave, String nota) async {
-    final k = clave.trim();
+    final k = clave.trim().toLowerCase();
     if (k.isEmpty) return;
-    final t = nota.trim();
+    final t = nota.trim().replaceAll(RegExp(r'[ \t]+'), ' ');
     if (t.isEmpty) {
       _notasCliente.remove(k);
     } else {
       _notasCliente[k] = t;
     }
     notifyListeners();
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kNotasCliente, jsonEncode(_notasCliente));
-    } catch (_) {}
+    await _encolarNegocio({'tipo': 'nota', 'clave': k, 'texto': t},
+        dedupe: 'nota|$k');
   }
 
   /// Apodo local que le puse a un correo, o null si no le puse.
@@ -4279,10 +4281,14 @@ class AppState extends ChangeNotifier {
   }
 
   /// Marca que se le RECORDÓ el pago a un alumno (ahora).
+  /// Se guarda en el backend (`/negocio/recordados`, la misma marca que deja
+  /// la web en Cobros de academia).
   void marcarRecordado(String alumnoId) {
-    _recordatoriosCobro[alumnoId] = DateTime.now().toIso8601String();
+    final ahora = DateTime.now().toUtc().toIso8601String();
+    _recordatoriosCobro[alumnoId] = ahora;
     notifyListeners();
-    _persistirDatos();
+    _encolarNegocio({'tipo': 'recordado', 'clave': alumnoId, 'cuando': ahora},
+        dedupe: 'rec|$alumnoId');
   }
 
   /// Última vez que se le recordó a un alumno (null si nunca).
@@ -7187,14 +7193,17 @@ class AppState extends ChangeNotifier {
         } catch (_) {}
       }
 
-      // Notas privadas del dueño por cliente (cuaderno del club, device-first).
+      // Notas privadas del dueño por cliente (clave vieja, aún sin migrar).
       final notasRaw = prefs.getString(_kNotasCliente);
       if (notasRaw != null) {
         try {
           final m = jsonDecode(notasRaw) as Map<String, dynamic>;
-          m.forEach((k, v) => _notasCliente[k] = v.toString());
+          m.forEach((k, v) => _notasCliente[k.toLowerCase()] = v.toString());
         } catch (_) {}
       }
+      // NEGOCIO DEL DUEÑO: la caché del backend (`/negocio/*`) manda sobre lo
+      // que el teléfono guardaba antes en las claves viejas.
+      _cargarNegocioCache(prefs);
 
       final vidsRaw = prefs.getString(_kVideosLocales);
       if (vidsRaw != null) {
@@ -7369,19 +7378,12 @@ class AppState extends ChangeNotifier {
       await prefs.setString(_kMonedaSaldo, monedaSaldo);
       await prefs.setString(_kVerif, estadoVerificacion);
       await prefs.setString(_kVerifEmail, _verifEmail);
-      await prefs.setString(_kRecordCobro, jsonEncode(_recordatoriosCobro));
       await prefs.setBool(_kRecordAuto, recordatoriosAutoActivos);
       await prefs.setBool(_kMostrarUltimaVez, mostrarUltimaVez);
       await prefs.setBool(_kConfirmacionLectura, confirmacionLectura);
       await prefs.setString(
           _kAsistAvisada, jsonEncode(_asistenciaAvisada.toList()));
       await prefs.setString(_kDescuentosSlot, jsonEncode(_descuentosSlot));
-      await prefs.setString(_kCierresCaja,
-          jsonEncode(cierresCaja.map((c) => c.toJson()).toList()));
-      await prefs.setString(_kReservasFijas,
-          jsonEncode(reservasFijas.map((f) => f.toJson()).toList()));
-      await prefs.setString(
-          _kResRecordadas, jsonEncode(_reservasRecordadas.toList()));
       if (fechaNacimiento != null) {
         await prefs.setString(
             _kNacimiento, fechaNacimiento!.toIso8601String());
@@ -7498,6 +7500,9 @@ class AppState extends ChangeNotifier {
     cargarReservasSync(); // reservas offline pendientes de subir (outbox)
     cargarContabilidad(); // comisión/liquidación pendiente de registrar
     Boleadores.sincronizar(u.email); // perfil de boleador + solicitudes (device-first)
+    // Negocio del dueño (cierres de caja, fijas, notas, recordatorios): los
+    // mismos que ve la web; sube una vez lo que el teléfono guardaba antes.
+    sincronizarNegocio(forzar: true);
     // Trae sus academias (por si las creó en otro dispositivo) y LUEGO las
     // matrículas, para que el profe vea a sus alumnos apenas entra.
     () async {
@@ -7553,6 +7558,8 @@ class AppState extends ChangeNotifier {
   /// al iniciar sesión (sincronizarAgenda, cargarEstados, etc.).
   void _limpiarDatosDeSesion() {
     Boleadores.limpiar(); // el perfil de boleador es por cuenta
+    // Negocio del dueño (cierres, fijas, notas, recordatorios): por cuenta.
+    _limpiarNegocioLocal();
     _apodos.clear();
     _contactos.clear();
     _bloqueados.clear();
@@ -7740,7 +7747,12 @@ class AppState extends ChangeNotifier {
       // BILLETERA en el backend: saldo 0 y sin movimientos. Sin esto, el saldo y
       // los pagos "por recibir" volverían al re-sincronizar (viven en el server).
       await PagosService.resetMiBilletera(email);
+      // Negocio del dueño en el backend (cierres, fijas, notas, recordatorios).
+      _negocioPend.removeWhere((x) => x['email'] == email);
+      await _guardarNegocioPend();
+      await NegocioService.borrar(email);
     }
+    _limpiarNegocioLocal();
     // Tombstone CUALQUIER academia local restante (p. ej. la demo de dev) para que
     // no reaparezca al re-cargar de la nube ni se re-siembre.
     _academiasEliminadas.addAll(academias.map((a) => a.id));
@@ -8546,21 +8558,43 @@ class AppState extends ChangeNotifier {
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
-  /// Reservas del día [iso] de las canchas del dueño (excluye no-shows).
-  List<Reserva> reservasDelDiaDueno(String iso) {
-    return reservas
-        .where((r) =>
-            r.fecha == iso &&
-            r.estado != EstadoReserva.noShow &&
-            miCanchaDeReserva(r.canchaId) != null)
-        .toList()
+  /// ISO de la moneda de una cancha ('PEN' | 'USD' | 'BOB'), por su ubicación.
+  String monedaIsoDeCancha(Cancha c) =>
+      paisPorMonedaOIso(c.monedaSimbolo).monedaIso;
+
+  /// Monedas (ISO) de las canchas del dueño, en orden de aparición. La caja y
+  /// sus cierres van POR MONEDA (como en la web): nunca se suman soles con
+  /// dólares. Sin canchas → ['PEN'].
+  List<String> get monedasNegocio {
+    final out = <String>[];
+    for (final c in misCanchas) {
+      final m = monedaIsoDeCancha(c);
+      if (!out.contains(m)) out.add(m);
+    }
+    return out.isEmpty ? const ['PEN'] : out;
+  }
+
+  /// Símbolo de una moneda ISO ('PEN' → 'S/').
+  String simboloDeMonedaIso(String iso) => paisPorMonedaOIso(iso).moneda;
+
+  /// Reservas del día [iso] de las canchas del dueño (excluye no-shows). Con
+  /// [moneda] (ISO) solo las de las canchas en esa moneda.
+  List<Reserva> reservasDelDiaDueno(String iso, {String moneda = ''}) {
+    return reservas.where((r) {
+      if (r.fecha != iso || r.estado == EstadoReserva.noShow) return false;
+      final c = miCanchaDeReserva(r.canchaId);
+      if (c == null) return false;
+      return moneda.isEmpty || monedaIsoDeCancha(c) == moneda;
+    }).toList()
       ..sort((a, b) => a.horaInicio.compareTo(b.horaInicio));
   }
 
   /// Caja del día: cobrado, por cobrar (con extras), reservas y % ocupación.
+  /// Con [moneda] (ISO) solo las canchas de esa moneda (= la caja de la web).
   ({int cobrado, int porCobrar, int reservas, int ocupacion}) cajaDia(
-      String iso) {
-    final list = reservasDelDiaDueno(iso);
+      String iso,
+      {String moneda = ''}) {
+    final list = reservasDelDiaDueno(iso, moneda: moneda);
     var cobrado = 0, porCobrar = 0;
     for (final r in list) {
       // Reserva canjeada con BONO: cuenta para ocupación (sigue en `list`) pero
@@ -8577,7 +8611,9 @@ class AppState extends ChangeNotifier {
         porCobrar += t - sena;
       }
     }
-    final slots = misCanchas.fold<int>(0, (s, c) => s + c.horariosSlots().length);
+    final slots = misCanchas
+        .where((c) => moneda.isEmpty || monedaIsoDeCancha(c) == moneda)
+        .fold<int>(0, (s, c) => s + c.horariosSlots().length);
     final ocupacion = slots == 0 ? 0 : (list.length * 100) ~/ slots;
     return (
       cobrado: cobrado,
@@ -8591,13 +8627,13 @@ class AppState extends ChangeNotifier {
   /// misma lógica). Claves técnicas: 'yape' | 'tarjeta' | 'efectivo' |
   /// 'manual' | 'sena' | 'online' — la pantalla pone la etiqueta por país
   /// (Yape solo en Perú). Para el arqueo: cuánta plata entró por cada canal.
-  Map<String, int> cajaDiaPorMedio(String iso) {
+  Map<String, int> cajaDiaPorMedio(String iso, {String moneda = ''}) {
     final out = <String, int>{};
     void suma(String k, int v) {
       if (v > 0) out[k] = (out[k] ?? 0) + v;
     }
 
-    for (final r in reservasDelDiaDueno(iso)) {
+    for (final r in reservasDelDiaDueno(iso, moneda: moneda)) {
       if (r.esBono) continue; // se cobró al comprar el bono (no es plata de hoy)
       final t = r.totalConExtras.round();
       if (r.pagado) {
@@ -8620,23 +8656,37 @@ class AppState extends ChangeNotifier {
     return out;
   }
 
-  // Cierres de caja (arqueo por día). Se persisten local.
+  // ── NEGOCIO DEL DUEÑO EN EL BACKEND ───────────────────────────────────────
+  // Cierres de caja, reservas fijas, notas privadas de clientes y "ya
+  // recordado" viven en el BACKEND (`/negocio/*` = el mismo snapshot que usa la
+  // web en modo anfitrión): el dueño ve lo mismo en el app y en el navegador.
+  // El teléfono guarda una copia como CACHÉ (pinta al instante, device-first)
+  // y una COLA con lo que se hizo sin red, que se envía apenas haya señal.
+
+  /// Cierres de caja (arqueo por día y por MONEDA).
   final List<CierreCaja> cierresCaja = [];
 
-  /// Cierre de un día (null si aún no se cerró).
-  CierreCaja? cierreDe(String iso) {
+  /// Cierre de un día en una moneda ISO (vacía = la principal del dueño), o
+  /// null si aún no se cerró.
+  CierreCaja? cierreDe(String iso, {String moneda = ''}) {
+    final m = moneda.isEmpty ? monedasNegocio.first : moneda;
     for (final c in cierresCaja) {
-      if (c.fecha == iso) return c;
+      if (c.fecha == iso && c.moneda == m) return c;
     }
     return null;
   }
 
-  /// Cierra (o recierra) la caja del día: guarda la foto de cobrado/por cobrar.
-  /// [automatico] = lo cerró el sistema (respaldo, sin confirmar); el default
-  /// (false) es el arqueo CONFIRMADO por el dueño (o al confirmar un auto-cierre).
-  void cerrarCaja(String iso, {bool automatico = false}) {
-    final c = cajaDia(iso);
-    cierresCaja.removeWhere((x) => x.fecha == iso);
+  void _ordenarCierres() =>
+      cierresCaja.sort((a, b) => b.fecha.compareTo(a.fecha));
+
+  /// Cierra (o recierra, o confirma un cierre automático) la caja del día en
+  /// una moneda. Se ve al instante con lo que hay en el teléfono y el SERVIDOR
+  /// guarda la foto definitiva (con las reservas de la nube, igual que la web).
+  /// Devuelve null si quedó guardado (o en cola, sin red) o el error.
+  Future<String?> cerrarCaja(String iso, {String moneda = ''}) async {
+    final m = moneda.isEmpty ? monedasNegocio.first : moneda;
+    final c = cajaDia(iso, moneda: m);
+    cierresCaja.removeWhere((x) => x.fecha == iso && x.moneda == m);
     cierresCaja.insert(
         0,
         CierreCaja(
@@ -8645,70 +8695,35 @@ class AppState extends ChangeNotifier {
           porCobrar: c.porCobrar,
           reservas: c.reservas,
           cerradaEn: DateTime.now(),
-          automatico: automatico,
+          moneda: m,
+          medios: cajaDiaPorMedio(iso, moneda: m),
         ));
+    _ordenarCierres();
     notifyListeners();
-    _persistirDatos();
+    return _encolarNegocio({'tipo': 'cerrar', 'fecha': iso, 'moneda': m},
+        dedupe: 'caja|$iso|$m');
   }
 
-  /// Reabre la caja de un día (borra su cierre) para que el dueño la revise y la
-  /// vuelva a cerrar/confirmar.
-  void reabrirCaja(String iso) {
-    cierresCaja.removeWhere((x) => x.fecha == iso);
+  /// Reabre la caja de un día en una moneda (borra su cierre) para que el
+  /// dueño la revise y la vuelva a cerrar/confirmar.
+  Future<String?> reabrirCaja(String iso, {String moneda = ''}) async {
+    final m = moneda.isEmpty ? monedasNegocio.first : moneda;
+    cierresCaja.removeWhere((x) => x.fecha == iso && x.moneda == m);
     notifyListeners();
-    _persistirDatos();
+    return _encolarNegocio({'tipo': 'reabrir', 'fecha': iso, 'moneda': m},
+        dedupe: 'caja|$iso|$m');
   }
 
-  /// CIERRE AUTOMÁTICO DE RESPALDO: si el dueño no cerró un día con actividad, el
-  /// sistema le genera una foto marcada como "automática (sin confirmar)" para no
-  /// dejar el historial vacío. Ventana prudente: solo cierra días ANTERIORES a la
-  /// fecha de corte (hoy, o AYER si aún no son las 3 a.m.), para dar margen a
-  /// canchas nocturnas y a marcar el efectivo tardío. Nunca toca el día en curso
-  /// ni un día ya cerrado por el dueño. Se llama al abrir "Mis canchas"/caja y al
-  /// sincronizar. Idempotente.
-  void autocerrarCajasPendientes() {
-    if (misCanchas.isEmpty) return;
-    final ahora = DateTime.now();
-    // Corte: hasta ayer normalmente; si aún no son las 3 a.m., ayer sigue "vivo"
-    // y el corte baja a anteayer.
-    var corte = DateTime(ahora.year, ahora.month, ahora.day);
-    if (ahora.hour < 3) corte = corte.subtract(const Duration(days: 1));
-    // Días CON actividad del dueño (fechas distintas de sus reservas activas).
-    final misIds = misCanchas.map((c) => c.id).toSet();
-    final dias = <String>{};
-    for (final r in reservas) {
-      if (r.estado == EstadoReserva.noShow) continue;
-      if (!misIds.contains(r.canchaId)) continue;
-      dias.add(r.fecha);
-    }
-    var cambio = false;
-    for (final iso in dias) {
-      final d = DateTime.tryParse(iso);
-      if (d == null) continue;
-      final dd = DateTime(d.year, d.month, d.day);
-      if (!dd.isBefore(corte)) continue; // día en curso / dentro del margen
-      if (cierreDe(iso) != null) continue; // ya cerrado (manual o auto)
-      final c = cajaDia(iso);
-      cierresCaja.insert(
-          0,
-          CierreCaja(
-            fecha: iso,
-            cobrado: c.cobrado,
-            porCobrar: c.porCobrar,
-            reservas: c.reservas,
-            cerradaEn: ahora,
-            automatico: true,
-          ));
-      cambio = true;
-    }
-    if (cambio) {
-      notifyListeners();
-      _persistirDatos();
-    }
-  }
+  /// CIERRE AUTOMÁTICO DE RESPALDO: lo hace el SERVIDOR (el mismo de la web)
+  /// para los días ANTERIORES al corte (hoy, o ayer antes de las 3 a.m.) con
+  /// actividad y sin cierre, en cada moneda, marcado "automático (sin
+  /// confirmar)". Aquí solo se pide y se trae el resultado. Idempotente.
+  Future<void> autocerrarCajasPendientes() =>
+      sincronizarNegocio(autocerrar: true);
 
   // ── ANTI NO-SHOW: recordatorio de reserva al jugador ──────────────────────
-  // Reservas ya recordadas (por id) para no repetir el aviso. Se persiste.
+  // Reservas ya recordadas (por id) para no repetir el aviso. Se comparten con
+  // la web ("Recordatorios" del modo anfitrión) como `res:<id>`.
   final Set<String> _reservasRecordadas = {};
 
   bool reservaRecordada(String id) => _reservasRecordadas.contains(id);
@@ -8716,10 +8731,17 @@ class AppState extends ChangeNotifier {
   void marcarReservaRecordada(String id) {
     _reservasRecordadas.add(id);
     notifyListeners();
-    _persistirDatos();
+    _encolarNegocio({
+      'tipo': 'recordado',
+      'clave': 'res:$id',
+      'cuando': DateTime.now().toUtc().toIso8601String(),
+    }, dedupe: 'rec|res:$id');
   }
 
   // ── RESERVAS FIJAS / "pensionados" (dueño) ────────────────────────────────
+  // La definición vive en el backend y la SERIE (próximas 4 semanas) la genera
+  // el servidor (`generar_fijas`, el mismo de la web: respeta bloqueos, turnos
+  // pasados y las fechas que ya generó), así app y web producen UNA sola serie.
   final List<ReservaFija> reservasFijas = [];
 
   /// Reservas fijas de las canchas del dueño (todas las que administra).
@@ -8728,8 +8750,10 @@ class AppState extends ChangeNotifier {
     return reservasFijas.where((f) => ids.contains(f.canchaId)).toList();
   }
 
-  /// Crea una reserva fija y genera de una vez sus próximas ocurrencias.
-  Future<void> agregarReservaFija({
+  /// Crea una reserva fija; el servidor genera de una vez sus próximas
+  /// ocurrencias. Devuelve null si quedó guardada (o en cola, sin red) o el
+  /// mensaje de error (p. ej. ya hay un cliente fijo en ese día y hora).
+  Future<String?> agregarReservaFija({
     required String canchaId,
     required int diaSemana,
     required String hora,
@@ -8737,7 +8761,7 @@ class AppState extends ChangeNotifier {
     String clienteEmail = '',
     String clienteTelefono = '',
   }) async {
-    reservasFijas.add(ReservaFija(
+    final f = ReservaFija(
       id: 'fija_${DateTime.now().microsecondsSinceEpoch}',
       canchaId: canchaId,
       diaSemana: diaSemana,
@@ -8745,10 +8769,22 @@ class AppState extends ChangeNotifier {
       clienteNombre: clienteNombre.trim(),
       clienteEmail: clienteEmail.trim().toLowerCase(),
       clienteTelefono: clienteTelefono.trim(),
-    ));
+    );
+    reservasFijas.add(f);
     notifyListeners();
-    _persistirDatos();
-    await generarReservasFijas();
+    final err = await _encolarNegocio({...f.toJson(), 'tipo': 'fija_crear'},
+        dedupe: 'fija|${f.id}');
+    if (err != null) {
+      reservasFijas.removeWhere((x) => x.id == f.id);
+      notifyListeners();
+      _guardarNegocioCache();
+      return err;
+    }
+    // La serie la creó el servidor en la nube: se baja a la agenda.
+    if (!_negocioPend.any((x) => x['id'] == f.id)) {
+      unawaited(cargarReservasRemotas());
+    }
+    return null;
   }
 
   /// Pausa/activa una reserva fija (deja de generar sin borrar el registro).
@@ -8757,63 +8793,385 @@ class AppState extends ChangeNotifier {
     if (i < 0) return;
     reservasFijas[i] = reservasFijas[i].copyWith(activo: activo);
     notifyListeners();
-    _persistirDatos();
+    _encolarNegocio({'tipo': 'fija_activo', 'id': id, 'activo': activo},
+            dedupe: 'fija_activo|$id')
+        .then((err) {
+      // Al reactivar, el servidor completa la serie: se baja a la agenda.
+      if (err == null && activo) cargarReservasRemotas();
+    });
   }
 
   /// Elimina la reserva fija (no borra las reservas ya generadas).
   void quitarReservaFija(String id) {
     reservasFijas.removeWhere((f) => f.id == id);
     notifyListeners();
-    _persistirDatos();
+    _encolarNegocio({'tipo': 'fija_quitar', 'id': id},
+        dedupe: 'fija_quitar|$id');
   }
 
-  /// GENERA las reservas de las próximas [semanas] ocurrencias de cada fija
-  /// activa (idempotente: no duplica si el slot ya está reservado). Llamar al
-  /// abrir el panel del dueño.
+  /// Pide al SERVIDOR completar las próximas 4 semanas de las fijas activas
+  /// (idempotente) y baja las reservas nuevas. Se llama al arrancar y al abrir
+  /// el panel del dueño. [semanas] se mantiene por compatibilidad: el servidor
+  /// genera 4, igual que la web.
   Future<void> generarReservasFijas({int semanas = 4}) async {
-    final hoy = DateTime.now();
-    final base = DateTime(hoy.year, hoy.month, hoy.day);
-    for (final f in reservasFijas.where((x) => x.activo)) {
-      Cancha? cancha;
-      for (final c in misCanchas) {
-        if (c.id == f.canchaId) {
-          cancha = c;
-          break;
-        }
+    final email = _emailNegocio;
+    if (email.isEmpty || !NegocioService.disponible) return;
+    await sincronizarNegocio();
+    if (!reservasFijas.any((f) => f.activo)) return;
+    final r = await NegocioService.generarFijas(email);
+    if (!r.ok) return;
+    if (!_negocioPend.any((x) => x['email'] == email)) {
+      _aplicarNegocio(email, r.cuerpo);
+    }
+    final creadas = (r.cuerpo['creadas'] as num?)?.toInt() ?? 0;
+    if (creadas > 0) await cargarReservasRemotas();
+  }
+
+  // ── Sincronización con el backend (caché + cola) ─────────────────────────
+  static const _kNegocioCache = 'negocio_cache_json';
+  static const _kNegocioPend = 'negocio_pend_json';
+  static const _kNegocioMigrado = 'negocio_migrado_v1';
+  static const _kDispositivoId = 'dispositivo_id';
+
+  /// Dueño al que pertenece lo que hay en memoria/caché ('' = nadie todavía).
+  String _negocioCacheEmail = '';
+
+  /// Operaciones hechas en el teléfono que aún no llegan al backend (sin red).
+  final List<Map<String, dynamic>> _negocioPend = [];
+  bool _negocioSincronizando = false;
+  bool _negocioOtraVez = false;
+  DateTime? _negocioSyncEn;
+  Future<Map<String, String>>? _colaNegocioEnCurso;
+
+  String get _emailNegocio => (usuario?.email ?? '').trim().toLowerCase();
+
+  /// Trae del backend el negocio del dueño (y antes envía la cola y, una sola
+  /// vez por equipo, lo que el teléfono tenía guardado de versiones
+  /// anteriores). Con [autocerrar] el servidor primero hace los cierres
+  /// automáticos de respaldo. Sin red no pasa nada: queda la caché.
+  Future<void> sincronizarNegocio(
+      {bool autocerrar = false, bool forzar = false}) async {
+    final email = _emailNegocio;
+    if (email.isEmpty || !NegocioService.disponible) return;
+    if (_negocioSincronizando) {
+      _negocioOtraVez = true;
+      return;
+    }
+    final ult = _negocioSyncEn;
+    if (!forzar &&
+        !autocerrar &&
+        ult != null &&
+        DateTime.now().difference(ult).inSeconds < 15) {
+      return;
+    }
+    _negocioSincronizando = true;
+    try {
+      await _migrarNegocioSiFalta(email);
+      await _vaciarColaNegocio(email);
+      // Si quedó algo sin enviar (sin red), no se pisa lo que se ve en el
+      // teléfono con una foto del servidor que aún no lo tiene.
+      if (_negocioPend.any((x) => x['email'] == email)) return;
+      final r = await NegocioService.estado(email, autocerrar: autocerrar);
+      if (r.ok) {
+        _aplicarNegocio(email, r.cuerpo);
+        _negocioSyncEn = DateTime.now();
       }
-      if (cancha == null) continue;
-      // Día de esta semana (o el mismo día si es hoy) + próximas semanas.
-      final delta = (f.diaSemana - base.weekday) % 7;
-      for (var w = 0; w < semanas; w++) {
-        final fecha = base.add(Duration(days: delta + w * 7));
-        final iso = isoDe(fecha);
-        final ocupado = reservas.any((r) =>
-            r.canchaId == f.canchaId &&
-            r.fecha == iso &&
-            r.horaInicio == f.hora);
-        if (ocupado) continue;
-        await agregarReservaManual(
-          cancha,
-          iso,
-          _diaLabelDe(fecha),
-          f.hora,
-          nombreCliente: f.clienteNombre,
-          telefono: f.clienteTelefono,
-          clienteEmail: f.clienteEmail,
-        );
+    } finally {
+      _negocioSincronizando = false;
+      if (_negocioOtraVez) {
+        _negocioOtraVez = false;
+        unawaited(sincronizarNegocio(forzar: true));
       }
     }
   }
 
-  /// Etiqueta de día para una fecha (Hoy/Mañana/ISO), coherente con la agenda.
-  String _diaLabelDe(DateTime fecha) {
-    final hoy = DateTime.now();
-    final base = DateTime(hoy.year, hoy.month, hoy.day);
-    final d = DateTime(fecha.year, fecha.month, fecha.day);
-    final diff = d.difference(base).inDays;
-    if (diff == 0) return 'Hoy';
-    if (diff == 1) return 'Mañana';
-    return isoDe(fecha);
+  /// Agrega una operación a la cola (persistida) y trata de enviarla ya.
+  /// Devuelve el error del servidor si la RECHAZÓ (dato inválido, cancha
+  /// ajena…); null si se guardó o quedó en cola por falta de red.
+  Future<String?> _encolarNegocio(Map<String, dynamic> op,
+      {String? dedupe}) async {
+    _guardarNegocioCache();
+    final email = _emailNegocio;
+    if (email.isEmpty) return null;
+    final id = '${DateTime.now().microsecondsSinceEpoch}';
+    if (dedupe != null) {
+      _negocioPend
+          .removeWhere((x) => x['email'] == email && x['k'] == dedupe);
+    }
+    _negocioPend.add(<String, dynamic>{
+      ...op,
+      'email': email,
+      'op': id,
+      if (dedupe != null) 'k': dedupe,
+    });
+    await _guardarNegocioPend();
+    if (!NegocioService.disponible) return null;
+    final errores = await _vaciarColaNegocio(email);
+    return errores[id];
+  }
+
+  /// Envía la cola EN ORDEN, de a una a la vez (nunca dos envíos en paralelo).
+  /// Devuelve op → error de las que el servidor rechazó (esas se descartan).
+  Future<Map<String, String>> _vaciarColaNegocio(String email) async {
+    while (true) {
+      final enCurso = _colaNegocioEnCurso;
+      if (enCurso == null) break;
+      await enCurso;
+    }
+    final f = _vaciarColaNegocioAhora(email);
+    _colaNegocioEnCurso = f;
+    try {
+      return await f;
+    } finally {
+      if (identical(_colaNegocioEnCurso, f)) _colaNegocioEnCurso = null;
+    }
+  }
+
+  Future<Map<String, String>> _vaciarColaNegocioAhora(String email) async {
+    final errores = <String, String>{};
+    Map<String, dynamic>? ultimo;
+    var descartada = false;
+    while (true) {
+      Map<String, dynamic>? op;
+      for (final x in _negocioPend) {
+        if (x['email'] == email) {
+          op = x;
+          break;
+        }
+      }
+      if (op == null) break;
+      final r = await NegocioService.ejecutar(op);
+      if (r.reintentar) break; // sin red: el resto espera su turno
+      _negocioPend.remove(op);
+      if (r.ok) {
+        ultimo = r.cuerpo;
+      } else {
+        descartada = true;
+        errores['${op['op']}'] = r.error;
+      }
+      await _guardarNegocioPend();
+    }
+    final pendientes = _negocioPend.any((x) => x['email'] == email);
+    if (!pendientes && _emailNegocio == email) {
+      if (ultimo != null) {
+        // La respuesta trae el estado del servidor YA con todo aplicado.
+        _aplicarNegocio(email, ultimo);
+      } else if (descartada) {
+        // Algo se rechazó: se vuelve a lo que de verdad tiene el servidor.
+        final r = await NegocioService.estado(email);
+        if (r.ok) _aplicarNegocio(email, r.cuerpo);
+      }
+    }
+    return errores;
+  }
+
+  /// Reemplaza lo de memoria con el estado del servidor y lo guarda en caché.
+  void _aplicarNegocio(String email, Map<String, dynamic> j) {
+    if (_emailNegocio != email) return; // cambió la cuenta mientras tanto
+    _volcarNegocio(j);
+    _negocioCacheEmail = email;
+    notifyListeners();
+    _guardarNegocioCache();
+  }
+
+  void _volcarNegocio(Map<String, dynamic> j) {
+    final cierres = <CierreCaja>[];
+    for (final e in (j['cierres'] as List?) ?? const []) {
+      if (e is Map) {
+        try {
+          cierres.add(CierreCaja.fromJson(Map<String, dynamic>.from(e)));
+        } catch (_) {}
+      }
+    }
+    final fijas = <ReservaFija>[];
+    for (final e in (j['fijas'] as List?) ?? const []) {
+      if (e is Map) {
+        try {
+          fijas.add(ReservaFija.fromJson(Map<String, dynamic>.from(e)));
+        } catch (_) {}
+      }
+    }
+    cierresCaja
+      ..clear()
+      ..addAll(cierres);
+    _ordenarCierres();
+    reservasFijas
+      ..clear()
+      ..addAll(fijas);
+    _notasCliente.clear();
+    final notas = j['notas'];
+    if (notas is Map) {
+      notas.forEach((k, v) {
+        final t = (v ?? '').toString();
+        if (t.isNotEmpty) _notasCliente[k.toString().toLowerCase()] = t;
+      });
+    }
+    _recordatoriosCobro.clear();
+    _reservasRecordadas.clear();
+    final rec = j['recordados'];
+    if (rec is Map) {
+      rec.forEach((k, v) {
+        final clave = k.toString();
+        if (clave.startsWith('res:')) {
+          _reservasRecordadas.add(clave.substring(4));
+        } else {
+          _recordatoriosCobro[clave] = (v ?? '').toString();
+        }
+      });
+    }
+  }
+
+  Future<void> _guardarNegocioCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          _kNegocioCache,
+          jsonEncode({
+            'email': _negocioCacheEmail,
+            'cierres': cierresCaja.map((c) => c.toJson()).toList(),
+            'fijas': reservasFijas.map((f) => f.toJson()).toList(),
+            'notas': _notasCliente,
+            'recordados': <String, String>{
+              ..._recordatoriosCobro,
+              for (final id in _reservasRecordadas) 'res:$id': '',
+            },
+          }));
+    } catch (_) {}
+  }
+
+  Future<void> _guardarNegocioPend() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kNegocioPend, jsonEncode(_negocioPend));
+    } catch (_) {}
+  }
+
+  /// Al abrir el app: la caché del backend manda sobre lo que el teléfono
+  /// guardaba antes (claves viejas). Si la caché es de OTRA cuenta, no se
+  /// muestra (se baja la de esta cuenta al sincronizar).
+  void _cargarNegocioCache(SharedPreferences prefs) {
+    final raw = prefs.getString(_kNegocioCache);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final j = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+        final dueno = (j['email'] ?? '').toString();
+        final yo = _emailNegocio;
+        if (dueno.isNotEmpty && yo.isNotEmpty && dueno != yo) {
+          _volcarNegocio(const <String, dynamic>{});
+        } else {
+          _volcarNegocio(j);
+          _negocioCacheEmail = dueno;
+        }
+      } catch (_) {}
+    }
+    final pend = prefs.getString(_kNegocioPend);
+    if (pend != null && pend.isNotEmpty) {
+      try {
+        _negocioPend
+          ..clear()
+          ..addAll((jsonDecode(pend) as List)
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e)));
+      } catch (_) {}
+    }
+  }
+
+  /// Vacía de memoria el negocio (cambio de cuenta / cerrar sesión). La cola
+  /// se conserva: cada operación lleva su correo y se envía cuando esa cuenta
+  /// vuelva a entrar.
+  void _limpiarNegocioLocal() {
+    cierresCaja.clear();
+    reservasFijas.clear();
+    _notasCliente.clear();
+    _recordatoriosCobro.clear();
+    _reservasRecordadas.clear();
+    _negocioCacheEmail = '';
+    _negocioSyncEn = null;
+    _guardarNegocioCache();
+  }
+
+  /// Identificador de ESTE equipo (para migrar una sola vez lo que guardaba).
+  Future<String> _dispositivoId(SharedPreferences prefs) async {
+    final ya = prefs.getString(_kDispositivoId) ?? '';
+    if (ya.isNotEmpty) return ya;
+    final id = 'dev_${DateTime.now().microsecondsSinceEpoch}_'
+        '${math.Random().nextInt(1 << 31)}';
+    await prefs.setString(_kDispositivoId, id);
+    return id;
+  }
+
+  /// MIGRACIÓN (una vez por equipo): versiones anteriores guardaban cierres,
+  /// fijas, notas y recordatorios SOLO en el teléfono. Se suben al backend (que
+  /// gana en los choques y solo los acepta si esta cuenta tiene canchas o
+  /// academias) y, aceptados, se borran las claves viejas.
+  Future<void> _migrarNegocioSiFalta(String email) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_kNegocioMigrado) ?? false) return;
+      List<dynamic> lista(String k) {
+        final r = prefs.getString(k);
+        if (r == null || r.isEmpty) return const [];
+        try {
+          final v = jsonDecode(r);
+          return v is List ? v : const [];
+        } catch (_) {
+          return const [];
+        }
+      }
+
+      Map<String, dynamic> mapa(String k) {
+        final r = prefs.getString(k);
+        if (r == null || r.isEmpty) return <String, dynamic>{};
+        try {
+          final v = jsonDecode(r);
+          return v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
+        } catch (_) {
+          return <String, dynamic>{};
+        }
+      }
+
+      final cierres = lista(_kCierresCaja);
+      final fijas = lista(_kReservasFijas);
+      final notas = mapa(_kNotasCliente);
+      final recordados = mapa(_kRecordCobro);
+      final ahora = DateTime.now().toUtc().toIso8601String();
+      for (final id in lista(_kResRecordadas)) {
+        recordados['res:$id'] = ahora;
+      }
+      if (cierres.isEmpty &&
+          fijas.isEmpty &&
+          notas.isEmpty &&
+          recordados.isEmpty) {
+        await prefs.setBool(_kNegocioMigrado, true);
+        return;
+      }
+      final r = await NegocioService.migrar(
+        email: email,
+        dispositivo: await _dispositivoId(prefs),
+        cierres: cierres,
+        fijas: fijas,
+        notas: notas,
+        recordados: recordados,
+      );
+      if (!r.ok) return; // sin red: se reintenta en la próxima sincronización
+      final m = r.cuerpo['migracion'];
+      if (m is Map && m['migrado'] == true) {
+        await prefs.setBool(_kNegocioMigrado, true);
+        for (final k in [
+          _kCierresCaja,
+          _kReservasFijas,
+          _kNotasCliente,
+          _kRecordCobro,
+          _kResRecordadas,
+        ]) {
+          await prefs.remove(k);
+        }
+        if (!_negocioPend.any((x) => x['email'] == email)) {
+          _aplicarNegocio(email, r.cuerpo);
+        }
+        if (fijas.isNotEmpty) unawaited(cargarReservasRemotas());
+      }
+    } catch (_) {}
   }
 
   /// El JUGADOR cancela / elimina una de sus reservas (próxima o del historial).

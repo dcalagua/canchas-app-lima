@@ -711,9 +711,24 @@ para la API del APK.
   cobrada con `FOR UPDATE`). Reservas del dueño web: chip de medio de pago,
   filtro Online/Efectivo/Manual y "No-show" (no en pagadas en línea).
   Multi-moneda con selector `?m=PEN|USD|BOB`. Cierres de caja, fijas, notas
-  y último recordatorio viven en `stores.negocio_web[correo]` (snapshot):
-  **el APK los guarda solo en el teléfono**, así que web y app no los
-  comparten todavía (unificar = tabla en Supabase + APK). MENU anfitrión con
+  y "ya recordado" (cobro de academia por id de matrícula y reservas como
+  `res:<id>`) viven en `stores.negocio_web[correo]` (snapshot) = **FUENTE
+  ÚNICA web + APK (1-oct-2026)**: el APK usa `/negocio/*` (`negocio_app.py`,
+  X-App-Key + `_require_usuario`): `GET /negocio/estado?email[&autocerrar=1]`,
+  `POST /negocio/caja/cerrar|reabrir {fecha, moneda}` (cierre POR MONEDA,
+  calculado en el servidor; el APK tiene chips de moneda en Caja del día),
+  `POST /negocio/fijas` (id del APK, idempotente) + `/fijas/{id}/activo|
+  quitar` + `/fijas/generar` (la SERIE la genera SOLO el servidor con
+  `generar_fijas`: bloqueos, turnos pasados, `hechas`; una sola serie),
+  `/notas`, `/recordados`, `/borrar` (Dejar en virgen) y `/migrar` (UNA vez
+  por equipo sube lo que el teléfono tenía en las claves viejas; el servidor
+  gana y no resucita fijas quitadas, `fijas_quitadas`). Web y APK llaman a
+  las MISMAS funciones de `anfitrion_negocio.py` (`cerrar_caja_de`,
+  `autocerrar_de`, `crear_fija`, `activar_fija_de`, `quitar_fija_de`,
+  `guardar_nota_de`, `marcar_recordado_de`). APK: `services/
+  negocio_service.dart` + `AppState.sincronizarNegocio` (caché
+  `negocio_cache_json` por cuenta, cola `negocio_pend_json` para lo hecho
+  sin red, en orden, 4xx se descarta). Test `tests/test_negocio_app.py`. MENU anfitrión con
   Reportes, Caja del día, Clientes, Bonos, Reservas fijas, Disponibilidad y
   Cobros de academia. Test `tests/test_web_anfitrion_negocio.py`.
 - **VERIFICADOR Y ESTADO DE VERIFICACIÓN EN LA WEB (30-sep-2026):**

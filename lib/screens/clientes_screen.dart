@@ -50,6 +50,8 @@ class _ClientesScreenState extends State<ClientesScreen> {
   @override
   void initState() {
     super.initState();
+    // Notas privadas de clientes: las del backend (las mismas que la web).
+    appState.sincronizarNegocio();
     // Insignia de verificado + PERFIL (foto real del cliente). Resuelve cada
     // reserva a la cancha del dueño (tolerante a ids duplicados del local).
     final emails = appState.reservas
