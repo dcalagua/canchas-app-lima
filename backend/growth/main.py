@@ -175,6 +175,16 @@ app.include_router(concierge_router)
 
 
 @app.on_event("startup")
+async def _iniciar_pool_tibio() -> None:
+    """Conexiones del pool siempre "tibias" (la base está lejos: abrir una nueva
+    cuesta ~1 s; ver `pg._mantener_tibias`). No corre en pytest."""
+    import sys
+    if "pytest" in sys.modules:
+        return
+    pg.iniciar_tibias()
+
+
+@app.on_event("startup")
 async def _iniciar_cron_renovaciones() -> None:
     """Cron INTERNO: cada 12 h renueva las suscripciones vencidas (cobra del saldo
     o de la tarjeta de débito automático). Corre dentro del mismo proceso (una

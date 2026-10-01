@@ -114,7 +114,7 @@ import threading as _th
 import time as _time
 from contextlib import contextmanager as _cm
 
-POOL_MAX = 4
+POOL_MAX = 8
 POOL_TTL_SEG = 240
 _pool: list = []  # [(conn, devuelta_en)]
 _pool_lock = _th.Lock()
@@ -131,7 +131,13 @@ def _tomar():
                     pass
                 continue
             return conn
-    return _conn()
+    return _nueva_pool()
+
+
+def _nueva_pool():
+    conn = _conn()
+    conn.autocommit = True  # transacción perezosa (ver `_ConexionPerezosa`)
+    return conn
 
 
 def _devolver(conn) -> None:
@@ -145,12 +151,99 @@ def _devolver(conn) -> None:
         pass
 
 
+# ── Transacción PEREZOSA (1-oct-2026, "cada clic demora mucho") ─────────────
+# El backend corre en Railway us-west2 y la base de PRD en São Paulo: cada ida y
+# vuelta cuesta ~180 ms. psycopg abre una transacción implícita (BEGIN = 1 viaje)
+# antes de la 1.ª consulta y `commit()` al salir es otro viaje → una lectura
+# simple costaba 3 viajes (~550 ms) y una página con 3 bloques, ~1,7 s. Ahora la
+# conexión del pool va en AUTOCOMMIT y la transacción se abre recién con la
+# primera ESCRITURA (o `FOR UPDATE`): las lecturas cuestan 1 viaje. Mismo
+# resultado que antes bajo READ COMMITTED (cada SELECT ya veía su propia foto;
+# un SELECT sin FOR UPDATE no bloqueaba nada); lo atómico (varias escrituras,
+# FOR UPDATE + UPDATE) sigue en UNA transacción hasta `commit()` o el final.
+import re as _re
+
+_RE_LECTURA = _re.compile(r"^\s*(select|with|show|values)\b", _re.I)
+_RE_ESCRIBE = _re.compile(r"\b(insert|update|delete|merge|truncate|create|alter|drop|grant|revoke|lock|for\s+update|for\s+share|for\s+no\s+key)\b", _re.I)
+
+
+def es_lectura(sql) -> bool:
+    texto = sql if isinstance(sql, str) else str(sql)
+    return bool(_RE_LECTURA.match(texto)) and not _RE_ESCRIBE.search(texto)
+
+
+class _CursorPerezoso:
+    def __init__(self, conx, cur):
+        self._conx, self._cur = conx, cur
+
+    def execute(self, sql, params=None, **kw):
+        if not es_lectura(sql):
+            self._conx._abrir()
+        return self._cur.execute(sql, params, **kw) if params is not None else self._cur.execute(sql, **kw)
+
+    def executemany(self, sql, params_seq, **kw):
+        self._conx._abrir()
+        return self._cur.executemany(sql, params_seq, **kw)
+
+    def __getattr__(self, nombre):
+        return getattr(self._cur, nombre)
+
+    def __iter__(self):
+        return iter(self._cur)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            self._cur.close()
+        except Exception:  # noqa: BLE001
+            pass
+        return False
+
+
+class _ConexionPerezosa:
+    """Envuelve una conexión en autocommit; `commit()`/`rollback()` solo viajan
+    si de verdad hay una transacción abierta."""
+
+    def __init__(self, conn):
+        self._conn, self._en_tx = conn, False
+
+    def _abrir(self):
+        if not self._en_tx:
+            self._conn.execute("BEGIN")
+            self._en_tx = True
+
+    def cursor(self, *a, **k):
+        return _CursorPerezoso(self, self._conn.cursor(*a, **k))
+
+    def execute(self, sql, params=None, **kw):
+        if not es_lectura(sql):
+            self._abrir()
+        return self._conn.execute(sql, params, **kw) if params is not None else self._conn.execute(sql, **kw)
+
+    def commit(self):
+        if self._en_tx:
+            self._en_tx = False
+            self._conn.execute("COMMIT")
+
+    def rollback(self):
+        if self._en_tx:
+            self._en_tx = False
+            self._conn.execute("ROLLBACK")
+
+    def __getattr__(self, nombre):
+        return getattr(self._conn, nombre)
+
+
 @_cm
 def conexion():
     """`with pg.conexion() as conn:` — conexión del pool; commit al salir,
     rollback y descarte si hubo error. Reemplaza a `with _conn() as conn`
-    (que cierra la conexión) en los caminos calientes de la web."""
-    conn = _tomar()
+    (que cierra la conexión) en los caminos calientes de la web. Transacción
+    perezosa: ver `_ConexionPerezosa`."""
+    crudo = _tomar()
+    conn = _ConexionPerezosa(crudo)
     try:
         yield conn
     except BaseException:
@@ -159,7 +252,7 @@ def conexion():
         except Exception:  # noqa: BLE001
             pass
         try:
-            conn.close()
+            crudo.close()
         except Exception:  # noqa: BLE001
             pass
         raise
@@ -168,11 +261,57 @@ def conexion():
             conn.commit()
         except Exception:  # noqa: BLE001
             try:
-                conn.close()
+                crudo.close()
             except Exception:  # noqa: BLE001
                 pass
             raise
-        _devolver(conn)
+        _devolver(crudo)
+
+
+def _mantener_tibias() -> None:
+    """Cada 60 s hace `SELECT 1` en las conexiones del pool para que no caduquen
+    (abrir una nueva hacia São Paulo = TLS + login ≈ 1 s: era el "primer clic
+    lento" tras unos minutos sin visitas) y deja al menos 2 abiertas."""
+    while True:
+        _time.sleep(60)
+        try:
+            with _pool_lock:
+                lote = list(_pool)
+                _pool.clear()
+            vivas = []
+            for c, _ts in lote:
+                try:
+                    c.execute("SELECT 1")
+                    vivas.append((c, _time.time()))
+                except Exception:  # noqa: BLE001
+                    try:
+                        c.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+            while len(vivas) < 2:
+                try:
+                    vivas.append((_nueva_pool(), _time.time()))
+                except Exception:  # noqa: BLE001
+                    break
+            with _pool_lock:
+                for v in vivas:
+                    if len(_pool) < POOL_MAX:
+                        _pool.append(v)
+                    else:
+                        v[0].close()
+        except Exception as ex:  # noqa: BLE001
+            print(f"[pool] tibias: {ex}", flush=True)
+
+
+_tibias_hilo = None
+
+
+def iniciar_tibias() -> None:
+    global _tibias_hilo
+    if not habilitado or (_tibias_hilo is not None and _tibias_hilo.is_alive()):
+        return
+    _tibias_hilo = _th.Thread(target=_mantener_tibias, name="pcg-pool", daemon=True)
+    _tibias_hilo.start()
 
 
 def _iso(v):
