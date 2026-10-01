@@ -1013,6 +1013,12 @@ def pagina_mis_puntos(request: Request) -> HTMLResponse:
                      f"<div class='pts-it'><span class='em'>🧃</span><span class='tx'><b>Bodega · {e(p['resumen'])}</b>"
                      f"<small>{e(_fecha_corta(p['creado']))} · pagado con saldo 💳</small></span><span class='n'>+{p['puntos']}</span></div>"))
     for c in canjes:
+        if c["puntos"] < 0:
+            # Devolución de un canje (reserva web cancelada a tiempo): fila negativa.
+            hist.append((_parse(c["creado"]) or _ahora(),
+                         f"<div class='pts-it'><span class='em'>↩️</span><span class='tx'><b>Te devolvimos tus puntos</b>"
+                         f"<small>{e(_fecha_corta(c['creado']))} · cancelaste la reserva a tiempo</small></span><span class='n'>+{-c['puntos']}</span></div>"))
+            continue
         hist.append((_parse(c["creado"]) or _ahora(),
                      f"<div class='pts-it'><span class='em'>🎁</span><span class='tx'><b>Canje · S/ {c['soles']:.2f} de descuento</b>"
                      f"<small>{e(_fecha_corta(c['creado']))} · en tu reserva</small></span><span class='n rojo'>−{c['puntos']}</span></div>"))
@@ -1034,7 +1040,9 @@ def pagina_mis_puntos(request: Request) -> HTMLResponse:
           "• Ganas 1 punto por cada S/ 1 que pagas por la app o la web (últimos 12 meses).<br>"
           "• Pago en línea: puntos al instante. Efectivo: cuando el local confirma tu pago.<br>"
           "• Los pedidos de bodega pagados con tu SALDO Pichangol también suman (al entregarse). En efectivo no acumulan.<br>"
-          "• Cada 100 puntos = S/ 3 de descuento al pagar en línea tu próxima reserva en la app (el descuento lo pone Pichangol, no el local)."
+          "• Cada 100 puntos = S/ 3 de descuento al pagar en línea tu próxima reserva, en la web o en la app: marca “Usar 100 puntos” en el resumen "
+          "(un canje por reserva; no aplica con seña, bono ni premio de fidelidad). El descuento lo pone Pichangol, no el local.<br>"
+          "• Si cancelas a tiempo una reserva en la que usaste puntos, los recuperas."
         + otra + "</div>"
         "<h2>Historial (últimos 12 meses)</h2>" + lista
         + "<p class='sub' style='font-size:13px;margin-top:18px'><a href='/mis-reservas'>Mis reservas</a> · "
