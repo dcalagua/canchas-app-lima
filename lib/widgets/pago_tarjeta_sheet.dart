@@ -178,7 +178,7 @@ class PagoTarjeta {
     if (detalle != null && !detalle.vacio && paisActual.pasarela != 'culqi') {
       final medio = paisActual.pasarela == 'libelula'
           ? 'Libélula'
-          : (paisActual.pasarela == 'payphone' ? 'PayPhone' : 'el pago');
+          : (paisActual.pasarela == 'payphone' ? PagoPayPhone.nombre : 'el pago');
       if (!await _confirmarResumen(context, detalle, monTxt, monto, medio)) {
         return false;
       }

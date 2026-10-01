@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -34,6 +36,20 @@ import 'dialogo_pichangol.dart';
 /// cae a la pasarela SIMULADA; en producción avisa y devuelve false (nunca se
 /// inventa un pago).
 class PagoPayPhone {
+  /// Nombre visible de la pasarela de Ecuador que tiene activa el backend
+  /// (`/pagos/ec/config` → `nombre`): Nuvei desde oct-2026, PayPhone antes.
+  /// El flujo (página hospedada en el navegador + sondeo del estado) es el
+  /// mismo para ambas; solo cambian los textos.
+  static String nombre = 'Nuvei';
+
+  /// Refresca [nombre] desde el backend (silencioso, sin red queda el último).
+  static Future<String> cargarNombre() async {
+    final c = await PagosService.configEc();
+    final n = (c?['nombre'] ?? '').toString().trim();
+    if (n.isNotEmpty) nombre = n;
+    return nombre;
+  }
+
   // Anti doble-click: mientras hay un cobro en curso, los taps extra se ignoran
   // (evita preparar varias transacciones y abrir varias pasarelas).
   static bool _enCurso = false;
@@ -69,6 +85,7 @@ class PagoPayPhone {
     required String ref,
     required String duenoId,
   }) async {
+    unawaited(cargarNombre());
     final correo = (appState.usuario?.email ?? email).trim();
     final nombre = appState.usuario?.nombre ?? '';
     // 1) Preparar el pago en el backend (que llama a PayPhone). Preload de
@@ -285,7 +302,7 @@ class _PayPhoneWebViewState extends State<_PayPhoneWebView> {
       appBar: AppBar(
         backgroundColor: bosque,
         foregroundColor: Colors.white,
-        title: const Text('Pago seguro · PayPhone',
+        title: Text('Pago seguro · ${PagoPayPhone.nombre}',
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
         leading: IconButton(
           icon: const Icon(Icons.close),
@@ -493,8 +510,8 @@ class _EsperandoPagoNavegadorState extends State<_EsperandoPagoNavegador>
               const SizedBox(height: 8),
               Text(
                 _volvio
-                    ? 'Estamos verificando con PayPhone. No cierres esta ventana.'
-                    : 'Se abrió PayPhone para cobrar $montoTxt. Cuando termines, '
+                    ? 'Estamos verificando con ${PagoPayPhone.nombre}. No cierres esta ventana.'
+                    : 'Se abrió ${PagoPayPhone.nombre} para cobrar $montoTxt. Cuando termines, '
                         'vuelve a Pichangol: el pago se confirma solo.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(

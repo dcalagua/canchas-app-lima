@@ -53,6 +53,7 @@ CONFIG_DEFAULT: dict[str, str] = {
     "tarifa_culqi_tarjeta_pct": "6.05", "tarifa_culqi_tarjeta_fijo": "0.30",
     "tarifa_culqi_yape_pct": "3.44", "tarifa_culqi_yape_fijo": "0.30",
     "tarifa_culqi_impuesto_pct": "18",
+    "tarifa_nuvei_tarjeta_pct": "0", "tarifa_nuvei_tarjeta_fijo": "0", "tarifa_nuvei_impuesto_pct": "0",
     "tarifa_payphone_tarjeta_pct": "0", "tarifa_payphone_tarjeta_fijo": "0", "tarifa_payphone_impuesto_pct": "0",
     "tarifa_libelula_tarjeta_pct": "0", "tarifa_libelula_tarjeta_fijo": "0", "tarifa_libelula_impuesto_pct": "0",
     # CARGO POR SERVICIO al cliente (pagos/cargo_servicio.py, 27-sep-2026):
