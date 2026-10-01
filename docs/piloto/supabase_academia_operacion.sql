@@ -1,8 +1,9 @@
--- OPERACIÓN DE LA ACADEMIA EN LA WEB (asistencia, evaluación y bitácora de clases).
--- En el APK estos datos viven SOLO en el teléfono del profe (SharedPreferences:
--- asistencias_json, evaluaciones_json, notas de clase). La web
--- (backend/growth/web/anfitrion_academia_ops.py) los guarda aquí con los MISMOS
--- campos de los modelos del app (Asistencia, EvaluacionAlumno, NotaClase).
+-- OPERACIÓN DE LA ACADEMIA (asistencia, evaluación y bitácora de clases).
+-- La web (backend/growth/web/anfitrion_academia_ops.py) y el APK
+-- (lib/data/academia_ops_repo.dart) usan estas MISMAS tablas con los campos de
+-- los modelos del app (Asistencia, EvaluacionAlumno, NotaClase). Para que el
+-- APK pueda leerlas/escribirlas hay que correr DESPUÉS
+-- `supabase_academia_operacion_rls.sql` (políticas + tabla de planes).
 -- Sin estas tablas, las páginas web avisan y no rompen.
 --
 -- Correr a mano en Supabase: QAS ("Pichangol") y, con autorización, PCG-PRD.
@@ -46,9 +47,8 @@ create table if not exists public.pichangol_academia_notas (
 create index if not exists pichangol_academia_notas_al
   on public.pichangol_academia_notas (academia_id, alumno_id, creado desc);
 
--- Solo el backend (rol postgres, dueño de las tablas) las usa por ahora: RLS
--- activado SIN políticas = la llave anon no puede leerlas ni escribirlas.
--- Cuando el APK las use, agregar políticas por dueño de la academia.
+-- RLS activado SIN políticas aquí = solo el backend (rol postgres). Las
+-- políticas para el APK están en `supabase_academia_operacion_rls.sql`.
 alter table public.pichangol_academia_asistencias enable row level security;
 alter table public.pichangol_academia_evaluaciones enable row level security;
 alter table public.pichangol_academia_notas enable row level security;

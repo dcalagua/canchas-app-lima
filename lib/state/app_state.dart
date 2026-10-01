@@ -8,6 +8,7 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/academia_ops_repo.dart';
 import '../data/academias_repo.dart';
 import '../data/agenda_repo.dart';
 import '../data/chat_prefs_repo.dart';
@@ -3764,7 +3765,10 @@ class AppState extends ChangeNotifier {
       remotas.addAll(r.alumnos);
       remotasCuotas.addAll(r.cuotas);
     }
-    if (remotas.isEmpty && remotasCuotas.isEmpty) return;
+    if (remotas.isEmpty && remotasCuotas.isEmpty) {
+      await sincronizarOperacionAcademia();
+      return;
+    }
     var cambio = false;
     for (final al in remotas) {
       final i = alumnos.indexWhere((x) => x.id == al.id);
@@ -3775,10 +3779,22 @@ class AppState extends ChangeNotifier {
       }
       cambio = true;
     }
-    // Fusiona las cuotas embebidas. Si la cuota es nueva, se agrega; si ya existe
-    // y en la nube figura PAGADA (pago manual del alumno / marcada por el profe
-    // en otro dispositivo), se marca pagada acá también. El pago es "pegajoso":
-    // nunca revierte una pagada a pendiente (evita carreras entre dispositivos).
+    if (_fusionarCuotasRemotas(remotasCuotas)) cambio = true;
+    if (cambio) {
+      notifyListeners();
+      _persistirDatos();
+    }
+    // Asistencia, rúbrica, bitácora y planes: las mismas filas que la web.
+    await sincronizarOperacionAcademia();
+  }
+
+  /// Fusiona cuotas que vienen de la nube. Si la cuota es nueva, se agrega; si
+  /// ya existe y en la nube figura PAGADA (pago manual del alumno / marcada por
+  /// el profe en otro dispositivo o en la web), se marca pagada acá también. El
+  /// pago es "pegajoso": nunca revierte una pagada a pendiente (evita carreras
+  /// entre dispositivos). Devuelve true si cambió algo (no notifica).
+  bool _fusionarCuotasRemotas(List<Cuota> remotasCuotas) {
+    var cambio = false;
     for (final c in remotasCuotas) {
       final i = cuotas.indexWhere((x) => x.id == c.id);
       if (i < 0) {
@@ -3790,10 +3806,7 @@ class AppState extends ChangeNotifier {
         cambio = true;
       }
     }
-    if (cambio) {
-      notifyListeners();
-      _persistirDatos();
-    }
+    return cambio;
   }
 
   /// RECONCILIA las cuotas de mes a mes: consulta al backend cuántos cobros
@@ -4357,6 +4370,9 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _persistirDatos();
+    // Sube YA las cuotas (fusionando por id con la nube): así la web y el
+    // teléfono del alumno las ven sin esperar a que se pague otra cuota.
+    _subirCuotasAlumno(alumno.id);
   }
 
   /// Matrícula del JUGADOR desde el directorio. [cantidad] es lo que el alumno
@@ -4477,6 +4493,7 @@ class AppState extends ChangeNotifier {
     ));
     notifyListeners();
     _persistirDatos();
+    _subirCuotasAlumno(alumno.id); // a la nube al instante (web + alumno)
   }
 
   void marcarCuotaPagada(String cuotaId,
@@ -4507,12 +4524,396 @@ class AppState extends ChangeNotifier {
   }
 
   /// Re-sube a la nube (embebidas en la matrícula) las cuotas actuales de un
-  /// alumno, para que el estado de pago se sincronice entre dispositivos.
-  void _subirCuotasAlumno(String alumnoId) {
+  /// alumno, para que el estado de pago se sincronice entre dispositivos. El
+  /// repo FUSIONA por id de cuota con lo que ya hay en la nube (una cuota que
+  /// el profe agregó en la web no se pierde) y devuelve la lista fusionada,
+  /// que se incorpora aquí.
+  Future<void> _subirCuotasAlumno(String alumnoId) async {
     final ai = alumnos.indexWhere((a) => a.id == alumnoId);
     if (ai < 0) return;
     final sus = cuotas.where((c) => c.alumnoId == alumnoId).toList();
-    MatriculasRepo.guardar(alumnos[ai], cuotas: sus);
+    final fusion = await MatriculasRepo.guardar(alumnos[ai], cuotas: sus);
+    if (fusion != null && _fusionarCuotasRemotas(fusion)) {
+      notifyListeners();
+      _persistirDatos();
+    }
+  }
+
+  // ── Operación de la academia EN LA NUBE (mismas filas que la web) ─────────
+  //
+  // Asistencia, rúbrica, bitácora y planes de trabajo viven en
+  // `pichangol_academia_*` (AcademiaOpsRepo), las MISMAS tablas que la web
+  // (Modo anfitrión → Mi academia). El teléfono sigue mandando al instante
+  // (device-first: se guarda local y se sube en segundo plano) y
+  // [sincronizarOperacionAcademia] fusiona en ambos sentidos:
+  // - asistencia: la nube manda salvo lo marcado aquí que aún no subió
+  //   (`_opsPend` "a:alumno|dia"); lo que falta en la nube se sube (migración);
+  // - "ya avisé": es monótono (true gana en ambos lados);
+  // - rúbrica: gana la evaluación más reciente (ts);
+  // - bitácora: unión por id; una nota que ya estuvo en la nube y desapareció
+  //   se borró en otro lado (web/otro equipo) → se quita aquí;
+  // - planes: borrado lógico en la nube; lo editado aquí sin subir
+  //   (`_opsPend` "p:id") gana; lo que la nube no tiene se sube (migración).
+  // Los borrados hechos aquí que no llegaron a la nube quedan en `_opsBorr`
+  // ("n:id" / "p:id") y se reintentan.
+  final Set<String> _opsPend = {};
+  final Set<String> _opsNube = {};
+  final Set<String> _opsBorr = {};
+  bool _syncOpsEnCurso = false;
+
+  String? _academiaDeAlumno(String alumnoId) {
+    for (final a in alumnos) {
+      if (a.id == alumnoId) return a.academiaId;
+    }
+    return null;
+  }
+
+  /// Academia de una evaluación (el modelo no la guarda): la del alumno o, si
+  /// no está, la del plan.
+  String? _academiaDeEvaluacion(EvaluacionAlumno e) =>
+      _academiaDeAlumno(e.alumnoId) ?? planPorId(e.planId)?.academiaId;
+
+  Future<void> _guardarOpsSync() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          _kOpsSync,
+          jsonEncode({
+            'pend': _opsPend.toList(),
+            'nube': _opsNube.toList(),
+            'borr': _opsBorr.toList(),
+          }));
+    } catch (_) {}
+  }
+
+  void _cargarOpsSync(SharedPreferences prefs) {
+    final raw = prefs.getString(_kOpsSync);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final m = jsonDecode(raw) as Map;
+      Set<String> lista(String k) => ((m[k] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toSet();
+      _opsPend
+        ..clear()
+        ..addAll(lista('pend'));
+      _opsNube
+        ..clear()
+        ..addAll(lista('nube'));
+      _opsBorr
+        ..clear()
+        ..addAll(lista('borr'));
+    } catch (_) {}
+  }
+
+  void _subirAsistencias(List<Asistencia> regs) {
+    if (regs.isEmpty) return;
+    for (final r in regs) {
+      _opsPend.add('a:${r.alumnoId}|${r.dia}');
+    }
+    _guardarOpsSync();
+    AcademiaOpsRepo.guardarAsistencias(regs).then((ok) {
+      if (!ok) return;
+      for (final r in regs) {
+        // Solo si no se volvió a marcar mientras subía (sería otro valor).
+        final i = asistencias.indexWhere(
+            (a) => a.alumnoId == r.alumnoId && a.dia == r.dia);
+        if (i < 0 || asistencias[i].presente == r.presente) {
+          _opsPend.remove('a:${r.alumnoId}|${r.dia}');
+        }
+      }
+      _guardarOpsSync();
+    });
+  }
+
+  void _subirPlan(PlanTrabajo plan) {
+    if (plan.esPlantilla || plan.academiaId.isEmpty) return;
+    final k = 'p:${plan.id}';
+    _opsPend.add(k);
+    _opsBorr.remove(k);
+    _guardarOpsSync();
+    AcademiaOpsRepo.guardarPlanes([plan]).then((ok) {
+      if (!ok) return;
+      // Si se volvió a editar mientras subía, queda pendiente para la próxima.
+      final actual = planPorId(plan.id);
+      if (actual == null ||
+          jsonEncode(actual.toJson()) == jsonEncode(plan.toJson())) {
+        _opsPend.remove(k);
+      }
+      _guardarOpsSync();
+    });
+  }
+
+  void _borrarPlanEnNube(String planId) {
+    final k = 'p:$planId';
+    _opsPend.remove(k);
+    _opsBorr.add(k);
+    _guardarOpsSync();
+    Future.wait([
+      AcademiaOpsRepo.eliminarPlanes([planId]),
+      AcademiaOpsRepo.borrarEvaluacionesDePlan(planId),
+    ]).then((oks) {
+      if (oks.every((x) => x)) {
+        _opsBorr.remove(k);
+        _guardarOpsSync();
+      }
+    });
+  }
+
+  void _subirNotas(List<NotaClase> notas) {
+    if (notas.isEmpty) return;
+    AcademiaOpsRepo.guardarNotas(notas).then((ok) {
+      if (!ok) return;
+      for (final n in notas) {
+        _opsNube.add('n:${n.id}');
+      }
+      _guardarOpsSync();
+    });
+  }
+
+  void _borrarNotasEnNube(List<String> ids) {
+    if (ids.isEmpty) return;
+    for (final id in ids) {
+      _opsBorr.add('n:$id');
+    }
+    _guardarOpsSync();
+    AcademiaOpsRepo.borrarNotas(ids).then((ok) {
+      if (!ok) return;
+      for (final id in ids) {
+        _opsBorr.remove('n:$id');
+        _opsNube.remove('n:$id');
+      }
+      _guardarOpsSync();
+    });
+  }
+
+  /// Baja y fusiona la operación de las academias que administro (asistencia,
+  /// rúbrica, bitácora, planes) y sube lo que el teléfono tenga y la nube no
+  /// (incluida la MIGRACIÓN única de lo que antes vivía solo aquí). Si una
+  /// lectura falla (sin red, sin SQL) no toca nada de esa parte. Best-effort.
+  Future<void> sincronizarOperacionAcademia() async {
+    final u = usuario;
+    if (u == null || !AcademiaOpsRepo.disponible || _syncOpsEnCurso) return;
+    final yo = u.email.toLowerCase();
+    final ids = <String>[
+      for (final a in academias)
+        if (a.dueno.toLowerCase() == yo) a.id,
+    ];
+    if (ids.isEmpty) return;
+    _syncOpsEnCurso = true;
+    try {
+      final misIds = ids.toSet();
+      // Solo alumnos vigentes de mis academias (un alumno eliminado aquí no
+      // revive su asistencia/rúbrica desde la nube).
+      final misAlumnos = <String>{
+        for (final a in alumnos)
+          if (misIds.contains(a.academiaId)) a.id,
+      };
+      var cambio = false;
+
+      // ── Planes (primero: la rúbrica depende de ellos) ──
+      final filasPlanes = await AcademiaOpsRepo.planes(ids);
+      if (filasPlanes != null) {
+        final enNube = <String>{};
+        final subir = <PlanTrabajo>[];
+        final reborrar = <String>[];
+        for (final r in filasPlanes) {
+          final id = (r['id'] ?? '').toString();
+          if (id.isEmpty) continue;
+          enNube.add(id);
+          final k = 'p:$id';
+          final i = planes.indexWhere((p) => p.id == id);
+          if (r['eliminado'] == true) {
+            _opsPend.remove(k);
+            _opsBorr.remove(k);
+            if (i >= 0) {
+              planes.removeAt(i);
+              evaluaciones.removeWhere((e) => e.planId == id);
+              cambio = true;
+            }
+            continue;
+          }
+          if (_opsBorr.contains(k)) {
+            reborrar.add(id);
+            continue;
+          }
+          if (_opsPend.contains(k) && i >= 0) {
+            subir.add(planes[i]);
+            continue;
+          }
+          final p = AcademiaOpsRepo.planDeFila(r);
+          if (p == null) continue;
+          if (i >= 0) {
+            if (jsonEncode(planes[i].toJson()) != jsonEncode(p.toJson())) {
+              planes[i] = p;
+              cambio = true;
+            }
+          } else {
+            planes.add(p);
+            cambio = true;
+          }
+        }
+        for (final p in planes) {
+          if (!p.esPlantilla &&
+              misIds.contains(p.academiaId) &&
+              !enNube.contains(p.id)) {
+            subir.add(p);
+          }
+        }
+        for (final p in subir) {
+          _subirPlan(p);
+        }
+        for (final id in reborrar) {
+          _borrarPlanEnNube(id);
+        }
+      }
+
+      // ── Asistencia ──
+      final filasAsis = await AcademiaOpsRepo.asistencias(ids);
+      if (filasAsis != null) {
+        final vistos = <String>{};
+        final avisadoNube = <String>{};
+        for (final r in filasAsis) {
+          final al = (r['alumno_id'] ?? '').toString();
+          final dia = (r['dia'] ?? '').toString();
+          if (al.isEmpty || dia.isEmpty || !misAlumnos.contains(al)) continue;
+          final clave = '$al|$dia';
+          vistos.add(clave);
+          if (r['avisado'] == true) {
+            avisadoNube.add(clave);
+            if (_asistenciaAvisada.add(clave)) cambio = true;
+          }
+          if (_opsPend.contains('a:$clave')) continue; // lo de aquí aún sube
+          final presente = r['presente'] != false;
+          final i = asistencias
+              .indexWhere((a) => a.alumnoId == al && a.dia == dia);
+          final reg = Asistencia(
+              academiaId: (r['academia_id'] ?? '').toString(),
+              alumnoId: al,
+              dia: dia,
+              presente: presente);
+          if (i < 0) {
+            asistencias.add(reg);
+            cambio = true;
+          } else if (asistencias[i].presente != presente) {
+            asistencias[i] = reg;
+            cambio = true;
+          }
+        }
+        // Lo que la nube no tiene (migración) o quedó pendiente → subir.
+        final subir = <Asistencia>[
+          for (final a in asistencias)
+            if (misIds.contains(a.academiaId) &&
+                misAlumnos.contains(a.alumnoId) &&
+                (!vistos.contains('${a.alumnoId}|${a.dia}') ||
+                    _opsPend.contains('a:${a.alumnoId}|${a.dia}')))
+              a
+        ];
+        _subirAsistencias(subir);
+        // "Ya avisé" que la nube aún no sabe (incluye días sin marcar).
+        final avisos = <({
+          String academiaId,
+          String alumnoId,
+          String dia,
+          bool presente
+        })>[];
+        for (final clave in _asistenciaAvisada.toList()) {
+          final j = clave.indexOf('|');
+          if (j <= 0) continue;
+          final al = clave.substring(0, j);
+          final dia = clave.substring(j + 1);
+          if (!misAlumnos.contains(al) || avisadoNube.contains(clave)) {
+            continue;
+          }
+          final aid = _academiaDeAlumno(al);
+          if (aid == null) continue;
+          avisos.add((
+            academiaId: aid,
+            alumnoId: al,
+            dia: dia,
+            presente: asistio(al, dia)
+          ));
+        }
+        if (avisos.isNotEmpty) AcademiaOpsRepo.marcarAvisados(avisos);
+      }
+
+      // ── Rúbrica (gana la más reciente) ──
+      final filasEval = await AcademiaOpsRepo.evaluaciones(ids);
+      if (filasEval != null) {
+        final enNube = <String, EvaluacionAlumno>{};
+        for (final r in filasEval) {
+          final e = AcademiaOpsRepo.evaluacionDeFila(r);
+          if (e == null || !misAlumnos.contains(e.alumnoId)) continue;
+          enNube[e.clave] = e;
+        }
+        final subir = <EvaluacionAlumno>[];
+        for (var i = 0; i < evaluaciones.length; i++) {
+          final local = evaluaciones[i];
+          if (!misAlumnos.contains(local.alumnoId)) continue;
+          final nube = enNube.remove(local.clave);
+          if (nube == null) {
+            subir.add(local); // migración / no llegó
+          } else if (nube.cuando.isAfter(local.cuando)) {
+            if (nube.nivel != local.nivel) cambio = true;
+            evaluaciones[i] = nube;
+          } else if (local.cuando.isAfter(nube.cuando)) {
+            subir.add(local);
+          }
+        }
+        if (enNube.isNotEmpty) {
+          evaluaciones.addAll(enNube.values); // evaluadas en la web/otro equipo
+          cambio = true;
+        }
+        if (subir.isNotEmpty) {
+          AcademiaOpsRepo.guardarEvaluaciones(subir, _academiaDeEvaluacion);
+        }
+      }
+
+      // ── Bitácora (unión por id + borrados) ──
+      final filasNotas = await AcademiaOpsRepo.notas(ids);
+      if (filasNotas != null) {
+        final enNube = <String>{};
+        final reborrar = <String>[];
+        for (final r in filasNotas) {
+          final n = AcademiaOpsRepo.notaDeFila(r);
+          if (n == null) continue;
+          enNube.add(n.id);
+          _opsNube.add('n:${n.id}');
+          if (_opsBorr.contains('n:${n.id}')) {
+            reborrar.add(n.id);
+            continue;
+          }
+          if (!notasClase.any((x) => x.id == n.id)) {
+            notasClase.add(n);
+            cambio = true;
+          }
+        }
+        final subir = <NotaClase>[];
+        final antes = notasClase.length;
+        notasClase.removeWhere((n) =>
+            misIds.contains(n.academiaId) &&
+            !enNube.contains(n.id) &&
+            _opsNube.remove('n:${n.id}')); // estuvo en la nube: se borró allá
+        if (notasClase.length != antes) cambio = true;
+        for (final n in notasClase) {
+          if (misIds.contains(n.academiaId) && !enNube.contains(n.id)) {
+            subir.add(n);
+          }
+        }
+        _subirNotas(subir);
+        _borrarNotasEnNube(reborrar);
+      }
+
+      _guardarOpsSync();
+      if (cambio) {
+        notifyListeners();
+        _persistirDatos();
+      }
+    } catch (_) {
+      // best-effort: lo local sigue intacto
+    } finally {
+      _syncOpsEnCurso = false;
+    }
   }
 
   /// ¿El alumno está marcado presente ese día?
@@ -4541,12 +4942,14 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _persistirDatos();
+    _subirAsistencias([reg]);
   }
 
   /// Marca a VARIOS alumnos de una vez el mismo día (upsert), notificando una
   /// sola vez. Para el botón "Todos presentes" de la asistencia rápida.
   void marcarAsistenciaTodos(
       String academiaId, List<String> alumnoIds, String dia, bool presente) {
+    final regs = <Asistencia>[];
     for (final alumnoId in alumnoIds) {
       final i = asistencias
           .indexWhere((a) => a.alumnoId == alumnoId && a.dia == dia);
@@ -4555,6 +4958,7 @@ class AppState extends ChangeNotifier {
           alumnoId: alumnoId,
           dia: dia,
           presente: presente);
+      regs.add(reg);
       if (i >= 0) {
         asistencias[i] = reg;
       } else {
@@ -4563,6 +4967,7 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _persistirDatos();
+    _subirAsistencias(regs);
   }
 
   // Memoria de "a qué alumno ya le avisé la asistencia" (clave "alumnoId|dia"),
@@ -4576,6 +4981,14 @@ class AppState extends ChangeNotifier {
     _asistenciaAvisada.add('$alumnoId|$dia');
     notifyListeners();
     _persistirDatos();
+    final aid = _academiaDeAlumno(alumnoId);
+    if (aid != null) {
+      AcademiaOpsRepo.marcarAvisado(
+          academiaId: aid,
+          alumnoId: alumnoId,
+          dia: dia,
+          presente: asistio(alumnoId, dia));
+    }
   }
 
   // ── Planes de trabajo del profe + evaluación de alumnos ────────────────────
@@ -4601,6 +5014,7 @@ class AppState extends ChangeNotifier {
     planes.add(nuevo);
     notifyListeners();
     _persistirDatos();
+    _subirPlan(nuevo);
     return nuevo.id;
   }
 
@@ -4617,6 +5031,7 @@ class AppState extends ChangeNotifier {
     planes.add(nuevo);
     notifyListeners();
     _persistirDatos();
+    _subirPlan(nuevo);
     return nuevo.id;
   }
 
@@ -4637,6 +5052,7 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _persistirDatos();
+    _subirPlan(plan);
   }
 
   void eliminarPlan(String planId) {
@@ -4644,6 +5060,7 @@ class AppState extends ChangeNotifier {
     evaluaciones.removeWhere((e) => e.planId == planId);
     notifyListeners();
     _persistirDatos();
+    _borrarPlanEnNube(planId);
   }
 
   /// Nivel evaluado de una habilidad de un alumno en un plan (null = sin evaluar).
@@ -4679,6 +5096,8 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _persistirDatos();
+    // Sin cola: si falla, la próxima sincronización la sube (gana el ts más nuevo).
+    AcademiaOpsRepo.guardarEvaluaciones([reg], _academiaDeEvaluacion);
   }
 
   /// Resumen de progreso de un alumno en un plan: cuántas habilidades hay en cada
@@ -4761,6 +5180,7 @@ class AppState extends ChangeNotifier {
     notasClase.add(reg);
     notifyListeners();
     _persistirDatos();
+    _subirNotas([reg]);
     return reg.id;
   }
 
@@ -4768,6 +5188,7 @@ class AppState extends ChangeNotifier {
     notasClase.removeWhere((n) => n.id == id);
     notifyListeners();
     _persistirDatos();
+    _borrarNotasEnNube([id]);
   }
 
   static String _mesNombre(DateTime d) {
@@ -6906,6 +7327,9 @@ class AppState extends ChangeNotifier {
   static const _kPlanes = 'planes_trabajo_json';
   static const _kEvaluaciones = 'evaluaciones_json';
   static const _kNotasClase = 'notas_clase_json';
+  // Estado de sincronización de la operación de academia con la nube
+  // (pendientes, notas ya subidas, borrados por propagar).
+  static const _kOpsSync = 'academia_ops_sync_json';
   static const _kCampeonatos = 'campeonatos_json';
   static const _kInvitaciones = 'invitaciones_json';
   static const _kChatLecturas = 'chat_lecturas_json';
@@ -7141,6 +7565,7 @@ class AppState extends ChangeNotifier {
       _cargarLista(prefs, _kPlanes, planes, PlanTrabajo.fromJson);
       _cargarLista(prefs, _kEvaluaciones, evaluaciones, EvaluacionAlumno.fromJson);
       _cargarLista(prefs, _kNotasClase, notasClase, NotaClase.fromJson);
+      _cargarOpsSync(prefs);
       _cargarLista(prefs, _kCampeonatos, campeonatos, Campeonato.fromJson);
       _cargarLista(prefs, _kInvitaciones, invitaciones, Invitacion.fromJson);
 
@@ -7429,6 +7854,13 @@ class AppState extends ChangeNotifier {
           jsonEncode(evaluaciones.map((e) => e.toJson()).toList()));
       await prefs.setString(_kNotasClase,
           jsonEncode(notasClase.map((n) => n.toJson()).toList()));
+      await prefs.setString(
+          _kOpsSync,
+          jsonEncode({
+            'pend': _opsPend.toList(),
+            'nube': _opsNube.toList(),
+            'borr': _opsBorr.toList(),
+          }));
       await prefs.setString(_kCampeonatos,
           jsonEncode(campeonatos.map((c) => c.toJson()).toList()));
       await prefs.setString(_kInvitaciones,
@@ -7642,6 +8074,9 @@ class AppState extends ChangeNotifier {
     planes.clear();
     evaluaciones.clear();
     notasClase.clear();
+    _opsPend.clear();
+    _opsNube.clear();
+    _opsBorr.clear();
     invitaciones.clear();
     campeonatos.clear();
     movimientos.clear();
@@ -7757,6 +8192,9 @@ class AppState extends ChangeNotifier {
     planes.clear();
     evaluaciones.clear();
     notasClase.clear();
+    _opsPend.clear();
+    _opsNube.clear();
+    _opsBorr.clear();
     invitaciones.clear();
     movimientos.clear();
     campeonatos.clear();

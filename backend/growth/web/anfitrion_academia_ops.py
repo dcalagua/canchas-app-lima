@@ -8,9 +8,11 @@ en `web/anfitrion_academia.py`; esto NO lo duplica).
 - `/anfitrion/academia/asistencia`   = `asistencia_screen.dart` (día, presente/
   falta, "Todos presentes", "Avisar a los padres": chat del app a los que tienen
   cuenta + WhatsApp a los que no).
-- `/anfitrion/academia/evaluaciones` = `evaluar_alumno_screen.dart` sobre la
-  PLANTILLA Pichangol del deporte (`planes_semilla.dart` → `planes_semilla.json`):
-  rúbrica Inicial · En proceso · Logrado por habilidad + bitácora de clase.
+- `/anfitrion/academia/evaluaciones` = `evaluar_alumno_screen.dart` sobre los
+  PLANES DE TRABAJO propios de la academia (`pichangol_academia_planes`, los
+  arma el profe en el app) o, sin ellos, la PLANTILLA Pichangol del deporte
+  (`planes_semilla.dart` → `planes_semilla.json`): rúbrica Inicial · En proceso
+  · Logrado por habilidad + bitácora de clase.
 - `/anfitrion/academia/ranking`      = `ranking_academia_screen.dart`: tabla de
   posiciones (3 pts victoria, 1 derrota), filtros sede/categoría, registrar /
   quitar partido y categoría por alumno. Escribe `data.partidos` / `data.
@@ -29,10 +31,13 @@ en `web/anfitrion_academia.py`; esto NO lo duplica).
   `crear_academia_screen.dart`: sedes, horario por (sede, programa) y precio
   por (sede, plan), que la web antes solo CONSERVABA.
 
-ASISTENCIA, EVALUACIONES y BITÁCORA viven en el app SOLO en el teléfono del
-profe (SharedPreferences). La web las guarda en tablas propias
-(`docs/piloto/supabase_academia_operacion.sql`); mientras el APK no las lea,
-cada lado ve lo suyo. Sin esas tablas, las páginas lo dicen y no rompen.
+ASISTENCIA, EVALUACIONES, BITÁCORA y PLANES DE TRABAJO son las MISMAS filas en
+el app y la web: tablas `pichangol_academia_asistencias|evaluaciones|notas|
+planes` (`docs/piloto/supabase_academia_operacion.sql` +
+`supabase_academia_operacion_rls.sql`, que da acceso al APK y crea la de
+planes). El APK las sincroniza en `AppState.sincronizarOperacionAcademia`
+(`lib/data/academia_ops_repo.dart`). Sin esas tablas, las páginas lo dicen y no
+rompen.
 
 Todo escribe SOLO sobre academias cuyo `dueno` es el correo de la sesión
 (`FOR UPDATE` al tocar cuotas y al mezclar `data`)."""
@@ -400,6 +405,46 @@ def borrar_nota(aid: str, nota_id: str) -> bool:
         return False
 
 
+def _plan_normal(d: dict, aid: str = "") -> dict | None:
+    """`PlanTrabajo.fromJson` → la forma que usa la página (igual a la semilla)."""
+    if not isinstance(d, dict) or not str(d.get("id") or "").strip():
+        return None
+    ses = []
+    for s in d.get("sesiones") or []:
+        if not isinstance(s, dict):
+            continue
+        try:
+            n = int(s.get("numero") or 0)
+        except (TypeError, ValueError):
+            continue
+        if n > 0:
+            ses.append({"numero": n, "titulo": str(s.get("titulo") or f"Clase {n}")})
+    ses.sort(key=lambda s: s["numero"])
+    return {"id": str(d["id"]), "academiaId": str(d.get("academiaId") or aid), "deporte": str(d.get("deporte") or ""),
+            "nombre": str(d.get("nombre") or "Plan de trabajo"), "nivel": str(d.get("nivel") or ""),
+            "habilidades": [str(h) for h in (d.get("habilidades") or []) if str(h).strip()],
+            "sesiones": ses, "propio": True}
+
+
+def planes_de(aid: str) -> list[dict]:
+    """Planes de trabajo PROPIOS de la academia (`pichangol_academia_planes`,
+    `data` = `PlanTrabajo.toJson` del app), más recientes primero. [] sin tabla."""
+    if not aid or not pg.habilitado or not tabla_existe("pichangol_academia_planes"):
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT data FROM pichangol_academia_planes WHERE academia_id = %s AND NOT eliminado "
+                        "ORDER BY actualizado DESC LIMIT 50", (aid,))
+            out = []
+            for (d,) in cur.fetchall():
+                p = _plan_normal(_json(d), aid)
+                if p:
+                    out.append(p)
+            return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def mensajes_de_academia(aid: str) -> list[dict]:
     """Mensajes de los hilos de la academia (`MensajesRepo.mensajesDeAcademias`)."""
     if not pg.habilitado or not aid:
@@ -727,9 +772,31 @@ def marcar_avisado(request: Request, body: dict = Body(default_factory=dict)) ->
 
 # ══ EVALUACIÓN ════════════════════════════════════════════════════════════════
 
-def plan_de(a: dict) -> dict | None:
+def plantilla_de(a: dict) -> dict | None:
     """Plantilla Pichangol del deporte (`plantillaPara`)."""
     return _PLANES.get(str(a.get("deporte") or "tenis"))
+
+
+def opciones_plan(a: dict) -> list[dict]:
+    """Planes sobre los que se evalúa: los PROPIOS de la academia (los que el
+    profe armó en el app o en otra pantalla; misma tabla) y la plantilla del
+    deporte solo si no hay propios o si ya tiene evaluaciones guardadas (así no
+    se esconde lo evaluado antes de crear un plan propio)."""
+    propios = planes_de(str(a.get("id") or ""))
+    base = plantilla_de(a)
+    if base and (not propios or (tabla_existe("pichangol_academia_evaluaciones")
+                                 and evaluaciones_de(str(a.get("id") or ""), base["id"]))):
+        return propios + [base]
+    return propios
+
+
+def plan_de(a: dict, plan_id: str = "", opciones: list[dict] | None = None) -> dict | None:
+    """El plan pedido (si es de la academia) o el primero: el propio más
+    reciente y, sin propios, la plantilla Pichangol del deporte."""
+    ops_ = opciones if opciones is not None else opciones_plan(a)
+    if plan_id:
+        return next((p for p in ops_ if p["id"] == plan_id), None)
+    return ops_[0] if ops_ else None
 
 
 def progreso(plan: dict, niveles: dict[str, str]) -> dict:
@@ -748,16 +815,25 @@ def progreso(plan: dict, niveles: dict[str, str]) -> dict:
 
 
 @router.get("/anfitrion/academia/evaluaciones", response_class=HTMLResponse)
-def pagina_evaluaciones(request: Request, academia: str = "", alumno: str = "") -> HTMLResponse:
+def pagina_evaluaciones(request: Request, academia: str = "", alumno: str = "", plan: str = "") -> HTMLResponse:
     ses, acads, a, resp = _contexto(request, "/anfitrion/academia/evaluaciones", academia)
     if resp is not None:
         return resp
-    plan = plan_de(a)
+    opciones = opciones_plan(a)
+    plan = plan_de(a, plan, opciones) or plan_de(a, "", opciones)
     mats = sorted(matriculas_de(a["id"]), key=lambda m: str(m.get("nombre") or "").lower())
     q = f"academia={up.quote(a['id'])}"
     if not plan:
-        cuerpo = "<div class='anf-vacio' style='margin-top:18px'>Aún no tenemos un plan de trabajo Pichangol para este deporte. Evalúa desde la app con tu propio plan.</div>"
+        cuerpo = ("<div class='anf-vacio' style='margin-top:18px'>Aún no tienes un plan de trabajo para este deporte. "
+                  "Arma tu plan en la app (Mi academia → Planes de trabajo) y aparecerá aquí.</div>")
         return _pagina(ses, acads, a, "evaluaciones", "Evaluación", "Rúbrica y bitácora de clases.", cuerpo)
+    q = f"{q}&plan={up.quote(plan['id'])}"
+    chips_plan = ""
+    if len(opciones) > 1:
+        chips_plan = "<div class='chips aco-noimp' style='margin-top:12px'>" + "".join(
+            f"<a class='chip{' sel' if p['id'] == plan['id'] else ''}' href='/anfitrion/academia/evaluaciones?academia={e(up.quote(a['id']))}"
+            f"&plan={e(up.quote(p['id']))}{('&alumno=' + e(up.quote(alumno))) if alumno else ''}'>"
+            f"{'📘' if p.get('propio') else '📗'} {e(p['nombre'])}</a>" for p in opciones) + "</div>"
     activa = tabla_existe("pichangol_academia_evaluaciones")
     evals = evaluaciones_de(a["id"], plan["id"]) if activa else {}
     sel = next((m for m in mats if m.get("id") == alumno), None)
@@ -769,7 +845,7 @@ def pagina_evaluaciones(request: Request, academia: str = "", alumno: str = "") 
                          f"{_av(m)}<div style='flex:1'><b>{e(m.get('nombre') or 'Alumno')}</b>"
                          f"<div class='aco-n'>{p['logrado']} logradas · {p['enProceso']} en proceso · {p['sinEvaluar']} sin evaluar</div>"
                          f"<div class='aco-prog'><i style='width:{p['pct']:.0f}%'></i></div></div><b>{p['pct']:.0f}%</b></a>")
-        cuerpo = ((_falta_sql("La evaluación") if not activa else "")
+        cuerpo = ((_falta_sql("La evaluación") if not activa else "") + chips_plan
                   + f"<div class='aco-card' style='margin-top:14px'><b>📘 {e(plan['nombre'])}</b><div class='aco-n'>{e(plan['nivel'])} · {len(plan['habilidades'])} habilidades · {len(plan['sesiones'])} clases</div></div>"
                   + (f"<div class='aco-grid'>{tarjetas}</div>" if mats else "<div class='anf-vacio' style='margin-top:18px'>Aún no tienes alumnos en esta academia.</div>"))
         return _pagina(ses, acads, a, "evaluaciones", "Evaluación", "Toca un alumno para evaluarlo.", cuerpo)
@@ -792,7 +868,7 @@ def pagina_evaluaciones(request: Request, academia: str = "", alumno: str = "") 
                 f"<div class='aco-n'>{e(ses_t)}</div>{('<div>' + e(n['nota']) + '</div>') if n['nota'] else ''}</div>"
                 f"<button class='btn sec aco-mini' data-nota-borrar='{e(n['id'])}'>Quitar</button></div>")
     cuerpo = (f"<a class='anf-back' href='/anfitrion/academia/evaluaciones?{q}'>‹ Todos los alumnos</a>"
-              + ("" if activa else _falta_sql("La evaluación"))
+              + ("" if activa else _falta_sql("La evaluación")) + chips_plan
               + f"<div class='aco-card aco-fila' style='margin-top:12px'>{_av(sel)}<div style='flex:1'><b style='font-size:17px'>{e(sel.get('nombre'))}</b>"
               f"<div class='aco-n'>{e(plan['nombre'])}</div><div class='aco-prog'><i style='width:{p['pct']:.0f}%'></i></div></div>"
               f"<b style='font-size:22px'>{p['pct']:.0f}%</b></div>"
@@ -810,7 +886,7 @@ def pagina_evaluaciones(request: Request, academia: str = "", alumno: str = "") 
 _JS_EVAL = r"""
 document.addEventListener('click',async function(ev){
  var c=ev.target.closest('[data-eval]');
- if(c){var j=await acoPost('/anfitrion/academia/evaluaciones/evaluar',{academia_id:ACO.aid,alumno_id:ACO.alumno,habilidad:c.dataset.eval,nivel:c.dataset.v});
+ if(c){var j=await acoPost('/anfitrion/academia/evaluaciones/evaluar',{academia_id:ACO.aid,alumno_id:ACO.alumno,plan_id:ACO.plan,habilidad:c.dataset.eval,nivel:c.dataset.v});
   if(j.ok){c.parentNode.querySelectorAll('.chip').forEach(function(x){x.classList.toggle('sel',x===c)});pcgToast('Guardado')}else acoErr(j);return}
  var d=ev.target.closest('[data-nota-borrar]');
  if(d){if(!await pcgConfirmar({titulo:'Quitar esta clase',mensaje:'Se borra de la bitácora del alumno.',confirmar:'Quitar',destructivo:true}))return;
@@ -838,7 +914,7 @@ def evaluar(request: Request, body: dict = Body(default_factory=dict)) -> JSONRe
     a = _mia(ses, str(body.get("academia_id") or ""))
     if not a:
         return _no_encontrada()
-    plan = plan_de(a)
+    plan = plan_de(a, str(body.get("plan_id") or ""))
     hab, nivel = str(body.get("habilidad") or ""), str(body.get("nivel") or "")
     if not plan or hab not in plan["habilidades"] or nivel not in NIVELES or not _alumno_de(a, str(body.get("alumno_id") or "")):
         return JSONResponse({"ok": False, "error": "datos", "mensaje": "Elige una habilidad y un nivel."}, status_code=400)
@@ -856,7 +932,7 @@ def nota_clase(request: Request, body: dict = Body(default_factory=dict)) -> JSO
     a = _mia(ses, str(body.get("academia_id") or ""))
     if not a:
         return _no_encontrada()
-    plan = plan_de(a)
+    plan = plan_de(a, str(body.get("plan_id") or ""))
     alumno_id = str(body.get("alumno_id") or "")
     des = str(body.get("desempeno") or "")
     sesion_n = int(_num(body.get("sesion"), 0))
