@@ -94,6 +94,26 @@ if _cambios and pg.habilitado:
         pass
 
 
+# DOMINIO RAÍZ → www (pedido del director, 1-oct-2026: "la gente escribe
+# pichangol.app y no carga"). El dominio raíz apunta también a este servicio
+# (Railway emite su certificado: .app exige HTTPS por HSTS y el "URL Redirect"
+# de Namecheap no tiene SSL) y aquí se manda con 301/308 a www, el dominio
+# canónico (SEO, cookies de sesión y el origen autorizado de Google Sign-In).
+# `/.well-known/` NO se redirige: Android verifica los App Links de
+# pichangol.app leyendo assetlinks.json en ese mismo host, sin redirecciones.
+_A_WWW = {h.strip().lower() for h in os.getenv("DOMINIOS_A_WWW", "pichangol.app").split(",") if h.strip()}
+
+
+@app.middleware("http")
+async def _raiz_a_www(request: Request, call_next):
+    host = (request.headers.get("host") or "").split(":")[0].strip().lower()
+    if host in _A_WWW and not request.url.path.startswith("/.well-known/"):
+        from fastapi.responses import RedirectResponse
+        destino = f"https://www.{host}{request.url.path}" + (f"?{request.url.query}" if request.url.query else "")
+        return RedirectResponse(destino, status_code=301 if request.method in ("GET", "HEAD") else 308)
+    return await call_next(request)
+
+
 @app.middleware("http")
 async def _persistir(request: Request, call_next):
     """Tras cada request que muta estado, guarda el snapshot completo (respaldo)
