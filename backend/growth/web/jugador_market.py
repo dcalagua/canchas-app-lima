@@ -35,9 +35,11 @@ funcionalidades que existen actualmente en el app").
   crédito en `pichangol_bonos_comprados` (id `bono_<operación>`, upsert
   idempotente), contabilidad `post_venta` y push "¡Vendiste un bono! 🎟️".
 
-El CANJE del bono (reservar descontando horas) vive en la ficha del app
-(`club_detalle._reservar` con `metodo == 'bono'`); la ficha web /reservar aún
-no lo ofrece (ver el informe del módulo).
+El CANJE del bono (reservar descontando horas) está en la ficha del app
+(`club_detalle._reservar` con `metodo == 'bono'`) y en la ficha web
+/reservar (`web/beneficios.py`: "Usar mi bono" en el resumen, 1 hora = 1
+turno, aparta las horas con el hold y las devuelve si no se paga o se
+cancela a tiempo).
 """
 from __future__ import annotations
 
@@ -815,8 +817,9 @@ def pagina_mis_bonos(request: Request, nuevo: str = "") -> HTMLResponse:
     cuerpo = (_CSS + "<div class='mk-wrap'><div class='mk-h'><div><h1>Mis bonos</h1>"
               "<p class='sub'>Paquetes de horas que compraste. Los pagaste una sola vez; al reservar con tu bono descuentas de aquí, sin volver a pagar.</p></div></div>"
               + aviso + f"<div style='margin-top:14px'>{lista}</div>"
-              "<p class='sub' style='font-size:12.5px;margin-top:14px'>Por ahora tus horas de bono se canjean al reservar desde la app Pichangol (misma cuenta). "
-              f"<a href='{PLAY_URL}' target='_blank' rel='noopener'>Abrir la app</a></p></div>")
+              "<p class='sub' style='font-size:12.5px;margin-top:14px'>Para usar tus horas, reserva en ese local (aquí en la web con “Ver el local” "
+              "o en la app con la misma cuenta) y marca <b>Usar mi bono</b> en el resumen: cada turno descuenta 1 hora. "
+              "Si cancelas a tiempo, las horas vuelven a tu bono.</p></div>")
     return ui.shell("Mis bonos", cuerpo, sesion=ses, titulo_tab="Mis bonos · Pichangol")
 
 
@@ -868,7 +871,7 @@ def pagina_bonos_local(request: Request, cancha_id: str) -> HTMLResponse:
               + (f"<div class='saldo'>✓ Tienes {saldo} {'hora' if saldo == 1 else 'horas'} de bono en este local</div>" if saldo > 0 else "")
               + nota + login + cuerpo_packs
               + (f"<div style='margin-top:16px'>{ui.selector_medio_pago()}</div><div class='estado bad' id='mkErr'></div>" if (puede and ofertas) else "")
-              + "<p class='sub' style='font-size:12.5px;margin-top:14px'>Tus horas quedan en <a href='/mis-bonos'>Mis bonos</a> y se canjean al reservar en este local desde la app.</p></div>")
+              + "<p class='sub' style='font-size:12.5px;margin-top:14px'>Tus horas quedan en <a href='/mis-bonos'>Mis bonos</a> y se canjean al reservar en este local, aquí en la web o en la app: marca “Usar mi bono” en el resumen.</p></div>")
     head = ""
     if puede and ofertas:
         cfg = {"url": "/web/bonos/comprar", "cuerpo": {"cancha_id": cancha_id}, "moneda": sim, "monto": 0, "linea": "",

@@ -339,9 +339,19 @@ async def _iniciar_cron_holds_web() -> None:
                 filas = await asyncio.to_thread(_datos.liberar_holds_vencidos_todos)
                 if filas:
                     import fidelidad as _fid
+                    from web import beneficios as _ben
                     for f in filas:
                         await asyncio.to_thread(_fid.revertir_canje, "", [f["id"]])
+                    # Bono / puntos apartados por esos holds vuelven al jugador.
+                    await asyncio.to_thread(_ben.soltar, "", [f["id"] for f in filas])
                     print("[holds] liberados: " + ", ".join(f"{f['cancha_id']} {f['fecha']} {f['hora']}" for f in filas), flush=True)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                # Barrido de apartados de bono/puntos cuyo hold se borró por
+                # otro camino (p. ej. al reservar otro cliente esa cancha).
+                from web import beneficios as _ben
+                await asyncio.to_thread(_ben.barrer_vencidos)
             except Exception:  # noqa: BLE001
                 pass
             await asyncio.sleep(60)

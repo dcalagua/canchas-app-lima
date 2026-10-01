@@ -628,7 +628,8 @@ para la API del APK.
   unidad con el MISMO UPDATE atómico (`pagos/stock_productos.py`; APK vía
   `POST /pagos/venta/apartar|devolver`, idempotente por `apartado_id`,
   `stores.apartados_stock`; cron 5 min devuelve apartados >30 min sin venta).
-  El canje del bono al reservar sigue solo en el app.
+  El canje del bono al reservar ya está también en la web (ver "BONO Y
+  PUNTOS EN LA RESERVA WEB").
   (3) `web/jugador_clases.py`: `/mis-clases` (= `mis_clases_screen`:
   matrículas que pago o donde soy alumno, cuotas, débito automático con
   cancelar, "Mi familia · un solo pago"), `POST /web/mis-clases/pagar`
@@ -1478,6 +1479,41 @@ para la API del APK.
   que la seña no se devuelve. Test
   `test_sena_del_dueno_en_la_reserva_web_como_el_app`; Playwright
   `$SP/pw_sena.js`.
+- **BONO Y PUNTOS EN LA RESERVA WEB (1-oct-2026, pedido del director: los
+  mismos beneficios que el app en el checkout de `/reservar/{id}`):**
+  `web/beneficios.py` (regla) + funciones `datos.*canje_web*`/`saldo_bono`/
+  `bono_apartar`/`puntos_apartar` + tabla NUEVA `pichangol_canjes_web` (SQL
+  `docs/piloto/supabase_canjes_web.sql`: libro de lo APARTADO con el hold,
+  estados reservado → usado | devuelto; RLS sin políticas; sin la tabla la
+  web no ofrece bono ni puntos). Caja `#benBox` en la ficha (con sesión,
+  `GET /web/beneficios?cancha_id`). **Bono** = espejo de `metodo == 'bono'`
+  del app: cubre TODOS los turnos (1 h de bono = 1 turno) solo si alcanza,
+  créditos del local por `club` + `dueno` (FIFO, `FOR UPDATE` en
+  `pichangol_bonos_comprados` y el libro en la MISMA transacción), fila con
+  precio de lista, `pagado`, `medio_pago='bono'`, SIN liquidación ni Culqi
+  (el dueño cobró al vender el pack); no se combina con seña, fidelidad,
+  puntos ni boleador (`bono_con_boleador`). Diferencia consciente con el app:
+  los servicios extra con bono se COBRAN en línea y se liquidan al dueño (en
+  el APK quedan en la fila sin cobrarse: conviene alinearlo). **Puntos** =
+  `_usarPuntos` del app: 100 pts = S/ 3, solo pago total en línea en soles,
+  total > S/ 3, sin seña/bono/premio de fidelidad; el dueño liquida el precio
+  COMPLETO (lo pone Pichangol) y el cargo por servicio se cotiza sobre lo
+  cobrado (total − 3). Disponibles = `datos.puntos_de` − apartados vivos; el
+  apartado toma `pg_advisory_xact_lock` por correo (dos pestañas no canjean
+  los mismos puntos). El canje se escribe en `pichangol_puntos_canjes` (mismo
+  formato que el APK, referencia `<cancha>_<fecha>_<hora>`) recién con el
+  pago aprobado, en la misma transacción que marca el libro `usado`. Vuelven
+  al jugador: `/web/liberar`, pago rechazado, cron de holds (`soltar` +
+  `barrer_vencidos` cada minuto) y cancelación CON devolución (horas a los
+  mismos créditos; puntos con fila NEGATIVA en `pichangol_puntos_canjes`,
+  que APK y web suman). Una reserva con bono hecha en el APK que se cancela
+  desde la web devuelve sus horas a los créditos del local (LIFO). La
+  cancelación devuelve en plata solo lo PAGADO (sin bono ni los S/ 3); bono
+  sin plata → `reembolso: "bono"`. Comprobante: "🎟️ Pagado con tu bono · N
+  horas" y "⭐ Canje de 100 puntos"; Mis reservas: "Pagada con bono 🎟️".
+  SQL probado contra Postgres 16 real (concurrencia de puntos incluida).
+  **Pendiente:** correr el SQL en QAS (director) y, con autorización, en
+  PRD. Tests `tests/test_web_bono_puntos.py`; Playwright `$SP/bp_pw.js`.
 - **"CADA CLIC DEMORA" (queja del director, 1-oct-2026) — CAUSA RAÍZ:**
   `pg-backend-prd` corre en Railway **us-west2 (California)** y PCG-PRD está
   en **sa-east-1 (São Paulo)**: ~180 ms por ida y vuelta. psycopg abría una
@@ -3559,7 +3595,9 @@ auth por usuario en `/pagos/movimientos` (PROD).
   login + reset por cuenta en logout). CANJE EN CHECKOUT (hecho): toggle en el
   resumen de `club_detalle` (`usarPuntos`), 100 pts = S/3, solo pago online en
   S/, 1 canje por reserva; el descuento lo absorbe la comisión PCG (la
-  liquidación al dueño va con el precio completo). UI: tarjeta en Mis reservas
+  liquidación al dueño va con el precio completo). La WEB lo ofrece igual
+  desde el 1-oct-2026 (`web/beneficios.py`); una cancelación web con
+  devolución inserta una fila NEGATIVA (−100) que devuelve los puntos. UI: tarjeta en Mis reservas
   (`_PuntosCard`) + pantalla "Mis puntos" en Perfil (`mis_puntos_screen.dart`).
   SQL: `docs/piloto/supabase_puntos_canjes.sql`. OJO: el backend growth
   `/puntos/*` es el motor de INCENTIVOS growth (traer_cancha, etc.; ahora con
