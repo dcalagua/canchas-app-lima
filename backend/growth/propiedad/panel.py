@@ -491,6 +491,38 @@ def set_empresa_admin(req: EmpresaRequest,
     return {"ok": True, **get_empresa_admin(x_admin_token)}
 
 
+class CorreoPruebaRequest(BaseModel):
+    para: str = ""
+
+
+@router.get("/admin/api/correos")
+def get_correos_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Correos de pago (recibo al que pagó + aviso al que recibe): proveedor,
+    remitente, conteo por estado y los últimos de la bandeja."""
+    _check(x_admin_token)
+    import correos
+    return correos.resumen()
+
+
+@router.post("/admin/api/correos/prueba")
+def post_correo_prueba(req: CorreoPruebaRequest, x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    import correos
+    try:
+        return correos.correo_prueba(req.para)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail=str(exc)[:300])
+
+
+@router.post("/admin/api/correos/{correo_id}/reintentar")
+def post_correo_reintentar(correo_id: str, x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    import correos
+    if not correos.reintentar(correo_id):
+        raise HTTPException(status_code=409, detail="No se puede reintentar (ya salió o no tiene contenido)")
+    return {"ok": True}
+
+
 class ServicioExtraRequest(BaseModel):
     clave: str = ""
     nombre: str = ""
@@ -2541,6 +2573,10 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">🏢</span>
             <span class="md-txt"><b>Datos de la empresa</b><small>Razón social · RUC · dirección · WhatsApp por país · correo · horario</small></span>
           </button>
+          <button class="md-item" onclick="mostrarPane(this,'correosPanel');cargarCorreos()">
+            <span class="md-ico">✉️</span>
+            <span class="md-txt"><b>Correos de pago</b><small>Recibo al que paga y aviso al dueño/academia/boleador · estado de envíos</small></span>
+          </button>
           <button class="md-item" onclick="mostrarPane(this,'serviciosPanel');cargarServicios()">
             <span class="md-ico">🧩</span>
             <span class="md-txt"><b>Servicios extra</b><small>Catálogo global de add-ons (piscina, árbitro, entrada general…) · sugerencias de dueños</small></span>
@@ -2553,6 +2589,7 @@ _HTML = r"""<!DOCTYPE html>
         <div class="md-detail">
           <div class="md-pane" id="canal"></div>
           <div class="md-pane" id="empresaPanel" style="display:none"></div>
+          <div class="md-pane" id="correosPanel" style="display:none"></div>
           <div class="md-pane" id="serviciosPanel" style="display:none"></div>
           <div class="md-pane" id="redesPanel" style="display:none"></div>
         </div>
@@ -3518,6 +3555,52 @@ function renderEmpresa(d, v){
         <a href="mailto:${v.correo||''}">${v.correo||'—'}</a> · ${v.horario||''}<br>
         <span style="color:var(--muted)">Privacidad / eliminar cuenta: ${v.correo_privacidad||v.correo||'—'}</span>
       </div></div>`;
+}
+async function cargarCorreos(){
+  const box = document.getElementById('correosPanel');
+  if(!box) return;
+  box.innerHTML = '<div class="card">Cargando…</div>';
+  try{
+    const r = await fetch('/admin/api/correos',{headers:headers()});
+    if(r.status===401){ salir(); return; }
+    const j = await r.json();
+    const est = {enviado:'✅ enviado', pendiente:'⏳ pendiente', fallo:'❌ falló', sin_proveedor:'⚠️ sin proveedor', vencido:'⌛ vencido'};
+    const cuenta = Object.entries(j.cuenta||{}).map(([k,v])=>`<span class="chip">${esc(est[k]||k)} · ${v}</span>`).join(' ');
+    const filas = (j.ultimos||[]).map(m=>`<tr>
+        <td style="white-space:nowrap">${esc((m.creado||'').slice(0,16).replace('T',' '))}</td>
+        <td>${esc(m.para||'')}<br><small style="color:var(--muted)">${esc(m.rol==='dueno'?'recibe':(m.rol==='cliente'?'pagó':m.rol||''))} · ${esc(m.tipo||'')}</small></td>
+        <td>${esc(m.asunto||'')}${m.error?`<br><small style="color:var(--rojo)">${esc(m.error)}</small>`:''}</td>
+        <td style="white-space:nowrap">${esc(est[m.estado]||m.estado||'')}${['fallo','sin_proveedor','vencido'].includes(m.estado)?` <button class="btn-sec" onclick="reintentarCorreo('${esc(m.id)}')">Reintentar</button>`:''}</td></tr>`).join('');
+    box.innerHTML = `<div class="card"><div class="top"><h3>Correos de pago</h3></div>
+      <div class="row">Cada pago (reserva, matrícula y cuotas, marketplace y bonos, recarga, Pro, bodega, torneo, boleador)
+        manda un <b>recibo</b> a quien pagó y un <b>aviso</b> a quien recibe (dueño de la cancha, academia, vendedor,
+        organizador o boleador) con lo que le toca. App y web por igual.</div>
+      <div class="row"><b>Proveedor:</b> ${j.proveedor?esc(j.proveedor):'<span style="color:var(--rojo)">ninguno — configura RESEND_API_KEY (o SMTP_HOST) en Railway</span>'}
+        · <b>Remitente:</b> ${esc(j.remitente||'')} · <b>Responder a:</b> ${esc(j.responder_a||'—')}
+        · <b>En espera:</b> ${j.en_espera||0}</div>
+      <div class="row">${cuenta||'Aún no hay correos.'}</div>
+      <div class="actions" style="align-items:center">
+        <input id="correoPrueba" type="email" placeholder="tu@correo.com" style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-family:inherit">
+        <button class="btn-ap" onclick="probarCorreo()">Enviar correo de prueba</button>
+        <button class="btn-sec" onclick="cargarCorreos()">Actualizar</button>
+      </div>
+      <div style="overflow-x:auto;margin-top:12px"><table class="tbl" style="width:100%;font-size:13px">
+        <thead><tr><th>Fecha (UTC)</th><th>Para</th><th>Asunto</th><th>Estado</th></tr></thead><tbody>${filas||'<tr><td colspan="4">—</td></tr>'}</tbody></table></div>
+    </div>`;
+  }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
+}
+async function probarCorreo(){
+  const para = (document.getElementById('correoPrueba')||{}).value||'';
+  const r = await fetch('/admin/api/correos/prueba',{method:'POST',headers:headers(),body:JSON.stringify({para})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json().catch(()=>({}));
+  if(r.ok && j.ok) toast('Correo de prueba enviado ('+(j.proveedor||'')+')'); else toast(j.detail||'No se pudo enviar');
+}
+async function reintentarCorreo(id){
+  const r = await fetch('/admin/api/correos/'+encodeURIComponent(id)+'/reintentar',{method:'POST',headers:headers()});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json().catch(()=>({}));
+  if(r.ok) { toast('En cola de nuevo'); cargarCorreos(); } else toast(j.detail||'No se pudo');
 }
 async function guardarEmpresa(){
   const datos = {};

@@ -41,6 +41,8 @@ CONFIG_DEFAULT: dict[str, str] = {
     # Tope de invitados que le pagan bono a UN referidor (anti-abuso con
     # cuentas falsas); el invitado igual recibe el suyo.
     "referido_tope_referidor": "50",
+    # Correos de pago (`correos.py`): "0" = corte de emergencia (no se envía nada).
+    "correos_activo": "1",
     # TARIFA DE LA PASARELA (lo que Culqi / PayPhone / Libélula cobran a
     # Pichangol por cobro): porcentaje + fijo + impuesto sobre la tarifa,
     # editable en la torre → Cobros → "Tarifas de pasarela"; con esto la torre
@@ -581,6 +583,11 @@ class Stores:
         # código → correo del referidor (lo llena "Invita y gana" al abrirse).
         self.referidos: dict[str, dict] = {}
         self.referidos_codigos: dict[str, str] = {}
+        # CORREOS DE PAGO (`correos.py`): eventos en espera (rebote) y bandeja de
+        # salida con estado por correo (pendiente/enviado/fallo…), en el snapshot
+        # para que un redeploy no pierda ni repita un recibo.
+        self.correos_eventos: list[dict] = []
+        self.correos: list[dict] = []
         # CUENTA DE COBRO de cada dueño/organizador/academia (dónde recibe sus
         # liquidaciones: Yape/Plin o banco+CCI, por país) y LOTES de liquidación
         # (archivo Telecrédito BCP + "marcar lote pagado"). Ver
@@ -817,6 +824,13 @@ class Stores:
     def registrar_pago(self, **kw) -> "PagoRegistro":
         p = PagoRegistro(id=self.next_id("pago"), creado_en=ahora(), **kw)
         self.pagos.append(p)
+        # Correo de pago (recibo a quien pagó + aviso a quien recibe): solo se
+        # ENCOLA aquí; lo arma y envía el hilo de `correos.py`.
+        try:
+            import correos
+            correos.al_pago(p)
+        except Exception:  # noqa: BLE001 — un correo jamás rompe un cobro
+            pass
         return p
 
     def borrar_cobros_matricula(self, academia_id: str | None = None) -> int:
@@ -863,6 +877,8 @@ class Stores:
         self.pagos = []
         self.retos = []
         self.ventas = []
+        self.correos_eventos = []
+        self.correos = []
         self.pozos_equipo = {}
         self.saldos = {}
         self.saldos_promo = {}
@@ -1191,6 +1207,8 @@ class Stores:
             "cupones": {k: dict(v) for k, v in self.cupones.items()},
             "referidos": {k: dict(v) for k, v in self.referidos.items()},
             "referidos_codigos": dict(self.referidos_codigos),
+            "correos_eventos": [dict(e) for e in self.correos_eventos],
+            "correos": [dict(c) for c in self.correos[-600:]],
             "cuentas_cobro": {k: dict(v) for k, v in self.cuentas_cobro.items()},
             "lotes_liquidacion": [dict(l) for l in self.lotes_liquidacion[-60:]],
         }
@@ -1304,6 +1322,8 @@ class Stores:
         self.referidos = {
             k: dict(v) for k, v in (data.get("referidos") or {}).items()}
         self.referidos_codigos = dict(data.get("referidos_codigos") or {})
+        self.correos_eventos = [dict(e) for e in (data.get("correos_eventos") or [])]
+        self.correos = [dict(c) for c in (data.get("correos") or [])]
 
     # --- normalización a TABLAS SQL (fase 1: saldos/pagos/vistas/reclamos) ----
     # Estas colecciones (plata + impacto + reclamos) migran a tablas propias en

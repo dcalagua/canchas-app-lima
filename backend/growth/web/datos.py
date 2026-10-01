@@ -865,6 +865,35 @@ def matricula(alumno_id: str) -> dict | None:
         return None
 
 
+def matriculas_por_operacion(academia_id: str, operacion: str) -> list[dict]:
+    """Matrículas de la academia con alguna cuota pagada con ese N.º de
+    operación (`cuotas[].operacionId`): las personas de UN pago (carrito,
+    familia o cuotas sueltas). Para el correo de pago (`correos.py`)."""
+    operacion = (operacion or "").strip()
+    if not pg.habilitado or not operacion or len(operacion) < 6:
+        return []
+    patron = "%" + operacion.replace("\\", "").replace("%", "").replace("_", "\\_") + "%"
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            if academia_id:
+                cur.execute("SELECT id, academia_id, email, data FROM pichangol_matriculas WHERE academia_id = %s "
+                            "AND coalesce(eliminada,false) = false AND data::text LIKE %s ORDER BY id LIMIT 20",
+                            (academia_id, patron))
+            else:
+                cur.execute("SELECT id, academia_id, email, data FROM pichangol_matriculas WHERE "
+                            "coalesce(eliminada,false) = false AND data::text LIKE %s ORDER BY id LIMIT 20", (patron,))
+            out = []
+            for mid, aid, em, data in cur.fetchall():
+                d = _json_dict(data)
+                d["id"] = mid
+                d["academiaId"] = aid
+                d.setdefault("email", em or "")
+                out.append(d)
+            return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def academias_de_dueno(email: str) -> list[dict]:
     email = (email or "").strip().lower()
     if not pg.habilitado or not email:

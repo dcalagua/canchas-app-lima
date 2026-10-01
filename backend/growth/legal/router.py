@@ -181,7 +181,10 @@ def privacidad() -> str:
       <li><b>Reservas y pagos:</b> qué cancha, día y hora reservaste, el importe
       y el medio de pago. Los <b>datos de tu tarjeta los procesa Culqi</b>
       (pasarela autorizada): Pichangol <b>nunca</b> ve ni guarda el número
-      completo de tu tarjeta.</li>
+      completo de tu tarjeta. Con cada pago te enviamos a tu correo una
+      <b>constancia con el detalle</b> y, a quien recibe el pago (dueño del local,
+      academia, vendedor, organizador o boleador), un aviso con el detalle de esa
+      operación.</li>
       <li><b>Contenido que subes:</b> fotos de tus canchas o productos, fotos y
       videos de estados, publicaciones de canales, y las fotos, audios o archivos
       que envías por chat.</li>
@@ -220,6 +223,8 @@ def privacidad() -> str:
       datos de esa reserva. Es indispensable para que te atienda.</li>
       <li><b>Culqi</b> (Perú): procesamiento de pagos con tarjeta y Yape.</li>
       <li><b>Google</b>: inicio de sesión, mapas y envío de notificaciones.</li>
+      <li><b>Proveedor de correo electrónico</b> (Resend o el servidor de correo
+      que contratemos): sólo para entregarte las constancias de tus pagos.</li>
       <li><b>Supabase y Railway</b>: alojamiento de la base de datos y del
       servicio.</li>
       <li><b>Anthropic</b>: sólo si usas el entrenador virtual, para analizar los

@@ -177,6 +177,18 @@ app.include_router(concierge_router)
 
 
 @app.on_event("startup")
+async def _iniciar_correos() -> None:
+    """Hilo `pcg-correos`: arma y envía los correos de pago (recibo al que pagó
+    + aviso al que recibe) que encola `stores.registrar_pago`. En los tests no
+    corre (procesan la cola a mano con un proveedor simulado)."""
+    import sys
+    if "pytest" in sys.modules:
+        return
+    import correos
+    correos.iniciar_hilo()
+
+
+@app.on_event("startup")
 async def _iniciar_cron_renovaciones() -> None:
     """Cron INTERNO: cada 12 h renueva las suscripciones vencidas (cobra del saldo
     o de la tarjeta de débito automático). Corre dentro del mismo proceso (una

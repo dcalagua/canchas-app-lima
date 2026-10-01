@@ -1459,6 +1459,43 @@ para la API del APK.
   "yo" del carrito (o la primera). Tests
   `test_cargo_lleva_los_datos_reales_del_cliente_para_culqi` + asserts en
   `test_reserva_web_completa` y `test_ficha_de_academia…`.
+- **CORREOS DE PAGO OBLIGATORIOS (pedido del director, 1-oct-2026: "todo
+  pago debe mandar correo al que pagó con el detalle de su recibo y al dueño
+  de cancha / academia / boleador a quien va dirigido"):**
+  `backend/growth/correos.py`. Enganche ÚNICO en `stores.registrar_pago` →
+  `correos.al_pago(p)` (solo encola; app y web pasan por la misma
+  contabilidad): `liquidacion_online|full` → reserva, `matricula_online` →
+  matrícula/cuotas/débito automático, `venta_producto` → marketplace y bonos,
+  `recarga`, `suscripcion_pro`, `suscripcion`, `venta_bodega` (+ `<ref>_deb`
+  del cliente), `inscripcion_torneo[_ingreso]`, `aporte_equipo`,
+  `liquidacion_boleador`; más `encolar("boleo_solicitud")` en
+  `boleadores.crear_solicitud` ("Te contrataron"). Comisiones, bonos,
+  cupones, devoluciones y rechazados NO mandan correo. Reserva y matrícula
+  esperan 40 s (el APK liquida turno por turno; la web escribe la orden
+  después) y arman UN correo por grupo (`grupo_reserva_id`) / por N.º de
+  operación (base del `chr_…#k`, `datos.matriculas_por_operacion`) con datos
+  REALES: turnos, extras (boleador "por confirmar"), cargo por servicio,
+  "Pagaste hoy" (= fila del cargo `cobro_web|reserva|academia|cobro` si
+  existe), "Por pagar en la cancha" (seña), N.º de operación, botón al
+  comprobante; al que recibe: precio, comisión Pichangol y "Recibes" (=
+  `_liquidacion_dict`). Bandeja `stores.correos` + eventos
+  `stores.correos_eventos` en el SNAPSHOT (clave única por destinatario
+  `reserva:<grupo>:cliente|dueno` → nunca se repite; reintentos 1 min → 6 h,
+  `fallo` al 6.º, `vencido` a las 48 h; el HTML se borra al enviarse). Hilo
+  `pcg-correos` (cada 5 s, `main.py::_iniciar_correos`, no corre en pytest).
+  Proveedor: **Resend** (`RESEND_API_KEY`, HTTP con `Idempotency-Key`) o
+  **SMTP** (`SMTP_HOST`, `SMTP_PORT` 587/465, `SMTP_USUARIO`, `SMTP_CLAVE`);
+  `CORREO_REMITENTE` (default "Pichangol <no-responder@pichangol.app>"),
+  `CORREO_RESPONDER_A` (default = correo de la empresa de la torre). Sin
+  proveedor → estado `sin_proveedor` (nada se rompe). Corte de emergencia:
+  `stores.config[correos_activo]="0"`. Torre → Comunicación → **"✉️ Correos
+  de pago"** (`GET /admin/api/correos`, `POST …/prueba {para}`, `POST
+  …/{id}/reintentar`). Plantilla tabla + estilos en línea (Gmail/Outlook),
+  pie con razón social/RUC de `empresa.datos()`, "constancia, no comprobante
+  electrónico". Privacidad declara el proveedor de correo. Test
+  `tests/test_correos.py`. **PENDIENTE del director:** cuenta de Resend con
+  el dominio `pichangol.app` verificado (DNS SPF/DKIM) y la llave en Railway
+  QAS (y PRD con "pasa a PRD").
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
   VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
   Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el
