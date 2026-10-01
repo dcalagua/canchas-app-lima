@@ -748,8 +748,10 @@ para la API del APK.
   `web/anfitrion_academia_ops.py` (registrado antes de
   `anfitrion_academia_router`): `/anfitrion/academia/asistencia` (Vino/Faltó,
   "Avisar a los padres" por el chat `<aid>|<correo>` o WhatsApp),
-  `/evaluaciones` (rúbrica Inicial/En proceso/Logrado con la plantilla del
-  deporte extraída a `web/planes_semilla.json` + bitácora por chips),
+  `/evaluaciones` (rúbrica Inicial/En proceso/Logrado sobre los PLANES DE
+  TRABAJO propios de la academia —chips si hay varios, `?plan=`— o, sin
+  ellos, la plantilla del deporte de `web/planes_semilla.json` + bitácora por
+  chips),
   `/ranking` (3 pts victoria / 1 derrota, partidos con el formato
   `PartidoRanking.toJson` → el ranking global web los lee), `/reportes`
   (cobrado/por cobrar/vencido, morosidad, por programa y sede, comisión digital
@@ -757,11 +759,27 @@ para la API del APK.
   academia → `/mensajes/{clave}`), `/sedes` (sedes con mapa, horario por sede y
   programa, precio por sede y plan; merge sobre `data` con `FOR UPDATE`).
   Cobros → `/anfitrion/cobros?academia=` (no se duplicó). Accesos en la
-  tarjeta de cada academia de Mi academia. **Asistencia, evaluaciones y
-  bitácora** van a 3 tablas NUEVAS (SQL `docs/piloto/supabase_academia_
-  operacion.sql`, RLS sin políticas; sin ellas las páginas avisan): el APK las
-  guarda solo en el teléfono, así que web y app no las comparten todavía.
-  Test `tests/test_web_academia_ops.py`.
+  tarjeta de cada academia de Mi academia. **Asistencia, evaluaciones,
+  bitácora y planes de trabajo = LAS MISMAS FILAS en app y web (1-oct-2026):**
+  tablas `pichangol_academia_asistencias|evaluaciones|notas` (SQL
+  `docs/piloto/supabase_academia_operacion.sql`) + `pichangol_academia_planes`
+  (`data` = `PlanTrabajo.toJson`, borrado lógico `eliminado`) y las políticas
+  para la llave del APK en `docs/piloto/supabase_academia_operacion_rls.sql`
+  (**correr en QAS y, con autorización, PRD**; sin ese SQL el APK sigue solo
+  con lo local y la web con lo suyo). APK: `lib/data/academia_ops_repo.dart`
+  (mismas columnas y formatos que los helpers de `anfitrion_academia_ops.py`)
+  + `AppState.sincronizarOperacionAcademia` (al final de
+  `cargarMatriculasRemotas`: arranque, pull-to-refresh del profe): device-first
+  (cada marca se guarda local y sube en segundo plano) y fusión — asistencia:
+  manda la nube salvo lo pendiente de subir (`_opsPend`); "ya avisé":
+  monótono; rúbrica: gana el `ts` más nuevo; bitácora: unión por id y una nota
+  que estuvo en la nube y desapareció se borró allá; planes: borrado lógico,
+  lo editado aquí sin subir gana. Lo que solo estaba en el teléfono se sube
+  la primera vez (migración); estado en SharedPreferences
+  `academia_ops_sync_json`. La web evalúa sobre el plan propio del APK con el
+  MISMO `plan_id`; lo evaluado en la web sobre la plantilla
+  (`plantilla_<deporte>`) sigue saliendo en la web (chip de la plantilla) pero
+  el APK solo muestra planes guardados. Tests `tests/test_web_academia_ops.py`.
 - **PARTIDOS, PICHANGAS, REFERIDOS Y CARNET EN LA WEB (30-sep-2026):**
   `web/jugador_partidos.py`. `/partidos` (= `partidos_screen`, pestaña
   "Match": `pichangol_partidos` + grupo de chat con el mismo id; cupo con
@@ -822,12 +840,18 @@ para la API del APK.
   `/anfitrion/recordatorios` (= `recordar_reservas_screen`: chat del local o
   WhatsApp, "ya recordado" desde la nube). Cobros de academia suma "➕ Agregar
   cuota" (`/anfitrion/cobros/agregar` = `_inscribir`/`_claseSuelta`, escribe
-  en `pichangol_matriculas` con `FOR UPDATE`; **el APK guarda esas cuotas
-  solo en el teléfono**). Todos los "Actívalo en la app" de Pro (bodega,
+  en `pichangol_matriculas` con `FOR UPDATE`; el APK sube al instante las
+  que agrega en Cobros —`inscribir` / `agregarClaseSuelta` →
+  `_subirCuotasAlumno`— y `MatriculasRepo.guardar` FUSIONA con la fila de la
+  nube: cuotas por id con el pago pegajoso, conserva las claves que el app no
+  conoce (`pagoWeb`, `canal`), no revive matrículas eliminadas y encola por
+  alumno; antes cada guardado del APK reemplazaba `data` y borraba las cuotas
+  agregadas en la web). Todos los "Actívalo en la app" de Pro (bodega,
   campeonatos, calendario, liga) ahora llevan a `/pro`. Pendientes del
   backend detectados: `post_pro_suscribir`/`procesar_renovaciones_pro`
   registran `moneda="PEN"` aunque el país sea EC/BO. `planes_screen` es el
-  "plan de trabajo" del profe (solo en el teléfono), no Pro. Test
+  "plan de trabajo" del profe (en `pichangol_academia_planes`, compartido con
+  la web), no Pro. Test
   `tests/test_web_jugador_pro.py`.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
   que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
