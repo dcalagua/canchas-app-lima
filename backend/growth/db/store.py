@@ -32,6 +32,15 @@ CONFIG_DEFAULT: dict[str, str] = {
     "bienvenida_saldo_soles": "0",   # regalo para dueños de PERÚ (S/)
     "bienvenida_saldo_usd": "0",     # ECUADOR ($)
     "bienvenida_saldo_bob": "0",     # BOLIVIA (Bs)
+    # REFERIDOS ("Invita y gana", `referidos.py`): bono de SALDO para cada lado
+    # (invitado y quien invitó), en la moneda de la billetera de cada uno.
+    # Proporción de la comisión mínima (S/ 2 · $ 0.50 · Bs 3). 0 = apagado.
+    "referido_bono_soles": "10",
+    "referido_bono_usd": "2.5",
+    "referido_bono_bob": "15",
+    # Tope de invitados que le pagan bono a UN referidor (anti-abuso con
+    # cuentas falsas); el invitado igual recibe el suyo.
+    "referido_tope_referidor": "50",
     # TARIFA DE LA PASARELA (lo que Culqi / PayPhone / Libélula cobran a
     # Pichangol por cobro): porcentaje + fijo + impuesto sobre la tarifa,
     # editable en la torre → Cobros → "Tarifas de pasarela"; con esto la torre
@@ -566,6 +575,12 @@ class Stores:
         # creado_en, usados: [emails]}}. Un canje por usuario por cupón; el
         # operador los crea/desactiva en la torre.
         self.cupones: dict[str, dict] = {}
+        # REFERIDOS ("Invita y gana", `referidos.py`): un canje por invitado
+        # {invitado_email: {codigo, referidor, creado_en, inv_centimos,
+        # inv_moneda, ref_centimos, ref_moneda, origen}} y el registro
+        # código → correo del referidor (lo llena "Invita y gana" al abrirse).
+        self.referidos: dict[str, dict] = {}
+        self.referidos_codigos: dict[str, str] = {}
         # CUENTA DE COBRO de cada dueño/organizador/academia (dónde recibe sus
         # liquidaciones: Yape/Plin o banco+CCI, por país) y LOTES de liquidación
         # (archivo Telecrédito BCP + "marcar lote pagado"). Ver
@@ -1174,6 +1189,8 @@ class Stores:
             "ranking_snapshot": dict(self.ranking_snapshot),
             "recargas_qr": [dict(r) for r in self.recargas_qr],
             "cupones": {k: dict(v) for k, v in self.cupones.items()},
+            "referidos": {k: dict(v) for k, v in self.referidos.items()},
+            "referidos_codigos": dict(self.referidos_codigos),
             "cuentas_cobro": {k: dict(v) for k, v in self.cuentas_cobro.items()},
             "lotes_liquidacion": [dict(l) for l in self.lotes_liquidacion[-60:]],
         }
@@ -1284,6 +1301,9 @@ class Stores:
         self.cupones = {
             k: dict(v) for k, v in (data.get("cupones") or {}).items()
         }
+        self.referidos = {
+            k: dict(v) for k, v in (data.get("referidos") or {}).items()}
+        self.referidos_codigos = dict(data.get("referidos_codigos") or {})
 
     # --- normalización a TABLAS SQL (fase 1: saldos/pagos/vistas/reclamos) ----
     # Estas colecciones (plata + impacto + reclamos) migran a tablas propias en

@@ -759,10 +759,27 @@ para la API del APK.
   equidad, lista de espera, asistencia por posición). Organiza solo el dueño
   de un local o quien creó la pichanga — **en el APK nadie puede organizar**
   (depende de un login de club heredado que nunca se activa; conviene
-  alinearlo). `/referidos` (código `PCGxxxxxx`; el CANJE sigue en el app y
-  **el bono de 10 del app solo existe en el teléfono** —no llega a la
-  billetera del backend y `sincronizarSaldo` lo pisa—: bug del APK, moverlo
-  al backend como cupón), `/jugador/{ref}` (carnet = `perfilGlobalDe`; el
+  alinearlo). `/referidos` (código `PCGxxxxxx` + CANJE del código de un amigo,
+  `POST /web/referidos/canjear`). **BONO DE REFERIDOS EN EL BACKEND (1-oct-
+  2026, pedido del director):** antes el bono de 10 vivía solo en el teléfono
+  y `sincronizarSaldo` lo borraba. Ahora `backend/growth/referidos.py`
+  (`GET /referidos/estado?email`, `POST /referidos/canjear`, X-App-Key +
+  `_require_usuario`) acredita a AMBOS lados en la billetera única como un
+  cupón (`stores.acreditar` + pago `bono_referido`, sale en movimientos del
+  app y de la web), en la moneda de la billetera de cada uno
+  (`referido_bono_soles|usd|bob` = 10 / 2.5 / 15 en `CONFIG_DEFAULT`; 0 =
+  apagado), un canje por cuenta, no el propio, el código debe ser de una
+  cuenta real (`stores.referidos_codigos`, que llena "Invita y gana" al
+  abrirse, o correos conocidos/`pichangol_perfiles`), tope
+  `referido_tope_referidor` (50; pasado el tope solo el invitado cobra),
+  candado de hilo e idempotencia por `referido_inv|ref:<correo>`. Canjes en
+  `stores.referidos` (snapshot) + espejo en `pichangol_referidos`
+  (`referidor_dado=true`). **Migración:** las filas que dejó el APK viejo
+  (bono nunca acreditado) se pagan una vez al abrir "Invita y gana" de
+  cualquiera de los dos lados (`sincronizar`, `origen: app_anterior`). APK:
+  `AppState.canjearReferido/estadoReferidos` → `PagosService.
+  canjearReferido/referidosEstado` + `sincronizarSaldo`; se borró
+  `ReferidosRepo` y el `_acreditarBono` local. Test `tests/test_referidos.py`, `/jugador/{ref}` (carnet = `perfilGlobalDe`; el
   nombre en el ranking de `/liga` enlaza aquí) y `/anfitrion/llenar` (horas
   libres de hoy/mañana con descuento real en `pichangol_descuentos_slot` +
   aviso por chat o WhatsApp; en el MENU anfitrión). Perfil: Partidos,

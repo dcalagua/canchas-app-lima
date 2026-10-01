@@ -44,6 +44,7 @@ from web.jugador_bodega import router as jugador_bodega_router
 from web.anfitrion_bodega import router as anfitrion_bodega_router
 from web.jugador_mensajes import router as jugador_mensajes_router
 from web.jugador_partidos import router as jugador_partidos_router
+from referidos import router as referidos_router
 from web.jugador_novedades import router as jugador_novedades_router
 from web.jugador_pro import router as jugador_pro_router
 from models import ConfigRequest, ConsentimientoRequest
@@ -154,6 +155,7 @@ app.include_router(jugador_cuenta_router)  # /cuenta/configuracion, /cuenta/iden
 app.include_router(jugador_bodega_router)  # /bodega/{cancha_id}/pedir, /mis-pedidos-bodega
 app.include_router(jugador_mensajes_router)  # /mensajes: bandeja, chat, grupos (mensajería del app)
 app.include_router(anfitrion_academia_ops_router)  # asistencia, evaluación, ranking, reportes, chats y sedes de la academia
+app.include_router(referidos_router)  # /referidos/estado y /referidos/canjear (JSON del APK; bono en el backend)
 app.include_router(jugador_partidos_router)  # /partidos, /pichangas, /referidos, /jugador/{ref}, /anfitrion/llenar (antes del comodín)
 app.include_router(jugador_novedades_router)  # /novedades (estados/historias) y /canales
 app.include_router(jugador_pro_router)  # /pro, /pro/planes, /cuenta/tarjetas, /buscar, /anfitrion/recordatorios (antes del comodín)

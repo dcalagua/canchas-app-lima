@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../config/pais.dart';
-import '../data/referidos_repo.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -28,6 +26,9 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
   final _codigoAmigo = TextEditingController();
   int _invitados = 0;
   bool _canjeando = false;
+  // Estado del backend (`/referidos/estado`): bono por moneda, lo ganado y el
+  // código que ya canjeé. null mientras carga o sin red.
+  Map<String, dynamic>? _estado;
 
   @override
   void initState() {
@@ -43,18 +44,34 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
 
   Future<void> _refrescar() async {
     if (!appState.logueado) return;
-    // Cobra los bonos de quienes ya usaron mi código, y actualiza el conteo.
-    final nuevos = await appState.reclamarBonosReferidor();
-    final n = await ReferidosRepo.contarInvitados(appState.codigoReferido);
-    if (!mounted) return;
-    setState(() => _invitados = n);
-    if (nuevos > 0) {
+    // El backend acredita los bonos (también los de canjes viejos del app) y
+    // devuelve el conteo; aquí solo se muestra.
+    final est = await appState.estadoReferidos();
+    if (!mounted || est == null) return;
+    setState(() {
+      _estado = est;
+      _invitados = (est['invitados'] as num?)?.toInt() ?? 0;
+    });
+    final imp = (est['importados'] as num?)?.toInt() ?? 0;
+    if (imp > 0) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('¡$nuevos amigo(s) usaron tu código! Bono acreditado.'),
+        content: Text('Te acreditamos $imp bono(s) de Invita y gana 🎁'),
         backgroundColor: lima,
       ));
     }
   }
+
+  /// "S/ 10" / "\$ 2.50" / "Bs 15" en la moneda de MI billetera.
+  String _monto(int centimos) {
+    final sim = (_estado?['simbolo'] as String?) ?? '';
+    final v = centimos / 100;
+    final txt = v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+    return sim.isEmpty ? txt : '$sim $txt';
+  }
+
+  int get _bono => (_estado?['bono_centimos'] as num?)?.toInt() ?? 0;
+  int get _ganado => (_estado?['ganado_centimos'] as num?)?.toInt() ?? 0;
+  String get _canjeado => (_estado?['canjeado'] as String?) ?? '';
 
   String _mensajeReferido() {
     final cod = appState.codigoReferido;
@@ -70,23 +87,34 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
     final c = _codigoAmigo.text.trim();
     if (c.isEmpty) return;
     setState(() => _canjeando = true);
-    final ok = await appState.canjearReferido(c);
+    final r = await appState.canjearReferido(c);
     if (!mounted) return;
     setState(() => _canjeando = false);
-    if (ok) {
+    if (r != null && r['ok'] == true) {
       _codigoAmigo.clear();
-      avisarPichangol(
+      final cent = (r['bono_centimos'] as num?)?.toInt() ?? 0;
+      final sim = (r['simbolo'] as String?) ?? '';
+      final v = cent / 100;
+      final txt = v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+      await avisarPichangol(
         context,
         titulo: '¡Bono acreditado! 🎁',
-        mensaje: 'Se sumaron ${AppState.bonoReferido} ${paisActual.moneda} '
-            'a tu saldo. Tu amigo también recibe su bono.',
+        mensaje: cent > 0
+            ? 'Te sumamos $sim $txt a tu saldo Pichangol. Tu amigo también recibe su bono.'
+            : 'Código canjeado. Tu amigo ya sabe que te uniste.',
         textoBoton: 'Genial',
         icono: Icons.card_giftcard,
       );
+      _refrescar();
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text(
-              'No se pudo canjear: código inválido, es el tuyo, o ya canjeaste uno.')));
+      avisarPichangol(
+        context,
+        titulo: 'No se pudo canjear',
+        mensaje: (r?['mensaje'] as String?) ??
+            'No hay conexión. Inténtalo de nuevo en un momento.',
+        textoBoton: 'Entendido',
+        icono: Icons.error_outline,
+      );
     }
   }
 
@@ -206,10 +234,25 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
               const SizedBox(height: 16),
               // Cómo funciona.
               Text(
-                  'Comparte tu código. Cuando un amigo lo canjea al registrarse, '
-                  '${AppState.bonoReferido} ${paisActual.moneda} '
-                  'para cada uno. 🎁',
+                  _bono > 0
+                      ? 'Comparte tu código. Cuando un amigo lo canjea, '
+                          '${_monto(_bono)} para cada uno, directo a tu saldo. 🎁'
+                      : 'Comparte tu código con tus amigos para que jueguen contigo en Pichangol.',
                   style: t.bodyMedium?.copyWith(color: textoTenueDe(context))),
+              if (_ganado > 0) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF6E0),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                      '🎁 Llevas ${_monto(_ganado)} ganados con Invita y gana. Ya están en tu saldo.',
+                      style: const TextStyle(
+                          color: Color(0xFF8A5A00), fontWeight: FontWeight.w700)),
+                ),
+              ],
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(14),
@@ -234,40 +277,54 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
                 ),
               ),
               const SizedBox(height: 24),
-              // Canjear un código.
-              Text('¿Tienes el código de un amigo?',
-                  style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _codigoAmigo,
-                textCapitalization: TextCapitalization.characters,
-                decoration: InputDecoration(
-                  hintText: 'Ej. PCG3F9A2',
-                  isDense: true,
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: trazo)),
-                  enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: trazo)),
+              // Canjear un código (o el que ya canjeé).
+              if (_canjeado.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: limaSuave,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Text(
+                      '✅ Ya canjeaste el código $_canjeado. Solo se puede uno por cuenta.',
+                      style: const TextStyle(
+                          color: bosque, fontWeight: FontWeight.w700)),
+                )
+              else ...[
+                Text('¿Tienes el código de un amigo?',
+                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _codigoAmigo,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: InputDecoration(
+                    hintText: 'Ej. PCG3F9A2',
+                    isDense: true,
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: trazo)),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: trazo)),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: lima,
-                      padding: const EdgeInsets.symmetric(vertical: 13)),
-                  onPressed: _canjeando ? null : _canjear,
-                  child: Text(_canjeando ? 'Canjeando…' : 'Canjear código',
-                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: lima,
+                        padding: const EdgeInsets.symmetric(vertical: 13)),
+                    onPressed: _canjeando ? null : _canjear,
+                    child: Text(_canjeando ? 'Canjeando…' : 'Canjear código',
+                        style: const TextStyle(fontWeight: FontWeight.w800)),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                  'Solo puedes canjear un código una vez, y no el tuyo propio.',
-                  style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+                const SizedBox(height: 8),
+                Text(
+                    'Solo puedes canjear un código una vez, y no el tuyo propio.',
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+              ],
             ],
           );
         },
