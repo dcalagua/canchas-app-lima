@@ -65,7 +65,7 @@ def _env(nombre: str) -> str:
 
 
 def remitente() -> str:
-    return _env("CORREO_REMITENTE") or "Pichangol <no-responder@pichangol.app>"
+    return _env("CORREO_REMITENTE") or "Pichangol <no-reply@pichangol.app>"
 
 
 def proveedor() -> str:
@@ -743,7 +743,11 @@ def _enviar_resend(m: dict) -> str:
         cuerpo["reply_to"] = resp
     req = urllib.request.Request("https://api.resend.com/emails", data=json.dumps(cuerpo).encode(), method="POST",
                                  headers={"Authorization": f"Bearer {_env('RESEND_API_KEY')}", "Content-Type": "application/json",
-                                          "Idempotency-Key": m["clave"][:250]})
+                                          "Idempotency-Key": m["clave"][:250],
+                                          # Cloudflare (delante de la API de Resend) responde 403 «error code:
+                                          # 1010» al User-Agent por defecto de urllib: hay que identificarse.
+                                          "User-Agent": "Pichangol-Backend/1.0 (+https://www.pichangol.app)",
+                                          "Accept": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
             j = json.loads(r.read().decode() or "{}")

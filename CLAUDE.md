@@ -1537,7 +1537,7 @@ para la API del APK.
   `pcg-correos` (cada 5 s, `main.py::_iniciar_correos`, no corre en pytest).
   Proveedor: **Resend** (`RESEND_API_KEY`, HTTP con `Idempotency-Key`) o
   **SMTP** (`SMTP_HOST`, `SMTP_PORT` 587/465, `SMTP_USUARIO`, `SMTP_CLAVE`);
-  `CORREO_REMITENTE` (default "Pichangol <no-responder@pichangol.app>"),
+  `CORREO_REMITENTE` (default "Pichangol <no-reply@pichangol.app>"),
   `CORREO_RESPONDER_A` (default = correo de la empresa de la torre). Sin
   proveedor → estado `sin_proveedor` (nada se rompe). Corte de emergencia:
   `stores.config[correos_activo]="0"`. Torre → Comunicación → **"✉️ Correos
@@ -1545,7 +1545,7 @@ para la API del APK.
   …/{id}/reintentar`). Plantilla tabla + estilos en línea (Gmail/Outlook),
   pie con razón social/RUC de `empresa.datos()`, "constancia, no comprobante
   electrónico". Privacidad declara el proveedor de correo. Test
-  `tests/test_correos.py`. **PENDIENTE del director:** cuenta de Resend con
+  `tests/test_correos.py`. **Trampa (1-oct-2026):** Cloudflare delante de `api.resend.com` responde 403 «error code: 1010» al User-Agent por defecto de `urllib` → `_enviar_resend` manda `User-Agent: Pichangol-Backend/1.0`. **PENDIENTE del director:** cuenta de Resend con
   el dominio `pichangol.app` verificado (DNS SPF/DKIM) y la llave en Railway
   QAS (y PRD con "pasa a PRD").
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
@@ -2316,6 +2316,19 @@ off → redeploy inmediato en cada push). URL pública:
     `confirmarPropiedad`). El SQL de descuentos por turno ya corrió en QAS
     (director) y PRD. Sin variables nuevas. CAMBIÓ `lib/` → APK/AAB de PRD por
     `workflow_dispatch`.
+    **Pase del 1-oct-2026 (3.º, autorizado: "pasa a PRD la velocidad" +
+    "mueve PRD a Virginia"):** `prd` = 420be2a (transacción perezosa, pool
+    tibio, badge con caché, preload en toda la web) + cherry-pick de
+    apartados web vencidos (64eccf2); `pg-backend-prd` movido a us-east4.
+    **Pase del 1-oct-2026 (4.º, autorizado: "pasando a PRD y esto aún queda
+    pendiente" = correos sin llave):** `prd` = 3e00618 (seña en la reserva
+    web, correos de pago, chat móvil tipo WhatsApp, bono de referidos en el
+    backend). Sin SQL ni Edge. CAMBIÓ `lib/` → APK/AAB de PRD = run 1490
+    (`workflow_dispatch`, `ref=prd`, `entorno=prod`). PENDIENTE: Resend
+    verificando `pichangol.app` (DNS en Namecheap ya puestos: DKIM
+    `resend._domainkey`, CNAME `rsend`/`send`, `_dmarc`; Gmail intacto) →
+    crear llaves "Pichangol QAS/PRD" y poner `RESEND_API_KEY` en `pg-backend`
+    y `pg-backend-prd`; hasta entonces los correos quedan `sin_proveedor`.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
