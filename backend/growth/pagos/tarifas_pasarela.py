@@ -27,17 +27,13 @@ from db.store import stores
 PASARELAS: dict[str, dict] = {
     "culqi": {"nombre": "Culqi", "pais": "PE", "moneda": "PEN", "simbolo": "S/", "medios": ["tarjeta", "yape"],
               "impuesto": "IGV", "nota": "Tarifa publicada de Culqi Perú: 3.44 % + S/ 0.30 + IGV por cobro (revisa la tuya en el panel de Culqi → Comisiones)."},
-    "nuvei": {"nombre": "Nuvei", "pais": "EC", "moneda": "USD", "simbolo": "$", "medios": ["tarjeta"],
-              "impuesto": "IVA", "nota": "Nuvei Ecuador (ex-Paymentez) cobra un porcentaje + fijo + IVA según el contrato; ponlo tal cual figura en el tuyo."},
     "payphone": {"nombre": "PayPhone", "pais": "EC", "moneda": "USD", "simbolo": "$", "medios": ["tarjeta"],
                  "impuesto": "IVA", "nota": "PayPhone Ecuador cobra un porcentaje + IVA según el plan contratado; ponlo tal cual figura en tu contrato."},
     "libelula": {"nombre": "Libélula", "pais": "BO", "moneda": "BOB", "simbolo": "Bs", "medios": ["tarjeta"],
                  "impuesto": "IVA", "nota": "Libélula Bolivia: porcentaje + monto fijo según contrato."},
 }
 MEDIO_NOMBRE = {"tarjeta": "Tarjeta", "yape": "Yape"}
-# USD lo cobran Nuvei o PayPhone según `PASARELA_EC` (ver pagos/pasarela_ec);
-# el resto de monedas tiene una sola pasarela.
-_POR_MONEDA = {v["moneda"]: k for k, v in PASARELAS.items() if k not in ("nuvei", "payphone")}
+_POR_MONEDA = {v["moneda"]: k for k, v in PASARELAS.items()}
 
 # Defaults (strings, como todo `stores.config`). Culqi = tarifa publicada de
 # referencia; las otras en 0 hasta que el director las configure.
@@ -50,7 +46,6 @@ DEFAULTS: dict[str, str] = {
     "tarifa_culqi_tarjeta_pct": "6.05", "tarifa_culqi_tarjeta_fijo": "0.30",
     "tarifa_culqi_yape_pct": "3.44", "tarifa_culqi_yape_fijo": "0.30",
     "tarifa_culqi_impuesto_pct": "18",
-    "tarifa_nuvei_tarjeta_pct": "0", "tarifa_nuvei_tarjeta_fijo": "0", "tarifa_nuvei_impuesto_pct": "0",
     "tarifa_payphone_tarjeta_pct": "0", "tarifa_payphone_tarjeta_fijo": "0", "tarifa_payphone_impuesto_pct": "0",
     "tarifa_libelula_tarjeta_pct": "0", "tarifa_libelula_tarjeta_fijo": "0", "tarifa_libelula_impuesto_pct": "0",
 }
@@ -116,11 +111,7 @@ def MEDIO_NAME(m: str) -> str:
 
 
 def pasarela_de(moneda_iso: str) -> str:
-    m = (moneda_iso or "PEN").upper()
-    if m == "USD":
-        import os
-        return "payphone" if (os.getenv("PASARELA_EC") or "nuvei").strip().lower() == "payphone" else "nuvei"
-    return _POR_MONEDA.get(m, "culqi")
+    return _POR_MONEDA.get((moneda_iso or "PEN").upper(), "culqi")
 
 
 def costo_centimos(monto_centimos: int, moneda_iso: str = "PEN", medio: str | None = None, tipo: str | None = None) -> int:

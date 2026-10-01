@@ -328,22 +328,6 @@ class PagosService {
     }
   }
 
-  /// Pasarela de ECUADOR que tiene activa el backend: {disponible, proveedor
-  /// ('nuvei' | 'payphone'), nombre}. El APK no la fija: así el cambio de
-  /// PayPhone a Nuvei (oct-2026) no exige publicar un APK. null sin red.
-  static Future<Map<String, dynamic>?> configEc() async {
-    if (!disponible) return null;
-    try {
-      final r = await http
-          .get(Uri.parse('$_baseUrl/pagos/ec/config'), headers: _appHeaders())
-          .timeout(const Duration(seconds: 12));
-      if (r.statusCode != 200) return null;
-      return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
-    } catch (_) {
-      return null;
-    }
-  }
-
   /// Estado de un pago de PayPhone: {ok, pagado, estado}. Si se manda el
   /// [transactionId] que PayPhone puso en la URL de retorno, el backend
   /// CONFIRMA ahí mismo (regla de los 5 minutos). null si no se pudo consultar.

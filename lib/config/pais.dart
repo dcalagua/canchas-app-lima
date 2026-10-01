@@ -178,9 +178,7 @@ const Map<String, PaisConfig> paisesSoportados = {
     moneda: '\$',
     monedaIso: 'USD',
     pasarela: 'payphone',
-    // id interno 'payphone' = "pago hospedado de Ecuador": el backend decide
-    // el proveedor real (Nuvei desde oct-2026, PayPhone de respaldo).
-    pasarelaNombre: 'Nuvei (tarjeta)',
+    pasarelaNombre: 'PayPhone (tarjeta · saldo PayPhone)',
     codigoTel: '593',
     bandera: '🇪🇨',
     docId: 'Cédula',
@@ -195,7 +193,7 @@ const Map<String, PaisConfig> paisesSoportados = {
       'ambato',
     ],
     recargas: [5, 10, 20, 50],
-    recargaMin: 1, // la pasarela de EC cobra desde \$ 1
+    recargaMin: 1, // PayPhone cobra desde \$ 1
     recargaMax: 300,
     comisionMin: 0.5,
   ),

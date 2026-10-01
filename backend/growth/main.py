@@ -38,6 +38,7 @@ from web.academia import router as academia_web_router
 from web.jugador_clases import router as jugador_clases_router
 from web.jugador_market import router as jugador_market_router
 from web.jugador_billetera import router as jugador_billetera_router
+from web.pago_hospedado import router as pago_hospedado_router
 from web.jugador_liga import router as jugador_liga_router
 from web.jugador_campeonatos import router as jugador_campeonatos_router
 from web.jugador_cuenta import router as jugador_cuenta_router
@@ -172,6 +173,7 @@ app.include_router(academia_web_router)  # ficha pública /academia/{id} + matr�
 app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}
 app.include_router(jugador_clases_router)  # /mis-clases: Mis clases y pagos del jugador
 app.include_router(jugador_billetera_router)  # /mi-billetera, /mis-pagos, /mis-puntos, /mi-pais
+app.include_router(pago_hospedado_router)  # /web/pago/*: cobro web en USD/BOB por pasarela hospedada (Ecuador / Bolivia)
 app.include_router(jugador_liga_router)  # /mi-nivel, /liga
 app.include_router(jugador_campeonatos_router)  # /torneo/{id}: inscribirse / crear o unirse a un equipo pagando con saldo
 app.include_router(jugador_cuenta_router)  # /cuenta/configuracion, /cuenta/identidad
@@ -338,6 +340,15 @@ async def _iniciar_cron_holds_web() -> None:
     async def _loop() -> None:
         await asyncio.sleep(30)
         while True:
+            try:
+                # Órdenes de pago HOSPEDADO (PayPhone · Libélula): reconcilia con
+                # la pasarela, finaliza las pagadas y vence las viejas soltando su horario.
+                from web import pago_hospedado as _ph
+                r = await asyncio.to_thread(_ph.barrer)
+                if r.get("finalizadas") or r.get("vencidas"):
+                    print(f"[pago-web] barrido: {r}", flush=True)
+            except Exception as ex:  # noqa: BLE001
+                print(f"[pago-web] barrido falló: {ex}", flush=True)
             try:
                 from web import datos as _datos
                 filas = await asyncio.to_thread(_datos.liberar_holds_vencidos_todos)

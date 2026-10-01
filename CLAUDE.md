@@ -66,7 +66,11 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
     PE → **Culqi** (tokeniza en la app; `pago_tarjeta_sheet.dart`), BO →
     **Libélula** (página hospedada en WebView; `pago_libelula.dart`), EC →
     **PayPhone** (botón de pagos hospedado en USD; `pago_payphone.dart`,
-    backend `pagos/payphone.py` + `/pagos/ec/*`, hecho sep-2026). **La
+    backend `pagos/payphone.py` + `/pagos/ec/*`, hecho sep-2026; desde
+    oct-2026 TODO cobro en USD pasa por la FACHADA `pagos/pasarela_ec.py`
+    —`nombre()`, `disponible()`, `preparar()`, `confirmar()`,
+    `reembolsar()`; los textos usan `pasarela_ec.nombre()`, nunca
+    "PayPhone" fijo; `PASARELA_EC` elige el módulo, hoy solo `payphone`). **La
     página de PayPhone se abre en NAVEGADOR REAL (Chrome Custom Tab vía
     `launchUrl(inAppBrowserView)`), NUNCA en WebView:** PayPhone rechaza el
     WebView de Android ("No autorizado… intenta desde la página de origen")
@@ -201,8 +205,9 @@ para la API del APK.
   una online más; el UNIQUE `(cancha_id, fecha, hora_inicio)` evita la
   doble reserva. `web/horarios.py` es ESPEJO de `Cancha` (slots, cierre
   que cruza medianoche, fecha real de madrugada, hora feliz, descuentos por
-  slot, bloqueos). **Multi-país:** cobro web sólo en soles (Culqi); canchas
-  en \$ o Bs muestran el detalle y mandan a la app. El checkout se muestra
+  slot, bloqueos). **Multi-país:** en soles se cobra con Culqi en la misma
+  página; en \$ y Bs con la pasarela HOSPEDADA del país (ver "COBRO WEB EN
+  USD/BOB"); sin pasarela configurada (en PRD) la ficha manda a la app. El checkout se muestra
   con cualquier `CULQI_PUBLIC_KEY` (también `pk_test`, para que Culqi lo
   revise en PRD antes de dar las llaves live); el APK sigue apagado hasta
   `sk_live`. Tests `test_web_reservas.py` (base simulada). **Look & feel =
@@ -615,12 +620,15 @@ para la API del APK.
   el app"):** cuatro módulos propios (`web/jugador_*.py`, registrados en
   `main.py`), cada uno espejo de su pantalla Dart, con las MISMAS tablas y
   las funciones de `pagos/router.py` para la plata (nada de contabilidad
-  paralela); cobro web solo PEN (Culqi v4 + selector Yape/Tarjeta +
-  `pcgResumenPago`), en $/Bs "hazlo en la app". El Perfil web ya enlaza
+  paralela); cobro web en PEN con Culqi v4 (selector Yape/Tarjeta +
+  `pcgResumenPago`); la recarga de billetera en $/Bs ya va por la pasarela
+  hospedada (ver "COBRO WEB EN USD/BOB"); el resto de cobros en $/Bs
+  (academia, cuotas, marketplace, bonos) sigue "hazlo en la app". El Perfil web ya enlaza
   todo; lo que sigue solo en el app se lista al final. Tests
   `tests/test_web_jugador_{billetera,market,clases,liga}.py`.
   (1) `web/jugador_billetera.py`: `/mi-billetera` (= `cuenta_screen`: saldo,
-  regalo, por recibir por moneda, recarga Culqi vía `post_recarga` con bono,
+  regalo, por recibir por moneda, recarga Culqi vía `post_recarga` con bono
+  —en $/Bs, `POST /web/billetera/recargar-pasarela` por PayPhone/Libélula—,
   cupón vía `pagos.router.canjear_cupon` —bloqueado si la billetera no es en
   soles—, movimientos vía `pagos.router.movimientos_de` que ahora trae
   `moneda` por fila), `/mi-billetera/estado-de-cuenta` (imprimible),
@@ -656,7 +664,7 @@ para la API del APK.
   nombre, celular por país, bio por selección; re-emite la cookie) y
   `/cuenta/identidad` (PE/EC con `post_verificar_dni`; BO solo en el app por
   la lectura del documento + selfie). Quedan en el app: Pro, tarjetas
-  guardadas, recarga $/Bs y QR, chat. **ELO de retos EN EL SERVIDOR
+  guardadas, recarga por QR, chat. **ELO de retos EN EL SERVIDOR
   (1-oct-2026):** `retos/elo.py` lo aplica UNA vez por reto al pasar a
   jugado (confirmar, sin doble confirmación o auto-confirmado), con la fórmula
   de `Nivel.calcularElo` (K 0.15, divisor 2, 1.0–7.0, sin fila = 3.0; ambos
@@ -1537,6 +1545,85 @@ para la API del APK.
   "yo" del carrito (o la primera). Tests
   `test_cargo_lleva_los_datos_reales_del_cliente_para_culqi` + asserts en
   `test_reserva_web_completa` y `test_ficha_de_academia…`.
+- **COBRO WEB EN USD/BOB (PayPhone/Libélula) (oct-2026, fase 2 parte 1:
+  "que la web cobre en dólares y bolivianos con los MISMOS módulos del
+  APK"):** `web/pago_hospedado.py` (router en `main.py`). Aplica a la
+  RESERVA (`/reservar/{id}`: total, seña, extras, boleador, cargo por
+  servicio; puntos siguen solo en soles; fidelidad y bono igual que en
+  soles) y a la RECARGA de billetera (`/mi-billetera`, con el bono de
+  recarga). Pasarela por moneda: USD → fachada `pagos/pasarela_ec.py` (hoy
+  PayPhone), BOB → `pagos/libelula.py`; PEN sigue con Culqi
+  en la página. **Órdenes** `stores.pagos_web` (snapshot; id `pw_<token>`
+  no adivinable): {email de la sesión, pasarela, moneda, monto_centimos
+  (lo calcula el SERVIDOR: `web.router.plan_cobro_reserva` +
+  `_cotizacion_reserva`), concepto, accion {reserva: ids, ref, cargo… |
+  recarga}, estado pendiente → aprobado | aprobado_sin_reserva | rechazado
+  | cancelado | vencido}. Flujo: el JS de la ficha, tras `/web/asegurar` y
+  el "Resumen de tu pago", hace `POST /web/pago/reserva {ids, firma}` (o
+  `POST /web/billetera/recargar-pasarela {monto}`) → la orden se prepara
+  con los núcleos que el APK ya usaba, ahora extraídos en
+  `pagos/router.py`: `preparar_pago_ec(..., response_url, cancel_url,
+  orden_web)` y `registrar_deuda_bo(..., retorno, orden_web)` (los
+  endpoints `/pagos/ec/pago` y `/pagos/bo/deuda` los llaman igual) → el
+  navegador va a la pasarela (Ecuador por la página PUENTE
+  `/pagos/ec/ir/{ident}` de nuestro dominio) → vuelve a `GET
+  /web/pago/{orden}/retorno` (Ecuador: `?id=&clientTransactionId=` →
+  `_confirmar_ec`, regla de los 5 min; Bolivia: consulta la deuda) →
+  `/web/pago/{orden}` (espera con sondeo a `/estado` y "Cancelar este
+  pago", o redirige al comprobante / `/mi-billetera?recarga=<orden>` con
+  aviso). Cancelar en la pasarela → `/web/pago/{orden}/cancelado`. **La
+  acción se ejecuta UNA vez** (`finalizar`, candado + `accion_hecha`) por
+  el primer camino que pruebe el pago: el gancho `_al_pagar_orden_web` en
+  `_confirmar_ec_inner` y `_marcar_pagada` (así el callback de Libélula
+  `/pagos/bo/callback` finaliza aunque el cliente cerró la pestaña), el
+  retorno, el sondeo o el barrido; el retorno finaliza SIN cookie (la
+  prueba es la pasarela). La reserva se confirma con
+  `web.router.confirmar_reserva_pagada` (factorizada de `/web/pagar`, misma
+  para Culqi: filas, seña, fidelidad, bono, `cobro_web` con
+  `culqi_charge_id = <pasarela>:<id>` o `sim:<orden>`, liquidación al dueño
+  en la moneda de la cancha, push, boleador); la recarga la acredita el
+  propio módulo (tipo `recarga` + `_aplicar_bono_recarga`), como el APK.
+  **El apartado NO vence a los 10 min mientras paga:** `POST
+  /web/pago/reserva` pone `medio_pago = 'web_pasarela'`
+  (`datos.marcar_hold_pasarela`) y `datos._SQL_HOLD_VENCIDO` (ocupados,
+  liberar holds) le da el tope largo `HOLD_PASARELA_MAX_SEGUNDOS` (50 min);
+  `/web/liberar` responde `pago_en_curso`, `fidelidad._vigente` y
+  `beneficios.barrer_vencidos` respetan la orden viva
+  (`pago_hospedado.ref_pendiente`). Rechazo / cancelación / vencimiento →
+  `web.router.soltar_bloque` (premio, bono y puntos vuelven; horario libre).
+  Vida de la orden: Ecuador 12 min, Libélula 30 min; el barrido
+  (`pago_hospedado.barrer`, en el cron de 1 min de `main.py` junto a los
+  holds) reconcilia, vence y reintenta acciones fallidas, y pregunta a
+  Libélula por los vencidos de las últimas 24 h. **Pago TARDÍO** (llegó con
+  la orden ya vencida y el horario suelto): nunca se inventa la reserva; se
+  devuelve a su SALDO si la billetera es de esa moneda (`devolucion_saldo`)
+  o queda `manual` en Cancelaciones web (motivo `pago_sin_reserva`) para el
+  operador. **Cancelar** una reserva pagada así: PayPhone/Libélula no
+  reembolsan por API en estos módulos → `manual` (el operador devuelve
+  desde la torre); si un módulo de Ecuador trae `reembolsar`, sale solo.
+  A SALDO solo si la billetera es de la moneda de la reserva (arreglo
+  general: antes se podía acreditar dólares en un saldo en soles). Culqi
+  (`/web/pagar`) rechaza bloques en $/Bs (`usa_pasarela`). UI:
+  `ui.selector_medio_pago(pasarela)` muestra un solo medio ("PayPhone ·
+  tarjeta", "Libélula · QR o tarjeta"), `pcgResumenPago({medioNombre})`,
+  diálogo "Tienes un pago en curso" si vuelve con atrás. **Sin pasarela
+  configurada:** en PRD (y con `PICHANGOL_ENTORNO` vacío: fail-closed) la
+  ficha sigue con "Reserva desde la app"; en QAS/DEV hay una pasarela
+  SIMULADA (`/web/pago/{orden}/simulado`, "🧪 PAGO DE PRUEBA · QAS", aprobar
+  / rechazar) que NUNCA existe en PRD, ni con `sk_live` de Culqi, ni con
+  `WEB_PAGO_SIMULADO=0`. **Lo que debe configurar el director por ambiente:**
+  `PICHANGOL_ENTORNO` (QAS en `pg-backend`, PRD en `pg-backend-prd`);
+  `PUBLIC_BASE_URL` (base de los retornos: QAS `https://pg.ebim.pe`, PRD
+  `https://www.pichangol.app`); Ecuador `PAYPHONE_TOKEN` +
+  `PAYPHONE_STORE_ID` y en PayPhone Business → Developer → la app, dominio
+  autorizado = host de `PUBLIC_BASE_URL` de ESE ambiente (la web usa
+  `<base>/web/pago/<orden>/retorno` y `/cancelado` como responseUrl /
+  cancellationUrl); Bolivia `LIBELULA_APPKEY` (callback
+  `<base>/pagos/bo/callback`, retorno `<base>/web/pago/<orden>/retorno`).
+  Pendiente (parte 2): academia/matrícula, cuotas, marketplace y bonos en
+  $/Bs. Tests `tests/test_web_pago_hospedado.py`; Playwright
+  `$SP/pw_hosp.js` (390 px, pasarela simulada, cero diálogos del
+  navegador).
 - **SEÑA EN LA RESERVA WEB (caso real PRD, 1-oct-2026: "Campo deportivo Edu
   Jr." tenía seña 50 % y la web cobraba siempre el total):** la web ahora
   hace lo mismo que `club_detalle._ResumenReserva` del app. Config

@@ -56,7 +56,6 @@ CONFIG_DEFAULT: dict[str, str] = {
     "tarifa_culqi_tarjeta_pct": "6.05", "tarifa_culqi_tarjeta_fijo": "0.30",
     "tarifa_culqi_yape_pct": "3.44", "tarifa_culqi_yape_fijo": "0.30",
     "tarifa_culqi_impuesto_pct": "18",
-    "tarifa_nuvei_tarjeta_pct": "0", "tarifa_nuvei_tarjeta_fijo": "0", "tarifa_nuvei_impuesto_pct": "0",
     "tarifa_payphone_tarjeta_pct": "0", "tarifa_payphone_tarjeta_fijo": "0", "tarifa_payphone_impuesto_pct": "0",
     "tarifa_libelula_tarjeta_pct": "0", "tarifa_libelula_tarjeta_fijo": "0", "tarifa_libelula_impuesto_pct": "0",
     # CARGO POR SERVICIO al cliente (pagos/cargo_servicio.py, 27-sep-2026):
@@ -674,6 +673,14 @@ class Stores:
         # `places_web_tope_dia`.
         self.places_zonas: dict[str, dict] = {}
         self.places_uso: dict = {}
+        # COBRO WEB en pasarela HOSPEDADA (PayPhone · Ecuador, Libélula ·
+        # Bolivia, o la simulada de QAS): ÓRDENES de la web
+        # (`web/pago_hospedado.py`), clave = id no adivinable. {id, email,
+        # pasarela, moneda, monto_centimos, concepto, accion{tipo: reserva |
+        # recarga, …}, estado: pendiente → aprobado | rechazado | cancelado |
+        # vencido | aprobado_sin_reserva, ref_pasarela, creado_en, vence_en, …}.
+        # En el snapshot: un reinicio no pierde un pago en curso.
+        self.pagos_web: dict[str, dict] = {}
         # LIBRO DE RECLAMACIONES (Ley 29571 / D.S. 011-2011-PCM): hojas
         # registradas desde la home pública. INDECOPI exige que esté integrado
         # en la web (no un formulario externo) y responder en 15 días hábiles.
@@ -1206,6 +1213,7 @@ class Stores:
             "places_uso": dict(self.places_uso),
             "payphone_pagos": {
                 k: dict(v) for k, v in self.payphone_pagos.items()},
+            "pagos_web": {k: dict(v) for k, v in self.pagos_web.items()},
             "reclamaciones": [dict(r) for r in self.reclamaciones],
             "cancelaciones_web": [dict(r) for r in self.cancelaciones_web],
             "negocio_web": {k: dict(v) for k, v in self.negocio_web.items()},
@@ -1320,6 +1328,7 @@ class Stores:
         self.payphone_pagos = {
             k: dict(v) for k, v in (data.get("payphone_pagos") or {}).items()
         }
+        self.pagos_web = {k: dict(v) for k, v in (data.get("pagos_web") or {}).items()}
         self.reclamaciones = [dict(r) for r in (data.get("reclamaciones") or [])]
         self.cancelaciones_web = [dict(r) for r in (data.get("cancelaciones_web") or [])]
         self.negocio_web = {k: dict(v) for k, v in (data.get("negocio_web") or {}).items()}

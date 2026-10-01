@@ -2216,7 +2216,7 @@ def test_yape_es_la_pestana_principal_del_checkout_web(db, monkeypatch):
         assert "window.pcgMedioPago = function()" in html, url
         # "Resumen de tu pago" propio ANTES de abrir Culqi (28-sep-2026): Culqi solo muestra el total.
         assert "window.pcgResumenPago = function(o)" in html and "pcgResumenPago({moneda: C.moneda, medio: m" in html, url
-        assert "Continuar con ' + (tarjeta ? 'tarjeta' : 'Yape')" in html and "Total a pagar hoy" in html, url
+        assert "Continuar con ' + nomMedio" in html and "o.medio === 'tarjeta' ? 'tarjeta'" in html and "Total a pagar hoy" in html, url
         # El ícono del resumen es el LOGO de Pichangol, no el emoji del celular (pedido del director, 28-sep-2026).
         assert "html: h, logo: true," in html and "ico.innerHTML = \"<img src='/static/brand/logo_pin.png'" in html, url
         # Responsivo (28-sep-2026, captura del director): en móvil el diálogo es una hoja inferior

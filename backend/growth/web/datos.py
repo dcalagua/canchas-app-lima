@@ -67,14 +67,31 @@ PREFIJO_ID_WEB = "web_"
 # Un apartado web sin pagar con más de HOLD_SEGUNDOS NO ocupa el turno (caso
 # real PRD, 1-oct-2026: uno abandonado bloqueó las 20:00 toda la noche porque
 # solo se borraba cuando otro cliente intentaba reservar esa cancha).
-_SQL_SIN_HOLD_VENCIDO = (
-    " AND NOT (coalesce(estado,'') = 'nueva' AND NOT coalesce(pagado,false) AND id LIKE 'web\\_%%' "
-    "AND (CASE WHEN split_part(id, '_', 2) ~ '^[0-9]+$' THEN split_part(id, '_', 2)::bigint ELSE NULL END) < %s)")
+# COBRO EN PASARELA HOSPEDADA (PayPhone / Libélula, `web/pago_hospedado.py`):
+# mientras el jugador paga en la página de la pasarela (puede tardar varios
+# minutos) el apartado lleva `medio_pago = 'web_pasarela'` y NO vence a los
+# 10 min: lo suelta el barrido de órdenes cuando la orden vence/se rechaza.
+# Tope de seguridad por si la orden se perdiera: HOLD_PASARELA_MAX_SEGUNDOS.
+MEDIO_HOLD_PASARELA = "web_pasarela"
+_SQL_HOLD_VENCIDO = (
+    "(coalesce(estado,'') = 'nueva' AND NOT coalesce(pagado,false) AND id LIKE 'web\\_%%' "
+    "AND (CASE WHEN split_part(id, '_', 2) ~ '^[0-9]+$' THEN split_part(id, '_', 2)::bigint ELSE NULL END) "
+    "< (CASE WHEN coalesce(medio_pago,'') = 'web_pasarela' THEN %s ELSE %s END))")
+_SQL_SIN_HOLD_VENCIDO = " AND NOT " + _SQL_HOLD_VENCIDO
 
 
 def _corte_hold() -> int:
     return int((time.time() - HOLD_SEGUNDOS) * 1000)
+
+
+def _cortes_hold() -> tuple[int, int]:
+    """(corte de un apartado en pasarela, corte de un apartado normal), en ms:
+    los parámetros de `_SQL_HOLD_VENCIDO` en ese orden."""
+    return int((time.time() - HOLD_PASARELA_MAX_SEGUNDOS) * 1000), _corte_hold()
+
+
 HOLD_SEGUNDOS = 10 * 60  # una reserva web sin pagar se libera a los 10 min
+HOLD_PASARELA_MAX_SEGUNDOS = 50 * 60  # tope duro de un apartado en pasarela hospedada
 
 
 def _json_list(v) -> list:
@@ -517,7 +534,7 @@ def ocupados(cancha_id: str, fechas: list[str]) -> set[tuple[str, str]]:
             cur.execute(
                 "SELECT fecha, hora_inicio FROM pichangol_reservas "
                 "WHERE cancha_id = %s AND fecha = ANY(%s) "
-                "AND coalesce(estado,'') <> 'noShow'" + _SQL_SIN_HOLD_VENCIDO, (cancha_id, fechas, _corte_hold()))
+                "AND coalesce(estado,'') <> 'noShow'" + _SQL_SIN_HOLD_VENCIDO, (cancha_id, fechas, *_cortes_hold()))
             out.update((str(f), str(h)) for f, h in cur.fetchall())
             try:
                 cur.execute(
@@ -542,7 +559,7 @@ def ocupados_varias(ids: list[str], fechas: list[str]) -> dict[str, set[tuple[st
             cur.execute(
                 "SELECT cancha_id, fecha, hora_inicio FROM pichangol_reservas "
                 "WHERE cancha_id = ANY(%s) AND fecha = ANY(%s) "
-                "AND coalesce(estado,'') <> 'noShow'" + _SQL_SIN_HOLD_VENCIDO, (ids, fechas, _corte_hold()))
+                "AND coalesce(estado,'') <> 'noShow'" + _SQL_SIN_HOLD_VENCIDO, (ids, fechas, *_cortes_hold()))
             for cid, f, h in cur.fetchall():
                 out.setdefault(str(cid), set()).add((str(f), str(h)))
             try:
@@ -575,18 +592,15 @@ def descuentos(cancha_id: str, fechas: list[str]) -> dict[tuple[str, str], int]:
 def liberar_holds_vencidos(cancha_id: str) -> int:
     """Borra reservas WEB que quedaron 'nueva' (sin pagar) hace más de
     HOLD_SEGUNDOS. El momento vive en el id (`web_<epoch_ms>_n`): la tabla no
-    tiene columna de creación."""
+    tiene columna de creación. Un apartado con una orden de pasarela en curso
+    (`medio_pago = 'web_pasarela'`) solo vence con el tope largo."""
     if not pg.habilitado:
         return 0
-    corte = int((time.time() - HOLD_SEGUNDOS) * 1000)
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM pichangol_reservas WHERE cancha_id = %s "
-                "AND estado = 'nueva' AND id LIKE %s "
-                "AND split_part(id, '_', 2) ~ '^[0-9]+$' "
-                "AND split_part(id, '_', 2)::bigint < %s",
-                (cancha_id, PREFIJO_ID_WEB + "%", corte))
+                "DELETE FROM pichangol_reservas WHERE cancha_id = %s AND " + _SQL_HOLD_VENCIDO,
+                (cancha_id, *_cortes_hold()))
             n = cur.rowcount
             conn.commit()
             return n
@@ -603,15 +617,34 @@ def liberar_holds_vencidos_todos() -> list[dict]:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM pichangol_reservas WHERE estado = 'nueva' AND NOT coalesce(pagado,false) "
-                "AND id LIKE %s AND split_part(id, '_', 2) ~ '^[0-9]+$' "
-                "AND split_part(id, '_', 2)::bigint < %s RETURNING id, cancha_id, fecha, hora_inicio",
-                (PREFIJO_ID_WEB.replace("_", "\\_") + "%", _corte_hold()))
+                "AND id LIKE %s AND " + _SQL_HOLD_VENCIDO + " RETURNING id, cancha_id, fecha, hora_inicio",
+                (PREFIJO_ID_WEB.replace("_", "\\_") + "%", *_cortes_hold()))
             filas = [{"id": a, "cancha_id": b, "fecha": str(c), "hora": str(d)} for a, b, c, d in cur.fetchall()]
             conn.commit()
             return filas
     except Exception as ex:  # noqa: BLE001
         print(f"[holds] no se pudo liberar: {ex}", flush=True)
         return []
+
+
+def marcar_hold_pasarela(ids: list[str]) -> bool:
+    """El jugador se va a pagar a una pasarela hospedada: su apartado deja de
+    vencer a los 10 min (lo suelta la orden). Solo filas aún 'nueva' sin
+    pagar; True si TODAS siguen ahí (si alguna ya venció, no se cobra)."""
+    if not pg.habilitado or not ids:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE pichangol_reservas SET medio_pago = %s WHERE id = ANY(%s) "
+                        "AND estado = 'nueva' AND NOT coalesce(pagado,false)", (MEDIO_HOLD_PASARELA, list(ids)))
+            n = cur.rowcount
+            if n != len(set(ids)):
+                conn.rollback()
+                return False
+            conn.commit()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def insertar_reservas(filas: list[dict]) -> str:

@@ -20,9 +20,10 @@ con el esquema que lee el dueño en su app, el UNIQUE del slot evita la doble
 reserva, la contabilidad usa `/pagos/liquidacion-online` (billetera-first) y
 el dueño recibe el push "Nueva reserva 📅".
 
-MULTI-PAÍS: el cobro web sale sólo en soles (Culqi). Canchas en \\$ o Bs
-muestran la ficha completa y mandan a reservar por la app (PayPhone /
-Libélula).
+MULTI-PAÍS: en soles se cobra con Culqi en la misma página; en \\$ y Bs con
+la pasarela HOSPEDADA del país (`web/pago_hospedado.py`: Ecuador por la
+fachada `pagos/pasarela_ec.py`, Bolivia por Libélula). Sin pasarela
+configurada, en producción la ficha manda a reservar por la app.
 """
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ from paises import _CAJAS, pais_de_coordenadas, moneda_de_pais, simbolo_de_moned
 from pagos import culqi
 from pagos import cargo_servicio as _cs
 from pagos import devoluciones as _dev
-from web import beneficios, catalogos, datos, descubrir, horarios, marca, sesion, ui
+from web import beneficios, catalogos, datos, descubrir, horarios, marca, pago_hospedado, sesion, ui
 from web.ui import e
 
 router = APIRouter()
@@ -125,9 +126,19 @@ def _firma_ok(ids: list[str], firma: str) -> bool:
 
 
 def _pago_web_disponible(iso: str) -> bool:
-    """El checkout web cobra con Culqi (soles). Con llave pública cargada, aunque
-    sea de prueba, el formulario se muestra (así lo revisa la pasarela)."""
-    return iso == "PEN" and bool(config.CULQI_PUBLIC_KEY)
+    """¿La web puede cobrar en esa moneda? Soles: Culqi en la misma página (con
+    llave pública cargada, aunque sea de prueba, el formulario se muestra: así
+    lo revisa la pasarela). Dólares / bolivianos: la pasarela HOSPEDADA del
+    país (`web/pago_hospedado.py`: Ecuador por la fachada `pasarela_ec`,
+    Bolivia Libélula; en dev/QAS sin llaves, la simulada)."""
+    if iso == "PEN":
+        return bool(config.CULQI_PUBLIC_KEY)
+    return bool(pago_hospedado.pasarela_para(iso))
+
+
+def _pasarela_web(iso: str) -> str:
+    """'culqi' en soles; la clave de la pasarela hospedada en $ / Bs."""
+    return "culqi" if iso == "PEN" else pago_hospedado.pasarela_para(iso)
 
 
 def _fotos(c: dict) -> list[str]:
@@ -1833,10 +1844,27 @@ _JS_RESERVA = r"""
             .then(function(ok){ if(ok){ confirmarGratis(); } else { liberar(); pintarResumen(); } });
           return;
         }
-        if(!C.pk){ mostrarError('El pago en línea no está disponible por ahora.'); liberar(); pintarResumen(); return; }
+        var hosp = !!(C.pasarela && C.pasarela !== 'culqi');
+        if(!hosp && !C.pk){ mostrarError('El pago en línea no está disponible por ahora.'); liberar(); pintarResumen(); return; }
         // El medio se elige en la página (Yape por defecto) y Culqi se abre SOLO con ese método:
         // el Checkout v4 siempre abría en Tarjeta aunque Yape fuera primero (pedido del director, 27-sep-2026).
-        var m = window.pcgMedioPago ? pcgMedioPago() : 'yape';
+        // En $ / Bs el medio es la pasarela HOSPEDADA del país (PayPhone, Libélula o la de prueba en QAS).
+        var m = hosp ? C.pasarela : (window.pcgMedioPago ? pcgMedioPago() : 'yape');
+        // COBRO EN USD / BOB: se crea la orden en el servidor (monto recalculado allí) y el navegador va a
+        // la página de la pasarela; al volver, /web/pago/{orden} confirma y lleva al comprobante.
+        var irPasarela = function(){
+          ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).textContent = 'Abriendo ' + C.pasarelaNombre + '…'; });
+          pcgCargando('Abriendo el pago seguro de ' + C.pasarelaNombre + '…');
+          var h = hold;
+          fetch('/web/pago/reserva', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ids: h.ids, firma: h.firma})})
+            .then(function(r){ return r.json(); })
+            .then(function(p){
+              if(p.ok && p.url){ hold = null; try { if(p.orden) sessionStorage.setItem('pcg_orden_' + C.id, p.orden); } catch(e){} window.location.href = p.url; return; }
+              pcgCargando(false); mostrarError(p.mensaje || 'No pudimos abrir el pago. Inténtalo de nuevo.');
+              if(p.error !== 'en_curso'){ liberar(); cargar(); }
+              pintarResumen();
+            }).catch(function(){ pcgCargando(false); mostrarError('Sin conexión. Inténtalo de nuevo.'); liberar(); pintarResumen(); });
+        };
         // RESUMEN DE TU PAGO (pedido del director, 28-sep-2026): Culqi solo muestra el total; aquí se
         // confirma el detalle (turnos, extras, cargo por servicio con desglose y total, tal cual lo
         // cobrará el servidor). "Volver" libera la retención del horario.
@@ -1872,7 +1900,8 @@ _JS_RESERVA = r"""
           if(!hold) clearInterval(chk);
         }, 1500);
         };
-        if(!window.pcgResumenPago){ abrirCulqi(); return; }
+        var abrirPago = hosp ? irPasarela : abrirCulqi;
+        if(!window.pcgResumenPago){ abrirPago(); return; }
         var lineas = Object.keys(sel).sort().map(function(k){ var s = sel[k]; return {t: esc(C.etiquetas[s.fecha] || s.fecha) + ' · ' + s.hora + '–' + s.fin, m: s.precio}; });
         extrasSel().forEach(function(x){ lineas.push({t: esc(x.nombre) + (x.cantidad > 1 ? ' × ' + x.cantidad : ''), m: x.precio}); });
         if(blSel) lineas.push({t: '🎾 ' + esc(blSel.nombre) + (blSel.cantidad > 1 ? ' × ' + blSel.cantidad : ''), m: blSel.precio});
@@ -1881,15 +1910,28 @@ _JS_RESERVA = r"""
         if(ptTxt) lineas.push(ptTxt);
         if(j.pago === 'sena') lineas = [{t: 'Seña ' + j.sena_pct + ' % de ' + fmt(j.total) + ' (asegura tu hora)', m: j.sena}];
         var cj = j.cargo && j.cargo_centimos > 0 ? {monto: j.cargo_centimos / 100, titulo: j.cargo.titulo, html: htmlDesglose(j.cargo)} : null;
-        pcgResumenPago({moneda: C.moneda, medio: m, lineas: lineas, cargo: cj, total: j.total_centimos / 100,
-                        nota: (j.pago === 'sena' ? 'El resto (' + fmt(j.resto) + ') lo pagas en la cancha. ' : '') + (j.bono ? 'Tus turnos van con tu bono (te quedan ' + j.bono.quedan + ' h); pagas solo los servicios extra. ' : '') + (j.puntos ? 'Los ' + j.puntos.puntos + ' puntos se descuentan solo si el pago entra. ' : '') + 'El horario queda reservado para ti mientras pagas (' + Math.round((j.hold_segundos || 600) / 60) + ' min).' + (blSel ? ' El ' + C.nombreBoleador.toLowerCase() + ' confirma después; si no puede, te devolvemos su parte.' : '')})
-          .then(function(ok){ if(ok){ abrirCulqi(); } else { liberar(); pintarResumen(); } });
+        pcgResumenPago({moneda: C.moneda, medio: m, medioNombre: hosp ? C.pasarelaNombre : '', lineas: lineas, cargo: cj, total: j.total_centimos / 100,
+                        nota: (j.pago === 'sena' ? 'El resto (' + fmt(j.resto) + ') lo pagas en la cancha. ' : '') + (j.bono ? 'Tus turnos van con tu bono (te quedan ' + j.bono.quedan + ' h); pagas solo los servicios extra. ' : '') + (j.puntos ? 'Los ' + j.puntos.puntos + ' puntos se descuentan solo si el pago entra. ' : '') + (hosp ? 'Te llevamos a la página segura de ' + C.pasarelaNombre + '; el horario queda apartado para ti mientras pagas.' : 'El horario queda reservado para ti mientras pagas (' + Math.round((j.hold_segundos || 600) / 60) + ' min).') + (blSel ? ' El ' + C.nombreBoleador.toLowerCase() + ' confirma después; si no puede, te devolvemos su parte.' : '')})
+          .then(function(ok){ if(ok){ abrirPago(); } else { liberar(); pintarResumen(); } });
       }).catch(function(){ pintarResumen(); mostrarError('No pudimos reservar el horario. Inténtalo de nuevo.'); });
   }
   $('btnPagar').addEventListener('click', pagar);
   $('btnPagarBarra').addEventListener('click', pagar);
   document.querySelectorAll('input[name=extra]').forEach(function(x){ x.addEventListener('change', pintarResumen); });
   window.addEventListener('beforeunload', liberar);
+  // ¿Volvió de la pasarela con el botón "atrás" sin terminar? Su horario sigue apartado por la
+  // orden en curso: se ofrece retomarla (o cancelarla) en vez de chocar con "ocupado".
+  function ordenEnCurso(){
+    var oid = null; try { oid = sessionStorage.getItem('pcg_orden_' + C.id); } catch(e){}
+    if(!oid) return;
+    fetch('/web/pago/' + encodeURIComponent(oid) + '/estado').then(function(r){ return r.json(); }).then(function(j){
+      if(!j || !j.ok || j.estado !== 'pendiente'){ try { sessionStorage.removeItem('pcg_orden_' + C.id); } catch(e){} return; }
+      pcgConfirmar({titulo: 'Tienes un pago en curso', icono: '⏳', confirmar: 'Ver mi pago', cancelar: 'Ahora no',
+                    mensaje: 'Empezaste a pagar una reserva en esta cancha con ' + C.pasarelaNombre + '. Retómala o cancélala para liberar el horario.'})
+        .then(function(ok){ if(ok) window.location.href = '/web/pago/' + encodeURIComponent(oid); });
+    }).catch(function(){});
+  }
+  if(C.pasarela && C.pasarela !== 'culqi'){ ordenEnCurso(); window.addEventListener('pageshow', function(ev){ if(ev.persisted){ pintarResumen(); ordenEnCurso(); } }); }
   pintarDias(); cargar(); cargarFidelidad(); cargarBeneficios();
 })();
 """
@@ -2058,8 +2100,8 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
             motivo = ("Este local todavía está en proceso de verificación con Pichangol. Desde la app puedes "
                       "reservar y pagar en la cancha, y te avisamos cuando acepte pagos en línea.")
         else:
-            motivo = (f"Esta cancha cobra en {e(sim)} y el pago en línea desde la web está disponible por "
-                      "ahora solo en soles." if iso != "PEN" else "El pago en línea desde la web se está habilitando.")
+            motivo = (f"El pago en línea en {e(sim)} desde la web se está habilitando." if iso != "PEN"
+                      else "El pago en línea desde la web se está habilitando.")
         reclamar = ""
         if not datos.reservable(c) and not (c.get("dueno") or "").strip():
             reclamar = ("<div class='panel' style='margin-top:16px;border:1px solid var(--verde)'><h2>¿Es tuya esta cancha?</h2>"
@@ -2126,7 +2168,11 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
     con_ben = sesion.activo() and beneficios.disponible()
     if con_ben:
         extras_html = "<div id='benBox' class='fid-box ben-box' style='display:none'></div>" + extras_html
-    cfg = json.dumps({"id": c["id"], "moneda": sim, "pk": config.CULQI_PUBLIC_KEY, "maxSlots": MAX_SLOTS,
+    pasarela = _pasarela_web(iso)
+    cfg = json.dumps({"id": c["id"], "moneda": sim, "pk": config.CULQI_PUBLIC_KEY if pasarela == "culqi" else "", "maxSlots": MAX_SLOTS,
+                      # Pasarela del checkout: 'culqi' (soles, en la página) o la HOSPEDADA del país
+                      # ($ / Bs: se va a pagar a su página y vuelve a /web/pago/{orden}).
+                      "pasarela": pasarela, "pasarelaNombre": ("" if pasarela == "culqi" else pago_hospedado.nombre_pasarela(pasarela)),
                       "boleadores": con_bol, "nombreBoleador": nombre_bol, "fidelidad": fid_cfg, "beneficios": con_ben,
                       "logo": "", "hoy": dias[0]["iso"], "dias": dias, "etiquetas": etiquetas,
                       # Cargo por servicio (fase 2): con el flag apagado el JS no cotiza ni pinta la línea.
@@ -2180,18 +2226,20 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
         f"<div class='sub' style='margin-bottom:10px'>{e(c['nombre'])}{(' · ' + e(c.get('club'))) if c.get('club') else ''}</div>"
         "<div id='lineas'></div>"
         "<div class='total'><span id='totLbl'>Total</span><span id='tot'></span></div>"
-        f"<div style='margin-top:14px'>{ui.selector_medio_pago()}</div>"
+        f"<div style='margin-top:14px'>{ui.selector_medio_pago() if pasarela == 'culqi' else pago_hospedado.selector(pasarela)}</div>"
         "<div style='margin-top:14px'><button class='btn lg' id='btnPagar' disabled>Elige un horario</button></div>"
         "<div class='sub' style='font-size:12.5px;margin-top:12px'>Reserva confirmada al instante; el local la ve en su agenda. "
         "Cancelación con más de 6 horas de anticipación: devolución del 100 %. <a href='/#devoluciones'>Ver política</a>.</div>"
         "</div></aside></div>"
         "<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0' id='totBarraLbl'>Total</div><div class='t' id='totBarra'></div></div>"
-        f"{ui.medio_pago_mini()}<button class='btn' id='btnPagarBarra' disabled>Elige un horario</button></div>"
+        f"{ui.medio_pago_mini(pasarela)}<button class='btn' id='btnPagarBarra' disabled>Elige un horario</button></div>"
         f"<script>window.__cancha={cfg};var CORREO_SOPORTE={json.dumps(empresa.valores()['empresa_correo'])};</script>"
-        "<script src='https://checkout.culqi.com/js/v4'></script>"
-        f"<script>{sesion.JS_SESION if sesion.activo() else ''}{_JS_RESERVA}</script>")
+        + ("<script src='https://checkout.culqi.com/js/v4'></script>" if pasarela == "culqi" else "")
+        + f"<script>{sesion.JS_SESION if sesion.activo() else ''}{_JS_RESERVA}</script>")
     return ui.shell(f"Reservar en {titulo}", cuerpo, con_barra=True, canonical=canonical, og_image=og,
-                    desc=f"Reserva {c['nombre']} y paga en línea con Yape o tarjeta.", jsonld=_jsonld_cancha(c, sim),
+                    desc=(f"Reserva {c['nombre']} y paga en línea con Yape o tarjeta." if pasarela == "culqi"
+                          else f"Reserva {c['nombre']} y paga en línea con {pago_hospedado.nombre_pasarela(pasarela)}."),
+                    jsonld=_jsonld_cancha(c, sim),
                     extra_head=("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
                                 "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>"
                                 + (sesion.GIS_SCRIPT if (sesion.activo() and not ses) else "")), sesion=ses)
@@ -2496,6 +2544,10 @@ class LiberarReq(BaseModel):
 def liberar(req: LiberarReq) -> dict:
     if not _firma_ok(req.ids, req.firma):
         return {"ok": False, "error": "firma"}
+    if pago_hospedado.orden_de_ids(req.ids) is not None:
+        # El jugador está pagando en la pasarela (o el pago ya entró y se está
+        # confirmando): el apartado lo suelta la orden, nunca el navegador.
+        return {"ok": False, "error": "pago_en_curso"}
     import fidelidad as _fid
     _fid.revertir_canje(ids=req.ids)
     beneficios.soltar(ids=req.ids)  # bono / puntos apartados vuelven al jugador
@@ -2514,7 +2566,10 @@ class PagarReq(BaseModel):
 def pagar(req: PagarReq, request: Request = None) -> dict:
     """Cobra con Culqi el TOTAL del bloque asegurado y confirma las filas.
     Fallo del cargo → las filas se liberan y no se cobró nada. Éxito →
-    confirmada + pagado + liquidación al dueño (billetera-first) + push."""
+    confirmada + pagado + liquidación al dueño (billetera-first) + push.
+    En dólares / bolivianos el cobro va por la pasarela HOSPEDADA del país
+    (`POST /web/pago/reserva`, `web/pago_hospedado.py`); aquí solo llegan,
+    en esas monedas, las reservas sin cobro (hora gratis / bono sin extras)."""
     ses = sesion.de_request(request) if sesion.activo() else None
     if sesion.activo() and not ses:
         return {"ok": False, "error": "sesion_requerida",
@@ -2530,19 +2585,11 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
         return {"ok": True, "url": _url_comprobante(filas)}
     c = datos.cancha(filas[0]["cancha_id"]) or {}
     sim, iso = _moneda_de(c) if c else ("S/", "PEN")
-    total = _total_de(filas)
     email = (ses["email"] if ses else (req.email or filas[0].get("usuario") or "")).strip().lower()
     import fidelidad as _fid
-    ref_fid = _ref_de(filas)
-    canje = datos.canje_por_ref(ref_fid)
-    # BONO / PUNTOS apartados en /web/asegurar: con bono los turnos ya están
-    # pagados (solo se cobran los extras); los puntos restan S/ 3 al cobro,
-    # pero NO a la liquidación del dueño (el descuento lo pone Pichangol).
-    ben = beneficios.de_ref(ref_fid)
-    bono_cubre = sum(int(f["precio"]) for f in filas) if ben["bono"] else 0
-    puntos_desc = beneficios.DESCUENTO_PUNTOS if ben["puntos"] else 0
-    a_cobrar = total - bono_cubre
-    if a_cobrar <= 0:
+    plan = plan_cobro_reserva(filas)
+    canje, ben, ref_fid = plan["canje"], plan["ben"], plan["ref"]
+    if plan["a_cobrar"] <= 0:
         # RESERVA SIN COBRO: hora gratis de la tarjeta de fidelidad o turnos
         # cubiertos por el bono, sin extras. No hay cargo en Culqi ni
         # liquidación (el bono ya se le pagó al dueño al venderlo).
@@ -2565,16 +2612,18 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
             except Exception:  # noqa: BLE001
                 pass
         return {"ok": True, "url": _url_comprobante(filas), "charge_id": ""}
+    if iso != "PEN" or any(str(f.get("medio_pago") or "") == datos.MEDIO_HOLD_PASARELA for f in filas):
+        # Culqi cobra en soles; un bloque en $ / Bs (o que ya está en camino a
+        # la pasarela de su país) se paga en `POST /web/pago/reserva`.
+        return {"ok": False, "error": "usa_pasarela",
+                "mensaje": "Esta reserva se paga con la pasarela de su país. Vuelve a la ficha e inténtalo otra vez."}
     # Cargo por servicio: se RECALCULA aquí (misma regla que en /web/asegurar);
     # lo que se cobra = precio + cargo. El dueño recibe sobre el precio.
     # SEÑA: la fijó /web/asegurar en cada fila; se cobra solo eso (+ su cargo
     # por servicio) y el resto queda "por cobrar en la cancha" (pagado=false).
-    sena_total = sum(int(f.get("sena") or 0) for f in filas)
-    es_sena = sena_total > 0
-    base_cobro = sena_total if es_sena else a_cobrar - puntos_desc
-    cot = _cotizacion_reserva(c, base_cobro, str(filas[0].get("deporte") or ""))
+    cot = _cotizacion_reserva(c, plan["base_cobro"], str(filas[0].get("deporte") or ""))
     monto_cobro = cot.total_centimos
-    concepto = f"{'Seña · ' if es_sena else ''}Reserva {c.get('nombre', 'cancha')} {filas[0]['fecha']} {filas[0]['hora_inicio']}"
+    concepto = concepto_reserva(c, filas, plan["es_sena"])
     # Datos del pagador para el antifraude de Culqi: nombre de Google (real) o
     # el que escribió en la reserva, celular de la reserva, país de la cancha.
     from db.store import stores as _st
@@ -2587,19 +2636,86 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
         metadata={"canal": "web", "reserva_id": filas[0]["id"], "cancha_id": filas[0]["cancha_id"],
                   "cargo_servicio_centimos": cot.cargo_centimos})
     if not cargo.get("ok"):
-        if canje:
-            _fid.revertir_canje(ref_fid)
-        beneficios.soltar(ref_fid)  # bono / puntos apartados vuelven al jugador
-        datos.borrar_reservas(req.ids)
+        soltar_bloque(filas)
         msg = str(cargo.get("error") or "")
         return {"ok": False, "error": "cargo_rechazado",
                 "mensaje": "El pago fue rechazado por tu banco o billetera. No se te cobró nada y el "
                            "horario quedó libre para que lo intentes de nuevo." + (f" ({msg[:80]})" if msg else "")}
     medio = "yape" if req.medio == "yape" else "tarjeta"
+    confirmar_reserva_pagada(filas, c, email, plan=plan, charge_id=str(cargo.get("charge_id") or ""), medio=medio,
+                             monto_cobro=monto_cobro, cargo_centimos=cot.cargo_centimos,
+                             cargo_desglose=list(cot.desglose or []), cargo_ajuste=cot.ajuste_seguridad_centimos)
+    return {"ok": True, "url": _url_comprobante(filas), "charge_id": cargo.get("charge_id")}
+
+
+def plan_cobro_reserva(filas: list[dict]) -> dict:
+    """Qué se cobra de un bloque asegurado (lo mismo para Culqi y para la
+    pasarela hospedada): total de la reserva, lo que cubre el BONO, el
+    descuento de PUNTOS, la SEÑA y la base del cobro (sin el cargo por
+    servicio). Determinístico: se recalcula desde las filas y los apartados,
+    nunca desde lo que diga el navegador."""
+    total = _total_de(filas)
+    ref = _ref_de(filas)
+    canje = datos.canje_por_ref(ref)
+    # BONO / PUNTOS apartados en /web/asegurar: con bono los turnos ya están
+    # pagados (solo se cobran los extras); los puntos restan S/ 3 al cobro,
+    # pero NO a la liquidación del dueño (el descuento lo pone Pichangol).
+    ben = beneficios.de_ref(ref)
+    bono_cubre = sum(int(f["precio"]) for f in filas) if ben["bono"] else 0
+    puntos_desc = beneficios.DESCUENTO_PUNTOS if ben["puntos"] else 0
+    a_cobrar = total - bono_cubre
+    sena_total = sum(int(f.get("sena") or 0) for f in filas)
+    es_sena = sena_total > 0
+    base_cobro = sena_total if es_sena else a_cobrar - puntos_desc
+    return {"total": total, "ref": ref, "canje": canje, "ben": ben, "bono_cubre": bono_cubre, "puntos_desc": puntos_desc,
+            "a_cobrar": a_cobrar, "sena_total": sena_total, "es_sena": es_sena, "base_cobro": base_cobro}
+
+
+def concepto_reserva(c: dict, filas: list[dict], es_sena: bool) -> str:
+    return f"{'Seña · ' if es_sena else ''}Reserva {c.get('nombre', 'cancha')} {filas[0]['fecha']} {filas[0]['hora_inicio']}"
+
+
+def soltar_bloque(filas_o_ids) -> None:
+    """Pago que NO entró (rechazado, cancelado, vencido): el premio de
+    fidelidad y el bono / puntos apartados vuelven al jugador y el horario
+    queda libre. Mismo camino para Culqi y la pasarela hospedada."""
+    import fidelidad as _fid
+    lista = list(filas_o_ids or [])
+    ids = [str(f["id"]) if isinstance(f, dict) else str(f) for f in lista]
+    filas = [f for f in lista if isinstance(f, dict)] or datos.reservas_de(ids)
+    ref = _ref_de(filas) if filas else ""
+    try:
+        if not (ref and _fid.revertir_canje(ref)):
+            _fid.revertir_canje("", ids)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        beneficios.soltar(ref, ids)  # bono / puntos apartados vuelven al jugador
+    except Exception:  # noqa: BLE001
+        pass
+    datos.borrar_reservas(ids)
+
+
+def confirmar_reserva_pagada(filas: list[dict], c: dict, email: str, *, plan: dict, charge_id: str, medio: str,
+                             monto_cobro: int, cargo_centimos: int, cargo_desglose: list, cargo_ajuste: int) -> None:
+    """Lo que pasa DESPUÉS de que la pasarela aprobó el cobro de una reserva
+    web (Culqi en `/web/pagar`; PayPhone / Libélula / simulada en
+    `web/pago_hospedado.py`): confirma las filas (con seña: confirmada sin
+    pagar), usa el premio de fidelidad y el bono / puntos, deja el cobro en el
+    libro (`cobro_web`, ligado a la reserva: así se puede devolver), liquida
+    al dueño en la moneda de la cancha, avisa y abre la solicitud del
+    boleador. `charge_id`: `chr_…` (Culqi) o `pp:` / `lib:` / `sim:` + id."""
+    import fidelidad as _fid
+    from db.store import stores as _st
+    sim, iso = _moneda_de(c) if c else ("S/", "PEN")
+    ids = [str(f["id"]) for f in filas]
+    canje, ben, ref_fid = plan["canje"], plan["ben"], plan["ref"]
+    es_sena, sena_total, total = plan["es_sena"], plan["sena_total"], plan["total"]
+    bono_cubre, a_cobrar, base_cobro = plan["bono_cubre"], plan["a_cobrar"], plan["base_cobro"]
     # Con seña la reserva queda confirmada pero NO pagada (el dueño cobra el
     # resto en la cancha), medio 'sena' como en el app.
-    datos.confirmar_reservas(req.ids, "sena" if es_sena else ("bono" if ben["bono"] else medio), cot.cargo_centimos / 100.0,
-                             list(cot.desglose or []), pagado=not es_sena)
+    datos.confirmar_reservas(ids, "sena" if es_sena else ("bono" if ben["bono"] else medio), cargo_centimos / 100.0,
+                             list(cargo_desglose or []), pagado=not es_sena)
     if canje:
         _fid.confirmar_canje(ref_fid)  # el premio queda USADO con el pago aprobado
     # Bono usado y, con puntos, el canje queda en `pichangol_puntos_canjes`
@@ -2608,10 +2724,11 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
     try:
         # El cargo queda en el libro (tipo cobro_web) ligado a la reserva/grupo:
         # es lo que permite REEMBOLSAR desde la web al cancelar.
-        _st.registrar_pago(tipo="cobro_web", monto_centimos=monto_cobro, moneda=iso, estado="aprobado",
-                           culqi_charge_id=str(cargo.get("charge_id") or ""), email=email, medio=medio,
-                           concepto=f"web:{_ref_de(filas)}", cargo_servicio_centimos=cot.cargo_centimos,
-                           cargo_desglose=(cot.desglose or None), cargo_ajuste_centimos=cot.ajuste_seguridad_centimos)
+        if _cobro_web(_ref_de(filas)) is None:
+            _st.registrar_pago(tipo="cobro_web", monto_centimos=monto_cobro, moneda=iso, estado="aprobado",
+                               culqi_charge_id=charge_id, email=email, medio=medio,
+                               concepto=f"web:{_ref_de(filas)}", cargo_servicio_centimos=cargo_centimos,
+                               cargo_desglose=(list(cargo_desglose or []) or None), cargo_ajuste_centimos=cargo_ajuste)
     except Exception:  # noqa: BLE001
         pass
     dueno = (c.get("dueno") or "").strip().lower()
@@ -2628,9 +2745,9 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
             post_liquidacion_online(LiquidacionOnlineReq(
                 dueno_id=dueno, monto_soles=(float(sena_total) if es_sena else total_dueno), reserva_id=filas[0]["id"],
                 concepto=f"{'Seña' if es_sena else 'Reserva'} web · {c.get('nombre', '')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}",
-                medio=("sena" if es_sena else medio), moneda=iso, charge_id=str(cargo.get("charge_id") or ""),
-                cargo_servicio_centimos=cot.cargo_centimos, cargo_desglose=list(cot.desglose or []),
-                cargo_ajuste_centimos=cot.ajuste_seguridad_centimos))
+                medio=("sena" if es_sena else medio), moneda=iso, charge_id=charge_id,
+                cargo_servicio_centimos=cargo_centimos, cargo_desglose=list(cargo_desglose or []),
+                cargo_ajuste_centimos=cargo_ajuste))
             rango = f"{filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"
             _aviso_push_usuario(
                 dueno, "Nueva reserva 📅",
@@ -2646,15 +2763,14 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
             b = datos.boleador_por_slug(str(linea_bol.get("boleador") or ""))
             if b:
                 # Parte del cargo del boleador sobre lo COBRADO (con puntos, total − S/ 3), como el app.
-                cargo_bol = int(round(cot.cargo_centimos * bol_soles / float(base_cobro))) if base_cobro and cot.cargo_centimos else 0
+                cargo_bol = int(round(cargo_centimos * bol_soles / float(base_cobro))) if base_cobro and cargo_centimos else 0
                 _bol.crear_solicitud(boleador=b, cliente_email=email, cliente_nombre=str(filas[0].get("jugador") or ""),
-                                     reserva_ids=[str(f["id"]) for f in filas], reserva_ref=_ref_de(filas), cancha=c,
+                                     reserva_ids=ids, reserva_ref=_ref_de(filas), cancha=c,
                                      fecha=str(filas[0]["fecha"]), hora_inicio=str(filas[0]["hora_inicio"]),
                                      hora_fin=str(filas[-1]["hora_fin"]), turnos=len(filas),
-                                     charge_id=str(cargo.get("charge_id") or ""), cargo_centimos=cargo_bol, medio=medio, canal="web")
+                                     charge_id=charge_id, cargo_centimos=cargo_bol, medio=medio, canal="web")
         except Exception:  # noqa: BLE001
             pass
-    return {"ok": True, "url": _url_comprobante(filas), "charge_id": cargo.get("charge_id")}
 
 
 def _total_de(filas: list[dict]) -> int:
@@ -2740,6 +2856,38 @@ def _cargo_app(ids: list[str]):
     return liq, cargo
 
 
+def _es_cargo_culqi(p) -> bool:
+    """¿Esa fila es un cargo de Culqi (`chr_…`, reembolsable por su API)? Los
+    cobros por pasarela hospedada (`<pasarela>:…`, `sim:…`) no lo son: su
+    devolución al medio original queda `manual` (la atiende el operador)."""
+    return str(getattr(p, "culqi_charge_id", "") or "").startswith("chr_")
+
+
+def _reembolso_ec_posible(p) -> bool:
+    """Cobro web por la pasarela de Ecuador cuyo módulo SÍ reembolsa por API
+    (hoy PayPhone no: queda `manual`)."""
+    from pagos import pasarela_ec
+    return (str(getattr(p, "culqi_charge_id", "") or "").startswith(pasarela_ec.clave() + ":")
+            and pasarela_ec.soporta_reembolso())
+
+
+def _reembolsar_ec(p, monto_centimos: int) -> dict:
+    from db.store import stores as _st
+    from pagos import pasarela_ec
+    ident = str(p.culqi_charge_id).split(":", 1)[1]
+    d = _st.payphone_pagos.get(ident) or {}
+    return pasarela_ec.reembolsar(transaction_id=str(d.get("transaction_id") or ""), client_tx_id=ident,
+                                  monto_centavos=min(int(monto_centimos), int(p.monto_centimos)))
+
+
+def _saldo_en_moneda(email: str, iso: str) -> bool:
+    try:
+        from pagos.router import moneda_billetera
+        return moneda_billetera(email) == (iso or "PEN")
+    except Exception:  # noqa: BLE001
+        return iso == "PEN"
+
+
 def _filas_de_ref(ref: str) -> list[dict]:
     """Turnos de una referencia (grupo `grp_…` o id de un turno suelto),
     ordenados y sin retenciones web sin pagar."""
@@ -2799,8 +2947,18 @@ def estado_cancelacion(filas: list[dict], c: dict | None, email: str, cancela_an
                        horas_desde_pago=_horas_desde_pago(cobro if cobro is not None else (cargo_app or liq)),
                        precio_centimos=precio_c, cargo_centimos=cargo_c, simbolo=sim, cancela_anfitrion=cancela_anfitrion)
     # ¿La devolución al medio original sale sola por Culqi (tenemos el cargo)
-    # o la coordina el operador (pago viejo del app sin cargo ligado)?
-    directo = cobro is not None or cargo_app is not None
+    # o la coordina el operador (pago viejo del app sin cargo ligado, o pago
+    # por una pasarela hospedada —Ecuador / Bolivia— sin reembolso por API)?
+    directo = (cobro is not None and _es_cargo_culqi(cobro)) or cargo_app is not None
+    iso_c = _moneda_de(c)[1] if c else "PEN"
+    if pagado and not _saldo_en_moneda(email, iso_c):
+        # Devolver a SALDO solo si la billetera es de la moneda de la reserva
+        # (nunca se mezclan $ o Bs en un saldo en soles, ni al revés).
+        pol["opciones"] = [o for o in pol.get("opciones") or [] if o.get("medio") != "saldo"]
+    if iso_c != "PEN":
+        for o in pol.get("opciones") or []:
+            if o.get("medio") == "original":
+                o["etiqueta"] = "Al mismo medio de pago (tarjeta / QR)"
     if pagado and not directo:
         for o in pol.get("opciones") or []:
             if o.get("medio") == "original":
@@ -2840,6 +2998,8 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
     from pagos import tarifas_pasarela as _tp
     medio = _dev.medio_valido(medio)
     est = estado_cancelacion(filas, c, email, cancela_anfitrion=cancela_anfitrion)
+    if medio == "saldo" and est.get("puede") and not any(o.get("medio") == "saldo" for o in (est.get("politica") or {}).get("opciones") or []):
+        medio = "original"  # su billetera es de otra moneda: va al medio de pago
     if not est.get("puede"):
         msgs = {"sin_reserva": "No encontramos esa reserva.", "ajena": "Esa reserva no es de tu cuenta.",
                 "ya_cancelada": "Esa reserva ya estaba cancelada.", "ya_empezo": "El turno ya empezó o ya pasó: no se puede cancelar.",
@@ -2872,8 +3032,16 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
             if fila_cargo is not None and fila_cargo.estado == "aprobado":
                 fila_cargo.estado = "devuelto_saldo"
             reembolso = "saldo"
-        elif fila_cargo is not None and fila_cargo.culqi_charge_id and fila_cargo.estado == "aprobado":
+        elif fila_cargo is not None and _es_cargo_culqi(fila_cargo) and fila_cargo.estado == "aprobado":
             r = culqi.reembolsar(charge_id=fila_cargo.culqi_charge_id, monto_centimos=min(monto_dev, fila_cargo.monto_centimos))
+            if r.get("ok"):
+                reembolso, refund_id = "reembolsado", r.get("refund_id")
+                fila_cargo.estado = "reembolsado"
+            else:
+                reembolso, detalle = "fallo", str(r.get("error") or "")[:160]
+        elif fila_cargo is not None and fila_cargo.estado == "aprobado" and _reembolso_ec_posible(fila_cargo):
+            # Pasarela de Ecuador con reembolso por API (si el módulo lo trae).
+            r = _reembolsar_ec(fila_cargo, monto_dev)
             if r.get("ok"):
                 reembolso, refund_id = "reembolsado", r.get("refund_id")
                 fila_cargo.estado = "reembolsado"
@@ -3590,6 +3758,9 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         f"Comprobante: {base}/reserva/{ref}", etiqueta="💬 Compartir", clase="btn sec")
     medio = {"yape": "Yape", "tarjeta": "tarjeta", "fidelidad": "tu premio de fidelidad 🎁", "sena": "seña en línea",
              "bono": "tu bono de horas 🎟️"}.get(str(filas[0].get("medio_pago") or ""), "en línea")
+    if cobro is not None and not _es_cargo_culqi(cobro) and ":" in str(cobro.culqi_charge_id or ""):
+        # Cobro por pasarela hospedada ($ / Bs): se nombra la pasarela.
+        medio += f" · {pago_hospedado.nombre_pasarela(str(cobro.culqi_charge_id).split(':', 1)[0])}"
     cuerpo = (
         "<div style='max-width:640px;margin:26px auto 0'>"
         f"<div class='panel' style='text-align:center'>{ui.check_svg()}"
