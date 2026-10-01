@@ -1545,9 +1545,9 @@ para la API del APK.
   …/{id}/reintentar`). Plantilla tabla + estilos en línea (Gmail/Outlook),
   pie con razón social/RUC de `empresa.datos()`, "constancia, no comprobante
   electrónico". Privacidad declara el proveedor de correo. Test
-  `tests/test_correos.py`. **Trampa (1-oct-2026):** Cloudflare delante de `api.resend.com` responde 403 «error code: 1010» al User-Agent por defecto de `urllib` → `_enviar_resend` manda `User-Agent: Pichangol-Backend/1.0`. **PENDIENTE del director:** cuenta de Resend con
-  el dominio `pichangol.app` verificado (DNS SPF/DKIM) y la llave en Railway
-  QAS (y PRD con "pasa a PRD").
+  `tests/test_correos.py`. **Trampa (1-oct-2026):** Cloudflare delante de `api.resend.com` responde 403 «error code: 1010» al User-Agent por defecto de `urllib` → `_enviar_resend` manda `User-Agent: Pichangol-Backend/1.0`. **HECHO 1-oct-2026:** dominio `pichangol.app` verificado en
+  Resend, `RESEND_API_KEY` en `pg-backend` y `pg-backend-prd`, correo de
+  prueba recibido en QAS; remitente `no-reply@pichangol.app` (PRD = 509158f).
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
   VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
   Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el
@@ -1995,6 +1995,7 @@ para la API del APK.
   `https://www.<host><ruta>?<query>` para los hosts de `DOMINIOS_A_WWW`
   (default `pichangol.app`), excepto `/.well-known/` (assetlinks de los App
   Links del apex, sin redirección). Test `tests/test_dominio_raiz.py`.
+  **HECHO 1-oct-2026:** ALIAS puesto, Railway: DNS propagado y certificado VALID.
 
 ## Estrategia de ambientes (piloto → prod)
 
