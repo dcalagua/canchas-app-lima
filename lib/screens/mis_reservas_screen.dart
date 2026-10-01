@@ -594,11 +594,14 @@ class _MenuReserva extends StatelessWidget {
   }
 }
 
-/// ¿La reserva se PAGÓ EN LÍNEA (Culqi/Yape, en el app o en la web)? Esas se
-/// cancelan a través del backend con la política de devoluciones; las que se
-/// pagan en la cancha o el historial se resuelven en el teléfono.
+/// ¿La reserva se PAGÓ EN LÍNEA (Culqi/Yape, en el app o en la web) o con
+/// BONO de horas? Esas se cancelan a través del backend con la política de
+/// devoluciones (el mismo motor que la web: a tiempo devuelve la plata, las
+/// horas del bono y los puntos canjeados); las que se pagan en la cancha o el
+/// historial se resuelven en el teléfono.
 bool _pagadaEnLinea(Reserva r) =>
-    r.pagado && (r.medioPago == 'yape' || r.medioPago == 'tarjeta');
+    r.pagado &&
+    (r.medioPago == 'yape' || r.medioPago == 'tarjeta' || r.esBono);
 
 /// Confirma y ejecuta la cancelación/eliminación de una reserva del jugador.
 Future<void> _confirmarCancelar(
@@ -708,6 +711,11 @@ Future<void> _cancelarPagadaEnLinea(
   }
   // El backend ya liberó el horario y avisó al dueño: solo limpiamos la copia.
   await appState.cancelarReserva(r, enNube: false);
+  final horasBono = ((res['bono_horas_devueltas'] ?? 0) as num).toInt();
+  final ptsDev = ((res['puntos_devueltos'] ?? 0) as num).toInt();
+  // Horas de bono y puntos devueltos por el servidor: se refrescan del origen.
+  if (horasBono > 0) unawaited(appState.cargarMisBonos());
+  if (ptsDev > 0) unawaited(appState.cargarPuntosCanjeados());
   final mon = r.monedaSimbolo;
   final dev = ((res['monto_devuelto'] ?? 0) as num).toDouble();
   final devTxt = '$mon ${dev.toStringAsFixed(2)}';
@@ -724,14 +732,20 @@ Future<void> _cancelarPagadaEnLinea(
     'fallo' =>
       'Reserva cancelada. Tu devolución está en proceso; te escribimos en breve.',
     'sin_reembolso' => 'Reserva cancelada sin devolución.',
+    'bono' => 'Reserva cancelada. El horario quedó libre.',
     _ => 'Reserva cancelada. El horario quedó libre.',
   };
+  final extra = [
+    if (horasBono > 0)
+      'Te devolvimos $horasBono ${horasBono == 1 ? 'hora' : 'horas'} a tu bono de este local.',
+    if (ptsDev > 0) 'Recuperaste tus $ptsDev puntos Pichangol.',
+  ].join(' ');
   if (reembolso == 'saldo') unawaited(appState.sincronizarSaldo());
   if (context.mounted) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         backgroundColor: bosque,
         duration: const Duration(seconds: 6),
-        content: Text(msg)));
+        content: Text(extra.isEmpty ? msg : '$msg $extra')));
   }
 }
 
@@ -807,6 +821,33 @@ class _HojaCancelarOnlineState extends State<_HojaCancelarOnline> {
   bool get _reembolsable =>
       widget.estado['reembolsable'] == true && _opciones.isNotEmpty;
 
+  int get _horasBono => ((widget.estado['bono_horas'] ?? 0) as num).toInt();
+  int get _puntos => ((widget.estado['puntos'] ?? 0) as num).toInt();
+
+  /// Todo con bono (sin plata de por medio): a tiempo se devuelven las horas.
+  bool get _soloBonoATiempo =>
+      widget.estado['reembolsable'] == true &&
+      _opciones.isEmpty &&
+      _horasBono > 0;
+
+  /// Qué más vuelve al cancelar a tiempo (horas de bono y puntos), o qué se
+  /// pierde si es tarde. Mismo texto que el modal de la web.
+  String get _notaBeneficios {
+    final h = _horasBono, p = _puntos;
+    if (h <= 0 && p <= 0) return '';
+    final hTxt = '$h ${h == 1 ? 'hora' : 'horas'}';
+    if (widget.estado['reembolsable'] == true) {
+      return [
+        if (h > 0 && !_soloBonoATiempo) 'Además te devolvemos $hTxt a tu bono.',
+        if (p > 0) 'Recuperas tus $p puntos Pichangol.',
+      ].join(' ');
+    }
+    return [
+      if (h > 0) 'Las $hTxt de tu bono no vuelven.',
+      if (p > 0) 'Los $p puntos canjeados no vuelven.',
+    ].join(' ');
+  }
+
   @override
   void initState() {
     super.initState();
@@ -829,7 +870,12 @@ class _HojaCancelarOnlineState extends State<_HojaCancelarOnline> {
         : (widget.cancha?.nombre ?? 'la reserva');
     final String explicacion;
     final Color fondo, frente;
-    if (_reembolsable) {
+    if (_soloBonoATiempo) {
+      fondo = estadoOkBg;
+      frente = estadoOkFg;
+      explicacion =
+          'Reservaste con tu bono: faltan ${horas.toStringAsFixed(horas >= 10 ? 0 : 1)} h, así que te devolvemos $_horasBono ${_horasBono == 1 ? 'hora' : 'horas'} a tu bono de este local.';
+    } else if (_reembolsable) {
       fondo = estadoOkBg;
       frente = estadoOkFg;
       explicacion = _motivo == 'arrepentimiento'
@@ -862,7 +908,8 @@ class _HojaCancelarOnlineState extends State<_HojaCancelarOnline> {
                   style: t.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
               Text(
-                  '${r.diaVisible} · ${r.horaInicio}–${r.horaFin} · pagaste $mon ${totalPagado.toStringAsFixed(2)}',
+                  '${r.diaVisible} · ${r.horaInicio}–${r.horaFin} · '
+                  '${totalPagado <= 0 && _horasBono > 0 ? 'con tu bono ($_horasBono h)' : 'pagaste $mon ${totalPagado.toStringAsFixed(2)}${_horasBono > 0 ? ' + $_horasBono h de bono' : ''}'}',
                   style: t.bodyMedium?.copyWith(color: textoTenue)),
               const SizedBox(height: 14),
               Container(
@@ -870,7 +917,10 @@ class _HojaCancelarOnlineState extends State<_HojaCancelarOnline> {
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
                     color: fondo, borderRadius: BorderRadius.circular(14)),
-                child: Text(explicacion,
+                child: Text(
+                    _notaBeneficios.isEmpty
+                        ? explicacion
+                        : '$explicacion $_notaBeneficios',
                     style: t.bodyMedium?.copyWith(
                         color: frente, fontWeight: FontWeight.w600, height: 1.35)),
               ),
@@ -910,13 +960,15 @@ class _HojaCancelarOnlineState extends State<_HojaCancelarOnline> {
                       onPressed: () =>
                           Navigator.of(context).pop(_medio ?? 'original'),
                       style: FilledButton.styleFrom(
-                          backgroundColor: _reembolsable ? bosque : clayOscuro,
+                          backgroundColor: (_reembolsable || _soloBonoATiempo)
+                              ? bosque
+                              : clayOscuro,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14))),
                       child: Text(
-                          _reembolsable
+                          (_reembolsable || _soloBonoATiempo)
                               ? 'Sí, cancelar'
                               : 'Cancelar sin devolución',
                           textAlign: TextAlign.center,

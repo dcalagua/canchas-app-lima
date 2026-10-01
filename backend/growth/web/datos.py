@@ -2109,3 +2109,68 @@ def bono_devolver_horas(email: str, club: str, dueno: str, horas: int) -> int:
     except Exception as ex:  # noqa: BLE001
         print(f"[canje-web] no se pudieron devolver horas de bono a {e}: {ex}", flush=True)
         return 0
+
+
+# ── Puntos canjeados en una reserva hecha en el APP ───────────────────────────
+# El APK escribe el canje (100 pts = S/ 3) DIRECTO en `pichangol_puntos_canjes`
+# con `referencia = <cancha>_<fecha>_<hora>` del primer turno (sin libro web).
+# Para que una cancelación sepa que se usaron puntos (no devolver plata que no
+# se pagó) y los devuelva, se lee el NETO de esas referencias: canjes (+) y
+# devoluciones previas (−, referencia `devolucion:<ref>`, el mismo formato de la
+# web). [desde] (epoch s) descarta canjes viejos de OTRA reserva del mismo
+# turno (mismo jugador, misma cancha, misma hora, días/semanas antes).
+
+def _sql_puntos_netos(refs: list[str], desde: float | None) -> tuple[str, list]:
+    devs = ["devolucion:" + r for r in refs]
+    sql = ("SELECT coalesce(sum(puntos), 0), coalesce(sum(soles), 0) FROM pichangol_puntos_canjes "
+           "WHERE lower(email) = %s AND (referencia = ANY(%s) OR referencia = ANY(%s))")
+    params: list = [list(refs), devs]
+    if desde is not None:
+        sql += " AND creado >= to_timestamp(%s)"
+        params.append(float(desde))
+    return sql, params
+
+
+def puntos_canje_neto(email: str, refs: list[str], desde: float | None = None) -> tuple[int, float]:
+    """(puntos, soles) aún canjeados en esas referencias (0 si ya se devolvieron
+    o si la tabla no existe)."""
+    e = (email or "").strip().lower()
+    refs = [r for r in (refs or []) if r]
+    if not pg.habilitado or not e or not refs:
+        return 0, 0.0
+    try:
+        sql, params = _sql_puntos_netos(refs, desde)
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(sql, [e, *params])
+            f = cur.fetchone() or (0, 0)
+            return max(int(f[0] or 0), 0), max(float(f[1] or 0), 0.0)
+    except Exception:  # noqa: BLE001
+        return 0, 0.0
+
+
+def puntos_devolver_neto(email: str, refs: list[str], ref_devolucion: str, desde: float | None = None) -> int:
+    """Devuelve al jugador lo que siga canjeado en esas referencias con una fila
+    NEGATIVA `devolucion:<ref_devolucion>` (lo que suman el APK y la web).
+    Candado por correo + relectura del neto en la misma transacción: un
+    segundo llamado no devuelve dos veces. Devuelve los puntos devueltos."""
+    e = (email or "").strip().lower()
+    refs = [r for r in (refs or []) if r]
+    if not pg.habilitado or not e or not refs or not ref_devolucion:
+        return 0
+    try:
+        sql, params = _sql_puntos_netos(refs, desde)
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s)) -- lock", ("pcg_puntos:" + e,))
+            cur.execute(sql, [e, *params])
+            f = cur.fetchone() or (0, 0)
+            pts, soles = int(f[0] or 0), float(f[1] or 0)
+            if pts <= 0:
+                conn.rollback()
+                return 0
+            cur.execute("INSERT INTO pichangol_puntos_canjes (email, puntos, soles, referencia) VALUES (%s, %s, %s, %s)",
+                        (e, -pts, -round(max(soles, 0.0), 2), "devolucion:" + ref_devolucion))
+            conn.commit()
+            return pts
+    except Exception as ex:  # noqa: BLE001
+        print(f"[puntos] no se pudieron devolver los puntos de {e} ({ref_devolucion}): {ex}", flush=True)
+        return 0

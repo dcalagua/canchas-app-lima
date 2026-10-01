@@ -141,6 +141,15 @@ def aportar(*, email: str, campeonato_id: str, equipo_id: str, cuota_equipo_sole
         return {"ok": True, "aporte_centimos": 0, "pozo": estado(None, 0, cupo), "gratis": True}
     k = clave(campeonato_id, equipo_id)
     p = stores.pozos_equipo.get(k)
+    # El saldo es de UNA moneda (multi-país): un saldo en Bs no paga una cuota
+    # en soles. Mismo chequeo para el APK y la web, ANTES de tocar nada: no se
+    # cobra ni se crea el pozo.
+    mon_pozo = ((p or {}).get("moneda") or moneda or "PEN").upper()
+    from pagos.router import moneda_billetera  # perezoso: router importa este módulo
+    mb = moneda_billetera(email)
+    if mb != mon_pozo:
+        return {"ok": False, "error": "moneda_distinta", "moneda": mon_pozo, "moneda_billetera": mb,
+                "pozo": estado(p, cuota_eq, cupo)}
     if p is None:
         p = {"campeonato_id": campeonato_id, "equipo_id": equipo_id,
              "organizador": (organizador or "").strip().lower(), "moneda": (moneda or "PEN").upper(),
