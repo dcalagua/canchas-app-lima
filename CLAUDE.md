@@ -2306,6 +2306,19 @@ off → redeploy inmediato en cada push). URL pública:
     `confirmarPropiedad`). El SQL de descuentos por turno ya corrió en QAS
     (director) y PRD. Sin variables nuevas. CAMBIÓ `lib/` → APK/AAB de PRD por
     `workflow_dispatch`.
+    **Pase del 1-oct-2026 (3.º, autorizado: "pasa a PRD la velocidad" +
+    "mueve PRD a Virginia"):** `prd` = 420be2a (transacción perezosa, pool
+    tibio, badge con caché, preload en toda la web) + cherry-pick de
+    apartados web vencidos (64eccf2); `pg-backend-prd` movido a us-east4.
+    **Pase del 1-oct-2026 (4.º, autorizado: "pasando a PRD y esto aún queda
+    pendiente" = correos sin llave):** `prd` = 3e00618 (seña en la reserva
+    web, correos de pago, chat móvil tipo WhatsApp, bono de referidos en el
+    backend). Sin SQL ni Edge. CAMBIÓ `lib/` → APK/AAB de PRD = run 1490
+    (`workflow_dispatch`, `ref=prd`, `entorno=prod`). PENDIENTE: Resend
+    verificando `pichangol.app` (DNS en Namecheap ya puestos: DKIM
+    `resend._domainkey`, CNAME `rsend`/`send`, `_dmarc`; Gmail intacto) →
+    crear llaves "Pichangol QAS/PRD" y poner `RESEND_API_KEY` en `pg-backend`
+    y `pg-backend-prd`; hasta entonces los correos quedan `sin_proveedor`.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
