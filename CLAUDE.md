@@ -1545,7 +1545,7 @@ para la API del APK.
   …/{id}/reintentar`). Plantilla tabla + estilos en línea (Gmail/Outlook),
   pie con razón social/RUC de `empresa.datos()`, "constancia, no comprobante
   electrónico". Privacidad declara el proveedor de correo. Test
-  `tests/test_correos.py`. **PENDIENTE del director:** cuenta de Resend con
+  `tests/test_correos.py`. **Trampa (1-oct-2026):** Cloudflare delante de `api.resend.com` responde 403 «error code: 1010» al User-Agent por defecto de `urllib` → `_enviar_resend` manda `User-Agent: Pichangol-Backend/1.0`. **PENDIENTE del director:** cuenta de Resend con
   el dominio `pichangol.app` verificado (DNS SPF/DKIM) y la llave en Railway
   QAS (y PRD con "pasa a PRD").
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS

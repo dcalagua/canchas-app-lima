@@ -181,3 +181,29 @@ def test_reserva_sin_filas_espera_y_luego_se_descarta():
     for i in range(1, correos.MAX_ARMADO + 1):
         correos.procesar(_despues(120 + 120 * i * i), enviar_fn=lambda m: enviados.append(dict(m)))
     assert not enviados and not stores.correos_eventos
+
+
+def test_resend_se_identifica_con_user_agent_propio(monkeypatch):
+    """Cloudflare (delante de api.resend.com) bloquea el User-Agent por defecto de urllib con
+    403 «error code: 1010»: la llamada debe mandar uno propio."""
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    vistos = {}
+
+    class _Resp:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return b'{"id": "em_1"}'
+
+    def fake_urlopen(req, timeout=0):
+        vistos.update({k.lower(): v for k, v in req.header_items()})
+        return _Resp()
+
+    monkeypatch.setattr(correos.urllib.request, "urlopen", fake_urlopen)
+    pid = correos._enviar_resend({"para": JUG, "asunto": "Hola", "html": "<p>x</p>", "texto": "x", "clave": "k1"})
+    assert pid == "em_1"
+    assert "pichangol" in vistos["user-agent"].lower() and "urllib" not in vistos["user-agent"].lower()
