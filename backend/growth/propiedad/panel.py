@@ -2236,6 +2236,7 @@ _HTML = r"""<!DOCTYPE html>
     justify-content:center;user-select:none;flex-shrink:0}
   .content{max-width:1200px;margin:0;padding:24px 28px 60px}
   .content:has(#redesPanel[style*="block"]){max-width:none}
+  .content:has(#modeloPanel[style*="block"]){max-width:none}
   #redesPanel .rd-grid{display:grid;grid-template-columns:minmax(min(380px,100%),520px) minmax(0,1fr);gap:22px;margin-top:10px}
   @media(max-width:1100px){#redesPanel .rd-grid{grid-template-columns:1fr}}
   /* Preloader del pane de Facebook (pedido del director: "agrega un preload siempre"). */
@@ -5099,10 +5100,11 @@ async function guardarTarifas(){
 // Modelo 2 = reparto de la pasarela + comisión Pichangol al jugador y al dueño
 // que pone el operador; lo demás es calculado (`pagos/modelo_negocio.py`).
 let mnCfg = null, mnMon = 'PEN', mnSel = '1', mnMonto = 90, mnTimer = null;
-const MN_CAMPOS_OP = [['cliente_pct','Comisión Pichangol al jugador (%)','Se suma a lo que paga el jugador'],
-                      ['dueno_pct','Comisión Pichangol al dueño (%)','Se descuenta de lo que recibe el dueño']];
+const MN_CAMPOS_OP = [['reparto_cliente_pct','Costo de Culqi que paga el jugador (%)','El dueño paga el resto'],
+                      ['cliente_pct','Comisión Pichangol al jugador (%)','Sobre lo que paga el jugador antes de la comisión'],
+                      ['dueno_pct','Comisión Pichangol al dueño (%)','Sobre lo que recibe el dueño antes de la comisión']];
 const MN_CAMPOS_PAS = [['banco_pct','Comisión del banco (%)'],['pasarela_pct','Comisión de la pasarela (%)'],
-                       ['igv_pct','IGV / IVA sobre las comisiones (%)'],['reparto_cliente_pct','Parte de la pasarela que paga el jugador (%)']];
+                       ['igv_pct','IGV / IVA sobre las comisiones (%)']];
 function mnF(c, s){ return (s||'S/')+' '+((c||0)/100).toFixed(2); }
 async function cargarModeloNegocio(){
   const box = document.getElementById('modeloPanel'); if(!box) return;
@@ -5119,102 +5121,179 @@ function mnValores(){
   const so = document.getElementById('mn_sobre'); if(so) p.sobre = so.value;
   return p;
 }
+let mnTab = null;
 function renderModeloNegocio(sim){
   const box = document.getElementById('modeloPanel'); if(!box || !mnCfg) return;
-  const p = mnCfg.monedas[mnMon];
-  const tarj = (m, tit, txt) => `<label style="flex:1;min-width:240px;cursor:pointer;padding:14px;border-radius:16px;border:2px solid ${mnSel===m?'#0B8A3E':'#E4E4E4'};background:${mnSel===m?'#F0FAF4':'#fff'}">
-      <div style="display:flex;gap:8px;align-items:center"><input type="radio" name="mn_modelo" value="${m}" ${mnSel===m?'checked':''} onchange="mnSel='${m}';renderModeloNegocio(mnCfg.simulacion)" style="width:auto">
-      <b style="font-size:15px">${tit}</b>${mnCfg.modelo_reservas===m?'<span class="liq-tag" style="background:#0B8A3E;color:#fff">vigente</span>':''}</div>
-      <div style="color:#667;font-size:12.5px;margin-top:6px">${txt}</div></label>`;
-  const chips = ['PEN','USD','BOB'].map(m=>`<button type="button" onclick="mnMon='${m}';cargarModeloNegocio()" style="padding:7px 14px;border-radius:999px;border:1px solid ${m===mnMon?'#0B8A3E':'#E4E4E4'};background:${m===mnMon?'#E7F6EF':'#fff'};font-weight:800;cursor:pointer">${mnCfg.monedas[m].simbolo} · ${m}</button>`).join('');
-  const inp = (k, lab, ayuda, v) => `<label style="display:grid;gap:4px;font-size:12.5px;font-weight:700">${lab}
-      <input id="mn_${k}" type="number" min="0" step="0.1" value="${v}" oninput="mnSimular()" style="padding:9px;border-radius:10px;border:1px solid var(--border);font-size:15px;font-weight:800">
-      ${ayuda?`<span style="font-weight:400;color:#889">${ayuda}</span>`:''}</label>`;
-  const ops = MN_CAMPOS_OP.map(([k,l,a])=>inp(k,l,a,p[k])).join('');
-  const pas = MN_CAMPOS_PAS.map(([k,l])=>inp(k,l,'',p[k])).join('');
-  box.innerHTML = `
-    <div class="card" style="margin-bottom:12px">
-      <div style="font-weight:800;font-size:16px;margin-bottom:6px">💼 ¿Con qué modelo cobras las reservas de cancha?</div>
-      <div style="color:#667;font-size:12.5px;margin-bottom:10px">Aplica a TODAS las reservas pagadas desde ese momento (app y web). Lo ya cobrado no cambia: cada pago guarda cómo se calculó. Academias, marketplace y torneos siguen igual.</div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        ${tarj('1','Modelo 1 · el actual','El dueño paga la comisión de siempre (5 % con mínimo) y, si lo encendiste, el jugador paga el "Cargo por servicio". Pichangol absorbe la pasarela.')}
-        ${tarj('2','Modelo 2 · reparto de la pasarela','El costo del banco y la pasarela se reparte entre jugador y dueño, y encima Pichangol cobra el % que tú pongas a cada uno. El resto es calculado.')}
+  if(!mnTab) mnTab = mnCfg.modelo_reservas;
+  const vig = mnCfg.modelo_reservas, p = mnCfg.monedas[mnMon];
+  const tab = (m, ico, tit, sub) => `<button type="button" class="mn-tab ${mnTab===m?'on':''}" onclick="mnTab='${m}';renderModeloNegocio(mnCfg.simulacion)">
+      <span class="mn-tab-ico">${ico}</span><span class="mn-tab-txt"><b>${tit}</b><small>${sub}</small></span>
+      ${vig===m?'<span class="mn-vig">● En uso</span>':''}</button>`;
+  const chips = ['PEN','USD','BOB'].map(m=>`<button type="button" class="mn-chip ${m===mnMon?'on':''}" onclick="mnMon='${m}';cargarModeloNegocio()">${mnCfg.monedas[m].simbolo} · ${m}</button>`).join('');
+  const inp = (k, lab, ayuda, v, grande) => `<label class="mn-campo ${grande?'grande':''}"><span>${lab}</span>
+      <input id="mn_${k}" type="number" min="0" step="0.1" value="${v}" oninput="mnSimular()">
+      ${ayuda?`<small>${ayuda}</small>`:''}</label>`;
+  const usar = m => vig===m
+      ? `<span class="mn-ok">✓ Este es el modelo en uso para las reservas</span>`
+      : `<button class="btn-ap" onclick="usarModelo('${m}')">Usar el modelo ${m} desde ahora</button>`;
+  const precio = `<label class="mn-precio">Precio de la cancha (${esc(p.simbolo)})
+      <input id="mn_monto" type="number" min="1" step="1" value="${mnMonto}" oninput="mnMonto=+this.value||0;mnSimular()"></label>`;
+  let cuerpo;
+  if(mnTab==='1'){
+    cuerpo = `<div class="mn-grid">
+      <div class="mn-col">
+        <div class="mn-h">Cómo funciona</div>
+        <ul class="mn-lista">
+          <li>El <b>dueño</b> paga la comisión de Pichangol: <b>5 %</b> de cada reserva pagada en línea, con mínimo por moneda (S/ 2 · $ 0.50 · Bs 3). Si tiene saldo, sale de su billetera.</li>
+          <li>El <b>jugador</b> paga el precio y, si lo encendiste, el <b>cargo por servicio</b> (Cobros → 🧾 Cargo por servicio).</li>
+          <li><b>Pichangol paga la pasarela</b> (Culqi / PayPhone / Libélula) de su comisión.</li>
+          <li>En efectivo: la comisión se descuenta del saldo del dueño.</li>
+        </ul>
+        <div class="mn-acc">${usar('1')}</div>
       </div>
-    </div>
-    <div class="card" style="margin-bottom:12px">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px"><b style="font-size:15px;margin-right:6px">Comisiones del modelo 2</b>${chips}</div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:12px">${ops}</div>
-      <details style="margin-top:12px"><summary style="cursor:pointer;font-weight:700;font-size:13px">Costos del pago en línea (se reparten) · ${esc(p.simbolo)}</summary>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:12px;margin-top:10px">${pas}
-          <label style="display:grid;gap:4px;font-size:12.5px;font-weight:700">La pasarela se calcula sobre
-            <select id="mn_sobre" onchange="mnSimular()" style="padding:9px;border-radius:10px;border:1px solid var(--border)">
-              <option value="precio" ${p.sobre==='precio'?'selected':''}>El precio de la cancha (como tu hoja)</option>
-              <option value="cobrado" ${p.sobre==='cobrado'?'selected':''}>Lo que paga el jugador (lo que cobra de verdad)</option>
-            </select></label></div>
-        <div style="color:#889;font-size:12px;margin-top:6px">Ecuador y Bolivia arrancan con las mismas tasas que Perú (IVA 15 % y 13 %): pon aquí las tarifas reales de PayPhone y Libélula.</div>
-      </details>
-    </div>
-    <div class="card" style="margin-bottom:12px">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px"><b style="font-size:15px">🧮 Simulador</b>
-        <label style="font-size:13px">Precio de la cancha (${esc(p.simbolo)}) <input id="mn_monto" type="number" min="1" step="1" value="${mnMonto}" oninput="mnMonto=+this.value||0;mnSimular()" style="width:100px;padding:8px;border-radius:10px;border:1px solid var(--border)"></label></div>
-      <div id="mn_sim"></div>
-    </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-      <button class="btn-ap" onclick="guardarModeloNegocio()">Guardar ${mnSel!==mnCfg.modelo_reservas?'y pasar al modelo '+mnSel:''}</button>
-      <span id="mn_msg" style="font-size:13px;color:#667"></span>
+      <div class="mn-col"><div class="mn-simhead"><div class="mn-h">🧮 Simulador</div>${precio}</div><div id="mn_sim"></div></div>
     </div>`;
+  } else {
+    const pas = MN_CAMPOS_PAS.map(([k,l])=>inp(k,l,'',p[k])).join('');
+    cuerpo = `<div class="mn-grid">
+      <div class="mn-col">
+        <div class="mn-h">Lo que pones tú <span class="mn-chips">${chips}</span></div>
+        <div class="mn-dos">${MN_CAMPOS_OP.map(([k,l,a])=>inp(k,l,(k==='reparto_cliente_pct'?`<span id="mn_rep_txt">El dueño paga el ${(100-(+p[k]||0)).toFixed(1).replace(/\.0$/,'')} % restante</span>`:a),p[k],true)).join('')}</div>
+        <div class="mn-h" style="margin-top:18px">Costo de Culqi (banco + pasarela) <small>(tarifas, se calcula solo)</small></div>
+        <div class="mn-dos">${pas}
+          <label class="mn-campo"><span>La pasarela se calcula sobre</span>
+            <select id="mn_sobre" onchange="mnSimular()">
+              <option value="precio" ${p.sobre==='precio'?'selected':''}>El precio de la cancha (tu hoja)</option>
+              <option value="cobrado" ${p.sobre==='cobrado'?'selected':''}>Lo que paga el jugador (lo real)</option>
+            </select></label></div>
+        <div class="mn-nota">Ecuador y Bolivia arrancan con las tasas de Perú (IVA 15 % y 13 %): pon las tarifas reales de PayPhone y Libélula. En efectivo no hay pasarela: solo se cobra la comisión al dueño.</div>
+        <div class="mn-acc"><button class="btn-sec" onclick="guardarModeloNegocio(false)">Guardar comisiones</button>
+          ${vig==='2'?usar('2'):`<button class="btn-ap" onclick="guardarModeloNegocio(true)">Guardar y usar el modelo 2</button>`}
+          <span id="mn_msg"></span></div>
+      </div>
+      <div class="mn-col"><div class="mn-simhead"><div class="mn-h">🧮 Simulador</div>${precio}</div><div id="mn_sim"></div></div>
+    </div>`;
+  }
+  box.innerHTML = `<style>
+    .mn-card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:18px 20px}
+    .mn-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+    .mn-top h2{margin:0;font-size:19px} .mn-top p{margin:4px 0 0;color:#667;font-size:13px;max-width:780px}
+    .mn-tabs{display:flex;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--border);margin:0 -20px 18px;padding:0 20px}
+    .mn-tab{display:flex;align-items:center;gap:10px;padding:10px 14px 12px;border:0;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;text-align:left;font-family:inherit}
+    .mn-tab.on{border-bottom-color:#0B8A3E} .mn-tab-ico{font-size:22px}
+    .mn-tab-txt{display:grid} .mn-tab-txt b{font-size:15px;color:#222} .mn-tab-txt small{color:#889;font-size:12px}
+    .mn-tab:not(.on) .mn-tab-txt b{color:#667}
+    .mn-vig{background:#E7F6EF;color:#0B8A3E;font-weight:800;font-size:11.5px;padding:3px 9px;border-radius:999px;white-space:nowrap}
+    .mn-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:22px}
+    @media(max-width:1100px){.mn-grid{grid-template-columns:1fr}}
+    .mn-col{min-width:0}
+    .mn-h{font-weight:800;font-size:15px;margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .mn-h small{font-weight:400;color:#889}
+    .mn-chips{display:flex;gap:6px;flex-wrap:wrap}
+    .mn-chip{padding:6px 12px;border-radius:999px;border:1px solid #E4E4E4;background:#fff;font-weight:800;cursor:pointer;font-size:12.5px}
+    .mn-chip.on{border-color:#0B8A3E;background:#E7F6EF}
+    .mn-dos{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:12px}
+    .mn-campo{display:grid;gap:4px;font-size:12.5px;font-weight:700}
+    .mn-campo input,.mn-campo select{padding:9px 10px;border-radius:10px;border:1px solid var(--border);font-size:14px;font-family:inherit;width:100%}
+    .mn-campo.grande input{font-size:20px;font-weight:800;padding:10px 12px}
+    .mn-campo small{font-weight:400;color:#889}
+    .mn-nota{font-size:12px;color:#889;margin-top:10px}
+    .mn-acc{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
+    .mn-ok{color:#0B8A3E;font-weight:800;font-size:13.5px}
+    .mn-lista{margin:0;padding-left:18px;display:grid;gap:8px;font-size:13.5px;color:#333}
+    .mn-simhead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+    .mn-precio{font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:8px}
+    .mn-precio input{width:110px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);font-size:15px;font-weight:800}
+    .mn-sim{border:1px solid var(--border);border-radius:14px;overflow:hidden}
+    .mn-fila{display:flex;justify-content:space-between;gap:12px;padding:8px 14px;border-bottom:1px solid #F1F1F1;font-size:14px}
+    .mn-fila span:last-child{white-space:nowrap;text-align:right}
+    .mn-fila.sub{padding-left:28px;color:#667;font-size:13px}
+    .mn-fila.fuerte{font-weight:800} .mn-fila.total{background:#F7F9FB;font-weight:800;font-size:15px}
+    .mn-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:10px;margin-bottom:12px}
+    .mn-kpi{border:1px solid var(--border);border-radius:14px;padding:10px 12px}
+    .mn-kpi small{display:block;color:#889;font-size:12px} .mn-kpi b{font-size:20px}
+    .btn-sec{padding:9px 14px;border-radius:10px;border:1px solid var(--border);background:#fff;font-weight:700;cursor:pointer;font-family:inherit}
+  </style>
+  <div class="mn-card">
+    <div class="mn-top"><div><h2>💼 Modelo de negocio · reservas de cancha</h2>
+      <p>Elige con qué modelo cobras. Aplica a todas las reservas pagadas desde ese momento (app y web); lo ya cobrado no cambia. Academias, marketplace y torneos siguen igual.</p></div></div>
+    <div class="mn-tabs">
+      ${tab('1','🏛️','Modelo 1 · el actual','Comisión al dueño + cargo por servicio')}
+      ${tab('2','🤝','Modelo 2 · reparto de la pasarela','Tú pones la comisión al jugador y al dueño')}
+    </div>
+    ${cuerpo}
+  </div>`;
   pintarSimModelo(sim);
 }
 function mnSimular(){
   clearTimeout(mnTimer);
+  const rep = document.getElementById('mn_reparto_cliente_pct'), rt = document.getElementById('mn_rep_txt');
+  if(rep && rt){ const v = Math.min(100, Math.max(0, +rep.value||0)); rt.textContent = 'El dueño paga el '+(100-v).toFixed(1).replace(/\.0$/,'')+' % restante'; }
   mnTimer = setTimeout(async ()=>{
     const r = await fetch('/pagos/modelo-negocio/simular',{method:'POST',headers:headers(),
-      body:JSON.stringify({monto:mnMonto, moneda:mnMon, params:mnValores()})});
-    if(r.ok) pintarSimModelo(await r.json());
+      body:JSON.stringify({monto:mnMonto, moneda:mnMon, params: mnTab==='2' ? mnValores() : {}})});
+    if(r.ok){ const j = await r.json(); mnCfg.simulacion = j; pintarSimModelo(j); }
   }, 250);
 }
 function pintarSimModelo(sim){
   const el = document.getElementById('mn_sim'); if(!el || !sim) return;
-  const s = sim.simbolo, a = sim.modelo_2, b = sim.modelo_1;
-  const fila = (t, v, fuerte, color) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid #F1F1F1;${fuerte?'font-weight:800':''};${color?'color:'+color:''}"><span>${t}</span><span>${v}</span></div>`;
-  const neg = a.margen_real_centimos < 0;
-  el.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:14px">
-    <div style="border:2px solid ${mnSel==='2'?'#0B8A3E':'#E4E4E4'};border-radius:14px;padding:12px">
-      <div style="font-weight:800;margin-bottom:6px">Modelo 2 · reparto de la pasarela</div>
-      ${fila('Precio de la cancha', mnF(a.precio_centimos,s))}
-      ${fila('Comisión banco + IGV', mnF(a.banco_centimos + a.igv_banco_centimos,s))}
-      ${fila('Comisión pasarela + IGV', mnF(a.pasarela_centimos + a.igv_pasarela_centimos,s))}
-      ${fila('Costo total del pago en línea', mnF(a.pasarela_total_centimos,s), true)}
-      ${fila('· lo paga el jugador', mnF(a.pasarela_cliente_centimos,s))}
-      ${fila('· lo paga el dueño', mnF(a.pasarela_dueno_centimos,s))}
-      ${fila('Comisión Pichangol al dueño', mnF(a.pcg_dueno_centimos,s))}
-      ${fila('Comisión Pichangol al jugador', mnF(a.pcg_cliente_centimos,s))}
-      ${fila('👤 El jugador paga', mnF(a.cliente_paga_centimos,s)+' <small style="color:#889">(+'+mnF(a.cargo_cliente_centimos,s)+')</small>', true)}
-      ${fila('🏟️ El dueño recibe', mnF(a.dueno_recibe_centimos,s)+' <small style="color:#889">(−'+mnF(a.descuento_dueno_centimos,s)+')</small>', true)}
-      ${fila('💚 Comisión real Pichangol', mnF(a.ingreso_pcg_centimos,s), true, '#0B8A3E')}
-      ${fila('Lo que cobra la pasarela de verdad (sobre lo que paga el jugador)', mnF(a.pasarela_real_centimos,s))}
-      ${fila('Margen de Pichangol tras pagar la pasarela', mnF(a.margen_real_centimos,s), true, neg?'#C0392B':'#0B8A3E')}
-      ${a.sobre==='precio' && a.pasarela_real_centimos>a.pasarela_total_centimos ? `<div style="font-size:12px;color:#946200;margin-top:6px">La pasarela cobra sobre lo que paga el jugador (${mnF(a.cliente_paga_centimos,s)}), no sobre el precio: la diferencia (${mnF(a.pasarela_real_centimos-a.pasarela_total_centimos,s)}) sale de tu comisión. Con "Lo que paga el jugador" se reparte también.</div>`:''}
-    </div>
-    <div style="border:2px solid ${mnSel==='1'?'#0B8A3E':'#E4E4E4'};border-radius:14px;padding:12px">
-      <div style="font-weight:800;margin-bottom:6px">Modelo 1 · el actual</div>
-      ${fila('👤 El jugador paga', mnF(b.cliente_paga_centimos,s)+(b.cargo_cliente_centimos?' <small style="color:#889">(+'+mnF(b.cargo_cliente_centimos,s)+' cargo)</small>':''), true)}
-      ${fila('🏟️ El dueño recibe', mnF(b.dueno_recibe_centimos,s)+' <small style="color:#889">(−'+mnF(b.descuento_dueno_centimos,s)+')</small>', true)}
-      ${fila('💚 Ingreso Pichangol', mnF(b.ingreso_pcg_centimos,s), true, '#0B8A3E')}
-      ${fila('Pasarela estimada (Tarifas de pasarela)', mnF(b.pasarela_real_centimos,s))}
-      ${fila('Margen de Pichangol tras pagar la pasarela', mnF(b.margen_real_centimos,s), true, b.margen_real_centimos<0?'#C0392B':'#0B8A3E')}
-      <div style="font-size:12px;color:#889;margin-top:6px">Con el cargo por servicio ${b.cargo_cliente_centimos?'encendido':'apagado'} (Cobros → Cargo por servicio).</div>
-    </div></div>`;
+  const s = sim.simbolo;
+  const fila = (t, v, cls, color) => `<div class="mn-fila ${cls||''}"${color?` style="color:${color}"`:''}><span>${t}</span><span>${v}</span></div>`;
+  const kpis = (x) => `<div class="mn-kpis">
+      <div class="mn-kpi"><small>👤 El jugador paga</small><b>${mnF(x.cliente_paga_centimos,s)}</b></div>
+      <div class="mn-kpi"><small>🏟️ El dueño recibe</small><b>${mnF(x.dueno_recibe_centimos,s)}</b></div>
+      <div class="mn-kpi"><small>💚 Comisión Pichangol</small><b style="color:#0B8A3E">${mnF(x.ingreso_pcg_centimos,s)}</b></div>
+      <div class="mn-kpi"><small>Margen tras la pasarela</small><b style="color:${x.margen_real_centimos<0?'#C0392B':'#0B8A3E'}">${mnF(x.margen_real_centimos,s)}</b></div></div>`;
+  if(mnTab==='1'){
+    const b = sim.modelo_1;
+    el.innerHTML = kpis(b) + `<div class="mn-sim">
+      ${fila('Precio de la cancha', mnF(sim.monto*100,s))}
+      ${fila('Cargo por servicio al jugador', b.cargo_cliente_centimos?('+'+mnF(b.cargo_cliente_centimos,s)):'apagado', 'sub')}
+      ${fila('👤 El jugador paga', mnF(b.cliente_paga_centimos,s), 'fuerte')}
+      ${fila('Comisión Pichangol al dueño (5 %, con mínimo)', '−'+mnF(b.descuento_dueno_centimos,s), 'sub')}
+      ${fila('🏟️ El dueño recibe', mnF(b.dueno_recibe_centimos,s), 'fuerte')}
+      ${fila('💚 Ingreso Pichangol (comisión + cargo)', mnF(b.ingreso_pcg_centimos,s), 'fuerte', '#0B8A3E')}
+      ${fila('Pasarela que paga Pichangol (Tarifas de pasarela)', '−'+mnF(b.pasarela_real_centimos,s), 'sub')}
+      ${fila('Margen de Pichangol', mnF(b.margen_real_centimos,s), 'total', b.margen_real_centimos<0?'#C0392B':'#0B8A3E')}
+    </div>`;
+    return;
+  }
+  const a = sim.modelo_2;
+  el.innerHTML = kpis(a) + `<div class="mn-sim">
+    ${fila('Precio de la cancha', mnF(a.precio_centimos,s))}
+    ${fila('Comisión banco + IGV', mnF(a.banco_centimos + a.igv_banco_centimos,s), 'sub')}
+    ${fila('Comisión pasarela + IGV', mnF(a.pasarela_centimos + a.igv_pasarela_centimos,s), 'sub')}
+    ${fila('Costo total del pago en línea', mnF(a.pasarela_total_centimos,s), 'fuerte')}
+    ${fila('· lo paga el jugador ('+(+a.reparto_pct||0)+' %)', mnF(a.pasarela_cliente_centimos,s), 'sub')}
+    ${fila('· lo paga el dueño ('+(100-(+a.reparto_pct||0))+' %)', mnF(a.pasarela_dueno_centimos,s), 'sub')}
+    ${fila('Dueño recibe antes de comisión PCG', mnF(a.base_dueno_centimos,s), 'sub')}
+    ${fila('Jugador paga antes de comisión PCG', mnF(a.base_cliente_centimos,s), 'sub')}
+    ${fila('Comisión Pichangol al jugador', mnF(a.pcg_cliente_centimos,s), 'sub')}
+    ${fila('Comisión Pichangol al dueño', mnF(a.pcg_dueno_centimos,s), 'sub')}
+    ${fila('👤 El jugador paga', mnF(a.cliente_paga_centimos,s)+' <small style="color:#889">(+'+mnF(a.cargo_cliente_centimos,s)+')</small>', 'fuerte')}
+    ${fila('🏟️ El dueño recibe', mnF(a.dueno_recibe_centimos,s)+' <small style="color:#889">(−'+mnF(a.descuento_dueno_centimos,s)+')</small>', 'fuerte')}
+    ${fila('💚 Comisión real Pichangol', mnF(a.ingreso_pcg_centimos,s), 'fuerte', '#0B8A3E')}
+    ${fila('Lo que la pasarela cobra de verdad (sobre lo que paga el jugador)', mnF(a.pasarela_real_centimos,s), 'sub')}
+    ${fila('Margen de Pichangol tras pagar la pasarela', mnF(a.margen_real_centimos,s), 'total', a.margen_real_centimos<0?'#C0392B':'#0B8A3E')}
+  </div>
+  ${a.sobre==='precio' && a.pasarela_real_centimos>a.pasarela_total_centimos ? `<div class="mn-nota" style="color:#946200">La pasarela cobra sobre lo que paga el jugador (${mnF(a.cliente_paga_centimos,s)}), no sobre el precio: la diferencia (${mnF(a.pasarela_real_centimos-a.pasarela_total_centimos,s)}) sale de tu comisión. Con "Lo que paga el jugador" se reparte también.</div>`:''}`;
 }
-async function guardarModeloNegocio(){
+async function usarModelo(m){
+  const r = await fetch('/pagos/modelo-negocio',{method:'POST',headers:headers(),body:JSON.stringify({modelo_reservas:m})});
+  if(r.status===401){ salir(); return; }
+  if(r.ok){ toast('Ahora las reservas se cobran con el modelo '+m+' ✓'); mnTab=m; cargarModeloNegocio(); }
+  else toast('No se pudo cambiar el modelo');
+}
+async function guardarModeloNegocio(usar){
   const msg = document.getElementById('mn_msg');
-  const body = {modelo_reservas: mnSel, monedas: {}};
+  const body = {monedas: {}};
+  if(usar) body.modelo_reservas = '2';
   body.monedas[mnMon] = mnValores();
   const r = await fetch('/pagos/modelo-negocio',{method:'POST',headers:headers(),body:JSON.stringify(body)});
   if(r.status===401){ salir(); return; }
   const j = await r.json().catch(()=>({}));
   if(!r.ok){ if(msg) msg.textContent = 'No se pudo guardar: '+(j.detail||r.status); return; }
-  toast('Modelo '+j.modelo_reservas+' guardado ✓');
+  toast(usar ? 'Guardado: las reservas ya se cobran con el modelo 2 ✓' : 'Comisiones guardadas ✓');
   cargarModeloNegocio();
 }
 

@@ -149,6 +149,7 @@ def calcular(precio_centimos: int, moneda: str, p: dict | None = None) -> dict:
     margen = cargo + descuento - real
     return {
         "moneda": p["moneda"], "simbolo": p["simbolo"], "sobre": p.get("sobre", "precio"),
+        "reparto_pct": round(p["reparto_cliente_pct"], 2),
         "precio_centimos": P,
         "banco_centimos": _r(banco), "igv_banco_centimos": _r(banco * igv),
         "pasarela_centimos": _r(pas), "igv_pasarela_centimos": _r(pas * igv),

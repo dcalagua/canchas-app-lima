@@ -3757,7 +3757,11 @@ antes del corte.
   billetera-first; comisión CONGELADA en el pago con `PagoRegistro.
   modelo_cobro = "m2"`, que `_liquidacion_dict` respeta) y `post_comision_
   reserva` (efectivo: solo el % del dueño; 0 = no se cobra). Simulador
-  modelo 1 vs 2 en la torre. Test `tests/test_modelo_negocio.py`.
+  modelo 1 vs 2 en la torre, en PESTAÑAS (Modelo 1 / Modelo 2, a todo el
+  ancho); el operador pone el REPARTO de Culqi (% que paga el jugador; el
+  dueño paga el resto) y las dos comisiones PCG (pedido del director: "Dueño
+  recibe / Cliente paga antes de comisión PCG" salen de ese reparto). Test
+  `tests/test_modelo_negocio.py`.
 - **PAGOS PERDÍAN DATOS AL REINICIAR (bug de plata hallado el 2-oct-2026):**
   `pg.cargar_normalizado` REEMPLAZABA los pagos/reclamos del snapshot por las
   filas de `growth_pagos`/`growth_reclamos` (solo 10/21 columnas) → tras cada
