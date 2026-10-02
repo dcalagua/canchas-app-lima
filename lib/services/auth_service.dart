@@ -14,8 +14,19 @@ class AuthService {
   static final GoogleSignIn _google =
       GoogleSignIn(scopes: const ['email', 'profile']);
 
-  /// Devuelve el usuario, o null si el usuario canceló el login.
+  static const _entorno =
+      String.fromEnvironment('ENTORNO', defaultValue: 'dev');
+
+  /// Último error de Google Sign-In (para diagnóstico en la UI). Null si el
+  /// último intento salió bien o fue cancelado por el usuario.
+  static String? ultimoError;
+
+  /// Devuelve el usuario, o null si el usuario canceló el login (o si Google
+  /// falló; en ese caso [ultimoError] trae el detalle). NO cae a cuenta demo:
+  /// el login de pruebas ahora es explícito (entrarComo), así que un fallo de
+  /// Google se ve tal cual para poder diagnosticarlo.
   static Future<Usuario?> entrarConGoogle() async {
+    ultimoError = null;
     try {
       final cuenta = await _google.signIn();
       if (cuenta == null) return null; // cancelado por el usuario
@@ -24,13 +35,11 @@ class AuthService {
         email: cuenta.email,
         fotoUrl: cuenta.photoUrl,
       );
-    } catch (_) {
-      // OAuth aún no configurado en este build: cuenta demo para probar el flujo.
-      return const Usuario(
-        nombre: 'Jugador Pichangol',
-        email: 'jugador@gmail.com',
-        fotoUrl: null,
-      );
+    } catch (e) {
+      // Guarda el error real (ej. ApiException: 10 = DEVELOPER_ERROR por SHA-1/
+      // paquete que no calzan) para mostrarlo en la hoja de login.
+      ultimoError = e.toString();
+      return null;
     }
   }
 
@@ -38,5 +47,20 @@ class AuthService {
     try {
       await _google.signOut();
     } catch (_) {}
+  }
+
+  /// ID TOKEN de Google del usuario logueado — la prueba de identidad que el
+  /// backend de pagos verifica contra Google (auth por usuario de la
+  /// billetera, endurecimiento PROD). null si no hay sesión real de Google
+  /// (login de pruebas) o el dispositivo no lo expone; en ese caso el backend
+  /// decide según su flag. Refresca en silencio si la sesión sigue viva.
+  static Future<String?> idToken() async {
+    try {
+      final cuenta = _google.currentUser ?? await _google.signInSilently();
+      if (cuenta == null) return null;
+      return (await cuenta.authentication).idToken;
+    } catch (_) {
+      return null;
+    }
   }
 }

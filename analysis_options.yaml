@@ -1,5 +1,12 @@
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  # docs/handoff_v2 son SNIPPETS de referencia de diseño (código suelto, no
+  # compila ni forma parte de la app). Se excluyen del análisis para que no
+  # rompan el gate de CI.
+  exclude:
+    - docs/**
+
 linter:
   rules:
     prefer_const_constructors: false

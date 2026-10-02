@@ -1,10 +1,16 @@
-name: Build app (Android + iOS)
+name: Build app (Android)
 
 on:
   push:
     branches:
       - "**"
   workflow_dispatch:
+    inputs:
+      entorno:
+        description: "Entorno de build (dev = sideload, qas = pruebas, prod = Play)"
+        type: choice
+        options: [dev, qas, prod]
+        default: dev
 
 permissions:
   contents: write
@@ -16,6 +22,11 @@ jobs:
   android:
     name: Android APK
     runs-on: ubuntu-latest
+    # Toma los secrets del Environment del entorno elegido (dev/qas/prod). Si el
+    # Environment no define un secret, cae al secret del repositorio (dev).
+    environment: ${{ github.event.inputs.entorno || 'dev' }}
+    env:
+      ENTORNO: ${{ github.event.inputs.entorno || 'dev' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,10 +54,19 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # Config de Firebase para push (opcional): si el secret no está, el
+          # push queda desactivado y el build sigue igual.
+          GOOGLE_SERVICES_JSON_B64: ${{ secrets.GOOGLE_SERVICES_JSON_B64 }}
         run: python3 tool/configure_platforms.py
 
       - name: pub get
         run: flutter pub get
+
+      # Verifica el código ANTES de compilar: si hay errores (tipos, params,
+      # símbolos), falla aquí y NO se publica un APK roto. Solo bloquea por
+      # ERRORES, no por lints de estilo (warnings/infos).
+      - name: Analizar (flutter analyze)
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos
 
       - name: Generar ícono y splash de marca
         run: |
@@ -61,32 +81,99 @@ jobs:
           PLACES_API_KEY: ${{ secrets.PLACES_API_KEY }}
           VERIF_API_URL: ${{ secrets.VERIF_API_URL }}
           GROWTH_API_URL: ${{ secrets.GROWTH_API_URL }}
+          LANDING_BASE_URL: ${{ secrets.LANDING_BASE_URL }}
           APP_API_KEY: ${{ secrets.APP_API_KEY }}
+          GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
+          FACEBOOK_APP_ID: ${{ secrets.FACEBOOK_APP_ID }}
+          TURN_URL: ${{ secrets.TURN_URL }}
+          TURN_USER: ${{ secrets.TURN_USER }}
+          TURN_PASS: ${{ secrets.TURN_PASS }}
         run: |
           # --split-per-abi: un APK por arquitectura (mucho más liviano que el
           # universal). El arm64-v8a sirve a la gran mayoría de teléfonos.
           flutter build apk --release --split-per-abi \
             --build-number=${{ github.run_number }} \
+            --dart-define=ENTORNO="$ENTORNO" \
             --dart-define=SUPABASE_URL="$SUPABASE_URL" \
             --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
             --dart-define=MAPS_API_KEY="$MAPS_API_KEY" \
             --dart-define=PLACES_API_KEY="$PLACES_API_KEY" \
             --dart-define=VERIF_API_URL="$VERIF_API_URL" \
             --dart-define=GROWTH_API_URL="$GROWTH_API_URL" \
-            --dart-define=APP_API_KEY="$APP_API_KEY"
+            --dart-define=LANDING_BASE_URL="$LANDING_BASE_URL" \
+            --dart-define=APP_API_KEY="$APP_API_KEY" \
+            --dart-define=GIPHY_API_KEY="$GIPHY_API_KEY" \
+            --dart-define=FACEBOOK_APP_ID="$FACEBOOK_APP_ID" \
+            --dart-define=TURN_URL="$TURN_URL" \
+            --dart-define=TURN_USER="$TURN_USER" \
+            --dart-define=TURN_PASS="$TURN_PASS"
+
+      # App Bundle (.aab) para subir a Google Play. Solo en builds manuales
+      # (workflow_dispatch), para no gastar tiempo en cada push de desarrollo.
+      - name: Build AAB (release, para Google Play)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
+          PLACES_API_KEY: ${{ secrets.PLACES_API_KEY }}
+          VERIF_API_URL: ${{ secrets.VERIF_API_URL }}
+          GROWTH_API_URL: ${{ secrets.GROWTH_API_URL }}
+          LANDING_BASE_URL: ${{ secrets.LANDING_BASE_URL }}
+          APP_API_KEY: ${{ secrets.APP_API_KEY }}
+          GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
+          FACEBOOK_APP_ID: ${{ secrets.FACEBOOK_APP_ID }}
+        run: |
+          flutter build appbundle --release \
+            --build-number=${{ github.run_number }} \
+            --dart-define=ENTORNO="$ENTORNO" \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
+            --dart-define=MAPS_API_KEY="$MAPS_API_KEY" \
+            --dart-define=PLACES_API_KEY="$PLACES_API_KEY" \
+            --dart-define=VERIF_API_URL="$VERIF_API_URL" \
+            --dart-define=GROWTH_API_URL="$GROWTH_API_URL" \
+            --dart-define=LANDING_BASE_URL="$LANDING_BASE_URL" \
+            --dart-define=APP_API_KEY="$APP_API_KEY" \
+            --dart-define=GIPHY_API_KEY="$GIPHY_API_KEY" \
+            --dart-define=FACEBOOK_APP_ID="$FACEBOOK_APP_ID"
+          mkdir -p dist
+          cp build/app/outputs/bundle/release/app-release.aab \
+             "dist/pichangol-${ENTORNO}-${{ github.run_number }}.aab"
+
+      - name: Subir AAB (artifact para Play)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pichangol-aab-${{ github.event.inputs.entorno || 'dev' }}
+          path: dist/*.aab
+          if-no-files-found: error
 
       - name: Verificar firma del APK
         run: |
-          echo "SHA-1 del certificado con que se firmó el APK (arm64):"
-          keytool -printcert -jarfile build/app/outputs/flutter-apk/app-arm64-v8a-release.apk | grep -E "SHA1:|SHA-1:" || echo "(no se pudo leer; revisar firma)"
+          APK=build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          echo "=== Huellas del certificado con que se firmó el APK (arm64) ==="
+          # apksigner lee la firma v2/v3 (keytool -printcert -jarfile SOLO ve v1/JAR,
+          # que los release de Flutter no traen → por eso antes salía vacío).
+          APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)"
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs "$APK" | grep -Ei "SHA-1|SHA-256|SHA1|SHA256" \
+              || echo "(apksigner no devolvió huellas; revisar firma)"
+          else
+            echo "(apksigner no encontrado; intento con keytool)"
+            keytool -printcert -jarfile "$APK" | grep -Ei "SHA1:|SHA-1:|SHA256:" \
+              || echo "(no se pudo leer; revisar firma)"
+          fi
 
       - name: Renombrar APK
         run: |
           mkdir -p dist
+          # QAS lleva sufijo para no confundirse con dev/prod.
+          SUF=""; [ "$ENTORNO" = "qas" ] && SUF="-qas"
           # Principal (recomendado): arm64-v8a, liviano, ~95% de los teléfonos.
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/pichangol-${{ github.run_number }}.apk"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk "dist/pichangol${SUF}-${{ github.run_number }}.apk"
           # Respaldo para teléfonos antiguos de 32 bits.
-          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/pichangol-${{ github.run_number }}-arm32.apk"
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk "dist/pichangol${SUF}-${{ github.run_number }}-arm32.apk"
           ls -lh dist/
 
       - name: Subir APK (artifact)
@@ -96,80 +183,42 @@ jobs:
           path: dist/*.apk
           if-no-files-found: error
 
+      - name: Definir tag de release
+        run: |
+          # QAS publica en su PROPIO release (no pisa el v0.1.0 de dev/prod).
+          if [ "$ENTORNO" = "qas" ]; then
+            echo "REL_TAG=v0.1.0-qas" >> "$GITHUB_ENV"
+            echo "REL_NAME=Pichangol QAS (pruebas reales)" >> "$GITHUB_ENV"
+          else
+            echo "REL_TAG=v0.1.0" >> "$GITHUB_ENV"
+            echo "REL_NAME=Pichangol v0.1.0" >> "$GITHUB_ENV"
+          fi
+
       - name: Limpiar assets viejos del Release
         if: github.ref == 'refs/heads/claude/apk-google-maps-setup-fvpl9w' || startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view v0.1.0 -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null | while read -r a; do
-            [ -n "$a" ] && gh release delete-asset v0.1.0 "$a" -y -R "$GITHUB_REPOSITORY" || true
+          gh release view "$REL_TAG" -R "$GITHUB_REPOSITORY" --json assets -q '.assets[].name' 2>/dev/null | while read -r a; do
+            [ -n "$a" ] && gh release delete-asset "$REL_TAG" "$a" -y -R "$GITHUB_REPOSITORY" || true
           done
 
-      - name: Publicar APK en Release (v0.1.0)
+      - name: Publicar APK en Release
         if: github.ref == 'refs/heads/claude/apk-google-maps-setup-fvpl9w' || startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.1.0
-          name: Pichangol v0.1.0
+          tag_name: ${{ env.REL_TAG }}
+          name: ${{ env.REL_NAME }}
           body: |
-            APK de **Pichangol** (build #${{ github.run_number }}) — canchas de fútbol, tenis, pádel y pickleball en Lima.
+            APK de **Pichangol** (build #${{ github.run_number }}, entorno **${{ env.ENTORNO }}**) — canchas de fútbol, tenis, pádel y pickleball en Lima.
 
-            **Descarga recomendada:** `pichangol-${{ github.run_number }}.apk` (arm64, liviano — sirve para casi todos los teléfonos).
-            Si no instala (teléfono antiguo de 32 bits), usa `pichangol-${{ github.run_number }}-arm32.apk`.
+            **Descarga recomendada:** `pichangol${{ env.ENTORNO == 'qas' && '-qas' || '' }}-${{ github.run_number }}.apk` (arm64, liviano — sirve para casi todos los teléfonos).
+            Si no instala (teléfono antiguo de 32 bits), usa la variante `-arm32.apk`.
 
             Instálalo por sideload. Verifica en Ajustes → Apps → Pichangol que la versión sea (${{ github.run_number }}).
           files: dist/pichangol-*.apk
           fail_on_unmatched_files: true
 
-  ios:
-    name: iOS (compilación, sin firma)
-    runs-on: macos-14
-    # Best-effort: valida que el código es iOS-ready. Un instalable .ipa requiere
-    # firma con cuenta Apple Developer, así que este job no bloquea el APK.
-    continue-on-error: true
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: ${{ env.FLUTTER_VERSION }}
-          channel: stable
-          cache: true
-
-      - name: Generar carpetas de plataforma
-        run: flutter create --org pe.ebim --project-name canchas_lima --platforms=android,ios .
-
-      - name: Configurar plataforma (Maps + Google Sign-In)
-        env:
-          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
-          GOOGLE_IOS_CLIENT_ID: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
-        run: python3 tool/configure_platforms.py
-
-      - name: pub get
-        run: flutter pub get
-
-      - name: Generar ícono y splash de marca
-        run: |
-          dart run flutter_launcher_icons
-          dart run flutter_native_splash:create
-
-      - name: Build iOS (sin firma)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
-          PLACES_API_KEY: ${{ secrets.PLACES_API_KEY }}
-          VERIF_API_URL: ${{ secrets.VERIF_API_URL }}
-          GROWTH_API_URL: ${{ secrets.GROWTH_API_URL }}
-          APP_API_KEY: ${{ secrets.APP_API_KEY }}
-        run: |
-          flutter build ios --release --no-codesign \
-            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
-            --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
-            --dart-define=MAPS_API_KEY="$MAPS_API_KEY" \
-            --dart-define=PLACES_API_KEY="$PLACES_API_KEY" \
-            --dart-define=VERIF_API_URL="$VERIF_API_URL" \
-            --dart-define=GROWTH_API_URL="$GROWTH_API_URL" \
-            --dart-define=APP_API_KEY="$APP_API_KEY"
+  # NOTA: el job de iOS (macOS, ×10 minutos) se retiró para ahorrar minutos de
+  # GitHub Actions durante el piloto. No hacía falta: un .ipa instalable requiere
+  # firma con cuenta Apple Developer. Cuando se vaya a TestFlight, se re-agrega.

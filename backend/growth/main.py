@@ -7,13 +7,57 @@ Ejecutar (desde este directorio):
 
 from __future__ import annotations
 
-from fastapi import Depends, FastAPI, Request
+import os
+import time
 
+import asyncio
+
+from fastapi import Depends, FastAPI, Request
+from fastapi.staticfiles import StaticFiles
+
+import config
 from compliance.consent import consent_store
+from concierge.router import router as concierge_router
 from convocatorias.router import router as convocatorias_router
 from db import pg
+from entrenador.router import router as entrenador_router
 from db.store import seed_verificadores, stores
+from legal.router import router as legal_router
+from web.router import router as web_router
+from web.anfitrion import router as anfitrion_router
+from web.anfitrion_academia import router as anfitrion_academia_router
+from web.anfitrion_academia_ops import router as anfitrion_academia_ops_router
+from web.anfitrion_tienda import router as anfitrion_tienda_router
+from web.anfitrion_campeonatos import router as anfitrion_campeonatos_router
+from web.anfitrion_boleadores import router as anfitrion_boleadores_router
+from web.anfitrion_negocio import router as anfitrion_negocio_router
+from web.anfitrion_verificador import router as anfitrion_verificador_router
+from boleadores import router as boleadores_router
+from fidelidad import router as fidelidad_router
+from web.academia import router as academia_web_router
+from web.jugador_clases import router as jugador_clases_router
+from web.jugador_market import router as jugador_market_router
+from web.jugador_billetera import router as jugador_billetera_router
+from web.pago_hospedado import router as pago_hospedado_router
+from web.jugador_liga import router as jugador_liga_router
+from web.jugador_campeonatos import router as jugador_campeonatos_router
+from web.jugador_cuenta import router as jugador_cuenta_router
+from web.jugador_bodega import router as jugador_bodega_router
+from web.anfitrion_bodega import router as anfitrion_bodega_router
+from web.jugador_mensajes import router as jugador_mensajes_router
+from web.jugador_partidos import router as jugador_partidos_router
+from referidos import router as referidos_router
+from negocio_app import router as negocio_app_router
+from web.jugador_novedades import router as jugador_novedades_router
+from web.jugador_pro import router as jugador_pro_router
 from models import ConfigRequest, ConsentimientoRequest
+from marketing.router import router as marketing_router
+from pagos.router import (procesar_renovaciones, procesar_renovaciones_alumnos,
+                          procesar_renovaciones_pro)
+from pagos.router import router as pagos_router
+from retos.router import router as retos_router
+from ventas.router import router as ventas_router
+from circuito.router import router as circuito_router
 from propiedad.panel import router as panel_router
 from propiedad.router import _require_admin
 from propiedad.router import router as propiedad_router
@@ -27,31 +71,398 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Persistencia: carga el snapshot guardado (si hay BD) y siembra verificadores.
+# Persistencia: carga el snapshot y, encima, las tablas normalizadas (saldos/
+# pagos/vistas/reclamos) que ganan si tienen datos. En el primer deploy las
+# tablas están vacías → se conserva el snapshot y se hace *backfill* a las tablas.
 _snapshot = pg.init_y_cargar()
 if _snapshot:
     stores.load_state(_snapshot)
+pg.cargar_normalizado(stores)   # tablas reales = fuente de verdad de lo crítico
+if pg.habilitado:               # backfill inicial (snapshot -> tablas) idempotente
+    try:
+        pg.guardar_normalizado(stores)
+    except Exception:  # noqa: BLE001
+        pass
 if not stores.verificadores:
     seed_verificadores()
+
+# Unificación de servicios: migra suscripciones del plan retirado "gestion" a
+# "redes", y cancela solapamientos (Presencia ya incluye Landing/Manejo).
+_cambios = stores.migrar_suscripciones_legacy()
+_cambios += stores.resolver_solapamiento_servicios()
+if _cambios and pg.habilitado:
+    try:
+        pg.guardar(stores.to_state())
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# DOMINIO RAÍZ → www (pedido del director, 1-oct-2026: "la gente escribe
+# pichangol.app y no carga"). El dominio raíz apunta también a este servicio
+# (Railway emite su certificado: .app exige HTTPS por HSTS y el "URL Redirect"
+# de Namecheap no tiene SSL) y aquí se manda con 301/308 a www, el dominio
+# canónico (SEO, cookies de sesión y el origen autorizado de Google Sign-In).
+# `/.well-known/` NO se redirige: Android verifica los App Links de
+# pichangol.app leyendo assetlinks.json en ese mismo host, sin redirecciones.
+_A_WWW = {h.strip().lower() for h in os.getenv("DOMINIOS_A_WWW", "pichangol.app").split(",") if h.strip()}
+
+
+@app.middleware("http")
+async def _raiz_a_www(request: Request, call_next):
+    host = (request.headers.get("host") or "").split(":")[0].strip().lower()
+    if host in _A_WWW and not request.url.path.startswith("/.well-known/"):
+        from fastapi.responses import RedirectResponse
+        destino = f"https://www.{host}{request.url.path}" + (f"?{request.url.query}" if request.url.query else "")
+        return RedirectResponse(destino, status_code=301 if request.method in ("GET", "HEAD") else 308)
+    return await call_next(request)
 
 
 @app.middleware("http")
 async def _persistir(request: Request, call_next):
-    """Tras cada request que muta estado, guarda el snapshot (fail-safe)."""
+    """Tras cada request que muta estado, guarda el snapshot completo (respaldo)
+    y vuelca lo crítico a sus tablas normalizadas. Todo fail-safe. Además pone
+    las CABECERAS DE SEGURIDAD: HSTS (todo el dominio va por HTTPS), nosniff,
+    Referrer-Policy y, en la torre /admin, anti-iframe (clickjacking),
+    sin caché de respuestas de la API y sin permisos de cámara/micro/GPS."""
+    t0 = time.time()
     response = await call_next(request)
+    ms = int((time.time() - t0) * 1000)
+    if ms > 700:
+        print(f"[perf] {request.method} {request.url.path} tardó {ms} ms", flush=True)
+    h = response.headers
+    h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    ruta = request.url.path
+    if ruta == "/admin" or ruta.startswith("/admin/"):
+        h.setdefault("X-Frame-Options", "DENY")
+        h.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        if ruta.startswith("/admin/api/"):
+            h.setdefault("Cache-Control", "no-store")
     if pg.habilitado and request.method in ("POST", "PUT", "DELETE"):
-        try:
-            pg.guardar(stores.to_state())
-        except Exception:  # noqa: BLE001
-            pass
+        # Sin bloquear la respuesta: un hilo guarda el snapshot (solo si cambió)
+        # y las tablas normalizadas (solo filas nuevas/cambiadas). Ver db/pg.py.
+        pg.persistir_en_segundo_plano(stores)
     return response
 
+
+@app.on_event("shutdown")
+def _persistir_al_apagar() -> None:
+    """Railway manda SIGTERM en cada redeploy: vaciamos lo pendiente antes de morir."""
+    if pg.habilitado:
+        try:
+            pg.persistir_ahora(stores)
+        except Exception:  # noqa: BLE001
+            pass
+
 app.include_router(puntos_router)
+app.include_router(entrenador_router)
 app.include_router(solicitudes_router)
 app.include_router(vf_router)
 app.include_router(propiedad_router)
 app.include_router(panel_router)
 app.include_router(convocatorias_router)
+app.include_router(pagos_router)
+app.include_router(retos_router)
+app.include_router(ventas_router)
+app.include_router(circuito_router)
+app.include_router(marketing_router)
+app.include_router(legal_router)
+app.include_router(web_router)
+app.include_router(academia_web_router)  # ficha pública /academia/{id} + matrícula web
+app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}
+app.include_router(jugador_clases_router)  # /mis-clases: Mis clases y pagos del jugador
+app.include_router(jugador_billetera_router)  # /mi-billetera, /mis-pagos, /mis-puntos, /mi-pais
+app.include_router(pago_hospedado_router)  # /web/pago/*: cobro web en USD/BOB por pasarela hospedada (Ecuador / Bolivia)
+app.include_router(jugador_liga_router)  # /mi-nivel, /liga
+app.include_router(jugador_campeonatos_router)  # /torneo/{id}: inscribirse / crear o unirse a un equipo pagando con saldo
+app.include_router(jugador_cuenta_router)  # /cuenta/configuracion, /cuenta/identidad
+app.include_router(jugador_bodega_router)  # /bodega/{cancha_id}/pedir, /mis-pedidos-bodega
+app.include_router(jugador_mensajes_router)  # /mensajes: bandeja, chat, grupos (mensajería del app)
+app.include_router(anfitrion_academia_ops_router)  # asistencia, evaluación, ranking, reportes, chats y sedes de la academia
+app.include_router(negocio_app_router)  # /negocio/* (APK): cierres de caja, fijas, notas y recordatorios = mismos datos que la web
+app.include_router(referidos_router)  # /referidos/estado y /referidos/canjear (JSON del APK; bono en el backend)
+app.include_router(jugador_partidos_router)  # /partidos, /pichangas, /referidos, /jugador/{ref}, /anfitrion/llenar (antes del comodín)
+app.include_router(jugador_novedades_router)  # /novedades (estados/historias) y /canales
+app.include_router(jugador_pro_router)  # /pro, /pro/planes, /cuenta/tarjetas, /buscar, /anfitrion/recordatorios (antes del comodín)
+app.include_router(anfitrion_academia_router)  # antes del comodín /anfitrion/{modulo}
+app.include_router(anfitrion_tienda_router)
+app.include_router(anfitrion_bodega_router)  # /anfitrion/bodega (antes del comodín /anfitrion/{modulo})
+app.include_router(anfitrion_campeonatos_router)  # antes del comodín /anfitrion/{modulo}
+app.include_router(anfitrion_boleadores_router)  # antes del comodín /anfitrion/{modulo}
+app.include_router(anfitrion_negocio_router)  # reportes, caja, clientes, bonos, fijas, disponibilidad, cobros (antes del comodín)
+app.include_router(anfitrion_verificador_router)  # /anfitrion/verificador, /anfitrion/verificacion/{id} (antes del comodín)
+app.include_router(anfitrion_router)
+app.include_router(boleadores_router)  # /boleadores/* (APK + ficha web)
+app.include_router(fidelidad_router)  # /fidelidad/* (tarjeta de fidelidad del local)
+# Assets de marca de la web pública (pin, logo para OG/favicon). Ruta fija
+# junto a este archivo para que Railway (root dir backend/growth) los sirva.
+app.mount("/static", StaticFiles(directory=os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "static")), name="static")
+app.include_router(concierge_router)
+
+
+@app.on_event("startup")
+async def _iniciar_correos() -> None:
+    """Hilo `pcg-correos`: arma y envía los correos de pago (recibo al que pagó
+    + aviso al que recibe) que encola `stores.registrar_pago`. En los tests no
+    corre (procesan la cola a mano con un proveedor simulado)."""
+    import sys
+    if "pytest" in sys.modules:
+        return
+    import correos
+    correos.iniciar_hilo()
+    # Conexiones del pool siempre "tibias" (la base está lejos: abrir una nueva
+    # cuesta ~1 s; ver `pg._mantener_tibias`).
+    pg.iniciar_tibias()
+
+
+@app.on_event("startup")
+async def _iniciar_cron_renovaciones() -> None:
+    """Cron INTERNO: cada 12 h renueva las suscripciones vencidas (cobra del saldo
+    o de la tarjeta de débito automático). Corre dentro del mismo proceso (una
+    sola réplica en Railway), fail-safe, y persiste si cambió algo."""
+    async def _loop() -> None:
+        await asyncio.sleep(60)  # deja arrancar el servicio
+        while True:
+            try:
+                r = procesar_renovaciones()
+                ra = procesar_renovaciones_alumnos()  # mensualidades mes a mes
+                rp = procesar_renovaciones_pro()  # membresías Pichangol Pro
+                cambio = (r.get("cobradas") or r.get("por_tarjeta")
+                          or r.get("pendientes")
+                          or ra.get("cobradas") or ra.get("pendientes")
+                          or rp.get("renovadas"))
+                if cambio and pg.habilitado:
+                    pg.guardar(stores.to_state())
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(12 * 3600)  # cada 12 horas
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_cm() -> None:
+    """Community manager AUTÓNOMO (Fase 0): cada 30 min pre-genera el "post del
+    día" de cada academia suscrita que toca por cadencia, para que el dueño lo
+    encuentre listo. Una sola réplica en Railway; fail-safe; persiste si generó."""
+    async def _loop() -> None:
+        await asyncio.sleep(90)  # deja arrancar el servicio
+        while True:
+            try:
+                from marketing.cm import procesar_cm_pendientes
+                # En un hilo: generar flyer/reel y publicar son bloqueantes
+                # (CPU + red); no deben congelar el event loop.
+                n = await asyncio.to_thread(procesar_cm_pendientes)
+                if n and pg.habilitado:
+                    pg.guardar(stores.to_state())
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(30 * 60)  # cada 30 minutos
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_agente_redes() -> None:
+    """AGENTE DE MARKETING 24×7 de la página de Facebook de Pichangol: cada 60 s
+    mira si ya es la hora configurada en la torre (07:00 America/Lima por defecto)
+    y, si hoy aún no publicó, crea y publica la pieza del día (o deja el borrador
+    para aprobar). Una sola réplica en Railway; fail-safe; el propio agente
+    persiste el snapshot cuando hace algo."""
+    async def _loop() -> None:
+        await asyncio.sleep(120)  # deja arrancar el servicio
+        while True:
+            try:
+                from marketing.agente_redes import tick
+                await asyncio.to_thread(tick)   # IA + Pillow + Graph: bloqueante, fuera del event loop
+            except Exception as exc:  # noqa: BLE001
+                print(f"[agente] tick falló: {str(exc)[:160]}", flush=True)
+            await asyncio.sleep(60)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_liquidaciones() -> None:
+    """RECORDATORIO de liquidaciones ATRASADAS (dueños de cancha y organizadores
+    de torneo): cada hora revisa y, una vez al día desde las 09:00 de Lima,
+    avisa al operador por WhatsApp y en los logs lo que lleva ≥ N días sin
+    pagarse. Decisión del director (26-sep-2026): "¿qué pasa si el operador se
+    olvida? tendremos problemas". Fail-safe."""
+    async def _loop() -> None:
+        await asyncio.sleep(120)
+        while True:
+            try:
+                from pagos.router import recordar_liquidaciones_pendientes
+                recordar_liquidaciones_pendientes()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                # FOTOS PROPIAS DE LOS LOCALES: avisos al dueño a 7 días, a
+                # 1 día y al vencer el plazo (idempotentes; en un hilo: lee
+                # Postgres y manda push).
+                from propiedad import fotos_locales as _fl
+                await asyncio.to_thread(_fl.recordatorios)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                # Comisión REAL de Culqi por cargo (la publica ~12 h después
+                # del pago): se lee en un hilo para no bloquear el loop.
+                from pagos import tarifas_pasarela as _tp
+                await asyncio.to_thread(_tp.sincerar)
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(3600)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_boleadores() -> None:
+    """BOLEADORES: cada 5 min cierra como `vencida` las solicitudes que el
+    boleador no respondió a tiempo y devuelve su parte al cliente (en un hilo:
+    toca Postgres y Culqi). Fail-safe."""
+    async def _loop() -> None:
+        await asyncio.sleep(90)
+        while True:
+            try:
+                import boleadores as _bol
+                n = await asyncio.to_thread(_bol.vencer_pendientes)
+                if n:
+                    pg.persistir_en_segundo_plano(stores)
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(300)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _sembrar_canchas_osm() -> None:
+    """Canchas de OpenStreetMap (complemento de Google, ODbL): siembra
+    `pichangol_canchas_osm` en un hilo SOLO si la tabla está vacía o el archivo
+    `web/osm_canchas.json.gz` cambió (`web/osm.py`). Sin DATABASE_URL no hace
+    nada; en los tests no corre."""
+    import sys
+    if "pytest" in sys.modules:
+        return
+    from web import osm as _osm
+    _osm.iniciar_siembra_en_fondo()
+
+
+@app.on_event("startup")
+async def _iniciar_cron_holds_web() -> None:
+    """RESERVA WEB: cada minuto borra los apartados web sin pagar que pasaron
+    sus 10 min (`datos.liberar_holds_vencidos_todos`, en un hilo) y devuelve
+    el premio de fidelidad que tuvieran apartado. Antes solo se borraban
+    cuando otro cliente intentaba reservar ESA cancha (caso PRD 1-oct-2026)."""
+    async def _loop() -> None:
+        await asyncio.sleep(30)
+        while True:
+            try:
+                # Órdenes de pago HOSPEDADO (PayPhone · Libélula): reconcilia con
+                # la pasarela, finaliza las pagadas y vence las viejas soltando su horario.
+                from web import pago_hospedado as _ph
+                r = await asyncio.to_thread(_ph.barrer)
+                if r.get("finalizadas") or r.get("vencidas"):
+                    print(f"[pago-web] barrido: {r}", flush=True)
+            except Exception as ex:  # noqa: BLE001
+                print(f"[pago-web] barrido falló: {ex}", flush=True)
+            try:
+                from web import datos as _datos
+                filas = await asyncio.to_thread(_datos.liberar_holds_vencidos_todos)
+                if filas:
+                    import fidelidad as _fid
+                    from web import beneficios as _ben
+                    for f in filas:
+                        await asyncio.to_thread(_fid.revertir_canje, "", [f["id"]])
+                    # Bono / puntos apartados por esos holds vuelven al jugador.
+                    await asyncio.to_thread(_ben.soltar, "", [f["id"] for f in filas])
+                    print("[holds] liberados: " + ", ".join(f"{f['cancha_id']} {f['fecha']} {f['hora']}" for f in filas), flush=True)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                # Barrido de apartados de bono/puntos cuyo hold se borró por
+                # otro camino (p. ej. al reservar otro cliente esa cancha).
+                from web import beneficios as _ben
+                await asyncio.to_thread(_ben.barrer_vencidos)
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(60)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_stock_marketplace() -> None:
+    """MARKETPLACE: cada 5 min devuelve al stock las unidades que un APK apartó
+    y nunca cobró (`pagos/stock_productos.liberar_vencidos`, en un hilo: toca
+    Postgres). Fail-safe."""
+    async def _loop() -> None:
+        await asyncio.sleep(120)
+        while True:
+            try:
+                from pagos.router import liberar_apartados_vencidos
+                n = await asyncio.to_thread(liberar_apartados_vencidos)
+                if n:
+                    pg.persistir_en_segundo_plano(stores)
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(300)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_storage() -> None:
+    """RECOLECTOR DE BASURA del Storage: cada N horas borra los archivos que
+    quedaron sin dueño. El APK ya borra en caliente al eliminar una cancha, un
+    producto o un estado; esto cubre lo que ese borrado NO alcanza (el teléfono
+    se quedó sin red a medio camino, el usuario tiene un APK viejo, faltaba la
+    policy del bucket). Así el bucket no crece por goteo.
+
+    Apagado por defecto (`STORAGE_BARRIDO_AUTO=1` para encenderlo): un borrado
+    automático solo se justifica cuando la revisión manual de la torre ya
+    mostró números correctos."""
+    if not config.STORAGE_BARRIDO_AUTO:
+        return
+
+    async def _loop() -> None:
+        await asyncio.sleep(300)  # deja arrancar el servicio
+        try:
+            horas = max(1, int(config.STORAGE_BARRIDO_HORAS))
+        except (TypeError, ValueError):
+            horas = 24
+        while True:
+            try:
+                import storage_limpieza
+                # En un hilo: son consultas + N llamadas HTTP al Storage API,
+                # todas bloqueantes; no deben congelar el event loop.
+                await asyncio.to_thread(storage_limpieza.limpiar)
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(horas * 3600)
+
+    asyncio.create_task(_loop())
+
+
+@app.get("/robots.txt", include_in_schema=False)
+def robots_txt():
+    """Los robots pueden indexar las páginas públicas, pero NO llamar a las
+    rutas JSON ni a la torre: un buscador que ejecuta el JS de la portada
+    disparaba consultas pagadas a Google Places (oct-2026)."""
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse(
+        "User-agent: *\n"
+        "Disallow: /web/\n"
+        "Disallow: /admin\n"
+        "Disallow: /pagos/\n"
+        "Disallow: /anfitrion\n"
+        "Disallow: /entrar\n"
+        "Disallow: /mensajes\n",
+        headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/health")

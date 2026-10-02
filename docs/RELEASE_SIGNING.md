@@ -11,8 +11,8 @@ OAuth y una firma estable. Para activarlo de verdad:
 1. Crear proyecto en **Google Cloud Console** (o Firebase) y configurar la
    pantalla de consentimiento OAuth.
 2. Crear **OAuth Client IDs**:
-   - **Android**: package `pe.ebim.canchas_lima` + **SHA-1** de la firma (ver §2).
-   - **iOS**: bundle id `pe.ebim.canchasLima`.
+   - **Android**: package `pe.ebim.pichangol` + **SHA-1** de la firma (ver §2).
+   - **iOS**: bundle id `pe.ebim.pichangol`.
    - **Web** (serverClientId) si luego validamos en backend.
 3. **Android**: agregar `google-services.json` (si usamos Firebase) o registrar el
    cliente; no se requiere código extra, `google_sign_in` ya está integrado.
