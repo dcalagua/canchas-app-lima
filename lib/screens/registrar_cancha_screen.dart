@@ -27,6 +27,7 @@ import '../utils/moneda.dart';
 import '../config/pais.dart';
 import '../widgets/icono_vivo.dart';
 import '../widgets/dialogo_pichangol.dart';
+import '../widgets/ubicacion_reclamo.dart';
 
 /// Registrar una cancha escribiendo la dirección: se geocodifica y aparece en el
 /// mapa automáticamente (estilo eSupplier). Un local puede tener varias canchas
@@ -146,7 +147,10 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   DeteccionDeporte? _deteccion;
 
   int get _minFotos => appState.reclamoFotosMin;
-  bool get _fotosOk => _fotos.length >= _minFotos;
+  // Tope de fotos del RECLAMO (torre → `reclamo_fotos_max`, respaldo 5).
+  int get _maxFotos => appState.reclamoFotosTope;
+  bool get _fotosOk =>
+      _fotos.length >= _minFotos && _fotos.length <= _maxFotos;
 
   static const _limaCentro = LatLng(-12.0931, -77.0465);
   // Centro inicial del mapa detectado por GPS (Perú/Bolivia/Ecuador…), para no
@@ -214,9 +218,9 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   /// Agrega fotos propias del local (cámara o galería, varias a la vez). La
   /// primera pasa por la IA que sugiere el deporte (solo al registrar).
   Future<void> _elegirFoto(ImageSource fuente) async {
-    final libres = FotosPropias.maximo - _fotos.length;
+    final libres = _maxFotos - _fotos.length;
     if (libres <= 0) {
-      _avisar('Máximo ${FotosPropias.maximo} fotos.');
+      _avisar('Máximo $_maxFotos fotos.');
       return;
     }
     final nuevas = <Uint8List>[];
@@ -376,6 +380,14 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   }
 
   Future<void> _publicarInterno() async {
+    if (_fotos.length > _maxFotos) {
+      await avisarPichangol(context,
+          titulo: 'Demasiadas fotos',
+          icono: Icons.photo_library_outlined,
+          mensaje: 'Puedes enviar hasta $_maxFotos fotos de tu local. '
+              'Quita ${_fotos.length - _maxFotos} para continuar.');
+      return;
+    }
     if (!_fotosOk) {
       await avisarPichangol(context,
           titulo: 'Faltan fotos de tu local',
@@ -443,6 +455,12 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       return;
     }
     if (!mounted) return;
+    // UBICACIÓN OBLIGATORIA (decisión del director, oct-2026): el celular debe
+    // estar EN el local (GPS a ≤ N m del punto) ANTES de crear canchas o subir
+    // fotos. Si no hay GPS o está lejos, se avisa y no se envía nada.
+    final ubic = await exigirUbicacionReclamo(context, punto: _ubicacion);
+    if (!ubic.ok || !mounted) return;
+    final desdeAqui = ubic.gps;
     final (precio, precioTurno) = SelectorPrecioCancha.valores(
         SelectorPrecioCancha.leer(_precio) ?? 100, _porTurno, _duracion);
     final direccion = _direccion.text.trim();
@@ -469,6 +487,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
           reclamoOk: false,
           yaReclamada: false,
           fotosFallidas: true,
+          rechazo: null,
         );
       }
       final fotoUrl = fotos.isNotEmpty ? fotos.first : null;
@@ -564,10 +583,10 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       // Se ESPERA la respuesta para confirmar que el reclamo quedó en el servidor.
       var reclamoOk = true;
       var yaReclamada = false;
+      ({String titulo, String mensaje})? rechazo;
       if (creadas.isNotEmpty) {
-        // GPS del dispositivo AL reclamar: el admin puede exigir (torre de
-        // control) que coincida con la cancha para aprobar (anti-fraude).
-        final desdeAqui = await LocationService.ubicacionPrecisa();
+        // GPS del dispositivo AL reclamar (leído y validado ANTES de crear
+        // nada, `exigirUbicacionReclamo`): el backend lo vuelve a comprobar.
         // Prueba de propiedad (opcional): sube la foto de evidencia si la puso.
         var evidenciaUrl = '';
         if (_fotoEvidencia != null) {
@@ -588,11 +607,14 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         );
         reclamoOk = r != null && r['ok'] == true;
         yaReclamada = r != null && r['error'] == 'ya_reclamada';
+        // Rechazo con motivo (ubicación o fotos): el backend no creó nada.
+        rechazo = PropiedadService.motivoRechazo(r);
       }
 
-      // Si OTRO usuario ya reclamó esta cancha (o el mismo lugar), no puedes
-      // reclamarla: revierte las canchas locales recién creadas.
-      if (yaReclamada) {
+      // Si OTRO usuario ya reclamó esta cancha (o el mismo lugar), o el
+      // backend rechazó el reclamo por ubicación/fotos, no queda reclamada:
+      // revierte las canchas locales recién creadas.
+      if (yaReclamada || rechazo != null) {
         for (final c in creadas) {
           appState.eliminarCancha(c.id);
         }
@@ -602,6 +624,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         reclamoOk: reclamoOk,
         yaReclamada: yaReclamada,
         fotosFallidas: false,
+        rechazo: rechazo,
       );
     }, texto: 'Enviando tu solicitud…');
 
@@ -612,6 +635,15 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
           icono: Icons.image_not_supported_outlined,
           mensaje: '${CanchasRepo.ultimoErrorFoto ?? 'No pudimos subir las fotos de tu local.'} '
               'Las necesitamos para aprobar tu cancha; inténtalo de nuevo.');
+      return;
+    }
+    final rechazo = res.rechazo;
+    if (rechazo != null) {
+      if (!mounted) return;
+      await avisarPichangol(context,
+          titulo: rechazo.titulo,
+          icono: Icons.info_outline,
+          mensaje: rechazo.mensaje);
       return;
     }
     final creadas = res.creadas;
@@ -716,7 +748,10 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     final esContacto = (_esReclamo && i == 2) || (!_esReclamo && i == 3);
     String? falta;
     if (esFotos && !_fotosOk) {
-      falta = '${FotosPropias.textoFaltan(_minFotos - _fotos.length)}.';
+      falta = _fotos.length > _maxFotos
+          ? 'Puedes enviar hasta $_maxFotos fotos: quita '
+              '${_fotos.length - _maxFotos}.'
+          : '${FotosPropias.textoFaltan(_minFotos - _fotos.length)}.';
     }
     if (falta == null && esNombre && _nombre.text.trim().isEmpty) {
       falta = 'Ponle nombre al local para continuar.';
@@ -739,6 +774,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
             _GaleriaFotos(
               fotos: _fotos,
               minimo: _minFotos,
+              maximo: _maxFotos,
               ia: !_esReclamo,
               onAgregar: _elegirFoto,
               onQuitar: (i) => setState(() => _fotos.removeAt(i)),
@@ -1339,12 +1375,14 @@ class _EvidenciaFoto extends StatelessWidget {
 class _GaleriaFotos extends StatelessWidget {
   final List<Uint8List> fotos;
   final int minimo;
+  final int maximo;
   final bool ia;
   final ValueChanged<ImageSource> onAgregar;
   final ValueChanged<int> onQuitar;
   const _GaleriaFotos({
     required this.fotos,
     required this.minimo,
+    required this.maximo,
     required this.ia,
     required this.onAgregar,
     required this.onQuitar,
@@ -1352,8 +1390,8 @@ class _GaleriaFotos extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ok = fotos.length >= minimo;
-    final lleno = fotos.length >= FotosPropias.maximo;
+    final ok = fotos.length >= minimo && fotos.length <= maximo;
+    final lleno = fotos.length >= maximo;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1366,8 +1404,10 @@ class _GaleriaFotos extends StatelessWidget {
             ),
             child: Text(
               ok
-                  ? '$minimo de $minimo fotos ✓'
-                  : '${fotos.length} de $minimo fotos · obligatorias',
+                  ? '${fotos.length} de $minimo fotos ✓ (máx. $maximo)'
+                  : fotos.length > maximo
+                      ? '${fotos.length} fotos · quita ${fotos.length - maximo} (máx. $maximo)'
+                      : '${fotos.length} de $minimo fotos · obligatorias (máx. $maximo)',
               style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 13,
@@ -1376,7 +1416,7 @@ class _GaleriaFotos extends StatelessWidget {
           ),
         const SizedBox(height: 8),
         Text(
-          '${minimo > 0 ? 'Sube al menos $minimo foto${minimo == 1 ? '' : 's'} tuya${minimo == 1 ? '' : 's'} del local. ' : ''}'
+          '${minimo > 0 ? 'Sube entre $minimo y $maximo fotos tuyas del local. ' : 'Hasta $maximo fotos. '}'
           '${FotosPropias.porQue}${ia ? ' La IA detecta el deporte con la primera.' : ''}',
           style: const TextStyle(color: textoTenue, fontSize: 12.5),
         ),

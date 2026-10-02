@@ -206,11 +206,81 @@ class PropiedadService {
                   'solicitante_lng': solicitanteUbicacion.longitude,
               }))
           .timeout(const Duration(seconds: 15));
-      if (resp.statusCode != 200) return null;
-      return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+      if (resp.statusCode == 200) {
+        return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
+      }
+      // Rechazos con motivo (ubicación, fotos…) pueden llegar como 4xx: se
+      // devuelven como `{ok: false, error, …}` para mostrarlos bien.
+      return errorDeRespuesta(resp.body);
     } catch (_) {
       return null;
     }
+  }
+
+  /// Normaliza un cuerpo de error del backend (`{ok:false,error}`,
+  /// `{detail: {error…}}` o `{detail: "codigo"}`) a `{ok: false, error, …}`.
+  /// null si no trae un motivo reconocible.
+  static Map<String, dynamic>? errorDeRespuesta(String cuerpo) {
+    try {
+      final j = jsonDecode(cuerpo);
+      if (j is! Map) return null;
+      final m = Map<String, dynamic>.from(j);
+      if (m['error'] is String) return {...m, 'ok': false};
+      final d = m['detail'];
+      if (d is Map) {
+        final dm = Map<String, dynamic>.from(d);
+        if (dm['error'] is String) return {...dm, 'ok': false};
+      }
+      if (d is String && d.trim().isNotEmpty) {
+        return {'ok': false, 'error': d.trim()};
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Texto para el dueño cuando el backend rechaza un reclamo por un motivo
+  /// conocido (ubicación o fotos). null si el error no es de esos.
+  static ({String titulo, String mensaje})? motivoRechazo(
+      Map<String, dynamic>? r) {
+    if (r == null || r['ok'] != false) return null;
+    final err = (r['error'] ?? '').toString();
+    int? n(dynamic v) => v is num ? v.round() : int.tryParse('${v ?? ''}');
+    final srvMsg = (r['mensaje'] ?? '').toString().trim();
+    switch (err) {
+      case 'ubicacion_requerida':
+        return (
+          titulo: 'Necesitamos tu ubicación',
+          mensaje: srvMsg.isNotEmpty
+              ? srvMsg
+              : 'Para reclamar tu cancha necesitamos tu ubicación estando en '
+                  'el local. Activa la ubicación de tu celular y vuelve a '
+                  'intentarlo desde la cancha.',
+        );
+      case 'ubicacion_lejos':
+        final d = n(r['distancia_m']);
+        final mx = n(r['max_m']);
+        return (
+          titulo: 'Estás lejos del local',
+          mensaje: srvMsg.isNotEmpty
+              ? srvMsg
+              : 'Para reclamar tu cancha necesitamos tu ubicación estando en '
+                  'el local.'
+                  '${d != null ? ' Estás a $d m' : ''}'
+                  '${mx != null ? '${d != null ? ';' : ''} acércate a menos de $mx m.' : (d != null ? '.' : '')}',
+        );
+      case 'faltan_fotos_propias':
+        final faltan = n(r['faltan']);
+        final minimo = n(r['minimo']);
+        return (
+          titulo: 'Faltan fotos de tu local',
+          mensaje: srvMsg.isNotEmpty
+              ? srvMsg
+              : 'Para reclamar tu cancha sube fotos propias del local'
+                  '${minimo != null ? ' (mínimo $minimo)' : ''}.'
+                  '${faltan != null && faltan > 0 ? ' Te faltan $faltan.' : ''}',
+        );
+    }
+    return null;
   }
 
   /// Pide enviar un código al teléfono del local. Devuelve el resultado del
