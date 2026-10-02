@@ -116,7 +116,11 @@ class _ValidarReclamoScreenState extends State<ValidarReclamoScreen> {
       setState(() => _msg =
           '❌ Código inválido o el reclamo no está listo para validar.');
     } else {
-      setState(() => _msg = 'No se pudo: ${r['error'] ?? 'error'}');
+      // `mensaje` lo trae el backend para casos con explicación (p. ej.
+      // "faltan fotos propias del local").
+      setState(() => _msg = r['mensaje'] != null
+          ? '❌ ${r['mensaje']}'
+          : 'No se pudo: ${r['error'] ?? 'error'}');
     }
   }
 

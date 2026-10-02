@@ -112,6 +112,13 @@ class FakeDB:
                 self.canchas.pop(i); n += 1
         return n
 
+    def fotos_de_canchas(self, ids):
+        out = {}
+        for i in ids:
+            c = self.canchas.get(i)
+            out[i] = ([c["foto_url"]] if c and c.get("foto_url") else []) + (list(c.get("fotos") or []) if c else [])
+        return out
+
     def marcar_verificada(self, cancha_id, dueno, verificada, lat=None, lng=None):
         base = cancha_id.split("_")[0]
         n = 0
@@ -266,7 +273,7 @@ def db(monkeypatch):
                "actualizar_cancha", "bloquear", "reserva_de_dueno", "marcar_pagado", "borrar_reserva_manual",
                "academias_publicas", "academia", "insertar_matricula", "matricula", "academias_de_dueno", "academia_existe", "guardar_academia", "eliminar_academia", "matriculas_de_academias", "matriculas_de_pagador",
                "productos_de_vendedor", "producto_por_id", "guardar_producto", "eliminar_producto", "esta_verificado",
-               "insertar_canchas", "borrar_canchas", "marcar_verificada", "adoptar_cancha", "desadoptar_cancha"):
+               "insertar_canchas", "borrar_canchas", "marcar_verificada", "adoptar_cancha", "desadoptar_cancha", "fotos_de_canchas"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
     monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
     monkeypatch.setattr(config, "CULQI_SECRET_KEY", "sk_test_x")
@@ -1257,6 +1264,11 @@ def test_registrar_y_reclamar_cancha_desde_la_web_como_el_app(db, monkeypatch):
     monkeypatch.setattr(reclamos, "_notificar_admin", lambda *a, **k: None)
     monkeypatch.setattr(reclamos, "_notificar_reclamante_aprobado", lambda *a, **k: None)
     monkeypatch.setattr(reclamos, "_bienvenida_al_activar", lambda *a, **k: None)
+    # Fotos PROPIAS obligatorias (2 por defecto): se suben al bucket de la cancha.
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://sb.test")
+    monkeypatch.setattr(config, "SUPABASE_ANON_KEY", "anon")
+    stores.config.pop("reclamo_fotos_min", None)
+    sb = "https://sb.test/storage/v1/object/public/canchas"
     stores.reclamos.clear()
     cli = TestClient(app, base_url="https://testserver")
     # Sin sesión → login; con sesión → formulario prellenado desde una descubierta.
@@ -1274,7 +1286,8 @@ def test_registrar_y_reclamar_cancha_desde_la_web_como_el_app(db, monkeypatch):
     nid = _re.search(r'"id": "(u\d+)"', html).group(1)
     base = {"id": nid, "place": "gp_abc", "nombre_local": "Complejo Sol", "direccion": "Av. Sol 1", "lat": -12.1, "lng": -77.03, "zona": "Miraflores",
             "deportes": ["futbol", "tenis"], "modo": "separadas", "superficies": {"futbol": "Grass sintético", "tenis": "Arcilla"},
-            "precio_hora": 80, "hora_apertura": "07:00", "hora_cierre": "23:00", "duracion_slot_min": 60, "fotos": [],
+            "precio_hora": 80, "hora_apertura": "07:00", "hora_cierre": "23:00", "duracion_slot_min": 60,
+            "fotos": [f"{sb}/{nid}/web_1.jpg?v=1", f"{sb}/{nid}/web_2.jpg?v=2"],
             "whatsapp": "+51 987 654 321", "relacion": "administrador", "documento": "", "nota": "Lo administro yo", "sol_lat": -12.1001, "sol_lng": -77.0301}
     # Validaciones (mismas reglas que el app).
     for malo, campo in (({**base, "deportes": []}, "deportes"), ({**base, "superficies": {"futbol": "Grass sintético"}}, "deportes"),
@@ -1305,7 +1318,8 @@ def test_registrar_y_reclamar_cancha_desde_la_web_como_el_app(db, monkeypatch):
     _entrar_como(cli, monkeypatch, "otro@gmail.com", "Otro")
     html2 = cli.get("/anfitrion/nueva").text
     nid2 = _re.search(r'"id": "(u\d+)"', html2).group(1)
-    r2 = cli.post("/anfitrion/nueva", json={**base, "id": nid2, "modo": "unica", "superficie": "Loza", "deportes": ["futbol"]})
+    r2 = cli.post("/anfitrion/nueva", json={**base, "id": nid2, "modo": "unica", "superficie": "Loza", "deportes": ["futbol"],
+                                             "fotos": [f"{sb}/{nid2}/web_1.jpg", f"{sb}/{nid2}/web_2.jpg"]})
     assert r2.status_code == 409 and "otra persona" in r2.json()["error"]
     assert nid2 not in db.canchas and not any(x.solicitante_id == "otro@gmail.com" for x in stores.reclamos)
     # La torre aprueba (marcha blanca) → la NUBE queda verificada para la reclamada y su hermana.
@@ -1333,7 +1347,8 @@ def test_registrar_y_reclamar_cancha_desde_la_web_como_el_app(db, monkeypatch):
     html3 = cli.get("/anfitrion/nueva?cancha=c_pend").text
     assert "Reclama tu cancha" in html3 and "value='Club Raqueta'" in html3 and "value='60.00'" in html3 and '"existente": true' in html3
     r3 = cli.post("/anfitrion/nueva", json={**base, "id": "c_pend", "existente": True, "deportes": ["futbol"], "modo": "unica", "superficie": "Loza",
-                                             "nombre_local": "Club Raqueta", "lat": -12.09, "lng": -77.0, "nombre_cancha": "Loza Pendiente"})
+                                             "nombre_local": "Club Raqueta", "lat": -12.09, "lng": -77.0, "nombre_cancha": "Loza Pendiente",
+                                             "fotos": [f"{sb}/c_pend/web_1.jpg", f"{sb}/c_pend/web_2.jpg"]})
     assert r3.status_code == 200 and r3.json()["ids"] == ["c_pend"], r3.text
     assert db.canchas["c_pend"]["dueno"] == "nuevo@gmail.com" and db.canchas["c_pend"]["superficie"] == "Loza" and "c_pend" in db.canchas
     rec2 = [x for x in stores.reclamos if x.cancha_id == "c_pend"]
@@ -1621,7 +1636,11 @@ def test_agregar_cancha_a_local_desde_la_web_como_el_app(db, monkeypatch):
     verificación (local activo → activa al instante, sin otro reclamo); solo
     se pide deporte, piso, nombre, precio, horario y duración."""
     from web import catalogos
+    import re as _re
     monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://sb.test")
+    monkeypatch.setattr(config, "SUPABASE_ANON_KEY", "anon")
+    sb = "https://sb.test/storage/v1/object/public/canchas"
     cli = TestClient(app, base_url="https://testserver")
     # Sin sesión → a entrar. Cancha ajena → 404.
     assert cli.get("/anfitrion/cancha/c_lima/agregar", follow_redirects=False).status_code in (302, 303, 307)
@@ -1644,11 +1663,26 @@ def test_agregar_cancha_a_local_desde_la_web_como_el_app(db, monkeypatch):
     assert r["ok"] is False and "piso" in r["error"] and r["campo"] == "cancha"
     r = cli.post("/anfitrion/cancha/c_lima/agregar", json={"deporte": "tenis", "superficie": catalogos.SUPERFICIES["tenis"][0], "precio_hora": 0}).json()
     assert r["ok"] is False and r["campo"] == "precio"
+    # FOTOS PROPIAS (decisión del director, 2-oct-2026): el local no tiene ninguna
+    # → la página pide las que faltan y el servidor no agrega sin ellas.
+    assert "Fotos de tu local" in pag and "sube 2 más" in pag and "0 de 2 fotos" in pag
+    nid = _re.search(r'"nuevoId": "(u\d+)"', pag).group(1)
+    ok_tenis = {"deporte": "tenis", "superficie": catalogos.SUPERFICIES["tenis"][0], "precio_hora": 40,
+                "hora_apertura": "08:00", "hora_cierre": "22:00", "duracion_slot_min": 90}
+    r = cli.post("/anfitrion/cancha/c_lima/agregar", json=ok_tenis).json()
+    assert r["ok"] is False and r["campo"] == "fotos" and "fotos" in r["error"]
+    r = cli.post("/anfitrion/cancha/c_lima/agregar", json={**ok_tenis, "id": nid, "fotos": [
+        "https://lh3.googleusercontent.com/p/AF1Qip.jpg", f"{sb}/otra/x.jpg", f"{sb}/{nid}/web_1.jpg"]}).json()
+    assert r["ok"] is False and r["campo"] == "fotos"  # Google y carpeta ajena no cuentan
     # Otra cancha de OTRO deporte: hereda todo y nace verificada (el local ya está activo).
-    r = cli.post("/anfitrion/cancha/c_lima/agregar", json={"deporte": "tenis", "superficie": catalogos.SUPERFICIES["tenis"][0], "precio_hora": 40,
-                                                            "hora_apertura": "08:00", "hora_cierre": "22:00", "duracion_slot_min": 90}).json()
-    assert r["ok"] is True and r["verificada"] is True
+    mias = [f"{sb}/{nid}/web_1.jpg", f"{sb}/{nid}/web_2.jpg"]
+    r = cli.post("/anfitrion/cancha/c_lima/agregar", json={**ok_tenis, "id": nid, "fotos": mias}).json()
+    assert r["ok"] is True and r["verificada"] is True and r["id"] == nid
     nueva = db.canchas[r["id"]]
+    assert nueva["fotos"] == mias and nueva["foto_url"] == mias[0]
+    # Con el local ya con fotos propias, se heredan y no se piden más.
+    db.canchas["c_lima"]["fotos"] = [f"{sb}/c_lima/a.jpg", f"{sb}/c_lima/b.jpg"]
+    assert "Fotos de tu local" not in cli.get("/anfitrion/cancha/c_lima/agregar").text
     assert nueva["nombre"] == "Tenis 1" and nueva["club"] == "Club Raqueta" and nueva["deporte"] == "tenis" and nueva["deportes"] == ["tenis"]
     assert nueva["dueno"] == "dueno@x.com" and nueva["verificada"] is True and nueva["direccion"] == "Av. Aviación 123"
     assert nueva["lat"] == -12.09 and nueva["moneda"] == "S/" and nueva["precio_hora"] == 40 and nueva["duracion_slot_min"] == 90
@@ -1666,6 +1700,7 @@ def test_agregar_cancha_a_local_desde_la_web_como_el_app(db, monkeypatch):
     assert "<b>Club Raqueta</b>" in home and "4 canchas" in home and "Fútbol · Tenis" in home
     # Local aún en verificación → la nueva hereda "pendiente" (se activa con el local).
     db.canchas["c_gye"]["verificada"] = False
+    db.canchas["c_gye"]["fotos"] = [f"{sb}/c_gye/a.jpg", f"{sb}/c_gye/b.jpg"]
     r3 = cli.post("/anfitrion/cancha/c_gye/agregar", json={"deporte": "voley", "superficie": catalogos.SUPERFICIES["voley"][0], "precio_hora": 8}).json()
     assert r3["ok"] is True and r3["verificada"] is False and db.canchas[r3["id"]]["club"] == "Club Sur" and db.canchas[r3["id"]]["moneda"] == "$"
     assert "activará junto con el local" in cli.get(f"/anfitrion/canchas?agregada={r3['id']}").text
@@ -1742,6 +1777,10 @@ def test_servicios_extra_catalogo_global_por_local_y_por_persona(db, monkeypatch
     assert [(x["clave"], x["precio"]) for x in lima] == [("arbitro", 30.0), ("pecheras", 8.0), ("piscina", 15.0), ("entrada_general", 20.0)]
     assert db.canchas["c_lima"]["amenidades"] == ["parking"] and db.canchas["c_lima"]["club"] == "Club Raqueta"
     # Agregar una cancha al local hereda los del LOCAL (piscina, entrada) y no los de la cancha (árbitro).
+    # (el local necesita sus fotos PROPIAS para agregar canchas: decisión del director, 2-oct-2026)
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://sb.test")
+    db.canchas["c_lima"]["fotos"] = ["https://sb.test/storage/v1/object/public/canchas/c_lima/a.jpg",
+                                     "https://sb.test/storage/v1/object/public/canchas/c_lima/b.jpg"]
     r = cli.post("/anfitrion/cancha/c_lima/agregar", json={"deporte": "tenis", "superficie": "Arcilla", "precio_hora": 40}).json()
     assert r["ok"] and [x["clave"] for x in db.canchas[r["id"]]["servicios_extra"]] == ["piscina", "entrada_general"]
     # Sugerencia del dueño → torre.

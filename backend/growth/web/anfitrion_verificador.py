@@ -57,7 +57,7 @@ from propiedad import reclamos
 from propiedad import service as otp_svc
 from verificacion_fisica import service as vf_svc
 from web import almacen, catalogos, datos, ui
-from web.anfitrion import _ESTADO_RECLAMO, _sesion_o_entrar
+from web.anfitrion import _ESTADO_RECLAMO, _sesion_o_entrar, aviso_fotos_reclamo
 from web.router import PLAY_URL, e
 
 router = APIRouter(tags=["web-anfitrion-verificador"])
@@ -715,6 +715,7 @@ def pagina_verificacion(cancha_id: str, request: Request) -> HTMLResponse:
         + "</div></div>"
         f"{_pasos(r, stores.modo_aprobacion(cancha_id), bool(verificada), otp)}"
         f"{acciones}<div class='vf-msg' id='diag'></div></div>"
+        f"{'' if verificada or estado == 'reclamada_por_otro' else aviso_fotos_reclamo(email, c)}"
         f"{otp_html}"
         + ("" if verificada else
            f"<p class='vf-nota' style='text-align:center'>¿Dudas? Escríbenos por WhatsApp desde el pie de página o sigue tu solicitud en la "
