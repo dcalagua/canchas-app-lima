@@ -5375,7 +5375,9 @@ class AppState extends ChangeNotifier {
       final rapidas = await PlacesService.canchasCerca(centro,
           conFotos: false, radioMetros: radioBusquedaKm * 1000);
       _agregarDescubiertas(rapidas);
-      CanchasCacheRepo.guardar(rapidas); // cosecha (best-effort, sin await UI)
+      // Cosecha (best-effort, sin await UI). Las de OpenStreetMap NO entran:
+      // la cosecha es de Google y su conteo decide cuándo volver a consultarlo.
+      CanchasCacheRepo.guardar(rapidas.where((c) => !c.esOsm).toList());
     } catch (_) {
       // fail-safe: si Places no responde, quedan las cosechadas/registradas
     } finally {

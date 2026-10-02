@@ -48,7 +48,7 @@ from paises import _CAJAS, pais_de_coordenadas, moneda_de_pais, simbolo_de_moned
 from pagos import culqi
 from pagos import cargo_servicio as _cs
 from pagos import devoluciones as _dev
-from web import beneficios, catalogos, datos, descubrir, horarios, marca, pago_hospedado, sesion, ui
+from web import beneficios, catalogos, datos, descubrir, horarios, marca, osm, pago_hospedado, sesion, ui
 from web.ui import e
 
 router = APIRouter()
@@ -176,8 +176,17 @@ def _sin_google(c: dict) -> bool:
     return bool(est and est.get("sin_google"))
 
 
+def _es_osm(lugar_id) -> bool:
+    """Lugar de OpenStreetMap (`osm_n123`; el APK puede mandar `gp_osm_…`)."""
+    i = str(lugar_id or "")
+    return i.startswith("osm_") or i.startswith("gp_osm_")
+
+
 def _galeria(c: dict) -> str:
     fs = _fotos(c)
+    if not fs and _es_osm(c.get("id")):
+        # Lugar de OpenStreetMap: nunca se le pide foto a Google.
+        return f"<div class='galeria una' id='galeria'><div class='sinfoto principal'>{_deporte(c.get('deporte'))[1]}</div></div>"
     if not fs and _sin_google(c):
         # Local cuyo plazo para subir fotos propias venció: placeholder, sin
         # pedirle nada a Google (`propiedad/fotos_locales.py`).
@@ -594,13 +603,17 @@ _JS_EXPLORAR = r"""
     // este re-pintado (nunca se "esconde" una foto ya mostrada).
     var fs = (c.fotos && c.fotos.length) ? c.fotos : (fotosConocidas[c.id] || []);
     if(fs.length) fotosConocidas[c.id] = fs;
-    var foto = fs.length ? fs.slice(0, 3).map(function(u){ return '<img src="' + esc(u) + '" alt="" loading="lazy">'; }).join('') : '<div class="sinfoto" data-buscar="1">' + (c.emoji || '🏟️') + '</div>';
+    // OpenStreetMap: nunca se pide foto a Google (placeholder del deporte) y
+    // va la atribución de la licencia ODbL.
+    var esOsm = c.fuente === 'osm';
+    var foto = fs.length ? fs.slice(0, 3).map(function(u){ return '<img src="' + esc(u) + '" alt="" loading="lazy">'; }).join('') : '<div class="sinfoto"' + (esOsm ? '' : ' data-buscar="1"') + '>' + (c.emoji || '🏟️') + '</div>';
     var extra = fs.length > 1 ? '<button class="flecha izq" aria-label="Anterior">‹</button><button class="flecha der" aria-label="Siguiente">›</button><div class="dots">' + fs.slice(0, 3).map(function(){ return '<i></i>'; }).join('') + '</div>' : '';
     var hrefLugar = '/lugar/' + encodeURIComponent(c.id) + '?nombre=' + encodeURIComponent(c.nombre) + '&direccion=' + encodeURIComponent(c.direccion) + '&lat=' + c.lat + '&lng=' + c.lng + '&deporte=' + encodeURIComponent(c.deporte);
     return '<a class="lst pend" href="' + hrefLugar + '" data-id="' + esc(c.id) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-deps="' + esc(c.deporte) + '" data-nombre="' + esc(c.nombre) + '" data-sub="' + esc(c.direccion) + '" data-precio="' + esc(c.deporte_nombre) + '" data-t="' + esc((c.nombre + ' ' + c.direccion).toLowerCase()) + '" data-q="' + esc(c.q || '') + '">' +
       '<div class="foto"><div class="fotos">' + foto + '</div><span class="badge pend">Aún sin registrar</span>' + extra + '</div>' +
       '<div class="lb"><div class="l1"><b>' + esc(c.nombre) + '</b><span class="rate">' + esc(c.deporte_nombre) + '</span></div>' +
-      '<div class="l2">' + esc(c.direccion) + '</div><div class="l2"><span class="dist">' + (c.km != null ? 'a ' + fmtKm(c.km) : '') + '</span></div>' +
+      '<div class="l2">' + esc(c.direccion) + '</div><div class="l2"><span class="dist">' + (c.km != null ? 'a ' + fmtKm(c.km) : '') + '</span>' +
+      (esOsm ? ' <span class="wa osm-atrib" data-wa="https://www.openstreetmap.org/copyright" style="font-size:11px;color:#717171">© OpenStreetMap</span>' : '') + '</div>' +
       '<div class="l3"><span class="app">📲 Reservar en la app</span> <span class="app">📍 <span class="ir" data-lat="' + c.lat + '" data-lng="' + c.lng + '">Cómo llegar</span></span> ' +
       '<span class="app reclamar" data-id="' + esc(c.id) + '" data-nombre="' + esc(c.nombre) + '" data-dir="' + esc(c.direccion) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-dep="' + esc(c.deporte) + '">🏷️ ¿Es tuya? Reclámala</span></div></div></a>';
   }
@@ -664,7 +677,7 @@ _JS_EXPLORAR = r"""
     var pts = [];
     cards().forEach(function(c){
       var lat = parseFloat(c.dataset.lat), lng = parseFloat(c.dataset.lng); if(!lat && !lng) return;
-      if(c.classList.contains('pend') && c.dataset.id.indexOf('gp_') === 0) return;
+      if(c.classList.contains('pend') && (c.dataset.id.indexOf('gp_') === 0 || c.dataset.id.indexOf('osm_') === 0)) return;
       pts.push([lat, lng]);
       var ok = c.dataset.ok === '1', esAca = c.classList.contains('aca');
       var m = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio' + (ok ? '' : ' pend') + (esAca ? ' aca' : '') + '">' + c.dataset.precio + '</span>', iconSize: null})});
@@ -1354,7 +1367,11 @@ def foto_web(id: str = "", nombre: str = "", club: str = "", lat: float = 0.0, l
     muestra siempre la primera foto, como el app). Para una cancha registrada
     (`id`) usa sus fotos si las tiene; si no, resuelve las de Google en su
     ubicación (mismo criterio que `enriquecerSembradas` del APK). Para una
-    descubierta (`gp_…`) o cualquier lugar, por nombre + coordenadas."""
+    descubierta (`gp_…`) o cualquier lugar, por nombre + coordenadas.
+    Un lugar de OpenStreetMap (`osm_…`) NUNCA pide nada a Google: sin foto
+    (placeholder del deporte), sin tocar la base ni la Edge."""
+    if _es_osm(id):
+        return {"ok": True, "fotos": [], "origen": "osm"}
     c = datos.cancha(id) if id and not id.startswith("gp_") else None
     if c:
         propias = _fotos(c)
@@ -2073,7 +2090,8 @@ def pagina_lugar(request: Request, lugar_id: str, nombre: str = "", direccion: s
     lugar, cómo llegar, "Reservar en la app" y, en grande, "¿Es tuya?
     Reclámala" → registro web prellenado. Si el lugar ya fue registrado, va a
     su ficha real."""
-    if not lugar_id.startswith("gp_") or not nombre.strip() or not (lat or lng):
+    es_osm = lugar_id.startswith("osm_")
+    if not (lugar_id.startswith("gp_") or es_osm) or not nombre.strip() or not (lat or lng):
         r = _no_encontrada("Lugar no disponible"); r.status_code = 404
         return r
     ses = sesion.de_request(request)
@@ -2088,11 +2106,14 @@ def pagina_lugar(request: Request, lugar_id: str, nombre: str = "", direccion: s
         "<div style='display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-top:16px'>"
         f"<div><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><span class='pill gris'>{ui.bandera(pais)} {e(_deporte(dep)[0]) if dep else 'Cancha'}</span>"
         "<span class='pill gris'>Aún sin registrar</span></div>"
-        f"<h1 style='margin-top:8px'>{e(nombre)}</h1><p class='sub'>{e(direccion) or 'Lugar encontrado en Google Maps'}</p></div></div>"
+        f"<h1 style='margin-top:8px'>{e(nombre)}</h1><p class='sub'>{e(direccion) or ('Lugar del mapa de OpenStreetMap' if es_osm else 'Lugar encontrado en Google Maps')}</p></div></div>"
         "<ul class='datos'>"
         f"<li>📍 <span>{e(direccion or nombre)} · <a href='{_maps(c)}' target='_blank' rel='noopener'>Abrir en Google Maps</a> · "
         f"<a href='https://www.google.com/maps/dir/?api=1&destination={lat},{lng}' target='_blank' rel='noopener'>Indicaciones</a></span></li>"
-        "<li>🕒 <span>Horarios y precios aún no publicados: este local todavía no está en Pichangol.</span></li></ul></div>"
+        "<li>🕒 <span>Horarios y precios aún no publicados: este local todavía no está en Pichangol.</span></li></ul>"
+        + (f"<p class='osm-atrib' style='font-size:12px;color:#717171;margin-top:8px'>Datos del lugar: "
+           f"<a href='{osm.ATRIBUCION_URL}' target='_blank' rel='noopener'>© colaboradores de OpenStreetMap</a></p>" if es_osm else "")
+        + "</div>"
         "<div class='panel' style='margin-top:20px;border:1px solid var(--verde)'><h2>¿Es tuya esta cancha?</h2>"
         "<p class='sub'>Publícala en Pichangol en 5 minutos: horarios, precios y fotos. Confirmamos que eres el dueño y empiezas a recibir reservas y pagos en línea.</p>"
         f"<div class='acciones'><a class='btn' href='/anfitrion/nueva?{q}'>🏷️ Reclámala y recibe reservas</a></div></div>"

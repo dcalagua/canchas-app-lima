@@ -668,7 +668,9 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                               ? 'Desde ${sel.monedaSimbolo} '
                                   '${precio(sel.precioVisibleDesde!)} ${sel.todasPorTurno ? '/turno' : '/h'} · toca para reservar'
                               : 'Reservable · toca para ver')
-                          : 'En Google · toca para ver y reclamar',
+                          : (sel.principal.esOsm
+                              ? 'En el mapa · toca para ver y reclamar'
+                              : 'En Google · toca para ver y reclamar'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(

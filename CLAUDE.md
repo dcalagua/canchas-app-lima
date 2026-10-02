@@ -3920,7 +3920,37 @@ antes del corte.
   fotos por lugar en `pichangol_lugares_fotos` 30 días para todos y devuelve
   URLs públicas sin llave; una sola petición en vuelo por lugar, caché de
   sesión, fail-safe []. Los APK anteriores siguen pidiéndolas a Google hasta
-  actualizarse.
+  actualizarse. **(6) OPENSTREETMAP como COMPLEMENTO permanente (director,
+  2-oct-2026: "siembra OSM solo con nombre… sin que afecte lo actual"):**
+  Google sigue siendo la fuente principal (a OSM le faltan 27-41 % de los
+  locales comerciales); OSM suma gratis y para siempre (ODbL, atribución "©
+  colaboradores de OpenStreetMap") las canchas CON NOMBRE que Google no trajo.
+  Datos: `backend/growth/web/osm_canchas.json.gz` (2712 filas de 12 ciudades
+  PE/EC/BO, `tool/medicion_osm.py` en Actions) → `web/osm.py::procesar`: sport
+  → deporte Pichangol (multi → del nombre o fútbol; vacío → `descubrir.
+  deporte_de`; deportes que no reservamos, fuera), descarta nombres genéricos
+  ("Cancha 2", "Losa deportiva") y los descartes de la heurística + lozas/
+  polifuncionales/colegios del APK, agrupa mismo nombre a ≤150 m → **1468
+  locales**. Web: `descubrir_cerca` las SUMA tras Google/cosecha (tope propio
+  40, nunca desplazan un resultado de Google), sin duplicar Google, cosecha ni
+  registradas (≤150 m o mismo nombre); `fuente: "osm"`, id `osm_…`; jamás van
+  a la cosecha; `/web/foto` con `osm_` responde `origen: osm` sin tocar Google
+  ni la Edge; tarjeta sin `data-buscar` + "© OpenStreetMap"; `/lugar/osm_…`
+  funciona (Cómo llegar, Reclámala) con atribución. Tabla
+  `pichangol_canchas_osm` (SQL `docs/piloto/supabase_canchas_osm.sql`, RLS
+  lectura pública) que el backend siembra al arrancar en el hilo `pcg-osm`
+  SOLO si está vacía o cambió el archivo (`stores.config[
+  osm_semilla_version]`, log `[osm]`). Edge `places-cerca`: SOLO con `osm=1`
+  (APK nuevo) suma hasta 60 OSM del radio en formato place (`fuente: 'osm'`,
+  `deporte`), nunca las guarda en `pichangol_places_consultas`; sin `osm=1` la
+  respuesta es idéntica (APKs viejos tratarían el id como de Google). APK:
+  `Cancha.esOsm`, id `osm_…` (nunca `gp_`), deporte de la Edge, sin fotos ni
+  llamadas a Google, fuera de la cosecha (no infla su conteo de ≥8), badge "◎
+  EN EL MAPA" + `widgets/atribucion_osm.dart`; si la Edge trae solo OSM se
+  hace el mismo fallback directo a Google de siempre y se suman. Términos
+  7-bis atribuyen OSM. En tests OSM va apagado por defecto
+  (`tests/conftest.py`). **Pendiente:** correr el SQL y redesplegar la Edge en
+  cada ambiente (PRD con autorización). Test `tests/test_canchas_osm.py`.
 - **Explorar carga rápida (idea del usuario, para más adelante):**
   1. **GPS colgado con mala señal:** Explorar se queda en "Detectando tu
      ubicación…" indefinidamente. Fix: timeout al GPS + caer a última ubicación

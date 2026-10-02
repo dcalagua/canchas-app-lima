@@ -540,6 +540,10 @@ class Cancha {
   /// verificada (evita reservas en canchas reclamadas por alguien sin validar).
   bool get reservable => registrada && verificada;
 
+  /// Lugar de OpenStreetMap (`osm_…`, aún sin registrar): datos © colaboradores
+  /// de OpenStreetMap (ODbL). Nunca se le piden fotos ni detalles a Google.
+  bool get esOsm => id.startsWith('osm_');
+
   /// Reclamada/registrada pero aún sin verificar la propiedad del dueño.
   bool get pendienteVerificacion => registrada && !verificada;
 
