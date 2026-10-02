@@ -1,55 +1,62 @@
-"""Medición de canchas en OpenStreetMap (oct-2026, pedido del director).
+"""Siembra de canchas CON NOMBRE desde OpenStreetMap (oct-2026, director).
 
-Cuenta las canchas (`leisure=pitch`) por ciudad y vuelca, comprimidas en el
-log, las de las zonas que se comparan contra lo que ya devolvió Google. Corre
-en GitHub Actions (el entorno de desarrollo no alcanza Overpass)."""
+Corre en GitHub Actions (el entorno de desarrollo no alcanza Overpass) y deja
+en el log, comprimido, [lat, lng, deporte, nombre, ciudad, osm_id] de cada
+cancha (`leisure=pitch`) o complejo (`leisure=sports_centre`) que tenga
+nombre. Datos © colaboradores de OpenStreetMap (ODbL)."""
 import base64, gzip, json, time, urllib.parse, urllib.request
-from collections import Counter
 
 OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter"]
 CIUDADES = {  # sur, oeste, norte, este
-    "lima_metropolitana": (-12.40, -77.20, -11.75, -76.60),
-    "quito": (-0.40, -78.62, 0.05, -78.35),
-    "guayaquil": (-2.30, -80.05, -2.03, -79.85),
-    "la_paz_el_alto": (-16.62, -68.25, -16.40, -68.00),
-    "santa_cruz": (-17.90, -63.30, -17.70, -63.08),
+    "lima": (-12.55, -77.20, -11.70, -76.60), "arequipa": (-16.50, -71.65, -16.30, -71.45),
+    "trujillo": (-8.20, -79.10, -8.02, -78.95), "chiclayo": (-6.85, -79.90, -6.70, -79.78),
+    "piura": (-5.25, -80.72, -5.13, -80.58), "cusco": (-13.58, -72.02, -13.48, -71.88),
+    "quito": (-0.38, -78.60, -0.02, -78.38), "guayaquil": (-2.30, -80.05, -2.03, -79.85),
+    "cuenca": (-2.95, -79.08, -2.84, -78.94),
+    "la_paz_el_alto": (-16.62, -68.25, -16.40, -68.00), "santa_cruz": (-17.90, -63.30, -17.70, -63.08),
     "cochabamba": (-17.45, -66.25, -17.33, -66.08),
 }
-COMPARAR = {"lima_cmp": (-12.20, -77.13, -11.88, -76.65), "quito_cmp": (-0.30, -78.58, -0.05, -78.40)}
+FUERA = {"golf", "skateboard", "equestrian", "shooting", "motor", "karting", "athletics", "running", "swimming"}
 
 
 def consulta(bbox):
     s, w, n, e = bbox
-    q = f'[out:json][timeout:180];(nwr["leisure"="pitch"]({s},{w},{n},{e});nwr["leisure"="sports_centre"]({s},{w},{n},{e}););out center tags;'
+    q = (f'[out:json][timeout:240];(nwr["leisure"="pitch"]["name"]({s},{w},{n},{e});'
+         f'nwr["leisure"="sports_centre"]["name"]({s},{w},{n},{e}););out center tags;')
     for url in OVERPASS:
-        for intento in range(3):
+        for _ in range(3):
             try:
                 req = urllib.request.Request(url, data=urllib.parse.urlencode({"data": q}).encode(),
-                                             headers={"User-Agent": "Pichangol-medicion/1.0"})
-                with urllib.request.urlopen(req, timeout=240) as r:
+                                             headers={"User-Agent": "Pichangol-semilla/1.0"})
+                with urllib.request.urlopen(req, timeout=300) as r:
                     return json.load(r)["elements"]
             except Exception as ex:  # noqa: BLE001
                 print("reintento", url, ex, flush=True)
-                time.sleep(15)
-    return []
+                time.sleep(20)
+    return None
 
 
-def compacto(el):
-    c = el.get("center") or {"lat": el.get("lat"), "lon": el.get("lon")}
-    t = el.get("tags", {})
-    return [round(c["lat"], 5), round(c["lon"], 5), t.get("leisure", ""), t.get("sport", ""), t.get("name", "")[:40],
-            t.get("access", "")]
-
-
-for nombre, bbox in {**CIUDADES, **COMPARAR}.items():
+todo = []
+for ciudad, bbox in CIUDADES.items():
     els = consulta(bbox)
-    pitch = [x for x in els if x.get("tags", {}).get("leisure") == "pitch"]
-    centros = [x for x in els if x.get("tags", {}).get("leisure") == "sports_centre"]
-    deportes = Counter((x.get("tags", {}).get("sport") or "sin_deporte").split(";")[0] for x in pitch)
-    con_nombre = sum(1 for x in pitch + centros if x.get("tags", {}).get("name"))
-    print(f"### {nombre}: canchas={len(pitch)} centros={len(centros)} con_nombre={con_nombre} deportes={deportes.most_common(8)}", flush=True)
-    if nombre in COMPARAR:
-        blob = base64.b64encode(gzip.compress(json.dumps([compacto(x) for x in els]).encode())).decode()
-        for i in range(0, len(blob), 3000):
-            print(f"@@{nombre}@@{i // 3000}@@{blob[i:i + 3000]}", flush=True)
-    time.sleep(10)
+    if els is None:
+        print(f"### {ciudad}: FALLO", flush=True)
+        continue
+    n = 0
+    for el in els:
+        t = el.get("tags", {})
+        dep = (t.get("sport") or "").split(";")[0].strip().lower()
+        if dep in FUERA:
+            continue
+        c = el.get("center") or {"lat": el.get("lat"), "lon": el.get("lon")}
+        if c.get("lat") is None:
+            continue
+        todo.append([round(c["lat"], 6), round(c["lon"], 6), dep, t["name"][:80], ciudad, f"{el['type'][0]}{el['id']}",
+                     t.get("leisure", "")])
+        n += 1
+    print(f"### {ciudad}: {n}", flush=True)
+    time.sleep(8)
+blob = base64.b64encode(gzip.compress(json.dumps(todo, ensure_ascii=False).encode())).decode()
+for i in range(0, len(blob), 3000):
+    print(f"@@osm@@{i // 3000}@@{blob[i:i + 3000]}", flush=True)
+print("### total", len(todo), flush=True)
