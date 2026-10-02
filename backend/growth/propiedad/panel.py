@@ -2191,6 +2191,20 @@ _HTML = r"""<!DOCTYPE html>
     padding:12px 0 4px;border-top:1px solid var(--border)}
   .side-cred .ebim{color:var(--green-deep);font-size:11px}
   .colmain{flex:1;min-width:0;display:flex;flex-direction:column}
+  /* Menú lateral COLAPSABLE (pedido del director, 2-oct-2026): ☰ lo deja en
+     solo íconos y gana espacio; la elección se recuerda en este navegador. */
+  .side{transition:width .18s ease}
+  .tb-menu{font-size:17px;padding:6px 11px;line-height:1}
+  @media(min-width:901px){
+    .shell.side-mini .side{width:68px;padding:16px 8px}
+    .shell.side-mini .side-brand{justify-content:center;padding:4px 0 14px}
+    .shell.side-mini .side-brand > div:not(.pin),.shell.side-mini .side-cred,.shell.side-mini .topnav-tab .tx{display:none}
+    .shell.side-mini .topnav-tab{justify-content:center;padding-left:0;padding-right:0}
+    .shell.side-mini .topnav-tab .ico{margin:0;font-size:19px}
+    .shell.side-mini .topnav-tab{position:relative}
+    .shell.side-mini .topnav-tab .badge{position:absolute;top:2px;right:4px;margin:0}
+  }
+  @media(max-width:900px){#btnSide{display:none!important}}
   .main{flex:1;min-width:0}
   .page-h{font-family:var(--serif);font-size:29px;font-weight:700;letter-spacing:-.01em;
     color:var(--ink);margin:0 0 18px;line-height:1.15}
@@ -2516,20 +2530,21 @@ _HTML = r"""<!DOCTYPE html>
       </div>
     </div>
     <nav class="nav" id="topnav">
-      <button class="topnav-tab on" data-sec="resumen" onclick="mostrarSeccion('resumen')"><span class="ico">📊</span> Resumen</button>
-      <button class="topnav-tab" data-sec="reclamos" onclick="mostrarSeccion('reclamos')"><span class="ico">📋</span> Reclamos</button>
-      <button class="topnav-tab" data-sec="operacion" onclick="mostrarSeccion('operacion')"><span class="ico">✅</span> Operación</button>
-      <button class="topnav-tab" data-sec="cobros" onclick="mostrarSeccion('cobros')"><span class="ico">💳</span> Cobros</button>
-      <button class="topnav-tab" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')"><span class="ico">💸</span> Liquidaciones</button>
-      <button class="topnav-tab" data-sec="disputas" onclick="mostrarSeccion('disputas')"><span class="ico">⚖️</span> Disputas</button>
-      <button class="topnav-tab" data-sec="identidad" onclick="mostrarSeccion('identidad')"><span class="ico">🪪</span> Identidad</button>
-      <button class="topnav-tab" data-sec="comunicacion" onclick="mostrarSeccion('comunicacion')"><span class="ico">💬</span> Comunicación</button>
-      <button class="topnav-tab" data-sec="pruebas" onclick="mostrarSeccion('pruebas')"><span class="ico">🧪</span> Pruebas</button>
+      <button class="topnav-tab on" data-sec="resumen" onclick="mostrarSeccion('resumen')" title="Resumen"><span class="ico">📊</span> <span class="tx">Resumen</span></button>
+      <button class="topnav-tab" data-sec="reclamos" onclick="mostrarSeccion('reclamos')" title="Reclamos"><span class="ico">📋</span> <span class="tx">Reclamos</span></button>
+      <button class="topnav-tab" data-sec="operacion" onclick="mostrarSeccion('operacion')" title="Operación"><span class="ico">✅</span> <span class="tx">Operación</span></button>
+      <button class="topnav-tab" data-sec="cobros" onclick="mostrarSeccion('cobros')" title="Cobros"><span class="ico">💳</span> <span class="tx">Cobros</span></button>
+      <button class="topnav-tab" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')" title="Liquidaciones"><span class="ico">💸</span> <span class="tx">Liquidaciones</span></button>
+      <button class="topnav-tab" data-sec="disputas" onclick="mostrarSeccion('disputas')" title="Disputas"><span class="ico">⚖️</span> <span class="tx">Disputas</span></button>
+      <button class="topnav-tab" data-sec="identidad" onclick="mostrarSeccion('identidad')" title="Identidad"><span class="ico">🪪</span> <span class="tx">Identidad</span></button>
+      <button class="topnav-tab" data-sec="comunicacion" onclick="mostrarSeccion('comunicacion')" title="Comunicación"><span class="ico">💬</span> <span class="tx">Comunicación</span></button>
+      <button class="topnav-tab" data-sec="pruebas" onclick="mostrarSeccion('pruebas')" title="Pruebas"><span class="ico">🧪</span> <span class="tx">Pruebas</span></button>
     </nav>
     <div class="side-cred">Una solución de <span class="ebim">EBIM</span></div>
   </aside>
   <div class="colmain">
   <header class="topbar">
+    <button class="tb-btn tb-menu" id="btnSide" onclick="alternarSide()" title="Ocultar / mostrar el menú" aria-label="Ocultar o mostrar el menú">☰</button>
     <div class="tb-title" id="tbTitle">Resumen</div>
     <div class="sp"></div>
     <button class="tb-btn" onclick="cargar();cargarLiquidaciones()" title="Actualizar">↻ <span class="lbl">Actualizar</span></button>
@@ -2782,6 +2797,13 @@ let fotosMax = 5;         // tope de fotos del formulario de reclamo
 
 function tok(){ return localStorage.getItem('pichangol_admin_tok') || ''; }
 function headers(){ return {'Content-Type':'application/json','X-Admin-Token':tok()}; }
+function alternarSide(forzar){
+  const sh = document.querySelector('#app .shell'); if(!sh) return;
+  const mini = forzar === undefined ? !sh.classList.contains('side-mini') : !!forzar;
+  sh.classList.toggle('side-mini', mini);
+  try{ localStorage.setItem('pichangol_side_mini', mini ? '1' : '0'); }catch(e){}
+}
+document.addEventListener('DOMContentLoaded', ()=>{ try{ if(localStorage.getItem('pichangol_side_mini')==='1') alternarSide(true); }catch(e){} });
 
 let conToken = false; // modo respaldo: entrar con el token clásico
 
