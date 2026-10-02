@@ -5152,9 +5152,12 @@ function renderModeloNegocio(sim){
       <span class="mn-tab-ico">${ico}</span><span class="mn-tab-txt"><b>${tit}</b><small>${sub}</small></span>
       ${vig===m?'<span class="mn-vig">● En uso</span>':''}</button>`;
   const chips = ['PEN','USD','BOB'].map(m=>`<button type="button" class="mn-chip ${m===mnMon?'on':''}" onclick="mnMon='${m}';cargarModeloNegocio()">${mnCfg.monedas[m].simbolo} · ${m}</button>`).join('');
-  const inp = (k, lab, ayuda, v, grande) => `<label class="mn-campo ${grande?'grande':''}"><span>${lab}</span>
-      <input id="mn_${k}" type="number" min="0" step="0.1" value="${v}" oninput="mnSimular()">
-      ${ayuda?`<small>${ayuda}</small>`:''}</label>`;
+  const inp = (k, lab, ayuda, v) => { const paso = MN_PASO[k]||0.1, max = k==='reparto_cliente_pct'?100:999;
+    return `<div class="mn-row"><label class="mn-lab" for="mn_${k}"><b>${lab}</b>${ayuda?`<small>${ayuda}</small>`:''}</label>
+      <div class="mn-num"><button type="button" aria-label="Bajar" onclick="mnPaso('${k}',-${paso})">−</button>
+        <input id="mn_${k}" type="number" inputmode="decimal" min="0" max="${max}" step="${paso}" value="${v}" oninput="mnSimular()">
+        <span class="mn-suf">%</span>
+        <button type="button" aria-label="Subir" onclick="mnPaso('${k}',${paso})">+</button></div></div>`; };
   const usar = m => vig===m
       ? `<span class="mn-ok">✓ Este es el modelo en uso para las reservas</span>`
       : `<button class="btn-ap" onclick="usarModelo('${m}')">Usar el modelo ${m} desde ahora</button>`;
@@ -5180,10 +5183,9 @@ function renderModeloNegocio(sim){
     cuerpo = `<div class="mn-grid">
       <div class="mn-col">
         <div class="mn-h">Lo que pones tú <span class="mn-chips">${chips}</span></div>
-        <div class="mn-dos">${MN_CAMPOS_OP.map(([k,l,a])=>inp(k,l,(k==='reparto_cliente_pct'?`<span id="mn_rep_txt">El dueño paga el ${(100-(+p[k]||0)).toFixed(1).replace(/\.0$/,'')} % restante</span>`:a),p[k],true)).join('')}</div>
+        <div class="mn-filas">${MN_CAMPOS_OP.map(([k,l,a])=>inp(k,l,(k==='reparto_cliente_pct'?`<span id="mn_rep_txt">El dueño paga el ${(100-(+p[k]||0)).toFixed(1).replace(/\.0$/,'')} % restante</span>`:a),p[k])).join('')}</div>
         <div class="mn-h" style="margin-top:18px">Comisión total de Culqi <small>(tarifas sinceradas de Culqi · sobre el precio de la cancha)</small></div>
-        <div class="mn-dos">${pas}
-</div>
+        <div class="mn-filas">${pas}</div>
         <div class="mn-nota">Ecuador y Bolivia arrancan con las tasas de Perú (IVA 15 % y 13 %): pon las tarifas reales de PayPhone y Libélula. En efectivo no hay pasarela: solo se cobra la comisión al dueño.</div>
         <div class="mn-acc"><button class="btn-sec" onclick="guardarModeloNegocio(false)">Guardar comisiones</button>
           ${vig==='2'?usar('2'):`<button class="btn-ap" onclick="guardarModeloNegocio(true)">Guardar y usar el modelo 2</button>`}
@@ -5210,11 +5212,19 @@ function renderModeloNegocio(sim){
     .mn-chips{display:flex;gap:6px;flex-wrap:wrap}
     .mn-chip{padding:6px 12px;border-radius:999px;border:1px solid #E4E4E4;background:#fff;font-weight:800;cursor:pointer;font-size:12.5px}
     .mn-chip.on{border-color:#0B8A3E;background:#E7F6EF}
-    .mn-dos{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:12px}
-    .mn-campo{display:grid;gap:4px;font-size:12.5px;font-weight:700}
-    .mn-campo input,.mn-campo select{padding:9px 10px;border-radius:10px;border:1px solid var(--border);font-size:14px;font-family:inherit;width:100%}
-    .mn-campo.grande input{font-size:20px;font-weight:800;padding:10px 12px}
-    .mn-campo small{font-weight:400;color:#889}
+    .mn-filas{border:1px solid var(--border);border-radius:14px;overflow:hidden}
+    .mn-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 14px;border-bottom:1px solid #F1F1F1}
+    .mn-row:last-child{border-bottom:0}
+    .mn-lab{display:grid;gap:2px;min-width:0;cursor:pointer}
+    .mn-lab b{font-size:13.5px;color:#222} .mn-lab small{font-size:12px;color:#889;font-weight:400}
+    .mn-num{display:flex;align-items:center;flex:none;border:1px solid #E4E4E4;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+    .mn-num button{width:30px;height:30px;border:0;background:none;border-radius:999px;font-size:17px;font-weight:700;color:#444;cursor:pointer;line-height:1}
+    .mn-num button:hover{background:#F2F2F2}
+    .mn-num input{width:52px;border:0;text-align:right;font-size:15px;font-weight:800;font-family:inherit;padding:4px 0;background:none;-moz-appearance:textfield}
+    .mn-num input::-webkit-outer-spin-button,.mn-num input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+    .mn-num input:focus{outline:none} .mn-num:focus-within{border-color:#0B8A3E;box-shadow:0 0 0 3px #E7F6EF}
+    .mn-suf{font-size:13px;font-weight:700;color:#667;padding:0 4px 0 2px}
+    @media(max-width:480px){.mn-row{flex-wrap:wrap}.mn-num{margin-left:auto}}
     .mn-nota{font-size:12px;color:#889;margin-top:10px}
     .mn-acc{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
     .mn-ok{color:#0B8A3E;font-weight:800;font-size:13.5px}
@@ -5242,6 +5252,13 @@ function renderModeloNegocio(sim){
     ${cuerpo}
   </div>`;
   pintarSimModelo(sim);
+}
+const MN_PASO = {reparto_cliente_pct:5, cliente_pct:0.1, dueno_pct:0.1, banco_pct:0.1, pasarela_pct:0.1, igv_pct:1};
+function mnPaso(k, d){
+  const el = document.getElementById('mn_'+k); if(!el) return;
+  const max = k==='reparto_cliente_pct' ? 100 : 999;
+  el.value = String(Math.min(max, Math.max(0, Math.round(((+el.value||0)+d)*100)/100)));
+  mnSimular();
 }
 function mnSimular(){
   clearTimeout(mnTimer);
