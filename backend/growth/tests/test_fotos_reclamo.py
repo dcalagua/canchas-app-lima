@@ -35,15 +35,22 @@ def _base(monkeypatch):
     monkeypatch.setattr(reclamos, "_notificar_admin", lambda *a, **k: None)
     monkeypatch.setattr(reclamos, "_notificar_reclamante_aprobado", lambda *a, **k: None)
     monkeypatch.setattr(reclamos, "_bienvenida_al_activar", lambda *a, **k: None)
-    stores.config.pop("reclamo_fotos_min", None)
+    # Estas pruebas fijan el mínimo en 2 (el default ahora es 3).
+    stores.config["reclamo_fotos_min"] = "2"
+    stores.config.pop("reclamo_fotos_max", None)
+    stores.config["exigir_ubicacion_reclamo"] = "0"
     stores.reclamos.clear()
     yield
     stores.config.pop("reclamo_fotos_min", None)
+    stores.config.pop("reclamo_fotos_max", None)
+    stores.config["exigir_ubicacion_reclamo"] = "0"
     stores.reclamos.clear()
 
 
 def test_que_cuenta_como_foto_propia():
-    assert fotos_reclamo.minimo() == 2  # default
+    stores.config.pop("reclamo_fotos_min", None)
+    assert fotos_reclamo.minimo() == 3 and fotos_reclamo.maximo() == 5  # defaults (2-oct-2026)
+    stores.config["reclamo_fotos_min"] = "2"
     assert fotos_reclamo.es_foto_propia(f"{SB}/u1700000000000/web_1.jpg?v=3", "u1700000000000")
     assert fotos_reclamo.es_foto_propia(f"{SB}/u1700000000000.jpg?v=1", "u1700000000000")  # portada del APK
     assert fotos_reclamo.es_foto_propia(f"{SB}/u1700000000000/app_1.jpg", "u1700000000000_tenis")  # hermana
@@ -149,11 +156,11 @@ def test_base_caida_no_activa_a_ciegas(db, monkeypatch):
 def test_minimo_cero_desactiva_todo_y_se_configura_en_la_torre(db, monkeypatch):
     cli = TestClient(app, base_url="https://testserver")
     h = {"X-Admin-Token": "adm"}
-    assert cli.get("/admin/api/reclamo-fotos", headers=h).json() == {"minimo": 2, "max": 8}
+    assert cli.get("/admin/api/reclamo-fotos", headers=h).json() == {"minimo": 2, "maximo": 5, "max": 8}
     assert cli.get("/admin/api/reclamo-fotos").status_code in (401, 403)
     assert cli.get("/config/canal").json()["reclamo_fotos_min"] == 2  # el APK lo lee de aquí
     assert cli.post("/admin/api/reclamo-fotos", headers=h, json={"minimo": 12}).json()["ok"] is False
-    assert cli.post("/admin/api/reclamo-fotos", headers=h, json={"minimo": 0}).json() == {"ok": True, "minimo": 0, "max": 8}
+    assert cli.post("/admin/api/reclamo-fotos", headers=h, json={"minimo": 0}).json() == {"ok": True, "minimo": 0, "maximo": 5, "max": 8}
     assert cli.get("/config/canal").json()["reclamo_fotos_min"] == 0
     assert "reclamo-fotos" in cli.get("/admin").text and "Fotos propias al reclamar" in cli.get("/admin").text
     html, nid, body = _registro(cli, monkeypatch, "sinfotos@gmail.com")
@@ -164,3 +171,51 @@ def test_minimo_cero_desactiva_todo_y_se_configura_en_la_torre(db, monkeypatch):
     assert "fotos_propias" not in next(x for x in reclamos.listar() if x["id"] == rec.id)
     assert "para que podamos aprobarlo" not in cli.get(f"/anfitrion/verificacion/{nid}").text
     assert reclamos.aprobar_directo(rec.id, "admin")["estado"] == "activada"
+
+
+def test_reclamar_exige_ubicacion_y_3_a_5_fotos_y_al_aprobar_se_borran_las_de_google(db, monkeypatch):
+    """Decisión del director (2-oct-2026): para ENVIAR el reclamo hacen falta
+    la ubicación del celular en el local y de 3 a 5 fotos propias; al APROBAR
+    la cancha se queda solo con las fotos del dueño (las de Google se borran)."""
+    stores.config["reclamo_fotos_min"] = "3"
+    stores.config["reclamo_fotos_max"] = "5"
+    stores.config["exigir_ubicacion_reclamo"] = "1"
+    cli = TestClient(app, base_url="https://testserver")
+    canal = cli.get("/config/canal").json()
+    assert canal["reclamo_fotos_min"] == 3 and canal["reclamo_fotos_max"] == 5
+    assert canal["reclamo_exigir_ubicacion"] is True and canal["reclamo_ubicacion_max_m"] == config.RECLAMO_UBICACION_MAX_M
+    html, nid, body = _registro(cli, monkeypatch, "gps@gmail.com")
+    assert '"maxFotos": 5' in html and '"exigirUbic": true' in html and "ubicacionAhora" in html and "Hasta 5." in html
+    mias = [f"{SB}/{nid}/web_{i}.jpg" for i in range(1, 8)]
+    # Sin GPS del celular → no se envía ni se escribe nada.
+    r = cli.post("/anfitrion/nueva", json={**body, "fotos": mias[:3]})
+    assert r.status_code == 400 and r.json()["campo"] == "dueno" and "ubicación" in r.json()["error"]
+    # Lejos (≈5,5 km) → tampoco.
+    r = cli.post("/anfitrion/nueva", json={**body, "fotos": mias[:3], "sol_lat": -12.25, "sol_lng": -77.01})
+    assert r.status_code == 400 and "km de la cancha" in r.json()["error"]
+    assert not any(c for c in db.canchas if c.startswith(nid)) and not stores.reclamos
+    # En el local, con 7 fotos → se guardan solo las 5 primeras.
+    r = cli.post("/anfitrion/nueva", json={**body, "fotos": mias, "sol_lat": -12.2004, "sol_lng": -77.0101})
+    assert r.status_code == 200 and r.json()["ok"], r.text
+    assert db.canchas[nid]["fotos"] == mias[:5]
+    rec = next(x for x in stores.reclamos if x.cancha_id == nid)
+    assert reclamos._coincidencia_ubicacion(rec)["coincide"] is True
+    # Antes de aprobar, se cuelan fotos de Google en la fila (p. ej. un APK viejo).
+    db.canchas[nid]["fotos"] = ["https://lh3.googleusercontent.com/p/G1"] + mias[:3]
+    db.canchas[nid]["foto_url"] = "https://lh3.googleusercontent.com/p/G1"
+    res = reclamos.aprobar_directo(rec.id, "admin")
+    assert res["ok"] and res["estado"] == "activada" and db.canchas[nid]["verificada"] is True
+    assert db.canchas[nid]["fotos"] == mias[:3] and db.canchas[nid]["foto_url"] == mias[0]
+
+
+def test_migracion_unica_activa_ubicacion_y_minimo_3_en_snapshots_viejos():
+    st = stores.to_state()
+    st["config"] = {k: v for k, v in (st.get("config") or {}).items() if k != "reclamo_reglas_v2"}
+    st["config"].update({"exigir_ubicacion_reclamo": "0", "reclamo_fotos_min": "2"})
+    stores.load_state(st)
+    assert stores.config["exigir_ubicacion_reclamo"] == "1"
+    assert fotos_reclamo.minimo() == 3 and fotos_reclamo.maximo() == 5
+    # Una vez migrado, la torre manda (no se re-aplica).
+    stores.config["exigir_ubicacion_reclamo"] = "0"
+    stores.load_state(stores.to_state())
+    assert stores.config["exigir_ubicacion_reclamo"] == "0"

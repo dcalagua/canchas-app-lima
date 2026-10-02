@@ -403,6 +403,40 @@ def marcar_verificada(cancha_id: str, dueno: str, verificada: bool, lat: float |
         return 0
 
 
+def quedar_solo_fotos_propias(cancha_id: str, dueno: str, lat: float | None = None, lng: float | None = None) -> int:
+    """Al aprobar un reclamo: en la cancha y sus HERMANAS (mismo criterio que
+    `marcar_verificada`) deja solo las fotos PROPIAS del dueño (bucket de cada
+    cancha, `fotos_reclamo.es_foto_propia`); las de Google se quitan de
+    `foto_url`/`fotos`. Devuelve cuántas filas cambió. Fail-safe."""
+    from propiedad import fotos_reclamo
+    dueno = (dueno or "").strip().lower()
+    if not pg.habilitado or not cancha_id or not dueno:
+        return 0
+    base = cancha_id.split("_")[0]
+    cerca = "OR (abs(lat - %s) < 0.0014 AND abs(lng - %s) < 0.0014)" if lat is not None and lng is not None else ""
+    extra = [lat, lng] if cerca else []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, foto_url, fotos FROM pichangol_canchas WHERE lower(dueno) = %s "
+                        f"AND (id = %s OR id LIKE %s {cerca}) AND coalesce(eliminada,false) = false FOR UPDATE",
+                        [dueno, cancha_id, base + "\\_%"] + extra)
+            n = 0
+            for cid, portada, fotos in cur.fetchall():
+                todas = ([str(portada)] if portada else []) + [str(u) for u in _json_list(fotos) if u]
+                todas = list(dict.fromkeys(todas))
+                propias = [u for u in todas if fotos_reclamo.es_foto_propia(u, str(cid))]
+                if propias == todas:
+                    continue
+                cur.execute("UPDATE pichangol_canchas SET foto_url = %s, fotos = %s::jsonb WHERE id = %s",
+                            (propias[0] if propias else None, json.dumps(propias), cid))
+                n += 1
+            conn.commit()
+            return n
+    except Exception as e:  # noqa: BLE001
+        print(f"[reclamo-web] no se pudieron limpiar las fotos de Google de {cancha_id}: {e}", flush=True)
+        return 0
+
+
 def fotos_de_canchas(cancha_ids: list[str]) -> dict[str, list[str]] | None:
     """Portada + galería de varias canchas (candado de FOTOS PROPIAS al aprobar
     un reclamo, `propiedad/fotos_reclamo.py`). None = no hay base configurada

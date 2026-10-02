@@ -176,7 +176,22 @@ CONFIG_DEFAULT: dict[str, str] = {
     # bucket para poder APROBAR/ACTIVAR el reclamo (las de Google no cuentan:
     # sus términos no permiten guardarlas). "0" = no se exige. Editable en la
     # torre y público en `GET /config/canal` (`propiedad/fotos_reclamo.py`).
-    "reclamo_fotos_min": "2",
+    "reclamo_fotos_min": "3",
+    "reclamo_fotos_max": "5",
+    # MODELO DE NEGOCIO de las reservas (2-oct-2026, `pagos/modelo_negocio.py`):
+    # "1" = el de siempre; "2" = reparto de la pasarela + comisión fija.
+    "modelo_reservas": "1",
+    **{f"m2_{_m}_{_k}": _v for _m, _d in {
+        "PEN": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
+                "igv_pct": "18", "reparto_cliente_pct": "50", "sobre": "precio",
+                "cliente_min": "1", "dueno_min": "0", "cliente_tope_pct": "0"},
+        "USD": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
+                "igv_pct": "15", "reparto_cliente_pct": "50", "sobre": "precio",
+                "cliente_min": "0.3", "dueno_min": "0", "cliente_tope_pct": "0"},
+        "BOB": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
+                "igv_pct": "13", "reparto_cliente_pct": "50", "sobre": "precio",
+                "cliente_min": "2", "dueno_min": "0", "cliente_tope_pct": "0"},
+    }.items() for _k, _v in _d.items()},
     # FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS (campaña de migración desde
     # las fotos de Google, pedido del director 2-oct-2026,
     # `propiedad/fotos_locales.py`): mínimo de fotos propias por LOCAL (0 =
@@ -527,6 +542,10 @@ class PagoRegistro:
     # (`liquidacion_boleador`) se LIBERA recién cuando el turno terminó (por si
     # no se presenta); hasta entonces la torre la ve pero el lote no la paga.
     disponible_en: datetime | None = None
+    # MODELO DE NEGOCIO con que se liquidó (2-oct-2026): "m2" = reparto de la
+    # pasarela (`pagos/modelo_negocio.py`); la comisión del dueño quedó
+    # CONGELADA en `comision_centimos` y no se recalcula. "" = modelo 1.
+    modelo_cobro: str = ""
 
 
 def es_liquidacion_torneo(p: "PagoRegistro") -> bool:
@@ -538,6 +557,9 @@ def es_liquidacion_torneo(p: "PagoRegistro") -> bool:
 class Stores:
     def __init__(self) -> None:
         self.config: dict[str, str] = dict(CONFIG_DEFAULT)
+        # Un estado NUEVO ya nace con las reglas de reclamo vigentes: la
+        # migración `reclamo_reglas_v2` solo toca snapshots anteriores.
+        self.config["reclamo_reglas_v2"] = "1"
         self.movimientos: list[PuntosMovimiento] = []
         self.canjes: list[PremioCanje] = []
         self.solicitudes: list[SolicitudCancha] = []
@@ -1272,6 +1294,18 @@ class Stores:
             if not self.config.get("contacto_whatsapp_pe"):
                 self.config["contacto_whatsapp_pe"] = CONFIG_DEFAULT["contacto_whatsapp_pe"]
             self.config["empresa_wa_migrado"] = "1"
+        # Migración única (2-oct-2026, decisión del director): para RECLAMAR
+        # una cancha se exige ubicación en el local y de 3 a 5 fotos propias.
+        # Se aplica UNA vez a los snapshots existentes; luego la torre manda.
+        if not self.config.get("reclamo_reglas_v2"):
+            self.config["exigir_ubicacion_reclamo"] = "1"
+            try:
+                mn = int(float(self.config.get("reclamo_fotos_min") or 0))
+            except (TypeError, ValueError):
+                mn = 0
+            self.config["reclamo_fotos_min"] = str(max(3, mn))
+            self.config["reclamo_fotos_max"] = "5"
+            self.config["reclamo_reglas_v2"] = "1"
         self.movimientos = [_mov_from(d) for d in data.get("movimientos", [])]
         self.canjes = [_canje_from(d) for d in data.get("canjes", [])]
         self.solicitudes = [_sol_from(d) for d in data.get("solicitudes", [])]
@@ -1396,7 +1430,22 @@ class Stores:
         return [como_dict(p) for p in self.pagos]
 
     def cargar_pagos_rows(self, rows) -> None:
-        self.pagos = [_pago_from(r) for r in rows]
+        """Mezcla las filas de `growth_pagos` con lo cargado del snapshot.
+
+        La tabla solo guarda 10 columnas (id, tipo, monto, moneda, estado,
+        dueño, charge, email, concepto, fecha); el snapshot guarda el pago
+        COMPLETO (liquidado, medio, comisión congelada, cargo por servicio,
+        pasarela real, cargo_id…). Antes la tabla REEMPLAZABA a los pagos del
+        snapshot en cada arranque y todo eso se perdía (una liquidación ya
+        pagada volvía a "por pagar", bug real de PRD, 2-oct-2026). Ahora el
+        pago del snapshot manda (se escribe en el mismo guardado que la tabla)
+        y la tabla solo AGREGA los pagos que el snapshot no tenga."""
+        por_id = {p.id: p for p in self.pagos}
+        for r in rows:
+            p = _pago_from(r)
+            if p.id not in por_id:
+                por_id[p.id] = p
+        self.pagos = sorted(por_id.values(), key=lambda p: p.id)
         if self.pagos:  # mantiene el contador de ids coherente
             self._ids["pago"] = max(
                 self._ids.get("pago", 0), max(p.id for p in self.pagos))
@@ -1418,7 +1467,15 @@ class Stores:
         return [como_dict(r) for r in self.reclamos]
 
     def cargar_reclamos_rows(self, rows) -> None:
-        self.reclamos = [_reclamo_from(r) for r in rows]
+        """Igual que los pagos: `growth_reclamos` no tiene todas las columnas
+        (evidencia, nota del reclamante, marcas del OTP…); el reclamo del
+        snapshot manda y la tabla solo agrega los que falten."""
+        por_id = {r.id: r for r in self.reclamos}
+        for row in rows:
+            r = _reclamo_from(row)
+            if r.id not in por_id:
+                por_id[r.id] = r
+        self.reclamos = sorted(por_id.values(), key=lambda r: r.id)
         if self.reclamos:
             self._ids["reclamo"] = max(
                 self._ids.get("reclamo", 0), max(r.id for r in self.reclamos))
@@ -1572,7 +1629,8 @@ def _pago_from(d: dict) -> PagoRegistro:
         cargo_servicio_centimos=int(d.get("cargo_servicio_centimos", 0) or 0),
         cargo_desglose=(list(d["cargo_desglose"]) if isinstance(d.get("cargo_desglose"), list) else None),
         cargo_ajuste_centimos=int(d.get("cargo_ajuste_centimos", 0) or 0),
-        disponible_en=_dt(d.get("disponible_en")))
+        disponible_en=_dt(d.get("disponible_en")),
+        modelo_cobro=str(d.get("modelo_cobro") or ""))
 
 
 def _insc_from(d: dict) -> Inscripcion:

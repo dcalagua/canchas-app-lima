@@ -250,6 +250,34 @@ def lugar_reclamado(lat: float | None, lng: float | None, cancha_id: str = "",
     }
 
 
+def validar_ubicacion_envio(lat: float | None, lng: float | None,
+                            solicitante_lat: float | None,
+                            solicitante_lng: float | None) -> dict | None:
+    """UBICACIÓN obligatoria para ENVIAR un reclamo (decisión del director,
+    2-oct-2026): con `exigir_ubicacion_reclamo` activo, el dispositivo debe
+    mandar su GPS y estar a ≤ `RECLAMO_UBICACION_MAX_M` del punto de la cancha.
+    Devuelve el error (con `mensaje` listo para mostrar) o None si pasa."""
+    if not exigir_ubicacion():
+        return None
+    max_m = config.RECLAMO_UBICACION_MAX_M
+    if solicitante_lat is None or solicitante_lng is None:
+        return {"ok": False, "error": "ubicacion_requerida", "max_m": max_m,
+                "mensaje": ("Para reclamar tu cancha necesitamos tu ubicación estando en el local. "
+                            "Activa la ubicación (desde tu celular) y vuelve a intentarlo.")}
+    if lat is None or lng is None:
+        return None
+    dist = _distancia_m(lat, lng, solicitante_lat, solicitante_lng)
+    if dist > max_m:
+        return {"ok": False, "error": "ubicacion_lejos", "distancia_m": round(dist), "max_m": max_m,
+                "mensaje": (f"Estás a {_texto_distancia(dist)} de la cancha. Para reclamarla tienes que "
+                            f"estar en el local (a menos de {round(max_m)} m).")}
+    return None
+
+
+def _texto_distancia(m: float) -> str:
+    return f"{m / 1000:.1f} km".replace(".0 km", " km") if m >= 1000 else f"{round(m)} m"
+
+
 def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
                   telefono_contacto: str | None = None,
                   dni: str | None = None, ruc: str | None = None,
@@ -290,6 +318,12 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
                 f"(el reclamante reenvió la solicitud, sigue esperando tu revisión)")
         return {"ok": True, "reclamo_id": activo.id, "codigo": activo.codigo,
                 "estado": activo.estado, "reenviado": True, "ya_existia": True}
+
+    # Reclamo NUEVO: la ubicación del dispositivo en el local es obligatoria
+    # (los reenvíos del mismo dueño de arriba no se bloquean).
+    err = validar_ubicacion_envio(lat, lng, solicitante_lat, solicitante_lng)
+    if err is not None:
+        return err
 
     codigo = f"{secrets.randbelow(1_000_000):06d}"
     # Consultas autoritativas server-side (fail-safe): DNI=persona, RUC=negocio.
@@ -370,6 +404,18 @@ def _nube_verificada(r: "ReclamoPropiedad", verificada: bool) -> None:
         from web import datos as _datos
         n = _datos.marcar_verificada(r.cancha_id, r.solicitante_id, verificada, r.lat, r.lng)
         print(f"[reclamo] nube verificada={verificada} {r.cancha_id} ({r.solicitante_id}): {n} fila(s)", flush=True)
+        if verificada:
+            # Al APROBAR se quedan SOLO las fotos propias del dueño: las de
+            # Google se borran de la cancha y sus hermanas (decisión del
+            # director, 2-oct-2026). Desde aquí la ficha nunca pide a Google.
+            q = _datos.quedar_solo_fotos_propias(r.cancha_id, r.solicitante_id, r.lat, r.lng)
+            if q:
+                print(f"[reclamo] fotos de Google quitadas al aprobar {r.cancha_id}: {q} fila(s)", flush=True)
+            try:
+                from propiedad import fotos_locales
+                fotos_locales.invalidar()
+            except Exception:  # noqa: BLE001
+                pass
     except Exception as e:  # noqa: BLE001
         print(f"[reclamo] no se pudo reflejar en la nube {r.cancha_id}: {e}", flush=True)
 

@@ -26,6 +26,7 @@ import 'agregar_cancha_screen.dart';
 import '../utils/moneda.dart';
 import '../config/pais.dart';
 import '../widgets/icono_vivo.dart';
+import '../widgets/ubicacion_reclamo.dart';
 
 /// Edición de una cancha ya registrada por el dueño: cambiar nombre, precio,
 /// deporte, horario/duración, dirección/ubicación, agregar foto o eliminarla.
@@ -177,11 +178,32 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
     super.dispose();
   }
 
+  /// ¿Esta edición es un RECLAMO de legado (cancha sin dueño)?
+  bool get _esReclamoLegado => widget.cancha.dueno.isEmpty;
+
+  /// Fotos que cuentan para el tope: al reclamar solo las PROPIAS (las de
+  /// Google no se guardan) + las nuevas; fuera del reclamo, todas.
+  int get _fotosQueCuentan => _esReclamoLegado
+      ? FotosPropias.propias(_fotosUrl, widget.cancha.id).length +
+          _fotosNuevas.length
+      : _fotosUrl.length + _fotosNuevas.length;
+
+  /// Tope de la galería: el del RECLAMO (torre → `reclamo_fotos_max`) al
+  /// reclamar; fuera de un reclamo, el de siempre (8).
+  int get _topeFotos =>
+      _esReclamoLegado ? appState.reclamoFotosTope : FotosPropias.maximo;
+
   Future<void> _agregarFotos() async {
+    final libres = _topeFotos - _fotosQueCuentan;
+    if (libres <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Máximo $_topeFotos fotos.')));
+      return;
+    }
     final files = await ImagePicker().pickMultiImage(maxWidth: 1280);
     if (files.isEmpty) return;
     final nuevas = <Uint8List>[];
-    for (final f in files) {
+    for (final f in files.take(libres)) {
       nuevas.add(await f.readAsBytes());
     }
     if (!mounted) return;
@@ -296,6 +318,30 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
                 '${FotosPropias.porQue}');
         return;
       }
+    }
+    if (esReclamo) {
+      final tope = appState.reclamoFotosTope;
+      final tiene = FotosPropias.propias(_fotosUrl, widget.cancha.id).length +
+          _fotosNuevas.length;
+      if (tiene > tope) {
+        await avisarPichangol(context,
+            titulo: 'Demasiadas fotos',
+            icono: Icons.photo_library_outlined,
+            mensaje: 'Puedes enviar hasta $tope fotos de tu local. '
+                'Quita ${tiene - tope} para continuar.');
+        return;
+      }
+    }
+    // UBICACIÓN OBLIGATORIA al reclamar (decisión del director, oct-2026):
+    // el celular debe estar EN el local (GPS a ≤ N m) ANTES de subir fotos o
+    // tocar la cancha. Si no hay GPS o está lejos, no se envía nada.
+    LatLng? desdeAqui;
+    if (esReclamo) {
+      if (!mounted) return;
+      final ubic = await exigirUbicacionReclamo(context,
+          punto: _ubicacion);
+      if (!ubic.ok) return;
+      desdeAqui = ubic.gps;
     }
     if (!mounted) return;
     setState(() => _guardando = true);
@@ -461,7 +507,32 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
         dni: dni,
         ruc: _ruc.text.trim(),
         ubicacion: _ubicacion,
+        solicitanteUbicacion: desdeAqui,
       );
+      // Rechazo con motivo (ubicación o fotos): el backend no creó el
+      // reclamo → se deshace la edición (la cancha vuelve a quedar sin dueño)
+      // y el dueño sigue en la pantalla para corregir y reintentar. Las fotos
+      // ya subidas se conservan en la galería para no volver a subirlas.
+      final rechazo = PropiedadService.motivoRechazo(rec);
+      if (rechazo != null) {
+        appState.actualizarCancha(widget.cancha);
+        if (club != widget.cancha.club) {
+          appState.renombrarLocal(club, widget.cancha.club);
+        }
+        if (!mounted) return;
+        setState(() {
+          _guardando = false;
+          _fotosUrl
+            ..clear()
+            ..addAll(fotos);
+          _fotosNuevas.clear();
+        });
+        await avisarPichangol(context,
+            titulo: rechazo.titulo,
+            icono: Icons.info_outline,
+            mensaje: rechazo.mensaje);
+        return;
+      }
       // SEGURIDAD/UX: si el lugar YA tiene un reclamo activo de OTRA persona,
       // el backend no crea nada ("ya_reclamada") — se deshace la copia local
       // (si no, quedaba una cancha "mía, pendiente" fantasma que nunca se
@@ -595,6 +666,14 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             ],
           ),
           const SizedBox(height: 8),
+          if (_esReclamoLegado) ...[
+            _ContadorFotosReclamo(
+              tiene: _fotosQueCuentan,
+              minimo: appState.reclamoFotosMin,
+              maximo: _topeFotos,
+            ),
+            const SizedBox(height: 8),
+          ],
           _GaleriaEditor(
             fotosUrl: _fotosUrl,
             fotosNuevas: _fotosNuevas,
@@ -1227,6 +1306,42 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
 
 /// Editor de galería: miniaturas (existentes + nuevas) con botón de quitar y un
 /// recuadro para agregar más fotos.
+/// Contador "N de M fotos (máx. X)" del reclamo de legado.
+class _ContadorFotosReclamo extends StatelessWidget {
+  final int tiene;
+  final int minimo;
+  final int maximo;
+  const _ContadorFotosReclamo(
+      {required this.tiene, required this.minimo, required this.maximo});
+
+  @override
+  Widget build(BuildContext context) {
+    final ok = tiene >= minimo && tiene <= maximo;
+    final texto = tiene > maximo
+        ? '$tiene fotos · quita ${tiene - maximo} (máx. $maximo)'
+        : ok
+            ? '$tiene de $minimo fotos ✓ (máx. $maximo)'
+            : '$tiene de $minimo fotos · obligatorias (máx. $maximo)';
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: ok ? const Color(0xFFE7F6EF) : const Color(0xFFFFF6E0),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          texto,
+          style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+              color: ok ? verdeOscuro : const Color(0xFF8A5A00)),
+        ),
+      ),
+    );
+  }
+}
+
 class _GaleriaEditor extends StatelessWidget {
   const _GaleriaEditor({
     required this.fotosUrl,

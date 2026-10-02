@@ -2424,6 +2424,27 @@ el mínimo a la nube no crea nada) y el reclamo de legado en
 propias). **Riesgo conocido:** los reclamos que ya estaban en curso sin fotos
 no se pueden aprobar hasta que el dueño las suba (o el operador baje el
 mínimo a 0). Test `tests/test_fotos_reclamo.py`.
+**UBICACIÓN + 3 A 5 FOTOS PARA ENVIAR; AL APROBAR SE BORRAN LAS DE GOOGLE
+(decisión del director, 2-oct-2026):** (1) con `exigir_ubicacion_reclamo` (torre
+→ "Verificación de ubicación al reclamar") un reclamo NUEVO no se crea sin el GPS
+del dispositivo a ≤ `RECLAMO_UBICACION_MAX_M` (150 m) del punto
+(`reclamos.validar_ubicacion_envio` en `crear_reclamo` → `ubicacion_requerida` /
+`ubicacion_lejos` con `mensaje`; los reenvíos del mismo dueño con reclamo vivo no
+se bloquean); la web lo valida en `_validar_registro` y el JS pide la ubicación
+fresca antes de enviar (`ubicacionAhora`, modal si falta o está lejos: desde una
+PC normalmente no se puede, hay que reclamar desde el celular en el local); el APK
+(`widgets/ubicacion_reclamo.dart`, `exigirUbicacionReclamo`) lo valida ANTES de
+crear canchas o subir fotos en registro, reclamo de legado y "Volver a
+solicitar". (2) Fotos: mínimo default **3** y máximo `reclamo_fotos_max`
+(default **5**, `fotos_reclamo.maximo()`, editable en la torre "Hasta N") en el
+formulario de reclamo (web y APK); Editar cancha fuera del reclamo sigue hasta 8.
+`GET /config/canal` publica `reclamo_fotos_max`, `reclamo_exigir_ubicacion`,
+`reclamo_ubicacion_max_m` (el APK los cachea). (3) Al APROBAR/activar
+(`_nube_verificada` con verificada) `datos.quedar_solo_fotos_propias` deja en la
+cancha y sus hermanas SOLO las fotos propias (quita Google de `foto_url`/`fotos`).
+Migración única `reclamo_reglas_v2` en `load_state`: snapshots viejos pasan a
+exigir ubicación, mínimo ≥3 y máximo 5 (luego manda la torre; un estado nuevo
+nace con la marca). Tests en `test_fotos_reclamo.py` y `test_reclamo_propiedad.py`.
 
 **FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS = campaña con plazo (pedido del
 director, 2-oct-2026: "los que ya registraron usan fotos de Google Place; que
@@ -3715,6 +3736,47 @@ antes del corte.
 
 ## Pendientes / backlog
 
+- **MODELO DE NEGOCIO DE LAS RESERVAS ELEGIBLE EN LA TORRE (decisión del
+  director, 2-oct-2026, hoja «Cálculo PCG»):** `pagos/modelo_negocio.py` +
+  torre → Cobros → **"💼 Modelo de negocio · reservas"** (`GET/POST
+  /pagos/modelo-negocio`, `POST …/simular`, admin). `modelo_reservas` en
+  `stores.config` (espejo en `CONFIG_DEFAULT`): **"1" = el de siempre**
+  (comisión 5 % mín. al dueño + cargo por servicio si está encendido) o
+  **"2" = reparto de la pasarela**: pasarela = P × (banco % + pasarela %) ×
+  (1 + IGV %); el jugador paga P + pasarela × reparto + comisión jugador %
+  (sobre esa base) y el dueño recibe P − pasarela × (1 − reparto) − comisión
+  dueño %. El operador pone las comisiones jugador/dueño; banco, pasarela,
+  IGV, reparto (50) y "sobre precio | sobre lo cobrado" son ajustes por
+  moneda (`m2_<PEN|USD|BOB>_*`; PEN = la hoja: 1.2 / 0 / 2.5 / 5.5 / 18 / 50 /
+  precio → S/ 90: jugador S/ 95.38, dueño S/ 85.75, PCG S/ 1.13;
+  **MÍNIMO POR RESERVA (opción B del director, 2-oct-2026: "si la cancha es
+  más barata, el % que paga el jugador es mayor"):** comisión jugador =
+  max(% × base, `cliente_min`) (S/ 1 · $ 0.30 · Bs 2) con `cliente_tope_pct`
+  opcional (0 = sin tope) y nunca más que la base; el dueño tiene
+  `dueno_min` (0 = apagado; también en efectivo). S/ 30 → S/ 1.00 (3.18 %),
+  S/ 90 → S/ 1.13 (1.2 %), monótono. `calcular` trae `cliente_pct_efectivo`
+  y `cliente_min_aplicado`; el simulador de la torre suma la tabla "Según el
+  precio de la cancha" (`curva`, `_CURVA_PRECIOS` por moneda); con la
+  pasarela cobrando sobre lo cobrado, margen real ≈ S/ 0.63). Solo RESERVAS.
+  Engancha en: `cargo_servicio.cotizar` (reservas en modelo 2 = `_cotizar_
+  modelo_2`, siempre activo, desglose "Costo del pago en línea" + "Servicio
+  Pichangol"; APK y web lo toman de `/pagos/cotizar` y `/config/cargo-servicio`
+  sin cambios de app), `comision_de_linea`, `post_liquidacion_online` (sin
+  billetera-first; comisión CONGELADA en el pago con `PagoRegistro.
+  modelo_cobro = "m2"`, que `_liquidacion_dict` respeta) y `post_comision_
+  reserva` (efectivo: solo el % del dueño; 0 = no se cobra). Simulador
+  modelo 1 vs 2 en la torre, en PESTAÑAS (Modelo 1 / Modelo 2, a todo el
+  ancho); el operador pone el REPARTO de Culqi (% que paga el jugador; el
+  dueño paga el resto) y las dos comisiones PCG (pedido del director: "Dueño
+  recibe / Cliente paga antes de comisión PCG" salen de ese reparto). Test
+  `tests/test_modelo_negocio.py`.
+- **PAGOS PERDÍAN DATOS AL REINICIAR (bug de plata hallado el 2-oct-2026):**
+  `pg.cargar_normalizado` REEMPLAZABA los pagos/reclamos del snapshot por las
+  filas de `growth_pagos`/`growth_reclamos` (solo 10/21 columnas) → tras cada
+  arranque se perdían `liquidado` (una liquidación pagada volvía a "por
+  pagar"), medio, comisión congelada, cargo… Ahora `cargar_pagos_rows` /
+  `cargar_reclamos_rows` MEZCLAN: manda el snapshot y la tabla solo agrega
+  ids faltantes. Test `test_arranque_no_pierde_lo_que_la_tabla_no_guarda`.
 - **CARGO POR SERVICIO + MODELO DE COMISIONES (diseño aprobado,
   27-sep-2026; FASES 1 a 4 HECHAS, fase 5 = encendido pendiente):**
   `docs/diseno-cargo-por-servicio.md` (decisiones del director en § 7,

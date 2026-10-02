@@ -795,6 +795,8 @@ def _reenviar(ses: dict, cancha_id: str, body) -> dict:
     if not res.get("ok"):
         if res.get("error") == "ya_reclamada":
             return {"ok": False, "mensaje": "Este lugar ya tiene un reclamo en curso de otra persona. Si es tu cancha, escríbenos por WhatsApp."}
+        if res.get("mensaje"):  # ubicación requerida / lejos del local
+            return {"ok": False, "mensaje": res["mensaje"]}
         return {"ok": False, "mensaje": "No se pudo enviar la solicitud. Reintenta en un momento."}
     print(f"[verificacion-web] {email} reenvió {cancha_id} → reclamo #{res.get('reclamo_id')} ({res.get('estado')})", flush=True)
     return {"ok": True, "estado": res.get("estado"), "reclamo_id": res.get("reclamo_id"), "reenviado": bool(res.get("reenviado"))}

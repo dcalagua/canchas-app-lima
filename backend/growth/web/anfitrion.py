@@ -1852,7 +1852,9 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
            "maxFotos": catalogos.MAX_FOTOS, "storage": almacen.disponible(), "tel": catalogos.TEL_PREFIJO,
            "telLen": catalogos.TEL_LONGITUD, "labels": catalogos.GEO_LABELS, "doc": DOC_NOMBRE, "docLen": DOC_LONGITUD,
            "monedas": {k: paises.simbolo_de_moneda(v) for k, v in paises.MONEDA_POR_PAIS.items()},
-           "minFotos": min_fotos, "fotosPrevias": previas_propias}
+           "minFotos": min_fotos, "fotosPrevias": previas_propias[:fotos_reclamo.maximo()],
+           "exigirUbic": reclamos.exigir_ubicacion(), "ubicMaxM": config.RECLAMO_UBICACION_MAX_M}
+    cfg["maxFotos"] = fotos_reclamo.maximo()
     secciones = [("local", "Tu local"), ("deportes", "Deportes y piso"), ("precio", "Precio y horario"), ("fotos", "Fotos"), ("dueno", "Verificación")]
     nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
     cuerpo = f"""
@@ -1887,7 +1889,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
   {_chips('duracion_slot_min', catalogos.DURACIONES, pre['dur'] if pre['dur'] in catalogos.DURACIONES else 60, fmt=catalogos.etiqueta_duracion)}
   <p class='sub' style='font-size:12.5px'>Hora feliz, seña, servicios del local y servicios extra los configuras después en Editar cancha.</p>
  </section>
- <section class='panel edit-sec' id='sec-fotos'><h2>Fotos de tu local</h2><p class='sub'>{_texto_fotos_obligatorias(min_fotos)} La primera es la portada. Hasta {catalogos.MAX_FOTOS}.</p>
+ <section class='panel edit-sec' id='sec-fotos'><h2>Fotos de tu local</h2><p class='sub'>{_texto_fotos_obligatorias(min_fotos)} La primera es la portada. Hasta {fotos_reclamo.maximo()}.</p>
   {"" if not min_fotos else f"<div class='pill warn' id='fotosCont' style='display:inline-block;margin:2px 0 10px'>0 de {min_fotos} fotos</div>"}
   <div class='edit-fotos' id='fotos'></div>
   <div class='acciones' style='margin-top:12px'><label class='btn sec' for='inFotos'>📷 Agregar fotos</label><input type='file' id='inFotos' accept='image/*' multiple hidden{'' if almacen.disponible() else ' disabled'}>
@@ -1976,8 +1978,18 @@ $('inFotos').addEventListener('change',async function(){var files=Array.prototyp
 $('inEvid').addEventListener('change',async function(){var f=this.files&&this.files[0];this.value='';if(!f)return;subiendo++;$('evidMsg').textContent='Subiendo…';
   try{var j=await subir(f,'evidencia');if(j.ok){evid=j.url;$('evidMsg').textContent='✅ Prueba adjunta.'}else $('evidMsg').textContent=j.error||'No se pudo subir.'}catch(e){$('evidMsg').textContent='No se pudo subir.'}subiendo--});
 // ── enviar ──
+function ubicacionAhora(){return new Promise(function(res){if(!navigator.geolocation){res(null);return}
+  try{navigator.geolocation.getCurrentPosition(function(p){res({lat:p.coords.latitude,lng:p.coords.longitude})},function(){res(null)},{enableHighAccuracy:true,timeout:15000,maximumAge:60000})}catch(e){res(null)}})}
+function distM(a,b,c,d){var R=6371000,x=(c-a)*Math.PI/180,y=(d-b)*Math.PI/180,h=Math.sin(x/2)*Math.sin(x/2)+Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)*Math.sin(y/2);return 2*R*Math.asin(Math.sqrt(h))}
 $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las fotos.';return}
   if(fotos.length<(CFG.minFotos||0)){actualizarEnvio();var sf=document.getElementById('sec-fotos');if(sf)sf.scrollIntoView({behavior:'smooth'});return}
+  // UBICACIÓN obligatoria: el celular debe estar en el local (≤ CFG.ubicMaxM del punto).
+  if(CFG.exigirUbic){msg.classList.remove('err');msg.textContent='Confirmando que estás en el local…';
+    var u=await ubicacionAhora();
+    if(!u){msg.textContent='';await pcgAvisar({icono:'📍',titulo:'Necesitamos tu ubicación',mensaje:'Para reclamar tu cancha tienes que estar en el local con la ubicación activada. Hazlo desde tu celular estando en la cancha y permite el acceso a tu ubicación.'});return}
+    solLat=u.lat;solLng=u.lng;var dm=distM(lat,lng,u.lat,u.lng);
+    if(lat!=null&&dm>CFG.ubicMaxM){msg.textContent='';await pcgAvisar({icono:'📍',titulo:'Estás lejos de la cancha',mensaje:'Estás a '+(dm>=1000?(dm/1000).toFixed(1)+' km':Math.round(dm)+' m')+' del punto que marcaste. Para reclamarla tienes que estar en el local (a menos de '+Math.round(CFG.ubicMaxM)+' m). Si el punto está mal, corrígelo en el mapa.'});return}
+    msg.textContent=''}
   var body={id:CFG.id,existente:CFG.existente,place:place,nombre_local:$('local').value,direccion:$('direccion').value,lat:lat,lng:lng,zona:$('g3').value,deportes:dep,modo:modo(),superficie:sup,superficies:sups,
     nombre_cancha:$('nombreCancha').value,modo_precio:pcgPrecioBody().modo_precio,precio:pcgPrecioBody().precio,precio_hora:parseFloat($('precio').value)||0,hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,duracion_slot_min:+sel('duracion_slot_min')||60,
     fotos:fotos,whatsapp:$('wa').value,relacion:sel('relacion'),documento:$('doc').value,nota:$('nota').value,evidencia:evid,sol_lat:solLat,sol_lng:solLng};
@@ -2053,7 +2065,7 @@ def _validar_registro(b: dict, email: str) -> tuple[list[dict] | None, dict, str
             fotos.append(u)
     # Solo cuentan (y se guardan) fotos PROPIAS: subidas a la carpeta de esta
     # cancha en NUESTRO bucket. Google / googleusercontent / evidencia no.
-    fotos = fotos_reclamo.propias(fotos, nuevo_id)[:catalogos.MAX_FOTOS]
+    fotos = fotos_reclamo.propias(fotos, nuevo_id)[:fotos_reclamo.maximo()]
     min_fotos = fotos_reclamo.minimo()
     if len(fotos) < min_fotos:
         return None, {}, _error_faltan_fotos(min_fotos, len(fotos)), 'fotos'
@@ -2078,6 +2090,10 @@ def _validar_registro(b: dict, email: str) -> tuple[list[dict] | None, dict, str
         sol = (float(b.get("sol_lat")), float(b.get("sol_lng"))) if b.get("sol_lat") is not None and b.get("sol_lng") is not None else (None, None)
     except (TypeError, ValueError):
         sol = (None, None)
+    # UBICACIÓN obligatoria (2-oct-2026): el dispositivo debe estar en el local.
+    err_ubic = reclamos.validar_ubicacion_envio(la, ln, sol[0], sol[1])
+    if err_ubic is not None:
+        return None, {}, err_ubic["mensaje"], "dueno"
     moneda = paises.simbolo_de_moneda(paises.moneda_de_pais(iso))
     nombre_cancha = re.sub(r"\s+", " ", str(b.get("nombre_cancha") or "")).strip()[:catalogos.NOMBRE_MAX]
     base = {"club": local, "distrito": "", "barrio": zona, "precio_hora": precio, "precio_turno": precio_turno or None, "lat": la, "lng": ln, "club_fundador": False,

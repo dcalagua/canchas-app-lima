@@ -119,6 +119,21 @@ class FakeDB:
             out[i] = ([c["foto_url"]] if c and c.get("foto_url") else []) + (list(c.get("fotos") or []) if c else [])
         return out
 
+    def quedar_solo_fotos_propias(self, cancha_id, dueno, lat=None, lng=None):
+        from propiedad import fotos_reclamo
+        base, n = cancha_id.split("_")[0], 0
+        for c in self.canchas.values():
+            if (c.get("dueno") or "").lower() != (dueno or "").lower():
+                continue
+            if not (c["id"] == cancha_id or c["id"].startswith(base + "_")):
+                continue
+            todas = list(dict.fromkeys(([c["foto_url"]] if c.get("foto_url") else []) + list(c.get("fotos") or [])))
+            propias = [u for u in todas if fotos_reclamo.es_foto_propia(u, c["id"])]
+            if propias != todas:
+                c["fotos"], c["foto_url"] = propias, (propias[0] if propias else None)
+                n += 1
+        return n
+
     def marcar_verificada(self, cancha_id, dueno, verificada, lat=None, lng=None):
         base = cancha_id.split("_")[0]
         n = 0
@@ -273,12 +288,15 @@ def db(monkeypatch):
                "actualizar_cancha", "bloquear", "reserva_de_dueno", "marcar_pagado", "borrar_reserva_manual",
                "academias_publicas", "academia", "insertar_matricula", "matricula", "academias_de_dueno", "academia_existe", "guardar_academia", "eliminar_academia", "matriculas_de_academias", "matriculas_de_pagador",
                "productos_de_vendedor", "producto_por_id", "guardar_producto", "eliminar_producto", "esta_verificado",
-               "insertar_canchas", "borrar_canchas", "marcar_verificada", "adoptar_cancha", "desadoptar_cancha", "fotos_de_canchas"):
+               "insertar_canchas", "borrar_canchas", "marcar_verificada", "adoptar_cancha", "desadoptar_cancha", "fotos_de_canchas",
+               "quedar_solo_fotos_propias"):
         monkeypatch.setattr(datos, fn, getattr(fake, fn))
     monkeypatch.setattr(config, "CULQI_PUBLIC_KEY", "pk_test_x")
     monkeypatch.setattr(config, "CULQI_SECRET_KEY", "sk_test_x")
     monkeypatch.setattr(config, "ADMIN_PANEL_TOKEN", "adm")
     monkeypatch.setattr(config, "APP_API_KEY", "")
+    # Estas pruebas se escribieron con mínimo 2 fotos (el default ahora es 3).
+    monkeypatch.setitem(stores.config, "reclamo_fotos_min", "2")
     return fake
 
 
@@ -1267,7 +1285,7 @@ def test_registrar_y_reclamar_cancha_desde_la_web_como_el_app(db, monkeypatch):
     # Fotos PROPIAS obligatorias (2 por defecto): se suben al bucket de la cancha.
     monkeypatch.setattr(config, "SUPABASE_URL", "https://sb.test")
     monkeypatch.setattr(config, "SUPABASE_ANON_KEY", "anon")
-    stores.config.pop("reclamo_fotos_min", None)
+    stores.config["reclamo_fotos_min"] = "2"  # escrita con mínimo 2 (default 3 desde 2-oct-2026)
     sb = "https://sb.test/storage/v1/object/public/canchas"
     stores.reclamos.clear()
     cli = TestClient(app, base_url="https://testserver")

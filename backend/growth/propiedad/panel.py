@@ -301,6 +301,7 @@ class ExigirUbicacionRequest(BaseModel):
 
 class FotosReclamoRequest(BaseModel):
     minimo: int
+    maximo: int | None = None
 
 
 class FotosLocalesConfigRequest(BaseModel):
@@ -432,7 +433,7 @@ def get_reclamo_fotos_admin(x_admin_token: str | None = Header(default=None)) ->
     """Mínimo de FOTOS PROPIAS del local para aprobar un reclamo (0 = apagado)."""
     _check(x_admin_token)
     from propiedad import fotos_reclamo
-    return {"minimo": fotos_reclamo.minimo(), "max": fotos_reclamo.MAXIMO}
+    return {"minimo": fotos_reclamo.minimo(), "maximo": fotos_reclamo.maximo(), "max": fotos_reclamo.MAXIMO}
 
 
 @router.post("/admin/api/reclamo-fotos")
@@ -441,7 +442,7 @@ def set_reclamo_fotos_admin(req: FotosReclamoRequest,
     """Cambia el mínimo de fotos propias exigido al reclamar (0..8)."""
     _check(x_admin_token)
     from propiedad import fotos_reclamo
-    return fotos_reclamo.set_minimo(req.minimo)
+    return fotos_reclamo.set_minimo(req.minimo, req.maximo)
 
 
 # ── FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS (campaña, 2-oct-2026) ─────────
@@ -1963,6 +1964,12 @@ def get_canal_publico() -> dict:
         # Mínimo de fotos PROPIAS que el APK exige antes de enviar un reclamo
         # (decisión del director, 2-oct-2026; 0 = no se exige).
         "reclamo_fotos_min": fotos_reclamo.minimo(),
+        # Tope de fotos del formulario de reclamo (3 a 5, 2-oct-2026).
+        "reclamo_fotos_max": fotos_reclamo.maximo(),
+        # Ubicación obligatoria al ENVIAR el reclamo: el GPS del celular debe
+        # estar a ≤ max_m del punto de la cancha.
+        "reclamo_exigir_ubicacion": reclamos.exigir_ubicacion(),
+        "reclamo_ubicacion_max_m": config.RECLAMO_UBICACION_MAX_M,
         # Campaña de fotos propias de los locales ya verificados (0 = apagada).
         "fotos_local_min": _fotos_local_min(),
     }
@@ -2184,6 +2191,20 @@ _HTML = r"""<!DOCTYPE html>
     padding:12px 0 4px;border-top:1px solid var(--border)}
   .side-cred .ebim{color:var(--green-deep);font-size:11px}
   .colmain{flex:1;min-width:0;display:flex;flex-direction:column}
+  /* Menú lateral COLAPSABLE (pedido del director, 2-oct-2026): ☰ lo deja en
+     solo íconos y gana espacio; la elección se recuerda en este navegador. */
+  .side{transition:width .18s ease}
+  .tb-menu{font-size:17px;padding:6px 11px;line-height:1}
+  @media(min-width:901px){
+    .shell.side-mini .side{width:68px;padding:16px 8px}
+    .shell.side-mini .side-brand{justify-content:center;padding:4px 0 14px}
+    .shell.side-mini .side-brand > div:not(.pin),.shell.side-mini .side-cred,.shell.side-mini .topnav-tab .tx{display:none}
+    .shell.side-mini .topnav-tab{justify-content:center;padding-left:0;padding-right:0}
+    .shell.side-mini .topnav-tab .ico{margin:0;font-size:19px}
+    .shell.side-mini .topnav-tab{position:relative}
+    .shell.side-mini .topnav-tab .badge{position:absolute;top:2px;right:4px;margin:0}
+  }
+  @media(max-width:900px){#btnSide{display:none!important}}
   .main{flex:1;min-width:0}
   .page-h{font-family:var(--serif);font-size:29px;font-weight:700;letter-spacing:-.01em;
     color:var(--ink);margin:0 0 18px;line-height:1.15}
@@ -2229,6 +2250,7 @@ _HTML = r"""<!DOCTYPE html>
     justify-content:center;user-select:none;flex-shrink:0}
   .content{max-width:1200px;margin:0;padding:24px 28px 60px}
   .content:has(#redesPanel[style*="block"]){max-width:none}
+  .content:has(#modeloPanel[style*="block"]){max-width:none}
   #redesPanel .rd-grid{display:grid;grid-template-columns:minmax(min(380px,100%),520px) minmax(0,1fr);gap:22px;margin-top:10px}
   @media(max-width:1100px){#redesPanel .rd-grid{grid-template-columns:1fr}}
   /* Preloader del pane de Facebook (pedido del director: "agrega un preload siempre"). */
@@ -2508,20 +2530,21 @@ _HTML = r"""<!DOCTYPE html>
       </div>
     </div>
     <nav class="nav" id="topnav">
-      <button class="topnav-tab on" data-sec="resumen" onclick="mostrarSeccion('resumen')"><span class="ico">📊</span> Resumen</button>
-      <button class="topnav-tab" data-sec="reclamos" onclick="mostrarSeccion('reclamos')"><span class="ico">📋</span> Reclamos</button>
-      <button class="topnav-tab" data-sec="operacion" onclick="mostrarSeccion('operacion')"><span class="ico">✅</span> Operación</button>
-      <button class="topnav-tab" data-sec="cobros" onclick="mostrarSeccion('cobros')"><span class="ico">💳</span> Cobros</button>
-      <button class="topnav-tab" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')"><span class="ico">💸</span> Liquidaciones</button>
-      <button class="topnav-tab" data-sec="disputas" onclick="mostrarSeccion('disputas')"><span class="ico">⚖️</span> Disputas</button>
-      <button class="topnav-tab" data-sec="identidad" onclick="mostrarSeccion('identidad')"><span class="ico">🪪</span> Identidad</button>
-      <button class="topnav-tab" data-sec="comunicacion" onclick="mostrarSeccion('comunicacion')"><span class="ico">💬</span> Comunicación</button>
-      <button class="topnav-tab" data-sec="pruebas" onclick="mostrarSeccion('pruebas')"><span class="ico">🧪</span> Pruebas</button>
+      <button class="topnav-tab on" data-sec="resumen" onclick="mostrarSeccion('resumen')" title="Resumen"><span class="ico">📊</span> <span class="tx">Resumen</span></button>
+      <button class="topnav-tab" data-sec="reclamos" onclick="mostrarSeccion('reclamos')" title="Reclamos"><span class="ico">📋</span> <span class="tx">Reclamos</span></button>
+      <button class="topnav-tab" data-sec="operacion" onclick="mostrarSeccion('operacion')" title="Operación"><span class="ico">✅</span> <span class="tx">Operación</span></button>
+      <button class="topnav-tab" data-sec="cobros" onclick="mostrarSeccion('cobros')" title="Cobros"><span class="ico">💳</span> <span class="tx">Cobros</span></button>
+      <button class="topnav-tab" data-sec="liquidaciones" onclick="mostrarSeccion('liquidaciones')" title="Liquidaciones"><span class="ico">💸</span> <span class="tx">Liquidaciones</span></button>
+      <button class="topnav-tab" data-sec="disputas" onclick="mostrarSeccion('disputas')" title="Disputas"><span class="ico">⚖️</span> <span class="tx">Disputas</span></button>
+      <button class="topnav-tab" data-sec="identidad" onclick="mostrarSeccion('identidad')" title="Identidad"><span class="ico">🪪</span> <span class="tx">Identidad</span></button>
+      <button class="topnav-tab" data-sec="comunicacion" onclick="mostrarSeccion('comunicacion')" title="Comunicación"><span class="ico">💬</span> <span class="tx">Comunicación</span></button>
+      <button class="topnav-tab" data-sec="pruebas" onclick="mostrarSeccion('pruebas')" title="Pruebas"><span class="ico">🧪</span> <span class="tx">Pruebas</span></button>
     </nav>
     <div class="side-cred">Una solución de <span class="ebim">EBIM</span></div>
   </aside>
   <div class="colmain">
   <header class="topbar">
+    <button class="tb-btn tb-menu" id="btnSide" onclick="alternarSide()" title="Ocultar / mostrar el menú" aria-label="Ocultar o mostrar el menú">☰</button>
     <div class="tb-title" id="tbTitle">Resumen</div>
     <div class="sp"></div>
     <button class="tb-btn" onclick="cargar();cargarLiquidaciones()" title="Actualizar">↻ <span class="lbl">Actualizar</span></button>
@@ -2604,6 +2627,10 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">🎁</span>
             <span class="md-txt"><b>Promociones</b><small>Bono de recarga · cupones</small></span>
           </button>
+          <button class="md-item" data-pane="modeloPanel" onclick="mostrarPane(this,'modeloPanel');cargarModeloNegocio()">
+            <span class="md-ico">💼</span>
+            <span class="md-txt"><b>Modelo de negocio · reservas</b><small>Modelo 1 (actual) o 2 (reparto de pasarela) · tú pones las comisiones</small></span>
+          </button>
           <button class="md-item" data-pane="tarifasPanel" onclick="mostrarPane(this,'tarifasPanel');cargarTarifas()">
             <span class="md-ico">💳</span>
             <span class="md-txt"><b>Tarifas de pasarela</b><small>Lo que cobra Culqi / PayPhone / Libélula · margen real</small></span>
@@ -2630,6 +2657,7 @@ _HTML = r"""<!DOCTYPE html>
           <div class="md-pane" id="proPanel" style="display:none"></div>
           <div class="md-pane" id="recargasQr" style="display:none"></div>
           <div class="md-pane" id="promosPanel" style="display:none"></div>
+          <div class="md-pane" id="modeloPanel" style="display:none"></div>
           <div class="md-pane" id="tarifasPanel" style="display:none"></div>
           <div class="md-pane" id="cargoPanel" style="display:none"></div>
           <div class="md-pane" id="reclamacionesPanel" style="display:none"></div>
@@ -2764,10 +2792,18 @@ let modoGlobal = 'marcha_blanca';
 let overrides = {};
 let exigirUbic = false;   // ¿se exige GPS coincidente para aprobar?
 let ubicMaxM = 150;
-let fotosMin = 2;         // mínimo de fotos propias del local para aprobar (0 = no se exige)
+let fotosMin = 3;         // mínimo de fotos propias del local para aprobar (0 = no se exige)
+let fotosMax = 5;         // tope de fotos del formulario de reclamo
 
 function tok(){ return localStorage.getItem('pichangol_admin_tok') || ''; }
 function headers(){ return {'Content-Type':'application/json','X-Admin-Token':tok()}; }
+function alternarSide(forzar){
+  const sh = document.querySelector('#app .shell'); if(!sh) return;
+  const mini = forzar === undefined ? !sh.classList.contains('side-mini') : !!forzar;
+  sh.classList.toggle('side-mini', mini);
+  try{ localStorage.setItem('pichangol_side_mini', mini ? '1' : '0'); }catch(e){}
+}
+document.addEventListener('DOMContentLoaded', ()=>{ try{ if(localStorage.getItem('pichangol_side_mini')==='1') alternarSide(true); }catch(e){} });
 
 let conToken = false; // modo respaldo: entrar con el token clásico
 
@@ -5081,6 +5117,240 @@ async function guardarTarifas(){
 }
 
 
+// --- Modelo de negocio de las reservas (Cobros → 💼 Modelo de negocio) ------
+// Modelo 1 = el de siempre (comisión al dueño + cargo por servicio).
+// Modelo 2 = reparto de la pasarela + comisión Pichangol al jugador y al dueño
+// que pone el operador; lo demás es calculado (`pagos/modelo_negocio.py`).
+let mnCfg = null, mnMon = 'PEN', mnSel = '1', mnMonto = 90, mnTimer = null;
+const MN_CAMPOS_OP = [['reparto_cliente_pct','Costo de Culqi que paga el jugador (%)','El dueño paga el resto'],
+                      ['cliente_pct','Comisión Pichangol al jugador (%)','Sobre lo que paga el jugador antes de la comisión'],
+                      ['cliente_min','Mínimo por reserva · jugador','Si el % da menos, se cobra este monto: en canchas baratas el % sube solo'],
+                      ['cliente_tope_pct','Tope de la comisión al jugador (%)','Máximo % efectivo aunque aplique el mínimo · 0 = sin tope'],
+                      ['dueno_pct','Comisión Pichangol al dueño (%)','Sobre lo que recibe el dueño antes de la comisión'],
+                      ['dueno_min','Mínimo por reserva · dueño','0 = sin mínimo · también aplica en efectivo']];
+const MN_MONTO = {cliente_min:1, dueno_min:1};
+const MN_CAMPOS_PAS = [['banco_pct','Comisión del banco (%)'],['pasarela_pct','Comisión Culqi (%)'],
+                       ['igv_pct','IGV / IVA sobre las comisiones (%)']];
+function mnF(c, s){ return (s||'S/')+' '+((c||0)/100).toFixed(2); }
+async function cargarModeloNegocio(){
+  const box = document.getElementById('modeloPanel'); if(!box) return;
+  box.innerHTML = '<div class="card">Cargando…</div>';
+  const r = await fetch('/pagos/modelo-negocio?monto='+mnMonto+'&moneda='+mnMon,{headers:headers(), cache:'no-store'});
+  if(r.status===401){ salir(); return; }
+  if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
+  mnCfg = await r.json(); mnSel = mnCfg.modelo_reservas;
+  renderModeloNegocio(mnCfg.simulacion);
+}
+function mnValores(){
+  const p = {};
+  [...MN_CAMPOS_OP, ...MN_CAMPOS_PAS].forEach(([k])=>{ const el=document.getElementById('mn_'+k); if(el) p[k]=el.value; });
+  
+  return p;
+}
+let mnTab = null;
+function renderModeloNegocio(sim){
+  const box = document.getElementById('modeloPanel'); if(!box || !mnCfg) return;
+  if(!mnTab) mnTab = mnCfg.modelo_reservas;
+  const vig = mnCfg.modelo_reservas, p = mnCfg.monedas[mnMon];
+  const tab = (m, ico, tit, sub) => `<button type="button" class="mn-tab ${mnTab===m?'on':''}" onclick="mnTab='${m}';renderModeloNegocio(mnCfg.simulacion)">
+      <span class="mn-tab-ico">${ico}</span><span class="mn-tab-txt"><b>${tit}</b><small>${sub}</small></span>
+      ${vig===m?'<span class="mn-vig">● En uso</span>':''}</button>`;
+  const chips = ['PEN','USD','BOB'].map(m=>`<button type="button" class="mn-chip ${m===mnMon?'on':''}" onclick="mnMon='${m}';cargarModeloNegocio()">${mnCfg.monedas[m].simbolo} · ${m}</button>`).join('');
+  const inp = (k, lab, ayuda, v) => { const paso = MN_PASO[k]||0.1, max = k==='reparto_cliente_pct'?100:999;
+    return `<div class="mn-row"><label class="mn-lab" for="mn_${k}"><b>${lab}</b>${ayuda?`<small>${ayuda}</small>`:''}</label>
+      <div class="mn-num"><button type="button" aria-label="Bajar" onclick="mnPaso('${k}',-${paso})">−</button>
+        <input id="mn_${k}" type="number" inputmode="decimal" min="0" max="${max}" step="${paso}" value="${v}" oninput="mnSimular()">
+        <span class="mn-suf">${MN_MONTO[k]?esc(p.simbolo):'%'}</span>
+        <button type="button" aria-label="Subir" onclick="mnPaso('${k}',${paso})">+</button></div></div>`; };
+  const usar = m => vig===m
+      ? `<span class="mn-ok">✓ Este es el modelo en uso para las reservas</span>`
+      : `<button class="btn-ap" onclick="usarModelo('${m}')">Usar el modelo ${m} desde ahora</button>`;
+  const precio = `<label class="mn-precio">Precio de la cancha (${esc(p.simbolo)})
+      <input id="mn_monto" type="number" min="1" step="1" value="${mnMonto}" oninput="mnMonto=+this.value||0;mnSimular()"></label>`;
+  let cuerpo;
+  if(mnTab==='1'){
+    cuerpo = `<div class="mn-grid">
+      <div class="mn-col">
+        <div class="mn-h">Cómo funciona</div>
+        <ul class="mn-lista">
+          <li>El <b>dueño</b> paga la comisión de Pichangol: <b>5 %</b> de cada reserva pagada en línea, con mínimo por moneda (S/ 2 · $ 0.50 · Bs 3). Si tiene saldo, sale de su billetera.</li>
+          <li>El <b>jugador</b> paga el precio y, si lo encendiste, el <b>cargo por servicio</b> (Cobros → 🧾 Cargo por servicio).</li>
+          <li><b>Pichangol paga la pasarela</b> (Culqi / PayPhone / Libélula) de su comisión.</li>
+          <li>En efectivo: la comisión se descuenta del saldo del dueño.</li>
+        </ul>
+        <div class="mn-acc">${usar('1')}</div>
+      </div>
+      <div class="mn-col"><div class="mn-simhead"><div class="mn-h">🧮 Simulador</div>${precio}</div><div id="mn_sim"></div></div>
+    </div>`;
+  } else {
+    const pas = MN_CAMPOS_PAS.map(([k,l])=>inp(k,l,'',p[k])).join('');
+    cuerpo = `<div class="mn-grid">
+      <div class="mn-col">
+        <div class="mn-h">Lo que pones tú <span class="mn-chips">${chips}</span></div>
+        <div class="mn-filas">${MN_CAMPOS_OP.map(([k,l,a])=>inp(k,l,(k==='reparto_cliente_pct'?`<span id="mn_rep_txt">El dueño paga el ${(100-(+p[k]||0)).toFixed(1).replace(/\.0$/,'')} % restante</span>`:a),p[k])).join('')}</div>
+        <div class="mn-h" style="margin-top:18px">Comisión total de Culqi <small>(tarifas sinceradas de Culqi · sobre el precio de la cancha)</small></div>
+        <div class="mn-filas">${pas}</div>
+        <div class="mn-nota">Ecuador y Bolivia arrancan con las tasas de Perú (IVA 15 % y 13 %): pon las tarifas reales de PayPhone y Libélula. En efectivo no hay pasarela: solo se cobra la comisión al dueño.</div>
+        <div class="mn-acc"><button class="btn-sec" onclick="guardarModeloNegocio(false)">Guardar comisiones</button>
+          ${vig==='2'?usar('2'):`<button class="btn-ap" onclick="guardarModeloNegocio(true)">Guardar y usar el modelo 2</button>`}
+          <span id="mn_msg"></span></div>
+      </div>
+      <div class="mn-col"><div class="mn-simhead"><div class="mn-h">🧮 Simulador</div>${precio}</div><div id="mn_sim"></div></div>
+    </div>`;
+  }
+  box.innerHTML = `<style>
+    .mn-card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:18px 20px}
+    .mn-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+    .mn-top h2{margin:0;font-size:19px} .mn-top p{margin:4px 0 0;color:#667;font-size:13px;max-width:780px}
+    .mn-tabs{display:flex;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--border);margin:0 -20px 18px;padding:0 20px}
+    .mn-tab{display:flex;align-items:center;gap:10px;padding:10px 14px 12px;border:0;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;text-align:left;font-family:inherit}
+    .mn-tab.on{border-bottom-color:#0B8A3E} .mn-tab-ico{font-size:22px}
+    .mn-tab-txt{display:grid} .mn-tab-txt b{font-size:15px;color:#222} .mn-tab-txt small{color:#889;font-size:12px}
+    .mn-tab:not(.on) .mn-tab-txt b{color:#667}
+    .mn-vig{background:#E7F6EF;color:#0B8A3E;font-weight:800;font-size:11.5px;padding:3px 9px;border-radius:999px;white-space:nowrap}
+    .mn-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:22px}
+    @media(max-width:1100px){.mn-grid{grid-template-columns:1fr}}
+    .mn-col{min-width:0}
+    .mn-h{font-weight:800;font-size:15px;margin-bottom:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .mn-h small{font-weight:400;color:#889}
+    .mn-chips{display:flex;gap:6px;flex-wrap:wrap}
+    .mn-chip{padding:6px 12px;border-radius:999px;border:1px solid #E4E4E4;background:#fff;font-weight:800;cursor:pointer;font-size:12.5px}
+    .mn-chip.on{border-color:#0B8A3E;background:#E7F6EF}
+    .mn-filas{border:1px solid var(--border);border-radius:14px;overflow:hidden}
+    .mn-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 14px;border-bottom:1px solid #F1F1F1}
+    .mn-row:last-child{border-bottom:0}
+    .mn-lab{display:grid;gap:2px;min-width:0;cursor:pointer}
+    .mn-lab b{font-size:13.5px;color:#222} .mn-lab small{font-size:12px;color:#889;font-weight:400}
+    .mn-num{display:flex;align-items:center;flex:none;border:1px solid #E4E4E4;border-radius:999px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+    .mn-num button{width:30px;height:30px;border:0;background:none;border-radius:999px;font-size:17px;font-weight:700;color:#444;cursor:pointer;line-height:1}
+    .mn-num button:hover{background:#F2F2F2}
+    .mn-num input{width:52px;border:0;text-align:right;font-size:15px;font-weight:800;font-family:inherit;padding:4px 0;background:none;-moz-appearance:textfield}
+    .mn-num input::-webkit-outer-spin-button,.mn-num input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+    .mn-num input:focus{outline:none} .mn-num:focus-within{border-color:#0B8A3E;box-shadow:0 0 0 3px #E7F6EF}
+    .mn-suf{font-size:13px;font-weight:700;color:#667;padding:0 4px 0 2px}
+    @media(max-width:480px){.mn-row{flex-wrap:wrap}.mn-num{margin-left:auto}}
+    .mn-nota{font-size:12px;color:#889;margin-top:10px}
+    .mn-acc{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
+    .mn-ok{color:#0B8A3E;font-weight:800;font-size:13.5px}
+    .mn-lista{margin:0;padding-left:18px;display:grid;gap:8px;font-size:13.5px;color:#333}
+    .mn-simhead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+    .mn-precio{font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:8px}
+    .mn-precio input{width:110px;padding:8px 10px;border-radius:10px;border:1px solid var(--border);font-size:15px;font-weight:800}
+    .mn-sim{border:1px solid var(--border);border-radius:14px;overflow:hidden}
+    .mn-fila{display:flex;justify-content:space-between;gap:12px;padding:8px 14px;border-bottom:1px solid #F1F1F1;font-size:14px}
+    .mn-fila span:last-child{white-space:nowrap;text-align:right}
+    .mn-fila.sub{padding-left:28px;color:#667;font-size:13px}
+    .mn-fila.fuerte{font-weight:800} .mn-fila.total{background:#F7F9FB;font-weight:800;font-size:15px}
+    .mn-curva{border:1px solid var(--border);border-radius:14px;overflow-x:auto}
+    .mn-curva table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}
+    .mn-curva th{background:#F7F9FB;color:#667;font-weight:700;text-align:right;padding:7px 8px;text-transform:none;letter-spacing:0;font-size:12px;white-space:normal;line-height:1.2;vertical-align:bottom}
+    .mn-curva td{text-align:right;padding:7px 8px;border-top:1px solid #F1F1F1}
+    .mn-curva th:first-child,.mn-curva td:first-child{text-align:left}
+    .mn-curva tr.on td{background:#F2FBF6}
+    .mn-tag{background:#FFF4E0;color:#B26A00;font-weight:800;font-size:11px;padding:1px 6px;border-radius:999px}
+    .mn-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:10px;margin-bottom:12px}
+    .mn-kpi{border:1px solid var(--border);border-radius:14px;padding:10px 12px}
+    .mn-kpi small{display:block;color:#889;font-size:12px} .mn-kpi b{font-size:20px}
+    .btn-sec{padding:9px 14px;border-radius:10px;border:1px solid var(--border);background:#fff;font-weight:700;cursor:pointer;font-family:inherit}
+  </style>
+  <div class="mn-card">
+    <div class="mn-top"><div><h2>💼 Modelo de negocio · reservas de cancha</h2>
+      <p>Elige con qué modelo cobras. Aplica a todas las reservas pagadas desde ese momento (app y web); lo ya cobrado no cambia. Academias, marketplace y torneos siguen igual.</p></div></div>
+    <div class="mn-tabs">
+      ${tab('1','🏛️','Modelo 1 · el actual','Comisión al dueño + cargo por servicio')}
+      ${tab('2','🤝','Modelo 2 · reparto de la pasarela','Tú pones la comisión al jugador y al dueño')}
+    </div>
+    ${cuerpo}
+  </div>`;
+  pintarSimModelo(sim);
+}
+const MN_PASO = {reparto_cliente_pct:5, cliente_pct:0.1, dueno_pct:0.1, banco_pct:0.1, pasarela_pct:0.1, igv_pct:1,
+                 cliente_min:0.1, dueno_min:0.1, cliente_tope_pct:1};
+function mnPaso(k, d){
+  const el = document.getElementById('mn_'+k); if(!el) return;
+  const max = k==='reparto_cliente_pct' ? 100 : 999;
+  el.value = String(Math.min(max, Math.max(0, Math.round(((+el.value||0)+d)*100)/100)));
+  mnSimular();
+}
+function mnSimular(){
+  clearTimeout(mnTimer);
+  const rep = document.getElementById('mn_reparto_cliente_pct'), rt = document.getElementById('mn_rep_txt');
+  if(rep && rt){ const v = Math.min(100, Math.max(0, +rep.value||0)); rt.textContent = 'El dueño paga el '+(100-v).toFixed(1).replace(/\.0$/,'')+' % restante'; }
+  mnTimer = setTimeout(async ()=>{
+    const r = await fetch('/pagos/modelo-negocio/simular',{method:'POST',headers:headers(),
+      body:JSON.stringify({monto:mnMonto, moneda:mnMon, params: mnTab==='2' ? mnValores() : {}})});
+    if(r.ok){ const j = await r.json(); mnCfg.simulacion = j; pintarSimModelo(j); }
+  }, 250);
+}
+function pintarSimModelo(sim){
+  const el = document.getElementById('mn_sim'); if(!el || !sim) return;
+  const s = sim.simbolo;
+  const fila = (t, v, cls, color) => `<div class="mn-fila ${cls||''}"${color?` style="color:${color}"`:''}><span>${t}</span><span>${v}</span></div>`;
+  const kpis = (x) => `<div class="mn-kpis">
+      <div class="mn-kpi"><small>👤 El jugador paga</small><b>${mnF(x.cliente_paga_centimos,s)}</b></div>
+      <div class="mn-kpi"><small>🏟️ El dueño recibe</small><b>${mnF(x.dueno_recibe_centimos,s)}</b></div>
+      <div class="mn-kpi"><small>💚 Comisión Pichangol</small><b style="color:#0B8A3E">${mnF(x.ingreso_pcg_centimos,s)}</b></div>
+      ${mnTab==='2' ? `<div class="mn-kpi"><small>Comisión total Culqi (repartida)</small><b>${mnF(x.pasarela_total_centimos,s)}</b></div>`
+        : `<div class="mn-kpi"><small>Margen tras la pasarela</small><b style="color:${x.margen_real_centimos<0?'#C0392B':'#0B8A3E'}">${mnF(x.margen_real_centimos,s)}</b></div>`}</div>`;
+  if(mnTab==='1'){
+    const b = sim.modelo_1;
+    el.innerHTML = kpis(b) + `<div class="mn-sim">
+      ${fila('Precio de la cancha', mnF(sim.monto*100,s))}
+      ${fila('Cargo por servicio al jugador', b.cargo_cliente_centimos?('+'+mnF(b.cargo_cliente_centimos,s)):'apagado', 'sub')}
+      ${fila('👤 El jugador paga', mnF(b.cliente_paga_centimos,s), 'fuerte')}
+      ${fila('Comisión Pichangol al dueño (5 %, con mínimo)', '−'+mnF(b.descuento_dueno_centimos,s), 'sub')}
+      ${fila('🏟️ El dueño recibe', mnF(b.dueno_recibe_centimos,s), 'fuerte')}
+      ${fila('💚 Ingreso Pichangol (comisión + cargo)', mnF(b.ingreso_pcg_centimos,s), 'fuerte', '#0B8A3E')}
+      ${fila('Pasarela que paga Pichangol (Tarifas de pasarela)', '−'+mnF(b.pasarela_real_centimos,s), 'sub')}
+      ${fila('Margen de Pichangol', mnF(b.margen_real_centimos,s), 'total', b.margen_real_centimos<0?'#C0392B':'#0B8A3E')}
+    </div>`;
+    return;
+  }
+  const a = sim.modelo_2;
+  el.innerHTML = kpis(a) + `<div class="mn-sim">
+    ${fila('Precio de la cancha', mnF(a.precio_centimos,s))}
+    ${fila('Comisión banco ('+(+mnValores().banco_pct||0)+' %)', mnF(a.banco_centimos,s), 'sub')}
+    ${fila('IGV comisión banco', mnF(a.igv_banco_centimos,s), 'sub')}
+    ${fila('Comisión Culqi ('+(+mnValores().pasarela_pct||0)+' %)', mnF(a.pasarela_centimos,s), 'sub')}
+    ${fila('IGV comisión Culqi', mnF(a.igv_pasarela_centimos,s), 'sub')}
+    ${fila('Comisión total Culqi', mnF(a.pasarela_total_centimos,s), 'fuerte')}
+    ${fila('· lo paga el jugador ('+(+a.reparto_pct||0)+' %)', mnF(a.pasarela_cliente_centimos,s), 'sub')}
+    ${fila('· lo paga el dueño ('+(100-(+a.reparto_pct||0))+' %)', mnF(a.pasarela_dueno_centimos,s), 'sub')}
+    ${fila('Dueño recibe antes de comisión PCG', mnF(a.base_dueno_centimos,s), 'sub')}
+    ${fila('Jugador paga antes de comisión PCG', mnF(a.base_cliente_centimos,s), 'sub')}
+    ${fila('Comisión Pichangol al jugador'+(a.cliente_min_aplicado?' <small style="color:#B26A00">· mínimo ('+a.cliente_pct_efectivo+' %)</small>':''), mnF(a.pcg_cliente_centimos,s), 'sub')}
+    ${fila('Comisión Pichangol al dueño', mnF(a.pcg_dueno_centimos,s), 'sub')}
+    ${fila('👤 El jugador paga', mnF(a.cliente_paga_centimos,s)+' <small style="color:#889">(+'+mnF(a.cargo_cliente_centimos,s)+')</small>', 'fuerte')}
+    ${fila('🏟️ El dueño recibe', mnF(a.dueno_recibe_centimos,s)+' <small style="color:#889">(−'+mnF(a.descuento_dueno_centimos,s)+')</small>', 'fuerte')}
+    ${fila('💚 Comisión real Pichangol', mnF(a.ingreso_pcg_centimos,s), 'fuerte', '#0B8A3E')}
+  </div>
+  ${(sim.curva||[]).length ? `<div class="mn-h" style="margin-top:16px">📈 Según el precio de la cancha <small>(con lo que tienes en pantalla)</small></div>
+  <div class="mn-curva"><table><thead><tr><th>Cancha</th><th>Jugador paga</th><th>Comisión jugador</th><th>%</th><th>Dueño recibe</th><th>PCG</th></tr></thead><tbody>
+  ${sim.curva.map(c=>`<tr class="${Math.abs(c.precio-sim.monto)<0.005?'on':''}"><td>${mnF(c.precio*100,s)}</td><td>${mnF(c.cliente_paga_centimos,s)}</td>
+    <td>${mnF(c.pcg_cliente_centimos,s)}${c.cliente_min_aplicado?' <span class="mn-tag">mín.</span>':''}</td><td><b>${c.cliente_pct_efectivo} %</b></td>
+    <td>${mnF(c.dueno_recibe_centimos,s)}</td><td style="color:#0B8A3E;font-weight:800">${mnF(c.ingreso_pcg_centimos,s)}</td></tr>`).join('')}
+  </tbody></table></div>` : ''}
+`;
+}
+async function usarModelo(m){
+  const r = await fetch('/pagos/modelo-negocio',{method:'POST',headers:headers(),body:JSON.stringify({modelo_reservas:m})});
+  if(r.status===401){ salir(); return; }
+  if(r.ok){ toast('Ahora las reservas se cobran con el modelo '+m+' ✓'); mnTab=m; cargarModeloNegocio(); }
+  else toast('No se pudo cambiar el modelo');
+}
+async function guardarModeloNegocio(usar){
+  const msg = document.getElementById('mn_msg');
+  const body = {monedas: {}};
+  if(usar) body.modelo_reservas = '2';
+  body.monedas[mnMon] = mnValores();
+  const r = await fetch('/pagos/modelo-negocio',{method:'POST',headers:headers(),body:JSON.stringify(body)});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok){ if(msg) msg.textContent = 'No se pudo guardar: '+(j.detail||r.status); return; }
+  toast(usar ? 'Guardado: las reservas ya se cobran con el modelo 2 ✓' : 'Comisiones guardadas ✓');
+  cargarModeloNegocio();
+}
+
 // --- Cargo por servicio al cliente (Cobros → 🧾 Cargo por servicio) --------
 let cargoCfg = null;
 const CS_LINEAS = {reservas:'Reservas de cancha', academias:'Academias', marketplace:'Marketplace', torneos:'Torneos'};
@@ -5604,8 +5874,9 @@ function renderUbicacion(){
   document.getElementById('ubic').innerHTML =
     `<div class="card"><div class="top"><h3>Verificación de ubicación al reclamar</h3></div>
       <div class="row">Muestra en el mapa desde dónde se envió cada solicitud. Si lo
-        activas, sólo podrás <b>Aprobar</b> cuando el reclamante estuvo dentro de
-        ${ubicMaxM} m de la cancha (evita reclamos a distancia).</div>
+        activas, la web y el app <b>no dejan enviar</b> el reclamo si el celular no está
+        dentro de ${ubicMaxM} m de la cancha, y sólo podrás <b>Aprobar</b> con esa
+        ubicación (evita reclamos a distancia).</div>
       <label class="sw">
         <input type="checkbox" ${exigirUbic?'checked':''} onchange="setExigir(this.checked)">
         <span class="track"><span class="knob"></span></span>
@@ -5629,6 +5900,7 @@ async function cargarFotosReclamo(){
   if(!r.ok) return;
   const j = await r.json();
   fotosMin = Number(j.minimo||0);
+  fotosMax = Number(j.maximo||5);
   renderFotosReclamo();
   render();
 }
@@ -5643,15 +5915,29 @@ function renderFotosReclamo(){
         (subidas a su carpeta; las de Google y la foto de evidencia no cuentan).</div>
       <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
         ${ops.map(n=>`<button type="button" style="padding:8px 14px;border-radius:999px;border:1px solid ${n===fotosMin?'#0E8F67':'#E4E4E4'};background:${n===fotosMin?'#E7F6EF':'#fff'};color:#222;font-weight:800;cursor:pointer" onclick="setFotosMin(${n})">${n===0?'No exigir':n+' foto'+(n>1?'s':'')}</button>`).join('')}
+      </div>
+      <div class="row" style="margin-top:12px">Máximo de fotos en el formulario de reclamo
+        (luego, en Editar cancha, el dueño puede llegar a 8). Al <b>Aprobar</b>, la cancha se
+        queda solo con las fotos del dueño: las de Google se borran.</div>
+      <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        ${[3,4,5,6,8].filter(n=>n>=Math.max(1,fotosMin)).map(n=>`<button type="button" style="padding:8px 14px;border-radius:999px;border:1px solid ${n===fotosMax?'#0E8F67':'#E4E4E4'};background:${n===fotosMax?'#E7F6EF':'#fff'};color:#222;font-weight:800;cursor:pointer" onclick="setFotosMax(${n})">Hasta ${n}</button>`).join('')}
       </div></div>`;
+}
+async function setFotosMax(n){
+  const r = await fetch('/admin/api/reclamo-fotos',{method:'POST',headers:headers(),
+    body:JSON.stringify({minimo:fotosMin, maximo:n})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json();
+  if(j.ok){ fotosMax = Number(j.maximo||n); toast('Máximo de fotos al reclamar: '+fotosMax); renderFotosReclamo(); }
+  else toast('No se pudo cambiar la configuración');
 }
 async function setFotosMin(n){
   const r = await fetch('/admin/api/reclamo-fotos',{method:'POST',headers:headers(),
-    body:JSON.stringify({minimo:n})});
+    body:JSON.stringify({minimo:n, maximo:Math.max(fotosMax, n||1)})});
   if(r.status===401){ salir(); return; }
   const j = await r.json();
   if(j.ok){
-    fotosMin = Number(j.minimo||0);
+    fotosMin = Number(j.minimo||0); fotosMax = Number(j.maximo||fotosMax);
     toast(fotosMin?('Ahora se exigen '+fotosMin+' foto(s) propia(s) para aprobar'):'Ya no se exigen fotos propias');
     renderFotosReclamo(); cargar();
   } else toast('No se pudo cambiar la configuración');

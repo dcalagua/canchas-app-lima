@@ -5,7 +5,8 @@ Por qué: los términos de Google no permiten guardar sus fotos; las fotos que
 sube el dueño son las que quedan para siempre en la ficha y, además, prueban
 que el local existe. Regla única para web, APK y torre:
 
-- `minimo()` = `stores.config["reclamo_fotos_min"]` (default 2; 0 = apagado),
+- `minimo()` = `stores.config["reclamo_fotos_min"]` (default 3; 0 = apagado) y
+  `maximo()` = `reclamo_fotos_max` (default 5, tope del formulario),
   editable en la torre (`/admin` → Reglas → "📷 Fotos propias al reclamar") y
   público en `GET /config/canal` (`reclamo_fotos_min`) para que el APK no lo
   tenga fijo.
@@ -28,7 +29,9 @@ import config
 from db.store import stores
 
 CLAVE = "reclamo_fotos_min"
-DEFAULT = 2
+CLAVE_MAX = "reclamo_fotos_max"
+DEFAULT = 3
+DEFAULT_MAX = 5
 MAXIMO = 8  # = catalogos.MAX_FOTOS (tope de la galería)
 
 _RE_BASE = re.compile(r"^(u\d+)_")
@@ -45,15 +48,31 @@ def minimo() -> int:
     return max(0, min(MAXIMO, n))
 
 
-def set_minimo(n) -> dict:
+def maximo() -> int:
+    """Tope de fotos del FORMULARIO de reclamo (decisión del director,
+    2-oct-2026: "3 a 5 fotos máximo"). Nunca menor que el mínimo ni mayor que
+    la galería (8). Editar cancha fuera del reclamo sigue con su tope de 8."""
+    try:
+        n = int(float(stores.cfg(CLAVE_MAX)))
+    except (TypeError, ValueError):
+        n = DEFAULT_MAX
+    return max(minimo(), 1, min(MAXIMO, n))
+
+
+def set_minimo(n, maximo_nuevo=None) -> dict:
     try:
         v = int(n)
+        mx = int(maximo_nuevo) if maximo_nuevo is not None else None
     except (TypeError, ValueError):
         return {"ok": False, "error": "minimo_invalido"}
     if v < 0 or v > MAXIMO:
         return {"ok": False, "error": "minimo_invalido", "max": MAXIMO}
+    if mx is not None and (mx < max(1, v) or mx > MAXIMO):
+        return {"ok": False, "error": "maximo_invalido", "max": MAXIMO}
     stores.config[CLAVE] = str(v)
-    return {"ok": True, "minimo": minimo(), "max": MAXIMO}
+    if mx is not None:
+        stores.config[CLAVE_MAX] = str(mx)
+    return {"ok": True, "minimo": minimo(), "maximo": maximo(), "max": MAXIMO}
 
 
 def carpetas_de(cancha_id: str) -> set[str]:
