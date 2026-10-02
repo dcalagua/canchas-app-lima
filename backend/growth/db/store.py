@@ -176,7 +176,8 @@ CONFIG_DEFAULT: dict[str, str] = {
     # bucket para poder APROBAR/ACTIVAR el reclamo (las de Google no cuentan:
     # sus términos no permiten guardarlas). "0" = no se exige. Editable en la
     # torre y público en `GET /config/canal` (`propiedad/fotos_reclamo.py`).
-    "reclamo_fotos_min": "2",
+    "reclamo_fotos_min": "3",
+    "reclamo_fotos_max": "5",
     # FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS (campaña de migración desde
     # las fotos de Google, pedido del director 2-oct-2026,
     # `propiedad/fotos_locales.py`): mínimo de fotos propias por LOCAL (0 =
@@ -538,6 +539,9 @@ def es_liquidacion_torneo(p: "PagoRegistro") -> bool:
 class Stores:
     def __init__(self) -> None:
         self.config: dict[str, str] = dict(CONFIG_DEFAULT)
+        # Un estado NUEVO ya nace con las reglas de reclamo vigentes: la
+        # migración `reclamo_reglas_v2` solo toca snapshots anteriores.
+        self.config["reclamo_reglas_v2"] = "1"
         self.movimientos: list[PuntosMovimiento] = []
         self.canjes: list[PremioCanje] = []
         self.solicitudes: list[SolicitudCancha] = []
@@ -1272,6 +1276,18 @@ class Stores:
             if not self.config.get("contacto_whatsapp_pe"):
                 self.config["contacto_whatsapp_pe"] = CONFIG_DEFAULT["contacto_whatsapp_pe"]
             self.config["empresa_wa_migrado"] = "1"
+        # Migración única (2-oct-2026, decisión del director): para RECLAMAR
+        # una cancha se exige ubicación en el local y de 3 a 5 fotos propias.
+        # Se aplica UNA vez a los snapshots existentes; luego la torre manda.
+        if not self.config.get("reclamo_reglas_v2"):
+            self.config["exigir_ubicacion_reclamo"] = "1"
+            try:
+                mn = int(float(self.config.get("reclamo_fotos_min") or 0))
+            except (TypeError, ValueError):
+                mn = 0
+            self.config["reclamo_fotos_min"] = str(max(3, mn))
+            self.config["reclamo_fotos_max"] = "5"
+            self.config["reclamo_reglas_v2"] = "1"
         self.movimientos = [_mov_from(d) for d in data.get("movimientos", [])]
         self.canjes = [_canje_from(d) for d in data.get("canjes", [])]
         self.solicitudes = [_sol_from(d) for d in data.get("solicitudes", [])]

@@ -243,18 +243,18 @@ def test_sin_ubicacion_del_dispositivo_no_coincide():
 
 
 def test_exigir_ubicacion_bloquea_aprobar_si_esta_lejos():
-    reclamos.set_exigir_ubicacion(True)
-    # Reclamante a varios km de la cancha.
+    # Reclamo hecho ANTES de exigir ubicación al enviar (reclamante a varios km).
     r = reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG,
                                solicitante_lat=LAT + 0.05, solicitante_lng=LNG)
+    reclamos.set_exigir_ubicacion(True)
     out = reclamos.aprobar_directo(r["reclamo_id"], revisor="dennis")
     assert out["ok"] is False and out["error"] == "ubicacion_no_coincide"
     assert stores.cancha("c1").verificada is False
 
 
 def test_exigir_ubicacion_bloquea_si_no_hay_ubicacion():
+    r = reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG)  # reclamo previo, sin GPS
     reclamos.set_exigir_ubicacion(True)
-    r = reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG)
     out = reclamos.aprobar_directo(r["reclamo_id"])
     assert out["ok"] is False and out["error"] == "sin_ubicacion_solicitante"
 
@@ -360,9 +360,9 @@ def test_reaprobar_reclamo_viejo_no_revoca_al_competidor_activo():
 
 def test_activar_admin_respeta_gate_de_ubicacion(monkeypatch):
     monkeypatch.setattr(config, "VALIDADOR_ACTIVA_AUTOMATICO", False)
-    reclamos.set_exigir_ubicacion(True)
-    # Reclamo aprobado en triage pero sin GPS del solicitante y lejos.
+    # Reclamo (previo a la regla de envío) aprobado en triage pero sin GPS del solicitante.
     r = reclamos.crear_reclamo("c1", "d@x.com", "L", lat=LAT, lng=LNG)
+    reclamos.set_exigir_ubicacion(True)
     reclamos.triage(r["reclamo_id"], aprobado=True)
     reclamos.listo_para_validar(r["reclamo_id"])
     out = reclamos.activar_admin(r["reclamo_id"])
@@ -416,3 +416,21 @@ def test_estado_sin_vigente_devuelve_rechazo_del_solicitante():
     reclamos.triage(r["reclamo_id"], aprobado=False, revisor="admin")
     est = reclamos.estado("c1", solicitante="due@x.com")
     assert est["estado"] == "rechazada" and est["es_mio"] is True
+
+
+# --- Ubicación obligatoria al ENVIAR (decisión del director, 2-oct-2026) ---
+def test_exigir_ubicacion_no_deja_enviar_sin_gps_o_lejos():
+    reclamos.set_exigir_ubicacion(True)
+    r = reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG)
+    assert r["ok"] is False and r["error"] == "ubicacion_requerida" and "ubicación" in r["mensaje"]
+    r = reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG,
+                               solicitante_lat=LAT + 0.05, solicitante_lng=LNG)
+    assert r["ok"] is False and r["error"] == "ubicacion_lejos" and r["distancia_m"] > 5000 and "km" in r["mensaje"]
+    assert not stores.reclamos
+    r = reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG,
+                               solicitante_lat=LAT + 0.0005, solicitante_lng=LNG)
+    assert r["ok"] is True
+    # Un reenvío del MISMO dueño (reclamo vivo) no se bloquea.
+    r2 = reclamos.crear_reclamo("c1", "due@x.com", "L", lat=LAT, lng=LNG)
+    assert r2["ok"] and r2["ya_existia"]
+    reclamos.set_exigir_ubicacion(False)

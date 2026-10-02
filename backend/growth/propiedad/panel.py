@@ -301,6 +301,7 @@ class ExigirUbicacionRequest(BaseModel):
 
 class FotosReclamoRequest(BaseModel):
     minimo: int
+    maximo: int | None = None
 
 
 class FotosLocalesConfigRequest(BaseModel):
@@ -432,7 +433,7 @@ def get_reclamo_fotos_admin(x_admin_token: str | None = Header(default=None)) ->
     """Mínimo de FOTOS PROPIAS del local para aprobar un reclamo (0 = apagado)."""
     _check(x_admin_token)
     from propiedad import fotos_reclamo
-    return {"minimo": fotos_reclamo.minimo(), "max": fotos_reclamo.MAXIMO}
+    return {"minimo": fotos_reclamo.minimo(), "maximo": fotos_reclamo.maximo(), "max": fotos_reclamo.MAXIMO}
 
 
 @router.post("/admin/api/reclamo-fotos")
@@ -441,7 +442,7 @@ def set_reclamo_fotos_admin(req: FotosReclamoRequest,
     """Cambia el mínimo de fotos propias exigido al reclamar (0..8)."""
     _check(x_admin_token)
     from propiedad import fotos_reclamo
-    return fotos_reclamo.set_minimo(req.minimo)
+    return fotos_reclamo.set_minimo(req.minimo, req.maximo)
 
 
 # ── FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS (campaña, 2-oct-2026) ─────────
@@ -1963,6 +1964,12 @@ def get_canal_publico() -> dict:
         # Mínimo de fotos PROPIAS que el APK exige antes de enviar un reclamo
         # (decisión del director, 2-oct-2026; 0 = no se exige).
         "reclamo_fotos_min": fotos_reclamo.minimo(),
+        # Tope de fotos del formulario de reclamo (3 a 5, 2-oct-2026).
+        "reclamo_fotos_max": fotos_reclamo.maximo(),
+        # Ubicación obligatoria al ENVIAR el reclamo: el GPS del celular debe
+        # estar a ≤ max_m del punto de la cancha.
+        "reclamo_exigir_ubicacion": reclamos.exigir_ubicacion(),
+        "reclamo_ubicacion_max_m": config.RECLAMO_UBICACION_MAX_M,
         # Campaña de fotos propias de los locales ya verificados (0 = apagada).
         "fotos_local_min": _fotos_local_min(),
     }
@@ -2764,7 +2771,8 @@ let modoGlobal = 'marcha_blanca';
 let overrides = {};
 let exigirUbic = false;   // ¿se exige GPS coincidente para aprobar?
 let ubicMaxM = 150;
-let fotosMin = 2;         // mínimo de fotos propias del local para aprobar (0 = no se exige)
+let fotosMin = 3;         // mínimo de fotos propias del local para aprobar (0 = no se exige)
+let fotosMax = 5;         // tope de fotos del formulario de reclamo
 
 function tok(){ return localStorage.getItem('pichangol_admin_tok') || ''; }
 function headers(){ return {'Content-Type':'application/json','X-Admin-Token':tok()}; }
@@ -5604,8 +5612,9 @@ function renderUbicacion(){
   document.getElementById('ubic').innerHTML =
     `<div class="card"><div class="top"><h3>Verificación de ubicación al reclamar</h3></div>
       <div class="row">Muestra en el mapa desde dónde se envió cada solicitud. Si lo
-        activas, sólo podrás <b>Aprobar</b> cuando el reclamante estuvo dentro de
-        ${ubicMaxM} m de la cancha (evita reclamos a distancia).</div>
+        activas, la web y el app <b>no dejan enviar</b> el reclamo si el celular no está
+        dentro de ${ubicMaxM} m de la cancha, y sólo podrás <b>Aprobar</b> con esa
+        ubicación (evita reclamos a distancia).</div>
       <label class="sw">
         <input type="checkbox" ${exigirUbic?'checked':''} onchange="setExigir(this.checked)">
         <span class="track"><span class="knob"></span></span>
@@ -5629,6 +5638,7 @@ async function cargarFotosReclamo(){
   if(!r.ok) return;
   const j = await r.json();
   fotosMin = Number(j.minimo||0);
+  fotosMax = Number(j.maximo||5);
   renderFotosReclamo();
   render();
 }
@@ -5643,15 +5653,29 @@ function renderFotosReclamo(){
         (subidas a su carpeta; las de Google y la foto de evidencia no cuentan).</div>
       <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
         ${ops.map(n=>`<button type="button" style="padding:8px 14px;border-radius:999px;border:1px solid ${n===fotosMin?'#0E8F67':'#E4E4E4'};background:${n===fotosMin?'#E7F6EF':'#fff'};color:#222;font-weight:800;cursor:pointer" onclick="setFotosMin(${n})">${n===0?'No exigir':n+' foto'+(n>1?'s':'')}</button>`).join('')}
+      </div>
+      <div class="row" style="margin-top:12px">Máximo de fotos en el formulario de reclamo
+        (luego, en Editar cancha, el dueño puede llegar a 8). Al <b>Aprobar</b>, la cancha se
+        queda solo con las fotos del dueño: las de Google se borran.</div>
+      <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        ${[3,4,5,6,8].filter(n=>n>=Math.max(1,fotosMin)).map(n=>`<button type="button" style="padding:8px 14px;border-radius:999px;border:1px solid ${n===fotosMax?'#0E8F67':'#E4E4E4'};background:${n===fotosMax?'#E7F6EF':'#fff'};color:#222;font-weight:800;cursor:pointer" onclick="setFotosMax(${n})">Hasta ${n}</button>`).join('')}
       </div></div>`;
+}
+async function setFotosMax(n){
+  const r = await fetch('/admin/api/reclamo-fotos',{method:'POST',headers:headers(),
+    body:JSON.stringify({minimo:fotosMin, maximo:n})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json();
+  if(j.ok){ fotosMax = Number(j.maximo||n); toast('Máximo de fotos al reclamar: '+fotosMax); renderFotosReclamo(); }
+  else toast('No se pudo cambiar la configuración');
 }
 async function setFotosMin(n){
   const r = await fetch('/admin/api/reclamo-fotos',{method:'POST',headers:headers(),
-    body:JSON.stringify({minimo:n})});
+    body:JSON.stringify({minimo:n, maximo:Math.max(fotosMax, n||1)})});
   if(r.status===401){ salir(); return; }
   const j = await r.json();
   if(j.ok){
-    fotosMin = Number(j.minimo||0);
+    fotosMin = Number(j.minimo||0); fotosMax = Number(j.maximo||fotosMax);
     toast(fotosMin?('Ahora se exigen '+fotosMin+' foto(s) propia(s) para aprobar'):'Ya no se exigen fotos propias');
     renderFotosReclamo(); cargar();
   } else toast('No se pudo cambiar la configuración');
