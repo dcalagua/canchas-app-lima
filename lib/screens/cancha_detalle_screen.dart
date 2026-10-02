@@ -17,6 +17,7 @@ import 'login_google_sheet.dart';
 import 'registrar_cancha_screen.dart';
 import '../utils/moneda.dart';
 import '../utils/ubicacion_share.dart';
+import '../widgets/atribucion_osm.dart';
 import '../widgets/icono_vivo.dart';
 
 /// Detalle de una cancha (estilo ficha de Airbnb) con selección de día/hora y
@@ -693,19 +694,22 @@ class _PanelDescubierta extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              IconoVivo(Icons.travel_explore, color: verdeOscuro),
-              SizedBox(width: 8),
+              const IconoVivo(Icons.travel_explore, color: verdeOscuro),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Encontramos esta cancha en Google Maps',
-                  style: TextStyle(
+                  cancha.esOsm
+                      ? 'Encontramos esta cancha en el mapa'
+                      : 'Encontramos esta cancha en Google Maps',
+                  style: const TextStyle(
                       fontWeight: FontWeight.bold, color: verdeOscuro),
                 ),
               ),
             ],
           ),
+          if (cancha.esOsm) const AtribucionOsm(),
           const SizedBox(height: 10),
           const Text(
             'Todavía no está activa en Pichangol, así que aún no se puede '

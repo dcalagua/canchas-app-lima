@@ -95,6 +95,79 @@ async function guardarCache(region: string, lat: number, lng: number, radio: num
   }
 }
 
+// ── OPENSTREETMAP (oct-2026, complemento gratis y permanente de Google) ──
+// Tabla `pichangol_canchas_osm` (SQL docs/piloto/supabase_canchas_osm.sql),
+// sembrada por el backend growth desde OSM (licencia ODbL, atribución
+// "© colaboradores de OpenStreetMap"). SOLO si la request trae `osm=1` (APK
+// nuevo) se SUMAN al final las canchas OSM cercanas que Google no trajo (≤150 m
+// o mismo nombre = duplicado: Google gana). Sin `osm=1` la respuesta es
+// IDÉNTICA a la de antes (un APK viejo no sabría que un id `osm_…` no es de
+// Google). Las OSM NUNCA se guardan en la caché de consultas de Google.
+const TABLA_OSM = "pichangol_canchas_osm";
+const OSM_MAX = 60;
+const OSM_DEDUP_KM = 0.15;
+const OSM_TIPOS: Record<string, string[]> = {
+  futbol: ["athletic_field"], tenis: ["tennis_court"], padel: ["sports_complex"],
+  pickleball: ["sports_complex"], voley: ["sports_complex"], basquet: ["sports_complex"],
+};
+
+function claveNombre(s: string): string {
+  return (s ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+// deno-lint-ignore no-explicit-any
+async function sumarOsm(places: any[], lat: number, lng: number, radio: number): Promise<any[]> {
+  if (!SB_URL || !SB_KEY) return places;
+  try {
+    const d = radio / 111000;
+    const dLng = d / Math.max(0.2, Math.cos((lat * Math.PI) / 180));
+    const q = new URLSearchParams();
+    q.set("select", "id,nombre,deporte,lat,lng");
+    q.append("lat", `gte.${lat - d}`);
+    q.append("lat", `lte.${lat + d}`);
+    q.append("lng", `gte.${lng - dLng}`);
+    q.append("lng", `lte.${lng + dLng}`);
+    q.set("limit", "2000");
+    const r = await fetch(`${SB_URL}/rest/v1/${TABLA_OSM}?${q}`, {
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    });
+    if (!r.ok) return places;
+    // deno-lint-ignore no-explicit-any
+    const filas: any[] = await r.json();
+    const ref: { k: string; la: number; ln: number }[] = [];
+    for (const p of places ?? []) {
+      const la = Number(p?.location?.latitude), ln = Number(p?.location?.longitude);
+      if (!Number.isFinite(la) || !Number.isFinite(ln)) continue;
+      ref.push({ k: claveNombre(p?.displayName?.text ?? ""), la, ln });
+    }
+    const extra = [];
+    for (const f of filas) {
+      const la = Number(f.lat), ln = Number(f.lng);
+      const km = kmEntre(lat, lng, la, ln);
+      if (!f.id || !f.nombre || km * 1000 > radio) continue;
+      const k = claveNombre(f.nombre);
+      if (ref.some((x) => (k && x.k === k) || kmEntre(la, ln, x.la, x.ln) <= OSM_DEDUP_KM)) continue;
+      extra.push({ km, f });
+    }
+    extra.sort((a, b) => a.km - b.km);
+    return [
+      ...places,
+      ...extra.slice(0, OSM_MAX).map(({ f }) => ({
+        id: String(f.id),
+        displayName: { text: String(f.nombre) },
+        location: { latitude: Number(f.lat), longitude: Number(f.lng) },
+        formattedAddress: "",
+        types: OSM_TIPOS[String(f.deporte)] ?? ["athletic_field"],
+        deporte: String(f.deporte),
+        fuente: "osm",
+      })),
+    ];
+  } catch (_) {
+    return places; // fail-open: sin OSM la respuesta de Google sale igual
+  }
+}
+
 // 10 consultas (antes 19): las quitadas se solapaban casi al 100% con estas.
 // Cada consulta = 1 request de cuota SearchText de Places.
 const CONSULTAS = [
@@ -162,6 +235,7 @@ serve(async (req) => {
     let lat: number, lng: number, radius: number | undefined;
     let conFotos = false; // por defecto NO resuelve fotos (respuesta rápida)
     let region = "PE"; // país para el regionCode de Google (lo manda el APK)
+    let osm = false; // `osm=1`: sumar canchas de OpenStreetMap (solo APK nuevo)
     if (req.method === "GET") {
       const u = new URL(req.url);
       lat = Number(u.searchParams.get("lat"));
@@ -171,27 +245,32 @@ serve(async (req) => {
       conFotos = f === "1" || f === "true";
       const r = u.searchParams.get("region");
       if (r && r.trim()) region = r.trim().toUpperCase();
+      const o = u.searchParams.get("osm");
+      osm = o === "1" || o === "true";
     } else {
       const b = await req.json();
       lat = b.lat;
       lng = b.lng;
       radius = b.radius;
       conFotos = b.fotos === true;
+      osm = b.osm === 1 || b.osm === true || b.osm === "1";
       if (typeof b.region === "string" && b.region.trim()) {
         region = b.region.trim().toUpperCase();
       }
     }
     const radio = Number(radius ?? 4000);
+    // deno-lint-ignore no-explicit-any
+    const conOsm = (ps: any[]) => (osm ? sumarOsm(ps, lat, lng, radio) : Promise.resolve(ps));
     // 1) CACHÉ: con fotos, una respuesta con fotos de ≤1 día; sin fotos,
     //    cualquiera de ≤30 días (sin las URLs de fotos, que caducan).
     if (conFotos) {
       const c = await leerCache(region, lat, lng, radio, CACHE_DIAS_FOTOS, true);
-      if (c) return json({ places: c, diag: { cache: "fotos" } });
+      if (c) return json({ places: await conOsm(c), diag: { cache: "fotos" } });
     }
     const cacheBase = await leerCache(region, lat, lng, radio, CACHE_DIAS, null);
     if (cacheBase && !conFotos) {
       // deno-lint-ignore no-explicit-any
-      return json({ places: cacheBase.map((p: any) => { const { fotos: _f, ...r } = p; return r; }), diag: { cache: "zona" } });
+      return json({ places: await conOsm(cacheBase.map((p: any) => { const { fotos: _f, ...r } = p; return r; })), diag: { cache: "zona" } });
     }
     // Las consultas de texto salen en PARALELO. Además de los lugares, capturamos
     // el STATUS y el primer error crudo de Google (diag): antes un rechazo
@@ -278,7 +357,7 @@ serve(async (req) => {
     const sinError = !!cacheBase || !diag.primerError;
     if (!conFotos) {
       if (sinError) await guardarCache(region, lat, lng, radio, false, lista);
-      return json({ places: lista, diag });
+      return json({ places: await conOsm(lista), diag });
     }
 
     // Modo con fotos: resuelve las fotos reales de los primeros lugares.
@@ -293,7 +372,7 @@ serve(async (req) => {
 
     const conTodo = [...conFoto, ...resto];
     if (sinError) await guardarCache(region, lat, lng, radio, true, conTodo);
-    return json({ places: conTodo, diag });
+    return json({ places: await conOsm(conTodo), diag });
   } catch (e) {
     return json({ places: [], error: String(e) }, 500);
   }

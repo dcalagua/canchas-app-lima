@@ -408,6 +408,14 @@ def terminos() -> str:
     nuestra responsabilidad se limita a los montos efectivamente cobrados como
     comisión por la operación involucrada.</p>
 
+    <h2>7-bis. Datos de mapas de terceros</h2>
+    <p>Algunos lugares que mostramos como "aún sin registrar" provienen de
+    <b>OpenStreetMap</b> (© colaboradores de OpenStreetMap, datos disponibles bajo
+    la licencia <a href="https://www.openstreetmap.org/copyright" target="_blank"
+    rel="noopener">Open Database License (ODbL)</a>) y de Google Maps. Son
+    referenciales: no significan que el local esté afiliado a Pichangol hasta que
+    su dueño lo registre.</p>
+
     <h2>8. Privacidad</h2>
     <p>El tratamiento de tus datos se rige por nuestra
     <a href="/legal/privacidad">Política de privacidad</a>, conforme a la

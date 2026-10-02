@@ -155,10 +155,14 @@ class PlacesService {
     double radioMetros = 20000, // 20 km: cubre el corredor Ñaña–Ricardo Palma
     bool conFotos = false,
   }) async {
+    _osmSinGoogle = const [];
     final viaFuncion = await _viaEdgeFunction(centro, radioMetros, conFotos);
     if (viaFuncion != null) return viaFuncion;
+    // La Edge respondió solo con canchas de OpenStreetMap (Google vacío): se
+    // hace el MISMO fallback directo a Google de siempre y se suman al final.
+    final osm = _osmSinGoogle;
 
-    if (!disponible) return [];
+    if (!disponible) return [...osm];
     final uri = Uri.https('places.googleapis.com', '/v1/places:searchText');
     // Las consultas se lanzan EN PARALELO (antes iban en serie: 11 × hasta 8s).
     // Así el tiempo total ≈ la consulta más lenta, no la suma de todas.
@@ -171,8 +175,15 @@ class PlacesService {
         porId[c.id] = c;
       }
     }
+    for (final c in osm) {
+      porId.putIfAbsent(c.id, () => c);
+    }
     return porId.values.toList();
   }
+
+  /// Canchas de OpenStreetMap que trajo la Edge cuando Google vino vacío (se
+  /// suman al resultado del fallback directo).
+  static List<Cancha> _osmSinGoogle = const [];
 
   /// Una sola consulta de texto a Places (New). Fail-safe: ante error/timeout
   /// devuelve lista vacía para no frenar a las demás (corren en paralelo).
@@ -301,6 +312,9 @@ class PlacesService {
           'radius': radioMetros,
           'fotos': conFotos, // false = respuesta rápida sin resolver fotos
           'region': paisActual.iso, // país detectado (PE/BO/…) para el regionCode
+          // Suma canchas de OpenStreetMap (gratis, licencia ODbL) que Google
+          // no trajo. Solo este APK lo pide: los viejos no reciben ids `osm_`.
+          'osm': 1,
         },
       );
       final data = res.data;
@@ -308,11 +322,24 @@ class PlacesService {
       final places = data['places'];
       if (places is! List) return null;
       final porId = <String, Cancha>{};
+      final osm = <Cancha>[];
       for (final p in places) {
         if (p is Map) {
           final c = _aCancha(Map<String, dynamic>.from(p));
-          if (c != null) porId[c.id] = c;
+          if (c == null) continue;
+          if (c.esOsm) {
+            osm.add(c);
+          } else {
+            porId[c.id] = c;
+          }
         }
+      }
+      if (porId.isEmpty) {
+        _osmSinGoogle = osm;
+        return null;
+      }
+      for (final c in osm) {
+        porId.putIfAbsent(c.id, () => c);
       }
       // Si la función respondió VACÍO, no lo tomamos como verdad absoluta:
       // devolvemos null para que el caller haga el fallback DIRECTO a Google.
@@ -336,14 +363,28 @@ class PlacesService {
     final lng = (loc['longitude'] as num?)?.toDouble();
     if (lat == null || lng == null) return null;
 
-    final tipos = ((p['types'] as List?) ?? []).cast<String>();
-    final deporte = _deporteDe(nombre, tipos);
+    // OPENSTREETMAP: la Edge ya filtró y trae el deporte de Pichangol; el id
+    // se queda `osm_…` (NUNCA `gp_`): así nada lo confunde con un lugar de
+    // Google ni le pide fotos o detalles (todo eso es de pago).
+    final esOsm = p['fuente'] == 'osm' || id.startsWith('osm_');
+    final Deporte? deporte;
+    if (esOsm) {
+      final clave = (p['deporte'] ?? '').toString();
+      Deporte? encontrado;
+      for (final d in Deporte.values) {
+        if (d.name == clave) encontrado = d;
+      }
+      deporte = encontrado;
+    } else {
+      final tipos = ((p['types'] as List?) ?? []).cast<String>();
+      deporte = _deporteDe(nombre, tipos);
+    }
     if (deporte == null) return null; // no parece una cancha deportiva
 
-    final fotos = _fotosDe(p);
+    final fotos = esOsm ? const <String>[] : _fotosDe(p);
 
     return Cancha(
-      id: 'gp_$id',
+      id: esOsm ? (id.startsWith('osm_') ? id : 'osm_$id') : 'gp_$id',
       nombre: nombre,
       club: nombre,
       distrito: Distrito.sanBorja, // referencial; lo real es lat/lng + dirección
@@ -380,7 +421,10 @@ class PlacesService {
   /// queda con su fondo del deporte).
   static Future<List<String>> fotosFicha(String canchaId,
       {String nombre = '', LatLng? ubicacion}) {
-    if (!canchaId.startsWith('gp_') || _growthUrl.isEmpty) {
+    // Solo lugares de Google: uno de OpenStreetMap (`osm_…`) nunca pide fotos.
+    if (!canchaId.startsWith('gp_') ||
+        canchaId.startsWith('gp_osm_') ||
+        _growthUrl.isEmpty) {
       return Future.value(const []);
     }
     final cacheadas = _cacheFotosFicha[canchaId];

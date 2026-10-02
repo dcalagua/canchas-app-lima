@@ -448,7 +448,21 @@ def descubrir_cerca(lat: float, lng: float, region: str = "PE", fotos: bool = Fa
         c["km"] = round(_km(lat, lng, c["lat"], c["lng"]), 2)
         out.append(c)
     out.sort(key=lambda c: c["km"])
-    return out[:MAX_RESULTADOS]
+    out = out[:MAX_RESULTADOS]
+    # OPENSTREETMAP (oct-2026, complemento gratis y permanente): se SUMAN las
+    # canchas con nombre que Google no trajo, con su propio tope (nunca
+    # desplazan un resultado de Google) y sin duplicar Google, la cosecha ni
+    # las registradas (≤150 m o mismo nombre). Nunca piden nada a Google.
+    try:
+        from web import osm
+        extra = osm.sin_duplicar(osm.cerca(lat, lng, RADIO_M), list(lista) + list(registradas or []))
+    except Exception as ex:  # noqa: BLE001
+        print(f"[osm] no se pudieron sumar en la web: {ex}", flush=True)
+        extra = []
+    if extra:
+        out.extend(osm.a_tarjeta(c) for c in extra)
+        out.sort(key=lambda c: c["km"])
+    return out
 
 
 def _descubrir_sin_cache(lat: float, lng: float, region: str, zona: str) -> list[dict]:
