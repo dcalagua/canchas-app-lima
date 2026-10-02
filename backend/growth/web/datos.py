@@ -403,6 +403,32 @@ def marcar_verificada(cancha_id: str, dueno: str, verificada: bool, lat: float |
         return 0
 
 
+def fotos_de_canchas(cancha_ids: list[str]) -> dict[str, list[str]] | None:
+    """Portada + galería de varias canchas (candado de FOTOS PROPIAS al aprobar
+    un reclamo, `propiedad/fotos_reclamo.py`). None = no hay base configurada
+    (dev/tests: no se puede afirmar nada). Una cancha que no existe en la nube
+    viene con []. LANZA si la base falló: quien activa no debe hacerlo a ciegas."""
+    ids = [i for i in dict.fromkeys(str(x or "").strip() for x in (cancha_ids or [])) if i]
+    if not pg.habilitado:
+        return None
+    out: dict[str, list[str]] = {i: [] for i in ids}
+    if not ids:
+        return out
+    with pg.conexion() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id, foto_url, fotos FROM pichangol_canchas WHERE id = ANY(%s)", (ids,))
+        for cid, portada, fotos in cur.fetchall():
+            urls = [str(portada)] if portada else []
+            urls += [str(u) for u in _json_list(fotos) if u]
+            out[str(cid)] = urls
+    return out
+
+
+def fotos_de_cancha(cancha_id: str) -> list[str] | None:
+    """Fotos de UNA cancha (ver `fotos_de_canchas`)."""
+    r = fotos_de_canchas([cancha_id])
+    return None if r is None else r.get(str(cancha_id or "").strip(), [])
+
+
 def bloquear(cancha_id: str, fecha: str, hora: str, bloquear: bool = True) -> bool:
     """Bloqueo de un turno por el dueño (misma tabla y clave que
     `BloqueosRepo` del app: PK (cancha_id, fecha, hora)). Idempotente."""

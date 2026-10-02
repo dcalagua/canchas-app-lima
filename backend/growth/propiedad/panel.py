@@ -299,6 +299,10 @@ class ExigirUbicacionRequest(BaseModel):
     exigir: bool
 
 
+class FotosReclamoRequest(BaseModel):
+    minimo: int
+
+
 class ContactoRequest(BaseModel):
     contactos: dict[str, str]
 
@@ -411,6 +415,23 @@ def set_ubicacion_admin(req: ExigirUbicacionRequest,
     """Activa/desactiva la exigencia de ubicación coincidente para aprobar."""
     _check(x_admin_token)
     return reclamos.set_exigir_ubicacion(req.exigir)
+
+
+@router.get("/admin/api/reclamo-fotos")
+def get_reclamo_fotos_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Mínimo de FOTOS PROPIAS del local para aprobar un reclamo (0 = apagado)."""
+    _check(x_admin_token)
+    from propiedad import fotos_reclamo
+    return {"minimo": fotos_reclamo.minimo(), "max": fotos_reclamo.MAXIMO}
+
+
+@router.post("/admin/api/reclamo-fotos")
+def set_reclamo_fotos_admin(req: FotosReclamoRequest,
+                            x_admin_token: str | None = Header(default=None)) -> dict:
+    """Cambia el mínimo de fotos propias exigido al reclamar (0..8)."""
+    _check(x_admin_token)
+    from propiedad import fotos_reclamo
+    return fotos_reclamo.set_minimo(req.minimo)
 
 
 @router.get("/admin/api/pichangas/modo")
@@ -1838,9 +1859,13 @@ def get_canal_publico() -> dict:
     """PÚBLICO: el APK lee el canal de comunicación para decidir si muestra el
     botón de WhatsApp (pcg_primero | solo_pcg | whatsapp_libre), y si el PAGO
     ONLINE está disponible."""
+    from propiedad import fotos_reclamo
     return {
         "canal": reclamos.canal_comunicacion(),
         "pago_online": pago_online_disponible(),
+        # Mínimo de fotos PROPIAS que el APK exige antes de enviar un reclamo
+        # (decisión del director, 2-oct-2026; 0 = no se exige).
+        "reclamo_fotos_min": fotos_reclamo.minimo(),
     }
 
 
@@ -2531,7 +2556,7 @@ _HTML = r"""<!DOCTYPE html>
         <div class="page-eyebrow">Propiedad</div>
         <h1 class="page-h">Aprobación y operación</h1>
         <p class="page-sub">Modo de aprobación de canchas (marcha blanca / nuevo
-          flujo), exigir ubicación al reclamar y modo de pichangas.</p>
+          flujo), exigir ubicación y fotos propias al reclamar y modo de pichangas.</p>
       </div>
       <div class="md">
         <aside class="md-list">
@@ -2543,6 +2568,10 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">📍</span>
             <span class="md-txt"><b>Ubicación al reclamar</b><small>Anti-fraude por GPS</small></span>
           </button>
+          <button class="md-item" onclick="mostrarPane(this,'fotosRec')">
+            <span class="md-ico">📷</span>
+            <span class="md-txt"><b>Fotos propias al reclamar</b><small>Mínimo para aprobar</small></span>
+          </button>
           <button class="md-item" onclick="mostrarPane(this,'pichangaModo')">
             <span class="md-ico">⚽</span>
             <span class="md-txt"><b>Pichangas</b><small>Partidos abiertos</small></span>
@@ -2551,6 +2580,7 @@ _HTML = r"""<!DOCTYPE html>
         <div class="md-detail">
           <div class="md-pane" id="modo"></div>
           <div class="md-pane" id="ubic" style="display:none"></div>
+          <div class="md-pane" id="fotosRec" style="display:none"></div>
           <div class="md-pane" id="pichangaModo" style="display:none"></div>
         </div>
       </div>
@@ -2625,6 +2655,7 @@ let modoGlobal = 'marcha_blanca';
 let overrides = {};
 let exigirUbic = false;   // ¿se exige GPS coincidente para aprobar?
 let ubicMaxM = 150;
+let fotosMin = 2;         // mínimo de fotos propias del local para aprobar (0 = no se exige)
 
 function tok(){ return localStorage.getItem('pichangol_admin_tok') || ''; }
 function headers(){ return {'Content-Type':'application/json','X-Admin-Token':tok()}; }
@@ -2769,6 +2800,7 @@ function mostrarApp(){
   cargarCanal();
   cargarPichangaModo();
   cargarUbicacion();
+  cargarFotosReclamo();
   cargarMarketing();
   cargarComision();
   cargarMargenes();
@@ -5483,6 +5515,39 @@ async function setExigir(v){
   } else toast('No se pudo cambiar la configuración');
 }
 
+async function cargarFotosReclamo(){
+  const r = await fetch('/admin/api/reclamo-fotos',{headers:headers()});
+  if(!r.ok) return;
+  const j = await r.json();
+  fotosMin = Number(j.minimo||0);
+  renderFotosReclamo();
+  render();
+}
+function renderFotosReclamo(){
+  const ops=[0,1,2,3,4,5,6];
+  document.getElementById('fotosRec').innerHTML =
+    `<div class="card"><div class="top"><h3>Fotos propias al reclamar</h3></div>
+      <div class="row">Los términos de Google no permiten guardar sus fotos: las que sube el
+        dueño son las que quedan en la ficha y prueban que el local existe. Con un mínimo
+        activo, la web y el app no dejan enviar el reclamo sin esas fotos y aquí sólo
+        podrás <b>Aprobar</b> cuando la cancha tenga ese número de fotos <b>propias</b>
+        (subidas a su carpeta; las de Google y la foto de evidencia no cuentan).</div>
+      <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        ${ops.map(n=>`<button type="button" style="padding:8px 14px;border-radius:999px;border:1px solid ${n===fotosMin?'#0E8F67':'#E4E4E4'};background:${n===fotosMin?'#E7F6EF':'#fff'};color:#222;font-weight:800;cursor:pointer" onclick="setFotosMin(${n})">${n===0?'No exigir':n+' foto'+(n>1?'s':'')}</button>`).join('')}
+      </div></div>`;
+}
+async function setFotosMin(n){
+  const r = await fetch('/admin/api/reclamo-fotos',{method:'POST',headers:headers(),
+    body:JSON.stringify({minimo:n})});
+  if(r.status===401){ salir(); return; }
+  const j = await r.json();
+  if(j.ok){
+    fotosMin = Number(j.minimo||0);
+    toast(fotosMin?('Ahora se exigen '+fotosMin+' foto(s) propia(s) para aprobar'):'Ya no se exigen fotos propias');
+    renderFotosReclamo(); cargar();
+  } else toast('No se pudo cambiar la configuración');
+}
+
 const MODO_DESC = {
   marcha_blanca:'Aprobar ACTIVA la cancha al instante (modo de pruebas / piloto).',
   nuevo_flujo:'Tras aprobar, la cancha exige validación EN SITIO (código + GPS) antes de habilitar reservas.'
@@ -5699,12 +5764,17 @@ function cardReclamo(r){
     const rel = r.relacion ? `<div class="row">Relación: <b>${esc(r.relacion)}</b></div>` : '';
     const wa = r.telefono_contacto ? `<a class="wa" href="${waLink(r.telefono_contacto,r.nombre_local,r.codigo)}" target="_blank" rel="noopener">💬 ${esc(r.telefono_contacto)} · Escribir</a>` : '';
     const bloqueaUbic = exigirUbic && !r.coincide;
+    const bloqueaFotos = (r.fotos_faltan||0) > 0;
     const apDis = bloqueaUbic
       ? 'disabled title="El reclamante no estuvo en la cancha; no se puede aprobar con esta configuración."'
-      : '';
+      : (bloqueaFotos ? 'disabled title="Faltan fotos propias del local."' : '');
     const aviso = (pend && bloqueaUbic)
       ? `<div class="row" style="color:#9A1722;font-weight:700;margin-top:8px">🔒 No se puede aprobar: ${r.solicitante_lat==null?'sin ubicación del reclamante':'la ubicación no coincide con la cancha'}.</div>`
-      : '';
+      : ((pend && bloqueaFotos)
+        ? `<div class="row" style="color:#8A5A00;background:#FFF6E0;border-radius:10px;padding:8px 10px;font-weight:700;margin-top:8px">📷 Faltan ${r.fotos_faltan} foto(s) propia(s) del local (se exigen ${r.fotos_minimo}). No se puede aprobar hasta que el dueño las suba en Editar cancha (web o app).</div>`
+        : '');
+    const fotosHtml = (r.fotos_propias==null) ? '' : `<div class="row" style="margin-top:8px">📷 <b>${r.fotos_propias} foto${r.fotos_propias===1?'':'s'} propia${r.fotos_propias===1?'':'s'}</b>${r.fotos_minimo?` · mínimo ${r.fotos_minimo}`:''}
+        ${(r.fotos_urls||[]).length?`<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">${r.fotos_urls.map(u=>`<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:10px;border:1px solid #E4E4E4"></a>`).join('')}</div>`:''}</div>`;
     const acc = pend ? `${aviso}<div class="actions">
         <button class="btn-rc" onclick="decidir(${r.id},false,this)">Rechazar</button>
         <button class="btn-ap" onclick="decidir(${r.id},true,this)" ${apDis}>Aprobar y activar</button>
@@ -5734,6 +5804,7 @@ function cardReclamo(r){
       <div class="row">Solicitante: ${esc(r.solicitante_id||'—')}</div>
       ${wa}
       ${mapaUbic(r)}
+      ${fotosHtml}
       <div style="margin-top:8px"><span class="chip est-${esc(r.estado)}">${esc(r.estado)}</span></div>
       ${sel}
       ${acc}
@@ -5759,6 +5830,9 @@ async function decidir(id, aprobado, btn){
       msg='🔒 No se aprobó: el reclamante estuvo a '+(j.distancia_m||'?')+' m (máx '+(j.max_m||ubicMaxM)+' m).';
     else if(j.error==='sin_ubicacion_solicitante')
       msg='🔒 No se aprobó: no hay ubicación del reclamante para validar.';
+    else if(j.error==='faltan_fotos_propias')
+      msg='📷 No se aprobó: el local tiene '+(j.fotos_propias||0)+' foto(s) propia(s) y se exigen '+(j.minimo||fotosMin)+'.';
+    else if(j.mensaje) msg=j.mensaje;
     else msg='No se pudo: '+(j.error||'error');
     toast(msg);
     card.querySelectorAll('button').forEach(b=>b.disabled=false);

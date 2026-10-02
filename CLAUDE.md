@@ -1020,6 +1020,13 @@ para la API del APK.
   (`anfitrion.verificar_existencia` → `verificacion_fisica.service.evaluar`
   en segundo plano, como `verificarVenue` del APK; nunca bloquea). Test
   `test_registrar_y_reclamar_cancha_desde_la_web_como_el_app`.
+  **FOTOS PROPIAS OBLIGATORIAS (2-oct-2026, ver "Flujo de PROPIEDAD"):** "Pon
+  tu cancha" y la adopción de legado exigen ≥ `reclamo_fotos_min` fotos
+  subidas a `canchas/<id>/` (`_validar_registro` → 400 `campo: fotos`; solo se
+  GUARDAN las propias, las de Google se descartan); el formulario muestra
+  "N de M fotos ✓" (`#fotosCont`) y el botón queda deshabilitado con la
+  explicación (`actualizarEnvio`); al reclamar un legado se precargan sus
+  fotos propias (`CFG.fotosPrevias`). La evidencia no cuenta.
   **AGREGAR CANCHA A UN LOCAL EXISTENTE (pedido del director, 23-sep-2026:
   "¿cómo registro otra cancha, y de otro deporte?"):** `GET/POST
   /anfitrion/cancha/{id}/agregar` (`web/anfitrion.py::pagina_agregar_cancha`,
@@ -1035,7 +1042,11 @@ para la API del APK.
   `_local_propio`) → 303 al flujo corto (antes creaba otro local + otro
   reclamo y la 2.ª cancha quedaba "Aún sin verificar" para siempre). Aviso
   `?agregada=` en Mis canchas. Test
-  `test_agregar_cancha_a_local_desde_la_web_como_el_app`.
+  `test_agregar_cancha_a_local_desde_la_web_como_el_app`. **Fotos (2-oct-2026):**
+  hereda solo las fotos PROPIAS del local; si el local tiene menos del mínimo,
+  la página pide las que faltan (sección `#sec-fotos`, suben a la carpeta de la
+  cancha NUEVA con `/anfitrion/nueva/foto?id=<CFG.nuevoId>`; el POST manda
+  `id` + `fotos`) y el servidor no agrega sin ellas (`campo: fotos`).
   **SERVICIOS EXTRA = CATÁLOGO GLOBAL EN LA TORRE (decisión del director,
   23-sep-2026: "el admin debe poder registrar más servicios extra, p. ej.
   piscina y entrada general"):** `backend/growth/servicios_extra.py`.
@@ -2322,6 +2333,45 @@ canchas eliminadas no reaparecen aunque Supabase las devuelva. Re-registrar/edit
 
 **Validación en sitio (fase posterior, ya en el código):** motorizado ingresa
 código + GPS; si coincide (≤ `RECLAMO_VALIDACION_GPS_MAX_M`) activa.
+
+**FOTOS PROPIAS OBLIGATORIAS AL RECLAMAR (decisión del director, 2-oct-2026:
+"subir fotos propias debe ser una OBLIGACIÓN"):** los términos de Google no
+permiten guardar sus fotos; las del dueño quedan para siempre y prueban que el
+local existe. Fuente única `backend/growth/propiedad/fotos_reclamo.py`:
+mínimo `stores.config["reclamo_fotos_min"]` (default **2**, espejo en
+`CONFIG_DEFAULT`; **0 = apagado**), editable en la torre → Aprobación y
+operación → **"📷 Fotos propias al reclamar"** (`GET/POST
+/admin/api/reclamo-fotos`, 0..8) y público en `GET /config/canal`
+(`reclamo_fotos_min`; el APK lo cachea en SharedPreferences
+`reclamo_fotos_min`, `AppState.reclamoFotosMin`, respaldo 2). **Foto propia** =
+URL pública de NUESTRO Supabase (host de `SUPABASE_URL`), bucket `canchas`, en
+la carpeta de ESA cancha: `canchas/<id>/…` o la portada del APK
+`canchas/<id>.jpg`; las hermanas `u<ts>_<deporte>` comparten `u<ts>`. NO
+cuentan Google/googleusercontent, otro proyecto/bucket, la EVIDENCIA
+(`canchas/ev<id>/`) ni otra carpeta (espejo Dart `lib/models/fotos_propias.dart`).
+**Candado REAL en el servidor** (los APK viejos no validan al enviar):
+`reclamos._gate_fotos` en `aprobar_directo` (solo si activa: marcha blanca),
+`activar_admin`, `validar_en_sitio` (con activación automática) y por ende
+`APROBAR <código>` por WhatsApp → `faltan_fotos_propias` (con `fotos_propias`,
+`minimo`, `faltan`, `mensaje`); lee `datos.fotos_de_canchas` (portada +
+galería en `pichangol_canchas`). Sin base configurada (dev/tests) no se exige;
+si la base FALLA → `fotos_no_verificables` (no activa a ciegas). La tarjeta del
+reclamo en la torre muestra "📷 N fotos propias" con miniaturas
+(`reclamos.listar` suma `fotos_propias/fotos_faltan/fotos_urls/fotos_minimo`
+con UNA consulta) y, si faltan, aviso ámbar + "Aprobar" deshabilitado. Al
+dueño: web `anfitrion.aviso_fotos_reclamo` en `/anfitrion/verificacion/{id}` y
+en los avisos de Mis canchas ("Sube N fotos de tu local para que podamos
+aprobarlo" → Editar cancha `#sec-fotos` de la cancha DEL RECLAMO); APK
+`_PanelPendiente._avisoFotos` en `club_detalle` (botón "Subir fotos" →
+Editar cancha). APK: `registrar_cancha_screen` (galería de fotos propias
+`_GaleriaFotos` con contador, cámara/galería, hasta 8; el reclamo de una
+descubierta ahora tiene un paso "Fotos de tu local" y YA NO guarda las fotos
+de Google en la cancha; sube a `canchas/u<ts>/app_<ms>_<i>.jpg` y si no llega
+el mínimo a la nube no crea nada) y el reclamo de legado en
+`editar_cancha_screen` (cuenta propias + nuevas antes de subir y solo guarda
+propias). **Riesgo conocido:** los reclamos que ya estaban en curso sin fotos
+no se pueden aprobar hasta que el dueño las suba (o el operador baje el
+mínimo a 0). Test `tests/test_fotos_reclamo.py`.
 
 ## Backend growth (`backend/growth/`, FastAPI)
 

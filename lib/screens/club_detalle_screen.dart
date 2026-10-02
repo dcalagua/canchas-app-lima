@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../data/reservas_repo.dart';
 import '../models/club.dart';
+import '../models/fotos_propias.dart';
 import '../models/models.dart';
 import '../models/resena.dart';
 import '../services/avisos_service.dart';
@@ -3708,6 +3709,49 @@ class _PanelPendienteState extends State<_PanelPendiente> {
         ],
       );
 
+  /// FOTOS PROPIAS obligatorias para aprobar el reclamo (decisión del
+  /// director, 2-oct-2026): si faltan, aviso ámbar con acceso a subirlas.
+  Widget _avisoFotos(TextTheme t) {
+    final min = appState.reclamoFotosMin;
+    if (min <= 0) return const SizedBox.shrink();
+    final c = widget.cancha;
+    final tiene =
+        FotosPropias.propias([c.fotoUrl, ...c.fotos], c.id).length;
+    final falta = min - tiene;
+    if (falta <= 0) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF6E0),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('📷 ${FotosPropias.textoFaltan(falta)}',
+              style: t.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF8A5A00))),
+          const SizedBox(height: 4),
+          Text(FotosPropias.porQue,
+              style: t.bodySmall?.copyWith(color: textoTenue, height: 1.35)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => EditarCanchaScreen(cancha: c)));
+              await widget.onActualizar?.call();
+              if (mounted) setState(() {});
+            },
+            icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+            label: const Text('Subir fotos'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _panelPendiente(TextTheme t) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3738,6 +3782,7 @@ class _PanelPendienteState extends State<_PanelPendiente> {
           // Los controles del reclamo SOLO los ve quien reclamó (dueño). Un
           // usuario sin sesión o ajeno no ve "Verificar"/"Reenviar".
           if (_esMio) ...[
+            _avisoFotos(t),
             const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,

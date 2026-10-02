@@ -39,7 +39,7 @@ import paises
 import servicios_extra as _se
 import fidelidad as _fid
 from db.store import stores
-from propiedad import reclamos
+from propiedad import fotos_reclamo, reclamos
 from web import almacen, catalogos, datos, horarios, sesion, ui
 from web.router import (PLAY_URL, _deporte, _deportes_de, _fotos, _maps, _moneda_de, _pais_de,
                         _zona, e)
@@ -1675,6 +1675,20 @@ def _legado_reclamable(cancha_id: str) -> dict | None:
     return c
 
 
+def _texto_fotos_obligatorias(minimo: int) -> str:
+    """Por qué pedimos fotos propias (decisión del director, 2-oct-2026)."""
+    if minimo <= 0:
+        return "Sube fotos reales de tu local; puedes agregarlas después."
+    return (f"<b>Obligatorio: al menos {minimo} foto{'s' if minimo != 1 else ''} tuya{'s' if minimo != 1 else ''} del local.</b> "
+            "Las fotos de Google no se pueden guardar (sus términos no lo permiten); las tuyas quedan para siempre en tu ficha y nos "
+            "prueban que el local existe.")
+
+
+def _error_faltan_fotos(minimo: int, n: int) -> str:
+    return (f"Sube al menos {minimo} foto{'s' if minimo != 1 else ''} propia{'s' if minimo != 1 else ''} de tu local (llevas {n}). "
+            "Las fotos de Google no cuentan: no se pueden guardar y las tuyas prueban que el local existe.")
+
+
 @router.get("/anfitrion/nueva", response_class=HTMLResponse)
 def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "", lat: str = "", lng: str = "", place: str = "",
                         deporte: str = "", cancha: str = "") -> HTMLResponse:
@@ -1713,12 +1727,17 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
         pre["deportes"] = [deporte]
     iso = paises.pais_de_coordenadas(la, ln) if la is not None else "PE"
     nuevo_id = existente["id"] if existente else f"u{int(time.time() * 1000)}"
+    # FOTOS PROPIAS obligatorias (decisión del director, 2-oct-2026): al reclamar
+    # un legado se precargan solo las fotos que ya están en SU carpeta.
+    min_fotos = fotos_reclamo.minimo()
+    previas_propias = fotos_reclamo.de_cancha(existente) if existente else []
     dep_ops = [(d, f"{_deporte(d)[1]} {_deporte(d)[0]}") for d in catalogos.DEPORTES_ACTIVOS]
     cfg = {"id": nuevo_id, "existente": bool(existente), "pre": pre, "lat": la, "lng": ln, "iso": iso, "place": place[:120], "superficies": catalogos.SUPERFICIES,
            "activos": catalogos.DEPORTES_ACTIVOS, "nombres": {d: _deporte(d)[0] for d in catalogos.DEPORTES_ACTIVOS},
            "maxFotos": catalogos.MAX_FOTOS, "storage": almacen.disponible(), "tel": catalogos.TEL_PREFIJO,
            "telLen": catalogos.TEL_LONGITUD, "labels": catalogos.GEO_LABELS, "doc": DOC_NOMBRE, "docLen": DOC_LONGITUD,
-           "monedas": {k: paises.simbolo_de_moneda(v) for k, v in paises.MONEDA_POR_PAIS.items()}}
+           "monedas": {k: paises.simbolo_de_moneda(v) for k, v in paises.MONEDA_POR_PAIS.items()},
+           "minFotos": min_fotos, "fotosPrevias": previas_propias}
     secciones = [("local", "Tu local"), ("deportes", "Deportes y piso"), ("precio", "Precio y horario"), ("fotos", "Fotos"), ("dueno", "Verificación")]
     nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
     cuerpo = f"""
@@ -1753,7 +1772,8 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
   {_chips('duracion_slot_min', catalogos.DURACIONES, pre['dur'] if pre['dur'] in catalogos.DURACIONES else 60, fmt=catalogos.etiqueta_duracion)}
   <p class='sub' style='font-size:12.5px'>Hora feliz, seña, servicios del local y servicios extra los configuras después en Editar cancha.</p>
  </section>
- <section class='panel edit-sec' id='sec-fotos'><h2>Fotos</h2><p class='sub'>La primera es la portada. Hasta {catalogos.MAX_FOTOS}. Puedes agregarlas después.</p>
+ <section class='panel edit-sec' id='sec-fotos'><h2>Fotos de tu local</h2><p class='sub'>{_texto_fotos_obligatorias(min_fotos)} La primera es la portada. Hasta {catalogos.MAX_FOTOS}.</p>
+  {"" if not min_fotos else f"<div class='pill warn' id='fotosCont' style='display:inline-block;margin:2px 0 10px'>0 de {min_fotos} fotos</div>"}
   <div class='edit-fotos' id='fotos'></div>
   <div class='acciones' style='margin-top:12px'><label class='btn sec' for='inFotos'>📷 Agregar fotos</label><input type='file' id='inFotos' accept='image/*' multiple hidden{'' if almacen.disponible() else ' disabled'}>
   <span class='sub' id='fotosMsg' style='margin:0'>{'' if almacen.disponible() else 'La subida de fotos no está disponible en este ambiente; súbelas desde la app.'}</span></div>
@@ -1776,7 +1796,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
 
 _JS_NUEVA = r"""
 (function(){
-var fotos=[], evid='', dep=(CFG.pre.deportes||[]).slice(), sups={}, sup=CFG.pre.superficie||'', lat=CFG.lat, lng=CFG.lng, iso=CFG.iso, arbol=null, subiendo=0, mapa, marker, solLat=null, solLng=null;
+var fotos=(CFG.fotosPrevias||[]).slice(), evid='', dep=(CFG.pre.deportes||[]).slice(), sups={}, sup=CFG.pre.superficie||'', lat=CFG.lat, lng=CFG.lng, iso=CFG.iso, arbol=null, subiendo=0, mapa, marker, solLat=null, solLng=null;
 dep.forEach(function(d){sups[d]=sup});
 function $(id){return document.getElementById(id)}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;')}
@@ -1825,7 +1845,15 @@ if(navigator.geolocation){try{navigator.geolocation.getCurrentPosition(function(
 // ── fotos y evidencia ──
 function comprimir(file,M){return new Promise(function(res,rej){var img=new Image(),url=URL.createObjectURL(file);img.onload=function(){var w=img.width,h=img.height,k=Math.min(1,M/Math.max(w,h));var cv=document.createElement('canvas');cv.width=Math.round(w*k);cv.height=Math.round(h*k);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(url);cv.toBlob(function(b){b?res(b):rej(new Error('img'))},'image/jpeg',0.85)};img.onerror=function(){URL.revokeObjectURL(url);rej(new Error('img'))};img.src=url})}
 async function subir(file,tipo){var blob=await comprimir(file,1600);var r=await fetch('/anfitrion/nueva/foto?id='+encodeURIComponent(CFG.id)+'&tipo='+tipo,{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}});return r.json()}
-function pintarFotos(){$('fotos').innerHTML=fotos.map(function(u,i){return "<div class='foto' data-url='"+esc(u)+"'><img src='"+esc(u)+"' alt=''><span class='portada'"+(i?' hidden':'')+">Portada</span><div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada'>★</button><button type='button' class='mini' data-acc='quitar' title='Quitar'>✕</button></div></div>"}).join('')}
+var msgBase=$('msgGuardar').innerHTML;
+// FOTOS PROPIAS obligatorias: contador "2 de 2 fotos ✓" y botón deshabilitado con la explicación.
+function actualizarEnvio(){var m=CFG.minFotos||0,n=fotos.length,ok=n>=m,c=$('fotosCont'),btn=$('btnGuardar'),msg=$('msgGuardar');
+  if(c){c.textContent=(ok?Math.min(n,m)+' de '+m+' fotos ✓':n+' de '+m+' fotos');c.className='pill '+(ok?'ok':'warn')}
+  if(!m)return;btn.disabled=!ok;
+  if(!ok){msg.classList.remove('err');msg.innerHTML='📷 Sube al menos <b>'+m+' fotos de tu local</b> para enviar (llevas '+n+'). Las de Google no cuentan: no se pueden guardar y las tuyas prueban que el local existe.'}
+  else if(msg.innerHTML.indexOf('📷')===0)msg.innerHTML=msgBase}
+function pintarFotos(){$('fotos').innerHTML=fotos.map(function(u,i){return "<div class='foto' data-url='"+esc(u)+"'><img src='"+esc(u)+"' alt=''><span class='portada'"+(i?' hidden':'')+">Portada</span><div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada'>★</button><button type='button' class='mini' data-acc='quitar' title='Quitar'>✕</button></div></div>"}).join('');actualizarEnvio()}
+pintarFotos();
 document.addEventListener('click',function(ev){var a=ev.target.closest('.foto .mini');if(!a)return;var u=a.closest('.foto').dataset.url,i=fotos.indexOf(u);if(a.dataset.acc==='quitar'&&i>=0)fotos.splice(i,1);if(a.dataset.acc==='portada'&&i>0){fotos.splice(i,1);fotos.unshift(u)}pintarFotos()});
 $('inFotos').addEventListener('change',async function(){var files=Array.prototype.slice.call(this.files||[]);this.value='';var msg=$('fotosMsg');
   for(var i=0;i<files.length;i++){if(fotos.length>=CFG.maxFotos){msg.textContent='Máximo '+CFG.maxFotos+' fotos.';break}subiendo++;msg.textContent='Subiendo foto '+(i+1)+' de '+files.length+'…';
@@ -1834,13 +1862,14 @@ $('inEvid').addEventListener('change',async function(){var f=this.files&&this.fi
   try{var j=await subir(f,'evidencia');if(j.ok){evid=j.url;$('evidMsg').textContent='✅ Prueba adjunta.'}else $('evidMsg').textContent=j.error||'No se pudo subir.'}catch(e){$('evidMsg').textContent='No se pudo subir.'}subiendo--});
 // ── enviar ──
 $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las fotos.';return}
+  if(fotos.length<(CFG.minFotos||0)){actualizarEnvio();var sf=document.getElementById('sec-fotos');if(sf)sf.scrollIntoView({behavior:'smooth'});return}
   var body={id:CFG.id,existente:CFG.existente,place:place,nombre_local:$('local').value,direccion:$('direccion').value,lat:lat,lng:lng,zona:$('g3').value,deportes:dep,modo:modo(),superficie:sup,superficies:sups,
     nombre_cancha:$('nombreCancha').value,modo_precio:pcgPrecioBody().modo_precio,precio:pcgPrecioBody().precio,precio_hora:parseFloat($('precio').value)||0,hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,duracion_slot_min:+sel('duracion_slot_min')||60,
     fotos:fotos,whatsapp:$('wa').value,relacion:sel('relacion'),documento:$('doc').value,nota:$('nota').value,evidencia:evid,sol_lat:solLat,sol_lng:solLng};
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Registrando…';
   try{var r=await fetch('/anfitrion/nueva',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){location.href=j.url||'/anfitrion/canchas';return}msg.classList.add('err');msg.textContent=j.error||'No se pudo registrar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth'})}}
-  catch(e){msg.classList.add('err');msg.textContent='No se pudo registrar. Revisa tu conexión.'}btn.disabled=false});
+  catch(e){msg.classList.add('err');msg.textContent='No se pudo registrar. Revisa tu conexión.'}btn.disabled=false;var m=CFG.minFotos||0;if(m&&fotos.length<m)btn.disabled=true});
 })();
 """
 
@@ -1901,15 +1930,18 @@ def _validar_registro(b: dict, email: str) -> tuple[list[dict] | None, dict, str
     if err_precio:
         return None, {}, err_precio, "precio"
     prefijo = almacen.prefijo_cancha(nuevo_id) if almacen.disponible() else None
-    previas = set(_fotos(existente)) if existente else set()
+    previas = set(fotos_reclamo.de_cancha(existente)) if existente else set()
     fotos = []
     for u in (b.get("fotos") or []):
         u = str(u).strip()
         if u and u not in fotos and (u in previas or (prefijo and u.startswith(prefijo))):
             fotos.append(u)
-    if existente and not fotos:
-        fotos = _fotos(existente)
-    fotos = fotos[:catalogos.MAX_FOTOS]
+    # Solo cuentan (y se guardan) fotos PROPIAS: subidas a la carpeta de esta
+    # cancha en NUESTRO bucket. Google / googleusercontent / evidencia no.
+    fotos = fotos_reclamo.propias(fotos, nuevo_id)[:catalogos.MAX_FOTOS]
+    min_fotos = fotos_reclamo.minimo()
+    if len(fotos) < min_fotos:
+        return None, {}, _error_faltan_fotos(min_fotos, len(fotos)), 'fotos'
     wa_local = re.sub(r"\D", "", str(b.get("whatsapp") or ""))
     cod = catalogos.TEL_PREFIJO[iso]
     if wa_local.startswith(cod) and len(wa_local) > catalogos.TEL_LONGITUD[iso]:
@@ -2115,7 +2147,21 @@ def pagina_agregar_cancha(request: Request, cancha_id: str, deporte: str = "") -
     dep_ini = deporte if deporte in catalogos.DEPORTES_ACTIVOS else ""
     dep_ops = [(d, f"{_deporte(d)[1]} {_deporte(d)[0]}") for d in catalogos.DEPORTES_ACTIVOS]
     auto = {d: _nombre_auto(ses["email"], l, d) for d in catalogos.DEPORTES_ACTIVOS}
-    cfg = {"id": l["id"], "superficies": catalogos.SUPERFICIES, "auto": auto, "dep": dep_ini}
+    # FOTOS PROPIAS (decisión del director, 2-oct-2026): la cancha hereda las
+    # fotos del local; si el local tiene menos del mínimo, se piden las que faltan.
+    min_fotos = fotos_reclamo.minimo()
+    heredadas = fotos_reclamo.de_cancha(l)
+    faltan_fotos = max(0, min_fotos - len(heredadas))
+    cfg = {"id": l["id"], "superficies": catalogos.SUPERFICIES, "auto": auto, "dep": dep_ini,
+           "nuevoId": f"u{int(time.time() * 1000)}", "faltanFotos": faltan_fotos, "maxFotos": catalogos.MAX_FOTOS}
+    sec_fotos = "" if not faltan_fotos else f"""
+ <section class='panel edit-sec' id='sec-fotos'><h2>Fotos de tu local</h2>
+  <p class='sub'>{_texto_fotos_obligatorias(min_fotos)} Tu local tiene {len(heredadas)}: <b>sube {faltan_fotos} más</b> para agregar esta cancha.</p>
+  <div class='pill warn' id='fotosCont' style='display:inline-block;margin:2px 0 10px'>0 de {faltan_fotos} fotos</div>
+  <div class='edit-fotos' id='fotos'></div>
+  <div class='acciones' style='margin-top:12px'><label class='btn sec' for='inFotos'>📷 Agregar fotos</label><input type='file' id='inFotos' accept='image/*' multiple hidden{'' if almacen.disponible() else ' disabled'}>
+  <span class='sub' id='fotosMsg' style='margin:0'>{'' if almacen.disponible() else 'La subida de fotos no está disponible en este ambiente; súbelas desde la app.'}</span></div>
+ </section>"""
     lista = "".join(f"<li>{_deporte(c.get('deporte'))[1]} {e(c['nombre'])} · {e(_deporte(c.get('deporte'))[0])}"
                     + ("" if datos.reservable(c) else " <span class='pill warn' style='font-size:11px'>Aún sin verificar</span>") + "</li>" for c in hermanas)
     estado = ("<div class='aviso ok'>✓ El local ya está verificado: la cancha nueva queda <b>activa al instante</b> y recibe reservas.</div>" if activo else
@@ -2148,7 +2194,7 @@ def pagina_agregar_cancha(request: Request, cancha_id: str, deporte: str = "") -
   <label style='margin-top:14px'>Duración del turno</label>
   {_chips('duracion_slot_min', catalogos.DURACIONES, int(l.get('duracion_slot_min') or 60) if int(l.get('duracion_slot_min') or 60) in catalogos.DURACIONES else 60, fmt=catalogos.etiqueta_duracion)}
   <p class='sub' style='font-size:12.5px'>Hora feliz, seña, fotos propias y servicios extra los ajustas después en Editar cancha.</p>
- </section>
+ </section>{sec_fotos}
 </form></div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>{'Queda activa al instante.' if activo else 'Se activa junto con el local.'}</span>
 <button type='button' class='btn' id='btnGuardar'>Agregar cancha</button></div></div>
@@ -2159,9 +2205,24 @@ def pagina_agregar_cancha(request: Request, cancha_id: str, deporte: str = "") -
 
 _JS_AGREGAR = r"""
 (function(){
-var dep=CFG.dep||'', sup='';
+var dep=CFG.dep||'', sup='', fotos=[], subiendo=0;
 function $(id){return document.getElementById(id)}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;')}
+// Fotos que le FALTAN al local para el mínimo (van a la carpeta de la cancha nueva).
+var msgBase=$('msgGuardar').innerHTML;
+function actualizarEnvio(){var m=CFG.faltanFotos||0;if(!m)return;var n=fotos.length,ok=n>=m,c=$('fotosCont'),btn=$('btnGuardar'),msg=$('msgGuardar');
+  if(c){c.textContent=(ok?m+' de '+m+' fotos ✓':n+' de '+m+' fotos');c.className='pill '+(ok?'ok':'warn')}
+  btn.disabled=!ok;if(!ok){msg.classList.remove('err');msg.innerHTML='📷 Sube <b>'+m+' foto'+(m>1?'s':'')+' de tu local</b> para agregar la cancha (llevas '+n+').'}else if(msg.innerHTML.indexOf('📷')===0)msg.innerHTML=msgBase}
+if(CFG.faltanFotos){
+  function comprimir(file,M){return new Promise(function(res,rej){var img=new Image(),url=URL.createObjectURL(file);img.onload=function(){var w=img.width,h=img.height,k=Math.min(1,M/Math.max(w,h));var cv=document.createElement('canvas');cv.width=Math.round(w*k);cv.height=Math.round(h*k);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(url);cv.toBlob(function(b){b?res(b):rej(new Error('img'))},'image/jpeg',0.85)};img.onerror=function(){URL.revokeObjectURL(url);rej(new Error('img'))};img.src=url})}
+  var pintarFotos=function(){$('fotos').innerHTML=fotos.map(function(u){return "<div class='foto' data-url='"+esc(u)+"'><img src='"+esc(u)+"' alt=''><div class='acc'><button type='button' class='mini' data-acc='quitar' title='Quitar'>✕</button></div></div>"}).join('');actualizarEnvio()};
+  document.addEventListener('click',function(ev){var a=ev.target.closest('.foto .mini');if(!a)return;var i=fotos.indexOf(a.closest('.foto').dataset.url);if(i>=0)fotos.splice(i,1);pintarFotos()});
+  $('inFotos').addEventListener('change',async function(){var files=Array.prototype.slice.call(this.files||[]);this.value='';var msg=$('fotosMsg');
+    for(var i=0;i<files.length;i++){if(fotos.length>=CFG.maxFotos){msg.textContent='Máximo '+CFG.maxFotos+' fotos.';break}subiendo++;msg.textContent='Subiendo foto '+(i+1)+' de '+files.length+'…';
+      try{var blob=await comprimir(files[i],1600);var r=await fetch('/anfitrion/nueva/foto?id='+encodeURIComponent(CFG.nuevoId)+'&tipo=foto',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}});var j=await r.json();
+        if(j.ok){fotos.push(j.url);pintarFotos();msg.textContent=''}else msg.textContent=j.error||'No se pudo subir.'}catch(e){msg.textContent='No se pudo subir la foto.'}subiendo--}});
+  pintarFotos();
+}
 function sel(g){var b=document.querySelector(".chip.sel[data-g='"+g+"']");return b?b.dataset.v:''}
 function pintarSup(){var w=$('supWrap');if(!dep){w.innerHTML="<p class='sub'>Marca primero el deporte.</p>";return}
   var l=CFG.superficies[dep]||[];if(l.indexOf(sup)<0)sup='';
@@ -2171,12 +2232,13 @@ document.addEventListener('click',function(ev){var b=ev.target.closest('.chip[da
   b.closest('.chips').querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel')});b.classList.add('sel');
   if(g==='deporte'){dep=v;pintarSup()}else if(g==='sup'){sup=v}});
 pintarSup();
-$('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');
-  var body={deporte:dep,superficie:sup,nombre:$('nombreCancha').value,modo_precio:pcgPrecioBody().modo_precio,precio:pcgPrecioBody().precio,precio_hora:parseFloat($('precio').value)||0,hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,duracion_slot_min:+sel('duracion_slot_min')||60};
+$('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las fotos.';return}
+  if(fotos.length<(CFG.faltanFotos||0)){actualizarEnvio();return}
+  var body={id:CFG.nuevoId,fotos:fotos,deporte:dep,superficie:sup,nombre:$('nombreCancha').value,modo_precio:pcgPrecioBody().modo_precio,precio:pcgPrecioBody().precio,precio_hora:parseFloat($('precio').value)||0,hora_apertura:$('hora_apertura').value,hora_cierre:$('hora_cierre').value,duracion_slot_min:+sel('duracion_slot_min')||60};
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Agregando…';
   try{var r=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){location.href=j.url||'/anfitrion/canchas';return}msg.classList.add('err');msg.textContent=j.error||'No se pudo agregar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth'})}}
-  catch(e){msg.classList.add('err');msg.textContent='No se pudo agregar. Revisa tu conexión.'}btn.disabled=false});
+  catch(e){msg.classList.add('err');msg.textContent='No se pudo agregar. Revisa tu conexión.'}btn.disabled=fotos.length<(CFG.faltanFotos||0)});
 })();
 """
 
@@ -2205,8 +2267,23 @@ def _validar_agregada(b: dict, l: dict, email: str) -> tuple[dict | None, str, s
     precio, precio_turno, err_precio = _precio_de_body(b, dur)
     if err_precio:
         return None, err_precio, "precio"
-    fotos = list(_fotos(l))
-    fila = {"id": f"u{int(time.time() * 1000)}", "nombre": nombre, "club": (l.get("club") or "").strip() or l["nombre"],
+    # Hereda las fotos PROPIAS del local (las de Google no se guardan) y, si el
+    # local tiene menos del mínimo, exige las que faltan subidas a la carpeta de
+    # la cancha nueva (`/anfitrion/nueva/foto?id=<id nuevo>`).
+    nuevo_id = str(b.get("id") or "")
+    if not _ID_NUEVA_RE.match(nuevo_id) or datos.cancha(nuevo_id):
+        nuevo_id = f"u{int(time.time() * 1000)}"
+        for _ in range(20):  # dos altas en el mismo milisegundo no chocan
+            if not datos.cancha(nuevo_id):
+                break
+            nuevo_id = f"u{int(nuevo_id[1:]) + 1}"
+    heredadas = fotos_reclamo.de_cancha(l)
+    nuevas = fotos_reclamo.propias([str(u) for u in (b.get("fotos") or [])], nuevo_id)
+    fotos = (heredadas + [u for u in nuevas if u not in heredadas])[:catalogos.MAX_FOTOS]
+    min_fotos = fotos_reclamo.minimo()
+    if len(fotos) < min_fotos:
+        return None, _error_faltan_fotos(min_fotos, len(fotos)), "fotos"
+    fila = {"id": nuevo_id, "nombre": nombre, "club": (l.get("club") or "").strip() or l["nombre"],
             "distrito": l.get("distrito") or "", "barrio": l.get("barrio") or "", "deporte": dep, "deportes": [dep], "superficie": sup,
             "precio_hora": precio, "precio_turno": precio_turno or None, "lat": l.get("lat"), "lng": l.get("lng"), "club_fundador": bool(l.get("club_fundador")),
             "digitalizada": True, "direccion": l.get("direccion") or None, "registrada": True,
@@ -2251,6 +2328,37 @@ def _agregar_cancha_web(request: Request, cancha_id: str, _cuerpo_json) -> JSONR
     return JSONResponse({"ok": True, "url": f"/anfitrion/canchas?agregada={fila['id']}", "id": fila["id"], "verificada": fila["verificada"]})
 
 
+def _cancha_del_reclamo(email: str, c: dict, mias: list[dict] | None = None) -> dict:
+    """La cancha sobre la que está el RECLAMO de esta cuenta para el lugar de
+    `c` (en un registro con canchas separadas el reclamo va en la primera; en
+    un legado, en la fila adoptada). Es la que debe tener las fotos propias."""
+    em = (email or "").strip().lower()
+    pool = [r for r in reclamos._reclamos_del_lugar(c["id"]) if (r.solicitante_id or "").strip().lower() == em]
+    if pool:
+        rid = max(pool, key=lambda r: r.id).cancha_id
+        mias = mias if mias is not None else datos.canchas_de_dueno(email)
+        x = next((m for m in mias if m.get("id") == rid), None)
+        if x:
+            return x
+    return c
+
+
+def aviso_fotos_reclamo(email: str, c: dict, mias: list[dict] | None = None) -> str:
+    """Aviso ámbar "Sube N fotos de tu local para que podamos aprobarlo" con
+    acceso directo a Editar cancha (decisión del director, 2-oct-2026). Vacío
+    si la cancha ya está activa, no se exige o ya tiene las fotos."""
+    m = fotos_reclamo.minimo()
+    if m <= 0 or datos.reservable(c):
+        return ""
+    rc = _cancha_del_reclamo(email, c, mias)
+    falta = max(0, m - len(fotos_reclamo.de_cancha(rc)))
+    if not falta:
+        return ""
+    return (f"<div class='aviso warn' style='margin:12px 0 0'>📷 <b>{fotos_reclamo.texto_faltan(falta)}.</b> "
+            "<span class='sub' style='margin:0'>Las fotos de Google no cuentan: sus términos no permiten guardarlas, y las tuyas prueban que el local existe.</span> "
+            f"<a href='/anfitrion/cancha/{quote(rc['id'], safe='')}/editar#sec-fotos' style='font-weight:700;white-space:nowrap'>Subir fotos ›</a></div>")
+
+
 def _aviso_verificacion(canchas: list[dict], email: str) -> str:
     """Banner del panel para las canchas del dueño AÚN sin verificar (espejo
     del cartel "pendiente" de la ficha del app): estado real del reclamo."""
@@ -2269,6 +2377,8 @@ def _aviso_verificacion(canchas: list[dict], email: str) -> str:
             est = {}
         clase, tit, txt = _ESTADO_RECLAMO.get(str(est.get("estado") or ""), ("warn", "Sin solicitud de verificación", "No encontramos tu solicitud. Toca «Ver estado y opciones» para reenviarla."))
         filas.append(f"<div class='aviso {clase}' style='margin:12px 0 0'><b>{e(c.get('club') or c['nombre'])}</b> · {tit}. <span class='sub' style='margin:0'>{txt}</span> <a href='/anfitrion/verificacion/{quote(c['id'], safe='')}' style='font-weight:700;white-space:nowrap'>Ver estado y opciones ›</a></div>")
+        if str(est.get("estado") or "") not in ("rechazada", "reclamada_por_otro"):
+            filas.append(aviso_fotos_reclamo(email, c, canchas))
     return "".join(filas)
 
 

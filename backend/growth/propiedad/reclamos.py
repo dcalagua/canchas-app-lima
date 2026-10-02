@@ -32,7 +32,7 @@ from db.store import (
     como_dict,
     stores,
 )
-from propiedad import identidad, twilio_adapter, whatsapp_adapter
+from propiedad import fotos_reclamo, identidad, twilio_adapter, whatsapp_adapter
 
 
 def config_modo() -> dict:
@@ -622,6 +622,11 @@ def validar_en_sitio(codigo: str, lat: float, lng: float,
     else:
         dist = None  # sin ubicación declarada no se puede contrastar
 
+    if config.VALIDADOR_ACTIVA_AUTOMATICO:
+        err = _gate_fotos(r)  # no se activa sin fotos propias del local
+        if err is not None:
+            return err
+
     r.validado_en = ahora()
     r.validador = validador
     _cerrar_duplicados(r)
@@ -667,6 +672,14 @@ def _gate_ubicacion(r: ReclamoPropiedad) -> dict | None:
     return None
 
 
+def _gate_fotos(r: ReclamoPropiedad) -> dict | None:
+    """FOTOS PROPIAS obligatorias para ACTIVAR (decisión del director,
+    2-oct-2026): la cancha reclamada debe tener en la nube el mínimo de fotos
+    subidas por el dueño a su carpeta del bucket (`fotos_reclamo`). Es el
+    candado real: los APK viejos no lo validan al enviar."""
+    return fotos_reclamo.gate(r.cancha_id)
+
+
 def aprobar_directo(reclamo_id: int, revisor: str | None = None) -> dict:
     """Aprobación del admin. Su efecto depende del MODO de la cancha:
 
@@ -687,8 +700,12 @@ def aprobar_directo(reclamo_id: int, revisor: str | None = None) -> dict:
     if err is not None:
         return err
 
-    _cerrar_duplicados(r)
     modo = stores.modo_aprobacion(r.cancha_id)
+    if modo != "nuevo_flujo":  # en nuevo flujo aún no se ACTIVA: el candado va en la activación
+        err = _gate_fotos(r)
+        if err is not None:
+            return err
+    _cerrar_duplicados(r)
     if modo == "nuevo_flujo":
         r.estado = "pendiente_validacion"
         r.decidido_en = ahora()
@@ -728,6 +745,9 @@ def activar_admin(reclamo_id: int) -> dict:
     err = _gate_ubicacion(r)  # mismo anti-fraude que aprobar_directo
     if err is not None:
         return err
+    err = _gate_fotos(r)  # fotos propias del local (decisión del director, 2-oct-2026)
+    if err is not None:
+        return err
     _cerrar_duplicados(r)
     r.estado = "activada"
     c = stores.cancha(r.cancha_id)
@@ -744,7 +764,19 @@ def listar(estado_filtro: str | None = None) -> list[dict]:
     rs = stores.reclamos
     if estado_filtro:
         rs = [r for r in rs if r.estado == estado_filtro]
-    return [_enriquecer(r) for r in rs]
+    out = [_enriquecer(r) for r in rs]
+    # Fotos propias (una sola consulta) para los reclamos que aún se deciden:
+    # la torre muestra "📷 N fotos propias" y bloquea Aprobar si faltan.
+    abiertos = [d for d in out if d.get("estado") not in _ESTADOS_TERMINALES]
+    fot = fotos_reclamo.estado_varios([d.get("cancha_id") for d in abiertos])
+    for d in out:
+        d["fotos_minimo"] = fotos_reclamo.minimo()
+        e = fot.get(d.get("cancha_id"))
+        if e is not None and d in abiertos:
+            d["fotos_propias"] = e["n"]
+            d["fotos_faltan"] = e["faltan"]
+            d["fotos_urls"] = e["fotos"][:4]
+    return out
 
 
 # --- OTP por WhatsApp = EVIDENCIA, nunca activación (decisión del director,

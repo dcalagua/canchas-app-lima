@@ -373,6 +373,14 @@ async def webhook_whatsapp(request: Request) -> Response:
                     f"No se pudo aprobar: el reclamante estuvo a "
                     f'{r.get("distancia_m", "?")} m de la cancha (máx '
                     f'{r.get("max_m", "?")} m).')
+            if err == "faltan_fotos_propias":
+                return _twiml(
+                    f"No se pudo aprobar: el local tiene {r.get('fotos_propias', 0)} "
+                    f"foto(s) propia(s) y se exigen {r.get('minimo', '?')}. Pídele "
+                    f"al dueño que las suba en Editar cancha.")
+            if err == "fotos_no_verificables":
+                return _twiml("No se pudo aprobar: no pudimos revisar las fotos "
+                              "del local. Inténtalo en unos minutos.")
             return _twiml(f"No se pudo aprobar el reclamo {codigo}.")
         nombre = _xml_esc(r.get("nombre_local", ""))
         if r.get("ya"):

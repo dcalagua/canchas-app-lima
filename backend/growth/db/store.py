@@ -170,6 +170,12 @@ CONFIG_DEFAULT: dict[str, str] = {
     # desde donde se envió coincide con la ubicación de la cancha (anti-fraude
     # ligero: "estar en el lugar" al reclamar). "0" = no se exige (piloto).
     "exigir_ubicacion_reclamo": "0",
+    # FOTOS PROPIAS obligatorias al reclamar (decisión del director, 2-oct-2026):
+    # mínimo de fotos que el dueño debe subir a la carpeta de SU cancha en el
+    # bucket para poder APROBAR/ACTIVAR el reclamo (las de Google no cuentan:
+    # sus términos no permiten guardarlas). "0" = no se exige. Editable en la
+    # torre y público en `GET /config/canal` (`propiedad/fotos_reclamo.py`).
+    "reclamo_fotos_min": "2",
     # Tasa efectiva de la PASARELA/BANCO (Culqi) sobre el BRUTO de cada cobro
     # digital: es el COSTO real que paga Pichangol al procesar la tarjeta. Se
     # resta de la comisión que PCG le cobra a la academia para saber el MARGEN

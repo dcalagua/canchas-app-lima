@@ -15,6 +15,7 @@ import '../data/chat_prefs_repo.dart';
 import '../data/estados_repo.dart';
 import '../data/lecturas_repo.dart';
 import '../data/presencia_repo.dart';
+import '../models/fotos_propias.dart';
 import '../models/estado.dart';
 import '../models/canal.dart';
 import '../data/campeonatos_repo.dart';
@@ -7751,6 +7752,12 @@ class AppState extends ChangeNotifier {
   /// pago que no puede completarse (y menos una que simule haber cobrado).
   bool pagoOnlineDisponible = false;
 
+  /// Mínimo de FOTOS PROPIAS del local para enviar un reclamo (decisión del
+  /// director, 2-oct-2026; torre → `GET /config/canal` → `reclamo_fotos_min`).
+  /// Cache-first en SharedPreferences; sin red ni caché vale 2. 0 = no se exige.
+  int reclamoFotosMin = FotosPropias.minimoPorDefecto;
+  bool _reclamoFotosMinLeido = false;
+
   /// Catálogo GLOBAL de servicios extra (lo administra el operador en la
   /// torre; `GET /config/servicios-extra`). Cache-first en SharedPreferences
   /// y refresco en silencio; sin red, el editor usa la lista empaquetada.
@@ -7785,9 +7792,32 @@ class AppState extends ChangeNotifier {
   Future<void> cargarCanalComunicacion() async {
     cargarCatalogoServicios(); // best-effort, en paralelo
     cargarCargoServicio(); // best-effort, en paralelo
+    SharedPreferences? prefs;
+    try {
+      prefs = await SharedPreferences.getInstance();
+      if (!_reclamoFotosMinLeido) {
+        _reclamoFotosMinLeido = true;
+        final cache = prefs.getInt('reclamo_fotos_min');
+        if (cache != null && cache != reclamoFotosMin) {
+          reclamoFotosMin = cache;
+          notifyListeners();
+        }
+      }
+    } catch (_) {}
     final j = await GrowthService.configPublica();
     if (j == null) return;
     var cambio = false;
+    final fmin = j['reclamo_fotos_min'];
+    if (fmin is num) {
+      final v = fmin.toInt().clamp(0, FotosPropias.maximo);
+      try {
+        await prefs?.setInt('reclamo_fotos_min', v);
+      } catch (_) {}
+      if (v != reclamoFotosMin) {
+        reclamoFotosMin = v;
+        cambio = true;
+      }
+    }
     final c = (j['canal'] ?? '').toString();
     if (c.isNotEmpty && c != canalComunicacion) {
       canalComunicacion = c;
