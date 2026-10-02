@@ -360,40 +360,58 @@ class PlacesService {
     );
   }
 
-  /// Caché de sesión de fotos por ficha: UNA consulta a Google por lugar por
-  /// sesión (aunque el usuario entre y salga de la ficha mil veces). Guarda
-  /// también el resultado vacío para no reintentar.
+  /// Caché de sesión de fotos por lugar (guarda también el vacío para no
+  /// reintentar). Las mismas URLs las cachea en disco `CachedNetworkImage`.
   static final Map<String, List<String>> _cacheFotosFicha = {};
+  static final Map<String, Future<List<String>>> _fotosEnVuelo = {};
 
-  /// FOTOS EN VIVO de una cancha DESCUBIERTA/cosechada, SOLO al abrir su ficha
-  /// (Place Details New por place_id — no viaja por la Edge Function). Candados
-  /// de costo: máximo 3 fotos, caché de sesión y fail-safe []. La LISTA de
-  /// Explorar nunca las usa (ahí siempre placeholder).
-  static Future<List<String>> fotosFicha(String canchaId) async {
-    if (!disponible || !canchaId.startsWith('gp_')) return const [];
+  /// Base del backend growth: las fotos de lugares de Google se piden a NUESTRO
+  /// servidor, no a Google (oct-2026, factura de Places).
+  static const _growthUrl = String.fromEnvironment('GROWTH_API_URL');
+
+  /// FOTOS de una cancha DESCUBIERTA/cosechada (`gp_…`) para su tarjeta y su
+  /// ficha. Antes el teléfono llamaba a Google (Place Details + descarga de
+  /// cada imagen con la llave en la URL) en CADA apertura de la app y por CADA
+  /// usuario. Ahora pregunta a `GET /web/foto` del backend, que guarda las
+  /// fotos de cada lugar en `pichangol_lugares_fotos` y las reutiliza 30 días
+  /// para TODOS (web y APK): Google se paga una vez por lugar al mes y las URLs
+  /// que llegan son públicas (sin llave, su descarga no se cobra). Máx. 3
+  /// fotos, una sola petición en vuelo por lugar y fail-safe [] (la tarjeta se
+  /// queda con su fondo del deporte).
+  static Future<List<String>> fotosFicha(String canchaId,
+      {String nombre = '', LatLng? ubicacion}) {
+    if (!canchaId.startsWith('gp_') || _growthUrl.isEmpty) {
+      return Future.value(const []);
+    }
     final cacheadas = _cacheFotosFicha[canchaId];
-    if (cacheadas != null) return cacheadas;
+    if (cacheadas != null) return Future.value(cacheadas);
+    return _fotosEnVuelo[canchaId] ??=
+        _pedirFotos(canchaId, nombre, ubicacion).whenComplete(() {
+      _fotosEnVuelo.remove(canchaId);
+    });
+  }
+
+  static Future<List<String>> _pedirFotos(
+      String canchaId, String nombre, LatLng? ubicacion) async {
+    if (ubicacion == null || nombre.trim().isEmpty) return const [];
     try {
-      final placeId = canchaId.substring(3); // quita el prefijo gp_
-      final uri = Uri.https('places.googleapis.com', '/v1/places/$placeId');
-      final resp = await http.get(uri, headers: {
-        'X-Goog-Api-Key': _key,
-        'X-Goog-FieldMask': 'photos',
-      }).timeout(const Duration(seconds: 6));
+      final uri = Uri.parse('$_growthUrl/web/foto').replace(queryParameters: {
+        'id': canchaId,
+        'nombre': nombre,
+        'lat': ubicacion.latitude.toString(),
+        'lng': ubicacion.longitude.toString(),
+      });
+      final resp = await http.get(uri).timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200) return const [];
-      final body = jsonDecode(resp.body) as Map<String, dynamic>;
-      final urls = <String>[];
-      for (final ph in ((body['photos'] as List?) ?? []).take(3)) {
-        final name = (ph is Map) ? ph['name']?.toString() : null;
-        if (name != null) {
-          urls.add(
-              'https://places.googleapis.com/v1/$name/media?maxWidthPx=1000&key=$_key');
-        }
-      }
+      final body = jsonDecode(resp.body);
+      final urls = <String>[
+        for (final u in ((body is Map ? body['fotos'] : null) as List? ?? const []))
+          if (u is String && u.startsWith('http')) u
+      ].take(3).toList();
       _cacheFotosFicha[canchaId] = urls;
       return urls;
     } catch (_) {
-      return const []; // fail-safe: la ficha se queda con el placeholder
+      return const []; // sin red: placeholder (se reintenta en otra apertura)
     }
   }
 

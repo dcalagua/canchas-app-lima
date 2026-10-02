@@ -3486,8 +3486,17 @@ antes del corte.
   service role) y la reusa para cualquier punto a ≤ 3 km (30 días; 1 día si
   pide fotos) → también ahorra con APKs VIEJOS. Fail-open sin la tabla.
   **Hay que correr el SQL y redesplegar la Edge en cada ambiente** (QAS: el
-  director por CLI, el conector no ve QAS; PRD: con autorización). Tests
-  `tests/test_places_costo.py`.
+  director lo hizo desde el panel de Supabase → Edge Functions → Code →
+  Deploy updates, sin CLI; PRD: hecho vía conector, v7). Tests
+  `tests/test_places_costo.py`. **(5) FOTOS DEL APK (2-oct-2026):** la
+  tarjeta de una cancha descubierta y su ficha ya NO llaman a Google desde
+  el teléfono (antes Place Details + descarga de cada imagen con la llave en
+  la URL, en cada apertura y por cada usuario): `PlacesService.fotosFicha(id,
+  nombre:, ubicacion:)` pide `GET /web/foto` al backend, que guarda las
+  fotos por lugar en `pichangol_lugares_fotos` 30 días para todos y devuelve
+  URLs públicas sin llave; una sola petición en vuelo por lugar, caché de
+  sesión, fail-safe []. Los APK anteriores siguen pidiéndolas a Google hasta
+  actualizarse.
 - **Explorar carga rápida (idea del usuario, para más adelante):**
   1. **GPS colgado con mala señal:** Explorar se queda en "Detectando tu
      ubicación…" indefinidamente. Fix: timeout al GPS + caer a última ubicación

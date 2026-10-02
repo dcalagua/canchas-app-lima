@@ -3703,7 +3703,8 @@ class _HeroGaleriaState extends State<_HeroGaleria> {
     final c = widget.cancha;
     // Solo descubiertas/cosechadas: las reclamadas lucen las fotos del dueño.
     if (c.registrada || c.fotos.isNotEmpty || c.fotoUrl != null) return;
-    final urls = await PlacesService.fotosFicha(c.id);
+    final urls = await PlacesService.fotosFicha(c.id,
+        nombre: c.club.isNotEmpty ? c.club : c.nombre, ubicacion: c.ubicacion);
     if (mounted && urls.isNotEmpty) setState(() => _fotosVivo = urls);
   }
 

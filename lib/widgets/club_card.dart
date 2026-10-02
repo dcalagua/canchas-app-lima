@@ -84,7 +84,7 @@ class ClubCard extends StatelessWidget {
                       // Descubierta sin fotos propias → baja 1 foto de Google
                       // en vivo (perezoso + caché de sesión compartida con la
                       // ficha, así abrirla después no vuelve a pedir nada).
-                      canchaIdGoogle: desc ? club.principal.id : null,
+                      canchaGoogle: desc ? club.principal : null,
                     ),
                   ),
                   Positioned(
@@ -337,14 +337,14 @@ String _distanciaTxt(double km) {
 /// muestra el gradiente del deporte con líneas de cancha.
 class _CoverCarrusel extends StatefulWidget {
   const _CoverCarrusel(
-      {required this.fotos, required this.portada, this.canchaIdGoogle});
+      {required this.fotos, required this.portada, this.canchaGoogle});
   final List<String> fotos;
   final Deporte portada;
 
-  /// Id `gp_…` de la cancha DESCUBIERTA en Google. Si viene y no hay fotos
-  /// propias, la tarjeta baja UNA foto de Google en forma perezosa (misma
-  /// caché de sesión que la ficha: un solo request por lugar por sesión).
-  final String? canchaIdGoogle;
+  /// Cancha DESCUBIERTA en Google (`gp_…`). Si viene y no hay fotos propias,
+  /// la tarjeta pide su foto al backend (guardada 30 días para todos; misma
+  /// caché de sesión que la ficha).
+  final Cancha? canchaGoogle;
 
   @override
   State<_CoverCarrusel> createState() => _CoverCarruselState();
@@ -367,9 +367,10 @@ class _CoverCarruselState extends State<_CoverCarrusel> {
   }
 
   Future<void> _cargarFotoVivo() async {
-    final id = widget.canchaIdGoogle;
-    if (id == null || widget.fotos.isNotEmpty) return;
-    final urls = await PlacesService.fotosFicha(id);
+    final c = widget.canchaGoogle;
+    if (c == null || widget.fotos.isNotEmpty) return;
+    final urls = await PlacesService.fotosFicha(c.id,
+        nombre: c.club.isNotEmpty ? c.club : c.nombre, ubicacion: c.ubicacion);
     if (mounted && urls.isNotEmpty) {
       setState(() => _fotosVivo = [urls.first]);
     }
