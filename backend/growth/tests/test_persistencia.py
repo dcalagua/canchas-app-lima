@@ -90,3 +90,33 @@ def test_cargar_saldos_vacio_no_rompe():
     s = Stores()
     s.cargar_saldos_rows([])
     assert s.saldos == {}
+
+
+def test_arranque_no_pierde_lo_que_la_tabla_no_guarda():
+    """Bug real de PRD (2-oct-2026): al arrancar, `growth_pagos` (10 columnas)
+    reemplazaba a los pagos del snapshot y una liquidación ya PAGADA volvía a
+    'por pagar' (se perdían liquidado, medio, comisión, cargo…)."""
+    from db import pg
+    s = Stores()
+    p = s.registrar_pago(tipo="liquidacion_online", monto_centimos=9000, moneda="PEN", estado="aprobado",
+                         dueno_id="d@x.com", culqi_charge_id="res_1", medio="yape", comision_centimos=425,
+                         cargo_servicio_centimos=538, cargo_id="chr_1")
+    p.liquidado = True
+    s.reclamos.append(ReclamoPropiedad(id=s.next_id("reclamo"), cancha_id="c1", solicitante_id="d@x.com",
+                                       nombre_local="L", codigo="111111", estado="activada", creado_en=ahora(),
+                                       foto_evidencia_url="https://x/ev.jpg"))
+    filas_tabla = [{c: d.get(c) for c in pg._PAGO_COLS} for d in s.pagos_rows()]
+    filas_tabla.append({"id": 99, "tipo": "recarga", "monto_centimos": 100, "moneda": "PEN", "estado": "aprobado",
+                        "dueno_id": "z@x.com", "culqi_charge_id": "chg_99", "email": None, "concepto": None,
+                        "creado_en": ahora().isoformat()})
+    rec_tabla = [{c: d.get(c) for c in pg._RECLAMO_COLS} for d in s.reclamos_rows()]
+    s2 = Stores()
+    s2.load_state(s.to_state())          # 1) snapshot
+    s2.cargar_pagos_rows(filas_tabla)    # 2) tablas normalizadas encima
+    s2.cargar_reclamos_rows(rec_tabla)
+    q = s2.pago_por_charge("res_1")
+    assert q.liquidado is True and q.medio == "yape" and q.comision_centimos == 425
+    assert q.cargo_servicio_centimos == 538 and q.cargo_id == "chr_1"
+    assert s2.pago_por_charge("chg_99") is not None          # la tabla aún puede sumar los que faltan
+    assert s2.next_id("pago") == 100
+    assert s2.reclamos[0].foto_evidencia_url == "https://x/ev.jpg"

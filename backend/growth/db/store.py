@@ -1412,7 +1412,22 @@ class Stores:
         return [como_dict(p) for p in self.pagos]
 
     def cargar_pagos_rows(self, rows) -> None:
-        self.pagos = [_pago_from(r) for r in rows]
+        """Mezcla las filas de `growth_pagos` con lo cargado del snapshot.
+
+        La tabla solo guarda 10 columnas (id, tipo, monto, moneda, estado,
+        dueño, charge, email, concepto, fecha); el snapshot guarda el pago
+        COMPLETO (liquidado, medio, comisión congelada, cargo por servicio,
+        pasarela real, cargo_id…). Antes la tabla REEMPLAZABA a los pagos del
+        snapshot en cada arranque y todo eso se perdía (una liquidación ya
+        pagada volvía a "por pagar", bug real de PRD, 2-oct-2026). Ahora el
+        pago del snapshot manda (se escribe en el mismo guardado que la tabla)
+        y la tabla solo AGREGA los pagos que el snapshot no tenga."""
+        por_id = {p.id: p for p in self.pagos}
+        for r in rows:
+            p = _pago_from(r)
+            if p.id not in por_id:
+                por_id[p.id] = p
+        self.pagos = sorted(por_id.values(), key=lambda p: p.id)
         if self.pagos:  # mantiene el contador de ids coherente
             self._ids["pago"] = max(
                 self._ids.get("pago", 0), max(p.id for p in self.pagos))
@@ -1434,7 +1449,15 @@ class Stores:
         return [como_dict(r) for r in self.reclamos]
 
     def cargar_reclamos_rows(self, rows) -> None:
-        self.reclamos = [_reclamo_from(r) for r in rows]
+        """Igual que los pagos: `growth_reclamos` no tiene todas las columnas
+        (evidencia, nota del reclamante, marcas del OTP…); el reclamo del
+        snapshot manda y la tabla solo agrega los que falten."""
+        por_id = {r.id: r for r in self.reclamos}
+        for row in rows:
+            r = _reclamo_from(row)
+            if r.id not in por_id:
+                por_id[r.id] = r
+        self.reclamos = sorted(por_id.values(), key=lambda r: r.id)
         if self.reclamos:
             self._ids["reclamo"] = max(
                 self._ids.get("reclamo", 0), max(r.id for r in self.reclamos))
