@@ -609,7 +609,7 @@ _JS_EXPLORAR = r"""
     var foto = fs.length ? fs.slice(0, 3).map(function(u){ return '<img src="' + esc(u) + '" alt="" loading="lazy">'; }).join('') : '<div class="sinfoto"' + (esOsm ? '' : ' data-buscar="1"') + '>' + (c.emoji || '🏟️') + '</div>';
     var extra = fs.length > 1 ? '<button class="flecha izq" aria-label="Anterior">‹</button><button class="flecha der" aria-label="Siguiente">›</button><div class="dots">' + fs.slice(0, 3).map(function(){ return '<i></i>'; }).join('') + '</div>' : '';
     var hrefLugar = '/lugar/' + encodeURIComponent(c.id) + '?nombre=' + encodeURIComponent(c.nombre) + '&direccion=' + encodeURIComponent(c.direccion) + '&lat=' + c.lat + '&lng=' + c.lng + '&deporte=' + encodeURIComponent(c.deporte);
-    return '<a class="lst pend" href="' + hrefLugar + '" data-id="' + esc(c.id) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-deps="' + esc(c.deporte) + '" data-nombre="' + esc(c.nombre) + '" data-sub="' + esc(c.direccion) + '" data-precio="' + esc(c.deporte_nombre) + '" data-t="' + esc((c.nombre + ' ' + c.direccion).toLowerCase()) + '" data-q="' + esc(c.q || '') + '">' +
+    return '<a class="lst pend" href="' + hrefLugar + '" data-id="' + esc(c.id) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-deps="' + esc(c.deporte) + '" data-nombre="' + esc(c.nombre) + '" data-sub="' + esc(c.direccion) + '" data-precio="' + esc(c.deporte_nombre) + '" data-emoji="' + esc(c.emoji || '') + '" data-t="' + esc((c.nombre + ' ' + c.direccion).toLowerCase()) + '" data-q="' + esc(c.q || '') + '">' +
       '<div class="foto"><div class="fotos">' + foto + '</div><span class="badge pend">Aún sin registrar</span>' + extra + '</div>' +
       '<div class="lb"><div class="l1"><b>' + esc(c.nombre) + '</b><span class="rate">' + esc(c.deporte_nombre) + '</span></div>' +
       '<div class="l2">' + esc(c.direccion) + '</div><div class="l2"><span class="dist">' + (c.km != null ? 'a ' + fmtKm(c.km) : '') + '</span>' +
@@ -627,6 +627,14 @@ _JS_EXPLORAR = r"""
   // explora suma; la distancia se recalcula desde el usuario o el centro del mapa).
   var descAcum = {};
   function kmEntre(a, b, c, d){ var R = 6371, x = (c - a) * Math.PI / 180, y = (d - b) * Math.PI / 180; var h = Math.sin(x/2)*Math.sin(x/2) + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)*Math.sin(y/2); return 2 * R * Math.asin(Math.sqrt(h)); }
+  // Pin de una cancha descubierta: ícono del deporte + NOMBRE del local
+  // (recortado por CSS; con el mapa alejado queda solo el ícono, así no se
+  // enciman). El nombre completo va en el title y en el popup.
+  function pinDesc(nombre, emoji, deporte){
+    var n = (nombre || '').trim() || deporte || 'Cancha';
+    return '<span class="pin-precio pend pin-desc" title="' + esc(n) + '"><i>' + esc(emoji || '🏟️') + '</i><span class="nom">' + esc(n) + '</span></span>';
+  }
+  function zoomPines(){ var el = $('mapa'); if(el && mapa) el.classList.toggle('mapa-lejos', mapa.getZoom() < 13); }
   function pintarDescubiertas(lista, conFotos){
     var sec = $('descubiertas'), grid = $('gridDesc');
     if(!sec || !grid) return;
@@ -641,7 +649,7 @@ _JS_EXPLORAR = r"""
     if(mapa && window.L){
       pinesDesc.forEach(function(m){ m.remove(); }); pinesDesc = [];
       lista.forEach(function(c){
-        var m = L.marker([c.lat, c.lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio pend">' + esc(c.emoji || '') + ' ' + esc(c.deporte_nombre) + '</span>', iconSize: null})}).addTo(mapa);
+        var m = L.marker([c.lat, c.lng], {icon: L.divIcon({className: '', html: pinDesc(c.nombre, c.emoji, c.deporte_nombre), iconSize: null})}).addTo(mapa);
         m.bindPopup('<b>' + esc(c.nombre) + '</b><br>' + esc(c.direccion) + '<br><a class="btn sec" href="/lugar/' + encodeURIComponent(c.id) + '?nombre=' + encodeURIComponent(c.nombre) + '&direccion=' + encodeURIComponent(c.direccion) + '&lat=' + c.lat + '&lng=' + c.lng + '&deporte=' + encodeURIComponent(c.deporte) + '">Ver lugar</a>');
         pinesDesc.push(m);
       });
@@ -672,6 +680,7 @@ _JS_EXPLORAR = r"""
     $('mapa').appendChild(btnZona);
     L.DomEvent.disableClickPropagation(btnZona);
     btnZona.addEventListener('click', function(){ var c = mapa.getCenter(); btnZona.style.display = 'none'; descubrir(c.lat, c.lng); });
+    mapa.on('zoomend', zoomPines); zoomPines();
     mapa.on('moveend', function(){ if(mapa.getZoom() < 12) { btnZona.style.display = 'none'; return; } var c = mapa.getCenter(); btnZona.style.display = descubiertas[c.lat.toFixed(2) + ',' + c.lng.toFixed(2)] ? 'none' : ''; });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap'}).addTo(mapa);
     var pts = [];
@@ -691,7 +700,7 @@ _JS_EXPLORAR = r"""
     if(pts.length) mapa.fitBounds(L.latLngBounds(pts).pad(0.25), {maxZoom: 13});
     // Las descubiertas ya pintadas también van al mapa.
     var desc = Array.prototype.slice.call(document.querySelectorAll('#gridDesc .lst'));
-    desc.forEach(function(c){ var m = L.marker([parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)], {icon: L.divIcon({className: '', html: '<span class="pin-precio pend">' + esc(c.dataset.precio) + '</span>', iconSize: null})}).addTo(mapa);
+    desc.forEach(function(c){ var m = L.marker([parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)], {icon: L.divIcon({className: '', html: pinDesc(c.dataset.nombre, c.dataset.emoji, c.dataset.precio), iconSize: null})}).addTo(mapa);
       m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br><a class="btn sec" href="' + c.getAttribute('href') + '">Ver lugar</a>'); pinesDesc.push(m); });
     aplicar();
   }
