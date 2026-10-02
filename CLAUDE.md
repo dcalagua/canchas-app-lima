@@ -2783,6 +2783,16 @@ off → redeploy inmediato en cada push). URL pública:
     `resend._domainkey`, CNAME `rsend`/`send`, `_dmarc`; Gmail intacto) →
     crear llaves "Pichangol QAS/PRD" y poner `RESEND_API_KEY` en `pg-backend`
     y `pg-backend-prd`; hasta entonces los correos quedan `sin_proveedor`.
+    **Pase del 2-oct-2026 (autorizado: "pasa a PRD"):** `prd` = e0edc37
+    (arreglo de pagos que perdían `liquidado`/medio/comisión al reiniciar,
+    reglas de reclamo —ubicación en el local + 3 a 5 fotos propias, Google
+    fuera al aprobar; la migración `reclamo_reglas_v2` las enciende sola en el
+    snapshot de PRD—, modelo de negocio 2 elegible en la torre con mínimo por
+    reserva —PRD sigue en modelo 1 hasta que el director lo cambie en Cobros →
+    Modelo de negocio— y menú lateral colapsable). Sin SQL, sin Edge, sin
+    variables. CAMBIÓ `lib/` → APK/AAB de PRD = run 1531 (`workflow_dispatch`,
+    `ref=prd`, `entorno=prod`). OJO: un APK anterior no exige ubicación ni el
+    rango de fotos al enviar, pero el servidor sí (rechaza con mensaje).
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
