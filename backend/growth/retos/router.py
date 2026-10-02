@@ -13,6 +13,8 @@ from pydantic import BaseModel
 import config
 from db.store import Reto, ahora, stores
 
+from . import elo as _elo
+
 router = APIRouter(prefix="/retos", tags=["retos"])
 
 # Retos que un jugador SIN Pichangol Pro puede ENVIAR por semana (rolling 7 días).
@@ -101,6 +103,8 @@ def _auto_confirmar() -> None:
             r.estado = "jugado"
             r.jugado_en = ahora()
             r.auto_confirmado = True
+            _elo.marcar_jugado(r)  # ELO en el servidor (una vez por reto)
+    _elo.aplicar_pendientes()  # reintenta los que quedaron sin base
 
 
 class CrearRetoReq(BaseModel):
@@ -224,6 +228,7 @@ def resultado_reto(reto_id: int, req: ResultadoReq) -> dict:
         # Sin doble confirmación: cuenta de una.
         r.estado = "jugado"
         r.jugado_en = ahora()
+        _elo.marcar_jugado(r)
     else:
         r.estado = "por_confirmar"
         r.jugado_en = None
@@ -255,6 +260,7 @@ def confirmar_reto(reto_id: int, req: ConfirmarReq) -> dict:
     if req.acepta:
         r.estado = "jugado"
         r.jugado_en = ahora()
+        _elo.marcar_jugado(r)
     else:
         r.estado = "disputado"
         r.jugado_en = None

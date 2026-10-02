@@ -163,6 +163,14 @@ def _vigente(canje: dict) -> bool:
     if est != "reservado":
         return False
     try:
+        # Mientras el jugador paga en una pasarela hospedada (USD / BOB) el
+        # premio sigue apartado aunque pasen los 15 min.
+        from web import pago_hospedado
+        if pago_hospedado.ref_pendiente(str(canje.get("reserva_ref") or ""), list(canje.get("reserva_ids") or [])):
+            return True
+    except Exception:  # noqa: BLE001
+        pass
+    try:
         cr = datetime.fromisoformat(str(canje.get("creado")))
         if cr.tzinfo is None:
             cr = cr.replace(tzinfo=timezone.utc)

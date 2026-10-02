@@ -170,6 +170,12 @@ CONFIG_DEFAULT: dict[str, str] = {
     # desde donde se envió coincide con la ubicación de la cancha (anti-fraude
     # ligero: "estar en el lugar" al reclamar). "0" = no se exige (piloto).
     "exigir_ubicacion_reclamo": "0",
+    # FOTOS PROPIAS obligatorias al reclamar (decisión del director, 2-oct-2026):
+    # mínimo de fotos que el dueño debe subir a la carpeta de SU cancha en el
+    # bucket para poder APROBAR/ACTIVAR el reclamo (las de Google no cuentan:
+    # sus términos no permiten guardarlas). "0" = no se exige. Editable en la
+    # torre y público en `GET /config/canal` (`propiedad/fotos_reclamo.py`).
+    "reclamo_fotos_min": "2",
     # Tasa efectiva de la PASARELA/BANCO (Culqi) sobre el BRUTO de cada cobro
     # digital: es el COSTO real que paga Pichangol al procesar la tarjeta. Se
     # resta de la comisión que PCG le cobra a la academia para saber el MARGEN
@@ -543,6 +549,11 @@ class Stores:
         self.inscripciones: list[Inscripcion] = []
         # RETOS P2P (jugador reta a jugador; el resultado suma al ranking).
         self.retos: list[Reto] = []
+        # ELO DE RETOS aplicado en el SERVIDOR (1-oct-2026, `retos/elo.py`):
+        # str(reto_id) -> {estado: pendiente|aplicado|omitido, en, cambios}.
+        # Solo entran los retos que pasan a JUGADO desde este cambio: los
+        # anteriores ya los aplicó el APK en el teléfono de cada jugador.
+        self.retos_elo: dict[str, dict] = {}
         # VENTAS del Marketplace (escrow: retenido hasta que el comprador confirme).
         self.ventas: list[Venta] = []
         # POZOS DE EQUIPO (cuota de torneo repartida entre el plantel; ver
@@ -668,6 +679,14 @@ class Stores:
         # `places_web_tope_dia`.
         self.places_zonas: dict[str, dict] = {}
         self.places_uso: dict = {}
+        # COBRO WEB en pasarela HOSPEDADA (PayPhone · Ecuador, Libélula ·
+        # Bolivia, o la simulada de QAS): ÓRDENES de la web
+        # (`web/pago_hospedado.py`), clave = id no adivinable. {id, email,
+        # pasarela, moneda, monto_centimos, concepto, accion{tipo: reserva |
+        # recarga, …}, estado: pendiente → aprobado | rechazado | cancelado |
+        # vencido | aprobado_sin_reserva, ref_pasarela, creado_en, vence_en, …}.
+        # En el snapshot: un reinicio no pierde un pago en curso.
+        self.pagos_web: dict[str, dict] = {}
         # LIBRO DE RECLAMACIONES (Ley 29571 / D.S. 011-2011-PCM): hojas
         # registradas desde la home pública. INDECOPI exige que esté integrado
         # en la web (no un formulario externo) y responder en 15 días hábiles.
@@ -885,6 +904,7 @@ class Stores:
         }
         self.pagos = []
         self.retos = []
+        self.retos_elo = {}
         self.ventas = []
         self.correos_eventos = []
         self.correos = []
@@ -1170,6 +1190,7 @@ class Stores:
             "modo_aprobacion_overrides": dict(self.modo_aprobacion_overrides),
             "convocatorias": [como_dict(c) for c in self.convocatorias],
             "retos": [como_dict(r) for r in self.retos],
+            "retos_elo": {k: dict(v) for k, v in self.retos_elo.items()},
             "ventas": [como_dict(v) for v in self.ventas],
             "pozos_equipo": {k: dict(v) for k, v in self.pozos_equipo.items()},
             "dni_verificados": dict(self.dni_verificados),
@@ -1198,6 +1219,7 @@ class Stores:
             "places_uso": dict(self.places_uso),
             "payphone_pagos": {
                 k: dict(v) for k, v in self.payphone_pagos.items()},
+            "pagos_web": {k: dict(v) for k, v in self.pagos_web.items()},
             "reclamaciones": [dict(r) for r in self.reclamaciones],
             "cancelaciones_web": [dict(r) for r in self.cancelaciones_web],
             "negocio_web": {k: dict(v) for k, v in self.negocio_web.items()},
@@ -1254,6 +1276,9 @@ class Stores:
             data.get("modo_aprobacion_overrides") or {})
         self.convocatorias = [_conv_from(d) for d in data.get("convocatorias", [])]
         self.retos = [_reto_from(d) for d in data.get("retos", [])]
+        self.retos_elo = {
+            str(k): dict(v) for k, v in (data.get("retos_elo") or {}).items()
+            if isinstance(v, dict)}
         self.ventas = [_venta_from(d) for d in data.get("ventas", [])]
         self.pozos_equipo = {
             str(k): dict(v) for k, v in (data.get("pozos_equipo") or {}).items()
@@ -1309,6 +1334,7 @@ class Stores:
         self.payphone_pagos = {
             k: dict(v) for k, v in (data.get("payphone_pagos") or {}).items()
         }
+        self.pagos_web = {k: dict(v) for k, v in (data.get("pagos_web") or {}).items()}
         self.reclamaciones = [dict(r) for r in (data.get("reclamaciones") or [])]
         self.cancelaciones_web = [dict(r) for r in (data.get("cancelaciones_web") or [])]
         self.negocio_web = {k: dict(v) for k, v in (data.get("negocio_web") or {}).items()}

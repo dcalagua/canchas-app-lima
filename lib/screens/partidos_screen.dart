@@ -143,11 +143,71 @@ class _PartidosScreenState extends State<PartidosScreen> {
     ));
   }
 
-  void _pichangasDeClub() {
-    final club = appState.nombreClub;
+  /// Pichangas de MI club: el club sale de mis canchas REALES (dueño), como la
+  /// web `/pichangas`. Un local → directo; varios → elijo con chips; ninguno
+  /// (jugador) → las pichangas de todos los clubes para anotarme.
+  Future<void> _pichangasDeClub() async {
+    final clubs = appState.misClubesPropios;
+    String clubId = '';
+    String clubNombre = 'Todos los clubes';
+    if (clubs.length == 1) {
+      clubId = clubs.keys.first;
+      clubNombre = clubs.values.first;
+    } else if (clubs.length > 1) {
+      final elegido = await showModalBottomSheet<String>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('¿De qué local?',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+                const SizedBox(height: 4),
+                const Text('Elige el local cuyas pichangas quieres ver u organizar.',
+                    style: TextStyle(color: textoTenue, fontSize: 13)),
+                const SizedBox(height: 14),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final e in clubs.entries)
+                      ActionChip(
+                        avatar: const IconoVivo(Icons.storefront, size: 18),
+                        label: Text(e.value),
+                        backgroundColor: Colors.white,
+                        side: const BorderSide(color: Color(0xFFE4E4E4)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999)),
+                        onPressed: () => Navigator.of(ctx).pop(e.key),
+                      ),
+                    ActionChip(
+                      avatar: const IconoVivo(Icons.public, size: 18),
+                      label: const Text('Todos los clubes'),
+                      backgroundColor: Colors.white,
+                      side: const BorderSide(color: Color(0xFFE4E4E4)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(999)),
+                      onPressed: () => Navigator.of(ctx).pop(''),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      if (elegido == null || !mounted) return;
+      clubId = elegido;
+      if (elegido.isNotEmpty) clubNombre = clubs[elegido] ?? clubNombre;
+    }
+    if (!mounted) return;
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ConvocatoriasScreen(
-          clubId: ConvocatoriasService.slugClub(club), clubNombre: club),
+      builder: (_) =>
+          ConvocatoriasScreen(clubId: clubId, clubNombre: clubNombre),
     ));
   }
 

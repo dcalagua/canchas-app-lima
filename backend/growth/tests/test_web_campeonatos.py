@@ -551,7 +551,7 @@ def test_web_unirme_con_codigo_y_donde_participo(db, monkeypatch):
     r = cli.get("/anfitrion/campeonatos")
     assert r.status_code == 200
     assert "¿Te compartieron un código?" in r.text and "Ver campeonato" in r.text
-    assert "Donde participo" in r.text and "En Kinder 01" in r.text and f"href='/c/{cid}'" in r.text
+    assert "Donde participo" in r.text and "En Kinder 01" in r.text and f"href='/torneo/{cid}'" in r.text
     assert "Aún no tienes campeonatos" in r.text  # no organiza ninguno, pero sí participa
     r = cli.get("/anfitrion/campeonatos/unirme?codigo=copa26", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == f"/c/{cid}"

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../data/reservas_repo.dart';
 import '../models/club.dart';
+import '../models/fotos_propias.dart';
 import '../models/models.dart';
 import '../models/resena.dart';
 import '../services/avisos_service.dart';
@@ -616,10 +617,34 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     }
     // BONO: canje de horas prepagadas. Valida el saldo antes de reservar (no
     // cobra nada; el pago fue al comprar el pack).
+    // BONO + SERVICIOS EXTRA (igual que la web, `/web/asegurar`): el bono
+    // cubre los turnos; los extras elegidos se COBRAN EN LÍNEA (más el cargo
+    // por servicio si está activo) y se liquidan al dueño. Con boleador no va
+    // el bono, y sin pago en línea no se pueden llevar extras con el bono.
+    final extrasBono = metodo == 'bono'
+        ? extras.fold(0.0, (a, s) => a + s.precio)
+        : 0.0;
     if (metodo == 'bono') {
       if (appState.miSaldoBono(_cancha.club) < slots.length) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('No te alcanza el saldo de bono para esas horas.')));
+        return;
+      }
+      if (extras.any((x) => x.esBoleador)) {
+        await avisarPichangol(context,
+            titulo: 'Bono sin boleador',
+            mensaje: 'Con tu bono no se puede contratar boleador: quítalo o '
+                'reserva sin el bono.',
+            icono: Icons.confirmation_number_outlined);
+        return;
+      }
+      if (extrasBono > 0 && !appState.pagoOnlineDisponible) {
+        await avisarPichangol(context,
+            titulo: 'Los extras se pagan en línea',
+            mensaje: 'Con tu bono los turnos ya están pagados, pero los '
+                'servicios extra se pagan en línea y ahora el pago en línea no '
+                'está disponible. Quita los servicios extra para usar tu bono.',
+            icono: Icons.confirmation_number_outlined);
         return;
       }
     }
@@ -661,6 +686,8 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         ? '${slots.first}–${_cancha.horaFinDe(slots.last)}'
         : slots.first;
     final pagoOnline = metodo == 'online';
+    // Bono con servicios extra: los extras se cobran en línea (como la web).
+    final pagoBono = metodo == 'bono' && extrasBono > 0;
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
     // ── FASE 1 (solo si hay COBRO por adelantado): ASEGURA el horario ANTES de
@@ -669,7 +696,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // (antes se les cobraba y recién después se enteraban). Si el pago luego
     // falla o se cancela, el bloque se LIBERA al instante.
     List<Reserva>? aseguradas;
-    if (pagoOnline || esSena) {
+    if (pagoOnline || esSena || pagoBono) {
       final (resHold, tomadas) = await appState.asegurarBloqueJugador(
           _cancha, _fechaIso, _dia, slots,
           deporte: _deporteEfectivo,
@@ -705,8 +732,12 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // lo que se cobra; si cambió la base (o no llegó), se vuelve a cotizar
     // ANTES de cobrar. Con la línea apagada es 0 y no cambia nada.
     CotizacionCargo? cargo = r.cargo;
-    if (pagoOnline || esSena) {
-      final baseCobro = pagoOnline ? total - descuentoPuntos : senaMonto.toDouble();
+    if (pagoOnline || esSena || pagoBono) {
+      final baseCobro = pagoOnline
+          ? total - descuentoPuntos
+          : esSena
+              ? senaMonto.toDouble()
+              : extrasBono;
       final baseC = (baseCobro * 100).round();
       if (CargoServicio.activo('reservas') &&
           (cargo == null || cargo.baseCentimos != baseC)) {
@@ -735,6 +766,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
       if (descFid > 0) {
         lineasPago.add(LineaPago('🎁 Premio de fidelidad', -descFid.toDouble()));
       }
+      if (pagoBono) {
+        lineasPago.add(LineaPago(
+            '🎟️ Pagado con tu bono · ${slots.length} ${slots.length == 1 ? 'hora' : 'horas'}',
+            -base.toDouble()));
+      }
       for (final x in extras) {
         lineasPago.add(LineaPago(
             '${x.emoji.isNotEmpty ? '${x.emoji} ' : ''}${x.nombre}'
@@ -750,7 +786,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         cargo: cargo,
         nota: esSena
             ? 'El resto ($mon ${(total - senaMonto).toStringAsFixed(2)}) lo pagas en la cancha.'
-            : '');
+            : pagoBono
+                ? 'Tus turnos van con tu bono (te quedan ${appState.miSaldoBono(_cancha.club) - slots.length} h); pagas solo los servicios extra.'
+                : '');
     // FIDELIDAD: con el bloque asegurado, el servidor APARTA el premio para
     // esta reserva antes de cobrar (si otro equipo lo usó un segundo antes,
     // se libera el horario y se avisa; nunca se cobra de menos sin premio).
@@ -810,6 +848,31 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         }
         return;
       }
+    } else if (pagoBono) {
+      // Bono: los turnos ya están pagados; se cobran SOLO los servicios extra
+      // (+ cargo por servicio). Si falla, se libera el horario y el bono queda
+      // intacto (las horas se descuentan recién con la reserva confirmada).
+      final pagado = await PagoTarjeta.cobrar(
+        context,
+        monto: extrasBono + cargoSoles,
+        concepto: 'Servicios extra · ${_cancha.nombre} · $_dia $etiqueta (bono)'
+            '${cargoSoles > 0 ? ' + cargo por servicio' : ''}',
+        email: appState.usuario?.email ?? '',
+        moneda: mon,
+        onOperacion: (o) => operacion = o,
+        detalle: detallePago,
+      );
+      if (!pagado) {
+        await appState.liberarBloqueAsegurado(aseguradas!);
+        if (PagoTarjeta.ultimoError.isNotEmpty) {
+          appState.avisarPagoRechazado(
+              cancha: _cancha,
+              fecha: _cancha.fechaRealSlot(_fechaIso, slots.first),
+              horas: etiqueta,
+              motivo: PagoTarjeta.ultimoError);
+        }
+        return;
+      }
     } else if (esSena) {
       // El jugador ADELANTA la seña (del total). El resto lo paga en la cancha.
       final pagado = await PagoTarjeta.cobrar(
@@ -843,18 +906,21 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         deporte: _deporteEfectivo, extras: extras,
         cobro: metodo == 'cancha' ? 'efectivo' : metodo,
         operacionId: operacion,
+        // Con bono la fila queda con medio 'bono'; si se pagaron extras en
+        // línea, este medio (yape/tarjeta) va a la liquidación de los extras.
         medioPago: esSena
             ? 'sena'
             : gratis
                 ? 'fidelidad'
-                : pagoOnline
+                : (pagoOnline || pagoBono)
                     ? (PagoTarjeta.ultimoMetodo.isNotEmpty
                         ? PagoTarjeta.ultimoMetodo
                         : 'online')
                     : (metodo == 'bono' ? 'bono' : 'efectivo'),
         conSena: esSena,
         aseguradas: aseguradas,
-        cargo: (pagoOnline || esSena) ? cargo : null,
+        cargo: (pagoOnline || esSena || pagoBono) ? cargo : null,
+        extrasEnLinea: pagoBono,
         descuentos: descPorHora,
         nombreCliente: nombreCliente,
         telefono: celularCliente);
@@ -955,7 +1021,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         appState.canjearPuntos(
             puntos: 100,
             soles: 3.0,
-            referencia: '${_cancha.id}_${_fechaIso}_${slots.first}');
+            // Fecha REAL del primer turno (madrugada = día siguiente), el
+            // mismo formato que la web: así una cancelación encuentra el
+            // canje y devuelve los puntos.
+            referencia:
+                '${_cancha.id}_${_cancha.fechaRealSlot(_fechaIso, slots.first)}_${slots.first}');
       }
     }
     messenger.showSnackBar(
@@ -968,7 +1038,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     'reintenta. Detalle: ${ReservasRepo.ultimoError}'
                 : confirmada
                 ? (metodo == 'bono'
-                    ? '✅ Reserva confirmada con tu bono en ${_cancha.nombre} · $_dia $etiqueta · te quedan ${appState.miSaldoBono(_cancha.club)} h'
+                    ? '✅ Reserva confirmada con tu bono en ${_cancha.nombre} · $_dia $etiqueta · te quedan ${appState.miSaldoBono(_cancha.club)} h${pagoBono ? ' · extras pagados ($mon ${extrasBono.toStringAsFixed(2)})' : ''}'
                     : esSena
                     ? '✅ Seña pagada · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta · paga $mon ${(total - senaMonto).toStringAsFixed(2)} en la cancha'
                     : gratis
@@ -2009,6 +2079,12 @@ class _ResumenReservaState extends State<_ResumenReserva> {
   double get _totalFinal =>
       widget.total - _descFid + _elegidos.fold(0.0, (a, s) => a + s.precio);
 
+  /// Servicios extra elegidos (sin boleador): con bono es lo único que se
+  /// paga, en línea, como en la web.
+  double get _extrasBono => _elegidos
+      .where((s) => !s.esBoleador)
+      .fold(0.0, (a, s) => a + s.precio);
+
   /// Con el premio la reserva puede quedar en 0 (hora gratis sin extras):
   /// entonces no hay pasarela ni cargo, se confirma directo.
   bool get _gratis =>
@@ -2524,23 +2600,59 @@ class _ResumenReservaState extends State<_ResumenReserva> {
             const SizedBox(height: 16),
             // Bono prepagado: si el jugador tiene horas para este local, la
             // opción MÁS conveniente (no paga de nuevo). Descuenta sus horas.
+            // Igual que la web: el bono cubre los TURNOS; los servicios extra
+            // elegidos se pagan EN LÍNEA (y se liquidan al dueño). Con
+            // boleador no va el bono (camino distinto), y sin pago en línea
+            // solo se puede usar el bono sin extras.
             if (widget.saldoBono >= widget.nSlots) ...[
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                      backgroundColor: teal,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 15)),
-                  onPressed: () => _cerrar('bono'),
-                  icon: const Icon(Icons.confirmation_number, size: 18),
-                  label: Text(
-                      'Usar mi bono (${widget.nSlots} h · te quedan ${widget.saldoBono})',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 14)),
+              if (_bol != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                      '🎟️ Tienes ${widget.saldoBono} h de bono: para usarlo quita '
+                      'el ${_nombreBol.toLowerCase()} (se paga en línea).',
+                      textAlign: TextAlign.center,
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                )
+              else if (_extrasBono > 0 && _soloEfectivo)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                      '🎟️ Con tu bono los servicios extra se pagan en línea y '
+                      'ahora no está disponible: quítalos para usar tu bono.',
+                      textAlign: TextAlign.center,
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                )
+              else ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: teal,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 15)),
+                    onPressed: () => _cerrar('bono'),
+                    icon: const Icon(Icons.confirmation_number, size: 18),
+                    label: Text(
+                        _extrasBono > 0
+                            ? 'Usar mi bono (${widget.nSlots} h) y pagar $mon ${_extrasBono.toStringAsFixed(2)} de extras'
+                            : 'Usar mi bono (${widget.nSlots} h · te quedan ${widget.saldoBono})',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 14)),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
+                if (_extrasBono > 0) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                      'Tus turnos van con el bono (te quedan ${widget.saldoBono - widget.nSlots} h); '
+                      'los servicios extra se pagan en línea'
+                      '${_cargoAplica ? ' + cargo por servicio' : ''}.',
+                      textAlign: TextAlign.center,
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                ],
+                const SizedBox(height: 10),
+              ],
             ],
             // SIN PAGO ONLINE (el ambiente no tiene cobro real configurado):
             // el único camino honesto es reservar y pagar en la cancha. Nunca
@@ -3597,6 +3709,49 @@ class _PanelPendienteState extends State<_PanelPendiente> {
         ],
       );
 
+  /// FOTOS PROPIAS obligatorias para aprobar el reclamo (decisión del
+  /// director, 2-oct-2026): si faltan, aviso ámbar con acceso a subirlas.
+  Widget _avisoFotos(TextTheme t) {
+    final min = appState.reclamoFotosMin;
+    if (min <= 0) return const SizedBox.shrink();
+    final c = widget.cancha;
+    final tiene =
+        FotosPropias.propias([c.fotoUrl, ...c.fotos], c.id).length;
+    final falta = min - tiene;
+    if (falta <= 0) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF6E0),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('📷 ${FotosPropias.textoFaltan(falta)}',
+              style: t.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF8A5A00))),
+          const SizedBox(height: 4),
+          Text(FotosPropias.porQue,
+              style: t.bodySmall?.copyWith(color: textoTenue, height: 1.35)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => EditarCanchaScreen(cancha: c)));
+              await widget.onActualizar?.call();
+              if (mounted) setState(() {});
+            },
+            icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+            label: const Text('Subir fotos'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _panelPendiente(TextTheme t) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3627,6 +3782,7 @@ class _PanelPendienteState extends State<_PanelPendiente> {
           // Los controles del reclamo SOLO los ve quien reclamó (dueño). Un
           // usuario sin sesión o ajeno no ve "Verificar"/"Reenviar".
           if (_esMio) ...[
+            _avisoFotos(t),
             const SizedBox(height: 14),
             SizedBox(
               width: double.infinity,

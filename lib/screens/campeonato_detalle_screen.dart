@@ -92,6 +92,22 @@ Future<int?> _aportarPozo(BuildContext context, Campeonato c,
     }
     return null;
   }
+  if (r['error'] == 'moneda_distinta') {
+    // El saldo es de UNA moneda (multi-país): un saldo en Bs no paga una
+    // cuota en soles. El backend no cobró nada.
+    const simbolos = {'PEN': 'S/', 'USD': '\$', 'BOB': 'Bs'};
+    final mb = (r['moneda_billetera'] ?? '').toString();
+    final simB = simbolos[mb] ?? mb;
+    await avisarPichangol(
+      context,
+      titulo: 'Tu saldo está en otra moneda',
+      mensaje: 'Tu saldo Pichangol está en ${simB.isEmpty ? 'otra moneda' : simB} '
+          'y este campeonato cobra en ${c.monedaSimbolo}. Solo se puede pagar '
+          'con saldo de la misma moneda. No se te cobró nada.',
+      icono: Icons.currency_exchange,
+    );
+    return null;
+  }
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content:
           Text((r['error'] ?? 'No se pudo registrar tu parte.').toString())));
@@ -1047,6 +1063,9 @@ class CampeonatoDetalleScreen extends StatelessWidget {
           academiaDueno: c.dueno,
           cuotaSoles: c.costoInscripcion,
           concepto: 'Inscripción ${c.nombre}',
+          // Moneda del campeonato (la de su sede): el backend la guarda en el
+          // pago y aplica el mínimo de comisión de esa moneda.
+          moneda: c.monedaSimbolo,
         ),
         texto: 'Procesando tu inscripción…',
       );
@@ -1071,6 +1090,15 @@ class CampeonatoDetalleScreen extends StatelessWidget {
                     duenoId: email, titulo: 'Recargar saldo')));
             await appState.sincronizarSaldo();
           }
+        } else if (r['error'] == 'moneda_distinta') {
+          await avisarPichangol(
+            context,
+            titulo: 'Tu saldo es de otro país',
+            mensaje: 'La inscripción se paga en ${c.monedaSimbolo} y tu saldo '
+                'Pichangol está en ${appState.monedaSaldoSimbolo}. Inscríbete '
+                'con una cuenta cuya billetera sea de ese país.',
+            icono: Icons.account_balance_wallet_outlined,
+          );
         } else {
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text(

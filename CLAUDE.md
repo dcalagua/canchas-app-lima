@@ -66,7 +66,11 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
     PE → **Culqi** (tokeniza en la app; `pago_tarjeta_sheet.dart`), BO →
     **Libélula** (página hospedada en WebView; `pago_libelula.dart`), EC →
     **PayPhone** (botón de pagos hospedado en USD; `pago_payphone.dart`,
-    backend `pagos/payphone.py` + `/pagos/ec/*`, hecho sep-2026). **La
+    backend `pagos/payphone.py` + `/pagos/ec/*`, hecho sep-2026; desde
+    oct-2026 TODO cobro en USD pasa por la FACHADA `pagos/pasarela_ec.py`
+    —`nombre()`, `disponible()`, `preparar()`, `confirmar()`,
+    `reembolsar()`; los textos usan `pasarela_ec.nombre()`, nunca
+    "PayPhone" fijo; `PASARELA_EC` elige el módulo, hoy solo `payphone`). **La
     página de PayPhone se abre en NAVEGADOR REAL (Chrome Custom Tab vía
     `launchUrl(inAppBrowserView)`), NUNCA en WebView:** PayPhone rechaza el
     WebView de Android ("No autorizado… intenta desde la página de origen")
@@ -84,7 +88,16 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
     GUARDAN en el pago, así el desglose de liquidaciones recalcula con la
     moneda real. El APK la manda desde el país de las coordenadas de la
     cancha (`_accionContable`) o la moneda del producto. Test
-    `test_comision_moneda.py`. Pendiente: la cuota de torneo sigue en PEN.
+    `test_comision_moneda.py`. La cuota individual de torneo
+    (`/pagos/torneo/inscribir`) recibe `moneda` = `Campeonato.monedaSimbolo`
+    desde el APK (vacío = PEN para APKs viejos; saldo en otra moneda →
+    `moneda_distinta`), comisión con el mínimo de esa moneda (1-oct-2026).
+    Pro, su renovación, la cortesía, la recarga por QR, el bono de recarga, el
+    regalo de saldo y la matrícula (`/pagos/matricula`, por `pais`) también
+    guardan su moneda real; los `moneda="PEN"` que quedan en
+    `pagos/router.py` son cargos de Culqi (solo soles) o Servicios Pichangol
+    (oculto, tarifa en soles) y llevan un comentario. Test
+    `tests/test_pro_moneda_elo.py`.
   - **Montos de recarga por país:** `PaisConfig.recargas` (chips) +
     `recargaMin`/`recargaMax` ("Otro monto"): S/ 20-200 (10-1000), \$ 5-50
     (1-300), Bs 50-500 (20-3000). Para PRD subir el mínimo de EC a \$ 5.
@@ -192,8 +205,9 @@ para la API del APK.
   una online más; el UNIQUE `(cancha_id, fecha, hora_inicio)` evita la
   doble reserva. `web/horarios.py` es ESPEJO de `Cancha` (slots, cierre
   que cruza medianoche, fecha real de madrugada, hora feliz, descuentos por
-  slot, bloqueos). **Multi-país:** cobro web sólo en soles (Culqi); canchas
-  en \$ o Bs muestran el detalle y mandan a la app. El checkout se muestra
+  slot, bloqueos). **Multi-país:** en soles se cobra con Culqi en la misma
+  página; en \$ y Bs con la pasarela HOSPEDADA del país (ver "COBRO WEB EN
+  USD/BOB"); sin pasarela configurada (en PRD) la ficha manda a la app. El checkout se muestra
   con cualquier `CULQI_PUBLIC_KEY` (también `pk_test`, para que Culqi lo
   revise en PRD antes de dar las llaves live); el APK sigue apagado hasta
   `sk_live`. Tests `test_web_reservas.py` (base simulada). **Look & feel =
@@ -308,8 +322,9 @@ para la API del APK.
   Google obligatoria (login-box como la reserva), Para mí / Para mi hijo(a)
   (+ edad 2-17; el titular queda como `apoderadoNombre`), nombre + celular,
   Mes a mes (solo mensuales) o Adelantado con cantidad 1/2/3/6/12 y
-  descuento prepago si `cantidad ≥ mesesMinPrepago`, Culqi Checkout v4 (solo
-  PEN; en $/Bs el tarifario se ve y "Matricúlate desde la app"). `POST
+  descuento prepago si `cantidad ≥ mesesMinPrepago`, Culqi Checkout v4 en
+  PEN; en $/Bs la pasarela hospedada del país (ver "COBRO WEB EN USD/BOB ·
+  PARTE 2"; sin pasarela en PRD, "Matricúlate desde la app"). `POST
   /web/matricular` recalcula el total en el servidor (`_total` =
   `_HojaDatosAlumno._total`), cobra (`culqi.crear_cargo`) y escribe en
   `pichangol_matriculas` (`datos.insertar_matricula`) EXACTAMENTE la fila de
@@ -606,12 +621,15 @@ para la API del APK.
   el app"):** cuatro módulos propios (`web/jugador_*.py`, registrados en
   `main.py`), cada uno espejo de su pantalla Dart, con las MISMAS tablas y
   las funciones de `pagos/router.py` para la plata (nada de contabilidad
-  paralela); cobro web solo PEN (Culqi v4 + selector Yape/Tarjeta +
-  `pcgResumenPago`), en $/Bs "hazlo en la app". El Perfil web ya enlaza
+  paralela); cobro web en PEN con Culqi v4 (selector Yape/Tarjeta +
+  `pcgResumenPago`); la recarga de billetera en $/Bs ya va por la pasarela
+  hospedada (ver "COBRO WEB EN USD/BOB") y, desde la parte 2 (oct-2026),
+  también academia, cuotas, marketplace y bonos. El Perfil web ya enlaza
   todo; lo que sigue solo en el app se lista al final. Tests
   `tests/test_web_jugador_{billetera,market,clases,liga}.py`.
   (1) `web/jugador_billetera.py`: `/mi-billetera` (= `cuenta_screen`: saldo,
-  regalo, por recibir por moneda, recarga Culqi vía `post_recarga` con bono,
+  regalo, por recibir por moneda, recarga Culqi vía `post_recarga` con bono
+  —en $/Bs, `POST /web/billetera/recargar-pasarela` por PayPhone/Libélula—,
   cupón vía `pagos.router.canjear_cupon` —bloqueado si la billetera no es en
   soles—, movimientos vía `pagos.router.movimientos_de` que ahora trae
   `moneda` por fila), `/mi-billetera/estado-de-cuenta` (imprimible),
@@ -628,7 +646,8 @@ para la API del APK.
   unidad con el MISMO UPDATE atómico (`pagos/stock_productos.py`; APK vía
   `POST /pagos/venta/apartar|devolver`, idempotente por `apartado_id`,
   `stores.apartados_stock`; cron 5 min devuelve apartados >30 min sin venta).
-  El canje del bono al reservar sigue solo en el app.
+  El canje del bono al reservar ya está también en la web (ver "BONO Y
+  PUNTOS EN LA RESERVA WEB").
   (3) `web/jugador_clases.py`: `/mis-clases` (= `mis_clases_screen`:
   matrículas que pago o donde soy alumno, cuotas, débito automático con
   cancelar, "Mi familia · un solo pago"), `POST /web/mis-clases/pagar`
@@ -646,7 +665,20 @@ para la API del APK.
   nombre, celular por país, bio por selección; re-emite la cookie) y
   `/cuenta/identidad` (PE/EC con `post_verificar_dni`; BO solo en el app por
   la lectura del documento + selfie). Quedan en el app: Pro, tarjetas
-  guardadas, recarga $/Bs y QR, ELO por retos, chat. **APK alineado
+  guardadas, recarga por QR, chat. **ELO de retos EN EL SERVIDOR
+  (1-oct-2026):** `retos/elo.py` lo aplica UNA vez por reto al pasar a
+  jugado (confirmar, sin doble confirmación o auto-confirmado), con la fórmula
+  de `Nivel.calcularElo` (K 0.15, divisor 2, 1.0–7.0, sin fila = 3.0; ambos
+  niveles con los de ANTES del partido), +1 partido/+1 victoria, escribe
+  `pichangol_niveles` en una transacción con `FOR UPDATE` (conserva
+  confiabilidad); dobles se omite (como el APK). Idempotencia
+  `stores.retos_elo` (snapshot: pendiente/aplicado/omitido; base caída →
+  pendiente y se reintenta al listar). **Migración:** solo entran los retos
+  que pasan a jugado DESDE este cambio; los ya jugados no se aplican (el APK
+  ya los aplicó en cada teléfono). El APK ya no calcula ELO
+  (`aplicarEloDeRetos` → `refrescarNivelesTrasRetos`, solo baja niveles). OJO:
+  un APK anterior sigue aplicándolo en el teléfono → doble ajuste en retos
+  nuevos hasta actualizar. **APK alineado
   (30-sep-2026):** cupón solo si la billetera es en soles (backend
   `canjear_cupon(…, moneda)` → `cupon_solo_soles`, también para APKs viejos
   por `moneda_billetera`) y cuotas con débito automático activo no se pagan a
@@ -711,9 +743,24 @@ para la API del APK.
   cobrada con `FOR UPDATE`). Reservas del dueño web: chip de medio de pago,
   filtro Online/Efectivo/Manual y "No-show" (no en pagadas en línea).
   Multi-moneda con selector `?m=PEN|USD|BOB`. Cierres de caja, fijas, notas
-  y último recordatorio viven en `stores.negocio_web[correo]` (snapshot):
-  **el APK los guarda solo en el teléfono**, así que web y app no los
-  comparten todavía (unificar = tabla en Supabase + APK). MENU anfitrión con
+  y "ya recordado" (cobro de academia por id de matrícula y reservas como
+  `res:<id>`) viven en `stores.negocio_web[correo]` (snapshot) = **FUENTE
+  ÚNICA web + APK (1-oct-2026)**: el APK usa `/negocio/*` (`negocio_app.py`,
+  X-App-Key + `_require_usuario`): `GET /negocio/estado?email[&autocerrar=1]`,
+  `POST /negocio/caja/cerrar|reabrir {fecha, moneda}` (cierre POR MONEDA,
+  calculado en el servidor; el APK tiene chips de moneda en Caja del día),
+  `POST /negocio/fijas` (id del APK, idempotente) + `/fijas/{id}/activo|
+  quitar` + `/fijas/generar` (la SERIE la genera SOLO el servidor con
+  `generar_fijas`: bloqueos, turnos pasados, `hechas`; una sola serie),
+  `/notas`, `/recordados`, `/borrar` (Dejar en virgen) y `/migrar` (UNA vez
+  por equipo sube lo que el teléfono tenía en las claves viejas; el servidor
+  gana y no resucita fijas quitadas, `fijas_quitadas`). Web y APK llaman a
+  las MISMAS funciones de `anfitrion_negocio.py` (`cerrar_caja_de`,
+  `autocerrar_de`, `crear_fija`, `activar_fija_de`, `quitar_fija_de`,
+  `guardar_nota_de`, `marcar_recordado_de`). APK: `services/
+  negocio_service.dart` + `AppState.sincronizarNegocio` (caché
+  `negocio_cache_json` por cuenta, cola `negocio_pend_json` para lo hecho
+  sin red, en orden, 4xx se descarta). Test `tests/test_negocio_app.py`. MENU anfitrión con
   Reportes, Caja del día, Clientes, Bonos, Reservas fijas, Disponibilidad y
   Cobros de academia. Test `tests/test_web_anfitrion_negocio.py`.
 - **VERIFICADOR Y ESTADO DE VERIFICACIÓN EN LA WEB (30-sep-2026):**
@@ -748,8 +795,10 @@ para la API del APK.
   `web/anfitrion_academia_ops.py` (registrado antes de
   `anfitrion_academia_router`): `/anfitrion/academia/asistencia` (Vino/Faltó,
   "Avisar a los padres" por el chat `<aid>|<correo>` o WhatsApp),
-  `/evaluaciones` (rúbrica Inicial/En proceso/Logrado con la plantilla del
-  deporte extraída a `web/planes_semilla.json` + bitácora por chips),
+  `/evaluaciones` (rúbrica Inicial/En proceso/Logrado sobre los PLANES DE
+  TRABAJO propios de la academia —chips si hay varios, `?plan=`— o, sin
+  ellos, la plantilla del deporte de `web/planes_semilla.json` + bitácora por
+  chips),
   `/ranking` (3 pts victoria / 1 derrota, partidos con el formato
   `PartidoRanking.toJson` → el ranking global web los lee), `/reportes`
   (cobrado/por cobrar/vencido, morosidad, por programa y sede, comisión digital
@@ -757,11 +806,27 @@ para la API del APK.
   academia → `/mensajes/{clave}`), `/sedes` (sedes con mapa, horario por sede y
   programa, precio por sede y plan; merge sobre `data` con `FOR UPDATE`).
   Cobros → `/anfitrion/cobros?academia=` (no se duplicó). Accesos en la
-  tarjeta de cada academia de Mi academia. **Asistencia, evaluaciones y
-  bitácora** van a 3 tablas NUEVAS (SQL `docs/piloto/supabase_academia_
-  operacion.sql`, RLS sin políticas; sin ellas las páginas avisan): el APK las
-  guarda solo en el teléfono, así que web y app no las comparten todavía.
-  Test `tests/test_web_academia_ops.py`.
+  tarjeta de cada academia de Mi academia. **Asistencia, evaluaciones,
+  bitácora y planes de trabajo = LAS MISMAS FILAS en app y web (1-oct-2026):**
+  tablas `pichangol_academia_asistencias|evaluaciones|notas` (SQL
+  `docs/piloto/supabase_academia_operacion.sql`) + `pichangol_academia_planes`
+  (`data` = `PlanTrabajo.toJson`, borrado lógico `eliminado`) y las políticas
+  para la llave del APK en `docs/piloto/supabase_academia_operacion_rls.sql`
+  (**correr en QAS y, con autorización, PRD**; sin ese SQL el APK sigue solo
+  con lo local y la web con lo suyo). APK: `lib/data/academia_ops_repo.dart`
+  (mismas columnas y formatos que los helpers de `anfitrion_academia_ops.py`)
+  + `AppState.sincronizarOperacionAcademia` (al final de
+  `cargarMatriculasRemotas`: arranque, pull-to-refresh del profe): device-first
+  (cada marca se guarda local y sube en segundo plano) y fusión — asistencia:
+  manda la nube salvo lo pendiente de subir (`_opsPend`); "ya avisé":
+  monótono; rúbrica: gana el `ts` más nuevo; bitácora: unión por id y una nota
+  que estuvo en la nube y desapareció se borró allá; planes: borrado lógico,
+  lo editado aquí sin subir gana. Lo que solo estaba en el teléfono se sube
+  la primera vez (migración); estado en SharedPreferences
+  `academia_ops_sync_json`. La web evalúa sobre el plan propio del APK con el
+  MISMO `plan_id`; lo evaluado en la web sobre la plantilla
+  (`plantilla_<deporte>`) sigue saliendo en la web (chip de la plantilla) pero
+  el APK solo muestra planes guardados. Tests `tests/test_web_academia_ops.py`.
 - **PARTIDOS, PICHANGAS, REFERIDOS Y CARNET EN LA WEB (30-sep-2026):**
   `web/jugador_partidos.py`. `/partidos` (= `partidos_screen`, pestaña
   "Match": `pichangol_partidos` + grupo de chat con el mismo id; cupo con
@@ -769,9 +834,13 @@ para la API del APK.
   /{id}|/ranking]` (= convocatorias; NO `/convocatorias`, que es la API JSON
   del APK; llama a `convocatorias/service.py`: orden de llegada / sorteo /
   equidad, lista de espera, asistencia por posición). Organiza solo el dueño
-  de un local o quien creó la pichanga — **en el APK nadie puede organizar**
-  (depende de un login de club heredado que nunca se activa; conviene
-  alinearlo). `/referidos` (código `PCGxxxxxx` + CANJE del código de un amigo,
+  de un local o quien creó la pichanga. **APK alineado (1-oct-2026):** ya no
+  depende del login de club huérfano (`sesionIniciada`): "Pichangas de mi
+  club" sale de `appState.misClubesPropios` (clubs de SUS canchas con
+  `dueno == correo`; uno → directo, varios → chips, ninguno → todos los
+  clubes para anotarse), crear/ranking = `esDuenoDeClub`, panel admin del
+  detalle = `esAdminDePichanga` (creador o dueño del club, =
+  `jugador_partidos.es_admin`; `Convocatoria.creadoPor`). `/referidos` (código `PCGxxxxxx` + CANJE del código de un amigo,
   `POST /web/referidos/canjear`). **BONO DE REFERIDOS EN EL BACKEND (1-oct-
   2026, pedido del director):** antes el bono de 10 vivía solo en el teléfono
   y `sincronizarSaldo` lo borraba. Ahora `backend/growth/referidos.py`
@@ -814,7 +883,13 @@ para la API del APK.
   sin saldo → `/mi-billetera#recargar`) + **cancelar/reactivar la
   renovación automática** (`POST /web/pro/renovacion`; NUEVO en backend:
   `procesar_renovaciones_pro` salta `auto_renovar=False` y `get_pro_estado`
-  devuelve `renueva` — el APK aún no lo ofrece), `/pro/planes` (Gratis vs Pro
+  devuelve `renueva` + `cortesia`; el APK lo ofrece desde el 1-oct-2026:
+  interruptor "Renovación automática" en `hazte_pro_screen` →
+  `AppState.cambiarRenovacionPro` → `POST /pagos/pro/renovacion {email,
+  renovar}` (X-App-Key + `_require_usuario`; núcleo único
+  `pagos.router.cambiar_renovacion_pro` que también usa la web; apagar pide
+  `confirmarPichangol`); el APK paga Pro con el país de la BILLETERA
+  (`paisBilletera`), como la web), `/pro/planes` (Gratis vs Pro
   con los candados reales), `/cuenta/tarjetas` (= `metodos_pago_screen`:
   Culqi v4 tokeniza en el navegador, el servidor solo guarda `crd_` + marca +
   últimos 4; tope 10), `/buscar` (= búsqueda guiada/asistente por reglas,
@@ -822,12 +897,18 @@ para la API del APK.
   `/anfitrion/recordatorios` (= `recordar_reservas_screen`: chat del local o
   WhatsApp, "ya recordado" desde la nube). Cobros de academia suma "➕ Agregar
   cuota" (`/anfitrion/cobros/agregar` = `_inscribir`/`_claseSuelta`, escribe
-  en `pichangol_matriculas` con `FOR UPDATE`; **el APK guarda esas cuotas
-  solo en el teléfono**). Todos los "Actívalo en la app" de Pro (bodega,
-  campeonatos, calendario, liga) ahora llevan a `/pro`. Pendientes del
-  backend detectados: `post_pro_suscribir`/`procesar_renovaciones_pro`
-  registran `moneda="PEN"` aunque el país sea EC/BO. `planes_screen` es el
-  "plan de trabajo" del profe (solo en el teléfono), no Pro. Test
+  en `pichangol_matriculas` con `FOR UPDATE`; el APK sube al instante las
+  que agrega en Cobros —`inscribir` / `agregarClaseSuelta` →
+  `_subirCuotasAlumno`— y `MatriculasRepo.guardar` FUSIONA con la fila de la
+  nube: cuotas por id con el pago pegajoso, conserva las claves que el app no
+  conoce (`pagoWeb`, `canal`), no revive matrículas eliminadas y encola por
+  alumno; antes cada guardado del APK reemplazaba `data` y borraba las cuotas
+  agregadas en la web). Todos los "Actívalo en la app" de Pro (bodega,
+  campeonatos, calendario, liga) ahora llevan a `/pro`.
+  `post_pro_suscribir`/`procesar_renovaciones_pro` registran la moneda del
+  país del precio (arreglado 1-oct-2026). `planes_screen` es el
+  "plan de trabajo" del profe (en `pichangol_academia_planes`, compartido con
+  la web), no Pro. Test
   `tests/test_web_jugador_pro.py`.
 - **MODO ANFITRIÓN EN LA WEB (sep-2026, pedido del director: mismo flujo
   que airbnb.com/hosting):** `web/anfitrion.py` (router incluido en
@@ -936,8 +1017,17 @@ para la API del APK.
   `_revocar_cancha_al_rechazar`) hace `datos.marcar_verificada(cancha_id,
   dueno, bool)` sobre la reclamada y sus hermanas `u<ts>_*` (fail-safe). El OTP por
   WhatsApp ya está en la web (`/anfitrion/verificacion/{id}`); la verificación
-  de existencia (IA) sigue solo en el app. Test
+  de existencia (IA) también corre al registrar/adoptar desde la web
+  (`anfitrion.verificar_existencia` → `verificacion_fisica.service.evaluar`
+  en segundo plano, como `verificarVenue` del APK; nunca bloquea). Test
   `test_registrar_y_reclamar_cancha_desde_la_web_como_el_app`.
+  **FOTOS PROPIAS OBLIGATORIAS (2-oct-2026, ver "Flujo de PROPIEDAD"):** "Pon
+  tu cancha" y la adopción de legado exigen ≥ `reclamo_fotos_min` fotos
+  subidas a `canchas/<id>/` (`_validar_registro` → 400 `campo: fotos`; solo se
+  GUARDAN las propias, las de Google se descartan); el formulario muestra
+  "N de M fotos ✓" (`#fotosCont`) y el botón queda deshabilitado con la
+  explicación (`actualizarEnvio`); al reclamar un legado se precargan sus
+  fotos propias (`CFG.fotosPrevias`). La evidencia no cuenta.
   **AGREGAR CANCHA A UN LOCAL EXISTENTE (pedido del director, 23-sep-2026:
   "¿cómo registro otra cancha, y de otro deporte?"):** `GET/POST
   /anfitrion/cancha/{id}/agregar` (`web/anfitrion.py::pagina_agregar_cancha`,
@@ -953,7 +1043,11 @@ para la API del APK.
   `_local_propio`) → 303 al flujo corto (antes creaba otro local + otro
   reclamo y la 2.ª cancha quedaba "Aún sin verificar" para siempre). Aviso
   `?agregada=` en Mis canchas. Test
-  `test_agregar_cancha_a_local_desde_la_web_como_el_app`.
+  `test_agregar_cancha_a_local_desde_la_web_como_el_app`. **Fotos (2-oct-2026):**
+  hereda solo las fotos PROPIAS del local; si el local tiene menos del mínimo,
+  la página pide las que faltan (sección `#sec-fotos`, suben a la carpeta de la
+  cancha NUEVA con `/anfitrion/nueva/foto?id=<CFG.nuevoId>`; el POST manda
+  `id` + `fotos`) y el servidor no agrega sin ellas (`campo: fotos`).
   **SERVICIOS EXTRA = CATÁLOGO GLOBAL EN LA TORRE (decisión del director,
   23-sep-2026: "el admin debe poder registrar más servicios extra, p. ej.
   piscina y entrada general"):** `backend/growth/servicios_extra.py`.
@@ -1158,7 +1252,8 @@ para la API del APK.
   `participante[/{pid}/eliminar]`, `fixture`, `resultado`, `prueba[/{pid}/
   eliminar]`, `marca`, `ranking`, `duplicar`, `eliminar`); todos exigen
   sesión y que el campeonato sea del correo (404 si no). La INSCRIPCIÓN del
-  jugador (con pago desde su saldo) sigue en el app. **Trampa CSS:** el
+  jugador (con pago desde su saldo) también está en la web: ver
+  "INSCRIPCIÓN A CAMPEONATOS EN LA WEB". **Trampa CSS:** el
   shell global tiene `.paso span{…círculo azul}` (pasos numerados de la
   reserva): el asistente usa la clase `.wz-p`, NO `.paso`; y `input` es
   `width:100%` global → radios/checkbox con `width:auto;flex:none`. Tests
@@ -1276,8 +1371,10 @@ para la API del APK.
   `devolver` regresa cada parte a cada jugador (`aporte_equipo_devolucion`);
   ya liquidado → `ya_liquidado` y la devolución queda de lado del
   organizador (aviso en app y web). El JSON del campeonato espeja
-  `Integrante.aporteCentimos` solo para mostrar. **App:** `_aportarPozo`
-  (falta saldo → Recargar), "Crear mi equipo · pones S/ 10" (paga ANTES de
+  `Integrante.aporteCentimos` solo para mostrar. Saldo en otra moneda que la
+  del pozo → `moneda_distinta` sin cobrar (en `pozos.aportar`, para app y
+  web). **App:** `_aportarPozo`
+  (falta saldo → Recargar; otra moneda → aviso), "Crear mi equipo · pones S/ 10" (paga ANTES de
   crear, id `eq_<µs>` generado en la pantalla), `_confirmarYUnirme` (código
   o enlace: valida lleno/repetido, confirma con la parte, cobra, une),
   `_PozoEquipo` (barra + faltante) y "Completar S/ X" en la tarjeta del
@@ -1289,8 +1386,9 @@ para la API del APK.
   `pozos_incompletos` → modal "Generar con todos / Excluirlos y devolver"
   (`{con_todos}` / `{excluir:[ids]}`), quitar equipo devuelve; publicidad y
   página pública dicen "cada jugador pone S/ 10". Tests
-  `test_pozo_equipo.py`, `test_vaquita_del_equipo_en_la_web`. Pendiente:
-  la cuota individual (`/torneo/inscribir`) sigue en PEN.
+  `test_pozo_equipo.py`, `test_vaquita_del_equipo_en_la_web`. La cuota
+  individual (`/torneo/inscribir`) va en la moneda del campeonato desde el
+  1-oct-2026.
   **EL NETO DEL TORNEO ES "POR RECIBIR", NO SALDO (decisión del director,
   26-sep-2026: "PCG le debe transferir de manera automática, así como hace
   con los dueños de cancha; ¿qué pasa si el operador se olvida?"):** antes
@@ -1459,6 +1557,136 @@ para la API del APK.
   "yo" del carrito (o la primera). Tests
   `test_cargo_lleva_los_datos_reales_del_cliente_para_culqi` + asserts en
   `test_reserva_web_completa` y `test_ficha_de_academia…`.
+- **COBRO WEB EN USD/BOB (PayPhone/Libélula) (oct-2026, fase 2 parte 1:
+  "que la web cobre en dólares y bolivianos con los MISMOS módulos del
+  APK"):** `web/pago_hospedado.py` (router en `main.py`). Aplica a la
+  RESERVA (`/reservar/{id}`: total, seña, extras, boleador, cargo por
+  servicio; puntos siguen solo en soles; fidelidad y bono igual que en
+  soles) y a la RECARGA de billetera (`/mi-billetera`, con el bono de
+  recarga). Pasarela por moneda: USD → fachada `pagos/pasarela_ec.py` (hoy
+  PayPhone), BOB → `pagos/libelula.py`; PEN sigue con Culqi
+  en la página. **Órdenes** `stores.pagos_web` (snapshot; id `pw_<token>`
+  no adivinable): {email de la sesión, pasarela, moneda, monto_centimos
+  (lo calcula el SERVIDOR: `web.router.plan_cobro_reserva` +
+  `_cotizacion_reserva`), concepto, accion {reserva: ids, ref, cargo… |
+  recarga}, estado pendiente → aprobado | aprobado_sin_reserva | rechazado
+  | cancelado | vencido}. Flujo: el JS de la ficha, tras `/web/asegurar` y
+  el "Resumen de tu pago", hace `POST /web/pago/reserva {ids, firma}` (o
+  `POST /web/billetera/recargar-pasarela {monto}`) → la orden se prepara
+  con los núcleos que el APK ya usaba, ahora extraídos en
+  `pagos/router.py`: `preparar_pago_ec(..., response_url, cancel_url,
+  orden_web)` y `registrar_deuda_bo(..., retorno, orden_web)` (los
+  endpoints `/pagos/ec/pago` y `/pagos/bo/deuda` los llaman igual) → el
+  navegador va a la pasarela (Ecuador por la página PUENTE
+  `/pagos/ec/ir/{ident}` de nuestro dominio) → vuelve a `GET
+  /web/pago/{orden}/retorno` (Ecuador: `?id=&clientTransactionId=` →
+  `_confirmar_ec`, regla de los 5 min; Bolivia: consulta la deuda) →
+  `/web/pago/{orden}` (espera con sondeo a `/estado` y "Cancelar este
+  pago", o redirige al comprobante / `/mi-billetera?recarga=<orden>` con
+  aviso). Cancelar en la pasarela → `/web/pago/{orden}/cancelado`. **La
+  acción se ejecuta UNA vez** (`finalizar`, candado + `accion_hecha`) por
+  el primer camino que pruebe el pago: el gancho `_al_pagar_orden_web` en
+  `_confirmar_ec_inner` y `_marcar_pagada` (así el callback de Libélula
+  `/pagos/bo/callback` finaliza aunque el cliente cerró la pestaña), el
+  retorno, el sondeo o el barrido; el retorno finaliza SIN cookie (la
+  prueba es la pasarela). La reserva se confirma con
+  `web.router.confirmar_reserva_pagada` (factorizada de `/web/pagar`, misma
+  para Culqi: filas, seña, fidelidad, bono, `cobro_web` con
+  `culqi_charge_id = <pasarela>:<id>` o `sim:<orden>`, liquidación al dueño
+  en la moneda de la cancha, push, boleador); la recarga la acredita el
+  propio módulo (tipo `recarga` + `_aplicar_bono_recarga`), como el APK.
+  **El apartado NO vence a los 10 min mientras paga:** `POST
+  /web/pago/reserva` pone `medio_pago = 'web_pasarela'`
+  (`datos.marcar_hold_pasarela`) y `datos._SQL_HOLD_VENCIDO` (ocupados,
+  liberar holds) le da el tope largo `HOLD_PASARELA_MAX_SEGUNDOS` (50 min);
+  `/web/liberar` responde `pago_en_curso`, `fidelidad._vigente` y
+  `beneficios.barrer_vencidos` respetan la orden viva
+  (`pago_hospedado.ref_pendiente`). Rechazo / cancelación / vencimiento →
+  `web.router.soltar_bloque` (premio, bono y puntos vuelven; horario libre).
+  Vida de la orden: Ecuador 12 min, Libélula 30 min; el barrido
+  (`pago_hospedado.barrer`, en el cron de 1 min de `main.py` junto a los
+  holds) reconcilia, vence y reintenta acciones fallidas, y pregunta a
+  Libélula por los vencidos de las últimas 24 h. **Pago TARDÍO** (llegó con
+  la orden ya vencida y el horario suelto): nunca se inventa la reserva; se
+  devuelve a su SALDO si la billetera es de esa moneda (`devolucion_saldo`)
+  o queda `manual` en Cancelaciones web (motivo `pago_sin_reserva`) para el
+  operador. **Cancelar** una reserva pagada así: PayPhone/Libélula no
+  reembolsan por API en estos módulos → `manual` (el operador devuelve
+  desde la torre); si un módulo de Ecuador trae `reembolsar`, sale solo.
+  A SALDO solo si la billetera es de la moneda de la reserva (arreglo
+  general: antes se podía acreditar dólares en un saldo en soles). Culqi
+  (`/web/pagar`) rechaza bloques en $/Bs (`usa_pasarela`). UI:
+  `ui.selector_medio_pago(pasarela)` muestra un solo medio ("PayPhone ·
+  tarjeta", "Libélula · QR o tarjeta"), `pcgResumenPago({medioNombre})`,
+  diálogo "Tienes un pago en curso" si vuelve con atrás. **Sin pasarela
+  configurada:** en PRD (y con `PICHANGOL_ENTORNO` vacío: fail-closed) la
+  ficha sigue con "Reserva desde la app"; en QAS/DEV hay una pasarela
+  SIMULADA (`/web/pago/{orden}/simulado`, "🧪 PAGO DE PRUEBA · QAS", aprobar
+  / rechazar) que NUNCA existe en PRD, ni con `sk_live` de Culqi, ni con
+  `WEB_PAGO_SIMULADO=0`. **Lo que debe configurar el director por ambiente:**
+  `PICHANGOL_ENTORNO` (QAS en `pg-backend`, PRD en `pg-backend-prd`);
+  `PUBLIC_BASE_URL` (base de los retornos: QAS `https://pg.ebim.pe`, PRD
+  `https://www.pichangol.app`); Ecuador `PAYPHONE_TOKEN` +
+  `PAYPHONE_STORE_ID` y en PayPhone Business → Developer → la app, dominio
+  autorizado = host de `PUBLIC_BASE_URL` de ESE ambiente (la web usa
+  `<base>/web/pago/<orden>/retorno` y `/cancelado` como responseUrl /
+  cancellationUrl); Bolivia `LIBELULA_APPKEY` (callback
+  `<base>/pagos/bo/callback`, retorno `<base>/web/pago/<orden>/retorno`).
+  Tests `tests/test_web_pago_hospedado.py`; Playwright
+  `$SP/pw_hosp.js` (390 px, pasarela simulada, cero diálogos del
+  navegador).
+  **PARTE 2 (oct-2026): MATRÍCULA, CUOTAS, MARKETPLACE Y BONOS en $/Bs** por
+  la MISMA capa de órdenes. Cada tipo de `accion` vive en su módulo
+  (`pago_hospedado._MODULOS`, import perezoso) con `al_pagar_hospedado(o)`
+  (lo que su camino Culqi hace tras el cargo, FACTORIZADO en una función
+  compartida por los dos caminos) y, si aparta algo,
+  `al_soltar_hospedado(o)`; los endpoints crean la orden con
+  `pago_hospedado.abrir_orden` (reusa la orden viva de lo mismo por
+  `accion.clave`: doble clic / dos pestañas = una orden) y el JS va con
+  `pcgIrPasarela` (`JS_IR_PASARELA`) tras `pcgResumenPago({medioNombre})`;
+  selector de un solo chip (`pago_hospedado.selector`). N.º de operación =
+  `<pasarela>:<id>` (`ref_cobro`). (1) **Matrícula** `POST
+  /web/matricular-pasarela {academia_id, personas}` (una persona o el
+  carrito): `_preparar_personas` + `_cotizar_matricula` (cargo con partes) y
+  las personas/total se CONGELAN en la orden (ids `al_<µs>` deterministas
+  por `base_us`: un reintento no duplica filas); al pagar,
+  `matricular_pagado` (= Culqi: filas, `post_matricula` en la moneda del
+  país, `cobro_web`, push). **Mes a mes en $/Bs = SIN débito automático**
+  (decisión: PayPhone/Libélula no guardan tarjeta en estos módulos): la 1.ª
+  cuota se paga hoy y las demás quedan PENDIENTES sin `autoDebito`; se pagan
+  cada mes desde Mis clases (web o app). La ficha, el resumen y el
+  comprobante lo dicen ("sin débito automático"); `pagoWeb.pasarela` →
+  "Pagado con PayPhone/Libélula". `/web/matricular(-varios)` (Culqi) ahora
+  responde `usa_pasarela` en $/Bs. (2) **Cuotas** `POST
+  /web/mis-clases/pagar-pasarela {cuotas, total_centimos}`: mismas
+  validaciones (`_validar_cuotas`), una cuota no puede estar en dos órdenes
+  vivas (`en_curso`); al pagar, `marcar_cuotas_atomico` bloquea TODAS las
+  matrículas con `FOR UPDATE` (orden de id) y aplica `aplicar_pago_atomico`
+  TODO O NADA (pendiente, sin débito automático activo, mismo monto; una ya
+  pagada con ESTA operación = reintento): si alguna se pagó por otro lado
+  mientras tanto, no se marca ninguna y el pago se DEVUELVE
+  (`cuotas_ya_pagadas`); base caída → None → el barrido reintenta (nunca se
+  devuelve por un error de red). Luego `_contabilizar_cuotas` por academia
+  (idempotente por `cuo_<acad>_<marca>`), pushes y aviso en
+  `/mis-clases?pagado=<orden>`. (3) **Marketplace** `POST
+  /web/marketplace/comprar-pasarela {producto_id}`: la unidad se APARTA
+  (`apartar_unidad`, UPDATE atómico) ANTES de ir a la pasarela, sigue
+  apartada mientras la orden vive y vuelve al stock UNA vez al rechazar /
+  cancelar / vencer (`al_soltar_hospedado`); al pagar, `venta_pagada` (=
+  Culqi: `post_venta` con la moneda del producto, escrow, `cobro_web`,
+  push). (4) **Bonos** `POST /web/bonos/comprar-pasarela {cancha_id,
+  oferta_id}` → `bono_pagado` (crédito `bono_<pasarela>:<id>` idempotente +
+  `post_venta`). **Pago TARDÍO** (orden ya vencida/cancelada) de cualquier
+  tipo: nunca se ejecuta la acción → `pago_hospedado.devolver_pago(o,
+  motivo)` (saldo si la billetera es de esa moneda; si no, `manual` en
+  Cancelaciones web con `tipo` y `concepto`; Mis reservas solo lista las de
+  `tipo` reserva). Motivos y textos en `_MOTIVOS_DEV`. Sin pasarela en PRD
+  todo sigue "desde la app"; en QAS, la simulada. Tests
+  `tests/test_web_pago_hospedado_fase2.py` (USD/BOB, PayPhone/Libélula
+  simuladas y la de QAS, rechazo, vencimiento, pago tardío, cuotas pagadas
+  por otro lado, SQL del marcado atómico, doble confirmación); Playwright
+  `$SP/pw_f2.js` (390 px, matrícula mes a mes + cuotas + rechazo en el
+  marketplace, cero diálogos del navegador).
 - **SEÑA EN LA RESERVA WEB (caso real PRD, 1-oct-2026: "Campo deportivo Edu
   Jr." tenía seña 50 % y la web cobraba siempre el total):** la web ahora
   hace lo mismo que `club_detalle._ResumenReserva` del app. Config
@@ -1478,6 +1706,78 @@ para la API del APK.
   que la seña no se devuelve. Test
   `test_sena_del_dueno_en_la_reserva_web_como_el_app`; Playwright
   `$SP/pw_sena.js`.
+- **BONO Y PUNTOS EN LA RESERVA WEB (1-oct-2026, pedido del director: los
+  mismos beneficios que el app en el checkout de `/reservar/{id}`):**
+  `web/beneficios.py` (regla) + funciones `datos.*canje_web*`/`saldo_bono`/
+  `bono_apartar`/`puntos_apartar` + tabla NUEVA `pichangol_canjes_web` (SQL
+  `docs/piloto/supabase_canjes_web.sql`: libro de lo APARTADO con el hold,
+  estados reservado → usado | devuelto; RLS sin políticas; sin la tabla la
+  web no ofrece bono ni puntos). Caja `#benBox` en la ficha (con sesión,
+  `GET /web/beneficios?cancha_id`). **Bono** = espejo de `metodo == 'bono'`
+  del app: cubre TODOS los turnos (1 h de bono = 1 turno) solo si alcanza,
+  créditos del local por `club` + `dueno` (FIFO, `FOR UPDATE` en
+  `pichangol_bonos_comprados` y el libro en la MISMA transacción), fila con
+  precio de lista, `pagado`, `medio_pago='bono'`, SIN liquidación ni Culqi
+  (el dueño cobró al vender el pack); no se combina con seña, fidelidad,
+  puntos ni boleador (`bono_con_boleador`). Los servicios extra con bono se
+  COBRAN en línea y se liquidan al dueño (solo los extras, medio real
+  yape/tarjeta, `charge_id` y cargo por servicio); el APK hace lo MISMO desde
+  el 1-oct-2026 (ver "APP = WEB EN BONO, PUNTOS Y POZO"). **Puntos** =
+  `_usarPuntos` del app: 100 pts = S/ 3, solo pago total en línea en soles,
+  total > S/ 3, sin seña/bono/premio de fidelidad; el dueño liquida el precio
+  COMPLETO (lo pone Pichangol) y el cargo por servicio se cotiza sobre lo
+  cobrado (total − 3). Disponibles = `datos.puntos_de` − apartados vivos; el
+  apartado toma `pg_advisory_xact_lock` por correo (dos pestañas no canjean
+  los mismos puntos). El canje se escribe en `pichangol_puntos_canjes` (mismo
+  formato que el APK, referencia `<cancha>_<fecha>_<hora>`) recién con el
+  pago aprobado, en la misma transacción que marca el libro `usado`. Vuelven
+  al jugador: `/web/liberar`, pago rechazado, cron de holds (`soltar` +
+  `barrer_vencidos` cada minuto) y cancelación CON devolución (horas a los
+  mismos créditos; puntos con fila NEGATIVA en `pichangol_puntos_canjes`,
+  que APK y web suman). Una reserva con bono hecha en el APK que se cancela
+  desde la web devuelve sus horas a los créditos del local (LIFO). La
+  cancelación devuelve en plata solo lo PAGADO (sin bono ni los S/ 3); bono
+  sin plata → `reembolso: "bono"`. Comprobante: "🎟️ Pagado con tu bono · N
+  horas" y "⭐ Canje de 100 puntos"; Mis reservas: "Pagada con bono 🎟️".
+  SQL probado contra Postgres 16 real (concurrencia de puntos incluida).
+  **Pendiente:** correr el SQL en QAS (director) y, con autorización, en
+  PRD. Tests `tests/test_web_bono_puntos.py`; Playwright `$SP/bp_pw.js`.
+- **APP = WEB EN BONO, PUNTOS Y POZO (1-oct-2026, pedido del director:
+  "alinea el APK y el backend para que app y web se comporten igual"):**
+  (1) **Bono + servicios extra en el APK** (`club_detalle._reservar`): con
+  extras, asegura el bloque ANTES de cobrar, cobra SOLO los extras (+ cargo
+  por servicio si está activo) con `PagoTarjeta.cobrar` (resumen con
+  "🎟️ Pagado con tu bono · N horas"), la fila queda `medio_pago='bono'`,
+  `pagado` y con su cargo, y `agregarReservasJugadorMulti(extrasEnLinea:)`
+  → `_accionContable` caso `'bono'` liquida al dueño SOLO los extras con el
+  medio real y el `charge_id` (igual que `/web/pagar`). Bono con boleador →
+  aviso y no sigue; extras sin pago en línea disponible → aviso "quítalos
+  para usar tu bono" (la hoja ya lo explica en vez del botón). Pago fallido
+  → se libera el horario y el bono queda intacto. (2) **Cancelar una
+  reserva con bono desde el APK** pasa por el backend
+  (`mis_reservas._pagadaEnLinea` incluye `esBono` → `/pagos/reserva/
+  cancelacion|cancelar` = el motor `_cancelar_reserva` de la web): a tiempo
+  vuelven las horas (`bono_horas_devueltas`, el app recarga `cargarMisBonos`)
+  y la plata de los extras; tarde, nada. La hoja dice "con tu bono (N h)" y
+  qué vuelve. (3) **Puntos en cancelaciones** (motor compartido): una reserva
+  del APK con canje de puntos se detecta leyendo el NETO de
+  `pichangol_puntos_canjes` por referencia `<cancha>_<fecha>_<hora>` (fecha
+  real; en madrugada también el día base de APKs viejos) + `devolucion:<ref>`,
+  solo canjes creados desde ~2 h antes de la reserva (id `jug_<ms>`/`grp_<ms>`;
+  descarta canjes viejos de otra reserva del mismo turno)
+  (`beneficios._puntos_app`, `datos.puntos_canje_neto`); con devolución vuelven
+  con una fila negativa (`datos.puntos_devolver_neto`, candado por correo +
+  relectura = idempotente). **Nunca se devuelve más de lo cobrado:** el monto
+  a devolver se topa con el cargo de la pasarela (`cobro_web` o el `chr_` del
+  app) tanto a saldo como al medio original, y una reserva con bono sin ningún
+  cobro (APK viejo: extras en la fila SIN cobrarse) devuelve 0 en plata. El
+  APK escribe ahora la referencia del canje con la fecha REAL del primer turno
+  (como la web). `estado_cancelacion` trae `monto_centimos`. (4) **Pozo del
+  equipo en otra moneda:** `pozos.aportar` (APK `/pagos/torneo/equipo/
+  aportar|completar` y web) responde `moneda_distinta` si la billetera
+  (`moneda_billetera`) no es la moneda del pozo, ANTES de crear el pozo o
+  cobrar; el APK lo avisa con `avisarPichangol` en `_aportarPozo`. Test
+  `tests/test_alineacion_bono_puntos.py`.
 - **"CADA CLIC DEMORA" (queja del director, 1-oct-2026) — CAUSA RAÍZ:**
   `pg-backend-prd` corre en Railway **us-west2 (California)** y PCG-PRD está
   en **sa-east-1 (São Paulo)**: ~180 ms por ida y vuelta. psycopg abría una
@@ -1545,9 +1845,9 @@ para la API del APK.
   …/{id}/reintentar`). Plantilla tabla + estilos en línea (Gmail/Outlook),
   pie con razón social/RUC de `empresa.datos()`, "constancia, no comprobante
   electrónico". Privacidad declara el proveedor de correo. Test
-  `tests/test_correos.py`. **Trampa (1-oct-2026):** Cloudflare delante de `api.resend.com` responde 403 «error code: 1010» al User-Agent por defecto de `urllib` → `_enviar_resend` manda `User-Agent: Pichangol-Backend/1.0`. **PENDIENTE del director:** cuenta de Resend con
-  el dominio `pichangol.app` verificado (DNS SPF/DKIM) y la llave en Railway
-  QAS (y PRD con "pasa a PRD").
+  `tests/test_correos.py`. **Trampa (1-oct-2026):** Cloudflare delante de `api.resend.com` responde 403 «error code: 1010» al User-Agent por defecto de `urllib` → `_enviar_resend` manda `User-Agent: Pichangol-Backend/1.0`. **HECHO 1-oct-2026:** dominio `pichangol.app` verificado en
+  Resend, `RESEND_API_KEY` en `pg-backend` y `pg-backend-prd`, correo de
+  prueba recibido en QAS; remitente `no-reply@pichangol.app` (PRD = 509158f).
 - **UNIRSE A UN EQUIPO CON EL FIXTURE YA PUBLICADO + CÓDIGO PARA EQUIPOS
   VIEJOS (pedido del director, 26-sep-2026: "me quiero inscribir al
   Kinder-01" con el torneo "En juego"):** (1) el fixture generado NO cierra el
@@ -1604,12 +1904,48 @@ para la API del APK.
   codigo`) → `GET /anfitrion/campeonatos/unirme?codigo=` →
   `datos.campeonato_por_codigo` (código del TORNEO `data->>'codigo'` o de un
   EQUIPO por contención jsonb en `participantes`) → 303 a la página pública
-  `/c/{id}` (con `?equipo=COD` si era de equipo: ahí "Unirme al equipo en la
-  app"; la web no cobra la parte); inexistente → `?no_encontrado=1` con
+  `/c/{id}` (con `?equipo=COD` si era de equipo: ahí "Unirme al equipo
+  aquí" —web, con saldo— o en la app); inexistente → `?no_encontrado=1` con
   aviso. Sección "Donde participo" (`datos.campeonatos_donde_participa`:
   prefiltro `data::text LIKE %email%` + `participa_en`; tarjeta con rol
-  `_rol_en` → `/c/{id}`) y "Organizo". El vacío dice "Aún no tienes
+  `_rol_en` → `/torneo/{id}`) y "Organizo". El vacío dice "Aún no tienes
   campeonatos". Test `test_web_unirme_con_codigo_y_donde_participo`.
+- **INSCRIPCIÓN A CAMPEONATOS EN LA WEB (1-oct-2026, pedido del director:
+  "en un campeonato el jugador debe poder hacer en la web todo lo que hace en
+  el app, pagando de su saldo"):** `web/jugador_campeonatos.py`. `GET
+  /torneo/{id}[?equipo=COD]` (sin sesión → `/entrar?volver=`) = panel del
+  jugador de `campeonato_detalle_screen`: chips del torneo, "Tu saldo",
+  "Ya estás inscrito", inscripción INDIVIDUAL (Yo / Mi hijo(a) con nombre,
+  edad opcional, WhatsApp y consentimiento; "Inscribir a otro hijo(a)") y en
+  FÚTBOL crear mi equipo (pagando primero mi parte), unirme por código, por
+  el enlace del capitán o tocando el equipo (pozo lleno = gratis), y
+  "Completar S/ X" para los del plantel; cada equipo muestra pozo, plantel
+  con "pagó / sin pagar" y el MOTIVO si no se puede unir
+  (`L.motivo_plantel_cerrado`, organizador, lleno, sin código). JSON con
+  sesión: `POST /web/torneo/{id}/inscribir` (→ `pagos.router.
+  post_torneo_inscribir`, los MISMOS pagos `inscripcion_torneo` +
+  `inscripcion_torneo_ingreso` por recibir del APK; pasa `moneda` si el
+  modelo la tiene), `/equipo/crear`, `/equipo/unirme {codigo|equipo_id}`,
+  `/equipo/{eid}/completar` (→ `pozos.aportar`, mismo pozo/comisión/
+  liquidación que `/pagos/torneo/equipo/*`), `/documento {para: yo|hijo,
+  numero, nacimiento}` (`exigeDni`: PE/EC contra el registro —yo con
+  `post_verificar_dni` + queda verificado; hijo solo consulta—, BO CI + fecha;
+  valida la edad de la categoría con los textos del app y devuelve un token
+  firmado de 30 min; "yo" ya verificado pasa directo, como
+  `jugadorVerificado`). Reglas espejo en `campeonatos_logica`
+  (`puede_inscribirse`, `aporte_siguiente`, `pozo_completo`,
+  `agregar_inscripcion`, `crear_equipo`, `unir_al_plantel`,
+  `registrar_aporte` = mismo JSON que `AppState`). Se valida TODO antes de
+  cobrar; la billetera debe estar en la moneda del torneo
+  (`moneda_billetera`, 409 `moneda_distinta`); sin saldo → 402 `falta_saldo`
+  → modal "Recargar saldo" (`/mi-billetera#recargar`). **Concurrencia:**
+  `datos.mutar_campeonato` (`SELECT … FOR UPDATE` + UPDATE en la misma
+  transacción) + candado por correo; si el JSON no se guarda tras mover
+  plata, se compensa (`pozos.revertir_aporte`, anular pagos de la
+  inscripción y devolver al saldo). Push "Nuevo jugador en tu equipo ⚽" al
+  capitán. La página pública `/c/{id}` lleva "Inscribirme aquí" / "Unirme
+  al equipo aquí" (→ `/torneo/…`) como botón principal y la app como
+  secundario. Test `tests/test_web_campeonato_inscripcion.py`.
 - **PAGO FAMILIAR EN ACADEMIAS (pedido del director, 26-sep-2026: "yo pago
   la academia de tenis de mi esposa, de mis hijos y mi propia mensualidad,
   hago un solo pago por ellos"; "Sí, familiar, implementa los tres puntos"):**
@@ -1995,6 +2331,7 @@ para la API del APK.
   `https://www.<host><ruta>?<query>` para los hosts de `DOMINIOS_A_WWW`
   (default `pichangol.app`), excepto `/.well-known/` (assetlinks de los App
   Links del apex, sin redirección). Test `tests/test_dominio_raiz.py`.
+  **HECHO 1-oct-2026:** ALIAS puesto, Railway: DNS propagado y certificado VALID.
 
 ## Estrategia de ambientes (piloto → prod)
 
@@ -2048,6 +2385,45 @@ canchas eliminadas no reaparecen aunque Supabase las devuelva. Re-registrar/edit
 
 **Validación en sitio (fase posterior, ya en el código):** motorizado ingresa
 código + GPS; si coincide (≤ `RECLAMO_VALIDACION_GPS_MAX_M`) activa.
+
+**FOTOS PROPIAS OBLIGATORIAS AL RECLAMAR (decisión del director, 2-oct-2026:
+"subir fotos propias debe ser una OBLIGACIÓN"):** los términos de Google no
+permiten guardar sus fotos; las del dueño quedan para siempre y prueban que el
+local existe. Fuente única `backend/growth/propiedad/fotos_reclamo.py`:
+mínimo `stores.config["reclamo_fotos_min"]` (default **2**, espejo en
+`CONFIG_DEFAULT`; **0 = apagado**), editable en la torre → Aprobación y
+operación → **"📷 Fotos propias al reclamar"** (`GET/POST
+/admin/api/reclamo-fotos`, 0..8) y público en `GET /config/canal`
+(`reclamo_fotos_min`; el APK lo cachea en SharedPreferences
+`reclamo_fotos_min`, `AppState.reclamoFotosMin`, respaldo 2). **Foto propia** =
+URL pública de NUESTRO Supabase (host de `SUPABASE_URL`), bucket `canchas`, en
+la carpeta de ESA cancha: `canchas/<id>/…` o la portada del APK
+`canchas/<id>.jpg`; las hermanas `u<ts>_<deporte>` comparten `u<ts>`. NO
+cuentan Google/googleusercontent, otro proyecto/bucket, la EVIDENCIA
+(`canchas/ev<id>/`) ni otra carpeta (espejo Dart `lib/models/fotos_propias.dart`).
+**Candado REAL en el servidor** (los APK viejos no validan al enviar):
+`reclamos._gate_fotos` en `aprobar_directo` (solo si activa: marcha blanca),
+`activar_admin`, `validar_en_sitio` (con activación automática) y por ende
+`APROBAR <código>` por WhatsApp → `faltan_fotos_propias` (con `fotos_propias`,
+`minimo`, `faltan`, `mensaje`); lee `datos.fotos_de_canchas` (portada +
+galería en `pichangol_canchas`). Sin base configurada (dev/tests) no se exige;
+si la base FALLA → `fotos_no_verificables` (no activa a ciegas). La tarjeta del
+reclamo en la torre muestra "📷 N fotos propias" con miniaturas
+(`reclamos.listar` suma `fotos_propias/fotos_faltan/fotos_urls/fotos_minimo`
+con UNA consulta) y, si faltan, aviso ámbar + "Aprobar" deshabilitado. Al
+dueño: web `anfitrion.aviso_fotos_reclamo` en `/anfitrion/verificacion/{id}` y
+en los avisos de Mis canchas ("Sube N fotos de tu local para que podamos
+aprobarlo" → Editar cancha `#sec-fotos` de la cancha DEL RECLAMO); APK
+`_PanelPendiente._avisoFotos` en `club_detalle` (botón "Subir fotos" →
+Editar cancha). APK: `registrar_cancha_screen` (galería de fotos propias
+`_GaleriaFotos` con contador, cámara/galería, hasta 8; el reclamo de una
+descubierta ahora tiene un paso "Fotos de tu local" y YA NO guarda las fotos
+de Google en la cancha; sube a `canchas/u<ts>/app_<ms>_<i>.jpg` y si no llega
+el mínimo a la nube no crea nada) y el reclamo de legado en
+`editar_cancha_screen` (cuenta propias + nuevas antes de subir y solo guarda
+propias). **Riesgo conocido:** los reclamos que ya estaban en curso sin fotos
+no se pueden aprobar hasta que el dueño las suba (o el operador baje el
+mínimo a 0). Test `tests/test_fotos_reclamo.py`.
 
 ## Backend growth (`backend/growth/`, FastAPI)
 
@@ -3601,7 +3977,11 @@ auth por usuario en `/pagos/movimientos` (PROD).
   login + reset por cuenta en logout). CANJE EN CHECKOUT (hecho): toggle en el
   resumen de `club_detalle` (`usarPuntos`), 100 pts = S/3, solo pago online en
   S/, 1 canje por reserva; el descuento lo absorbe la comisión PCG (la
-  liquidación al dueño va con el precio completo). UI: tarjeta en Mis reservas
+  liquidación al dueño va con el precio completo). La WEB lo ofrece igual
+  desde el 1-oct-2026 (`web/beneficios.py`); una cancelación web con
+  devolución inserta una fila NEGATIVA (−100) que devuelve los puntos; desde
+  el 1-oct-2026 también para canjes hechos en el APK (y la devolución en plata
+  nunca supera lo cobrado). UI: tarjeta en Mis reservas
   (`_PuntosCard`) + pantalla "Mis puntos" en Perfil (`mis_puntos_screen.dart`).
   SQL: `docs/piloto/supabase_puntos_canjes.sql`. OJO: el backend growth
   `/puntos/*` es el motor de INCENTIVOS growth (traer_cancha, etc.; ahora con

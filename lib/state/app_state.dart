@@ -8,12 +8,14 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../data/academia_ops_repo.dart';
 import '../data/academias_repo.dart';
 import '../data/agenda_repo.dart';
 import '../data/chat_prefs_repo.dart';
 import '../data/estados_repo.dart';
 import '../data/lecturas_repo.dart';
 import '../data/presencia_repo.dart';
+import '../models/fotos_propias.dart';
 import '../models/estado.dart';
 import '../models/canal.dart';
 import '../data/campeonatos_repo.dart';
@@ -59,6 +61,8 @@ import '../models/usuario.dart';
 import '../services/auth_service.dart';
 import '../services/avisos_service.dart';
 import '../services/circuito_service.dart';
+import '../services/convocatorias_service.dart';
+import '../services/negocio_service.dart';
 import '../services/pagos_service.dart';
 import '../services/retos_service.dart';
 import '../services/push_service.dart';
@@ -96,27 +100,28 @@ class AppState extends ChangeNotifier {
 
   // Notas privadas del DUEÑO por cliente (clave = correo, o 'n:nombre' para el
   // walk-in sin cuenta), tipo "cuaderno del club": prefiere efectivo, juega los
-  // martes, cancha 2, etc. Device-first (SharedPreferences); solo las ve el dueño.
+  // martes, cancha 2, etc. Viven en el BACKEND (`/negocio/notas`, las mismas que
+  // la web en Clientes); aquí van en caché (device-first). Solo las ve el dueño.
   final Map<String, String> _notasCliente = {};
 
   /// Nota privada que el dueño le puso a un cliente (vacío si no hay).
-  String notaCliente(String clave) => _notasCliente[clave.trim()] ?? '';
+  String notaCliente(String clave) =>
+      _notasCliente[clave.trim().toLowerCase()] ?? '';
 
-  /// Guarda (o borra, si queda vacía) la nota privada de un cliente y persiste.
+  /// Guarda (o borra, si queda vacía) la nota privada de un cliente: al
+  /// instante en el teléfono y luego en el backend (cola si no hay red).
   Future<void> guardarNotaCliente(String clave, String nota) async {
-    final k = clave.trim();
+    final k = clave.trim().toLowerCase();
     if (k.isEmpty) return;
-    final t = nota.trim();
+    final t = nota.trim().replaceAll(RegExp(r'[ \t]+'), ' ');
     if (t.isEmpty) {
       _notasCliente.remove(k);
     } else {
       _notasCliente[k] = t;
     }
     notifyListeners();
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kNotasCliente, jsonEncode(_notasCliente));
-    } catch (_) {}
+    await _encolarNegocio({'tipo': 'nota', 'clave': k, 'texto': t},
+        dedupe: 'nota|$k');
   }
 
   /// Apodo local que le puse a un correo, o null si no le puse.
@@ -326,64 +331,14 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Ajusta MI nivel tras un resultado real (reto/campeonato) con ELO suave, y
-  /// suma partido/victoria. Persiste local + Supabase.
-  Future<void> registrarResultadoNivel(
-    String deporte, {
-    required double rivalNivel,
-    required bool gane,
-  }) async {
-    final email = (usuario?.email ?? '').toLowerCase();
-    if (email.isEmpty || deporte.isEmpty) return;
-    final actual =
-        _misNiveles[deporte] ?? Nivel(email: email, deporte: deporte);
-    final nuevo = actual.copyWith(
-      nivel: Nivel.calcularElo(
-          miNivel: actual.nivel, rivalNivel: rivalNivel, gane: gane),
-      partidos: actual.partidos + 1,
-      victorias: actual.victorias + (gane ? 1 : 0),
-      actualizado: DateTime.now(),
-    );
-    _misNiveles[deporte] = nuevo;
-    notifyListeners();
-    await _guardarMisNivelesCache();
-    await NivelesRepo.guardar(nuevo);
-  }
-
-  static const _kRetosElo = 'retos_elo_aplicados';
-
-  /// Aplica el ELO a MI nivel por CADA reto ya JUGADO que aún no procesé
-  /// (idempotente por id de reto → nunca se aplica dos veces). Cada jugador
-  /// actualiza SU propio nivel en su dispositivo, con el nivel actual del rival.
-  /// Sólo singles (el dobles necesita lógica de equipo). Se llama al abrir "Mis
-  /// retos": así el nivel sube/baja SOLO con resultados reales (Playtomic).
-  Future<void> aplicarEloDeRetos(List<Map<String, dynamic>> retos) async {
-    final yo = (usuario?.email ?? '').toLowerCase();
-    if (yo.isEmpty || retos.isEmpty) return;
-    final prefs = await SharedPreferences.getInstance();
-    final hechos = (prefs.getStringList(_kRetosElo) ?? <String>[]).toSet();
-    var cambio = false;
-    for (final r in retos) {
-      if ((r['estado'] ?? '').toString() != 'jugado') continue;
-      if ((r['modalidad'] ?? 'singles').toString() == 'dobles') continue;
-      final ganador = (r['ganador_email'] ?? '').toString().toLowerCase();
-      if (ganador.isEmpty) continue;
-      final id = r['id']?.toString() ?? '';
-      if (id.isEmpty || hechos.contains(id)) continue;
-      final deporte = (r['deporte'] ?? '').toString();
-      if (deporte.isEmpty) continue;
-      final retador = (r['retador_email'] ?? '').toString().toLowerCase();
-      final retado = (r['retado_email'] ?? '').toString().toLowerCase();
-      final rival = yo == retador ? retado : (yo == retado ? retador : '');
-      if (rival.isEmpty) continue;
-      final nivRival = await NivelesRepo.de(rival, deporte);
-      await registrarResultadoNivel(deporte,
-          rivalNivel: nivRival?.nivel ?? 3.0, gane: ganador == yo);
-      hechos.add(id);
-      cambio = true;
-    }
-    if (cambio) await prefs.setStringList(_kRetosElo, hechos.toList());
-  }
+  /// Refresca MIS niveles tras ver mis retos. El ELO de los retos JUGADOS ya
+  /// NO se calcula en el teléfono: lo aplica el BACKEND una sola vez por reto
+  /// en cuanto queda confirmado (`backend/growth/retos/elo.py`, misma fórmula
+  /// que `Nivel.calcularElo`), así app y web muestran el mismo nivel. Aquí
+  /// solo se baja `pichangol_niveles` (device-first). El conjunto local viejo
+  /// `retos_elo_aplicados` ya no se usa: los retos jugados antes de este cambio
+  /// el servidor no los vuelve a aplicar.
+  Future<void> refrescarNivelesTrasRetos() => cargarMisNiveles();
 
   // ── Bloqueados (tipo WhatsApp): correos que el usuario bloqueó ─────────────
   final Set<String> _bloqueados = {};
@@ -1209,6 +1164,23 @@ class AppState extends ChangeNotifier {
           // Cargo de Culqi: la torre lee de ahí la comisión real de la pasarela.
           'charge_id': chargeId,
           // Cargo por servicio (fase 3): céntimos + desglose congelado + ajuste.
+          if (cargo != null && cargo.hayCargo) ...{
+            'cargo_centimos': cargo.cargoCentimos,
+            'cargo_desglose': cargo.desgloseJson,
+            'cargo_ajuste': cargo.ajusteCentimos,
+          },
+        };
+      case 'bono':
+        // BONO con servicios extra pagados EN LÍNEA (igual que la web): los
+        // turnos ya se le pagaron al dueño con el pack; se liquidan SOLO los
+        // extras ([montoBase]) con el medio real (yape/tarjeta) y el cargo.
+        if (montoBase <= 0) return null;
+        return {
+          'kind': 'liquidacion', 'dueno': cancha.dueno, 'monto': montoBase,
+          'reserva_id': reservaId,
+          'concepto': 'Servicios extra (bono) · $etiqueta',
+          'online': true, 'medio': medio, 'moneda': moneda,
+          'charge_id': chargeId,
           if (cargo != null && cargo.hayCargo) ...{
             'cargo_centimos': cargo.cargoCentimos,
             'cargo_desglose': cargo.desgloseJson,
@@ -3764,7 +3736,10 @@ class AppState extends ChangeNotifier {
       remotas.addAll(r.alumnos);
       remotasCuotas.addAll(r.cuotas);
     }
-    if (remotas.isEmpty && remotasCuotas.isEmpty) return;
+    if (remotas.isEmpty && remotasCuotas.isEmpty) {
+      await sincronizarOperacionAcademia();
+      return;
+    }
     var cambio = false;
     for (final al in remotas) {
       final i = alumnos.indexWhere((x) => x.id == al.id);
@@ -3775,10 +3750,22 @@ class AppState extends ChangeNotifier {
       }
       cambio = true;
     }
-    // Fusiona las cuotas embebidas. Si la cuota es nueva, se agrega; si ya existe
-    // y en la nube figura PAGADA (pago manual del alumno / marcada por el profe
-    // en otro dispositivo), se marca pagada acá también. El pago es "pegajoso":
-    // nunca revierte una pagada a pendiente (evita carreras entre dispositivos).
+    if (_fusionarCuotasRemotas(remotasCuotas)) cambio = true;
+    if (cambio) {
+      notifyListeners();
+      _persistirDatos();
+    }
+    // Asistencia, rúbrica, bitácora y planes: las mismas filas que la web.
+    await sincronizarOperacionAcademia();
+  }
+
+  /// Fusiona cuotas que vienen de la nube. Si la cuota es nueva, se agrega; si
+  /// ya existe y en la nube figura PAGADA (pago manual del alumno / marcada por
+  /// el profe en otro dispositivo o en la web), se marca pagada acá también. El
+  /// pago es "pegajoso": nunca revierte una pagada a pendiente (evita carreras
+  /// entre dispositivos). Devuelve true si cambió algo (no notifica).
+  bool _fusionarCuotasRemotas(List<Cuota> remotasCuotas) {
+    var cambio = false;
     for (final c in remotasCuotas) {
       final i = cuotas.indexWhere((x) => x.id == c.id);
       if (i < 0) {
@@ -3790,10 +3777,7 @@ class AppState extends ChangeNotifier {
         cambio = true;
       }
     }
-    if (cambio) {
-      notifyListeners();
-      _persistirDatos();
-    }
+    return cambio;
   }
 
   /// RECONCILIA las cuotas de mes a mes: consulta al backend cuántos cobros
@@ -4279,10 +4263,14 @@ class AppState extends ChangeNotifier {
   }
 
   /// Marca que se le RECORDÓ el pago a un alumno (ahora).
+  /// Se guarda en el backend (`/negocio/recordados`, la misma marca que deja
+  /// la web en Cobros de academia).
   void marcarRecordado(String alumnoId) {
-    _recordatoriosCobro[alumnoId] = DateTime.now().toIso8601String();
+    final ahora = DateTime.now().toUtc().toIso8601String();
+    _recordatoriosCobro[alumnoId] = ahora;
     notifyListeners();
-    _persistirDatos();
+    _encolarNegocio({'tipo': 'recordado', 'clave': alumnoId, 'cuando': ahora},
+        dedupe: 'rec|$alumnoId');
   }
 
   /// Última vez que se le recordó a un alumno (null si nunca).
@@ -4357,6 +4345,9 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _persistirDatos();
+    // Sube YA las cuotas (fusionando por id con la nube): así la web y el
+    // teléfono del alumno las ven sin esperar a que se pague otra cuota.
+    _subirCuotasAlumno(alumno.id);
   }
 
   /// Matrícula del JUGADOR desde el directorio. [cantidad] es lo que el alumno
@@ -4477,6 +4468,7 @@ class AppState extends ChangeNotifier {
     ));
     notifyListeners();
     _persistirDatos();
+    _subirCuotasAlumno(alumno.id); // a la nube al instante (web + alumno)
   }
 
   void marcarCuotaPagada(String cuotaId,
@@ -4507,12 +4499,396 @@ class AppState extends ChangeNotifier {
   }
 
   /// Re-sube a la nube (embebidas en la matrícula) las cuotas actuales de un
-  /// alumno, para que el estado de pago se sincronice entre dispositivos.
-  void _subirCuotasAlumno(String alumnoId) {
+  /// alumno, para que el estado de pago se sincronice entre dispositivos. El
+  /// repo FUSIONA por id de cuota con lo que ya hay en la nube (una cuota que
+  /// el profe agregó en la web no se pierde) y devuelve la lista fusionada,
+  /// que se incorpora aquí.
+  Future<void> _subirCuotasAlumno(String alumnoId) async {
     final ai = alumnos.indexWhere((a) => a.id == alumnoId);
     if (ai < 0) return;
     final sus = cuotas.where((c) => c.alumnoId == alumnoId).toList();
-    MatriculasRepo.guardar(alumnos[ai], cuotas: sus);
+    final fusion = await MatriculasRepo.guardar(alumnos[ai], cuotas: sus);
+    if (fusion != null && _fusionarCuotasRemotas(fusion)) {
+      notifyListeners();
+      _persistirDatos();
+    }
+  }
+
+  // ── Operación de la academia EN LA NUBE (mismas filas que la web) ─────────
+  //
+  // Asistencia, rúbrica, bitácora y planes de trabajo viven en
+  // `pichangol_academia_*` (AcademiaOpsRepo), las MISMAS tablas que la web
+  // (Modo anfitrión → Mi academia). El teléfono sigue mandando al instante
+  // (device-first: se guarda local y se sube en segundo plano) y
+  // [sincronizarOperacionAcademia] fusiona en ambos sentidos:
+  // - asistencia: la nube manda salvo lo marcado aquí que aún no subió
+  //   (`_opsPend` "a:alumno|dia"); lo que falta en la nube se sube (migración);
+  // - "ya avisé": es monótono (true gana en ambos lados);
+  // - rúbrica: gana la evaluación más reciente (ts);
+  // - bitácora: unión por id; una nota que ya estuvo en la nube y desapareció
+  //   se borró en otro lado (web/otro equipo) → se quita aquí;
+  // - planes: borrado lógico en la nube; lo editado aquí sin subir
+  //   (`_opsPend` "p:id") gana; lo que la nube no tiene se sube (migración).
+  // Los borrados hechos aquí que no llegaron a la nube quedan en `_opsBorr`
+  // ("n:id" / "p:id") y se reintentan.
+  final Set<String> _opsPend = {};
+  final Set<String> _opsNube = {};
+  final Set<String> _opsBorr = {};
+  bool _syncOpsEnCurso = false;
+
+  String? _academiaDeAlumno(String alumnoId) {
+    for (final a in alumnos) {
+      if (a.id == alumnoId) return a.academiaId;
+    }
+    return null;
+  }
+
+  /// Academia de una evaluación (el modelo no la guarda): la del alumno o, si
+  /// no está, la del plan.
+  String? _academiaDeEvaluacion(EvaluacionAlumno e) =>
+      _academiaDeAlumno(e.alumnoId) ?? planPorId(e.planId)?.academiaId;
+
+  Future<void> _guardarOpsSync() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          _kOpsSync,
+          jsonEncode({
+            'pend': _opsPend.toList(),
+            'nube': _opsNube.toList(),
+            'borr': _opsBorr.toList(),
+          }));
+    } catch (_) {}
+  }
+
+  void _cargarOpsSync(SharedPreferences prefs) {
+    final raw = prefs.getString(_kOpsSync);
+    if (raw == null || raw.isEmpty) return;
+    try {
+      final m = jsonDecode(raw) as Map;
+      Set<String> lista(String k) => ((m[k] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toSet();
+      _opsPend
+        ..clear()
+        ..addAll(lista('pend'));
+      _opsNube
+        ..clear()
+        ..addAll(lista('nube'));
+      _opsBorr
+        ..clear()
+        ..addAll(lista('borr'));
+    } catch (_) {}
+  }
+
+  void _subirAsistencias(List<Asistencia> regs) {
+    if (regs.isEmpty) return;
+    for (final r in regs) {
+      _opsPend.add('a:${r.alumnoId}|${r.dia}');
+    }
+    _guardarOpsSync();
+    AcademiaOpsRepo.guardarAsistencias(regs).then((ok) {
+      if (!ok) return;
+      for (final r in regs) {
+        // Solo si no se volvió a marcar mientras subía (sería otro valor).
+        final i = asistencias.indexWhere(
+            (a) => a.alumnoId == r.alumnoId && a.dia == r.dia);
+        if (i < 0 || asistencias[i].presente == r.presente) {
+          _opsPend.remove('a:${r.alumnoId}|${r.dia}');
+        }
+      }
+      _guardarOpsSync();
+    });
+  }
+
+  void _subirPlan(PlanTrabajo plan) {
+    if (plan.esPlantilla || plan.academiaId.isEmpty) return;
+    final k = 'p:${plan.id}';
+    _opsPend.add(k);
+    _opsBorr.remove(k);
+    _guardarOpsSync();
+    AcademiaOpsRepo.guardarPlanes([plan]).then((ok) {
+      if (!ok) return;
+      // Si se volvió a editar mientras subía, queda pendiente para la próxima.
+      final actual = planPorId(plan.id);
+      if (actual == null ||
+          jsonEncode(actual.toJson()) == jsonEncode(plan.toJson())) {
+        _opsPend.remove(k);
+      }
+      _guardarOpsSync();
+    });
+  }
+
+  void _borrarPlanEnNube(String planId) {
+    final k = 'p:$planId';
+    _opsPend.remove(k);
+    _opsBorr.add(k);
+    _guardarOpsSync();
+    Future.wait([
+      AcademiaOpsRepo.eliminarPlanes([planId]),
+      AcademiaOpsRepo.borrarEvaluacionesDePlan(planId),
+    ]).then((oks) {
+      if (oks.every((x) => x)) {
+        _opsBorr.remove(k);
+        _guardarOpsSync();
+      }
+    });
+  }
+
+  void _subirNotas(List<NotaClase> notas) {
+    if (notas.isEmpty) return;
+    AcademiaOpsRepo.guardarNotas(notas).then((ok) {
+      if (!ok) return;
+      for (final n in notas) {
+        _opsNube.add('n:${n.id}');
+      }
+      _guardarOpsSync();
+    });
+  }
+
+  void _borrarNotasEnNube(List<String> ids) {
+    if (ids.isEmpty) return;
+    for (final id in ids) {
+      _opsBorr.add('n:$id');
+    }
+    _guardarOpsSync();
+    AcademiaOpsRepo.borrarNotas(ids).then((ok) {
+      if (!ok) return;
+      for (final id in ids) {
+        _opsBorr.remove('n:$id');
+        _opsNube.remove('n:$id');
+      }
+      _guardarOpsSync();
+    });
+  }
+
+  /// Baja y fusiona la operación de las academias que administro (asistencia,
+  /// rúbrica, bitácora, planes) y sube lo que el teléfono tenga y la nube no
+  /// (incluida la MIGRACIÓN única de lo que antes vivía solo aquí). Si una
+  /// lectura falla (sin red, sin SQL) no toca nada de esa parte. Best-effort.
+  Future<void> sincronizarOperacionAcademia() async {
+    final u = usuario;
+    if (u == null || !AcademiaOpsRepo.disponible || _syncOpsEnCurso) return;
+    final yo = u.email.toLowerCase();
+    final ids = <String>[
+      for (final a in academias)
+        if (a.dueno.toLowerCase() == yo) a.id,
+    ];
+    if (ids.isEmpty) return;
+    _syncOpsEnCurso = true;
+    try {
+      final misIds = ids.toSet();
+      // Solo alumnos vigentes de mis academias (un alumno eliminado aquí no
+      // revive su asistencia/rúbrica desde la nube).
+      final misAlumnos = <String>{
+        for (final a in alumnos)
+          if (misIds.contains(a.academiaId)) a.id,
+      };
+      var cambio = false;
+
+      // ── Planes (primero: la rúbrica depende de ellos) ──
+      final filasPlanes = await AcademiaOpsRepo.planes(ids);
+      if (filasPlanes != null) {
+        final enNube = <String>{};
+        final subir = <PlanTrabajo>[];
+        final reborrar = <String>[];
+        for (final r in filasPlanes) {
+          final id = (r['id'] ?? '').toString();
+          if (id.isEmpty) continue;
+          enNube.add(id);
+          final k = 'p:$id';
+          final i = planes.indexWhere((p) => p.id == id);
+          if (r['eliminado'] == true) {
+            _opsPend.remove(k);
+            _opsBorr.remove(k);
+            if (i >= 0) {
+              planes.removeAt(i);
+              evaluaciones.removeWhere((e) => e.planId == id);
+              cambio = true;
+            }
+            continue;
+          }
+          if (_opsBorr.contains(k)) {
+            reborrar.add(id);
+            continue;
+          }
+          if (_opsPend.contains(k) && i >= 0) {
+            subir.add(planes[i]);
+            continue;
+          }
+          final p = AcademiaOpsRepo.planDeFila(r);
+          if (p == null) continue;
+          if (i >= 0) {
+            if (jsonEncode(planes[i].toJson()) != jsonEncode(p.toJson())) {
+              planes[i] = p;
+              cambio = true;
+            }
+          } else {
+            planes.add(p);
+            cambio = true;
+          }
+        }
+        for (final p in planes) {
+          if (!p.esPlantilla &&
+              misIds.contains(p.academiaId) &&
+              !enNube.contains(p.id)) {
+            subir.add(p);
+          }
+        }
+        for (final p in subir) {
+          _subirPlan(p);
+        }
+        for (final id in reborrar) {
+          _borrarPlanEnNube(id);
+        }
+      }
+
+      // ── Asistencia ──
+      final filasAsis = await AcademiaOpsRepo.asistencias(ids);
+      if (filasAsis != null) {
+        final vistos = <String>{};
+        final avisadoNube = <String>{};
+        for (final r in filasAsis) {
+          final al = (r['alumno_id'] ?? '').toString();
+          final dia = (r['dia'] ?? '').toString();
+          if (al.isEmpty || dia.isEmpty || !misAlumnos.contains(al)) continue;
+          final clave = '$al|$dia';
+          vistos.add(clave);
+          if (r['avisado'] == true) {
+            avisadoNube.add(clave);
+            if (_asistenciaAvisada.add(clave)) cambio = true;
+          }
+          if (_opsPend.contains('a:$clave')) continue; // lo de aquí aún sube
+          final presente = r['presente'] != false;
+          final i = asistencias
+              .indexWhere((a) => a.alumnoId == al && a.dia == dia);
+          final reg = Asistencia(
+              academiaId: (r['academia_id'] ?? '').toString(),
+              alumnoId: al,
+              dia: dia,
+              presente: presente);
+          if (i < 0) {
+            asistencias.add(reg);
+            cambio = true;
+          } else if (asistencias[i].presente != presente) {
+            asistencias[i] = reg;
+            cambio = true;
+          }
+        }
+        // Lo que la nube no tiene (migración) o quedó pendiente → subir.
+        final subir = <Asistencia>[
+          for (final a in asistencias)
+            if (misIds.contains(a.academiaId) &&
+                misAlumnos.contains(a.alumnoId) &&
+                (!vistos.contains('${a.alumnoId}|${a.dia}') ||
+                    _opsPend.contains('a:${a.alumnoId}|${a.dia}')))
+              a
+        ];
+        _subirAsistencias(subir);
+        // "Ya avisé" que la nube aún no sabe (incluye días sin marcar).
+        final avisos = <({
+          String academiaId,
+          String alumnoId,
+          String dia,
+          bool presente
+        })>[];
+        for (final clave in _asistenciaAvisada.toList()) {
+          final j = clave.indexOf('|');
+          if (j <= 0) continue;
+          final al = clave.substring(0, j);
+          final dia = clave.substring(j + 1);
+          if (!misAlumnos.contains(al) || avisadoNube.contains(clave)) {
+            continue;
+          }
+          final aid = _academiaDeAlumno(al);
+          if (aid == null) continue;
+          avisos.add((
+            academiaId: aid,
+            alumnoId: al,
+            dia: dia,
+            presente: asistio(al, dia)
+          ));
+        }
+        if (avisos.isNotEmpty) AcademiaOpsRepo.marcarAvisados(avisos);
+      }
+
+      // ── Rúbrica (gana la más reciente) ──
+      final filasEval = await AcademiaOpsRepo.evaluaciones(ids);
+      if (filasEval != null) {
+        final enNube = <String, EvaluacionAlumno>{};
+        for (final r in filasEval) {
+          final e = AcademiaOpsRepo.evaluacionDeFila(r);
+          if (e == null || !misAlumnos.contains(e.alumnoId)) continue;
+          enNube[e.clave] = e;
+        }
+        final subir = <EvaluacionAlumno>[];
+        for (var i = 0; i < evaluaciones.length; i++) {
+          final local = evaluaciones[i];
+          if (!misAlumnos.contains(local.alumnoId)) continue;
+          final nube = enNube.remove(local.clave);
+          if (nube == null) {
+            subir.add(local); // migración / no llegó
+          } else if (nube.cuando.isAfter(local.cuando)) {
+            if (nube.nivel != local.nivel) cambio = true;
+            evaluaciones[i] = nube;
+          } else if (local.cuando.isAfter(nube.cuando)) {
+            subir.add(local);
+          }
+        }
+        if (enNube.isNotEmpty) {
+          evaluaciones.addAll(enNube.values); // evaluadas en la web/otro equipo
+          cambio = true;
+        }
+        if (subir.isNotEmpty) {
+          AcademiaOpsRepo.guardarEvaluaciones(subir, _academiaDeEvaluacion);
+        }
+      }
+
+      // ── Bitácora (unión por id + borrados) ──
+      final filasNotas = await AcademiaOpsRepo.notas(ids);
+      if (filasNotas != null) {
+        final enNube = <String>{};
+        final reborrar = <String>[];
+        for (final r in filasNotas) {
+          final n = AcademiaOpsRepo.notaDeFila(r);
+          if (n == null) continue;
+          enNube.add(n.id);
+          _opsNube.add('n:${n.id}');
+          if (_opsBorr.contains('n:${n.id}')) {
+            reborrar.add(n.id);
+            continue;
+          }
+          if (!notasClase.any((x) => x.id == n.id)) {
+            notasClase.add(n);
+            cambio = true;
+          }
+        }
+        final subir = <NotaClase>[];
+        final antes = notasClase.length;
+        notasClase.removeWhere((n) =>
+            misIds.contains(n.academiaId) &&
+            !enNube.contains(n.id) &&
+            _opsNube.remove('n:${n.id}')); // estuvo en la nube: se borró allá
+        if (notasClase.length != antes) cambio = true;
+        for (final n in notasClase) {
+          if (misIds.contains(n.academiaId) && !enNube.contains(n.id)) {
+            subir.add(n);
+          }
+        }
+        _subirNotas(subir);
+        _borrarNotasEnNube(reborrar);
+      }
+
+      _guardarOpsSync();
+      if (cambio) {
+        notifyListeners();
+        _persistirDatos();
+      }
+    } catch (_) {
+      // best-effort: lo local sigue intacto
+    } finally {
+      _syncOpsEnCurso = false;
+    }
   }
 
   /// ¿El alumno está marcado presente ese día?
@@ -4541,12 +4917,14 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _persistirDatos();
+    _subirAsistencias([reg]);
   }
 
   /// Marca a VARIOS alumnos de una vez el mismo día (upsert), notificando una
   /// sola vez. Para el botón "Todos presentes" de la asistencia rápida.
   void marcarAsistenciaTodos(
       String academiaId, List<String> alumnoIds, String dia, bool presente) {
+    final regs = <Asistencia>[];
     for (final alumnoId in alumnoIds) {
       final i = asistencias
           .indexWhere((a) => a.alumnoId == alumnoId && a.dia == dia);
@@ -4555,6 +4933,7 @@ class AppState extends ChangeNotifier {
           alumnoId: alumnoId,
           dia: dia,
           presente: presente);
+      regs.add(reg);
       if (i >= 0) {
         asistencias[i] = reg;
       } else {
@@ -4563,6 +4942,7 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _persistirDatos();
+    _subirAsistencias(regs);
   }
 
   // Memoria de "a qué alumno ya le avisé la asistencia" (clave "alumnoId|dia"),
@@ -4576,6 +4956,14 @@ class AppState extends ChangeNotifier {
     _asistenciaAvisada.add('$alumnoId|$dia');
     notifyListeners();
     _persistirDatos();
+    final aid = _academiaDeAlumno(alumnoId);
+    if (aid != null) {
+      AcademiaOpsRepo.marcarAvisado(
+          academiaId: aid,
+          alumnoId: alumnoId,
+          dia: dia,
+          presente: asistio(alumnoId, dia));
+    }
   }
 
   // ── Planes de trabajo del profe + evaluación de alumnos ────────────────────
@@ -4601,6 +4989,7 @@ class AppState extends ChangeNotifier {
     planes.add(nuevo);
     notifyListeners();
     _persistirDatos();
+    _subirPlan(nuevo);
     return nuevo.id;
   }
 
@@ -4617,6 +5006,7 @@ class AppState extends ChangeNotifier {
     planes.add(nuevo);
     notifyListeners();
     _persistirDatos();
+    _subirPlan(nuevo);
     return nuevo.id;
   }
 
@@ -4637,6 +5027,7 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _persistirDatos();
+    _subirPlan(plan);
   }
 
   void eliminarPlan(String planId) {
@@ -4644,6 +5035,7 @@ class AppState extends ChangeNotifier {
     evaluaciones.removeWhere((e) => e.planId == planId);
     notifyListeners();
     _persistirDatos();
+    _borrarPlanEnNube(planId);
   }
 
   /// Nivel evaluado de una habilidad de un alumno en un plan (null = sin evaluar).
@@ -4679,6 +5071,8 @@ class AppState extends ChangeNotifier {
     }
     notifyListeners();
     _persistirDatos();
+    // Sin cola: si falla, la próxima sincronización la sube (gana el ts más nuevo).
+    AcademiaOpsRepo.guardarEvaluaciones([reg], _academiaDeEvaluacion);
   }
 
   /// Resumen de progreso de un alumno en un plan: cuántas habilidades hay en cada
@@ -4761,6 +5155,7 @@ class AppState extends ChangeNotifier {
     notasClase.add(reg);
     notifyListeners();
     _persistirDatos();
+    _subirNotas([reg]);
     return reg.id;
   }
 
@@ -4768,6 +5163,7 @@ class AppState extends ChangeNotifier {
     notasClase.removeWhere((n) => n.id == id);
     notifyListeners();
     _persistirDatos();
+    _borrarNotasEnNube([id]);
   }
 
   static String _mesNombre(DateTime d) {
@@ -5813,6 +6209,36 @@ class AppState extends ChangeNotifier {
     return _dedupPorLugar(map.values.toList());
   }
 
+  /// Locales (clubes) que son MÍOS de verdad: nombre del `club` de cada cancha
+  /// con `dueno == mi correo` (NO el legado reclamable de [misCanchas]).
+  /// Mapa slug → nombre (slug = `ConvocatoriasService.slugClub`, el mismo de la
+  /// web `mis_clubs`). Sin sesión, vacío.
+  Map<String, String> get misClubesPropios {
+    final email = (usuario?.email ?? '').trim().toLowerCase();
+    if (email.isEmpty) return const {};
+    final out = <String, String>{};
+    for (final c in misCanchas) {
+      if (c.dueno.trim().toLowerCase() != email) continue;
+      final nom = (c.club.trim().isNotEmpty ? c.club : c.nombre).trim();
+      if (nom.isEmpty) continue;
+      out.putIfAbsent(ConvocatoriasService.slugClub(nom), () => nom);
+    }
+    return out;
+  }
+
+  /// ¿Soy dueño de un local de este club (slug)? Puede convocar pichangas.
+  bool esDuenoDeClub(String clubId) =>
+      clubId.isNotEmpty && misClubesPropios.containsKey(clubId);
+
+  /// Admin de una pichanga = quien la CREÓ o dueño de un local de ese club
+  /// (misma regla que la web `jugador_partidos.es_admin`).
+  bool esAdminDePichanga(String clubId, String creadoPor) {
+    final email = (usuario?.email ?? '').trim().toLowerCase();
+    if (email.isEmpty) return false;
+    return (creadoPor.isNotEmpty && creadoPor.trim().toLowerCase() == email) ||
+        esDuenoDeClub(clubId);
+  }
+
   /// Resuelve a qué cancha del DUEÑO pertenece una reserva, AUNQUE la reserva
   /// apunte a un id duplicado del mismo local (pasa cuando la cancha se
   /// re-registró/re-reclamó y quedó con varios ids: `misCanchas` deduplica por
@@ -6592,6 +7018,10 @@ class AppState extends ChangeNotifier {
   bool proActivo = false; // ¿el usuario tiene la membresía Pro vigente?
   String? proHasta; // ISO de vigencia (si activa)
   double proPrecio = 12; // precio mensual (se refresca del backend)
+  // ¿Se renueva sola desde el saldo al vencer? (false si el jugador la
+  // canceló o si es Pro de cortesía, que nunca se renueva sola).
+  bool proRenueva = false;
+  bool proCortesia = false; // Pro regalado por la torre (marcha blanca)
 
   // Correos con Pichangol Pro vigente (para la insignia PRO en el ranking).
   Set<String> _proEmails = {};
@@ -6613,11 +7043,15 @@ class AppState extends ChangeNotifier {
   Future<void> sincronizarPro() async {
     final email = usuario?.email;
     if (email == null || email.isEmpty || !PagosService.disponible) return;
-    final est = await PagosService.proEstado(email, pais: paisActual.iso);
+    // Pro se paga con el SALDO: precio y moneda del país de la BILLETERA
+    // (igual que la web /pro), no del país que se explora.
+    final est = await PagosService.proEstado(email, pais: paisBilletera.iso);
     if (est == null) return;
     proActivo = est['activa'] == true;
     proHasta = est['hasta'] as String?;
     proPrecio = (est['precio_soles'] as num?)?.toDouble() ?? proPrecio;
+    proRenueva = est['renueva'] == true;
+    proCortesia = est['cortesia'] == true;
     // Mantén el set de Pro coherente con mi propio estado al instante.
     final mail = email.trim().toLowerCase();
     if (proActivo) {
@@ -6633,12 +7067,27 @@ class AppState extends ChangeNotifier {
   Future<Map<String, dynamic>> suscribirPro() async {
     final email = usuario?.email ?? '';
     if (email.isEmpty) return {'ok': false, 'error': 'Inicia sesión primero.'};
-    final r = await PagosService.proSuscribir(email, pais: paisActual.iso);
+    final r = await PagosService.proSuscribir(email, pais: paisBilletera.iso);
     if (r['ok'] == true) {
       proActivo = true;
       proHasta = r['hasta'] as String?;
       notifyListeners();
       await sincronizarSaldo(); // el saldo bajó (se debitó el mes)
+      await sincronizarPro(); // renovación / cortesía reales
+    }
+    return r;
+  }
+
+  /// Cancela ([renovar] false) o reactiva la renovación automática de Pro
+  /// (`POST /pagos/pro/renovacion`, mismo núcleo que la web). Devuelve el
+  /// JSON del backend: {ok:true, renueva} o {ok:false, mensaje}.
+  Future<Map<String, dynamic>> cambiarRenovacionPro(bool renovar) async {
+    final email = usuario?.email ?? '';
+    if (email.isEmpty) return {'ok': false, 'mensaje': 'Inicia sesión primero.'};
+    final r = await PagosService.proRenovacion(email, renovar: renovar);
+    if (r['ok'] == true) {
+      proRenueva = r['renueva'] == true;
+      notifyListeners();
     }
     return r;
   }
@@ -6906,6 +7355,9 @@ class AppState extends ChangeNotifier {
   static const _kPlanes = 'planes_trabajo_json';
   static const _kEvaluaciones = 'evaluaciones_json';
   static const _kNotasClase = 'notas_clase_json';
+  // Estado de sincronización de la operación de academia con la nube
+  // (pendientes, notas ya subidas, borrados por propagar).
+  static const _kOpsSync = 'academia_ops_sync_json';
   static const _kCampeonatos = 'campeonatos_json';
   static const _kInvitaciones = 'invitaciones_json';
   static const _kChatLecturas = 'chat_lecturas_json';
@@ -7141,6 +7593,7 @@ class AppState extends ChangeNotifier {
       _cargarLista(prefs, _kPlanes, planes, PlanTrabajo.fromJson);
       _cargarLista(prefs, _kEvaluaciones, evaluaciones, EvaluacionAlumno.fromJson);
       _cargarLista(prefs, _kNotasClase, notasClase, NotaClase.fromJson);
+      _cargarOpsSync(prefs);
       _cargarLista(prefs, _kCampeonatos, campeonatos, Campeonato.fromJson);
       _cargarLista(prefs, _kInvitaciones, invitaciones, Invitacion.fromJson);
 
@@ -7187,14 +7640,17 @@ class AppState extends ChangeNotifier {
         } catch (_) {}
       }
 
-      // Notas privadas del dueño por cliente (cuaderno del club, device-first).
+      // Notas privadas del dueño por cliente (clave vieja, aún sin migrar).
       final notasRaw = prefs.getString(_kNotasCliente);
       if (notasRaw != null) {
         try {
           final m = jsonDecode(notasRaw) as Map<String, dynamic>;
-          m.forEach((k, v) => _notasCliente[k] = v.toString());
+          m.forEach((k, v) => _notasCliente[k.toLowerCase()] = v.toString());
         } catch (_) {}
       }
+      // NEGOCIO DEL DUEÑO: la caché del backend (`/negocio/*`) manda sobre lo
+      // que el teléfono guardaba antes en las claves viejas.
+      _cargarNegocioCache(prefs);
 
       final vidsRaw = prefs.getString(_kVideosLocales);
       if (vidsRaw != null) {
@@ -7296,6 +7752,12 @@ class AppState extends ChangeNotifier {
   /// pago que no puede completarse (y menos una que simule haber cobrado).
   bool pagoOnlineDisponible = false;
 
+  /// Mínimo de FOTOS PROPIAS del local para enviar un reclamo (decisión del
+  /// director, 2-oct-2026; torre → `GET /config/canal` → `reclamo_fotos_min`).
+  /// Cache-first en SharedPreferences; sin red ni caché vale 2. 0 = no se exige.
+  int reclamoFotosMin = FotosPropias.minimoPorDefecto;
+  bool _reclamoFotosMinLeido = false;
+
   /// Catálogo GLOBAL de servicios extra (lo administra el operador en la
   /// torre; `GET /config/servicios-extra`). Cache-first en SharedPreferences
   /// y refresco en silencio; sin red, el editor usa la lista empaquetada.
@@ -7330,9 +7792,32 @@ class AppState extends ChangeNotifier {
   Future<void> cargarCanalComunicacion() async {
     cargarCatalogoServicios(); // best-effort, en paralelo
     cargarCargoServicio(); // best-effort, en paralelo
+    SharedPreferences? prefs;
+    try {
+      prefs = await SharedPreferences.getInstance();
+      if (!_reclamoFotosMinLeido) {
+        _reclamoFotosMinLeido = true;
+        final cache = prefs.getInt('reclamo_fotos_min');
+        if (cache != null && cache != reclamoFotosMin) {
+          reclamoFotosMin = cache;
+          notifyListeners();
+        }
+      }
+    } catch (_) {}
     final j = await GrowthService.configPublica();
     if (j == null) return;
     var cambio = false;
+    final fmin = j['reclamo_fotos_min'];
+    if (fmin is num) {
+      final v = fmin.toInt().clamp(0, FotosPropias.maximo);
+      try {
+        await prefs?.setInt('reclamo_fotos_min', v);
+      } catch (_) {}
+      if (v != reclamoFotosMin) {
+        reclamoFotosMin = v;
+        cambio = true;
+      }
+    }
     final c = (j['canal'] ?? '').toString();
     if (c.isNotEmpty && c != canalComunicacion) {
       canalComunicacion = c;
@@ -7369,19 +7854,12 @@ class AppState extends ChangeNotifier {
       await prefs.setString(_kMonedaSaldo, monedaSaldo);
       await prefs.setString(_kVerif, estadoVerificacion);
       await prefs.setString(_kVerifEmail, _verifEmail);
-      await prefs.setString(_kRecordCobro, jsonEncode(_recordatoriosCobro));
       await prefs.setBool(_kRecordAuto, recordatoriosAutoActivos);
       await prefs.setBool(_kMostrarUltimaVez, mostrarUltimaVez);
       await prefs.setBool(_kConfirmacionLectura, confirmacionLectura);
       await prefs.setString(
           _kAsistAvisada, jsonEncode(_asistenciaAvisada.toList()));
       await prefs.setString(_kDescuentosSlot, jsonEncode(_descuentosSlot));
-      await prefs.setString(_kCierresCaja,
-          jsonEncode(cierresCaja.map((c) => c.toJson()).toList()));
-      await prefs.setString(_kReservasFijas,
-          jsonEncode(reservasFijas.map((f) => f.toJson()).toList()));
-      await prefs.setString(
-          _kResRecordadas, jsonEncode(_reservasRecordadas.toList()));
       if (fechaNacimiento != null) {
         await prefs.setString(
             _kNacimiento, fechaNacimiento!.toIso8601String());
@@ -7429,6 +7907,13 @@ class AppState extends ChangeNotifier {
           jsonEncode(evaluaciones.map((e) => e.toJson()).toList()));
       await prefs.setString(_kNotasClase,
           jsonEncode(notasClase.map((n) => n.toJson()).toList()));
+      await prefs.setString(
+          _kOpsSync,
+          jsonEncode({
+            'pend': _opsPend.toList(),
+            'nube': _opsNube.toList(),
+            'borr': _opsBorr.toList(),
+          }));
       await prefs.setString(_kCampeonatos,
           jsonEncode(campeonatos.map((c) => c.toJson()).toList()));
       await prefs.setString(_kInvitaciones,
@@ -7498,6 +7983,9 @@ class AppState extends ChangeNotifier {
     cargarReservasSync(); // reservas offline pendientes de subir (outbox)
     cargarContabilidad(); // comisión/liquidación pendiente de registrar
     Boleadores.sincronizar(u.email); // perfil de boleador + solicitudes (device-first)
+    // Negocio del dueño (cierres de caja, fijas, notas, recordatorios): los
+    // mismos que ve la web; sube una vez lo que el teléfono guardaba antes.
+    sincronizarNegocio(forzar: true);
     // Trae sus academias (por si las creó en otro dispositivo) y LUEGO las
     // matrículas, para que el profe vea a sus alumnos apenas entra.
     () async {
@@ -7553,6 +8041,8 @@ class AppState extends ChangeNotifier {
   /// al iniciar sesión (sincronizarAgenda, cargarEstados, etc.).
   void _limpiarDatosDeSesion() {
     Boleadores.limpiar(); // el perfil de boleador es por cuenta
+    // Negocio del dueño (cierres, fijas, notas, recordatorios): por cuenta.
+    _limpiarNegocioLocal();
     _apodos.clear();
     _contactos.clear();
     _bloqueados.clear();
@@ -7587,6 +8077,8 @@ class AppState extends ChangeNotifier {
     // El estado real de la cuenta nueva lo baja sincronizarPro del backend.
     proActivo = false;
     proHasta = null;
+    proRenueva = false;
+    proCortesia = false;
     // PUNTOS: los ganados se derivan de misReservas (ya se limpian); lo
     // CANJEADO también es por cuenta → reset (la cuenta nueva lo baja de
     // Supabase en cargarPuntosCanjeados).
@@ -7642,6 +8134,9 @@ class AppState extends ChangeNotifier {
     planes.clear();
     evaluaciones.clear();
     notasClase.clear();
+    _opsPend.clear();
+    _opsNube.clear();
+    _opsBorr.clear();
     invitaciones.clear();
     campeonatos.clear();
     movimientos.clear();
@@ -7740,7 +8235,12 @@ class AppState extends ChangeNotifier {
       // BILLETERA en el backend: saldo 0 y sin movimientos. Sin esto, el saldo y
       // los pagos "por recibir" volverían al re-sincronizar (viven en el server).
       await PagosService.resetMiBilletera(email);
+      // Negocio del dueño en el backend (cierres, fijas, notas, recordatorios).
+      _negocioPend.removeWhere((x) => x['email'] == email);
+      await _guardarNegocioPend();
+      await NegocioService.borrar(email);
     }
+    _limpiarNegocioLocal();
     // Tombstone CUALQUIER academia local restante (p. ej. la demo de dev) para que
     // no reaparezca al re-cargar de la nube ni se re-siembre.
     _academiasEliminadas.addAll(academias.map((a) => a.id));
@@ -7757,6 +8257,9 @@ class AppState extends ChangeNotifier {
     planes.clear();
     evaluaciones.clear();
     notasClase.clear();
+    _opsPend.clear();
+    _opsNube.clear();
+    _opsBorr.clear();
     invitaciones.clear();
     movimientos.clear();
     campeonatos.clear();
@@ -7826,8 +8329,14 @@ class AppState extends ChangeNotifier {
       // DATOS DEL CLIENTE que confirmó en "Tus datos" (obligatorios, como en
       // la web): nombre a mostrar al dueño y celular. '' = los de la cuenta.
       String nombreCliente = '',
-      String telefono = ''}) async {
-    final pagoAdelantado = cobro == 'online' || cobro == 'sena';
+      String telefono = '',
+      // BONO con servicios extra: los [extras] de esta hora se PAGARON EN
+      // LÍNEA ([medioPago] = yape/tarjeta, [operacionId] = el cargo) y se
+      // liquidan al dueño, como en la web. La fila queda con medio 'bono'.
+      bool extrasEnLinea = false}) async {
+    final bonoConExtras = cobro == 'bono' && extrasEnLinea;
+    final pagoAdelantado =
+        cobro == 'online' || cobro == 'sena' || bonoConExtras;
     final notaReembolso = pagoAdelantado
         ? ' Tu pago quedó registrado para reembolso.'
         : '';
@@ -7841,7 +8350,8 @@ class AppState extends ChangeNotifier {
         r.horaInicio == hora &&
         r.id != asegurada?.id);
     if (yaLocal) {
-      _reembolsoSiPagado(cobro, cancha, fecha, hora, sena);
+      _reembolsoSiPagado(cobro, cancha, fecha, hora, sena,
+          extrasPagados: bonoConExtras ? extras : const []);
       if (avisarJugador) {
         _avisarJugadorReserva(
           clave: '${cancha.id}_${fecha}_$hora',
@@ -7914,7 +8424,8 @@ class AppState extends ChangeNotifier {
     if (res == ResultadoReserva.ocupado) {
       // Se cobró por adelantado (online/seña) pero el slot ya lo tomó otro →
       // registra el reembolso (no nos quedamos la plata).
-      _reembolsoSiPagado(cobro, cancha, fecha, hora, sena);
+      _reembolsoSiPagado(cobro, cancha, fecha, hora, sena,
+          extrasPagados: bonoConExtras ? extras : const []);
       if (avisarJugador) {
         _avisarJugadorReserva(
           clave: '${cancha.id}_${fecha}_$hora',
@@ -7955,14 +8466,19 @@ class AppState extends ChangeNotifier {
         : '$local · ${cancha.nombre}';
     final accion = _accionContable(cancha, cobro,
         // Lo que se liquida es el TURNO cobrado (antes iba el precio de UNA
-        // hora: un turno de 90 min liquidaba 2/3 al dueño).
-        montoBase: precio.toDouble(),
+        // hora: un turno de 90 min liquidaba 2/3 al dueño). Con BONO, solo los
+        // servicios extra pagados en línea (0 = sin contabilidad).
+        montoBase: cobro == 'bono'
+            ? (bonoConExtras
+                ? extras.fold(0.0, (a, s) => a + s.precio)
+                : 0.0)
+            : precio.toDouble(),
         sena: sena,
         reservaId: reserva.id,
         etiqueta: quien.isEmpty
             ? '$lugar · $diaLabel $hora'
             : '$lugar · $quien · $diaLabel $hora',
-        medio: reserva.medioPago,
+        medio: cobro == 'bono' ? medioPago : reserva.medioPago,
         chargeId: operacionId,
         cargo: cargo);
     if (res == ResultadoReserva.ok) {
@@ -8018,7 +8534,17 @@ class AppState extends ChangeNotifier {
   /// asegurar (ocupado), registra el reembolso pendiente para no quedarnos con la
   /// plata del jugador.
   void _reembolsoSiPagado(
-      String cobro, Cancha cancha, String fecha, String hora, int sena) {
+      String cobro, Cancha cancha, String fecha, String hora, int sena,
+      {List<ServicioExtra> extrasPagados = const []}) {
+    if (cobro == 'bono') {
+      // Bono: los turnos no se pagaron ahora; solo los extras en línea.
+      final m = extrasPagados.fold(0.0, (a, s) => a + s.precio);
+      if (m > 0) {
+        _registrarReembolso('ocupado_${cancha.id}_${fecha}_$hora', m,
+            'Horario ya tomado (servicios extra pagados con el bono)');
+      }
+      return;
+    }
     if (cobro != 'online' && cobro != 'sena') return;
     final monto = cobro == 'sena'
         ? sena.toDouble()
@@ -8051,7 +8577,9 @@ class AppState extends ChangeNotifier {
       // Premio de FIDELIDAD por hora (hora → soles descontados), si se usó.
       Map<String, int> descuentos = const {},
       String nombreCliente = '',
-      String telefono = ''}) async {
+      String telefono = '',
+      // BONO con servicios extra pagados en línea (ver agregarReservaJugador).
+      bool extrasEnLinea = false}) async {
     if (horas.isEmpty) return ResultadoReserva.error;
     final ordenadas = [...horas]..sort();
     // Datos del BLOQUE para los avisos al jugador (un solo aviso por bloque).
@@ -8126,6 +8654,7 @@ class AppState extends ChangeNotifier {
             .cast<Reserva?>()
             .firstWhere((r) => r!.horaInicio == h, orElse: () => null),
         cargo: i == 0 ? cargo : null,
+        extrasEnLinea: i == 0 && extrasEnLinea,
       );
       if (res == ResultadoReserva.ocupado) {
         _avisarJugadorReserva(
@@ -8546,21 +9075,43 @@ class AppState extends ChangeNotifier {
       '${d.month.toString().padLeft(2, '0')}-'
       '${d.day.toString().padLeft(2, '0')}';
 
-  /// Reservas del día [iso] de las canchas del dueño (excluye no-shows).
-  List<Reserva> reservasDelDiaDueno(String iso) {
-    return reservas
-        .where((r) =>
-            r.fecha == iso &&
-            r.estado != EstadoReserva.noShow &&
-            miCanchaDeReserva(r.canchaId) != null)
-        .toList()
+  /// ISO de la moneda de una cancha ('PEN' | 'USD' | 'BOB'), por su ubicación.
+  String monedaIsoDeCancha(Cancha c) =>
+      paisPorMonedaOIso(c.monedaSimbolo).monedaIso;
+
+  /// Monedas (ISO) de las canchas del dueño, en orden de aparición. La caja y
+  /// sus cierres van POR MONEDA (como en la web): nunca se suman soles con
+  /// dólares. Sin canchas → ['PEN'].
+  List<String> get monedasNegocio {
+    final out = <String>[];
+    for (final c in misCanchas) {
+      final m = monedaIsoDeCancha(c);
+      if (!out.contains(m)) out.add(m);
+    }
+    return out.isEmpty ? const ['PEN'] : out;
+  }
+
+  /// Símbolo de una moneda ISO ('PEN' → 'S/').
+  String simboloDeMonedaIso(String iso) => paisPorMonedaOIso(iso).moneda;
+
+  /// Reservas del día [iso] de las canchas del dueño (excluye no-shows). Con
+  /// [moneda] (ISO) solo las de las canchas en esa moneda.
+  List<Reserva> reservasDelDiaDueno(String iso, {String moneda = ''}) {
+    return reservas.where((r) {
+      if (r.fecha != iso || r.estado == EstadoReserva.noShow) return false;
+      final c = miCanchaDeReserva(r.canchaId);
+      if (c == null) return false;
+      return moneda.isEmpty || monedaIsoDeCancha(c) == moneda;
+    }).toList()
       ..sort((a, b) => a.horaInicio.compareTo(b.horaInicio));
   }
 
   /// Caja del día: cobrado, por cobrar (con extras), reservas y % ocupación.
+  /// Con [moneda] (ISO) solo las canchas de esa moneda (= la caja de la web).
   ({int cobrado, int porCobrar, int reservas, int ocupacion}) cajaDia(
-      String iso) {
-    final list = reservasDelDiaDueno(iso);
+      String iso,
+      {String moneda = ''}) {
+    final list = reservasDelDiaDueno(iso, moneda: moneda);
     var cobrado = 0, porCobrar = 0;
     for (final r in list) {
       // Reserva canjeada con BONO: cuenta para ocupación (sigue en `list`) pero
@@ -8577,7 +9128,9 @@ class AppState extends ChangeNotifier {
         porCobrar += t - sena;
       }
     }
-    final slots = misCanchas.fold<int>(0, (s, c) => s + c.horariosSlots().length);
+    final slots = misCanchas
+        .where((c) => moneda.isEmpty || monedaIsoDeCancha(c) == moneda)
+        .fold<int>(0, (s, c) => s + c.horariosSlots().length);
     final ocupacion = slots == 0 ? 0 : (list.length * 100) ~/ slots;
     return (
       cobrado: cobrado,
@@ -8591,13 +9144,13 @@ class AppState extends ChangeNotifier {
   /// misma lógica). Claves técnicas: 'yape' | 'tarjeta' | 'efectivo' |
   /// 'manual' | 'sena' | 'online' — la pantalla pone la etiqueta por país
   /// (Yape solo en Perú). Para el arqueo: cuánta plata entró por cada canal.
-  Map<String, int> cajaDiaPorMedio(String iso) {
+  Map<String, int> cajaDiaPorMedio(String iso, {String moneda = ''}) {
     final out = <String, int>{};
     void suma(String k, int v) {
       if (v > 0) out[k] = (out[k] ?? 0) + v;
     }
 
-    for (final r in reservasDelDiaDueno(iso)) {
+    for (final r in reservasDelDiaDueno(iso, moneda: moneda)) {
       if (r.esBono) continue; // se cobró al comprar el bono (no es plata de hoy)
       final t = r.totalConExtras.round();
       if (r.pagado) {
@@ -8620,23 +9173,37 @@ class AppState extends ChangeNotifier {
     return out;
   }
 
-  // Cierres de caja (arqueo por día). Se persisten local.
+  // ── NEGOCIO DEL DUEÑO EN EL BACKEND ───────────────────────────────────────
+  // Cierres de caja, reservas fijas, notas privadas de clientes y "ya
+  // recordado" viven en el BACKEND (`/negocio/*` = el mismo snapshot que usa la
+  // web en modo anfitrión): el dueño ve lo mismo en el app y en el navegador.
+  // El teléfono guarda una copia como CACHÉ (pinta al instante, device-first)
+  // y una COLA con lo que se hizo sin red, que se envía apenas haya señal.
+
+  /// Cierres de caja (arqueo por día y por MONEDA).
   final List<CierreCaja> cierresCaja = [];
 
-  /// Cierre de un día (null si aún no se cerró).
-  CierreCaja? cierreDe(String iso) {
+  /// Cierre de un día en una moneda ISO (vacía = la principal del dueño), o
+  /// null si aún no se cerró.
+  CierreCaja? cierreDe(String iso, {String moneda = ''}) {
+    final m = moneda.isEmpty ? monedasNegocio.first : moneda;
     for (final c in cierresCaja) {
-      if (c.fecha == iso) return c;
+      if (c.fecha == iso && c.moneda == m) return c;
     }
     return null;
   }
 
-  /// Cierra (o recierra) la caja del día: guarda la foto de cobrado/por cobrar.
-  /// [automatico] = lo cerró el sistema (respaldo, sin confirmar); el default
-  /// (false) es el arqueo CONFIRMADO por el dueño (o al confirmar un auto-cierre).
-  void cerrarCaja(String iso, {bool automatico = false}) {
-    final c = cajaDia(iso);
-    cierresCaja.removeWhere((x) => x.fecha == iso);
+  void _ordenarCierres() =>
+      cierresCaja.sort((a, b) => b.fecha.compareTo(a.fecha));
+
+  /// Cierra (o recierra, o confirma un cierre automático) la caja del día en
+  /// una moneda. Se ve al instante con lo que hay en el teléfono y el SERVIDOR
+  /// guarda la foto definitiva (con las reservas de la nube, igual que la web).
+  /// Devuelve null si quedó guardado (o en cola, sin red) o el error.
+  Future<String?> cerrarCaja(String iso, {String moneda = ''}) async {
+    final m = moneda.isEmpty ? monedasNegocio.first : moneda;
+    final c = cajaDia(iso, moneda: m);
+    cierresCaja.removeWhere((x) => x.fecha == iso && x.moneda == m);
     cierresCaja.insert(
         0,
         CierreCaja(
@@ -8645,70 +9212,35 @@ class AppState extends ChangeNotifier {
           porCobrar: c.porCobrar,
           reservas: c.reservas,
           cerradaEn: DateTime.now(),
-          automatico: automatico,
+          moneda: m,
+          medios: cajaDiaPorMedio(iso, moneda: m),
         ));
+    _ordenarCierres();
     notifyListeners();
-    _persistirDatos();
+    return _encolarNegocio({'tipo': 'cerrar', 'fecha': iso, 'moneda': m},
+        dedupe: 'caja|$iso|$m');
   }
 
-  /// Reabre la caja de un día (borra su cierre) para que el dueño la revise y la
-  /// vuelva a cerrar/confirmar.
-  void reabrirCaja(String iso) {
-    cierresCaja.removeWhere((x) => x.fecha == iso);
+  /// Reabre la caja de un día en una moneda (borra su cierre) para que el
+  /// dueño la revise y la vuelva a cerrar/confirmar.
+  Future<String?> reabrirCaja(String iso, {String moneda = ''}) async {
+    final m = moneda.isEmpty ? monedasNegocio.first : moneda;
+    cierresCaja.removeWhere((x) => x.fecha == iso && x.moneda == m);
     notifyListeners();
-    _persistirDatos();
+    return _encolarNegocio({'tipo': 'reabrir', 'fecha': iso, 'moneda': m},
+        dedupe: 'caja|$iso|$m');
   }
 
-  /// CIERRE AUTOMÁTICO DE RESPALDO: si el dueño no cerró un día con actividad, el
-  /// sistema le genera una foto marcada como "automática (sin confirmar)" para no
-  /// dejar el historial vacío. Ventana prudente: solo cierra días ANTERIORES a la
-  /// fecha de corte (hoy, o AYER si aún no son las 3 a.m.), para dar margen a
-  /// canchas nocturnas y a marcar el efectivo tardío. Nunca toca el día en curso
-  /// ni un día ya cerrado por el dueño. Se llama al abrir "Mis canchas"/caja y al
-  /// sincronizar. Idempotente.
-  void autocerrarCajasPendientes() {
-    if (misCanchas.isEmpty) return;
-    final ahora = DateTime.now();
-    // Corte: hasta ayer normalmente; si aún no son las 3 a.m., ayer sigue "vivo"
-    // y el corte baja a anteayer.
-    var corte = DateTime(ahora.year, ahora.month, ahora.day);
-    if (ahora.hour < 3) corte = corte.subtract(const Duration(days: 1));
-    // Días CON actividad del dueño (fechas distintas de sus reservas activas).
-    final misIds = misCanchas.map((c) => c.id).toSet();
-    final dias = <String>{};
-    for (final r in reservas) {
-      if (r.estado == EstadoReserva.noShow) continue;
-      if (!misIds.contains(r.canchaId)) continue;
-      dias.add(r.fecha);
-    }
-    var cambio = false;
-    for (final iso in dias) {
-      final d = DateTime.tryParse(iso);
-      if (d == null) continue;
-      final dd = DateTime(d.year, d.month, d.day);
-      if (!dd.isBefore(corte)) continue; // día en curso / dentro del margen
-      if (cierreDe(iso) != null) continue; // ya cerrado (manual o auto)
-      final c = cajaDia(iso);
-      cierresCaja.insert(
-          0,
-          CierreCaja(
-            fecha: iso,
-            cobrado: c.cobrado,
-            porCobrar: c.porCobrar,
-            reservas: c.reservas,
-            cerradaEn: ahora,
-            automatico: true,
-          ));
-      cambio = true;
-    }
-    if (cambio) {
-      notifyListeners();
-      _persistirDatos();
-    }
-  }
+  /// CIERRE AUTOMÁTICO DE RESPALDO: lo hace el SERVIDOR (el mismo de la web)
+  /// para los días ANTERIORES al corte (hoy, o ayer antes de las 3 a.m.) con
+  /// actividad y sin cierre, en cada moneda, marcado "automático (sin
+  /// confirmar)". Aquí solo se pide y se trae el resultado. Idempotente.
+  Future<void> autocerrarCajasPendientes() =>
+      sincronizarNegocio(autocerrar: true);
 
   // ── ANTI NO-SHOW: recordatorio de reserva al jugador ──────────────────────
-  // Reservas ya recordadas (por id) para no repetir el aviso. Se persiste.
+  // Reservas ya recordadas (por id) para no repetir el aviso. Se comparten con
+  // la web ("Recordatorios" del modo anfitrión) como `res:<id>`.
   final Set<String> _reservasRecordadas = {};
 
   bool reservaRecordada(String id) => _reservasRecordadas.contains(id);
@@ -8716,10 +9248,17 @@ class AppState extends ChangeNotifier {
   void marcarReservaRecordada(String id) {
     _reservasRecordadas.add(id);
     notifyListeners();
-    _persistirDatos();
+    _encolarNegocio({
+      'tipo': 'recordado',
+      'clave': 'res:$id',
+      'cuando': DateTime.now().toUtc().toIso8601String(),
+    }, dedupe: 'rec|res:$id');
   }
 
   // ── RESERVAS FIJAS / "pensionados" (dueño) ────────────────────────────────
+  // La definición vive en el backend y la SERIE (próximas 4 semanas) la genera
+  // el servidor (`generar_fijas`, el mismo de la web: respeta bloqueos, turnos
+  // pasados y las fechas que ya generó), así app y web producen UNA sola serie.
   final List<ReservaFija> reservasFijas = [];
 
   /// Reservas fijas de las canchas del dueño (todas las que administra).
@@ -8728,8 +9267,10 @@ class AppState extends ChangeNotifier {
     return reservasFijas.where((f) => ids.contains(f.canchaId)).toList();
   }
 
-  /// Crea una reserva fija y genera de una vez sus próximas ocurrencias.
-  Future<void> agregarReservaFija({
+  /// Crea una reserva fija; el servidor genera de una vez sus próximas
+  /// ocurrencias. Devuelve null si quedó guardada (o en cola, sin red) o el
+  /// mensaje de error (p. ej. ya hay un cliente fijo en ese día y hora).
+  Future<String?> agregarReservaFija({
     required String canchaId,
     required int diaSemana,
     required String hora,
@@ -8737,7 +9278,7 @@ class AppState extends ChangeNotifier {
     String clienteEmail = '',
     String clienteTelefono = '',
   }) async {
-    reservasFijas.add(ReservaFija(
+    final f = ReservaFija(
       id: 'fija_${DateTime.now().microsecondsSinceEpoch}',
       canchaId: canchaId,
       diaSemana: diaSemana,
@@ -8745,10 +9286,22 @@ class AppState extends ChangeNotifier {
       clienteNombre: clienteNombre.trim(),
       clienteEmail: clienteEmail.trim().toLowerCase(),
       clienteTelefono: clienteTelefono.trim(),
-    ));
+    );
+    reservasFijas.add(f);
     notifyListeners();
-    _persistirDatos();
-    await generarReservasFijas();
+    final err = await _encolarNegocio({...f.toJson(), 'tipo': 'fija_crear'},
+        dedupe: 'fija|${f.id}');
+    if (err != null) {
+      reservasFijas.removeWhere((x) => x.id == f.id);
+      notifyListeners();
+      _guardarNegocioCache();
+      return err;
+    }
+    // La serie la creó el servidor en la nube: se baja a la agenda.
+    if (!_negocioPend.any((x) => x['id'] == f.id)) {
+      unawaited(cargarReservasRemotas());
+    }
+    return null;
   }
 
   /// Pausa/activa una reserva fija (deja de generar sin borrar el registro).
@@ -8757,63 +9310,385 @@ class AppState extends ChangeNotifier {
     if (i < 0) return;
     reservasFijas[i] = reservasFijas[i].copyWith(activo: activo);
     notifyListeners();
-    _persistirDatos();
+    _encolarNegocio({'tipo': 'fija_activo', 'id': id, 'activo': activo},
+            dedupe: 'fija_activo|$id')
+        .then((err) {
+      // Al reactivar, el servidor completa la serie: se baja a la agenda.
+      if (err == null && activo) cargarReservasRemotas();
+    });
   }
 
   /// Elimina la reserva fija (no borra las reservas ya generadas).
   void quitarReservaFija(String id) {
     reservasFijas.removeWhere((f) => f.id == id);
     notifyListeners();
-    _persistirDatos();
+    _encolarNegocio({'tipo': 'fija_quitar', 'id': id},
+        dedupe: 'fija_quitar|$id');
   }
 
-  /// GENERA las reservas de las próximas [semanas] ocurrencias de cada fija
-  /// activa (idempotente: no duplica si el slot ya está reservado). Llamar al
-  /// abrir el panel del dueño.
+  /// Pide al SERVIDOR completar las próximas 4 semanas de las fijas activas
+  /// (idempotente) y baja las reservas nuevas. Se llama al arrancar y al abrir
+  /// el panel del dueño. [semanas] se mantiene por compatibilidad: el servidor
+  /// genera 4, igual que la web.
   Future<void> generarReservasFijas({int semanas = 4}) async {
-    final hoy = DateTime.now();
-    final base = DateTime(hoy.year, hoy.month, hoy.day);
-    for (final f in reservasFijas.where((x) => x.activo)) {
-      Cancha? cancha;
-      for (final c in misCanchas) {
-        if (c.id == f.canchaId) {
-          cancha = c;
-          break;
-        }
+    final email = _emailNegocio;
+    if (email.isEmpty || !NegocioService.disponible) return;
+    await sincronizarNegocio();
+    if (!reservasFijas.any((f) => f.activo)) return;
+    final r = await NegocioService.generarFijas(email);
+    if (!r.ok) return;
+    if (!_negocioPend.any((x) => x['email'] == email)) {
+      _aplicarNegocio(email, r.cuerpo);
+    }
+    final creadas = (r.cuerpo['creadas'] as num?)?.toInt() ?? 0;
+    if (creadas > 0) await cargarReservasRemotas();
+  }
+
+  // ── Sincronización con el backend (caché + cola) ─────────────────────────
+  static const _kNegocioCache = 'negocio_cache_json';
+  static const _kNegocioPend = 'negocio_pend_json';
+  static const _kNegocioMigrado = 'negocio_migrado_v1';
+  static const _kDispositivoId = 'dispositivo_id';
+
+  /// Dueño al que pertenece lo que hay en memoria/caché ('' = nadie todavía).
+  String _negocioCacheEmail = '';
+
+  /// Operaciones hechas en el teléfono que aún no llegan al backend (sin red).
+  final List<Map<String, dynamic>> _negocioPend = [];
+  bool _negocioSincronizando = false;
+  bool _negocioOtraVez = false;
+  DateTime? _negocioSyncEn;
+  Future<Map<String, String>>? _colaNegocioEnCurso;
+
+  String get _emailNegocio => (usuario?.email ?? '').trim().toLowerCase();
+
+  /// Trae del backend el negocio del dueño (y antes envía la cola y, una sola
+  /// vez por equipo, lo que el teléfono tenía guardado de versiones
+  /// anteriores). Con [autocerrar] el servidor primero hace los cierres
+  /// automáticos de respaldo. Sin red no pasa nada: queda la caché.
+  Future<void> sincronizarNegocio(
+      {bool autocerrar = false, bool forzar = false}) async {
+    final email = _emailNegocio;
+    if (email.isEmpty || !NegocioService.disponible) return;
+    if (_negocioSincronizando) {
+      _negocioOtraVez = true;
+      return;
+    }
+    final ult = _negocioSyncEn;
+    if (!forzar &&
+        !autocerrar &&
+        ult != null &&
+        DateTime.now().difference(ult).inSeconds < 15) {
+      return;
+    }
+    _negocioSincronizando = true;
+    try {
+      await _migrarNegocioSiFalta(email);
+      await _vaciarColaNegocio(email);
+      // Si quedó algo sin enviar (sin red), no se pisa lo que se ve en el
+      // teléfono con una foto del servidor que aún no lo tiene.
+      if (_negocioPend.any((x) => x['email'] == email)) return;
+      final r = await NegocioService.estado(email, autocerrar: autocerrar);
+      if (r.ok) {
+        _aplicarNegocio(email, r.cuerpo);
+        _negocioSyncEn = DateTime.now();
       }
-      if (cancha == null) continue;
-      // Día de esta semana (o el mismo día si es hoy) + próximas semanas.
-      final delta = (f.diaSemana - base.weekday) % 7;
-      for (var w = 0; w < semanas; w++) {
-        final fecha = base.add(Duration(days: delta + w * 7));
-        final iso = isoDe(fecha);
-        final ocupado = reservas.any((r) =>
-            r.canchaId == f.canchaId &&
-            r.fecha == iso &&
-            r.horaInicio == f.hora);
-        if (ocupado) continue;
-        await agregarReservaManual(
-          cancha,
-          iso,
-          _diaLabelDe(fecha),
-          f.hora,
-          nombreCliente: f.clienteNombre,
-          telefono: f.clienteTelefono,
-          clienteEmail: f.clienteEmail,
-        );
+    } finally {
+      _negocioSincronizando = false;
+      if (_negocioOtraVez) {
+        _negocioOtraVez = false;
+        unawaited(sincronizarNegocio(forzar: true));
       }
     }
   }
 
-  /// Etiqueta de día para una fecha (Hoy/Mañana/ISO), coherente con la agenda.
-  String _diaLabelDe(DateTime fecha) {
-    final hoy = DateTime.now();
-    final base = DateTime(hoy.year, hoy.month, hoy.day);
-    final d = DateTime(fecha.year, fecha.month, fecha.day);
-    final diff = d.difference(base).inDays;
-    if (diff == 0) return 'Hoy';
-    if (diff == 1) return 'Mañana';
-    return isoDe(fecha);
+  /// Agrega una operación a la cola (persistida) y trata de enviarla ya.
+  /// Devuelve el error del servidor si la RECHAZÓ (dato inválido, cancha
+  /// ajena…); null si se guardó o quedó en cola por falta de red.
+  Future<String?> _encolarNegocio(Map<String, dynamic> op,
+      {String? dedupe}) async {
+    _guardarNegocioCache();
+    final email = _emailNegocio;
+    if (email.isEmpty) return null;
+    final id = '${DateTime.now().microsecondsSinceEpoch}';
+    if (dedupe != null) {
+      _negocioPend
+          .removeWhere((x) => x['email'] == email && x['k'] == dedupe);
+    }
+    _negocioPend.add(<String, dynamic>{
+      ...op,
+      'email': email,
+      'op': id,
+      if (dedupe != null) 'k': dedupe,
+    });
+    await _guardarNegocioPend();
+    if (!NegocioService.disponible) return null;
+    final errores = await _vaciarColaNegocio(email);
+    return errores[id];
+  }
+
+  /// Envía la cola EN ORDEN, de a una a la vez (nunca dos envíos en paralelo).
+  /// Devuelve op → error de las que el servidor rechazó (esas se descartan).
+  Future<Map<String, String>> _vaciarColaNegocio(String email) async {
+    while (true) {
+      final enCurso = _colaNegocioEnCurso;
+      if (enCurso == null) break;
+      await enCurso;
+    }
+    final f = _vaciarColaNegocioAhora(email);
+    _colaNegocioEnCurso = f;
+    try {
+      return await f;
+    } finally {
+      if (identical(_colaNegocioEnCurso, f)) _colaNegocioEnCurso = null;
+    }
+  }
+
+  Future<Map<String, String>> _vaciarColaNegocioAhora(String email) async {
+    final errores = <String, String>{};
+    Map<String, dynamic>? ultimo;
+    var descartada = false;
+    while (true) {
+      Map<String, dynamic>? op;
+      for (final x in _negocioPend) {
+        if (x['email'] == email) {
+          op = x;
+          break;
+        }
+      }
+      if (op == null) break;
+      final r = await NegocioService.ejecutar(op);
+      if (r.reintentar) break; // sin red: el resto espera su turno
+      _negocioPend.remove(op);
+      if (r.ok) {
+        ultimo = r.cuerpo;
+      } else {
+        descartada = true;
+        errores['${op['op']}'] = r.error;
+      }
+      await _guardarNegocioPend();
+    }
+    final pendientes = _negocioPend.any((x) => x['email'] == email);
+    if (!pendientes && _emailNegocio == email) {
+      if (ultimo != null) {
+        // La respuesta trae el estado del servidor YA con todo aplicado.
+        _aplicarNegocio(email, ultimo);
+      } else if (descartada) {
+        // Algo se rechazó: se vuelve a lo que de verdad tiene el servidor.
+        final r = await NegocioService.estado(email);
+        if (r.ok) _aplicarNegocio(email, r.cuerpo);
+      }
+    }
+    return errores;
+  }
+
+  /// Reemplaza lo de memoria con el estado del servidor y lo guarda en caché.
+  void _aplicarNegocio(String email, Map<String, dynamic> j) {
+    if (_emailNegocio != email) return; // cambió la cuenta mientras tanto
+    _volcarNegocio(j);
+    _negocioCacheEmail = email;
+    notifyListeners();
+    _guardarNegocioCache();
+  }
+
+  void _volcarNegocio(Map<String, dynamic> j) {
+    final cierres = <CierreCaja>[];
+    for (final e in (j['cierres'] as List?) ?? const []) {
+      if (e is Map) {
+        try {
+          cierres.add(CierreCaja.fromJson(Map<String, dynamic>.from(e)));
+        } catch (_) {}
+      }
+    }
+    final fijas = <ReservaFija>[];
+    for (final e in (j['fijas'] as List?) ?? const []) {
+      if (e is Map) {
+        try {
+          fijas.add(ReservaFija.fromJson(Map<String, dynamic>.from(e)));
+        } catch (_) {}
+      }
+    }
+    cierresCaja
+      ..clear()
+      ..addAll(cierres);
+    _ordenarCierres();
+    reservasFijas
+      ..clear()
+      ..addAll(fijas);
+    _notasCliente.clear();
+    final notas = j['notas'];
+    if (notas is Map) {
+      notas.forEach((k, v) {
+        final t = (v ?? '').toString();
+        if (t.isNotEmpty) _notasCliente[k.toString().toLowerCase()] = t;
+      });
+    }
+    _recordatoriosCobro.clear();
+    _reservasRecordadas.clear();
+    final rec = j['recordados'];
+    if (rec is Map) {
+      rec.forEach((k, v) {
+        final clave = k.toString();
+        if (clave.startsWith('res:')) {
+          _reservasRecordadas.add(clave.substring(4));
+        } else {
+          _recordatoriosCobro[clave] = (v ?? '').toString();
+        }
+      });
+    }
+  }
+
+  Future<void> _guardarNegocioCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+          _kNegocioCache,
+          jsonEncode({
+            'email': _negocioCacheEmail,
+            'cierres': cierresCaja.map((c) => c.toJson()).toList(),
+            'fijas': reservasFijas.map((f) => f.toJson()).toList(),
+            'notas': _notasCliente,
+            'recordados': <String, String>{
+              ..._recordatoriosCobro,
+              for (final id in _reservasRecordadas) 'res:$id': '',
+            },
+          }));
+    } catch (_) {}
+  }
+
+  Future<void> _guardarNegocioPend() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kNegocioPend, jsonEncode(_negocioPend));
+    } catch (_) {}
+  }
+
+  /// Al abrir el app: la caché del backend manda sobre lo que el teléfono
+  /// guardaba antes (claves viejas). Si la caché es de OTRA cuenta, no se
+  /// muestra (se baja la de esta cuenta al sincronizar).
+  void _cargarNegocioCache(SharedPreferences prefs) {
+    final raw = prefs.getString(_kNegocioCache);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final j = Map<String, dynamic>.from(jsonDecode(raw) as Map);
+        final dueno = (j['email'] ?? '').toString();
+        final yo = _emailNegocio;
+        if (dueno.isNotEmpty && yo.isNotEmpty && dueno != yo) {
+          _volcarNegocio(const <String, dynamic>{});
+        } else {
+          _volcarNegocio(j);
+          _negocioCacheEmail = dueno;
+        }
+      } catch (_) {}
+    }
+    final pend = prefs.getString(_kNegocioPend);
+    if (pend != null && pend.isNotEmpty) {
+      try {
+        _negocioPend
+          ..clear()
+          ..addAll((jsonDecode(pend) as List)
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e)));
+      } catch (_) {}
+    }
+  }
+
+  /// Vacía de memoria el negocio (cambio de cuenta / cerrar sesión). La cola
+  /// se conserva: cada operación lleva su correo y se envía cuando esa cuenta
+  /// vuelva a entrar.
+  void _limpiarNegocioLocal() {
+    cierresCaja.clear();
+    reservasFijas.clear();
+    _notasCliente.clear();
+    _recordatoriosCobro.clear();
+    _reservasRecordadas.clear();
+    _negocioCacheEmail = '';
+    _negocioSyncEn = null;
+    _guardarNegocioCache();
+  }
+
+  /// Identificador de ESTE equipo (para migrar una sola vez lo que guardaba).
+  Future<String> _dispositivoId(SharedPreferences prefs) async {
+    final ya = prefs.getString(_kDispositivoId) ?? '';
+    if (ya.isNotEmpty) return ya;
+    final id = 'dev_${DateTime.now().microsecondsSinceEpoch}_'
+        '${math.Random().nextInt(1 << 31)}';
+    await prefs.setString(_kDispositivoId, id);
+    return id;
+  }
+
+  /// MIGRACIÓN (una vez por equipo): versiones anteriores guardaban cierres,
+  /// fijas, notas y recordatorios SOLO en el teléfono. Se suben al backend (que
+  /// gana en los choques y solo los acepta si esta cuenta tiene canchas o
+  /// academias) y, aceptados, se borran las claves viejas.
+  Future<void> _migrarNegocioSiFalta(String email) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_kNegocioMigrado) ?? false) return;
+      List<dynamic> lista(String k) {
+        final r = prefs.getString(k);
+        if (r == null || r.isEmpty) return const [];
+        try {
+          final v = jsonDecode(r);
+          return v is List ? v : const [];
+        } catch (_) {
+          return const [];
+        }
+      }
+
+      Map<String, dynamic> mapa(String k) {
+        final r = prefs.getString(k);
+        if (r == null || r.isEmpty) return <String, dynamic>{};
+        try {
+          final v = jsonDecode(r);
+          return v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{};
+        } catch (_) {
+          return <String, dynamic>{};
+        }
+      }
+
+      final cierres = lista(_kCierresCaja);
+      final fijas = lista(_kReservasFijas);
+      final notas = mapa(_kNotasCliente);
+      final recordados = mapa(_kRecordCobro);
+      final ahora = DateTime.now().toUtc().toIso8601String();
+      for (final id in lista(_kResRecordadas)) {
+        recordados['res:$id'] = ahora;
+      }
+      if (cierres.isEmpty &&
+          fijas.isEmpty &&
+          notas.isEmpty &&
+          recordados.isEmpty) {
+        await prefs.setBool(_kNegocioMigrado, true);
+        return;
+      }
+      final r = await NegocioService.migrar(
+        email: email,
+        dispositivo: await _dispositivoId(prefs),
+        cierres: cierres,
+        fijas: fijas,
+        notas: notas,
+        recordados: recordados,
+      );
+      if (!r.ok) return; // sin red: se reintenta en la próxima sincronización
+      final m = r.cuerpo['migracion'];
+      if (m is Map && m['migrado'] == true) {
+        await prefs.setBool(_kNegocioMigrado, true);
+        for (final k in [
+          _kCierresCaja,
+          _kReservasFijas,
+          _kNotasCliente,
+          _kRecordCobro,
+          _kResRecordadas,
+        ]) {
+          await prefs.remove(k);
+        }
+        if (!_negocioPend.any((x) => x['email'] == email)) {
+          _aplicarNegocio(email, r.cuerpo);
+        }
+        if (fijas.isNotEmpty) unawaited(cargarReservasRemotas());
+      }
+    } catch (_) {}
   }
 
   /// El JUGADOR cancela / elimina una de sus reservas (próxima o del historial).

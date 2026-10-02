@@ -268,6 +268,14 @@ def _intent_unirse(campeonato_id: str, equipo: str = "") -> str:
             f"S.browser_fallback_url={fallback};end")
 
 
+def _url_web(campeonato_id: str, equipo: str = "") -> str:
+    """Panel del jugador en la WEB (`/torneo/{id}`, `web/jugador_campeonatos.py`):
+    inscribirse / crear o unirse a un equipo pagando con su saldo, sin la app."""
+    q = (f"?equipo={urllib.parse.quote(equipo.strip().upper(), safe='')}"
+         if equipo and equipo.strip() else "")
+    return f"/torneo/{urllib.parse.quote(campeonato_id, safe='')}{q}"
+
+
 def equipo_por_codigo(c: dict, codigo: str) -> dict | None:
     """El participante-equipo cuyo `codigo` (6 letras del capitán) coincide."""
     cod = (codigo or "").strip().upper()
@@ -306,8 +314,8 @@ def html_campeonato(c: dict, campeonato_id: str = "",
         fixture = '<p class="vacio">El fixture aún no está publicado. Vuelve pronto.</p>' 
     participantes = c.get("participantes") or []
     mon = str(c.get("moneda") or "").strip() or "S/"
-    como = ("Ábrela y crea tu equipo (o únete con el código del capitán)."
-            if c.get("deporte") == "futbol" else "Ábrela y toca “Inscribirme”.")
+    como = ("Crea tu equipo (o únete con el código del capitán) aquí o en la app."
+            if c.get("deporte") == "futbol" else "Inscríbete aquí o en la app.")
     inscripcion = ""
     from web import campeonatos_logica as _L
     eq = equipo_por_codigo(c, equipo) if c.get("deporte") == "futbol" else None
@@ -328,6 +336,7 @@ def html_campeonato(c: dict, campeonato_id: str = "",
         if eq is not None:
             # Enlace del CAPITÁN: un solo toque para entrar a SU equipo.
             intent = _intent_unirse(campeonato_id, str(eq.get("codigo") or ""))
+            web = _url_web(campeonato_id, str(eq.get("codigo") or ""))
             plantel = len(eq.get("roster") or [])
             cap = str(eq.get("capitanEmail") or "").strip()
             cap_txt = (f' · capitán {_esc(cap.split("@")[0])}' if cap else "")
@@ -339,13 +348,15 @@ def html_campeonato(c: dict, campeonato_id: str = "",
                 f'<span>{plantel} jugador{"es" if plantel != 1 else ""} en el '
                 f'plantel{cap_txt}. Al tocar, Pichangol te une con tu cuenta; '
                 f'sin escribir códigos.{en_juego}</span><br>'
-                f'<a class="mapbtn" style="margin-top:10px" href="{intent}">'
-                f'{emo} Unirme al equipo en la app</a><br>'
-                f'<span style="font-size:12px">Si no tienes Pichangol, el '
-                f'botón te lleva a descargarla; al volver a abrir este enlace '
-                f'quedas en tu equipo.</span></div>')
+                f'<div class="ctas"><a class="mapbtn" href="{web}">'
+                f'{emo} Unirme al equipo aquí</a>'
+                f'<a class="mapbtn sec" href="{intent}">📱 Unirme al equipo en la app</a></div>'
+                f'<span style="font-size:12px">Aquí mismo pagas tu parte con tu '
+                f'saldo Pichangol (inicia sesión con Google). En la app: si no '
+                f'la tienes, el botón te lleva a descargarla.</span></div>')
         else:
             intent = _intent_unirse(campeonato_id)
+            web = _url_web(campeonato_id)
             aviso = ""
             if equipo and equipo.strip() and c.get("deporte") == "futbol":
                 aviso = ('<br><span style="font-size:12px;color:#B25E0A">El '
@@ -354,10 +365,12 @@ def html_campeonato(c: dict, campeonato_id: str = "",
             inscripcion = (
                 f'<div class="cta"><b>Inscripciones abiertas</b>{costo_txt}<br>'
                 f'<span>{como}</span>{aviso}<br>'
-                f'<a class="mapbtn" style="margin-top:10px" href="{intent}">'
-                f'{emo} Unirme en la app</a><br>' 
-                f'<span style="font-size:12px">Si no tienes Pichangol, el botón '
-                f'te lleva a descargarla.</span></div>')
+                f'<div class="ctas"><a class="mapbtn" href="{web}">'
+                f'{emo} {"Inscribir mi equipo aquí" if c.get("deporte") == "futbol" else "Inscribirme aquí"}</a>'
+                f'<a class="mapbtn sec" href="{intent}">📱 Unirme en la app</a></div>'
+                f'<span style="font-size:12px">Aquí mismo pagas con tu saldo '
+                f'Pichangol (inicia sesión con Google). En la app: si no la '
+                f'tienes, el botón te lleva a descargarla.</span></div>')
     if not inscripcion:
         intent = _intent_unirse(campeonato_id)
         inscripcion = (
@@ -450,6 +463,9 @@ def html_campeonato(c: dict, campeonato_id: str = "",
   .wrap{{max-width:760px;margin:0 auto;padding:18px 16px 0}}
   .mapbtn{{display:inline-block;margin-top:12px;background:#fff;color:var(--noche);padding:9px 16px;border-radius:12px;text-decoration:none;font-weight:800;font-size:14px}}
   .wrap .mapbtn{{background:var(--acento);color:#fff}}
+  .ctas{{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 6px}}
+  .ctas .mapbtn{{margin-top:0;flex:1 1 200px;text-align:center;max-width:100%}}
+  .wrap .mapbtn.sec{{background:#fff;color:var(--noche);border:1px solid #dde5e0}}
   h2{{font-size:16px;font-weight:800;margin:22px 4px 10px}}
   .scroll{{overflow-x:auto;-webkit-overflow-scrolling:touch}}
   .tabla{{width:100%;border-collapse:collapse;background:#fff;border-radius:14px;overflow:hidden;font-size:13px;min-width:520px}}

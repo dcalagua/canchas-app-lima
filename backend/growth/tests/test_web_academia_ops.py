@@ -34,7 +34,10 @@ MATS = [
 
 @pytest.fixture
 def mundo(monkeypatch):
-    st = {"acad": copy.deepcopy(ACAD), "mats": copy.deepcopy(MATS), "pushes": [], "asis": {}, "evals": {}, "notas": [], "msgs": []}
+    st = {"acad": copy.deepcopy(ACAD), "mats": copy.deepcopy(MATS), "pushes": [], "asis": {}, "evals": {}, "notas": [], "msgs": [],
+          "planes": []}
+    monkeypatch.setattr(ops, "planes_de", lambda aid: [p for p in (ops._plan_normal(copy.deepcopy(d), aid) for d in st["planes"]) if p]
+                        if aid == "ac_1" else [])
     monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
     monkeypatch.setattr(ops, "academias_de", lambda email: [copy.deepcopy(st["acad"])] if email.lower() == DUENO else [])
     monkeypatch.setattr(ops, "matriculas_de", lambda aid: copy.deepcopy(st["mats"]) if aid == "ac_1" else [])
@@ -201,3 +204,34 @@ def test_sedes_horarios_y_precios_por_sede(mundo):
     assert a["preciosSede"] == {"sede_1|Bola Roja | 2x": 220}
     assert a["planes"] == ACAD["planes"] and a["nombre"] == "Academia Raqueta"  # el resto se conserva
     assert _cli().post("/anfitrion/academia/sedes/guardar", json={"academia_id": "ac_1", "sedes": [{"id": "sede_1", "nombre": ""}]}).status_code == 400
+
+
+def test_evaluacion_usa_el_plan_propio_del_app_y_la_plantilla_solo_si_ya_tiene_notas(mundo):
+    """El plan de trabajo que el profe armó en el APK (`PlanTrabajo.toJson` en
+    `pichangol_academia_planes`) es el que evalúa la web: mismas habilidades,
+    mismas clases y el MISMO plan_id, así el app ve las filas de la web."""
+    mundo["planes"].append({"id": "plan_123", "academiaId": "ac_1", "deporte": "tenis", "nombre": "Mi plan avanzado",
+                            "nivel": "Avanzado", "habilidades": ["Slice", "Drop shot"], "esPlantilla": False,
+                            "sesiones": [{"numero": 2, "titulo": "Slice de revés", "objetivo": "", "contenidos": []},
+                                         {"numero": 1, "titulo": "Calentamiento", "objetivo": "", "contenidos": ["Trote"]}]})
+    html = _cli().get("/anfitrion/academia/evaluaciones?academia=ac_1").text
+    assert "Mi plan avanzado" in html and "2 habilidades · 2 clases" in html
+    assert "Plan de tenis · Iniciación" not in html  # sin evaluaciones en la plantilla, no se ofrece
+    j = _cli().post("/anfitrion/academia/evaluaciones/evaluar", json={"academia_id": "ac_1", "alumno_id": "al_1", "plan_id": "plan_123",
+                                                                      "habilidad": "Slice", "nivel": "enProceso"}).json()
+    assert j["ok"] and mundo["evals"][("al_1", "plan_123", "Slice")] == "enProceso"
+    # Sin plan_id (JS viejo) va al plan por defecto (el propio); una habilidad de la plantilla no vale.
+    assert _cli().post("/anfitrion/academia/evaluaciones/evaluar", json={"academia_id": "ac_1", "alumno_id": "al_1", "habilidad": "Revés", "nivel": "logrado"}).status_code == 400
+    # Un plan ajeno o inexistente no se acepta.
+    assert _cli().post("/anfitrion/academia/evaluaciones/evaluar", json={"academia_id": "ac_1", "alumno_id": "al_1", "plan_id": "plan_x",
+                                                                         "habilidad": "Slice", "nivel": "logrado"}).status_code == 400
+    r = _cli().post("/anfitrion/academia/evaluaciones/nota", json={"academia_id": "ac_1", "alumno_id": "al_1", "plan_id": "plan_123", "sesion": 2,
+                                                                 "desempeno": "bien", "observaciones": []})
+    assert r.json()["ok"] and mundo["notas"][-1]["planId"] == "plan_123" and mundo["notas"][-1]["sesionNumero"] == 2
+    html = _cli().get("/anfitrion/academia/evaluaciones?academia=ac_1&alumno=al_1&plan=plan_123").text
+    assert "Clase 2: Slice de revés" in html and "1/2 clases del plan" in html and "25%" in html
+    # Con evaluaciones guardadas en la plantilla (antes del plan propio), ambas se ofrecen como chips.
+    mundo["evals"][("al_2", "plantilla_tenis", "Revés")] = "logrado"
+    html = _cli().get("/anfitrion/academia/evaluaciones?academia=ac_1&plan=plantilla_tenis").text
+    assert "Plan de tenis · Iniciación" in html and "&plan=plan_123" in html and "Mi plan avanzado" in html
+    assert ops._plan_normal({"nombre": "sin id"}) is None

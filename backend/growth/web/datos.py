@@ -67,14 +67,31 @@ PREFIJO_ID_WEB = "web_"
 # Un apartado web sin pagar con más de HOLD_SEGUNDOS NO ocupa el turno (caso
 # real PRD, 1-oct-2026: uno abandonado bloqueó las 20:00 toda la noche porque
 # solo se borraba cuando otro cliente intentaba reservar esa cancha).
-_SQL_SIN_HOLD_VENCIDO = (
-    " AND NOT (coalesce(estado,'') = 'nueva' AND NOT coalesce(pagado,false) AND id LIKE 'web\\_%%' "
-    "AND (CASE WHEN split_part(id, '_', 2) ~ '^[0-9]+$' THEN split_part(id, '_', 2)::bigint ELSE NULL END) < %s)")
+# COBRO EN PASARELA HOSPEDADA (PayPhone / Libélula, `web/pago_hospedado.py`):
+# mientras el jugador paga en la página de la pasarela (puede tardar varios
+# minutos) el apartado lleva `medio_pago = 'web_pasarela'` y NO vence a los
+# 10 min: lo suelta el barrido de órdenes cuando la orden vence/se rechaza.
+# Tope de seguridad por si la orden se perdiera: HOLD_PASARELA_MAX_SEGUNDOS.
+MEDIO_HOLD_PASARELA = "web_pasarela"
+_SQL_HOLD_VENCIDO = (
+    "(coalesce(estado,'') = 'nueva' AND NOT coalesce(pagado,false) AND id LIKE 'web\\_%%' "
+    "AND (CASE WHEN split_part(id, '_', 2) ~ '^[0-9]+$' THEN split_part(id, '_', 2)::bigint ELSE NULL END) "
+    "< (CASE WHEN coalesce(medio_pago,'') = 'web_pasarela' THEN %s ELSE %s END))")
+_SQL_SIN_HOLD_VENCIDO = " AND NOT " + _SQL_HOLD_VENCIDO
 
 
 def _corte_hold() -> int:
     return int((time.time() - HOLD_SEGUNDOS) * 1000)
+
+
+def _cortes_hold() -> tuple[int, int]:
+    """(corte de un apartado en pasarela, corte de un apartado normal), en ms:
+    los parámetros de `_SQL_HOLD_VENCIDO` en ese orden."""
+    return int((time.time() - HOLD_PASARELA_MAX_SEGUNDOS) * 1000), _corte_hold()
+
+
 HOLD_SEGUNDOS = 10 * 60  # una reserva web sin pagar se libera a los 10 min
+HOLD_PASARELA_MAX_SEGUNDOS = 50 * 60  # tope duro de un apartado en pasarela hospedada
 
 
 def _json_list(v) -> list:
@@ -386,6 +403,32 @@ def marcar_verificada(cancha_id: str, dueno: str, verificada: bool, lat: float |
         return 0
 
 
+def fotos_de_canchas(cancha_ids: list[str]) -> dict[str, list[str]] | None:
+    """Portada + galería de varias canchas (candado de FOTOS PROPIAS al aprobar
+    un reclamo, `propiedad/fotos_reclamo.py`). None = no hay base configurada
+    (dev/tests: no se puede afirmar nada). Una cancha que no existe en la nube
+    viene con []. LANZA si la base falló: quien activa no debe hacerlo a ciegas."""
+    ids = [i for i in dict.fromkeys(str(x or "").strip() for x in (cancha_ids or [])) if i]
+    if not pg.habilitado:
+        return None
+    out: dict[str, list[str]] = {i: [] for i in ids}
+    if not ids:
+        return out
+    with pg.conexion() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id, foto_url, fotos FROM pichangol_canchas WHERE id = ANY(%s)", (ids,))
+        for cid, portada, fotos in cur.fetchall():
+            urls = [str(portada)] if portada else []
+            urls += [str(u) for u in _json_list(fotos) if u]
+            out[str(cid)] = urls
+    return out
+
+
+def fotos_de_cancha(cancha_id: str) -> list[str] | None:
+    """Fotos de UNA cancha (ver `fotos_de_canchas`)."""
+    r = fotos_de_canchas([cancha_id])
+    return None if r is None else r.get(str(cancha_id or "").strip(), [])
+
+
 def bloquear(cancha_id: str, fecha: str, hora: str, bloquear: bool = True) -> bool:
     """Bloqueo de un turno por el dueño (misma tabla y clave que
     `BloqueosRepo` del app: PK (cancha_id, fecha, hora)). Idempotente."""
@@ -517,7 +560,7 @@ def ocupados(cancha_id: str, fechas: list[str]) -> set[tuple[str, str]]:
             cur.execute(
                 "SELECT fecha, hora_inicio FROM pichangol_reservas "
                 "WHERE cancha_id = %s AND fecha = ANY(%s) "
-                "AND coalesce(estado,'') <> 'noShow'" + _SQL_SIN_HOLD_VENCIDO, (cancha_id, fechas, _corte_hold()))
+                "AND coalesce(estado,'') <> 'noShow'" + _SQL_SIN_HOLD_VENCIDO, (cancha_id, fechas, *_cortes_hold()))
             out.update((str(f), str(h)) for f, h in cur.fetchall())
             try:
                 cur.execute(
@@ -542,7 +585,7 @@ def ocupados_varias(ids: list[str], fechas: list[str]) -> dict[str, set[tuple[st
             cur.execute(
                 "SELECT cancha_id, fecha, hora_inicio FROM pichangol_reservas "
                 "WHERE cancha_id = ANY(%s) AND fecha = ANY(%s) "
-                "AND coalesce(estado,'') <> 'noShow'" + _SQL_SIN_HOLD_VENCIDO, (ids, fechas, _corte_hold()))
+                "AND coalesce(estado,'') <> 'noShow'" + _SQL_SIN_HOLD_VENCIDO, (ids, fechas, *_cortes_hold()))
             for cid, f, h in cur.fetchall():
                 out.setdefault(str(cid), set()).add((str(f), str(h)))
             try:
@@ -575,18 +618,15 @@ def descuentos(cancha_id: str, fechas: list[str]) -> dict[tuple[str, str], int]:
 def liberar_holds_vencidos(cancha_id: str) -> int:
     """Borra reservas WEB que quedaron 'nueva' (sin pagar) hace más de
     HOLD_SEGUNDOS. El momento vive en el id (`web_<epoch_ms>_n`): la tabla no
-    tiene columna de creación."""
+    tiene columna de creación. Un apartado con una orden de pasarela en curso
+    (`medio_pago = 'web_pasarela'`) solo vence con el tope largo."""
     if not pg.habilitado:
         return 0
-    corte = int((time.time() - HOLD_SEGUNDOS) * 1000)
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM pichangol_reservas WHERE cancha_id = %s "
-                "AND estado = 'nueva' AND id LIKE %s "
-                "AND split_part(id, '_', 2) ~ '^[0-9]+$' "
-                "AND split_part(id, '_', 2)::bigint < %s",
-                (cancha_id, PREFIJO_ID_WEB + "%", corte))
+                "DELETE FROM pichangol_reservas WHERE cancha_id = %s AND " + _SQL_HOLD_VENCIDO,
+                (cancha_id, *_cortes_hold()))
             n = cur.rowcount
             conn.commit()
             return n
@@ -603,15 +643,34 @@ def liberar_holds_vencidos_todos() -> list[dict]:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
                 "DELETE FROM pichangol_reservas WHERE estado = 'nueva' AND NOT coalesce(pagado,false) "
-                "AND id LIKE %s AND split_part(id, '_', 2) ~ '^[0-9]+$' "
-                "AND split_part(id, '_', 2)::bigint < %s RETURNING id, cancha_id, fecha, hora_inicio",
-                (PREFIJO_ID_WEB.replace("_", "\\_") + "%", _corte_hold()))
+                "AND id LIKE %s AND " + _SQL_HOLD_VENCIDO + " RETURNING id, cancha_id, fecha, hora_inicio",
+                (PREFIJO_ID_WEB.replace("_", "\\_") + "%", *_cortes_hold()))
             filas = [{"id": a, "cancha_id": b, "fecha": str(c), "hora": str(d)} for a, b, c, d in cur.fetchall()]
             conn.commit()
             return filas
     except Exception as ex:  # noqa: BLE001
         print(f"[holds] no se pudo liberar: {ex}", flush=True)
         return []
+
+
+def marcar_hold_pasarela(ids: list[str]) -> bool:
+    """El jugador se va a pagar a una pasarela hospedada: su apartado deja de
+    vencer a los 10 min (lo suelta la orden). Solo filas aún 'nueva' sin
+    pagar; True si TODAS siguen ahí (si alguna ya venció, no se cobra)."""
+    if not pg.habilitado or not ids:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE pichangol_reservas SET medio_pago = %s WHERE id = ANY(%s) "
+                        "AND estado = 'nueva' AND NOT coalesce(pagado,false)", (MEDIO_HOLD_PASARELA, list(ids)))
+            n = cur.rowcount
+            if n != len(set(ids)):
+                conn.rollback()
+                return False
+            conn.commit()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def insertar_reservas(filas: list[dict]) -> str:
@@ -1202,6 +1261,33 @@ def campeonato(campeonato_id: str) -> dict | None:
             return d
     except Exception:  # noqa: BLE001
         return None
+
+
+def mutar_campeonato(campeonato_id: str, fn):
+    """Lee el campeonato con `SELECT … FOR UPDATE` (la fila queda bloqueada
+    hasta el commit: dos jugadores que se unen al mismo equipo a la vez se
+    atienden de uno en uno) y llama `fn(data)`, que devuelve `(guardar,
+    resultado)`. Con `guardar` se escribe `data` en la MISMA transacción.
+    Devuelve `(encontrado, resultado)`. Una excepción dentro de `fn` o al
+    guardar deshace la transacción y se propaga (el llamador revierte lo que
+    `fn` hizo fuera de la base, p. ej. un débito de saldo)."""
+    if not pg.habilitado or not campeonato_id:
+        return False, None
+    with pg.conexion() as conn, conn.cursor() as cur:
+        cur.execute("SELECT id, academia_id, dueno, data FROM pichangol_campeonatos WHERE id = %s "
+                    "AND coalesce(eliminado,false) = false FOR UPDATE", (campeonato_id,))
+        f = cur.fetchone()
+        if not f:
+            return False, None
+        d = _json_dict(f[3])
+        d["id"] = f[0]
+        d.setdefault("academiaId", f[1] or "")
+        d.setdefault("dueno", f[2] or "")
+        guardar, resultado = fn(d)
+        if guardar:
+            cur.execute("UPDATE pichangol_campeonatos SET data = %s::jsonb, updated_at = now() WHERE id = %s",
+                        (json.dumps(d), campeonato_id))
+    return True, resultado
 
 
 def campeonato_existe(campeonato_id: str) -> bool:
@@ -1811,3 +1897,339 @@ def tiene_matriculas(email: str) -> bool:
             return cur.fetchone() is not None
     except Exception:  # noqa: BLE001
         return False
+
+
+# ── Canjes de la RESERVA WEB: bono de horas y puntos Pichangol ────────────────
+# (SQL `docs/piloto/supabase_canjes_web.sql`). La reserva web APARTA el
+# beneficio con el hold y lo confirma con el pago; la lógica vive en
+# `web/beneficios.py`. Sin la tabla, el checkout web no ofrece bono ni puntos.
+
+_COLS_CW = ["id", "tipo", "email", "cancha_id", "club", "dueno", "reserva_ref", "reserva_ids", "horas", "puntos",
+            "descuento", "moneda", "detalle", "estado", "canal", "creado", "actualizado"]
+_tabla_cw_cache: dict = {}
+
+
+def canjes_web_disponible() -> bool:
+    """¿Existe `pichangol_canjes_web` en esta base? True se cachea para
+    siempre; False se vuelve a preguntar cada 5 min (así, tras correr el SQL,
+    se activa sin reiniciar)."""
+    if _tabla_cw_cache.get("ok"):
+        return True
+    if not pg.habilitado:
+        return False
+    if "ok" in _tabla_cw_cache and time.time() - _tabla_cw_cache.get("t", 0) < 300:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT to_regclass('public.pichangol_canjes_web') IS NOT NULL")
+            ok = bool(cur.fetchone()[0])
+    except Exception:  # noqa: BLE001
+        return False
+    _tabla_cw_cache.update(ok=ok, t=time.time())
+    return ok
+
+
+def _norm_cw(d: dict) -> dict:
+    d = dict(d)
+    d["reserva_ids"] = _json_list(d.get("reserva_ids"))
+    d["detalle"] = _json_dict(d.get("detalle"))
+    d["descuento"] = float(d.get("descuento") or 0)
+    d["horas"] = int(d.get("horas") or 0)
+    d["puntos"] = int(d.get("puntos") or 0)
+    for k in ("creado", "actualizado"):
+        v = d.get(k)
+        if hasattr(v, "isoformat"):
+            d[k] = v.isoformat()
+    return d
+
+
+def _insertar_cw(cur, c: dict) -> None:
+    cur.execute(
+        "INSERT INTO pichangol_canjes_web (id, tipo, email, cancha_id, club, dueno, reserva_ref, reserva_ids, horas, puntos, "
+        "descuento, moneda, detalle, estado, canal) VALUES (%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s::jsonb,%s,%s)",
+        (c["id"], c["tipo"], c["email"], c.get("cancha_id") or "", c.get("club") or "", c.get("dueno") or "",
+         c["reserva_ref"], json.dumps(c.get("reserva_ids") or []), int(c.get("horas") or 0), int(c.get("puntos") or 0),
+         round(float(c.get("descuento") or 0), 2), c.get("moneda") or "PEN", json.dumps(c.get("detalle") or {}),
+         c.get("estado") or "reservado", c.get("canal") or "web"))
+
+
+def saldo_bono(email: str, club: str, dueno: str) -> int:
+    """Horas de bono del jugador en ESE local (club + dueño), = `AppState.
+    miSaldoBono` (suma de `horas_total − horas_usadas` de sus créditos)."""
+    e, d = (email or "").strip().lower(), (dueno or "").strip().lower()
+    if not pg.habilitado or not e or not club:
+        return 0
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT coalesce(sum(greatest(horas_total - horas_usadas, 0)), 0) FROM pichangol_bonos_comprados "
+                        "WHERE lower(comprador) = %s AND club = %s AND lower(dueno) = %s", (e, club, d))
+            return int((cur.fetchone() or [0])[0] or 0)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def bono_apartar(canje: dict) -> str:
+    """Descuenta `canje['horas']` de los créditos del jugador en el local
+    (FIFO: lo comprado antes primero, como `AppState.usarBonoHoras`) y
+    registra el canje, TODO en una transacción con las filas bloqueadas (dos
+    pestañas no gastan la misma hora). '' = ok · 'sin_bono' · 'error'."""
+    if not pg.habilitado:
+        return "error"
+    horas = int(canje.get("horas") or 0)
+    if horas <= 0:
+        return "error"
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, horas_total, horas_usadas FROM pichangol_bonos_comprados "
+                        "WHERE lower(comprador) = %s AND club = %s AND lower(dueno) = %s AND horas_usadas < horas_total "
+                        "ORDER BY creado, id FOR UPDATE", (canje["email"], canje["club"], canje["dueno"]))
+            restan, detalle = horas, {}
+            for cid, total, usadas in cur.fetchall():
+                if restan <= 0:
+                    break
+                gastar = min(restan, max(int(total or 0) - int(usadas or 0), 0))
+                if gastar > 0:
+                    detalle[str(cid)] = gastar
+                    restan -= gastar
+            if restan > 0:
+                conn.rollback()
+                return "sin_bono"
+            for cid, n in detalle.items():
+                cur.execute("UPDATE pichangol_bonos_comprados SET horas_usadas = horas_usadas + %s WHERE id = %s", (n, cid))
+            _insertar_cw(cur, {**canje, "detalle": detalle})
+            conn.commit()
+            canje["detalle"] = detalle
+            return ""
+    except Exception as ex:  # noqa: BLE001
+        print(f"[canje-web] bono no apartado {canje.get('reserva_ref')}: {ex}", flush=True)
+        return "error"
+
+
+def puntos_apartar(canje: dict, ganados: int, minimo: int) -> str:
+    """Aparta `canje['puntos']` si al jugador le quedan ≥ `minimo` (ganados −
+    canjeados en `pichangol_puntos_canjes` − apartados vivos de la web). El
+    candado por correo (advisory lock de la transacción) evita que dos
+    pestañas usen los mismos puntos. '' = ok · 'sin_puntos' · 'error'."""
+    if not pg.habilitado:
+        return "error"
+    e = canje["email"]
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            # El comentario `-- lock` abre la transacción (pg.es_lectura lo ve
+            # como escritura); sin transacción el candado se soltaría al instante.
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s)) -- lock", ("pcg_puntos:" + e,))
+            cur.execute("SELECT coalesce(sum(puntos), 0) FROM pichangol_puntos_canjes WHERE lower(email) = %s", (e,))
+            canjeados = int((cur.fetchone() or [0])[0] or 0)
+            cur.execute("SELECT coalesce(sum(puntos), 0) FROM pichangol_canjes_web WHERE email = %s AND tipo = 'puntos' "
+                        "AND estado = 'reservado' AND creado > now() - make_interval(secs => %s)", (e, int(HOLD_SEGUNDOS)))
+            apartados = int((cur.fetchone() or [0])[0] or 0)
+            if int(ganados) - canjeados - apartados < int(minimo):
+                conn.rollback()
+                return "sin_puntos"
+            _insertar_cw(cur, canje)
+            conn.commit()
+            return ""
+    except Exception as ex:  # noqa: BLE001
+        print(f"[canje-web] puntos no apartados {canje.get('reserva_ref')}: {ex}", flush=True)
+        return "error"
+
+
+def puntos_apartados(email: str) -> int:
+    """Puntos que la web tiene APARTADOS (holds vivos) para ese correo."""
+    e = (email or "").strip().lower()
+    if not pg.habilitado or not e or not canjes_web_disponible():
+        return 0
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT coalesce(sum(puntos), 0) FROM pichangol_canjes_web WHERE email = %s AND tipo = 'puntos' "
+                        "AND estado = 'reservado' AND creado > now() - make_interval(secs => %s)", (e, int(HOLD_SEGUNDOS)))
+            return int((cur.fetchone() or [0])[0] or 0)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def canjes_web_de_ref(reserva_ref: str) -> list[dict]:
+    """Beneficios vivos (no devueltos) de esa reserva/grupo."""
+    if not pg.habilitado or not reserva_ref or not canjes_web_disponible():
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_CW)} FROM pichangol_canjes_web "
+                        "WHERE reserva_ref = %s AND estado <> 'devuelto' ORDER BY creado", (reserva_ref,))
+            return [_norm_cw(pg._fila_a_dict(_COLS_CW, f)) for f in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def canjes_web_por_ids(ids: list[str]) -> list[dict]:
+    """Beneficios vivos cuyo `reserva_ids` contiene alguna de esas reservas."""
+    if not pg.habilitado or not ids or not canjes_web_disponible():
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_CW)} FROM pichangol_canjes_web "
+                        "WHERE estado <> 'devuelto' AND reserva_ids ?| %s ORDER BY creado", (list(ids),))
+            return [_norm_cw(pg._fila_a_dict(_COLS_CW, f)) for f in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def canjes_web_reservados_viejos(segundos: int) -> list[dict]:
+    """Apartados que siguen 'reservado' pasado el hold (para el barrido)."""
+    if not pg.habilitado or not canjes_web_disponible():
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_CW)} FROM pichangol_canjes_web WHERE estado = 'reservado' "
+                        "AND creado < now() - make_interval(secs => %s) ORDER BY creado LIMIT 200", (int(segundos),))
+            return [_norm_cw(pg._fila_a_dict(_COLS_CW, f)) for f in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def canje_web_usar(canje_id: str, referencia_puntos: str = "") -> bool:
+    """reservado → usado. Si es de PUNTOS, en la MISMA transacción escribe el
+    canje en `pichangol_puntos_canjes` con el formato del APK (email, puntos,
+    soles, referencia). Idempotente: un segundo llamado no duplica nada."""
+    if not pg.habilitado or not canje_id:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE pichangol_canjes_web SET estado = 'usado', actualizado = now() "
+                        "WHERE id = %s AND estado = 'reservado' RETURNING tipo, email, puntos, descuento", (canje_id,))
+            f = cur.fetchone()
+            if not f:
+                conn.rollback()
+                return False
+            tipo, email, puntos, desc = f
+            if tipo == "puntos":
+                cur.execute("INSERT INTO pichangol_puntos_canjes (email, puntos, soles, referencia) VALUES (%s, %s, %s, %s)",
+                            (email, int(puntos or 0), round(float(desc or 0), 2), referencia_puntos))
+            conn.commit()
+            return True
+    except Exception as ex:  # noqa: BLE001
+        print(f"[canje-web] no se pudo confirmar {canje_id}: {ex}", flush=True)
+        return False
+
+
+def canje_web_devolver(canje_id: str, referencia_puntos: str = "") -> dict | None:
+    """→ devuelto. Bono: las horas vuelven a los MISMOS créditos (`detalle`).
+    Puntos ya usados: fila NEGATIVA en `pichangol_puntos_canjes` (el APK y la
+    web suman y el jugador los recupera). Todo en una transacción con el canje
+    bloqueado. Devuelve el canje como estaba (None si no había nada que hacer)."""
+    if not pg.habilitado or not canje_id:
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_CW)} FROM pichangol_canjes_web WHERE id = %s FOR UPDATE", (canje_id,))
+            f = cur.fetchone()
+            if not f:
+                conn.rollback()
+                return None
+            cj = _norm_cw(pg._fila_a_dict(_COLS_CW, f))
+            if cj["estado"] == "devuelto":
+                conn.rollback()
+                return None
+            if cj["tipo"] == "bono":
+                for cid, n in (cj.get("detalle") or {}).items():
+                    cur.execute("UPDATE pichangol_bonos_comprados SET horas_usadas = greatest(horas_usadas - %s, 0) WHERE id = %s",
+                                (int(n or 0), str(cid)))
+            elif cj["estado"] == "usado" and cj["puntos"] > 0:
+                cur.execute("INSERT INTO pichangol_puntos_canjes (email, puntos, soles, referencia) VALUES (%s, %s, %s, %s)",
+                            (cj["email"], -cj["puntos"], -round(cj["descuento"], 2), referencia_puntos))
+            cur.execute("UPDATE pichangol_canjes_web SET estado = 'devuelto', actualizado = now() WHERE id = %s", (canje_id,))
+            conn.commit()
+            return cj
+    except Exception as ex:  # noqa: BLE001
+        print(f"[canje-web] no se pudo devolver {canje_id}: {ex}", flush=True)
+        return None
+
+
+def bono_devolver_horas(email: str, club: str, dueno: str, horas: int) -> int:
+    """Devuelve horas de bono SIN registro web (reserva hecha con bono en el
+    APK, que no guarda qué créditos tocó): se restan de `horas_usadas` de los
+    créditos de ese local, empezando por el más reciente. Devuelve cuántas."""
+    e, d = (email or "").strip().lower(), (dueno or "").strip().lower()
+    if not pg.habilitado or not e or not club or horas <= 0:
+        return 0
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, horas_usadas FROM pichangol_bonos_comprados WHERE lower(comprador) = %s AND club = %s "
+                        "AND lower(dueno) = %s AND horas_usadas > 0 ORDER BY creado DESC, id DESC FOR UPDATE", (e, club, d))
+            restan = int(horas)
+            for cid, usadas in cur.fetchall():
+                if restan <= 0:
+                    break
+                n = min(restan, int(usadas or 0))
+                cur.execute("UPDATE pichangol_bonos_comprados SET horas_usadas = horas_usadas - %s WHERE id = %s", (n, cid))
+                restan -= n
+            conn.commit()
+            return int(horas) - restan
+    except Exception as ex:  # noqa: BLE001
+        print(f"[canje-web] no se pudieron devolver horas de bono a {e}: {ex}", flush=True)
+        return 0
+
+
+# ── Puntos canjeados en una reserva hecha en el APP ───────────────────────────
+# El APK escribe el canje (100 pts = S/ 3) DIRECTO en `pichangol_puntos_canjes`
+# con `referencia = <cancha>_<fecha>_<hora>` del primer turno (sin libro web).
+# Para que una cancelación sepa que se usaron puntos (no devolver plata que no
+# se pagó) y los devuelva, se lee el NETO de esas referencias: canjes (+) y
+# devoluciones previas (−, referencia `devolucion:<ref>`, el mismo formato de la
+# web). [desde] (epoch s) descarta canjes viejos de OTRA reserva del mismo
+# turno (mismo jugador, misma cancha, misma hora, días/semanas antes).
+
+def _sql_puntos_netos(refs: list[str], desde: float | None) -> tuple[str, list]:
+    devs = ["devolucion:" + r for r in refs]
+    sql = ("SELECT coalesce(sum(puntos), 0), coalesce(sum(soles), 0) FROM pichangol_puntos_canjes "
+           "WHERE lower(email) = %s AND (referencia = ANY(%s) OR referencia = ANY(%s))")
+    params: list = [list(refs), devs]
+    if desde is not None:
+        sql += " AND creado >= to_timestamp(%s)"
+        params.append(float(desde))
+    return sql, params
+
+
+def puntos_canje_neto(email: str, refs: list[str], desde: float | None = None) -> tuple[int, float]:
+    """(puntos, soles) aún canjeados en esas referencias (0 si ya se devolvieron
+    o si la tabla no existe)."""
+    e = (email or "").strip().lower()
+    refs = [r for r in (refs or []) if r]
+    if not pg.habilitado or not e or not refs:
+        return 0, 0.0
+    try:
+        sql, params = _sql_puntos_netos(refs, desde)
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(sql, [e, *params])
+            f = cur.fetchone() or (0, 0)
+            return max(int(f[0] or 0), 0), max(float(f[1] or 0), 0.0)
+    except Exception:  # noqa: BLE001
+        return 0, 0.0
+
+
+def puntos_devolver_neto(email: str, refs: list[str], ref_devolucion: str, desde: float | None = None) -> int:
+    """Devuelve al jugador lo que siga canjeado en esas referencias con una fila
+    NEGATIVA `devolucion:<ref_devolucion>` (lo que suman el APK y la web).
+    Candado por correo + relectura del neto en la misma transacción: un
+    segundo llamado no devuelve dos veces. Devuelve los puntos devueltos."""
+    e = (email or "").strip().lower()
+    refs = [r for r in (refs or []) if r]
+    if not pg.habilitado or not e or not refs or not ref_devolucion:
+        return 0
+    try:
+        sql, params = _sql_puntos_netos(refs, desde)
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT pg_advisory_xact_lock(hashtext(%s)) -- lock", ("pcg_puntos:" + e,))
+            cur.execute(sql, [e, *params])
+            f = cur.fetchone() or (0, 0)
+            pts, soles = int(f[0] or 0), float(f[1] or 0)
+            if pts <= 0:
+                conn.rollback()
+                return 0
+            cur.execute("INSERT INTO pichangol_puntos_canjes (email, puntos, soles, referencia) VALUES (%s, %s, %s, %s)",
+                        (e, -pts, -round(max(soles, 0.0), 2), "devolucion:" + ref_devolucion))
+            conn.commit()
+            return pts
+    except Exception as ex:  # noqa: BLE001
+        print(f"[puntos] no se pudieron devolver los puntos de {e} ({ref_devolucion}): {ex}", flush=True)
+        return 0

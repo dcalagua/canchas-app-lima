@@ -207,15 +207,10 @@ def renovacion_pro(request: Request, body: dict = Body(default_factory=dict)) ->
         email = _ses_json(request)
     except HTTPException:
         return _err("Inicia sesión.", 401, error="sesion_requerida")
-    m = stores.membresias_pro.get(email)
-    activa, _h = _pagos._pro_estado(email)
-    if not m or not activa:
-        return _err("No tienes una membresía Pro vigente.", 409)
-    if m.get("cortesia"):
-        return _err("El Pro de cortesía no se renueva solo.", 409)
     auto = bool((body or {}).get("auto"))
-    m["auto_renovar"] = auto
-    print(f"[pro] {email} renovación automática {'ON' if auto else 'OFF'}", flush=True)
+    r = _pagos.cambiar_renovacion_pro(email, auto)
+    if not r.get("ok"):
+        return _err(r.get("mensaje") or "No se pudo cambiar.", 409)
     return JSONResponse({"ok": True, "auto": auto})
 
 
@@ -668,14 +663,11 @@ def marcar_recordatorio(request: Request, body: dict = Body(default_factory=dict
     _c, filas = _validar_reservas(email, str(body.get("fecha") or ""), ids)
     if not filas:
         return _err("Esas reservas no son de tus canchas.", 404)
-    m = _marcas(email)
-    ahora = datetime.now(timezone.utc).isoformat()
+    # Misma marca que escribe el APK (`/negocio/recordados`); las de más de
+    # 10 días se limpian solas.
+    from web.anfitrion_negocio import marcar_recordado_de
     for r in filas:
-        m[f"res:{r['id']}"] = ahora
-    # Limpieza: las marcas de reservas viejas no se acumulan.
-    corte = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
-    for k in [k for k, v in m.items() if k.startswith("res:") and str(v) < corte]:
-        m.pop(k, None)
+        marcar_recordado_de(email, f"res:{r['id']}")
     return JSONResponse({"ok": True})
 
 

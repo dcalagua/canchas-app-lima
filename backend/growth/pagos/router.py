@@ -31,7 +31,8 @@ from db.store import stores, es_liquidacion_torneo
 
 from . import culqi
 from . import libelula
-from . import payphone
+from . import payphone  # noqa: F401 — los cobros en USD pasan por la fachada `pasarela_ec`
+from . import pasarela_ec
 from . import pozos
 from . import cuentas_cobro as _cc
 from . import tarifas_pasarela as _tp
@@ -441,36 +442,68 @@ def post_bo_deuda(req: DeudaBoReq) -> dict:
     email = (req.email or "").strip().lower()
     if not email:
         return {"ok": False, "error": "correo_requerido"}
-    ident = uuid.uuid4().hex
     base = (config.PUBLIC_BASE_URL or "").rstrip("/")
+    return registrar_deuda_bo(
+        email=email, monto_bs=req.monto_bs, concepto=req.concepto, nombre=req.nombre,
+        apellido=req.apellido, tipo=req.tipo, ref=req.ref, dueno_id=req.dueno_id,
+        retorno=(f"{base}/pagos/bo/retorno?id={{ident}}" if base else ""), base=base)
+
+
+def registrar_deuda_bo(*, email: str, monto_bs: float, concepto: str, tipo: str = "", ref: str = "",
+                       dueno_id: str = "", nombre: str = "", apellido: str = "", retorno: str = "",
+                       base: str = "", orden_web: str = "") -> dict:
+    """Núcleo de `POST /pagos/bo/deuda` (APK) que también usa el COBRO WEB en
+    bolivianos (`web/pago_hospedado.py`): registra la deuda en Libélula y la
+    guarda PENDIENTE en `stores.libelula_deudas`. `retorno` admite `{ident}`
+    (lo reemplaza por el identificador). `orden_web` liga la deuda con la
+    orden web: al pagarse, `_marcar_pagada` ejecuta la acción de esa orden."""
+    email = (email or "").strip().lower()
+    ident = uuid.uuid4().hex
+    base = (base or config.PUBLIC_BASE_URL or "").rstrip("/")
     callback = f"{base}/pagos/bo/callback" if base else ""
-    retorno = f"{base}/pagos/bo/retorno?id={ident}" if base else ""
+    url_ret = (retorno or "").replace("{ident}", ident)
     r = libelula.registrar_deuda(
-        identificador=ident, email=email, monto_bs=req.monto_bs,
-        concepto=req.concepto, callback_url=callback, url_retorno=retorno,
-        nombre=req.nombre, apellido=req.apellido)
+        identificador=ident, email=email, monto_bs=monto_bs,
+        concepto=concepto, callback_url=callback, url_retorno=url_ret,
+        nombre=nombre, apellido=apellido)
     if not r.get("ok"):
         return r
     stores.libelula_deudas[ident] = {
         "identificador": ident,
         "id_transaccion": r.get("id_transaccion"),
         "email": email,
-        "monto_bs": round(float(req.monto_bs), 2),
-        "concepto": req.concepto,
-        "tipo": req.tipo,
-        "ref": req.ref,
-        "dueno_id": (req.dueno_id or "").strip().lower(),
+        "monto_bs": round(float(monto_bs), 2),
+        "concepto": concepto,
+        "tipo": tipo,
+        "ref": ref,
+        "dueno_id": (dueno_id or "").strip().lower(),
         "pagado": False,
         "fecha_pago": None,
         "creado_en": _ahora_iso(),
+        "orden_web": orden_web or "",
     }
     return {
         "ok": True,
         "identificador": ident,
         "url_pasarela": r.get("url_pasarela"),
         "qr_url": r.get("qr_url"),
-        "retorno": retorno,
+        "retorno": url_ret,
     }
+
+
+def _al_pagar_orden_web(d: dict) -> None:
+    """Pago APROBADO por la pasarela (PayPhone confirmado / Libélula pagada)
+    de una ORDEN WEB (`web/pago_hospedado.py`): ejecuta su acción (confirmar
+    la reserva…) una sola vez. Llega por cualquier camino: retorno del
+    navegador, callback de Libélula, sondeo de la página o el barrido."""
+    orden = str(d.get("orden_web") or "")
+    if not orden:
+        return
+    try:
+        from web import pago_hospedado
+        pago_hospedado.al_pagar(orden)
+    except Exception as ex:  # noqa: BLE001 — el barrido lo reintenta
+        print(f"[pago-web] {orden} no se pudo finalizar al pagar: {ex}", flush=True)
 
 
 def _marcar_pagada(ident: str) -> dict | None:
@@ -495,6 +528,7 @@ def _marcar_pagada(ident: str) -> dict | None:
                 # PROMO bono de recarga (los umbrales aplican en Bs).
                 _aplicar_bono_recarga(
                     d["dueno_id"], centimos / 100.0, f"lib_{ident}")
+        _al_pagar_orden_web(d)
     return d
 
 
@@ -516,6 +550,9 @@ def bo_callback(transaction_id: str = "") -> dict:
     est = libelula.consultar_por_identificador(ident)
     if est.get("ok") and est.get("pagado"):
         _marcar_pagada(ident)
+        # Llega por GET (lo llama Libélula): el middleware no persiste, y un
+        # saldo/reserva acreditado solo en memoria se perdería en un redeploy.
+        _persistir_ahora()
         return {"ok": True}
     return {"ok": False}
 
@@ -531,6 +568,7 @@ def get_bo_deuda(identificador: str) -> dict:
         est = libelula.consultar_por_identificador(identificador)
         if est.get("ok") and est.get("pagado"):
             _marcar_pagada(identificador)
+            _persistir_ahora()  # GET: el middleware no guarda
     return {"ok": True, "pagado": bool(d.get("pagado")),
             "monto_bs": d.get("monto_bs"), "concepto": d.get("concepto")}
 
@@ -569,14 +607,14 @@ class PagoEcReq(BaseModel):
 @router.get("/ec/config", dependencies=_APP)
 def get_ec_config() -> dict:
     """¿Está activa la pasarela de Ecuador? (el APK decide si puede cobrar)."""
-    return {"disponible": payphone.disponible(), "moneda": "USD"}
+    return {"disponible": pasarela_ec.disponible(), "moneda": "USD"}
 
 
 @router.post("/ec/pago", dependencies=_APP)
 def post_ec_pago(req: PagoEcReq) -> dict:
     """Prepara el pago en PayPhone y devuelve las URLs hospedadas donde el APK
     (WebView) manda a pagar. Guarda el pago como PENDIENTE."""
-    if not payphone.disponible():
+    if not pasarela_ec.disponible():
         return {"ok": False, "error": "no_configurado"}
     email = (req.email or "").strip().lower()
     if not email:
@@ -584,15 +622,30 @@ def post_ec_pago(req: PagoEcReq) -> dict:
     monto = round(float(req.monto_usd), 2)
     if monto <= 0:
         return {"ok": False, "error": "monto_invalido"}
-    ident = uuid.uuid4().hex[:16]  # PayPhone sugiere ids cortos y únicos
     base = (config.PUBLIC_BASE_URL or "").rstrip("/")
     if not base:
         return {"ok": False, "error": "sin_base_url"}
-    r = payphone.preparar(
-        client_tx_id=ident, monto_usd=monto, concepto=req.concepto,
-        response_url=f"{base}/pagos/ec/retorno",
-        cancel_url=f"{base}/pagos/ec/cancelado",
-        email=email, telefono=req.telefono, documento=req.documento)
+    return preparar_pago_ec(
+        email=email, monto_usd=monto, concepto=req.concepto, tipo=req.tipo, ref=req.ref,
+        dueno_id=req.dueno_id, telefono=req.telefono, documento=req.documento,
+        response_url=f"{base}/pagos/ec/retorno", cancel_url=f"{base}/pagos/ec/cancelado", base=base)
+
+
+def preparar_pago_ec(*, email: str, monto_usd: float, concepto: str, response_url: str, cancel_url: str,
+                     base: str, tipo: str = "", ref: str = "", dueno_id: str = "", telefono: str = "",
+                     documento: str = "", orden_web: str = "") -> dict:
+    """Núcleo de `POST /pagos/ec/pago` (APK) que también usa el COBRO WEB en
+    dólares (`web/pago_hospedado.py`, con su propio `response_url`): prepara
+    en PayPhone y guarda el pago PENDIENTE en `stores.payphone_pagos`. Se
+    confirma con `_confirmar_ec` (retorno / sondeo, regla de los 5 min)."""
+    email = (email or "").strip().lower()
+    monto = round(float(monto_usd), 2)
+    ident = uuid.uuid4().hex[:16]  # PayPhone sugiere ids cortos y únicos
+    base = (base or "").rstrip("/")
+    r = pasarela_ec.preparar(
+        client_tx_id=ident, monto_usd=monto, concepto=concepto,
+        response_url=response_url, cancel_url=cancel_url,
+        email=email, telefono=telefono, documento=documento)
     if not r.get("ok"):
         return r
     stores.payphone_pagos[ident] = {
@@ -604,15 +657,16 @@ def post_ec_pago(req: PagoEcReq) -> dict:
         "url_payphone": r.get("url_payphone"),
         "email": email,
         "monto_usd": monto,
-        "concepto": req.concepto,
-        "tipo": req.tipo,
-        "ref": req.ref,
-        "dueno_id": (req.dueno_id or "").strip().lower(),
+        "concepto": concepto,
+        "tipo": tipo,
+        "ref": ref,
+        "dueno_id": (dueno_id or "").strip().lower(),
         "pagado": False,
         "estado": "pendiente",
         "autorizacion": None,
         "fecha_pago": None,
         "creado_en": _ahora_iso(),
+        "orden_web": orden_web or "",
     }
     return {
         "ok": True,
@@ -622,7 +676,7 @@ def post_ec_pago(req: PagoEcReq) -> dict:
         # El APK abre ESTA (nuestro dominio), no la de PayPhone directo: la
         # página de PayPhone exige llegar desde un dominio autorizado.
         "url_lanzador": f"{base}/pagos/ec/ir/{ident}",
-        "retorno": f"{base}/pagos/ec/retorno",
+        "retorno": response_url,
     }
 
 
@@ -656,7 +710,7 @@ def ec_ir(identificador: str, request: Request,
             "<meta name=referrer content=origin>"
             "<title>Pago Pichangol</title></head>"
             "<body style='font-family:system-ui;text-align:center;padding:44px;"
-            "color:#14463A'><p>Abriendo el pago seguro de PayPhone…</p>"
+            f"color:#14463A'><p>Abriendo el pago seguro de {_html.escape(pasarela_ec.nombre())}…</p>"
             f"<p><a href=\"{u}\" style='display:inline-block;margin-top:12px;"
             "padding:12px 20px;border-radius:12px;background:#AEEA94;"
             "color:#14463A;font-weight:700;text-decoration:none'>"
@@ -708,7 +762,7 @@ def _confirmar_ec(ident: str, transaction_id: str) -> dict | None:
 
 def _confirmar_ec_inner(d: dict, ident: str, tx: str) -> dict:
     d["transaction_id"] = tx
-    c = payphone.confirmar(transaction_id=tx, client_tx_id=ident)
+    c = pasarela_ec.confirmar(transaction_id=tx, client_tx_id=ident)
     if not c.get("ok"):
         d["estado"] = f"error: {c.get('error', '')}"[:80]
         return d
@@ -718,21 +772,22 @@ def _confirmar_ec_inner(d: dict, ident: str, tx: str) -> dict:
         return d
     # Defensa: si PayPhone reporta un monto y no cuadra, NO se da por pagado.
     mc = c.get("monto_centavos")
-    if isinstance(mc, (int, float)) and int(mc) != payphone.centavos(d["monto_usd"]):
+    if isinstance(mc, (int, float)) and int(mc) != pasarela_ec.centavos(d["monto_usd"]):
         d["estado"] = "monto_no_cuadra"
         return d
     d["pagado"] = True
     d["fecha_pago"] = _ahora_iso()
     if d.get("tipo") == "recarga" and d.get("dueno_id"):
-        cts = payphone.centavos(d["monto_usd"])
+        cts = pasarela_ec.centavos(d["monto_usd"])
         if cts > 0:
             stores.acreditar(d["dueno_id"], cts)
             stores.registrar_pago(
                 tipo="recarga", monto_centimos=cts, moneda="USD",
                 estado="aprobado", dueno_id=d["dueno_id"],
-                email=d.get("email", ""), concepto="Recarga (PayPhone)")
+                email=d.get("email", ""), concepto=f"Recarga ({pasarela_ec.nombre()})")
             # PROMO bono de recarga (los umbrales aplican en USD).
             _aplicar_bono_recarga(d["dueno_id"], cts / 100.0, f"pp_{ident}")
+    _al_pagar_orden_web(d)
     return d
 
 
@@ -759,7 +814,7 @@ def ec_retorno(id: str = "", clientTransactionId: str = "") -> HTMLResponse:
                           "Pichangol: tu pago ya quedó confirmado.")
     if d:
         return _pagina_ec("Pago no aprobado",
-                          "PayPhone no aprobó el cobro. Puedes intentarlo de "
+                          f"{pasarela_ec.nombre()} no aprobó el cobro. Puedes intentarlo de "
                           "nuevo desde la app; no se te cobró nada.")
     return _pagina_ec("Pago no encontrado",
                       "Vuelve a Pichangol e intenta otra vez.")
@@ -900,6 +955,8 @@ def post_recarga_qr(req: RecargaQrReq,
         "id": stores.next_id("recarga_qr"),
         "email": email,
         "monto_soles": round(float(req.monto_soles), 2),
+        # Moneda de la billetera al pedir (el monto va en esa moneda).
+        "moneda": moneda_billetera(email),
         "foto_url": (req.foto_url or "").strip(),
         "estado": "pendiente",
         "creado_en": _ahora_iso(),
@@ -946,9 +1003,10 @@ def post_recarga_qr_aprobar(solicitud_id: int) -> dict:
             if r.get("estado") != "pendiente":
                 return {"ok": True, "duplicada": True, "solicitud": r}
             centimos = _soles_a_centimos(r["monto_soles"])
+            mon = moneda_iso(r.get("moneda") or moneda_billetera(r["email"]))
             nuevo = stores.acreditar(r["email"], centimos)
             stores.registrar_pago(
-                tipo="recarga", monto_centimos=centimos, moneda="PEN",
+                tipo="recarga", monto_centimos=centimos, moneda=mon,
                 estado="aprobado", dueno_id=r["email"],
                 culqi_charge_id=f"qr_{solicitud_id}",
                 concepto="Recarga por Yape (QR)", medio="yape_qr")
@@ -956,7 +1014,7 @@ def post_recarga_qr_aprobar(solicitud_id: int) -> dict:
             r["resuelto_en"] = _ahora_iso()
             _aviso_push_usuario(
                 r["email"], "Recarga acreditada ✅",
-                f"+S/ {r['monto_soles']:.2f} a tu saldo Pichangol por tu "
+                f"+{moneda_simbolo(mon)} {r['monto_soles']:.2f} a tu saldo Pichangol por tu "
                 "Yape al QR. ¡Gracias!", tipo="recarga")
             bono = _aplicar_bono_recarga(
                 r["email"], r["monto_soles"], f"qr_{solicitud_id}")
@@ -1135,7 +1193,7 @@ def _aplicar_bono_recarga(dueno_id: str, monto_soles: float,
     cent = _soles_a_centimos(bono)
     stores.acreditar(dueno_id, cent)
     stores.registrar_pago(
-        tipo="bono_recarga", monto_centimos=cent, moneda="PEN",
+        tipo="bono_recarga", monto_centimos=cent, moneda=moneda_billetera(dueno_id),
         estado="aprobado", dueno_id=dueno_id, culqi_charge_id=ref_bono,
         concepto=f"Bono de recarga (+{pct:g}%)")
     _aviso_push_usuario(
@@ -1304,7 +1362,8 @@ def canjear_cupon(email: str, codigo: str, moneda: str = "") -> dict:
     usados.append(email)
     nuevo = stores.acreditar(email, cent)
     stores.registrar_pago(
-        tipo="cupon", monto_centimos=cent, moneda="PEN", estado="aprobado",
+        # Cupones = solo soles (validado arriba: billetera y cupón en PEN).
+        tipo="cupon", monto_centimos=cent, moneda=mon_cupon, estado="aprobado",
         dueno_id=email, culqi_charge_id=f"cupon_{codigo}_{email}",
         concepto=f"Cupón {codigo}")
     return {"ok": True, "valor_soles": valor,
@@ -1355,6 +1414,11 @@ def _pro_precio_centimos(pais: str = "PE") -> int:
         return 1200
 
 
+def _moneda_pais(pais: str | None) -> str:
+    """ISO de la moneda del país ('PE' → PEN, 'EC' → USD, 'BO' → BOB)."""
+    return _ISO_MONEDA_POR_PAIS.get((pais or "PE").strip().upper(), "PEN")
+
+
 def _pro_estado(email: str) -> tuple[bool, str | None]:
     m = stores.membresias_pro.get(email.strip().lower())
     if not m:
@@ -1380,6 +1444,7 @@ def get_pro_estado(email: str, pais: str = "PE") -> dict:
     m = stores.membresias_pro.get(email.strip().lower()) or {}
     return {"email": email, "activa": activa, "hasta": hasta,
             "renueva": bool(m) and not m.get("cortesia") and m.get("auto_renovar") is not False,
+            "cortesia": bool(m.get("cortesia")),
             "precio_centimos": c, "precio_soles": c / 100.0}
 
 
@@ -1425,11 +1490,51 @@ def post_pro_suscribir(req: ProSuscribirReq) -> dict:
     stores.membresias_pro[email] = {
         "hasta": hasta, "ultimo_cobro": ahora_dt.isoformat(), "pais": pais}
     stores.registrar_pago(
-        tipo="suscripcion_pro", monto_centimos=precio, moneda="PEN",
+        # El precio es el del país (`_pro_precio_centimos`): se registra en SU
+        # moneda (S/ · $ · Bs), no siempre en soles.
+        tipo="suscripcion_pro", monto_centimos=precio, moneda=_moneda_pais(pais),
         estado="aprobado", dueno_id=email, concepto="Pichangol Pro (1 mes)")
     nuevo = stores.saldo_centimos(email)
     return {"ok": True, "hasta": hasta,
             "saldo_centimos": nuevo, "saldo_soles": nuevo / 100.0}
+
+
+def cambiar_renovacion_pro(email: str, renovar: bool) -> dict:
+    """Cancela / reactiva la renovación automática de Pichangol Pro
+    (`auto_renovar` en la membresía, que `procesar_renovaciones_pro` respeta).
+    Núcleo ÚNICO del APK (`POST /pagos/pro/renovacion`) y de la web (`POST
+    /web/pro/renovacion`). Solo con Pro vigente y PAGADO: la cortesía nunca se
+    renueva sola. Devuelve {ok, renueva} o {ok: False, error, mensaje}."""
+    email = (email or "").strip().lower()
+    m = stores.membresias_pro.get(email)
+    activa, _h = _pro_estado(email) if email else (False, None)
+    if not m or not activa:
+        return {"ok": False, "error": "sin_pro",
+                "mensaje": "No tienes una membresía Pro vigente."}
+    if m.get("cortesia"):
+        return {"ok": False, "error": "cortesia",
+                "mensaje": "El Pro de cortesía no se renueva solo."}
+    m["auto_renovar"] = bool(renovar)
+    print(f"[pro] {email} renovación automática {'ON' if renovar else 'OFF'}",
+          flush=True)
+    return {"ok": True, "renueva": bool(renovar)}
+
+
+class ProRenovacionReq(BaseModel):
+    email: str
+    renovar: bool
+
+
+@router.post("/pro/renovacion", dependencies=_APP)
+def post_pro_renovacion(req: ProRenovacionReq,
+                        x_user_token: str | None = Header(default=None)) -> dict:
+    """APK: cancela / reactiva la renovación automática de Pro (misma regla que
+    la web). Con PAGOS_AUTH_USUARIO=1 solo el propio usuario."""
+    email = req.email.strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="email_requerido")
+    _require_usuario(email, x_user_token)
+    return cambiar_renovacion_pro(email, req.renovar)
 
 
 def procesar_renovaciones_pro() -> dict:
@@ -1461,7 +1566,8 @@ def procesar_renovaciones_pro() -> dict:
             m["hasta"] = (ahora_dt + timedelta(days=30)).isoformat()
             m["ultimo_cobro"] = ahora_dt.isoformat()
             stores.registrar_pago(
-                tipo="suscripcion_pro", monto_centimos=precio, moneda="PEN",
+                tipo="suscripcion_pro", monto_centimos=precio,
+                moneda=_moneda_pais(m.get("pais", "PE")),
                 estado="aprobado", dueno_id=email,
                 concepto="Pichangol Pro (renovación)")
             renovadas += 1
@@ -1511,7 +1617,7 @@ def post_pro_cortesia(req: ProCortesiaReq) -> dict:
         "hasta": hasta, "cortesia": True, "pais": (req.pais or "PE").upper()}
     # Registro auditable (monto 0): quién recibió cortesía y cuándo.
     stores.registrar_pago(
-        tipo="pro_cortesia", monto_centimos=0, moneda="PEN",
+        tipo="pro_cortesia", monto_centimos=0, moneda=_moneda_pais(req.pais),
         estado="aprobado", dueno_id=email,
         concepto=f"Pichangol Pro cortesía ({dias} días)")
     return {"ok": True, "email": email, "hasta": hasta, "cortesia": True}
@@ -1535,14 +1641,16 @@ def post_regalo_saldo(req: RegaloSaldoReq) -> dict:
     if soles <= 0:
         return {"ok": False, "error": "monto_invalido"}
     cent = _soles_a_centimos(soles)
+    # El regalo va en la moneda de la billetera del usuario (S/ · $ · Bs).
+    mon = moneda_billetera(email)
     total = stores.acreditar_promo(email, cent)
     stores.registrar_pago(
-        tipo="bono_bienvenida", monto_centimos=cent, moneda="PEN",
+        tipo="bono_bienvenida", monto_centimos=cent, moneda=mon,
         estado="aprobado", dueno_id=email,
         concepto="Regalo de saldo (cubre tus comisiones)")
     _aviso_push_usuario(
         email, "🎁 Te regalamos saldo",
-        f"Pichangol te regaló S/ {soles:.2f} de saldo: tus comisiones se "
+        f"Pichangol te regaló {moneda_simbolo(mon)} {soles:.2f} de saldo: tus comisiones se "
         "descuentan de ahí primero, sin tocar tu plata.")
     return {"ok": True, "email": email, "saldo_promo_centimos": total,
             "saldo_promo_soles": total / 100.0}
@@ -1642,8 +1750,9 @@ def get_pro_miembros_admin() -> dict:
 class TorneoInscribirReq(BaseModel):
     email: str                 # jugador que paga (de su saldo)
     academia_dueno: str        # correo del profe (recibe el neto en su billetera)
-    cuota_soles: float
+    cuota_soles: float          # en la unidad mayor de `moneda` (nombre histórico)
     concepto: str = ""
+    moneda: str = ""            # del campeonato (ISO o símbolo); vacío = PEN (APKs viejos)
 
 
 @router.post("/torneo/inscribir", dependencies=_APP)
@@ -1662,19 +1771,24 @@ def post_torneo_inscribir(req: TorneoInscribirReq) -> dict:
         return {"ok": False, "falta_saldo": True,
                 "requerido_centimos": cuota, "requerido_soles": cuota / 100.0,
                 "saldo_centimos": stores.saldo_centimos(email)}
-    comision = comision_centimos(req.cuota_soles)
+    mon = moneda_iso(req.moneda)
+    if req.moneda.strip() and mon != moneda_billetera(email):
+        # El saldo es de UNA moneda: una cuota en $ no se paga con saldo en S/.
+        return {"ok": False, "error": "moneda_distinta", "moneda": mon,
+                "moneda_billetera": moneda_billetera(email)}
+    comision = comision_centimos(req.cuota_soles, mon)
     neto = max(0, cuota - comision)
     stores.debitar(email, cuota)
     # Débito del JUGADOR (aparece en su historial de billetera como egreso).
     stores.registrar_pago(
-        tipo="inscripcion_torneo", monto_centimos=cuota, moneda="PEN",
+        tipo="inscripcion_torneo", monto_centimos=cuota, moneda=mon,
         estado="aprobado", dueno_id=email,
         concepto=req.concepto or "Inscripción a torneo")
     # Ingreso NETO del profe: POR RECIBIR (misma cola de liquidaciones que una
     # reserva online; la torre se lo transfiere), no a su saldo.
     if dueno and dueno != email:
         pago = stores.registrar_pago(
-            tipo="inscripcion_torneo_ingreso", monto_centimos=cuota, moneda="PEN",
+            tipo="inscripcion_torneo_ingreso", monto_centimos=cuota, moneda=mon,
             estado="aprobado", dueno_id=dueno, comision_centimos=comision,
             concepto=f"🏆 {req.concepto or 'Inscripción a torneo'} · {email} · inscripción individual · {datetime.now(timezone.utc).date().isoformat()}")
         pago.culqi_charge_id = f"torneo:{pago.id}"
@@ -2161,6 +2275,8 @@ def post_contratar_servicio(req: ContratarServicioReq) -> dict:
         "proximo_cobro": _mas_un_mes(ahora).isoformat(),
     }
     stores.registrar_pago(
+        # Servicios Pichangol (oculto, `kServiciosPichangolActivo`): tarifa
+        # en soles y débito automático con Culqi → solo Perú por ahora.
         tipo="suscripcion", monto_centimos=monto, moneda="PEN",
         estado="aprobado", dueno_id=req.dueno_id,
         concepto=f"Suscripción {req.servicio} · {req.academia_id}")
@@ -2234,6 +2350,7 @@ def procesar_renovaciones() -> dict:
         if stores.saldo_centimos(s["dueno_id"]) >= monto:
             stores.debitar(s["dueno_id"], monto)
             stores.registrar_pago(
+                # Servicios Pichangol: tarifa en soles (solo Perú, ver contratar).
                 tipo="suscripcion", monto_centimos=monto, moneda="PEN",
                 estado="aprobado", dueno_id=s["dueno_id"], concepto=concepto)
             _renovar_ok(s, ahora)
@@ -2249,6 +2366,7 @@ def procesar_renovaciones() -> dict:
                 cliente=_cliente_de(metodo.get("email") or ""))
             if r.get("ok"):
                 stores.registrar_pago(
+                    # Cargo de Culqi: siempre en soles.
                     tipo="suscripcion", monto_centimos=monto, moneda="PEN",
                     estado="aprobado", dueno_id=s["dueno_id"],
                     culqi_charge_id=r.get("charge_id"),
@@ -2487,6 +2605,7 @@ def procesar_renovaciones_alumnos() -> dict:
             if reparto[k]:
                 conc += f" · cargo por servicio S/ {reparto[k] / 100.0:.2f}"
             stores.registrar_pago(
+                # Débito automático con tarjeta de Culqi: siempre en soles.
                 tipo="matricula_online", monto_centimos=monto, moneda="PEN",
                 estado="aprobado", dueno_id=aca,
                 # La 1.ª fila lleva el chr_ real (sinceramiento con Culqi); las
@@ -2578,7 +2697,9 @@ def post_matricula(req: MatriculaReq) -> dict:
                 "neto_centimos": ya.monto_centimos - ya.comision_centimos,
                 "pct": pct}
     stores.registrar_pago(
-        tipo="matricula_online", monto_centimos=bruto, moneda="PEN",
+        # El cobro entra por la pasarela del país (Culqi PEN · PayPhone USD ·
+        # Libélula BOB): se registra en la moneda de ese país.
+        tipo="matricula_online", monto_centimos=bruto, moneda=_moneda_pais(req.pais),
         estado="aprobado", dueno_id=req.academia_id,
         culqi_charge_id=req.matricula_id, comision_centimos=comision,
         cargo_id=(req.charge_id.strip() or None), **_cargo_kw(req),
@@ -3198,6 +3319,7 @@ def post_cobrar(req: CobroReq) -> dict:
     charge_id = r["charge_id"]
     if stores.pago_por_charge(charge_id) is None:
         stores.registrar_pago(
+            # Cargo de Culqi: Culqi solo cobra en soles (PEN).
             tipo=req.tipo, monto_centimos=centimos, moneda="PEN",
             estado="aprobado", email=req.email, culqi_charge_id=charge_id,
             concepto=req.concepto)
@@ -3272,6 +3394,7 @@ def post_recarga(req: RecargaReq) -> dict:
     )
     if not r["ok"]:
         stores.registrar_pago(
+            # Cargo de Culqi: Culqi solo cobra en soles (PEN).
             tipo="recarga", monto_centimos=centimos, moneda="PEN",
             estado="rechazado", dueno_id=req.dueno_id, email=req.email,
             concepto="Recarga (rechazada)")
@@ -3288,6 +3411,7 @@ def post_recarga(req: RecargaReq) -> dict:
     if stores.pago_por_charge(charge_id) is None:
         stores.acreditar(req.dueno_id, centimos)
         stores.registrar_pago(
+            # Cargo de Culqi: Culqi solo cobra en soles (PEN).
             tipo="recarga", monto_centimos=centimos, moneda="PEN",
             estado="aprobado", dueno_id=req.dueno_id, email=req.email,
             culqi_charge_id=charge_id, concepto="Recarga de saldo")
@@ -3328,6 +3452,7 @@ def post_fee(req: FeeReq) -> dict:
     charge_id = r["charge_id"]
     if stores.pago_por_charge(charge_id) is None:
         stores.registrar_pago(
+            # Cargo de Culqi: Culqi solo cobra en soles (PEN).
             tipo="fee_reserva", monto_centimos=centimos, moneda="PEN",
             estado="aprobado", email=req.email, culqi_charge_id=charge_id,
             concepto=req.concepto)
@@ -3367,6 +3492,7 @@ async def post_webhook(request: Request, t: str | None = None) -> dict:
     if meta.get("tipo") == "recarga" and meta.get("dueno_id"):
         stores.acreditar(meta["dueno_id"], info["monto_centimos"])
         stores.registrar_pago(
+            # Cargo de Culqi: Culqi solo cobra en soles (PEN).
             tipo="recarga", monto_centimos=info["monto_centimos"], moneda="PEN",
             estado="aprobado", dueno_id=meta["dueno_id"],
             culqi_charge_id=charge_id, concepto="Recarga (webhook)")
@@ -3376,6 +3502,7 @@ async def post_webhook(request: Request, t: str | None = None) -> dict:
         # fee u otro: sólo lo registramos (idempotencia/auditoría).
         stores.registrar_pago(
             tipo=meta.get("tipo", "fee_reserva"),
+            # Cargo de Culqi: Culqi solo cobra en soles (PEN).
             monto_centimos=info["monto_centimos"], moneda="PEN",
             estado="aprobado", culqi_charge_id=charge_id,
             concepto="Confirmado por webhook")

@@ -27,10 +27,12 @@ MISMAS tablas y la MISMA lógica:
     efectivo por cuota = `marcarCuotaPagada`).
   · No-show de una reserva (`marcarNoShow`), que usa la lista de Reservas.
 
-Lo que en el app vive solo en el teléfono (cierres de caja, reservas fijas,
-notas de clientes, último recordatorio de cobro) aquí se guarda en el snapshot
-del backend (`stores.negocio_web[correo]`), así el dueño lo ve igual desde
-cualquier navegador.
+Cierres de caja, reservas fijas, notas de clientes y "ya recordado" (cobro
+de academia y reservas) viven en el snapshot del backend
+(`stores.negocio_web[correo]`), FUENTE ÚNICA para la web y el APK: el app los
+lee y escribe por `/negocio/*` (`negocio_app.py`), que llama a las MISMAS
+funciones de abajo (`cerrar_caja_de`, `autocerrar_de`, `crear_fija`,
+`generar_fijas`, `guardar_nota_de`, `marcar_recordado_de`…).
 """
 
 from __future__ import annotations
@@ -39,6 +41,7 @@ import csv
 import io
 import json
 import re
+import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
@@ -344,15 +347,202 @@ def _persistir() -> None:
 
 
 def _negocio(email: str) -> dict:
-    """Lo del panel que el app guarda en el teléfono, aquí en el snapshot."""
-    email = email.lower()
+    """Datos del negocio del dueño que NO viven en una tabla (cierres de caja,
+    reservas fijas, notas de clientes, recordatorios). FUENTE ÚNICA para la web
+    y el APK (`negocio_app.py`, `/negocio/*`): ambos leen y escriben aquí."""
+    email = email.strip().lower()
     d = stores.negocio_web.get(email)
     if d is None:
         d = {"fijas": [], "cierres": [], "notas": {}, "recordados": {}}
         stores.negocio_web[email] = d
-    for k, v in (("fijas", []), ("cierres", []), ("notas", {}), ("recordados", {})):
+    # `fijas_quitadas`: ids borrados (lápida) para que la copia vieja de otro
+    # teléfono no los resucite al migrar; `migraciones`: equipos que ya
+    # subieron lo que tenían guardado solo en el teléfono.
+    for k, v in (("fijas", []), ("cierres", []), ("notas", {}), ("recordados", {}), ("fijas_quitadas", []),
+                 ("migraciones", [])):
         d.setdefault(k, v)
     return d
+
+
+# ── Operaciones compartidas web + APK ───────────────────────────────────────
+# La web (handlers de abajo) y el APK (`negocio_app.py`) pasan por ESTAS
+# funciones: mismas validaciones, mismo formato y mismo resultado.
+
+_LOCK = threading.RLock()
+
+
+class ErrNegocio(Exception):
+    """Error de validación con su código HTTP (la web y el APK lo responden)."""
+
+    def __init__(self, msg: str, status: int = 400):
+        super().__init__(msg)
+        self.msg = msg
+        self.status = status
+
+
+def _ordenar_cierres(neg: dict) -> None:
+    neg["cierres"] = sorted(neg["cierres"], key=lambda x: x.get("fecha", ""), reverse=True)[:400]
+
+
+def cerrar_caja_de(email: str, fecha: str, m: str = "", canchas: list[dict] | None = None) -> dict:
+    """Cierre (arqueo CONFIRMADO) de la caja de un día en una moneda: foto de
+    cobrado / por cobrar / reservas / medios calculada con las reservas de la
+    nube (`caja_dia`). Reemplaza un cierre previo (manual o automático)."""
+    canchas = datos.canchas_de_dueno(email) if canchas is None else canchas
+    if not canchas:
+        raise ErrNegocio("No tienes canchas a tu nombre.", 404)
+    canchas, iso_mon, sim, _ = _por_moneda(canchas, str(m or ""))
+    try:
+        dia = date.fromisoformat(str(fecha or ""))
+    except ValueError:
+        raise ErrNegocio("Fecha inválida.") from None
+    filas = reservas_dueno([c["id"] for c in canchas], dia.isoformat(), dia.isoformat())
+    c = caja_dia(filas, dia.isoformat(), canchas)
+    cierre = {"fecha": dia.isoformat(), "moneda": iso_mon, "cobrado": c["cobrado"], "porCobrar": c["por_cobrar"],
+              "reservas": c["reservas"], "cerradaEn": datetime.now(timezone.utc).isoformat(), "automatico": False,
+              "medios": c["medios"]}
+    with _LOCK:
+        neg = _negocio(email)
+        neg["cierres"] = [x for x in neg["cierres"] if not (x.get("fecha") == dia.isoformat() and x.get("moneda", "PEN") == iso_mon)]
+        neg["cierres"].insert(0, cierre)
+        _ordenar_cierres(neg)
+    return {"cierre": cierre, "cobrado": c["cobrado"], "simbolo": sim}
+
+
+def reabrir_caja_de(email: str, fecha: str, m: str = "") -> bool:
+    """Borra el cierre de ese día y moneda (para revisarlo y volver a cerrar)."""
+    iso_mon = str(m or "PEN").upper()
+    with _LOCK:
+        neg = _negocio(email)
+        antes = len(neg["cierres"])
+        neg["cierres"] = [x for x in neg["cierres"] if not (x.get("fecha") == str(fecha or "") and x.get("moneda", "PEN") == iso_mon)]
+        return len(neg["cierres"]) != antes
+
+
+def autocerrar_de(email: str, canchas: list[dict] | None = None) -> bool:
+    """Cierre automático de respaldo en TODAS las monedas del dueño (lo que la
+    web hace al abrir la caja de una moneda). True si agregó algún cierre."""
+    canchas = datos.canchas_de_dueno(email) if canchas is None else canchas
+    if not canchas:
+        return False
+    cambio = False
+    for iso_mon, _sim in _monedas(canchas):
+        sub = [c for c in canchas if _moneda_de(c)[1] == iso_mon]
+        if not sub:
+            continue
+        ahora = _hoy_de(sub)
+        hoy = ahora.date()
+        filas = reservas_dueno([c["id"] for c in sub], (hoy - timedelta(days=45)).isoformat(), hoy.isoformat())
+        with _LOCK:
+            neg = _negocio(email)
+            antes = len(neg["cierres"])
+            _autocerrar(neg, filas, sub, iso_mon, ahora)
+            cambio = cambio or len(neg["cierres"]) != antes
+    return cambio
+
+
+def crear_fija(email: str, canchas: list[dict], body: dict, fid: str = "") -> dict:
+    """Nuevo cliente fijo (validaciones de la web) y genera su serie. Con [fid]
+    (el APK manda el suyo para reintentar sin duplicar) es idempotente."""
+    c = next((x for x in canchas if x["id"] == str(body.get("cancha_id") or "")), None)
+    if c is None:
+        raise ErrNegocio("Esta cancha no está a tu nombre.", 404)
+    try:
+        dia = int(body.get("dia") or 0)
+    except (TypeError, ValueError):
+        dia = 0
+    if not 1 <= dia <= 7:
+        raise ErrNegocio("Elige el día de la semana.")
+    hora = str(body.get("hora") or "")
+    if hora not in _slots(c):
+        raise ErrNegocio("Elige la hora.")
+    nombre = re.sub(r"\s+", " ", str(body.get("nombre") or "")).strip()[:80]
+    if not nombre:
+        raise ErrNegocio("Escribe el nombre del cliente.")
+    tel = re.sub(r"[^\d+ ]", "", str(body.get("telefono") or "")).strip()[:20]
+    correo = str(body.get("email") or "").strip().lower()[:120]
+    if correo and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", correo):
+        raise ErrNegocio("El correo del cliente no es válido.")
+    fid = re.sub(r"[^\w\-]", "", str(fid or ""))[:60]
+    with _LOCK:
+        neg = _negocio(email)
+        if fid and any(f.get("id") == fid for f in neg["fijas"]):
+            return {"id": fid, "creadas": 0, "omitidas": [], "existia": True}
+        if fid and fid in neg["fijas_quitadas"]:
+            raise ErrNegocio("Ese cliente fijo ya fue quitado.", 410)
+        if any(f.get("canchaId") == c["id"] and int(f.get("diaSemana") or 0) == dia and f.get("hora") == hora and f.get("activo", True)
+               for f in neg["fijas"]):
+            raise ErrNegocio("Ya tienes un cliente fijo en ese día y hora.", 409)
+        fid = fid or f"fija_{time.time_ns() // 1000}"
+        neg["fijas"].append({"id": fid, "canchaId": c["id"], "diaSemana": dia, "hora": hora, "clienteNombre": nombre,
+                             "clienteEmail": correo, "clienteTelefono": tel, "activo": True, "hechas": []})
+    res = generar_fijas(email, canchas, solo=fid)
+    return {"id": fid, **res}
+
+
+def activar_fija_de(email: str, fid: str, activo: bool, canchas: list[dict] | None = None) -> dict:
+    """Pausa / reactiva un cliente fijo; al reactivar completa su serie."""
+    with _LOCK:
+        f = next((x for x in _negocio(email)["fijas"] if x.get("id") == fid), None)
+        if f is None:
+            raise ErrNegocio("No encontramos ese cliente fijo.", 404)
+        f["activo"] = bool(activo)
+    if not f["activo"]:
+        return {"creadas": 0, "omitidas": []}
+    return generar_fijas(email, datos.canchas_de_dueno(email) if canchas is None else canchas, solo=fid)
+
+
+def quitar_fija_de(email: str, fid: str) -> bool:
+    """Deja de generar (las reservas ya creadas siguen en la agenda)."""
+    with _LOCK:
+        neg = _negocio(email)
+        antes = len(neg["fijas"])
+        neg["fijas"] = [x for x in neg["fijas"] if x.get("id") != fid]
+        if len(neg["fijas"]) == antes:
+            return False
+        if fid not in neg["fijas_quitadas"]:
+            neg["fijas_quitadas"] = (neg["fijas_quitadas"] + [fid])[-300:]
+        return True
+
+
+def guardar_nota_de(email: str, clave: str, texto: str) -> None:
+    """Nota privada del dueño sobre un cliente (vacía = se borra)."""
+    clave = str(clave or "").strip().lower()[:160]
+    texto = re.sub(r"[ \t]+", " ", str(texto or "")).strip()[:600]
+    if not clave:
+        raise ErrNegocio("Cliente inválido.")
+    with _LOCK:
+        notas = _negocio(email)["notas"]
+        if texto:
+            notas[clave] = texto
+        else:
+            notas.pop(clave, None)
+
+
+def marcar_recordado_de(email: str, clave: str, cuando: str = "") -> str:
+    """Anota que se le recordó algo a alguien: el pago a un alumno (clave =
+    id de su matrícula) o una reserva (clave `res:<id>`). Las marcas de reservas
+    de más de 10 días se limpian solas."""
+    clave = str(clave or "").strip()[:120]
+    if not clave:
+        raise ErrNegocio("Falta a quién se le recordó.")
+    ahora = datetime.now(timezone.utc)
+    try:
+        t = datetime.fromisoformat(str(cuando).replace("Z", "+00:00")) if cuando else ahora
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        t = min(t, ahora)
+    except ValueError:
+        t = ahora
+    iso = t.isoformat()
+    with _LOCK:
+        m = _negocio(email)["recordados"]
+        if str(m.get(clave) or "") < iso:
+            m[clave] = iso
+        corte = (ahora - timedelta(days=10)).isoformat()
+        for k in [k for k, v in m.items() if k.startswith("res:") and str(v) < corte]:
+            m.pop(k, None)
+        return str(m.get(clave) or iso)
 
 
 # ── utilidades de presentación ──────────────────────────────────────────────
@@ -1007,23 +1197,11 @@ def cerrar_caja(request: Request, body: dict = Body(default_factory=dict)) -> JS
     ses = sesion.de_request(request)
     if not ses:
         return _err("sesion_requerida", 401)
-    canchas = datos.canchas_de_dueno(ses["email"])
-    if not canchas:
-        return _err("No tienes canchas a tu nombre.", 404)
-    canchas, iso_mon, sim, _ = _por_moneda(canchas, str(body.get("m") or ""))
     try:
-        dia = date.fromisoformat(str(body.get("fecha") or ""))
-    except ValueError:
-        return _err("Fecha inválida.")
-    filas = reservas_dueno([c["id"] for c in canchas], dia.isoformat(), dia.isoformat())
-    c = caja_dia(filas, dia.isoformat(), canchas)
-    neg = _negocio(ses["email"])
-    neg["cierres"] = [x for x in neg["cierres"] if not (x.get("fecha") == dia.isoformat() and x.get("moneda", "PEN") == iso_mon)]
-    neg["cierres"].insert(0, {"fecha": dia.isoformat(), "moneda": iso_mon, "cobrado": c["cobrado"], "porCobrar": c["por_cobrar"],
-                              "reservas": c["reservas"], "cerradaEn": datetime.now(timezone.utc).isoformat(), "automatico": False,
-                              "medios": c["medios"]})
-    neg["cierres"] = sorted(neg["cierres"], key=lambda x: x.get("fecha", ""), reverse=True)[:400]
-    return _json_ok(cobrado=c["cobrado"], simbolo=sim)
+        r = cerrar_caja_de(ses["email"], str(body.get("fecha") or ""), str(body.get("m") or ""))
+    except ErrNegocio as ex:
+        return _err(ex.msg, ex.status)
+    return _json_ok(cobrado=r["cobrado"], simbolo=r["simbolo"])
 
 
 @router.post("/anfitrion/caja/reabrir")
@@ -1031,10 +1209,7 @@ def reabrir_caja(request: Request, body: dict = Body(default_factory=dict)) -> J
     ses = sesion.de_request(request)
     if not ses:
         return _err("sesion_requerida", 401)
-    iso_mon = str(body.get("m") or "PEN").upper()
-    f = str(body.get("fecha") or "")
-    neg = _negocio(ses["email"])
-    neg["cierres"] = [x for x in neg["cierres"] if not (x.get("fecha") == f and x.get("moneda", "PEN") == iso_mon)]
+    reabrir_caja_de(ses["email"], str(body.get("fecha") or ""), str(body.get("m") or "PEN"))
     return _json_ok()
 
 
@@ -1214,15 +1389,10 @@ def guardar_nota(request: Request, body: dict = Body(default_factory=dict)) -> J
     ses = sesion.de_request(request)
     if not ses:
         return _err("sesion_requerida", 401)
-    clave = str(body.get("clave") or "").strip().lower()[:160]
-    texto = re.sub(r"[ \t]+", " ", str(body.get("texto") or "")).strip()[:600]
-    if not clave:
-        return _err("Cliente inválido.")
-    notas = _negocio(ses["email"])["notas"]
-    if texto:
-        notas[clave] = texto
-    else:
-        notas.pop(clave, None)
+    try:
+        guardar_nota_de(ses["email"], str(body.get("clave") or ""), str(body.get("texto") or ""))
+    except ErrNegocio as ex:
+        return _err(ex.msg, ex.status)
     return _json_ok()
 
 
@@ -1431,35 +1601,11 @@ def nueva_fija(request: Request, body: dict = Body(default_factory=dict)) -> JSO
     ses = sesion.de_request(request)
     if not ses:
         return _err("sesion_requerida", 401)
-    canchas = datos.canchas_de_dueno(ses["email"])
-    c = next((x for x in canchas if x["id"] == str(body.get("cancha_id") or "")), None)
-    if c is None:
-        return _err("Esta cancha no está a tu nombre.", 404)
     try:
-        dia = int(body.get("dia") or 0)
-    except (TypeError, ValueError):
-        dia = 0
-    if not 1 <= dia <= 7:
-        return _err("Elige el día de la semana.")
-    hora = str(body.get("hora") or "")
-    if hora not in _slots(c):
-        return _err("Elige la hora.")
-    nombre = re.sub(r"\s+", " ", str(body.get("nombre") or "")).strip()[:80]
-    if not nombre:
-        return _err("Escribe el nombre del cliente.")
-    tel = re.sub(r"[^\d+ ]", "", str(body.get("telefono") or "")).strip()[:20]
-    correo = str(body.get("email") or "").strip().lower()[:120]
-    if correo and not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", correo):
-        return _err("El correo del cliente no es válido.")
-    neg = _negocio(ses["email"])
-    if any(f.get("canchaId") == c["id"] and int(f.get("diaSemana") or 0) == dia and f.get("hora") == hora and f.get("activo", True)
-           for f in neg["fijas"]):
-        return _err("Ya tienes un cliente fijo en ese día y hora.", 409)
-    fid = f"fija_{time.time_ns() // 1000}"
-    neg["fijas"].append({"id": fid, "canchaId": c["id"], "diaSemana": dia, "hora": hora, "clienteNombre": nombre,
-                         "clienteEmail": correo, "clienteTelefono": tel, "activo": True, "hechas": []})
-    res = generar_fijas(ses["email"], canchas, solo=fid)
-    return _json_ok(id=fid, **res)
+        res = crear_fija(ses["email"], datos.canchas_de_dueno(ses["email"]), body)
+    except ErrNegocio as ex:
+        return _err(ex.msg, ex.status)
+    return _json_ok(id=res["id"], creadas=res["creadas"], omitidas=res["omitidas"])
 
 
 @router.post("/anfitrion/fijas/{fid}/activo")
@@ -1467,11 +1613,10 @@ def activar_fija(request: Request, fid: str, body: dict = Body(default_factory=d
     ses = sesion.de_request(request)
     if not ses:
         return _err("sesion_requerida", 401)
-    f = next((x for x in _negocio(ses["email"])["fijas"] if x.get("id") == fid), None)
-    if f is None:
-        return _err("No encontramos ese cliente fijo.", 404)
-    f["activo"] = bool(body.get("activo"))
-    res = generar_fijas(ses["email"], datos.canchas_de_dueno(ses["email"]), solo=fid) if f["activo"] else {"creadas": 0, "omitidas": []}
+    try:
+        res = activar_fija_de(ses["email"], fid, bool(body.get("activo")))
+    except ErrNegocio as ex:
+        return _err(ex.msg, ex.status)
     return _json_ok(**res)
 
 
@@ -1481,10 +1626,7 @@ def quitar_fija(request: Request, fid: str) -> JSONResponse:
     ses = sesion.de_request(request)
     if not ses:
         return _err("sesion_requerida", 401)
-    neg = _negocio(ses["email"])
-    antes = len(neg["fijas"])
-    neg["fijas"] = [x for x in neg["fijas"] if x.get("id") != fid]
-    if len(neg["fijas"]) == antes:
+    if not quitar_fija_de(ses["email"], fid):
         return _err("No encontramos ese cliente fijo.", 404)
     return _json_ok()
 
@@ -1661,7 +1803,7 @@ def recordar_cobro(request: Request, body: dict = Body(default_factory=dict)) ->
         if not mensaje_academia(a["id"], m["email"], ses["email"], mi_nombre(ses), _msj_cobro(m, deuda, sim, True)):
             return _err("No se pudo enviar por la app.", 503)
         canal = "app"
-    _negocio(ses["email"])["recordados"][m["id"]] = datetime.now(timezone.utc).isoformat()
+    marcar_recordado_de(ses["email"], m["id"])
     return _json_ok(canal=canal)
 
 

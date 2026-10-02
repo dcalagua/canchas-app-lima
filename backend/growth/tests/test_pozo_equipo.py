@@ -165,6 +165,10 @@ def test_torneo_gratis_no_cobra_y_el_pozo_sobrevive_al_snapshot():
     # Moneda de la sede: la comisión mínima es la de esa moneda ($ 0.50).
     _limpio()
     _recargar("u@x.com", 10)
+    # Su billetera es en dólares (recarga en USD): el pozo en $ se paga con
+    # ella; un saldo en otra moneda recibe `moneda_distinta`.
+    stores.registrar_pago(tipo="recarga", monto_centimos=1000, moneda="USD", estado="aprobado",
+                          dueno_id="u@x.com", email="u@x.com", culqi_charge_id="pp_usd_1")
     r = _aporte("u@x.com", cuota_equipo_soles=5, cupo=1, moneda="$", equipo_id="eq_usd")
     assert r["pozo"]["liquidado"] and r["pozo"]["comision_centimos"] == 50 and r["pozo"]["moneda"] == "USD"
 

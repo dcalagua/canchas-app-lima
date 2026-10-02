@@ -476,6 +476,153 @@ def plantel_abierto(c: dict) -> bool:
             and bool(c.get("inscripcionAbierta")) and not terminado(c))
 
 
+def puede_inscribirse(c: dict) -> bool:
+    """`puedeInscribirse` de `campeonato_detalle_screen` (sin el `!esDueno`, que
+    decide el llamador): crear equipo / inscripción individual. Se cierra con el
+    fixture generado o con la fecha de cierre vencida."""
+    return (not c.get("cerrado") and bool(c.get("inscripcionAbierta", True))
+            and not fixture_generado(c) and not inscripcion_vencida(c))
+
+
+def motivo_plantel_cerrado(c: dict) -> str:
+    """`Campeonato.motivoPlantelCerrado` del app: por qué NO se puede unir al
+    plantel ('' = sí se puede)."""
+    if c.get("deporte") != "futbol":
+        return "Este torneo no es por equipos."
+    if c.get("cerrado") or terminado(c):
+        return "Este campeonato ya terminó."
+    if not c.get("inscripcionAbierta", True):
+        return "El organizador cerró las inscripciones."
+    return ""
+
+
+def tiene_cuota_por_equipo(c: dict) -> bool:
+    """`Campeonato.tieneCuotaPorEquipo`: fútbol con costo = la vaquita."""
+    return c.get("deporte") == "futbol" and float(c.get("costoInscripcion") or 0) > 0
+
+
+def pozo_centimos(p: dict) -> int:
+    """`Campeonato.pozoCentimos`: suma de los aportes espejados en el plantel."""
+    return sum(int(i.get("aporteCentimos") or 0) for i in (p.get("roster") or []))
+
+
+def faltante_pozo(c: dict, p: dict) -> int:
+    return max(0, cuota_equipo_centimos(c) - pozo_centimos(p))
+
+
+def pozo_completo(c: dict, p: dict) -> bool:
+    return not tiene_cuota_por_equipo(c) or pozo_centimos(p) >= cuota_equipo_centimos(c)
+
+
+def aporte_siguiente(c: dict, p: dict | None) -> int:
+    """`Campeonato.aporteSiguiente`: lo que pone el PRÓXIMO en unirse (su cuota
+    o lo que falte del pozo)."""
+    if not tiene_cuota_por_equipo(c):
+        return 0
+    cj = cuota_jugador_centimos(c)
+    if p is None:
+        return max(0, min(cj, cuota_equipo_centimos(c)))
+    return min(faltante_pozo(c, p), cj)
+
+
+def mis_participaciones(c: dict, email: str) -> list[dict]:
+    """Participantes donde está este correo (yo, un hijo que inscribí, mi
+    equipo como capitán o un plantel donde juego), como `misParticipaciones`."""
+    email = (email or "").strip().lower()
+    if not email:
+        return []
+    out = []
+    for p in c.get("participantes") or []:
+        if (str(p.get("email") or "").lower() == email or str(p.get("capitanEmail") or "").lower() == email
+                or any(str(i.get("email") or "").lower() == email for i in (p.get("roster") or []))):
+            out.append(p)
+    return out
+
+
+def equipo_por_codigo(c: dict, codigo: str) -> dict | None:
+    cod = (codigo or "").strip().upper()
+    if not cod:
+        return None
+    return next((p for p in (c.get("participantes") or []) if str(p.get("codigo") or "").strip().upper() == cod), None)
+
+
+def _micros() -> int:
+    return int(time.time() * 1_000_000)
+
+
+def _integrante(nombre: str, email: str, foto: str | None, aporte: int = 0) -> dict:
+    """`Integrante.toJson` (fotoUrl / aporteCentimos solo si vienen)."""
+    d = {"id": f"in_{_micros()}", "nombre": nombre, "email": email}
+    if foto:
+        d["fotoUrl"] = foto
+    if aporte > 0:
+        d["aporteCentimos"] = int(aporte)
+    return d
+
+
+def agregar_inscripcion(c: dict, *, email: str, nombre_usuario: str, foto: str | None,
+                        nombre_menor: str = "", edad: int | None = None, whatsapp: str = "") -> dict:
+    """`AppState.inscribirseCampeonato`: el jugador (o su hijo, con él de
+    apoderado) queda como participante-app. Devuelve el participante nuevo."""
+    menor = bool((nombre_menor or "").strip())
+    p = {"id": f"part_{_micros()}", "nombre": nombre_menor.strip() if menor else nombre_usuario,
+         "contacto": (whatsapp or "").strip() if menor else "", "email": email,
+         "apoderadoNombre": nombre_usuario if menor else ""}
+    if foto and not menor:
+        p["fotoUrl"] = foto
+    if menor and edad is not None:
+        p["edad"] = int(edad)
+    c.setdefault("participantes", []).append(p)
+    return p
+
+
+def ya_inscrito_con_nombre(c: dict, email: str, nombre: str) -> bool:
+    """Duplicado del app: mismo correo y mismo nombre de participante."""
+    email, nombre = (email or "").lower(), (nombre or "").strip().lower()
+    return any(str(p.get("email") or "").lower() == email and str(p.get("nombre") or "").strip().lower() == nombre
+               for p in (c.get("participantes") or []))
+
+
+def codigo_unico(c: dict) -> str:
+    usados = {str(p.get("codigo") or "").upper() for p in (c.get("participantes") or []) if p.get("codigo")}
+    cod = nuevo_codigo()
+    while cod.upper() in usados:
+        time.sleep(0.000001)
+        cod = nuevo_codigo()
+    return cod
+
+
+def crear_equipo(c: dict, *, equipo_id: str, nombre_equipo: str, email: str, nombre_usuario: str,
+                 foto: str | None, aporte: int = 0) -> dict:
+    """`AppState.crearEquipoCampeonato`: equipo con el usuario de CAPITÁN y un
+    CÓDIGO para que su plantel se auto-inscriba."""
+    p = {"id": equipo_id, "nombre": nombre_equipo.strip(), "contacto": "", "email": email,
+         "apoderadoNombre": "", "capitanEmail": email, "codigo": codigo_unico(c),
+         "roster": [_integrante(nombre_usuario, email, foto, aporte)]}
+    if foto:
+        p["fotoUrl"] = foto
+    c.setdefault("participantes", []).append(p)
+    return p
+
+
+def unir_al_plantel(c: dict, equipo: dict, *, email: str, nombre_usuario: str, foto: str | None, aporte: int = 0) -> dict:
+    """`AppState.unirseAEquipoPorCodigo`: entra al roster con su cuenta."""
+    i = _integrante(nombre_usuario, email, foto, aporte)
+    equipo.setdefault("roster", []).append(i)
+    return i
+
+
+def registrar_aporte(equipo: dict, email: str, centimos: int) -> None:
+    """`AppState.registrarAporteEquipo`: suma lo que puso al aporte espejado."""
+    if centimos <= 0:
+        return
+    email = (email or "").lower()
+    for i in equipo.get("roster") or []:
+        if str(i.get("email") or "").lower() == email:
+            i["aporteCentimos"] = int(i.get("aporteCentimos") or 0) + int(centimos)
+            return
+
+
 def completar_codigos(c: dict) -> bool:
     """Fútbol: TODO participante es un equipo y debe tener CÓDIGO (enlace de
     invitación). Los que creó el organizador antes de que existiera el código

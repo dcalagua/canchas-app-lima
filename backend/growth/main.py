@@ -38,13 +38,16 @@ from web.academia import router as academia_web_router
 from web.jugador_clases import router as jugador_clases_router
 from web.jugador_market import router as jugador_market_router
 from web.jugador_billetera import router as jugador_billetera_router
+from web.pago_hospedado import router as pago_hospedado_router
 from web.jugador_liga import router as jugador_liga_router
+from web.jugador_campeonatos import router as jugador_campeonatos_router
 from web.jugador_cuenta import router as jugador_cuenta_router
 from web.jugador_bodega import router as jugador_bodega_router
 from web.anfitrion_bodega import router as anfitrion_bodega_router
 from web.jugador_mensajes import router as jugador_mensajes_router
 from web.jugador_partidos import router as jugador_partidos_router
 from referidos import router as referidos_router
+from negocio_app import router as negocio_app_router
 from web.jugador_novedades import router as jugador_novedades_router
 from web.jugador_pro import router as jugador_pro_router
 from models import ConfigRequest, ConsentimientoRequest
@@ -170,11 +173,14 @@ app.include_router(academia_web_router)  # ficha pública /academia/{id} + matr�
 app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}
 app.include_router(jugador_clases_router)  # /mis-clases: Mis clases y pagos del jugador
 app.include_router(jugador_billetera_router)  # /mi-billetera, /mis-pagos, /mis-puntos, /mi-pais
+app.include_router(pago_hospedado_router)  # /web/pago/*: cobro web en USD/BOB por pasarela hospedada (Ecuador / Bolivia)
 app.include_router(jugador_liga_router)  # /mi-nivel, /liga
+app.include_router(jugador_campeonatos_router)  # /torneo/{id}: inscribirse / crear o unirse a un equipo pagando con saldo
 app.include_router(jugador_cuenta_router)  # /cuenta/configuracion, /cuenta/identidad
 app.include_router(jugador_bodega_router)  # /bodega/{cancha_id}/pedir, /mis-pedidos-bodega
 app.include_router(jugador_mensajes_router)  # /mensajes: bandeja, chat, grupos (mensajería del app)
 app.include_router(anfitrion_academia_ops_router)  # asistencia, evaluación, ranking, reportes, chats y sedes de la academia
+app.include_router(negocio_app_router)  # /negocio/* (APK): cierres de caja, fijas, notas y recordatorios = mismos datos que la web
 app.include_router(referidos_router)  # /referidos/estado y /referidos/canjear (JSON del APK; bono en el backend)
 app.include_router(jugador_partidos_router)  # /partidos, /pichangas, /referidos, /jugador/{ref}, /anfitrion/llenar (antes del comodín)
 app.include_router(jugador_novedades_router)  # /novedades (estados/historias) y /canales
@@ -335,13 +341,32 @@ async def _iniciar_cron_holds_web() -> None:
         await asyncio.sleep(30)
         while True:
             try:
+                # Órdenes de pago HOSPEDADO (PayPhone · Libélula): reconcilia con
+                # la pasarela, finaliza las pagadas y vence las viejas soltando su horario.
+                from web import pago_hospedado as _ph
+                r = await asyncio.to_thread(_ph.barrer)
+                if r.get("finalizadas") or r.get("vencidas"):
+                    print(f"[pago-web] barrido: {r}", flush=True)
+            except Exception as ex:  # noqa: BLE001
+                print(f"[pago-web] barrido falló: {ex}", flush=True)
+            try:
                 from web import datos as _datos
                 filas = await asyncio.to_thread(_datos.liberar_holds_vencidos_todos)
                 if filas:
                     import fidelidad as _fid
+                    from web import beneficios as _ben
                     for f in filas:
                         await asyncio.to_thread(_fid.revertir_canje, "", [f["id"]])
+                    # Bono / puntos apartados por esos holds vuelven al jugador.
+                    await asyncio.to_thread(_ben.soltar, "", [f["id"] for f in filas])
                     print("[holds] liberados: " + ", ".join(f"{f['cancha_id']} {f['fecha']} {f['hora']}" for f in filas), flush=True)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                # Barrido de apartados de bono/puntos cuyo hold se borró por
+                # otro camino (p. ej. al reservar otro cliente esa cancha).
+                from web import beneficios as _ben
+                await asyncio.to_thread(_ben.barrer_vencidos)
             except Exception:  # noqa: BLE001
                 pass
             await asyncio.sleep(60)

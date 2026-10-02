@@ -10,6 +10,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../data/canchas_repo.dart';
+import '../models/fotos_propias.dart';
 import '../models/models.dart';
 import '../services/location_service.dart';
 import '../services/propiedad_service.dart';
@@ -25,6 +26,7 @@ import 'login_google_sheet.dart';
 import '../utils/moneda.dart';
 import '../config/pais.dart';
 import '../widgets/icono_vivo.dart';
+import '../widgets/dialogo_pichangol.dart';
 
 /// Registrar una cancha escribiendo la dirección: se geocodifica y aparece en el
 /// mapa automáticamente (estilo eSupplier). Un local puede tener varias canchas
@@ -135,12 +137,16 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   bool _geocodificando = false;
   String? _errorGeo;
 
-  Uint8List? _foto;
+  // FOTOS PROPIAS del local (decisión del director, 2-oct-2026): obligatorias
+  // (mínimo `appState.reclamoFotosMin`, lo decide la torre). Las de Google NO
+  // se guardan (sus términos no lo permiten) ni cuentan: solo sirven de
+  // referencia visual mientras se reclama.
+  final List<Uint8List> _fotos = [];
   bool _analizando = false;
   DeteccionDeporte? _deteccion;
 
-  // Fotos que ya traía la cancha descubierta (Google): se conservan al reclamar.
-  List<String> _fotosBase = const [];
+  int get _minFotos => appState.reclamoFotosMin;
+  bool get _fotosOk => _fotos.length >= _minFotos;
 
   static const _limaCentro = LatLng(-12.0931, -77.0465);
   // Centro inicial del mapa detectado por GPS (Perú/Bolivia/Ecuador…), para no
@@ -158,9 +164,6 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       _deportes
         ..clear()
         ..add(b.deporte);
-      _fotosBase = b.fotos.isNotEmpty
-          ? b.fotos
-          : (b.fotoUrl != null ? [b.fotoUrl!] : const []);
     } else {
       // Cancha nueva (sin ubicación fija): centra el mapa en donde está el dueño.
       _autoCentrarMapa();
@@ -208,14 +211,31 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     setState(() => _fotoEvidencia = bytes);
   }
 
-  Future<void> _elegirFoto() async {
-    final XFile? file = await ImagePicker()
-        .pickImage(source: ImageSource.gallery, maxWidth: 1024);
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    if (!mounted) return;
+  /// Agrega fotos propias del local (cámara o galería, varias a la vez). La
+  /// primera pasa por la IA que sugiere el deporte (solo al registrar).
+  Future<void> _elegirFoto(ImageSource fuente) async {
+    final libres = FotosPropias.maximo - _fotos.length;
+    if (libres <= 0) {
+      _avisar('Máximo ${FotosPropias.maximo} fotos.');
+      return;
+    }
+    final nuevas = <Uint8List>[];
+    if (fuente == ImageSource.camera) {
+      final XFile? file =
+          await ImagePicker().pickImage(source: fuente, maxWidth: 1280);
+      if (file != null) nuevas.add(await file.readAsBytes());
+    } else {
+      final files = await ImagePicker().pickMultiImage(maxWidth: 1280);
+      for (final f in files.take(libres)) {
+        nuevas.add(await f.readAsBytes());
+      }
+    }
+    if (nuevas.isEmpty || !mounted) return;
+    final eraPrimera = _fotos.isEmpty;
+    setState(() => _fotos.addAll(nuevas));
+    if (!eraPrimera || _esReclamo) return;
+    final bytes = nuevas.first;
     setState(() {
-      _foto = bytes;
       _analizando = true;
       _deteccion = null;
     });
@@ -356,6 +376,14 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   }
 
   Future<void> _publicarInterno() async {
+    if (!_fotosOk) {
+      await avisarPichangol(context,
+          titulo: 'Faltan fotos de tu local',
+          icono: Icons.add_a_photo,
+          mensaje: '${FotosPropias.textoFaltan(_minFotos - _fotos.length)}. '
+              '${FotosPropias.porQue}');
+      return;
+    }
     final nombre = _nombre.text.trim();
     if (nombre.isEmpty) {
       _avisar('Ponle un nombre al local / cancha.');
@@ -425,15 +453,24 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
       final (distrito, barrio) = await _zonaDe(_ubicacion!);
       final ts = DateTime.now().millisecondsSinceEpoch;
 
-      // Sube la foto nueva (si hay) y conserva las que ya traía de Google.
-      String? fotoSubida;
-      if (_foto != null) {
-        fotoSubida = await CanchasRepo.subirFoto('u$ts', _foto!);
+      // Sube las fotos PROPIAS a la carpeta del registro (`canchas/u<ts>/`,
+      // la comparten sus canchas hermanas). Las de Google no se guardan.
+      final fotos = <String>[];
+      for (var i = 0; i < _fotos.length; i++) {
+        final url = await CanchasRepo.subirFoto('u$ts', _fotos[i],
+            sufijo: 'app_${DateTime.now().millisecondsSinceEpoch}_$i');
+        if (url != null) fotos.add(url);
       }
-      final fotos = <String>[
-        if (fotoSubida != null) fotoSubida,
-        ..._fotosBase,
-      ];
+      // Sin el mínimo de fotos en la nube el reclamo no podría aprobarse:
+      // no se crea nada y se avisa (sin red / bucket sin permisos).
+      if (fotos.length < _minFotos) {
+        return (
+          creadas: <Cancha>[],
+          reclamoOk: false,
+          yaReclamada: false,
+          fotosFallidas: true,
+        );
+      }
       final fotoUrl = fotos.isNotEmpty ? fotos.first : null;
 
       // Atamos la cancha a la cuenta del dueño (correo) para recuperarla luego en
@@ -564,9 +601,19 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         creadas: creadas,
         reclamoOk: reclamoOk,
         yaReclamada: yaReclamada,
+        fotosFallidas: false,
       );
     }, texto: 'Enviando tu solicitud…');
 
+    if (res.fotosFallidas) {
+      if (!mounted) return;
+      await avisarPichangol(context,
+          titulo: 'No se subieron tus fotos',
+          icono: Icons.image_not_supported_outlined,
+          mensaje: '${CanchasRepo.ultimoErrorFoto ?? 'No pudimos subir las fotos de tu local.'} '
+              'Las necesitamos para aprobar tu cancha; inténtalo de nuevo.');
+      return;
+    }
     final creadas = res.creadas;
     final reclamoOk = res.reclamoOk;
     final yaReclamada = res.yaReclamada;
@@ -611,9 +658,14 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     if (_esReclamo) {
       return [
         PasoWizard(
+          titulo: 'Fotos de tu local',
+          sub: 'Sube fotos tuyas: las de Google no se pueden guardar y las '
+              'tuyas prueban que el local existe.',
+          hijos: _hijosFoto(context),
+        ),
+        PasoWizard(
           titulo: 'Ubica tu cancha',
-          sub: 'Confirma el nombre del local y el punto exacto en el mapa. '
-              'Las fotos ya las trajimos de Google.',
+          sub: 'Confirma el nombre del local y el punto exacto en el mapa.',
           hijos: [..._hijosNombre(context), ..._hijosMapa(context)],
         ),
         PasoWizard(
@@ -633,7 +685,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
     return [
       PasoWizard(
         titulo: 'Describe tu local',
-        sub: 'Una buena foto y el nombre con el que te conocen tus clientes.',
+        sub: 'Fotos reales de tu local y el nombre con el que te conocen tus clientes.',
         hijos: [..._hijosFoto(context), ..._hijosNombre(context)],
       ),
       PasoWizard(
@@ -656,11 +708,17 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
 
   /// Validación LIGERA por paso (la final la hace _publicar como siempre).
   bool _validarPaso(int i) {
-    final esNombre = i == 0;
-    final esUbicacion = _esReclamo ? i == 0 : i == 1;
-    final esContacto = (_esReclamo && i == 1) || (!_esReclamo && i == 3);
+    // Reclamo: 0 fotos · 1 nombre+mapa · 2 contacto · 3 resumen.
+    // Registro: 0 fotos+nombre · 1 mapa · 2 deportes · 3 contacto.
+    final esFotos = i == 0;
+    final esNombre = _esReclamo ? i == 1 : i == 0;
+    final esUbicacion = i == 1;
+    final esContacto = (_esReclamo && i == 2) || (!_esReclamo && i == 3);
     String? falta;
-    if (esNombre && _nombre.text.trim().isEmpty) {
+    if (esFotos && !_fotosOk) {
+      falta = '${FotosPropias.textoFaltan(_minFotos - _fotos.length)}.';
+    }
+    if (falta == null && esNombre && _nombre.text.trim().isEmpty) {
       falta = 'Ponle nombre al local para continuar.';
     }
     if (falta == null && esUbicacion && _direccion.text.trim().isEmpty) {
@@ -678,7 +736,13 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
   }
 
   List<Widget> _hijosFoto(BuildContext context) => [
-            _ZonaFoto(foto: _foto, onTap: _elegirFoto),
+            _GaleriaFotos(
+              fotos: _fotos,
+              minimo: _minFotos,
+              ia: !_esReclamo,
+              onAgregar: _elegirFoto,
+              onQuitar: (i) => setState(() => _fotos.removeAt(i)),
+            ),
             const SizedBox(height: 12),
             if (_analizando)
               Row(
@@ -1270,38 +1334,147 @@ class _EvidenciaFoto extends StatelessWidget {
   }
 }
 
-class _ZonaFoto extends StatelessWidget {
-  final Uint8List? foto;
-  final VoidCallback onTap;
-  const _ZonaFoto({required this.foto, required this.onTap});
+/// Galería de FOTOS PROPIAS del local con contador "2 de 2 fotos ✓"
+/// (obligatorias al registrar/reclamar; decisión del director, 2-oct-2026).
+class _GaleriaFotos extends StatelessWidget {
+  final List<Uint8List> fotos;
+  final int minimo;
+  final bool ia;
+  final ValueChanged<ImageSource> onAgregar;
+  final ValueChanged<int> onQuitar;
+  const _GaleriaFotos({
+    required this.fotos,
+    required this.minimo,
+    required this.ia,
+    required this.onAgregar,
+    required this.onQuitar,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 180,
-        decoration: BoxDecoration(
-          color: const Color(0xFFEAF6EF),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: verdeClaro),
+    final ok = fotos.length >= minimo;
+    final lleno = fotos.length >= FotosPropias.maximo;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (minimo > 0)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: ok ? const Color(0xFFE7F6EF) : const Color(0xFFFFF6E0),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              ok
+                  ? '$minimo de $minimo fotos ✓'
+                  : '${fotos.length} de $minimo fotos · obligatorias',
+              style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                  color: ok ? verdeOscuro : const Color(0xFF8A5A00)),
+            ),
+          ),
+        const SizedBox(height: 8),
+        Text(
+          '${minimo > 0 ? 'Sube al menos $minimo foto${minimo == 1 ? '' : 's'} tuya${minimo == 1 ? '' : 's'} del local. ' : ''}'
+          '${FotosPropias.porQue}${ia ? ' La IA detecta el deporte con la primera.' : ''}',
+          style: const TextStyle(color: textoTenue, fontSize: 12.5),
         ),
-        clipBehavior: Clip.antiAlias,
-        child: foto == null
-            ? Column(
+        const SizedBox(height: 12),
+        if (fotos.isNotEmpty)
+          SizedBox(
+            height: 112,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: fotos.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (_, i) => Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(14),
+                    child: Image.memory(fotos[i],
+                        width: 112, height: 112, fit: BoxFit.cover),
+                  ),
+                  if (i == 0)
+                    Positioned(
+                      left: 6,
+                      bottom: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(999)),
+                        child: const Text('Portada',
+                            style: TextStyle(
+                                fontSize: 11, fontWeight: FontWeight.w800)),
+                      ),
+                    ),
+                  Positioned(
+                    right: 4,
+                    top: 4,
+                    child: Material(
+                      color: Colors.white,
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: () => onQuitar(i),
+                        child: const Padding(
+                          padding: EdgeInsets.all(4),
+                          child: Icon(Icons.close, size: 16),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          GestureDetector(
+            onTap: () => onAgregar(ImageSource.gallery),
+            child: Container(
+              height: 150,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: const Color(0xFFEAF6EF),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: verdeClaro),
+              ),
+              child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: const [
                   IconoVivo(Icons.add_a_photo, color: verdeCancha, size: 40),
                   SizedBox(height: 8),
-                  Text('Sube una foto de la cancha',
+                  Text('Sube fotos de tu local',
                       style: TextStyle(
                           color: verdeOscuro, fontWeight: FontWeight.w600)),
-                  Text('la IA detectará el deporte',
-                      style: TextStyle(color: Colors.grey, fontSize: 12)),
                 ],
-              )
-            : Image.memory(foto!, fit: BoxFit.cover, width: double.infinity),
-      ),
+              ),
+            ),
+          ),
+        const SizedBox(height: 10),
+        if (!lleno)
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => onAgregar(ImageSource.camera),
+                  icon: const Icon(Icons.photo_camera_outlined),
+                  label: const Text('Tomar foto'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => onAgregar(ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library_outlined),
+                  label: const Text('Galería'),
+                ),
+              ),
+            ],
+          ),
+      ],
     );
   }
 }

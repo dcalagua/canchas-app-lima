@@ -167,7 +167,7 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .linea{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:7px 0;border-bottom:1px solid var(--trazo)}
 .linea:last-child{border-bottom:0}.linea b{font-weight:700}
 /* Boleadores (sparring por turno) en la ficha de reserva y en Modo anfitrión */
-.fid-box{border:1px dashed var(--verde);background:#F1FAF5;border-radius:14px;padding:12px 14px;margin:0 0 14px}.fid-box .sellos{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 2px}.fid-box .sello{width:26px;height:26px;border-radius:50%;border:2px solid #CFE8DA;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;background:#fff}.fid-box .sello.on{background:var(--verde);border-color:var(--verde)}.fid-usar{display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:700;cursor:pointer}.fid-usar input{width:auto;flex:none}.bol-box{display:grid;gap:10px;margin:4px 0 12px}
+.fid-box{border:1px dashed var(--verde);background:#F1FAF5;border-radius:14px;padding:12px 14px;margin:0 0 14px}.fid-box .sellos{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 2px}.fid-box .sello{width:26px;height:26px;border-radius:50%;border:2px solid #CFE8DA;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;background:#fff}.fid-box .sello.on{background:var(--verde);border-color:var(--verde)}.fid-usar{display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:700;cursor:pointer}.fid-usar input{width:auto;flex:none}.ben-box .ben-it+.ben-it{margin-top:10px;padding-top:10px;border-top:1px solid #DCEFE4}.ben-box .sub{margin:2px 0 0;font-size:13px}.bol-box{display:grid;gap:10px;margin:4px 0 12px}
 .bol-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--trazo);border-radius:16px;background:var(--blanco);cursor:pointer;box-shadow:0 1px 3px rgba(10,27,61,.06);transition:box-shadow .15s,border-color .15s}
 .bol-card:hover{box-shadow:0 4px 14px rgba(10,27,61,.10)}.bol-card.sel{border-color:var(--noche);box-shadow:0 0 0 2px var(--noche) inset}
 .bol-card img,.bol-card .ini{width:48px;height:48px;border-radius:50%;object-fit:cover;flex:none;background:var(--tinte);display:inline-flex;align-items:center;justify-content:center;font-weight:800;color:var(--esmeralda);font-size:18px}
@@ -789,7 +789,7 @@ def marcas_pago() -> str:
             "<span class='candado'>🔒 Pago seguro · Culqi</span></div>")
 
 
-def selector_medio_pago() -> str:
+def selector_medio_pago(pasarela: str = "culqi", nombre: str = "", etiqueta: str = "") -> str:
     """Selector del MEDIO DE PAGO antes de abrir el Checkout de Culqi (pedido
     del director, 27-sep-2026: "que Yape salga como pantalla principal y no la
     de pagar con tarjeta"). El Checkout v4 abre SIEMPRE en Tarjeta aunque
@@ -797,18 +797,43 @@ def selector_medio_pago() -> str:
     elige AQUÍ — Yape preseleccionado, como en el APK — y el checkout se abre
     SOLO con ese método (así Yape ES la pantalla principal). `pcgMedioPago()`
     (JS_NAV) devuelve 'yape' | 'tarjeta'; `medio_pago_mini()` es el atajo de
-    la barra fija en móvil, sincronizado con este selector."""
+    la barra fija en móvil, sincronizado con este selector.
+
+    COBRO EN USD / BOB (oct-2026, `web/pago_hospedado.py`): con otra
+    [pasarela] (la de Ecuador según `pagos.pasarela_ec`, 'libelula' o la
+    simulada 'sim' de QAS) hay UN solo medio —la página hospedada de esa
+    pasarela— y `pcgMedioPago()` devuelve su clave."""
+    if pasarela and pasarela != "culqi":
+        if pasarela == "sim":
+            chip = "🧪 Pago de prueba · QAS"
+            pie = "🧪 Pasarela SIMULADA de pruebas: no se cobra dinero real."
+            corto = "🧪 Prueba"
+            nom = "el pago de prueba"
+        elif pasarela == "libelula":
+            chip = f"📱 {e(etiqueta or 'Libélula · QR o tarjeta')}"
+            pie = f"🔒 Pago seguro · {e(nombre or 'Libélula')} (QR interoperable, tarjeta o Tigo Money)"
+            corto = "📱 " + e(nombre or "Libélula")
+            nom = nombre or "Libélula"
+        else:
+            chip = f"💳 {e(etiqueta or nombre or pasarela)}"
+            pie = f"🔒 Pago seguro · {e(nombre or pasarela)} (tarjeta Visa, Mastercard o Diners)"
+            corto = "💳 " + e(nombre or pasarela)
+            nom = nombre or pasarela
+        return (f"<div class='medio-pago' id='medioPago'><div class='mp-t'>¿Cómo quieres pagar?</div><div class='chips'>"
+                f"<button type='button' class='chip sel' data-medio='{e(pasarela)}' data-nombre='{e(nom)}' data-corto='{corto}'>{chip}</button>"
+                f"</div><div class='sub' style='font-size:12px;margin-top:8px'>{pie}</div></div>")
     return ("<div class='medio-pago' id='medioPago'><div class='mp-t'>¿Cómo quieres pagar?</div><div class='chips'>"
             "<button type='button' class='chip sel' data-medio='yape'><span class='yape'>Yape</span> Yape <small>Recomendado</small></button>"
             "<button type='button' class='chip' data-medio='tarjeta'><span class='visa'>VISA</span><span class='mc'><i></i><i></i></span> Tarjeta</button>"
             "</div><div class='sub' style='font-size:12px;margin-top:8px'>🔒 Pago seguro · Culqi</div></div>")
 
 
-def medio_pago_mini() -> str:
+def medio_pago_mini(pasarela: str = "culqi") -> str:
     """Chip chico para la barra fija de móvil: muestra el medio elegido (Yape
     por defecto) y al tocarlo alterna Yape ↔ tarjeta (sincronizado con
-    `selector_medio_pago`)."""
-    return "<button type='button' class='mp-mini' id='medioPagoMini' data-medio='yape' aria-label='Cambiar medio de pago'></button>"
+    `selector_medio_pago`). Con una pasarela hospedada solo la muestra."""
+    m = "yape" if not pasarela or pasarela == "culqi" else pasarela
+    return f"<button type='button' class='mp-mini' id='medioPagoMini' data-medio='{e(m)}' aria-label='Medio de pago'></button>"
 
 
 _FLAGS = {
@@ -998,11 +1023,15 @@ JS_NAV = r"""
   function mpSet(m){
     document.querySelectorAll('#medioPago [data-medio]').forEach(function(x){ x.classList.toggle('sel', x.dataset.medio === m); });
     var mini = document.getElementById('medioPagoMini');
-    if(mini){ mini.dataset.medio = m; mini.innerHTML = (m === 'yape' ? "<span class='yape'>Yape</span>" : "<span class='visa'>VISA</span><span class='mc'><i></i><i></i></span>") + ' <b>&#8250;</b>'; mini.title = 'Pagas con ' + (m === 'yape' ? 'Yape' : 'tarjeta') + ' · toca para cambiar'; }
+    if(mini && m !== 'yape' && m !== 'tarjeta'){
+      // Pasarela hospedada (USD / BOB): un solo medio; el chip solo lo muestra.
+      var ch = document.querySelector('#medioPago [data-medio="' + m + '"]');
+      mini.dataset.medio = m; mini.innerHTML = ch ? (ch.dataset.corto || ch.dataset.nombre || '') : ''; mini.title = 'Pagas con ' + (ch ? ch.dataset.nombre : 'la pasarela de tu país');
+    } else if(mini){ mini.dataset.medio = m; mini.innerHTML = (m === 'yape' ? "<span class='yape'>Yape</span>" : "<span class='visa'>VISA</span><span class='mc'><i></i><i></i></span>") + ' <b>&#8250;</b>'; mini.title = 'Pagas con ' + (m === 'yape' ? 'Yape' : 'tarjeta') + ' · toca para cambiar'; }
   }
   document.addEventListener('click', function(ev){
     var b = ev.target.closest && ev.target.closest('#medioPago [data-medio]'); if(b){ mpSet(b.dataset.medio); return; }
-    var mini = ev.target.closest && ev.target.closest('#medioPagoMini'); if(mini){ mpSet(mini.dataset.medio === 'yape' ? 'tarjeta' : 'yape'); }
+    var mini = ev.target.closest && ev.target.closest('#medioPagoMini'); if(mini && (mini.dataset.medio === 'yape' || mini.dataset.medio === 'tarjeta')){ mpSet(mini.dataset.medio === 'yape' ? 'tarjeta' : 'yape'); }
   });
   window.pcgMedioPago = function(){ var s = document.querySelector('#medioPago [data-medio].sel'); return s ? s.dataset.medio : 'yape'; };
   document.addEventListener('DOMContentLoaded', function(){ if(document.getElementById('medioPagoMini')) mpSet(window.pcgMedioPago()); });
@@ -1057,9 +1086,10 @@ JS_NAV = r"""
     h += '<div class="rp-t"><span>Total a pagar hoy</span><b>' + fmt(o.total) + '</b></div>';
     if(o.nota) h += '<div class="rp-n">' + o.nota + '</div>';
     h += '</div>';
-    var tarjeta = o.medio === 'tarjeta';
+    var chm = document.querySelector('#medioPago [data-medio="' + (o.medio || '') + '"]');
+    var nomMedio = o.medio === 'tarjeta' ? 'tarjeta' : ((o.medio === 'yape' || !o.medio) ? 'Yape' : (o.medioNombre || (chm && chm.dataset.nombre) || 'la pasarela de pago'));
     return pcgConfirmar({titulo: o.titulo || 'Resumen de tu pago', html: h, logo: true,
-                         confirmar: o.confirmar || ('Continuar con ' + (tarjeta ? 'tarjeta' : 'Yape') + ' · ' + fmt(o.total)), cancelar: 'Volver'});
+                         confirmar: o.confirmar || ('Continuar con ' + nomMedio + ' · ' + fmt(o.total)), cancelar: 'Volver'});
   };
   window.pcgAvisar = function(o){ return abrirDlg(typeof o === 'string' ? {mensaje: o} : (o || {}), false); };
   // pcgCargando('Guardando…') muestra el velo con spinner; pcgCargando(false) lo quita. Con {demora:ms} aparece solo si la espera supera ese tiempo.
@@ -1096,7 +1126,7 @@ JS_NAV = r"""
     setTimeout(function(){ if(!e.defaultPrevented) navegando(); }, 0);
   });
   document.addEventListener('submit', function(e){ if(!e.defaultPrevented && !(e.target.target && e.target.target !== '_self')) navegando(); });
-  var FONDO = /\/web\/(mensajes\/(no-leidos|hilo|bandeja)|foto|descubrir|sesion$)|\/static\//;
+  var FONDO = /\/web\/(mensajes\/(no-leidos|hilo|bandeja)|foto|descubrir|sesion$|pago\/[^\/]+\/estado)|\/static\//;
   if(window.fetch && !window.fetch.__pcg){ var f0 = window.fetch; var fw = function(rec, op){ var url = typeof rec === 'string' ? rec : ((rec && rec.url) || '');
       if(FONDO.test(url)) return f0.apply(this, arguments);
       nBar++; var t = setTimeout(function(){ if(nBar > 0) barra(true); }, 250);

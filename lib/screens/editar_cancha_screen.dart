@@ -11,6 +11,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../data/canchas_repo.dart';
 import '../services/supabase_service.dart';
+import '../models/fotos_propias.dart';
 import '../models/models.dart';
 import '../models/fidelidad.dart';
 import '../services/propiedad_service.dart';
@@ -280,6 +281,23 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
           : 'Pon tu ${docIdActual} para validar tu identidad.');
       return;
     }
+    // FOTOS PROPIAS obligatorias al RECLAMAR (decisión del director,
+    // 2-oct-2026): sin el mínimo, el reclamo no podría aprobarse. Las de Google
+    // no cuentan (sus términos no permiten guardarlas).
+    final minFotos = appState.reclamoFotosMin;
+    if (esReclamo && minFotos > 0) {
+      final tiene = FotosPropias.propias(_fotosUrl, widget.cancha.id).length +
+          _fotosNuevas.length;
+      if (tiene < minFotos) {
+        await avisarPichangol(context,
+            titulo: 'Faltan fotos de tu local',
+            icono: Icons.add_a_photo,
+            mensaje: '${FotosPropias.textoFaltan(minFotos - tiene)}. '
+                '${FotosPropias.porQue}');
+        return;
+      }
+    }
+    if (!mounted) return;
     setState(() => _guardando = true);
 
     // Sube las fotos nuevas y arma la galería final (existentes + nuevas).
@@ -342,6 +360,24 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
         ),
       );
       return;
+    }
+    // Al reclamar, solo se guardan fotos PROPIAS (las de Google no se pueden
+    // guardar) y debe quedar el mínimo ya subido a la nube.
+    if (esReclamo) {
+      final propias = FotosPropias.propias(fotos, widget.cancha.id);
+      fotos
+        ..clear()
+        ..addAll(propias);
+      if (minFotos > 0 && fotos.length < minFotos) {
+        if (!mounted) return;
+        setState(() => _guardando = false);
+        await avisarPichangol(context,
+            titulo: 'No se subieron tus fotos',
+            icono: Icons.image_not_supported_outlined,
+            mensaje: '${CanchasRepo.ultimoErrorFoto ?? 'No pudimos subir las fotos de tu local.'} '
+                'Las necesitamos para aprobar tu cancha; inténtalo de nuevo.');
+        return;
+      }
     }
     final fotoUrl = fotos.isNotEmpty ? fotos.first : null;
 
