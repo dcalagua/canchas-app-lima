@@ -20,8 +20,11 @@ planes y poder matricularme").
   profe ("Nuevo alumno 🎓"). El profe la ve en su app y en Alumnos (web).
 - GET  /academia/{id}/matricula/{alumno_id} → comprobante (solo el titular).
 
-Multi-país: el cobro web es solo en soles (Culqi); academias en $ o Bs ven
-el tarifario y matriculan desde la app.
+Multi-país: en soles se cobra con Culqi en la misma página; en $ o Bs con la
+pasarela HOSPEDADA del país (`POST /web/matricular-pasarela`, fase 2 parte 2,
+`web/pago_hospedado.py`): mismo cálculo y, tras el pago, la misma
+`matricular_pagado`; mes a mes SIN débito automático (no hay tarjeta
+guardada). Sin pasarela configurada en PRD: "Matricúlate desde la app".
 """
 from __future__ import annotations
 
@@ -41,7 +44,7 @@ from pagos import cargo_servicio as _cs
 from paises import moneda_de_pais, pais_de_coordenadas, simbolo_de_moneda
 from web import catalogos, datos, sesion, ui
 from web.router import (PLAY_URL, _RED_SVG, _deporte, _maps, _no_encontrada, _pago_web_disponible,
-                        _url_red, e)
+                        _pasarela_web, _url_red, e)
 
 router = APIRouter()
 
@@ -245,6 +248,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
     a = datos.academia(academia_id)
     if not a or not a.get("nombre"):
         return _no_encontrada("Academia no disponible")
+    from web import pago_hospedado as ph
     ses = sesion.de_request(request)
     sim, iso = _moneda(a)
     pais = _iso(a)
@@ -253,7 +257,11 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
     lugar = " · ".join(x for x in (a.get("sedeClub"), a.get("zona")) if x)
     tel = _wa(a)
     con_mapa = bool(a.get("lat") or a.get("lng"))
-    puede = _pago_web_disponible(iso) and bool(_planes(a))
+    # En $ / Bs la matrícula va por la pasarela HOSPEDADA del país (necesita la
+    # cuenta de Google: la orden queda a su nombre).
+    puede = _pago_web_disponible(iso) and bool(_planes(a)) and (iso == "PEN" or sesion.activo())
+    pasarela = _pasarela_web(iso) if puede else ""
+    hosp = bool(pasarela) and pasarela != "culqi"
     landing = ""
     try:
         from db.store import stores as _st
@@ -288,7 +296,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
     # Panel de matrícula (mismo flujo que el app) o "desde la app".
     if not puede:
         motivo = ("Esta academia aún no publicó sus precios." if not _planes(a) else
-                  (f"Esta academia cobra en {e(sim)} y el pago en línea desde la web está disponible por ahora solo en soles."
+                  (f"Esta academia cobra en {e(sim)} y el pago en línea en esa moneda aún no está disponible en la web."
                    if iso != "PEN" else "El pago en línea desde la web se está habilitando."))
         panel = (f"<div class='panel' style='margin-top:20px'><h2>Matricúlate desde la app</h2><p class='sub'>{motivo} En la app Pichangol te matriculas y pagas con los medios de tu país.</p>"
                  f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a>"
@@ -336,14 +344,16 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
         f"<div class='sub' style='margin-bottom:10px'>{e(a['nombre'])}</div><div id='lineas'><div class='sub'>Sin programa elegido.</div></div>"
         "<div class='total'><span>Pagas hoy</span><span id='tot'>—</span></div>"
         "<div class='sub' id='notaModo' style='font-size:12.5px;margin-top:6px'></div>"
-        f"<div style='margin-top:14px'>{ui.selector_medio_pago()}</div>"
+        f"<div style='margin-top:14px'>{ph.selector(pasarela) if hosp else ui.selector_medio_pago()}</div>"
         "<div style='margin-top:14px'><button class='btn lg' id='btnPagar' disabled>Elige un programa</button></div>"
         "<div class='sub' style='font-size:12.5px;margin-top:12px'>Al pagar, la matrícula queda registrada en la academia y en tu app (Mis academias). "
         f"Dudas: <a href='mailto:{e(empresa.valores()['empresa_correo'])}'>{e(empresa.valores()['empresa_correo'])}</a>.</div>"
         "</div></aside></div>"
         "<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0'>Pagas hoy</div><div class='t' id='totBarra'>—</div></div>"
-        f"{ui.medio_pago_mini()}<button class='btn' id='btnPagarBarra' disabled>Elige un programa</button></div>")
-    cfg = json.dumps({"id": academia_id, "moneda": sim, "pk": config.CULQI_PUBLIC_KEY, "planes": _planes(a),
+        f"{ui.medio_pago_mini(pasarela)}<button class='btn' id='btnPagarBarra' disabled>Elige un programa</button></div>")
+    cfg = json.dumps({"id": academia_id, "moneda": sim, "pk": "" if hosp else config.CULQI_PUBLIC_KEY, "planes": _planes(a),
+                      # COBRO EN $ / Bs (fase 2 parte 2): pasarela hospedada del país, sin débito automático.
+                      "pasarela": pasarela, "pasarelaNombre": ph.nombre_pasarela(pasarela) if hosp else "",
                       "descuentoPrepago": float(a.get("descuentoPrepago") or 0), "mesesMinPrepago": int(a.get("mesesMinPrepago") or 3),
                       "dtoFam": _dto_fam_por_quien(a, (ses or {}).get("email") or ""), "fam": _fam_base(a, (ses or {}).get("email") or ""),
                       "lat": a.get("lat"), "lng": a.get("lng"), "nombre": a.get("nombre"),
@@ -351,8 +361,9 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
                       "cargo": _cs.activo("academias"), "deporte": str(a.get("deporte") or ""),
                       "login": sesion.activo(), "sesion": ses}, ensure_ascii=False)
     cuerpo = (f"<div style='padding-top:22px'>{ficha}</div>{tarifario}{panel}"
-              f"<script>window.__academia={cfg};</script><script src='https://checkout.culqi.com/js/v4'></script>"
-              f"<script>{sesion.JS_SESION if sesion.activo() else ''}{_JS_ACADEMIA}</script>")
+              f"<script>window.__academia={cfg};</script>"
+              + ("" if hosp else "<script src='https://checkout.culqi.com/js/v4'></script>")
+              + f"<script>{sesion.JS_SESION if sesion.activo() else ''}{ph.JS_IR_PASARELA if hosp else ''}{_JS_ACADEMIA}</script>")
     return ui.shell(a["nombre"], cuerpo, con_barra=True, desc=f"{a['nombre']} · academia de {dep_nombre.lower()} · {lugar}. Matricúlate en línea.",
                     og_image=(_fotos_academia(a) or ["/static/brand/logo_pichangol.png"])[0], sesion=ses,
                     extra_head=(_LEAFLET if con_mapa else "") + _CSS_CARRITO + (sesion.GIS_SCRIPT if (sesion.activo() and not ses) else ""))
@@ -370,6 +381,7 @@ _CSS_CARRITO = ("<style>.cart-it{border:1px solid var(--trazo);border-radius:14p
 _JS_ACADEMIA = r"""
 (function(){
   var C = window.__academia, $ = function(id){ return document.getElementById(id); };
+  var HOSP = !!(C.pasarela && C.pasarela !== 'culqi');
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function fmt(v){ return C.moneda + ' ' + (Math.round(v * 100) / 100).toFixed(2); }
   // CARRITO DE MATRÍCULA: `carrito` = personas ya guardadas; el formulario es la
@@ -491,10 +503,12 @@ _JS_ACADEMIA = r"""
     $('tot').textContent = fmt(totalPagar); $('totBarra').textContent = fmt(totalPagar);
     var mesAMesNombres = st.carrito.filter(function(it){ return it.r.mesAMes; }).map(function(it){ return it.nombre; });
     if(r && r.mesAMes) mesAMesNombres.push($('nombre').value.trim() || 'esta persona');
+    // Con la pasarela hospedada ($ / Bs) no hay tarjeta guardada: los meses siguientes se pagan desde Mis clases.
+    var SIG = HOSP ? ' se pagan cada mes desde Mis clases (sin débito automático).' : ' se cobran mes a mes a la misma tarjeta.';
     var nota = '';
-    if(personas === 1 && r) nota = r.mesAMes ? ('Hoy pagas 1 mes; los ' + (st.n - 1) + ' siguientes se cobran mes a mes a la misma tarjeta.') : (st.n > 1 ? 'Pago adelantado: quedas al día ' + st.n + ' ' + unidad(p) + '.' : '');
-    else if(personas === 1 && nCar) nota = st.carrito[0].r.mesAMes ? 'Hoy pagas 1 mes; los siguientes se cobran mes a mes a la misma tarjeta.' : '';
-    else if(mesAMesNombres.length) nota = 'Un solo cobro hoy. Los meses siguientes de ' + mesAMesNombres.join(', ') + ' se cobran mes a mes a la misma tarjeta.';
+    if(personas === 1 && r) nota = r.mesAMes ? ('Hoy pagas 1 mes; los ' + (st.n - 1) + ' siguientes' + SIG) : (st.n > 1 ? 'Pago adelantado: quedas al día ' + st.n + ' ' + unidad(p) + '.' : '');
+    else if(personas === 1 && nCar) nota = st.carrito[0].r.mesAMes ? ('Hoy pagas 1 mes; los siguientes' + SIG) : '';
+    else if(mesAMesNombres.length) nota = 'Un solo cobro hoy. Los meses siguientes de ' + mesAMesNombres.join(', ') + SIG;
     else nota = 'Un solo cobro por las ' + personas + ' personas.';
     $('notaModo').textContent = nota;
     ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = false; $(id).textContent = 'Pagar ' + fmt(totalPagar) + (personas > 1 ? ' · ' + personas + ' personas' : ''); });
@@ -565,7 +579,7 @@ _JS_ACADEMIA = r"""
     var personas = st.carrito.map(aReq);
     if(st.plan){ var v = validarActual(); if(v){ mostrarError(v); return; } personas.push(aReq(itemActual())); }
     if(!personas.length){ mostrarError('Elige un programa en el tarifario.'); window.scrollTo({top: 0, behavior: 'smooth'}); return; }
-    if(!C.pk){ mostrarError('El pago en línea no está disponible por ahora.'); return; }
+    if(!C.pk && !HOSP){ mostrarError('El pago en línea no está disponible por ahora.'); return; }
     var total = totalCarrito() + (st.plan ? calc().total : 0);
     // El monto que ve Culqi = base + cargo por servicio cotizado por el servidor
     // (que lo recalcula al cobrar). Si la cotización aún no llegó, se espera.
@@ -574,20 +588,34 @@ _JS_ACADEMIA = r"""
     pagar.intentos = 0;
     var montoC = Math.round(total * 100) + (cg ? cg.cargo_centimos : 0);
     // El medio se elige en la página (Yape por defecto) y Culqi se abre SOLO con ese método.
-    var m = window.pcgMedioPago ? pcgMedioPago() : 'yape';
+    // En $ / Bs el medio es la pasarela HOSPEDADA del país (PayPhone, Libélula o la de prueba en QAS).
+    var m = HOSP ? C.pasarela : (window.pcgMedioPago ? pcgMedioPago() : 'yape');
     // RESUMEN DE TU PAGO (pedido del director, 28-sep-2026): Culqi solo muestra el total, así que
     // antes se confirma aquí el detalle por persona + cargo por servicio + total.
     if(window.pcgResumenPago && !pagar.confirmado){
       var lineas = st.carrito.map(function(it){ return {t: esc(it.nombre) + ' · ' + esc(it.plan.nombre) + ' · ' + modoTxt(it) + (it.pct > 0 ? ' (−' + it.pct + ' % familiar)' : ''), m: it.r.total}; });
       if(st.plan){ var cur = itemActual(), rr = calc(); lineas.push({t: esc(cur.nombre || ('Persona ' + (st.carrito.length + 1))) + ' · ' + esc(st.plan.nombre) + ' · ' + modoTxt({plan: st.plan, n: st.n, r: rr}), m: rr.total}); }
       var mesAMes = st.carrito.some(function(it){ return it.r.mesAMes; }) || (st.plan && calc().mesAMes);
-      pcgResumenPago({moneda: C.moneda, medio: m, lineas: lineas, total: montoC / 100,
+      pcgResumenPago({moneda: C.moneda, medio: m, medioNombre: HOSP ? C.pasarelaNombre : '', lineas: lineas, total: montoC / 100,
                       cargo: cg && cg.activo && cg.cargo_centimos > 0 ? {monto: cg.cargo_centimos / 100, titulo: cg.titulo, html: htmlDesglose(cg), ahorro: (cg.ahorro_centimos || 0) / 100} : null,
-                      nota: mesAMes ? 'Un solo cobro hoy. Los meses siguientes de mes a mes se cobran solos al mismo medio de pago.' : ''})
+                      nota: (mesAMes ? (HOSP ? 'Un solo cobro hoy. Con ' + C.pasarelaNombre + ' no hay débito automático: los meses siguientes los pagas cada mes desde Mis clases. '
+                                             : 'Un solo cobro hoy. Los meses siguientes de mes a mes se cobran solos al mismo medio de pago.') : '')
+                            + (HOSP ? 'Te llevamos a la página segura de ' + C.pasarelaNombre + ' y, al volver, ves tu comprobante.' : '')})
         .then(function(ok){ if(!ok) return; pagar.confirmado = true; pagar(); });
       return;
     }
     pagar.confirmado = false;
+    if(HOSP){
+      // COBRO EN $ / Bs: el servidor recalcula todo, crea la orden y el navegador va a la pasarela.
+      ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = true; $(id).textContent = 'Abriendo ' + C.pasarelaNombre + '…'; });
+      pcgIrPasarela('/web/matricular-pasarela', {academia_id: C.id, personas: personas}, C.pasarelaNombre).then(function(p){
+        if(p && p.ok) return;
+        pintar();
+        if(p && p.error === 'sesion_requerida'){ C.sesion = null; var lb = $('loginBox'), db = $('datosBox'); if(lb) lb.style.display = ''; if(db) db.style.display = 'none'; }
+        mostrarError((p && p.mensaje) || 'No pudimos abrir el pago. Inténtalo de nuevo.');
+      });
+      return;
+    }
     Culqi.publicKey = C.pk;
     Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: montoC });
     Culqi.options({ lang: 'es', installments: false,
@@ -761,9 +789,12 @@ def _preparar_personas(a: dict, email: str, personas: list[PersonaReq]) -> tuple
 
 
 def _fila_matricula(a: dict, ses: dict | None, email: str, it: dict, charge_id: str, medio: str, ahora: datetime, us: int,
-                    cargo: dict | None = None) -> tuple[str, dict]:
+                    cargo: dict | None = None, auto_debito: bool = True, pasarela: str = "") -> tuple[str, dict]:
     """La fila de `pichangol_matriculas` EXACTAMENTE como `AppState.matricular`
-    (el profe la ve en su app): `Alumno.toJson` + `cuotas` + extras web."""
+    (el profe la ve en su app): `Alumno.toJson` + `cuotas` + extras web.
+    `auto_debito=False` (cobro por pasarela hospedada en $ / Bs, sin tarjeta
+    guardada): mes a mes queda con la 1.ª cuota pagada y el resto PENDIENTES
+    sin `autoDebito` (se pagan cada mes desde Mis clases o la app)."""
     plan, n = it["plan"], it["n"]
     alumno_id = f"al_{us}"
     es_menor = it["es_hijo"]
@@ -798,39 +829,47 @@ def _fila_matricula(a: dict, ses: dict | None, email: str, it: dict, charge_id: 
             if pagada:
                 c["fechaPago"] = ahora.isoformat()
                 c["operacionId"] = charge_id
-            if it["mes_a_mes"]:
+            if it["mes_a_mes"] and auto_debito:
                 c["autoDebito"] = True
             cuotas.append(c)
     # Lo COBRADO hoy (con descuento) se guarda aparte: las cuotas llevan el precio
     # de lista como en el app; el comprobante muestra lo que salió de la tarjeta.
-    data = dict(alumno, cuotas=cuotas, canal="web",
-                pagoWeb={"monto": float(it["total"]), "ahorro": float(it["ahorro"]), "operacion": charge_id, "dtoFamiliar": float(it["dto_fam"]),
-                         "medio": "yape" if medio == "yape" else "tarjeta", "fecha": ahora.isoformat(), **(cargo or {})})
+    pago_web = {"monto": float(it["total"]), "ahorro": float(it["ahorro"]), "operacion": charge_id, "dtoFamiliar": float(it["dto_fam"]),
+                "medio": "yape" if medio == "yape" else "tarjeta", "fecha": ahora.isoformat(), **(cargo or {})}
+    if pasarela:
+        pago_web["pasarela"] = pasarela
+    data = dict(alumno, cuotas=cuotas, canal="web", pagoWeb=pago_web)
     return alumno_id, data
+
+
+def _concepto_matricula(a: dict, items: list[dict]) -> str:
+    if len(items) == 1:
+        return f"Matrícula {a['nombre']} · {items[0]['plan']['nombre']}"
+    return f"Matrícula {a['nombre']} · {len(items)} personas"
+
+
+def _cotizar_matricula(a: dict, items: list[dict], iso: str) -> dict:
+    """Cargo por servicio (fase 2): UNA cotización sobre la suma del carrito
+    (a más personas, menos por cabeza); lo cobrado = matrículas + cargo. La
+    academia recibe sobre las matrículas; el cargo es ingreso de Pichangol.
+    Devuelve un dict serializable (viaja en la orden de la pasarela)."""
+    from pagos.router import cotizacion_para
+    partes = [int(round(float(it["total"]) * 100)) for it in items]
+    cot = cotizacion_para("academias", iso, sum(partes), medio=None, deporte=str(a.get("deporte") or ""), partes=partes)
+    return {"total_centimos": int(cot.total_centimos), "cargo_centimos": int(cot.cargo_centimos),
+            "desglose": list(cot.desglose or []), "regla": cot.regla, "ahorro_centimos": int(cot.ahorro_centimos),
+            "ajuste": int(cot.ajuste_seguridad_centimos)}
 
 
 def _cobrar_y_matricular(a: dict, ses: dict | None, token: str, medio: str, items: list[dict]) -> dict:
     """UN cargo de Culqi por la suma y una matrícula por persona (mismo N.º de
-    operación). Contabilidad UNA vez por el total (la comisión del país se
-    congela sobre lo cobrado), suscripción mes a mes por persona (la 2.ª en
-    adelante reusa la tarjeta de la 1.ª) y un push al dueño."""
+    operación). Lo que pasa DESPUÉS del cargo es `matricular_pagado`, el MISMO
+    código que usa el cobro por pasarela hospedada en $ / Bs."""
     sim, iso = _moneda(a)
     email = (ses["email"] if ses else "").strip().lower()
-    total = round(sum(float(it["total"]) for it in items), 2)
-    monto_c = sum(int(round(float(it["total"]) * 100)) for it in items)
-    # Cargo por servicio (fase 2): UNA cotización sobre la suma del carrito
-    # (a más personas, menos por cabeza); lo cobrado = matrículas + cargo. La
-    # academia recibe sobre las matrículas; el cargo es ingreso de Pichangol.
-    from pagos.router import cotizacion_para
-    cot = cotizacion_para("academias", iso, monto_c, medio=None, deporte=str(a.get("deporte") or ""),
-                          partes=[int(round(float(it["total"]) * 100)) for it in items])
-    monto_cobro = cot.total_centimos
-    info_cargo = ({"cargo": cot.cargo_centimos / 100.0, "cargoDesglose": list(cot.desglose or []), "cargoRegla": cot.regla,
-                   "cargoPersonas": len(items), "cargoAhorro": cot.ahorro_centimos / 100.0} if cot.cargo_centimos > 0 else None)
-    if len(items) == 1:
-        concepto = f"Matrícula {a['nombre']} · {items[0]['plan']['nombre']}"
-    else:
-        concepto = f"Matrícula {a['nombre']} · {len(items)} personas"
+    cg = _cotizar_matricula(a, items, iso)
+    monto_cobro = cg["total_centimos"]
+    concepto = _concepto_matricula(a, items)
     # Antifraude de Culqi: el PAGADOR es la cuenta de Google (nombre real); el
     # celular sale de la persona "yo" del carrito o, si no va, de la primera.
     titular = next((it for it in items if not it.get("parentesco")), items[0])
@@ -841,21 +880,44 @@ def _cobrar_y_matricular(a: dict, ses: dict | None, token: str, medio: str, item
     cargo = culqi.crear_cargo(token=token.strip(), monto_centimos=monto_cobro, email=email or "sin-correo@pichangol.app",
                               descripcion=concepto[:80], moneda=iso, cliente=cliente,
                               metadata={"canal": "web", "academia_id": a["id"], "plan_id": items[0]["plan"]["id"], "personas": len(items),
-                                        "cargo_servicio_centimos": cot.cargo_centimos})
+                                        "cargo_servicio_centimos": cg["cargo_centimos"]})
     if not cargo.get("ok"):
         msg = str(cargo.get("error") or "")
         return {"ok": False, "error": "cargo_rechazado",
                 "mensaje": "El pago fue rechazado por tu banco o billetera. No se te cobró nada." + (f" ({msg[:80]})" if msg else "")}
     charge_id = str(cargo.get("charge_id") or "")
+    return matricular_pagado(a, ses, email, items, charge_id=charge_id, medio=medio, cg=cg, token=token)
 
+
+def matricular_pagado(a: dict, ses: dict | None, email: str, items: list[dict], *, charge_id: str, medio: str, cg: dict,
+                      token: str = "", pasarela: str = "", base_us: int | None = None) -> dict:
+    """Todo lo que pasa con la plata YA cobrada (Culqi o pasarela hospedada):
+    una fila por persona (mismo N.º de operación), contabilidad UNA vez por el
+    total (la comisión del país se congela sobre lo cobrado, `post_matricula`
+    registra en la moneda del país), `cobro_web`, suscripción mes a mes por
+    persona (solo con tarjeta de Culqi: la 2.ª en adelante reusa la de la 1.ª)
+    y un push al dueño. Con `pasarela` (sin tarjeta guardada) no hay débito
+    automático: mes a mes deja las cuotas siguientes pendientes. `base_us`
+    fijo = ids deterministas (un reintento no duplica filas)."""
+    sim, iso = _moneda(a)
+    total = round(sum(float(it["total"]) for it in items), 2)
+    monto_cobro = int(cg["total_centimos"])
+    cargo_c = int(cg.get("cargo_centimos") or 0)
+    info_cargo = ({"cargo": cargo_c / 100.0, "cargoDesglose": list(cg.get("desglose") or []), "cargoRegla": cg.get("regla") or "",
+                   "cargoPersonas": len(items), "cargoAhorro": int(cg.get("ahorro_centimos") or 0) / 100.0} if cargo_c > 0 else None)
+    concepto = _concepto_matricula(a, items)
+    con_tarjeta = not pasarela
     ahora = datetime.now()
-    base_us = int(time.time() * 1_000_000)
+    base_us = int(base_us) if base_us else int(time.time() * 1_000_000)
     guardadas: list[tuple[str, dict]] = []
     fallidas: list[str] = []
     for k, it in enumerate(items):
-        alumno_id, data = _fila_matricula(a, ses, email, it, charge_id, medio, ahora, base_us + k, cargo=info_cargo)
+        alumno_id, data = _fila_matricula(a, ses, email, it, charge_id, medio, ahora, base_us + k, cargo=info_cargo,
+                                          auto_debito=con_tarjeta, pasarela=pasarela)
         if datos.insertar_matricula(alumno_id, a["id"], email, data):
             guardadas.append((alumno_id, it))
+        elif pasarela and (datos.matricula(alumno_id) or {}).get("academiaId") == a["id"]:
+            guardadas.append((alumno_id, it))  # reintento de una orden: la fila ya quedó
         else:
             # El cobro ya se hizo: se avisa con el N.º de operación para atenderlo a mano.
             print(f"[matricula-web] cobro {charge_id} sin fila en pichangol_matriculas ({email}, {a['id']}, {it['nombre']})", flush=True)
@@ -868,22 +930,24 @@ def _cobrar_y_matricular(a: dict, ses: dict | None, token: str, medio: str, item
         from pagos.router import MatriculaReq, post_matricula
         post_matricula(MatriculaReq(academia_id=a["id"], monto_soles=float(total), matricula_id=charge_id or guardadas[0][0],
                                     pais=_iso(a).lower(), concepto=concepto, charge_id=charge_id,
-                                    cargo_servicio_centimos=cot.cargo_centimos, cargo_desglose=list(cot.desglose or []),
-                                    cargo_ajuste_centimos=cot.ajuste_seguridad_centimos))
+                                    cargo_servicio_centimos=cargo_c, cargo_desglose=list(cg.get("desglose") or []),
+                                    cargo_ajuste_centimos=int(cg.get("ajuste") or 0)))
     except Exception as ex:  # noqa: BLE001 — la contabilidad nunca deshace un cobro
         print(f"[matricula-web] contabilidad falló: {ex}", flush=True)
     try:
         from db.store import stores as _st
-        _st.registrar_pago(tipo="cobro_web", monto_centimos=monto_cobro, moneda=iso, estado="aprobado", culqi_charge_id=charge_id,
-                           email=email, medio="yape" if medio == "yape" else "tarjeta", concepto="matricula:" + ",".join(aid for aid, _ in guardadas),
-                           cargo_servicio_centimos=cot.cargo_centimos, cargo_desglose=(list(cot.desglose) if cot.desglose else None),
-                           cargo_ajuste_centimos=cot.ajuste_seguridad_centimos)
+        ya = pasarela and any(p.tipo == "cobro_web" and p.culqi_charge_id == charge_id for p in _st.pagos)
+        if not ya:
+            _st.registrar_pago(tipo="cobro_web", monto_centimos=monto_cobro, moneda=iso, estado="aprobado", culqi_charge_id=charge_id,
+                               email=email, medio="yape" if medio == "yape" else "tarjeta", concepto="matricula:" + ",".join(aid for aid, _ in guardadas),
+                               cargo_servicio_centimos=cargo_c, cargo_desglose=(list(cg["desglose"]) if cg.get("desglose") else None),
+                               cargo_ajuste_centimos=int(cg.get("ajuste") or 0))
     except Exception:  # noqa: BLE001
         pass
     titular = (ses or {}).get("nombre") or "Apoderado"
     primera_susc = ""
     for alumno_id, it in guardadas:
-        if not it["mes_a_mes"]:
+        if not it["mes_a_mes"] or not con_tarjeta or not token:
             continue
         # Débito automático de los meses siguientes (best-effort, como el app).
         try:
@@ -910,7 +974,8 @@ def _cobrar_y_matricular(a: dict, ses: dict | None, token: str, medio: str, item
         except Exception:  # noqa: BLE001
             pass
     ids = [aid for aid, _ in guardadas]
-    print(f"[matricula-web] {email} → {a['nombre']} · {len(ids)} persona(s) · {sim} {total:.2f} · {','.join(ids)}", flush=True)
+    print(f"[matricula-web] {email} → {a['nombre']} · {len(ids)} persona(s) · {sim} {total:.2f} · {','.join(ids)}"
+          + (f" · {pasarela}" if pasarela else ""), flush=True)
     url = f"/academia/{a['id']}/matricula/{ids[0]}" if len(ids) == 1 else f"/academia/{a['id']}/matriculas?ids={','.join(ids)}"
     out = {"ok": True, "url": url, "alumno_id": ids[0], "alumno_ids": ids, "charge_id": charge_id, "total": total}
     if fallidas:
@@ -919,7 +984,7 @@ def _cobrar_y_matricular(a: dict, ses: dict | None, token: str, medio: str, item
     return out
 
 
-def _validar_cabecera(request: Request | None, academia_id: str) -> tuple[dict | None, dict | None, dict | None]:
+def _validar_cabecera(request: Request | None, academia_id: str, hospedado: bool = False) -> tuple[dict | None, dict | None, dict | None]:
     """(ses, academia, error): sesión (si el login está activo), academia
     existente y pago web disponible en su moneda."""
     ses = sesion.de_request(request) if sesion.activo() else None
@@ -931,7 +996,12 @@ def _validar_cabecera(request: Request | None, academia_id: str) -> tuple[dict |
     a.setdefault("id", academia_id)
     _sim, iso = _moneda(a)
     if not _pago_web_disponible(iso):
-        return ses, a, {"ok": False, "error": "moneda", "mensaje": "El pago en línea desde la web está disponible solo en soles. Matricúlate desde la app."}
+        return ses, a, {"ok": False, "error": "moneda", "mensaje": "El pago en línea en esta moneda no está disponible en la web por ahora. Matricúlate desde la app."}
+    if iso != "PEN" and not hospedado:
+        # Culqi cobra solo soles: en $ / Bs se paga en la pasarela del país.
+        return ses, a, {"ok": False, "error": "usa_pasarela", "mensaje": "Esta academia se paga con la pasarela de su país. Recarga la página e inténtalo otra vez."}
+    if iso == "PEN" and hospedado:
+        return ses, a, {"ok": False, "error": "usa_culqi", "mensaje": "Esta academia se paga con Yape o tarjeta en la misma página."}
     return ses, a, None
 
 
@@ -967,6 +1037,70 @@ def matricular_varios(req: MatricularVariosReq, request: Request = None) -> dict
     if error:
         return error
     return _cobrar_y_matricular(a, ses, req.token, req.medio, items)
+
+
+# ── matrícula en $ / Bs por PASARELA HOSPEDADA (fase 2 parte 2, oct-2026) ─────
+
+class MatricularPasarelaReq(BaseModel):
+    academia_id: str
+    personas: list[PersonaReq]
+
+
+@router.post("/web/matricular-pasarela")
+def matricular_pasarela(req: MatricularPasarelaReq, request: Request = None) -> dict:
+    """Matrícula (una persona o el carrito familiar) de una academia que cobra
+    en $ o Bs: el servidor valida y recalcula TODO con las mismas funciones que
+    el camino Culqi (`_preparar_personas`: orden y descuento familiar en
+    secuencia, prepago; `_cotizar_matricula`: cargo por servicio con partes),
+    CONGELA las personas en la orden y manda al navegador a la pasarela del
+    país (`web/pago_hospedado.py`). Al confirmarse el pago,
+    `al_pagar_hospedado` ejecuta `matricular_pagado`, igual que Culqi. En la
+    pasarela no hay tarjeta guardada: mes a mes = 1.ª cuota hoy y las demás
+    pendientes, sin débito automático."""
+    from web import pago_hospedado as ph
+    ses, a, error = _validar_cabecera(request, req.academia_id, hospedado=True)
+    if error:
+        return error
+    if not req.personas:
+        return {"ok": False, "error": "vacio", "mensaje": "Agrega al menos una persona a tu matrícula."}
+    if len(req.personas) > 8:
+        return {"ok": False, "error": "tope", "mensaje": "Puedes matricular hasta 8 personas en un solo pago."}
+    email = (ses["email"] if ses else "").strip().lower()
+    if not email:
+        return {"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión con Google para matricularte."}
+    items, error = _preparar_personas(a, email, req.personas)
+    if error:
+        return error
+    sim, iso = _moneda(a)
+    cg = _cotizar_matricula(a, items, iso)
+    clave = a["id"] + "|" + json.dumps([p.model_dump() for p in req.personas], sort_keys=True, ensure_ascii=False)
+    accion = {"academia_id": a["id"], "items": items, "cg": cg, "base_us": int(time.time() * 1_000_000),
+              "ses_nombre": (ses or {}).get("nombre") or "", "ses_foto": (ses or {}).get("foto") or ""}
+    return ph.abrir_orden(email=email, tipo="matricula", clave=clave, iso=iso, monto_centimos=cg["total_centimos"],
+                          concepto=_concepto_matricula(a, items), accion=accion,
+                          nombre=str((ses or {}).get("nombre") or ""), request=request)
+
+
+def al_pagar_hospedado(o: dict) -> None:
+    """La pasarela CONFIRMÓ el cobro de una orden de matrícula: lo mismo que
+    el camino Culqi tras el cargo (`matricular_pagado`), con las personas y el
+    total CONGELADOS en la orden. Si la academia ya no existe, se devuelve."""
+    from web import pago_hospedado as ph
+    acc = o["accion"]
+    a = datos.academia(str(acc.get("academia_id") or ""))
+    if not a or not a.get("nombre"):
+        ph.devolver_pago(o, motivo="no_disponible")
+        return
+    a.setdefault("id", acc["academia_id"])
+    ses = {"email": o["email"], "nombre": acc.get("ses_nombre") or "", "foto": acc.get("ses_foto") or ""}
+    out = matricular_pagado(a, ses, o["email"], list(acc.get("items") or []), charge_id=ph.ref_cobro(o), medio="tarjeta",
+                            cg=dict(acc.get("cg") or {}), pasarela=o["pasarela"], base_us=int(acc.get("base_us") or 0) or None)
+    if not out.get("ok"):
+        # Cobrado y sin filas (base caída): el barrido lo reintenta con los mismos ids.
+        raise RuntimeError(out.get("mensaje") or "no se pudo registrar la matrícula")
+    o["estado"], o["url_resultado"] = "aprobado", out["url"]
+    if out.get("aviso"):
+        o["aviso"] = out["aviso"]
 
 
 # ── comprobante ───────────────────────────────────────────────────────────────
@@ -1005,11 +1139,31 @@ def comprobante_matricula(request: Request, academia_id: str, alumno_id: str) ->
               + (f"<p class='sub' style='font-size:13px'>🎉 Descuento familiar aplicado: −{float(pw.get('dtoFamiliar') or 0):.0f} % ({'2.º' if int(m.get('ordenHermano') or 1) == 2 else '3.º o más'} de tu familia en esta academia).</p>" if float(pw.get('dtoFamiliar') or 0) > 0 else "")
               + cargo_html
               + f"<div class='total'><span>Pagado hoy</span><span>{e(sim)} {total_pagado:.2f}</span></div>"
-              + (f"<p class='sub' style='font-size:12.5px'>N.º de operación: {e(op)}</p>" if op else "")
+              + (f"<p class='sub' style='font-size:12.5px'>N.º de operación: {e(op)}{_pasarela_txt(pw)}</p>" if op else "")
+              + _nota_sin_debito(pw, cuotas)
               + "<div class='acciones' style='margin-top:14px'>"
               + (f"<a class='btn' href='https://wa.me/{tel}?text=Hola,%20acabo%20de%20matricular%20a%20{e(m.get('nombre', ''))}%20por%20Pichangol' target='_blank' rel='noopener'>💬 Escribir a la academia</a>" if tel else "")
               + f"<a class='btn sec' href='/academia/{e(academia_id)}'>Ver la academia</a><a class='btn sec' href='{PLAY_URL}'>Abrir en la app</a></div></div>")
     return ui.shell("Matrícula registrada", cuerpo, sesion=ses)
+
+
+def _pasarela_txt(pw: dict) -> str:
+    """" · Pagado con PayPhone / Libélula" en el comprobante de un cobro por
+    pasarela hospedada ($ / Bs). Nunca el nombre fijo: lo da la fachada."""
+    pas = str((pw or {}).get("pasarela") or "")
+    if not pas:
+        return ""
+    from web import pago_hospedado as ph
+    return f" · Pagado con {e(ph.nombre_pasarela(pas))}"
+
+
+def _nota_sin_debito(pw: dict, cuotas: list[dict]) -> str:
+    """Mes a mes pagado por pasarela hospedada: no hay débito automático, las
+    cuotas siguientes se pagan cada mes desde Mis clases."""
+    if not (pw or {}).get("pasarela") or not any(not c.get("pagada") for c in cuotas):
+        return ""
+    return ("<p class='sub' style='font-size:13px'>📅 Tus próximas cuotas quedan pendientes: págalas cada mes desde "
+            "<a href='/mis-clases'>Mis clases y pagos</a> (aquí en la web o en la app). Con este medio de pago no hay débito automático.</p>")
 
 
 def _cargo_comprobante(pw: dict, sim: str, *, individual: bool) -> tuple[str, float]:
@@ -1090,7 +1244,8 @@ def comprobante_matriculas(request: Request, academia_id: str, ids: str = "") ->
               + (f"<p class='sub' style='font-size:13px;margin-top:10px'>Descuentos aplicados en total: −{e(sim)} {ahorro:.2f}</p>" if ahorro > 0 else "")
               + cargo_html
               + f"<div class='total'><span>Pagado hoy</span><span>{e(sim)} {total + cargo_fam:.2f}</span></div>"
-              + (f"<p class='sub' style='font-size:12.5px'>N.º de operación: {e(op)}</p>" if op else "")
+              + (f"<p class='sub' style='font-size:12.5px'>N.º de operación: {e(op)}{_pasarela_txt(pw0)}</p>" if op else "")
+              + _nota_sin_debito(pw0, [c for m in ms for c in (m.get("cuotas") or []) if isinstance(c, dict)])
               + "<div class='acciones' style='margin-top:14px'>"
               + (f"<a class='btn' href='{wa}' target='_blank' rel='noopener'>💬 Escribir a la academia</a>" if tel else "")
               + f"<a class='btn sec' href='/academia/{e(academia_id)}'>Ver la academia</a><a class='btn sec' href='{PLAY_URL}'>Abrir en la app</a></div></div>"

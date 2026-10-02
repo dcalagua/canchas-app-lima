@@ -9,9 +9,13 @@ funcionalidades que existen actualmente en el app").
   stock y "Vendedor verificado ✓" (`pichangol_verificaciones`). "Vender" →
   Mi tienda (`/anfitrion/tienda`), "Mis compras" → `/mis-ordenes`.
 - GET  /marketplace/{id}       = `producto_detalle_screen.dart`: foto,
-  precio, categoría, descripción, vendedor y "Comprar". Cobro con Culqi
-  Checkout v4 SOLO en soles (en $ o Bs: "cómpralo en la app"), con el
-  selector Yape/Tarjeta y el modal `pcgResumenPago` antes de abrir Culqi.
+  precio, categoría, descripción, vendedor y "Comprar". En soles, Culqi
+  Checkout v4 con el selector Yape/Tarjeta y el modal `pcgResumenPago`; en $
+  o Bs, la pasarela HOSPEDADA del país (`POST /web/marketplace/comprar-
+  pasarela` y `/web/bonos/comprar-pasarela`, fase 2 parte 2: la unidad se
+  aparta ANTES de ir a pagar y vuelve si no se paga; tras el pago,
+  `venta_pagada` / `bono_pagado`, las mismas que Culqi). Sin pasarela en
+  PRD: "cómpralo en la app".
 - POST /web/marketplace/comprar → aparta 1 unidad (UPDATE atómico, así dos
   compradores no se llevan la última), cobra (`culqi.crear_cargo(cliente=)`)
   y registra la venta EXACTAMENTE como el APK: `pagos.router.post_venta`
@@ -57,7 +61,7 @@ from db import pg
 from pagos import culqi
 from pagos.stock_productos import apartar_unidad, devolver_unidad  # noqa: F401 (tests los monkeypatchean aquí)
 from web import catalogos, datos, sesion, ui
-from web.router import PLAY_URL, _moneda_de, _no_encontrada, _pago_web_disponible
+from web.router import PLAY_URL, _moneda_de, _no_encontrada, _pago_web_disponible, _pasarela_web
 
 router = APIRouter()
 e = ui.e
@@ -342,9 +346,15 @@ _CSS = """<style>
 
 def _js_culqi(cfg: dict) -> str:
     """Checkout común (producto y bono): pcgResumenPago → Culqi con el medio
-    elegido (Yape por defecto) → POST al endpoint → redirige al comprobante."""
-    return ("<script src='https://checkout.culqi.com/js/v4'></script><script>window.__mk=" + json.dumps(cfg, ensure_ascii=False) + ";</script><script>"
-            + (sesion.JS_SESION if sesion.activo() else "") + r"""
+    elegido (Yape por defecto) → POST al endpoint → redirige al comprobante.
+    Con `cfg.pasarela` (cobro en $ / Bs, fase 2 parte 2) no hay Culqi: tras el
+    resumen, POST a `cfg.urlPasarela` crea la orden y el navegador va a la
+    pasarela hospedada del país (`web/pago_hospedado.py`)."""
+    from web import pago_hospedado as ph
+    hosp = bool(cfg.get("pasarela")) and cfg.get("pasarela") != "culqi"
+    return (("" if hosp else "<script src='https://checkout.culqi.com/js/v4'></script>")
+            + "<script>window.__mk=" + json.dumps(cfg, ensure_ascii=False) + ";</script><script>"
+            + (sesion.JS_SESION if sesion.activo() else "") + (ph.JS_IR_PASARELA if hosp else "") + r"""
 (function(){
   var C = window.__mk, $ = function(id){ return document.getElementById(id); };
   function error(m){ var el = $('mkErr'); if(el){ el.textContent = m; el.style.display = 'block'; } else if(window.pcgAvisar) pcgAvisar({titulo: 'No se pudo', mensaje: m, icono: '⚠️'}); }
@@ -353,11 +363,24 @@ def _js_culqi(cfg: dict) -> str:
     var btn = ev && ev.currentTarget; if(btn && btn.dataset.oferta){ C.oferta = btn.dataset.oferta; C.monto = +btn.dataset.monto; C.linea = btn.dataset.linea; }
     var el = $('mkErr'); if(el) el.style.display = 'none';
     if(C.login && !C.sesion){ error('Inicia sesión con Google para comprar.'); var lb = $('loginBox'); if(lb) lb.scrollIntoView({behavior: 'smooth', block: 'center'}); return; }
-    if(!C.pk){ error('El pago en línea no está disponible por ahora.'); return; }
-    var m = window.pcgMedioPago ? pcgMedioPago() : 'yape';
+    var hosp = !!(C.pasarela && C.pasarela !== 'culqi');
+    if(!C.pk && !hosp){ error('El pago en línea no está disponible por ahora.'); return; }
+    var m = hosp ? C.pasarela : (window.pcgMedioPago ? pcgMedioPago() : 'yape');
     var montoC = Math.round(C.monto * 100);
-    pcgResumenPago({moneda: C.moneda, medio: m, lineas: [{t: C.linea, m: C.monto}], total: C.monto, nota: C.nota || ''}).then(function(ok){
+    pcgResumenPago({moneda: C.moneda, medio: m, medioNombre: hosp ? C.pasarelaNombre : '', lineas: [{t: C.linea, m: C.monto}], total: C.monto,
+                    nota: (C.nota || '') + (hosp ? ' Te llevamos a la página segura de ' + C.pasarelaNombre + '.' : '')}).then(function(ok){
       if(!ok) return;
+      if(hosp){
+        var cuerpo = Object.assign({}, C.cuerpo || {}); if(C.oferta) cuerpo.oferta_id = C.oferta;
+        botones('Abriendo ' + C.pasarelaNombre + '…', true);
+        pcgIrPasarela(C.urlPasarela, cuerpo, C.pasarelaNombre).then(function(p){
+          if(p && p.ok) return;
+          botones(C.boton, false);
+          if(p && p.error === 'sesion_requerida'){ C.sesion = null; }
+          error((p && p.mensaje) || 'No pudimos abrir el pago. Inténtalo de nuevo.');
+        });
+        return;
+      }
       Culqi.publicKey = C.pk;
       Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: montoC });
       Culqi.options({ lang: 'es', installments: false,
@@ -480,6 +503,9 @@ def pagina_producto(request: Request, producto_id: str) -> HTMLResponse:
              "<div class='mk-prot'><span>🛡️</span><span>Pago protegido por Pichangol: el vendedor recibe tu pago recién cuando confirmas que te llegó el producto. "
              "Después de pagar coordinas la entrega con el vendedor.</span></div>")
     puede = _pago_web_disponible(iso) and p["precio"] >= 1
+    from web import pago_hospedado as ph
+    pas = _pasarela_web(iso) if puede else ""
+    hosp = bool(pas) and pas != "culqi"
     if mio:
         panel = ("<div class='panel'><h3 style='margin-top:0'>Este producto es tuyo</h3><p class='sub'>Así lo ven los compradores. Edítalo, pausa o cambia el stock en Mi tienda.</p>"
                  f"<div class='acciones'><a class='btn' href='/anfitrion/tienda/{e(p['id'])}/editar'>Editar en Mi tienda</a></div></div>")
@@ -489,7 +515,7 @@ def pagina_producto(request: Request, producto_id: str) -> HTMLResponse:
                  "<div class='acciones'><a class='btn sec' href='/marketplace'>Volver al Marketplace</a></div></div>")
         barra = ""
     elif not puede:
-        motivo = (f"Este producto se cobra en {e(sim)} y el pago desde la web está disponible por ahora solo en soles."
+        motivo = (f"Este producto se cobra en {e(sim)} y el pago en línea en esa moneda aún no está disponible en la web."
                   if iso != "PEN" else ("El monto mínimo para pagar en línea es S/ 1.00." if p["precio"] < 1 else "El pago en línea desde la web se está habilitando."))
         panel = (f"<div class='panel'><h3 style='margin-top:0'>Cómpralo en la app</h3><p class='sub'>{motivo} En la app Pichangol pagas con los medios de tu país y coordinas por chat.</p>"
                  f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
@@ -505,19 +531,20 @@ def pagina_producto(request: Request, producto_id: str) -> HTMLResponse:
                      f"<div style='font-size:26px;font-weight:800;margin-top:2px'>{e(precio)}</div>"
                      f"<div class='sub' style='margin-top:2px;font-size:13.5px'>{e(p.get('nombre'))} · 1 unidad</div>"
                      + login
-                     + f"<div style='margin-top:14px'>{ui.selector_medio_pago()}</div>"
+                     + f"<div style='margin-top:14px'>{ph.selector(pas) if hosp else ui.selector_medio_pago()}</div>"
                      f"<div style='margin-top:14px'><button class='btn lg' data-pagar>Comprar · {e(precio)}</button></div>"
                      "<div class='estado bad' id='mkErr'></div>"
                      f"<div class='sub' style='font-size:12.5px;margin-top:12px'>Al pagar, la compra queda en Mis compras (web y app). Dudas: "
                      f"<a href='mailto:{e(empresa.valores()['empresa_correo'])}'>{e(empresa.valores()['empresa_correo'])}</a>.</div></div>")
             barra = (f"<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0'>Total</div><div class='t'>{e(precio)}</div></div>"
-                     f"{ui.medio_pago_mini()}<button class='btn' data-pagar>Comprar</button></div>")
+                     f"{ui.medio_pago_mini(pas)}<button class='btn' data-pagar>Comprar</button></div>")
     cuerpo = (_CSS + "<div style='padding-top:18px'><a class='sub' href='/marketplace' style='text-decoration:none'>‹ Marketplace</a></div>"
               f"<div class='dos' style='margin-top:10px'><div>{ficha}</div><aside class='resumen'>{panel}</aside></div>{barra}")
     head = ""
     if barra:
         cfg = {"url": "/web/marketplace/comprar", "cuerpo": {"producto_id": p["id"]}, "moneda": sim, "monto": round(p["precio"], 2),
-               "linea": e(p.get("nombre")), "pk": config.CULQI_PUBLIC_KEY, "login": sesion.activo(), "sesion": bool(ses),
+               "linea": e(p.get("nombre")), "pk": "" if hosp else config.CULQI_PUBLIC_KEY, "login": sesion.activo(), "sesion": bool(ses),
+               "pasarela": pas, "pasarelaNombre": ph.nombre_pasarela(pas) if hosp else "", "urlPasarela": "/web/marketplace/comprar-pasarela",
                "boton": f"Comprar · {precio}", "cargando": "Confirmando tu compra…",
                "nota": "El vendedor recibe el pago cuando confirmes que te llegó."}
         cuerpo += _js_culqi(cfg)
@@ -575,7 +602,9 @@ def comprar_producto(req: CompraReq, request: Request = None) -> dict:
         return {"ok": False, "error": "propio", "mensaje": "Este producto es tuyo."}
     sim, iso = _sim(p.get("moneda")), _iso(p.get("moneda"))
     if not _pago_web_disponible(iso):
-        return {"ok": False, "error": "moneda", "mensaje": "El pago en línea desde la web está disponible solo en soles. Cómpralo desde la app."}
+        return {"ok": False, "error": "moneda", "mensaje": "El pago en línea en esta moneda no está disponible en la web por ahora. Cómpralo desde la app."}
+    if iso != "PEN":
+        return {"ok": False, "error": "usa_pasarela", "mensaje": "Este producto se paga con la pasarela de su país. Recarga la página e inténtalo otra vez."}
     precio = round(float(p["precio"]), 2)
     monto_c = int(round(precio * 100))
     if monto_c < 100:
@@ -596,24 +625,45 @@ def comprar_producto(req: CompraReq, request: Request = None) -> dict:
         return {"ok": False, "error": "cargo_rechazado",
                 "mensaje": "El pago fue rechazado por tu banco o billetera. No se te cobró nada." + (f" ({msg[:80]})" if msg else "")}
     charge_id = str(cargo.get("charge_id") or "")
+    return venta_pagada(producto_id=p["id"], producto_nombre=p.get("nombre") or "", vendedor=vend,
+                        vendedor_nombre=p.get("vendedor_nombre") or "", moneda=p.get("moneda") or "S/", precio=precio,
+                        email=email, nombre=nombre, charge_id=charge_id, medio=req.medio)
+
+
+def venta_pagada(*, producto_id: str, producto_nombre: str, vendedor: str, vendedor_nombre: str, moneda: str, precio: float,
+                 email: str, nombre: str, charge_id: str, medio: str, reintento: bool = False) -> dict:
+    """Lo que pasa con la compra YA cobrada (Culqi o pasarela hospedada):
+    `post_venta` (idempotente por `venta_id` = N.º de operación, comisión con
+    el mínimo de la moneda del producto, ORDEN en escrow), `cobro_web` y el
+    push "¡Te compraron!". Mismo código para los dos caminos."""
+    from db.store import stores
+    sim, iso = _sim(moneda), _iso(moneda)
+    monto_c = int(round(float(precio) * 100))
     antes = len(stores.ventas)
+    ya = stores.pago_por_charge(charge_id)
     aviso = ""
     try:
         from pagos.router import VentaProductoReq, post_venta
-        post_venta(VentaProductoReq(vendedor_id=vend, monto_soles=precio, venta_id=charge_id, concepto=f"Venta: {p.get('nombre')}",
-                                    charge_id=charge_id, producto_id=p["id"], producto_nombre=p.get("nombre") or "",
-                                    comprador_email=email, comprador_nombre=nombre, vendedor_nombre=p.get("vendedor_nombre") or "",
-                                    moneda=p.get("moneda") or "S/"))
+        post_venta(VentaProductoReq(vendedor_id=vendedor, monto_soles=precio, venta_id=charge_id, concepto=f"Venta: {producto_nombre}",
+                                    charge_id=charge_id, producto_id=producto_id, producto_nombre=producto_nombre,
+                                    comprador_email=email, comprador_nombre=nombre, vendedor_nombre=vendedor_nombre,
+                                    moneda=moneda or "S/"))
     except Exception as ex:  # noqa: BLE001 — la contabilidad nunca deshace un cobro
         print(f"[market-web] venta {charge_id} sin registrar: {ex}", flush=True)
+        if reintento:
+            raise
         aviso = (f"Tu pago se procesó (operación {charge_id}) pero no pudimos registrar la orden. "
                  f"Escríbenos a {empresa.valores()['empresa_correo']} y la completamos.")
-    _registrar_cobro_web(charge_id, monto_c, iso, email, req.medio, f"venta:{p['id']}")
-    _push(vend, "¡Te compraron! 🛍️",
-          f"{nombre or 'Un jugador'} compró \"{p.get('nombre')}\" ({_monto(sim, precio)}). Entrégalo y coordina por chat; "
-          "el pago se libera cuando confirme la recepción.", "venta")
+    if not (ya is not None and ya.tipo == "venta_producto"):
+        _registrar_cobro_web(charge_id, monto_c, iso, email, medio, f"venta:{producto_id}")
+        _push(vendedor, "¡Te compraron! 🛍️",
+              f"{nombre or 'Un jugador'} compró \"{producto_nombre}\" ({_monto(sim, precio)}). Entrégalo y coordina por chat; "
+              "el pago se libera cuando confirme la recepción.", "venta")
     nueva = stores.ventas[-1].id if len(stores.ventas) > antes else ""
-    print(f"[market-web] {email} compró {p['id']} a {vend} · {sim} {precio:.2f} · {charge_id}", flush=True)
+    if not nueva:
+        nueva = next((v.id for v in reversed(stores.ventas) if v.producto_id == producto_id
+                      and (v.comprador_email or "").lower() == email), "") if ya is not None else ""
+    print(f"[market-web] {email} compró {producto_id} a {vendedor} · {sim} {precio:.2f} · {charge_id}", flush=True)
     out = {"ok": True, "charge_id": charge_id, "venta_id": nueva, "url": f"/mis-ordenes?nueva={nueva}" if nueva else "/mis-ordenes"}
     if aviso:
         out["aviso"] = aviso
@@ -837,6 +887,9 @@ def pagina_bonos_local(request: Request, cancha_id: str) -> HTMLResponse:
     saldo = sum(b["saldo"] for b in bonos_de(yo) if b["club"] == club and b["dueno"].lower() == dueno) if yo else 0
     mio = bool(yo) and yo == dueno
     puede = _pago_web_disponible(iso) and sesion.activo() and not mio and bool(c.get("verificada"))
+    from web import pago_hospedado as ph_
+    pas = _pasarela_web(iso) if puede else ""
+    hosp = bool(pas) and pas != "culqi"
     tarifa = float(c.get("precio_hora") or 0)
     packs = []
     for o in ofertas:
@@ -857,7 +910,7 @@ def pagina_bonos_local(request: Request, cancha_id: str) -> HTMLResponse:
     if mio:
         nota = "<div class='estado warn'>Son los packs de tu local: así los ven los jugadores. Se administran desde la app (Mis canchas → Bonos).</div>"
     elif ofertas and not _pago_web_disponible(iso):
-        nota = (f"<div class='estado warn'>Este local cobra en {e(sim)}: el pago desde la web está disponible por ahora solo en soles. "
+        nota = (f"<div class='estado warn'>Este local cobra en {e(sim)}: el pago en línea en esa moneda aún no está disponible en la web. "
                 f"<a href='{PLAY_URL}'>Compra tu bono en la app</a>.</div>")
     elif ofertas and not sesion.activo():
         nota = f"<div class='estado warn'>Compra tu bono desde la app Pichangol. <a href='{PLAY_URL}'>Abrir la app</a></div>"
@@ -870,12 +923,13 @@ def pagina_bonos_local(request: Request, cancha_id: str) -> HTMLResponse:
               f"<p class='sub'>{e(club)} · Paga por adelantado y ahorra: cada bono te da horas para reservar aquí.</p></div></div>"
               + (f"<div class='saldo'>✓ Tienes {saldo} {'hora' if saldo == 1 else 'horas'} de bono en este local</div>" if saldo > 0 else "")
               + nota + login + cuerpo_packs
-              + (f"<div style='margin-top:16px'>{ui.selector_medio_pago()}</div><div class='estado bad' id='mkErr'></div>" if (puede and ofertas) else "")
+              + (f"<div style='margin-top:16px'>{ph_.selector(pas) if hosp else ui.selector_medio_pago()}</div><div class='estado bad' id='mkErr'></div>" if (puede and ofertas) else "")
               + "<p class='sub' style='font-size:12.5px;margin-top:14px'>Tus horas quedan en <a href='/mis-bonos'>Mis bonos</a> y se canjean al reservar en este local, aquí en la web o en la app: marca “Usar mi bono” en el resumen.</p></div>")
     head = ""
     if puede and ofertas:
         cfg = {"url": "/web/bonos/comprar", "cuerpo": {"cancha_id": cancha_id}, "moneda": sim, "monto": 0, "linea": "",
-               "pk": config.CULQI_PUBLIC_KEY, "login": sesion.activo(), "sesion": bool(ses), "boton": "", "cargando": "Confirmando tu bono…",
+               "pk": "" if hosp else config.CULQI_PUBLIC_KEY, "login": sesion.activo(), "sesion": bool(ses), "boton": "", "cargando": "Confirmando tu bono…",
+               "pasarela": pas, "pasarelaNombre": ph_.nombre_pasarela(pas) if hosp else "", "urlPasarela": "/web/bonos/comprar-pasarela",
                "nota": "Pagas una sola vez; cada reserva con tu bono descuenta horas, sin volver a pagar."}
         cuerpo += _js_culqi(cfg)
         if not ses:
@@ -908,7 +962,9 @@ def comprar_bono(req: BonoReq, request: Request = None) -> dict:
         return {"ok": False, "error": "propio", "mensaje": "Es un bono de tu propio local."}
     sim, iso = _moneda_local(c)
     if not _pago_web_disponible(iso):
-        return {"ok": False, "error": "moneda", "mensaje": "El pago en línea desde la web está disponible solo en soles. Cómpralo desde la app."}
+        return {"ok": False, "error": "moneda", "mensaje": "El pago en línea en esta moneda no está disponible en la web por ahora. Cómpralo desde la app."}
+    if iso != "PEN":
+        return {"ok": False, "error": "usa_pasarela", "mensaje": "Este bono se paga con la pasarela de su país. Recarga la página e inténtalo otra vez."}
     monto_c = int(round(o["precio"] * 100))
     if monto_c < 100:
         return {"ok": False, "error": "monto", "mensaje": "El monto mínimo para pagar en línea es S/ 1.00."}
@@ -923,13 +979,30 @@ def comprar_bono(req: BonoReq, request: Request = None) -> dict:
         return {"ok": False, "error": "cargo_rechazado",
                 "mensaje": "El pago fue rechazado por tu banco o billetera. No se te cobró nada." + (f" ({msg[:80]})" if msg else "")}
     charge_id = str(cargo.get("charge_id") or "")
+    return bono_pagado(oferta=o, dueno=dueno, email=email, nombre=nombre, sim=sim, charge_id=charge_id, medio=req.medio)
+
+
+def bono_pagado(*, oferta: dict, dueno: str, email: str, nombre: str, sim: str, charge_id: str, medio: str,
+                reintento: bool = False) -> dict:
+    """Lo que pasa con el bono YA cobrado (Culqi o pasarela hospedada):
+    crédito `bono_<operación>` (idempotente), `post_venta` (idempotente por
+    `venta_id`, comisión con el mínimo de la moneda del local), `cobro_web` y
+    push al dueño. Mismo código para los dos caminos."""
+    from db.store import stores
+    o = oferta
+    iso = _iso(sim)
+    monto_c = int(round(float(o["precio"]) * 100))
+    concepto = f"Bono {o['horas']}h · {o['club']}"
     bono_id = f"bono_{charge_id}"
+    ya = stores.pago_por_charge(charge_id)
     aviso = ""
     # 1) Crédito del jugador (= AppState.comprarBono).
     if not registrar_bono({"id": bono_id, "bono_id": o["id"], "dueno": dueno, "club": o["club"], "comprador": email,
                            "comprador_nombre": nombre, "horas_total": o["horas"], "horas_usadas": 0, "precio": o["precio"],
                            "venta_id": charge_id}):
         print(f"[bono-web] cobro {charge_id} sin crédito en pichangol_bonos_comprados ({email}, {o['id']})", flush=True)
+        if reintento:
+            raise RuntimeError("no se pudo registrar el crédito del bono")  # la orden se reintenta
         aviso = (f"Tu pago se procesó (operación {charge_id}) pero no pudimos activar el bono. "
                  f"Escríbenos a {empresa.valores()['empresa_correo']} y lo activamos.")
     # 2) Contabilidad de venta (por recibir del dueño − comisión), idempotente por venta_id.
@@ -939,11 +1012,126 @@ def comprar_bono(req: BonoReq, request: Request = None) -> dict:
                                     charge_id=charge_id, moneda=sim, comprador_email=email, comprador_nombre=nombre))
     except Exception as ex:  # noqa: BLE001
         print(f"[bono-web] contabilidad de {charge_id} falló: {ex}", flush=True)
-    _registrar_cobro_web(charge_id, monto_c, iso, email, req.medio, f"bono:{o['id']}")
-    # 3) Push al dueño.
-    _push(dueno, "¡Vendiste un bono! 🎟️", f"{nombre or 'Un jugador'} compró tu pack de {o['horas']} horas en {o['club']}.", "bono")
+    if not (ya is not None and ya.tipo == "venta_producto"):
+        _registrar_cobro_web(charge_id, monto_c, iso, email, medio, f"bono:{o['id']}")
+        # 3) Push al dueño.
+        _push(dueno, "¡Vendiste un bono! 🎟️", f"{nombre or 'Un jugador'} compró tu pack de {o['horas']} horas en {o['club']}.", "bono")
     print(f"[bono-web] {email} compró {o['id']} ({o['horas']}h) en {o['club']} · {sim} {o['precio']:.2f} · {charge_id}", flush=True)
     out = {"ok": True, "charge_id": charge_id, "bono": bono_id, "url": f"/mis-bonos?nuevo={bono_id}"}
     if aviso:
         out["aviso"] = aviso
     return out
+
+
+# ── MARKETPLACE y BONOS en $ / Bs por PASARELA HOSPEDADA (fase 2 parte 2) ─────
+
+class CompraPasarelaReq(BaseModel):
+    producto_id: str
+
+
+@router.post("/web/marketplace/comprar-pasarela")
+def comprar_producto_pasarela(req: CompraPasarelaReq, request: Request = None) -> dict:
+    """Producto en $ o Bs: mismas validaciones que el camino Culqi; la unidad
+    se APARTA (UPDATE atómico) ANTES de ir a la pasarela y sigue apartada
+    mientras la orden vive; vuelve al stock si se rechaza / cancela / vence
+    (`al_soltar_hospedado`). Al confirmarse, `venta_pagada` (como Culqi)."""
+    from web import pago_hospedado as ph
+    ses, err = _ses_compra(request)
+    if err:
+        return err
+    email = ses["email"].strip().lower()
+    p = producto(req.producto_id)
+    if not p or not p.get("activo"):
+        return {"ok": False, "error": "no_disponible", "mensaje": "Este producto ya no está publicado."}
+    vend = p["vendedor_email"].strip().lower()
+    if vend == email:
+        return {"ok": False, "error": "propio", "mensaje": "Este producto es tuyo."}
+    sim, iso = _sim(p.get("moneda")), _iso(p.get("moneda"))
+    if iso == "PEN":
+        return {"ok": False, "error": "usa_culqi", "mensaje": "Este producto se paga con Yape o tarjeta en la misma página."}
+    if not _pago_web_disponible(iso):
+        return {"ok": False, "error": "moneda", "mensaje": "El pago en línea en esta moneda no está disponible en la web por ahora. Cómpralo desde la app."}
+    precio = round(float(p["precio"]), 2)
+    if int(round(precio * 100)) < 100:
+        return {"ok": False, "error": "monto", "mensaje": f"El monto mínimo para pagar en línea es {sim} 1.00."}
+    previa = ph.orden_viva(email, "market", p["id"])
+    if previa is None and p.get("stock") is not None and p["stock"] <= 0:
+        return {"ok": False, "error": "agotado", "mensaje": "Se agotó. No se te cobró nada."}
+    nombre = (ses.get("nombre") or "").strip()
+
+    def apartar():
+        if not apartar_unidad(p["id"]):
+            return {"ok": False, "error": "agotado", "mensaje": "Se agotó justo ahora o el vendedor lo pausó. No se te cobró nada."}
+        return None
+
+    accion = {"producto_id": p["id"], "producto_nombre": p.get("nombre") or "", "vendedor": vend,
+              "vendedor_nombre": p.get("vendedor_nombre") or "", "moneda": p.get("moneda") or sim, "precio": precio,
+              "comprador_nombre": nombre, "stock_apartado": True}
+    return ph.abrir_orden(email=email, tipo="market", clave=p["id"], iso=iso, monto_centimos=int(round(precio * 100)),
+                          concepto=f"Compra: {p.get('nombre') or 'Producto'}", accion=accion, nombre=nombre, request=request,
+                          apartar=apartar, soltar=lambda: devolver_unidad(p["id"]))
+
+
+class BonoPasarelaReq(BaseModel):
+    cancha_id: str
+    oferta_id: str
+
+
+@router.post("/web/bonos/comprar-pasarela")
+def comprar_bono_pasarela(req: BonoPasarelaReq, request: Request = None) -> dict:
+    """Bono de un local que cobra en $ o Bs: mismas validaciones que el camino
+    Culqi; al confirmarse, `bono_pagado` (crédito idempotente + venta)."""
+    from web import pago_hospedado as ph
+    ses, err = _ses_compra(request)
+    if err:
+        return err
+    email = ses["email"].strip().lower()
+    c = datos.cancha(req.cancha_id)
+    o = oferta(req.oferta_id)
+    if not c or not o or not o["activo"] or o["club"] != c.get("club") or o["dueno"].lower() != (c.get("dueno") or "").strip().lower():
+        return {"ok": False, "error": "no_disponible", "mensaje": "Este bono ya no está disponible."}
+    if not c.get("verificada"):
+        return {"ok": False, "error": "no_verificada", "mensaje": "Este local aún está en verificación."}
+    dueno = o["dueno"].lower()
+    if dueno == email:
+        return {"ok": False, "error": "propio", "mensaje": "Es un bono de tu propio local."}
+    sim, iso = _moneda_local(c)
+    if iso == "PEN":
+        return {"ok": False, "error": "usa_culqi", "mensaje": "Este bono se paga con Yape o tarjeta en la misma página."}
+    if not _pago_web_disponible(iso):
+        return {"ok": False, "error": "moneda", "mensaje": "El pago en línea en esta moneda no está disponible en la web por ahora. Cómpralo desde la app."}
+    monto_c = int(round(o["precio"] * 100))
+    if monto_c < 100:
+        return {"ok": False, "error": "monto", "mensaje": f"El monto mínimo para pagar en línea es {sim} 1.00."}
+    nombre = (ses.get("nombre") or "").strip()
+    accion = {"cancha_id": c["id"], "oferta": {k: o[k] for k in ("id", "horas", "precio", "club", "nombre")},
+              "dueno": dueno, "sim": sim, "comprador_nombre": nombre}
+    return ph.abrir_orden(email=email, tipo="bono", clave=o["id"], iso=iso, monto_centimos=monto_c,
+                          concepto=f"Bono {o['horas']}h · {o['club']}", accion=accion, nombre=nombre, request=request)
+
+
+def al_pagar_hospedado(o: dict) -> None:
+    """La pasarela CONFIRMÓ el cobro de una orden del marketplace o de un bono:
+    lo mismo que el camino Culqi tras el cargo, con los datos CONGELADOS en
+    la orden y la referencia `<pasarela>:<id>` como N.º de operación."""
+    from web import pago_hospedado as ph
+    a = o["accion"]
+    ref = ph.ref_cobro(o)
+    if a.get("tipo") == "market":
+        out = venta_pagada(producto_id=a["producto_id"], producto_nombre=a.get("producto_nombre") or "", vendedor=a["vendedor"],
+                           vendedor_nombre=a.get("vendedor_nombre") or "", moneda=a.get("moneda") or "", precio=float(a["precio"]),
+                           email=o["email"], nombre=a.get("comprador_nombre") or "", charge_id=ref, medio="tarjeta", reintento=True)
+        a["stock_vendido"] = True
+    else:
+        out = bono_pagado(oferta=dict(a["oferta"]), dueno=a["dueno"], email=o["email"], nombre=a.get("comprador_nombre") or "",
+                          sim=a.get("sim") or o.get("simbolo") or "", charge_id=ref, medio="tarjeta", reintento=True)
+    o["estado"], o["url_resultado"] = "aprobado", out["url"]
+
+
+def al_soltar_hospedado(o: dict) -> None:
+    """La orden no se pagó (rechazo / cancelación / vencimiento): la unidad
+    apartada vuelve al stock, una sola vez."""
+    a = o.get("accion") or {}
+    if a.get("tipo") == "market" and a.get("stock_apartado") and not a.get("stock_devuelto") and not a.get("stock_vendido"):
+        devolver_unidad(a["producto_id"])
+        a["stock_devuelto"] = True

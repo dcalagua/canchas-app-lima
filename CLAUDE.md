@@ -322,8 +322,9 @@ para la API del APK.
   Google obligatoria (login-box como la reserva), Para mí / Para mi hijo(a)
   (+ edad 2-17; el titular queda como `apoderadoNombre`), nombre + celular,
   Mes a mes (solo mensuales) o Adelantado con cantidad 1/2/3/6/12 y
-  descuento prepago si `cantidad ≥ mesesMinPrepago`, Culqi Checkout v4 (solo
-  PEN; en $/Bs el tarifario se ve y "Matricúlate desde la app"). `POST
+  descuento prepago si `cantidad ≥ mesesMinPrepago`, Culqi Checkout v4 en
+  PEN; en $/Bs la pasarela hospedada del país (ver "COBRO WEB EN USD/BOB ·
+  PARTE 2"; sin pasarela en PRD, "Matricúlate desde la app"). `POST
   /web/matricular` recalcula el total en el servidor (`_total` =
   `_HojaDatosAlumno._total`), cobra (`culqi.crear_cargo`) y escribe en
   `pichangol_matriculas` (`datos.insertar_matricula`) EXACTAMENTE la fila de
@@ -622,8 +623,8 @@ para la API del APK.
   las funciones de `pagos/router.py` para la plata (nada de contabilidad
   paralela); cobro web en PEN con Culqi v4 (selector Yape/Tarjeta +
   `pcgResumenPago`); la recarga de billetera en $/Bs ya va por la pasarela
-  hospedada (ver "COBRO WEB EN USD/BOB"); el resto de cobros en $/Bs
-  (academia, cuotas, marketplace, bonos) sigue "hazlo en la app". El Perfil web ya enlaza
+  hospedada (ver "COBRO WEB EN USD/BOB") y, desde la parte 2 (oct-2026),
+  también academia, cuotas, marketplace y bonos. El Perfil web ya enlaza
   todo; lo que sigue solo en el app se lista al final. Tests
   `tests/test_web_jugador_{billetera,market,clases,liga}.py`.
   (1) `web/jugador_billetera.py`: `/mi-billetera` (= `cuenta_screen`: saldo,
@@ -1620,10 +1621,61 @@ para la API del APK.
   `<base>/web/pago/<orden>/retorno` y `/cancelado` como responseUrl /
   cancellationUrl); Bolivia `LIBELULA_APPKEY` (callback
   `<base>/pagos/bo/callback`, retorno `<base>/web/pago/<orden>/retorno`).
-  Pendiente (parte 2): academia/matrícula, cuotas, marketplace y bonos en
-  $/Bs. Tests `tests/test_web_pago_hospedado.py`; Playwright
+  Tests `tests/test_web_pago_hospedado.py`; Playwright
   `$SP/pw_hosp.js` (390 px, pasarela simulada, cero diálogos del
   navegador).
+  **PARTE 2 (oct-2026): MATRÍCULA, CUOTAS, MARKETPLACE Y BONOS en $/Bs** por
+  la MISMA capa de órdenes. Cada tipo de `accion` vive en su módulo
+  (`pago_hospedado._MODULOS`, import perezoso) con `al_pagar_hospedado(o)`
+  (lo que su camino Culqi hace tras el cargo, FACTORIZADO en una función
+  compartida por los dos caminos) y, si aparta algo,
+  `al_soltar_hospedado(o)`; los endpoints crean la orden con
+  `pago_hospedado.abrir_orden` (reusa la orden viva de lo mismo por
+  `accion.clave`: doble clic / dos pestañas = una orden) y el JS va con
+  `pcgIrPasarela` (`JS_IR_PASARELA`) tras `pcgResumenPago({medioNombre})`;
+  selector de un solo chip (`pago_hospedado.selector`). N.º de operación =
+  `<pasarela>:<id>` (`ref_cobro`). (1) **Matrícula** `POST
+  /web/matricular-pasarela {academia_id, personas}` (una persona o el
+  carrito): `_preparar_personas` + `_cotizar_matricula` (cargo con partes) y
+  las personas/total se CONGELAN en la orden (ids `al_<µs>` deterministas
+  por `base_us`: un reintento no duplica filas); al pagar,
+  `matricular_pagado` (= Culqi: filas, `post_matricula` en la moneda del
+  país, `cobro_web`, push). **Mes a mes en $/Bs = SIN débito automático**
+  (decisión: PayPhone/Libélula no guardan tarjeta en estos módulos): la 1.ª
+  cuota se paga hoy y las demás quedan PENDIENTES sin `autoDebito`; se pagan
+  cada mes desde Mis clases (web o app). La ficha, el resumen y el
+  comprobante lo dicen ("sin débito automático"); `pagoWeb.pasarela` →
+  "Pagado con PayPhone/Libélula". `/web/matricular(-varios)` (Culqi) ahora
+  responde `usa_pasarela` en $/Bs. (2) **Cuotas** `POST
+  /web/mis-clases/pagar-pasarela {cuotas, total_centimos}`: mismas
+  validaciones (`_validar_cuotas`), una cuota no puede estar en dos órdenes
+  vivas (`en_curso`); al pagar, `marcar_cuotas_atomico` bloquea TODAS las
+  matrículas con `FOR UPDATE` (orden de id) y aplica `aplicar_pago_atomico`
+  TODO O NADA (pendiente, sin débito automático activo, mismo monto; una ya
+  pagada con ESTA operación = reintento): si alguna se pagó por otro lado
+  mientras tanto, no se marca ninguna y el pago se DEVUELVE
+  (`cuotas_ya_pagadas`); base caída → None → el barrido reintenta (nunca se
+  devuelve por un error de red). Luego `_contabilizar_cuotas` por academia
+  (idempotente por `cuo_<acad>_<marca>`), pushes y aviso en
+  `/mis-clases?pagado=<orden>`. (3) **Marketplace** `POST
+  /web/marketplace/comprar-pasarela {producto_id}`: la unidad se APARTA
+  (`apartar_unidad`, UPDATE atómico) ANTES de ir a la pasarela, sigue
+  apartada mientras la orden vive y vuelve al stock UNA vez al rechazar /
+  cancelar / vencer (`al_soltar_hospedado`); al pagar, `venta_pagada` (=
+  Culqi: `post_venta` con la moneda del producto, escrow, `cobro_web`,
+  push). (4) **Bonos** `POST /web/bonos/comprar-pasarela {cancha_id,
+  oferta_id}` → `bono_pagado` (crédito `bono_<pasarela>:<id>` idempotente +
+  `post_venta`). **Pago TARDÍO** (orden ya vencida/cancelada) de cualquier
+  tipo: nunca se ejecuta la acción → `pago_hospedado.devolver_pago(o,
+  motivo)` (saldo si la billetera es de esa moneda; si no, `manual` en
+  Cancelaciones web con `tipo` y `concepto`; Mis reservas solo lista las de
+  `tipo` reserva). Motivos y textos en `_MOTIVOS_DEV`. Sin pasarela en PRD
+  todo sigue "desde la app"; en QAS, la simulada. Tests
+  `tests/test_web_pago_hospedado_fase2.py` (USD/BOB, PayPhone/Libélula
+  simuladas y la de QAS, rechazo, vencimiento, pago tardío, cuotas pagadas
+  por otro lado, SQL del marcado atómico, doble confirmación); Playwright
+  `$SP/pw_f2.js` (390 px, matrícula mes a mes + cuotas + rechazo en el
+  marketplace, cero diálogos del navegador).
 - **SEÑA EN LA RESERVA WEB (caso real PRD, 1-oct-2026: "Campo deportivo Edu
   Jr." tenía seña 50 % y la web cobraba siempre el total):** la web ahora
   hace lo mismo que `club_detalle._ResumenReserva` del app. Config

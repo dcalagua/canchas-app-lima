@@ -35,6 +35,26 @@ funciones que el APK y que `/web/pagar`:
   (`pagos.router._confirmar_ec_inner` / `_marcar_pagada`, tipo `recarga` →
   saldo + bono de recarga), exactamente como en el APK.
 
+FASE 2 PARTE 2 (oct-2026): los demás cobros web en $ / Bs usan la MISMA capa
+de órdenes. Cada tipo de acción vive en su módulo (`_MODULOS`), que expone
+`al_pagar_hospedado(o)` (ejecuta EXACTAMENTE lo mismo que su camino Culqi
+tras el cargo; deja `estado = aprobado` + `url_resultado` o llama a
+`devolver_pago`) y, si aparta algo, `al_soltar_hospedado(o)`:
+- matricula (`web/academia.py`): carrito familiar, total recalculado por el
+  servidor; filas de `pichangol_matriculas`, `post_matricula`, `cobro_web`
+  y push con el mismo código que Culqi. Mes a mes SIN débito automático.
+- cuotas (`web/jugador_clases.py`): al confirmar se revalida y se marcan
+  TODAS las cuotas en una sola transacción con `FOR UPDATE`; si alguna ya
+  se pagó mientras tanto, nada se marca y el pago se devuelve.
+- market (`web/jugador_market.py`): la unidad se aparta (UPDATE atómico)
+  ANTES de ir a la pasarela, sigue apartada mientras la orden vive y vuelve
+  al stock si se rechaza / cancela / vence.
+- bono (`web/jugador_market.py`): crédito `bono_<pasarela>:<ref>`
+  idempotente + `post_venta`.
+Un pago que llega con la orden ya vencida / cancelada (pago TARDÍO) nunca
+ejecuta la acción: se devuelve (saldo si la billetera es de esa moneda; si
+no, `manual` en Cancelaciones web).
+
 Seguridad: el monto se recalcula en el servidor; el retorno se finaliza aun
 sin cookie (la prueba es la confirmación de la pasarela, nunca el GET); la
 página de espera y el estado solo los ve el dueño de la orden; un segundo
@@ -74,6 +94,17 @@ PENDIENTES = ("pendiente",)
 FINALES = ("aprobado", "aprobado_sin_reserva", "rechazado", "cancelado", "vencido")
 _ENTORNOS_PRUEBA = {"QAS", "DEV", "DESARROLLO", "PRUEBAS", "TEST", "LOCAL"}
 SIMBOLO = {"USD": "$", "BOB": "Bs", "PEN": "S/"}
+
+# Tipo de acción → módulo que la ejecuta (import perezoso: esos módulos
+# importan `web.router`, que importa este).
+_MODULOS = {"matricula": "web.academia", "cuotas": "web.jugador_clases",
+            "market": "web.jugador_market", "bono": "web.jugador_market"}
+
+
+def _modulo(tipo: str):
+    import importlib
+    nombre = _MODULOS.get(tipo or "")
+    return importlib.import_module(nombre) if nombre else None
 
 
 # ── qué pasarela cobra cada moneda ────────────────────────────────────────────
@@ -186,6 +217,24 @@ def orden_de_ids(ids: list[str]) -> dict | None:
     return None
 
 
+def orden_viva(email: str, tipo: str, clave: str) -> dict | None:
+    """Orden EN CURSO (sin pagar) del mismo correo para lo mismo (`accion.
+    clave`): un doble clic o dos pestañas reusan la orden en vez de crear otra
+    (y, en el marketplace, de apartar otra unidad)."""
+    email = (email or "").strip().lower()
+    for o in _vivas():
+        a = o.get("accion") or {}
+        if (o.get("estado") in PENDIENTES and not o.get("pagado") and o.get("email") == email
+                and a.get("tipo") == tipo and a.get("clave") == clave):
+            return o
+    return None
+
+
+def ordenes_vivas(tipo: str) -> list[dict]:
+    """Órdenes de ese tipo en curso (sin pagar o pagadas sin aplicar)."""
+    return [o for o in _vivas() if (o.get("accion") or {}).get("tipo") == tipo]
+
+
 def ref_pendiente(ref: str = "", ids: list[str] | None = None) -> bool:
     """¿Hay un pago hospedado en curso para esa reserva/grupo (o esos ids)?
     Lo consultan la tarjeta de fidelidad y el barrido de bono/puntos para NO
@@ -218,7 +267,8 @@ def crear_orden(*, email: str, iso: str, monto_centimos: int, concepto: str, acc
          "concepto": (concepto or "Pago Pichangol")[:120], "accion": dict(accion or {}), "estado": "pendiente",
          "creado_en": _ahora_iso(), "vence_ts": time.time() + ttl, "ref_pasarela": "", "url_pasarela": "",
          "url_resultado": "", "pagado": False, "accion_hecha": False, "intentos": 0}
-    tipo_mod = "recarga" if o["accion"].get("tipo") == "recarga" else "reserva_web"
+    t_acc = o["accion"].get("tipo") or ""
+    tipo_mod = "recarga" if t_acc == "recarga" else ("reserva_web" if t_acc == "reserva" else f"{t_acc}_web")
     dueno_mod = o["email"] if tipo_mod == "recarga" else ""
     ref_mod = str(o["accion"].get("ref") or oid)
     if pas == "libelula":
@@ -252,6 +302,71 @@ def crear_orden(*, email: str, iso: str, monto_centimos: int, concepto: str, acc
     return {"ok": True, "orden": oid, "url": o["url_pasarela"], "pasarela": pas}
 
 
+_ABRIENDO: set[str] = set()
+
+
+def abrir_orden(*, email: str, tipo: str, clave: str, iso: str, monto_centimos: int, concepto: str, accion: dict,
+                nombre: str = "", request: Request | None = None, apartar=None, soltar=None) -> dict:
+    """Crear la orden de un cobro web en $ / Bs desde los módulos (matrícula,
+    cuotas, marketplace, bono) con la respuesta JSON lista para el navegador:
+    {ok, orden, url, pasarela} o {ok: False, error, mensaje}. Un doble clic /
+    dos pestañas reusan la orden viva de lo mismo (`clave`). `apartar()` corre
+    ANTES de ir a la pasarela (devuelve None si apartó o un dict de error) y
+    `soltar()` lo deshace si la orden no se pudo crear."""
+    email = (email or "").strip().lower()
+    candado = f"{email}|{tipo}|{clave}"
+    with _LOCK:
+        previa = orden_viva(email, tipo, clave)
+        if previa is not None:
+            return {"ok": True, "orden": previa["id"], "url": previa.get("url_pasarela") or f"/web/pago/{previa['id']}",
+                    "pasarela": previa["pasarela"], "previa": True}
+        if candado in _ABRIENDO:
+            return {"ok": False, "error": "en_curso", "mensaje": "Ya estamos abriendo tu pago. Espera unos segundos."}
+        _ABRIENDO.add(candado)
+    try:
+        if not pasarela_para(iso):
+            return {"ok": False, "error": "pasarela_no_disponible",
+                    "mensaje": "El pago en línea en esta moneda no está disponible en la web por ahora. Hazlo desde la app."}
+        if apartar is not None:
+            err = apartar()
+            if err:
+                return err
+        r = crear_orden(email=email, iso=iso, monto_centimos=monto_centimos, concepto=concepto,
+                        accion=dict(accion, tipo=tipo, clave=clave), nombre=nombre, request=request)
+        if not r.get("ok"):
+            if soltar is not None:
+                try:
+                    soltar()
+                except Exception as ex:  # noqa: BLE001
+                    print(f"[pago-web] no se pudo soltar tras fallar la orden: {ex}", flush=True)
+            msg = ("El pago en línea en esta moneda no está disponible en la web por ahora. Hazlo desde la app."
+                   if r.get("error") == "pasarela_no_disponible" else
+                   "No pudimos abrir la pasarela de pago. Inténtalo de nuevo en unos segundos; no se te cobró nada.")
+            return {"ok": False, "error": r.get("error"), "mensaje": msg}
+        return {"ok": True, "orden": r["orden"], "url": r["url"], "pasarela": r["pasarela"]}
+    finally:
+        with _LOCK:
+            _ABRIENDO.discard(candado)
+
+
+# JS común: crea la orden en el servidor y lleva al navegador a la pasarela
+# (o a la página de prueba en QAS). Resuelve con la respuesta si NO navegó.
+JS_IR_PASARELA = r"""
+window.pcgIrPasarela = function(url, body, nombre){
+  if(window.pcgCargando) pcgCargando('Abriendo el pago seguro de ' + (nombre || 'la pasarela') + '…');
+  return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})})
+    .then(function(r){ return r.json(); })
+    .then(function(p){ if(p && p.ok && p.url){ window.location.href = p.url; return p; } if(window.pcgCargando) pcgCargando(false); return p || {ok: false}; })
+    .catch(function(){ if(window.pcgCargando) pcgCargando(false); return {ok: false, mensaje: 'Sin conexión. Inténtalo de nuevo.'}; });
+};
+"""
+
+
+def ref_cobro(o: dict) -> str:
+    """Referencia pública del cobro de una orden (`<pasarela>:<id>`)."""
+    return _ref_pasarela_cobro(o)
+
+
 def _pagado_en_pasarela(o: dict) -> bool:
     """La pasarela CONFIRMÓ el cobro (única prueba que vale)."""
     if o["pasarela"] == "sim":
@@ -280,10 +395,20 @@ def finalizar(oid: str) -> dict | None:
         o.setdefault("pagado_en", _ahora_iso())
         o["intentos"] = int(o.get("intentos") or 0) + 1
         try:
-            if (o.get("accion") or {}).get("tipo") == "recarga":
+            tipo = (o.get("accion") or {}).get("tipo")
+            if tipo == "recarga":
                 _ejecutar_recarga(o)
-            else:
+            elif tipo == "reserva":
                 _ejecutar_reserva(o)
+            elif o.get("estado") not in PENDIENTES:
+                # Pago TARDÍO (la orden ya venció / se canceló y lo apartado se
+                # soltó): nunca se ejecuta la acción; la plata se devuelve.
+                devolver_pago(o, motivo="pago_tardio")
+            else:
+                mod = _modulo(tipo)
+                if mod is None:
+                    raise RuntimeError(f"acción desconocida: {tipo}")
+                mod.al_pagar_hospedado(o)
             o["accion_hecha"] = True
             o["error"] = ""
         except Exception as ex:  # noqa: BLE001 — el barrido reintenta; la plata ya entró
@@ -312,16 +437,38 @@ def _ejecutar_reserva(o: dict) -> None:
         o["estado"], o["url_resultado"] = "aprobado", R._url_comprobante(filas)
         print(f"[pago-web] {o['id']} reserva confirmada {R._ref_de(filas)} {o['pasarela']} {o['moneda']} {o['monto_centimos']}", flush=True)
         return
-    _devolver_pago_sin_reserva(o, filas)
+    devolver_pago(o, motivo="pago_sin_reserva")
 
 
-def _devolver_pago_sin_reserva(o: dict, filas: list[dict]) -> None:
-    """El pago entró pero el horario ya no estaba apartado (llegó tarde, tras
-    vencer la orden). No se inventa una reserva: se DEVUELVE. A su saldo
-    Pichangol si la billetera es de esa moneda (al instante); si no, queda
-    `manual` en Cancelaciones web para que el operador devuelva al medio."""
+# Textos por motivo de devolución: (título de la página, explicación, detalle
+# corto para el push y para el operador en Cancelaciones web).
+_MOTIVOS_DEV = {
+    "pago_sin_reserva": ("Recibimos tu pago, pero el horario ya se había liberado",
+                         "Tu pago llegó cuando el tiempo para pagar ya había terminado y el horario quedó libre.",
+                         "el horario ya se había liberado"),
+    "pago_tardio": ("Recibimos tu pago, pero llegó tarde",
+                    "Tu pago llegó cuando el tiempo para pagar ya había terminado, así que no lo aplicamos.",
+                    "la orden ya había vencido o se había cancelado"),
+    "cuotas_ya_pagadas": ("Recibimos tu pago, pero esas cuotas ya estaban pagadas",
+                          "Mientras pagabas, alguna de las cuotas elegidas se pagó por otro lado, así que no cobramos dos veces.",
+                          "las cuotas ya estaban pagadas"),
+    "no_disponible": ("Recibimos tu pago, pero ya no estaba disponible",
+                      "Mientras pagabas, lo que elegiste dejó de estar disponible, así que no aplicamos el pago.",
+                      "lo pagado dejó de estar disponible"),
+}
+
+
+def devolver_pago(o: dict, motivo: str = "pago_sin_reserva") -> None:
+    """El pago entró pero la acción ya no se puede (o no se debe) ejecutar:
+    el horario se liberó, la orden había vencido, las cuotas ya estaban
+    pagadas… Nunca se inventa nada: se DEVUELVE. A su saldo Pichangol si la
+    billetera es de esa moneda (al instante); si no, queda `manual` en
+    Cancelaciones web para que el operador devuelva al medio. Idempotente
+    por orden (`devpw:<orden>`)."""
     from pagos.router import _aviso_push_usuario, moneda_billetera
     a = o["accion"]
+    tipo = a.get("tipo") or "reserva"
+    _titulo, _expl, det_op = _MOTIVOS_DEV.get(motivo, _MOTIVOS_DEV["pago_tardio"])
     email, iso, monto = o["email"], o["moneda"], int(o["monto_centimos"])
     clave = f"devpw:{o['id']}"
     sim = o.get("simbolo") or SIMBOLO.get(iso, iso)
@@ -330,7 +477,7 @@ def _devolver_pago_sin_reserva(o: dict, filas: list[dict]) -> None:
         stores.registrar_pago(tipo="cobro_web", monto_centimos=monto, moneda=iso,
                               estado="devuelto_saldo" if a_saldo else "aprobado",
                               culqi_charge_id=_ref_pasarela_cobro(o), email=email, medio="tarjeta",
-                              concepto=f"web:pago_sin_reserva:{o['id']}")
+                              concepto=f"web:{motivo}:{o['id']}")
         if a_saldo:
             stores.acreditar(email, monto)
             stores.registrar_pago(tipo="devolucion_saldo", monto_centimos=monto, moneda=iso, estado="aprobado",
@@ -340,31 +487,36 @@ def _devolver_pago_sin_reserva(o: dict, filas: list[dict]) -> None:
             stores.registrar_pago(tipo="devolucion_pendiente", monto_centimos=monto, moneda=iso, estado="pendiente",
                                   dueno_id=email, culqi_charge_id=clave, medio="tarjeta",
                                   concepto=f"Devolución por coordinar · pago tardío · {o['concepto']}"[:160])
-            c = datos.cancha(str(a.get("cancha_id") or "")) or {}
+            es_res = tipo == "reserva"
+            c = (datos.cancha(str(a.get("cancha_id") or "")) or {}) if es_res else {}
             stores.cancelaciones_web.append({
-                "id": stores.next_id("cancelacion_web"), "ref": str(a.get("ref") or ""), "ids": list(a.get("ids") or []),
-                "usuario": email, "cancha_id": str(a.get("cancha_id") or ""), "cancha": c.get("nombre") or "",
-                "club": c.get("club") or "", "fecha": str(a.get("fecha") or ""), "hora_inicio": str(a.get("hora") or ""),
-                "hora_fin": "", "turnos": len(a.get("ids") or []), "monto": monto / 100.0, "moneda": sim,
+                "id": stores.next_id("cancelacion_web"), "ref": str(a.get("ref") or o["id"]), "ids": list(a.get("ids") or []),
+                "usuario": email, "cancha_id": str(a.get("cancha_id") or "") if es_res else "",
+                "cancha": (c.get("nombre") or "") if es_res else o["concepto"],
+                "club": c.get("club") or "", "fecha": str(a.get("fecha") or "") if es_res else _ahora_iso()[:10],
+                "hora_inicio": str(a.get("hora") or "") if es_res else "",
+                "hora_fin": "", "turnos": len(a.get("ids") or []) if es_res else 1, "monto": monto / 100.0, "moneda": sim,
                 "moneda_iso": iso, "pagado": True, "horas_antes": 0, "reembolso": "manual", "refund_id": None,
-                "detalle": (f"Pago tardío por {nombre_pasarela(o['pasarela'])} ({_ref_pasarela_cobro(o)}): "
-                            "el horario ya se había liberado. Devolver al medio de pago."),
+                "detalle": (f"Pago por {nombre_pasarela(o['pasarela'])} ({_ref_pasarela_cobro(o)}) sin aplicar: "
+                            f"{det_op}. Devolver al medio de pago."),
                 "deuda_dueno_centimos": 0, "dueno": (c.get("dueno") or "").strip().lower(), "creado_en": _ahora_iso(),
-                "motivo": "pago_sin_reserva", "medio_devolucion": "original", "monto_devuelto_centimos": monto,
+                "tipo": tipo, "concepto": o["concepto"],
+                "motivo": motivo, "medio_devolucion": "original", "monto_devuelto_centimos": monto,
                 "cargo_centimos": int(a.get("cargo_centimos") or 0), "incluye_cargo": True, "cancela_anfitrion": False,
                 "quien": "sistema", "costo_pasarela_centimos": 0, "bono_horas_devueltas": 0, "puntos_devueltos": 0,
                 "pasarela": o["pasarela"], "orden_web": o["id"]})
     o["estado"] = "aprobado_sin_reserva"
     o["devolucion"] = "saldo" if a_saldo else "manual"
+    o["devolucion_motivo"] = motivo
     o["url_resultado"] = f"/web/pago/{o['id']}"
-    txt = (f"Tu pago de {sim} {monto / 100.0:.2f} llegó cuando el horario ya se había liberado. "
+    txt = (f"Tu pago de {sim} {monto / 100.0:.2f} no se aplicó: {det_op}. "
            + ("Te lo devolvimos a tu saldo Pichangol: ya lo puedes usar." if a_saldo
               else "Te devolvemos el 100 % al mismo medio de pago; te escribimos para coordinar."))
     try:
-        _aviso_push_usuario(email, "Pago devuelto 💸", txt, tipo="reserva")
+        _aviso_push_usuario(email, "Pago devuelto 💸", txt, tipo="reserva" if tipo == "reserva" else "pago")
     except Exception:  # noqa: BLE001
         pass
-    print(f"[pago-web] {o['id']} PAGO SIN RESERVA {o['pasarela']} {iso} {monto} → {o['devolucion']}", flush=True)
+    print(f"[pago-web] {o['id']} PAGO SIN APLICAR ({motivo}) {tipo} {o['pasarela']} {iso} {monto} → {o['devolucion']}", flush=True)
 
 
 def _ejecutar_recarga(o: dict) -> None:
@@ -410,6 +562,12 @@ def rechazar(oid: str, estado: str = "rechazado", motivo: str = "") -> dict | No
                 R.soltar_bloque([str(i) for i in a["ids"]])
             except Exception as ex:  # noqa: BLE001
                 print(f"[pago-web] {oid} no se pudo soltar el apartado: {ex}", flush=True)
+        mod = _modulo(a.get("tipo") or "")
+        if mod is not None and hasattr(mod, "al_soltar_hospedado"):
+            try:
+                mod.al_soltar_hospedado(o)
+            except Exception as ex:  # noqa: BLE001
+                print(f"[pago-web] {oid} no se pudo soltar lo apartado: {ex}", flush=True)
         if o["pasarela"] == "libelula":
             d = stores.libelula_deudas.get(o.get("ref_pasarela") or "")
             if d and not d.get("pagado"):
@@ -737,10 +895,26 @@ def _monto_txt(o: dict) -> str:
 
 def _volver_de(o: dict) -> tuple[str, str]:
     a = o.get("accion") or {}
-    if a.get("tipo") == "recarga":
+    tipo = a.get("tipo")
+    if tipo == "recarga":
         return "/mi-billetera", "Volver a Mi billetera"
+    if tipo == "matricula":
+        return f"/academia/{a.get('academia_id') or ''}", "Volver a la academia"
+    if tipo == "cuotas":
+        return "/mis-clases", "Volver a Mis clases"
+    if tipo == "market":
+        return f"/marketplace/{a.get('producto_id') or ''}", "Volver al producto"
+    if tipo == "bono":
+        return f"/bonos/{a.get('cancha_id') or ''}", "Volver a los bonos"
     cid = str(a.get("cancha_id") or "")
     return (f"/reservar/{cid}" if cid else "/canchas"), "Volver a la cancha"
+
+
+# Qué se le promete mientras paga / qué pasó si no pagó, por tipo de acción.
+_DESTINO = {"recarga": "billetera", "cuotas": "lista de clases"}
+_MIENTRAS = {"reserva": " Tu horario sigue apartado para ti mientras tanto.",
+             "market": " Tu unidad queda apartada para ti mientras tanto."}
+_SOLTADO = {"reserva": " y el horario quedó libre.", "market": " y la unidad volvió a estar disponible."}
 
 
 @router.get("/web/pago/no-encontrado", response_class=HTMLResponse)
@@ -774,6 +948,7 @@ def pagina_orden(oid: str, request: Request):
     pas = nombre_pasarela(o["pasarela"])
     cab = (f"<div class='sub' style='margin:2px 0 14px'>{e(o['concepto'])}</div>"
            f"<div class='total' style='display:flex;justify-content:space-between;font-weight:800;font-size:18px'><span>Total</span><span>{e(_monto_txt(o))}</span></div>")
+    tipo = (o.get("accion") or {}).get("tipo") or ""
     if o.get("estado") in PENDIENTES:
         ir = (f"<a class='btn' href='{e(o.get('url_pasarela') or '#')}'>Ir a pagar con {e(pas)}</a>" if o.get("url_pasarela") else "")
         cuerpo = ("<div class='panel' style='max-width:560px;margin:32px auto'>"
@@ -781,8 +956,7 @@ def pagina_orden(oid: str, request: Request):
                   + "<div style='display:flex;gap:12px;align-items:center'><div class='aro-mini' aria-hidden='true'></div>"
                   f"<h1 style='font-size:22px;margin:0'>Confirmando tu pago…</h1></div>{cab}"
                   f"<p class='sub'>Completa el pago en la página de {e(pas)}. Si ya pagaste, en unos segundos lo confirmamos y te llevamos a tu "
-                  + ("comprobante" if (o.get("accion") or {}).get("tipo") != "recarga" else "billetera")
-                  + ". Tu horario sigue apartado para ti mientras tanto.</p>"
+                  + _DESTINO.get(tipo, "comprobante") + "." + _MIENTRAS.get(tipo, "") + "</p>"
                   f"<div class='acciones' style='flex-wrap:wrap'>{ir}<button type='button' class='btn sec' id='btnCancelarOrden'>Cancelar este pago</button></div></div>"
                   "<style>.aro-mini{width:26px;height:26px;border-radius:50%;border:3px solid #DDE7E2;border-top-color:var(--verde,#0B8A3E);animation:girar .9s linear infinite;flex:none}"
                   "@keyframes girar{to{transform:rotate(360deg)}}</style>"
@@ -791,15 +965,17 @@ def pagina_orden(oid: str, request: Request):
     if o.get("estado") == "aprobado_sin_reserva":
         txt = ("Te lo devolvimos a tu saldo Pichangol: ya lo puedes usar." if o.get("devolucion") == "saldo"
                else "Te devolvemos el 100 % al mismo medio de pago; te escribimos para coordinar.")
-        cuerpo = ("<div class='panel' style='max-width:560px;margin:32px auto'><h1 style='font-size:22px'>Recibimos tu pago, pero el horario ya se había liberado</h1>"
-                  f"{cab}<p class='sub'>Tu pago llegó cuando el tiempo para pagar ya había terminado y el horario quedó libre. {e(txt)}</p>"
-                  f"<div class='acciones'><a class='btn' href='{e(volver)}'>Elegir otro horario</a><a class='btn sec' href='/mi-billetera'>Mi billetera</a></div></div>")
+        titulo, expl, _det = _MOTIVOS_DEV.get(o.get("devolucion_motivo") or "pago_sin_reserva", _MOTIVOS_DEV["pago_sin_reserva"])
+        cuerpo = (f"<div class='panel' style='max-width:560px;margin:32px auto'><h1 style='font-size:22px'>{e(titulo)}</h1>"
+                  f"{cab}<p class='sub'>{e(expl)} {e(txt)}</p>"
+                  f"<div class='acciones'><a class='btn' href='{e(volver)}'>{'Elegir otro horario' if tipo == 'reserva' else e(volver_txt)}</a>"
+                  "<a class='btn sec' href='/mi-billetera'>Mi billetera</a></div></div>")
         return ui.shell("Pago devuelto", cuerpo, sesion=ses)
     motivo = {"cancelado": "Cancelaste el pago.", "vencido": "El tiempo para pagar terminó.",
               "rechazado": f"{pas[:1].upper() + pas[1:]} no aprobó el cobro."}.get(o.get("estado"), "El pago no se completó.")
     cuerpo = ("<div class='panel' style='max-width:560px;margin:32px auto'><h1 style='font-size:22px'>No se completó el pago</h1>"
               f"{cab}<p class='sub'>{e(motivo)} No se te cobró nada"
-              + (" y el horario quedó libre." if (o.get("accion") or {}).get("tipo") == "reserva" else ".") + "</p>"
+              + _SOLTADO.get(tipo, ".") + "</p>"
               f"<div class='acciones'><a class='btn' href='{e(volver)}'>{e(volver_txt)}</a></div></div>")
     return ui.shell("Pago no completado", cuerpo, sesion=ses)
 
