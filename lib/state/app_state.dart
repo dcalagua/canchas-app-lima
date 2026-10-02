@@ -7856,9 +7856,32 @@ class AppState extends ChangeNotifier {
 
   /// Mínimo de FOTOS PROPIAS del local para enviar un reclamo (decisión del
   /// director, 2-oct-2026; torre → `GET /config/canal` → `reclamo_fotos_min`).
-  /// Cache-first en SharedPreferences; sin red ni caché vale 2. 0 = no se exige.
+  /// Cache-first en SharedPreferences; sin red ni caché vale 3. 0 = no se exige.
   int reclamoFotosMin = FotosPropias.minimoPorDefecto;
   bool _reclamoFotosMinLeido = false;
+
+  /// MÁXIMO de fotos propias que acepta un reclamo (torre → `GET /config/canal`
+  /// → `reclamo_fotos_max`). Cache-first; sin red ni caché vale 5. Editar una
+  /// cancha FUERA de un reclamo sigue con el tope de la galería (8).
+  int reclamoFotosMax = FotosPropias.maximoReclamoPorDefecto;
+
+  /// ¿Exige la torre estar en el local (GPS ≤ [reclamoUbicacionMaxM]) para
+  /// reclamar? (`reclamo_exigir_ubicacion`, respaldo true). Siempre se intenta
+  /// mandar el GPS; solo con true se bloquea por distancia.
+  bool reclamoExigirUbicacion = true;
+
+  /// Distancia máxima (m) entre el celular y el punto de la cancha al reclamar
+  /// (`reclamo_ubicacion_max_m`, respaldo 150).
+  double reclamoUbicacionMaxM = 150;
+
+  /// Tope efectivo de la galería del RECLAMO: nunca menor que el mínimo ni
+  /// mayor que la galería (8).
+  int get reclamoFotosTope {
+    final mx = reclamoFotosMax.clamp(1, FotosPropias.maximo);
+    return mx < reclamoFotosMin
+        ? reclamoFotosMin.clamp(1, FotosPropias.maximo)
+        : mx;
+  }
 
   /// Catálogo GLOBAL de servicios extra (lo administra el operador en la
   /// torre; `GET /config/servicios-extra`). Cache-first en SharedPreferences
@@ -7899,11 +7922,28 @@ class AppState extends ChangeNotifier {
       prefs = await SharedPreferences.getInstance();
       if (!_reclamoFotosMinLeido) {
         _reclamoFotosMinLeido = true;
+        var cambioCache = false;
         final cache = prefs.getInt('reclamo_fotos_min');
         if (cache != null && cache != reclamoFotosMin) {
           reclamoFotosMin = cache;
-          notifyListeners();
+          cambioCache = true;
         }
+        final cacheMax = prefs.getInt('reclamo_fotos_max');
+        if (cacheMax != null && cacheMax != reclamoFotosMax) {
+          reclamoFotosMax = cacheMax;
+          cambioCache = true;
+        }
+        final cacheExige = prefs.getBool('reclamo_exigir_ubicacion');
+        if (cacheExige != null && cacheExige != reclamoExigirUbicacion) {
+          reclamoExigirUbicacion = cacheExige;
+          cambioCache = true;
+        }
+        final cacheDist = prefs.getDouble('reclamo_ubicacion_max_m');
+        if (cacheDist != null && cacheDist != reclamoUbicacionMaxM) {
+          reclamoUbicacionMaxM = cacheDist;
+          cambioCache = true;
+        }
+        if (cambioCache) notifyListeners();
       }
     } catch (_) {}
     final j = await GrowthService.configPublica();
@@ -7917,6 +7957,38 @@ class AppState extends ChangeNotifier {
       } catch (_) {}
       if (v != reclamoFotosMin) {
         reclamoFotosMin = v;
+        cambio = true;
+      }
+    }
+    final fmax = j['reclamo_fotos_max'];
+    if (fmax is num) {
+      final v = fmax.toInt().clamp(1, FotosPropias.maximo);
+      try {
+        await prefs?.setInt('reclamo_fotos_max', v);
+      } catch (_) {}
+      if (v != reclamoFotosMax) {
+        reclamoFotosMax = v;
+        cambio = true;
+      }
+    }
+    final exige = j['reclamo_exigir_ubicacion'];
+    if (exige is bool) {
+      try {
+        await prefs?.setBool('reclamo_exigir_ubicacion', exige);
+      } catch (_) {}
+      if (exige != reclamoExigirUbicacion) {
+        reclamoExigirUbicacion = exige;
+        cambio = true;
+      }
+    }
+    final dist = j['reclamo_ubicacion_max_m'];
+    if (dist is num && dist > 0) {
+      final v = dist.toDouble();
+      try {
+        await prefs?.setDouble('reclamo_ubicacion_max_m', v);
+      } catch (_) {}
+      if (v != reclamoUbicacionMaxM) {
+        reclamoUbicacionMaxM = v;
         cambio = true;
       }
     }

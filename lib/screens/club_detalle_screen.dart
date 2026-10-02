@@ -8,7 +8,6 @@ import '../models/fotos_propias.dart';
 import '../models/models.dart';
 import '../models/resena.dart';
 import '../services/avisos_service.dart';
-import '../services/location_service.dart';
 import '../services/pagos_service.dart';
 import '../services/places_service.dart';
 import '../services/propiedad_service.dart';
@@ -23,6 +22,7 @@ import '../widgets/cargando_pichangol.dart';
 import '../widgets/court_lines.dart';
 import '../widgets/candado_pro.dart';
 import '../widgets/dialogo_pichangol.dart';
+import '../widgets/ubicacion_reclamo.dart';
 import '../models/cargo_servicio.dart';
 import '../models/boleador.dart';
 import '../models/fidelidad.dart';
@@ -3564,11 +3564,16 @@ class _PanelPendienteState extends State<_PanelPendiente> {
       });
       return;
     }
-    // Ubicación del DISPOSITIVO al re-reclamar: el admin necesita ver desde
-    // dónde se está enviando nuevamente la solicitud (anti-fraude "estás en el
-    // lugar"). Si el permiso está denegado, queda null y el panel lo indica.
-    final desdeAqui = await LocationService.ubicacionPrecisa();
+    // UBICACIÓN OBLIGATORIA al reclamar (decisión del director, oct-2026):
+    // el celular debe estar EN el local (GPS a ≤ N m del punto de la cancha)
+    // antes de enviar. Si no hay GPS o está lejos, se avisa y no se envía.
+    final ubic = await exigirUbicacionReclamo(context, punto: c.ubicacion);
     if (!mounted) return;
+    if (!ubic.ok) {
+      setState(() => _reenviando = false);
+      return;
+    }
+    final desdeAqui = ubic.gps;
     final res = await PropiedadService.crearReclamo(
       canchaId: c.id,
       solicitanteId: email,
@@ -3578,6 +3583,17 @@ class _PanelPendienteState extends State<_PanelPendiente> {
       solicitanteUbicacion: desdeAqui,
     );
     if (!mounted) return;
+    // Rechazo con motivo (ubicación o fotos): se explica en un diálogo, no
+    // con el aviso genérico de "no se pudo enviar".
+    final rechazo = PropiedadService.motivoRechazo(res);
+    if (rechazo != null) {
+      setState(() => _reenviando = false);
+      await avisarPichangol(context,
+          titulo: rechazo.titulo,
+          icono: Icons.info_outline,
+          mensaje: rechazo.mensaje);
+      return;
+    }
     final ok = res != null && res['ok'] == true;
     if (ok) widget.onRechazado?.call(false); // el badge vuelve a "pendiente"
     setState(() {

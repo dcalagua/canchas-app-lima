@@ -8,12 +8,15 @@ import '../services/supabase_service.dart';
 /// las hermanas `u<ts>_<deporte>` comparten la carpeta `u<ts>`). Las de Google
 /// no cuentan (sus términos no permiten guardarlas) ni la foto de evidencia
 /// (`canchas/ev<id>/`). El mínimo lo decide la torre (`GET /config/canal` →
-/// `reclamo_fotos_min`, `AppState.reclamoFotosMin`, cache-first, respaldo 2).
+/// `reclamo_fotos_min`, `AppState.reclamoFotosMin`, cache-first, respaldo 3; máximo `reclamo_fotos_max`, respaldo 5).
 class FotosPropias {
   FotosPropias._();
 
   /// Respaldo si nunca se pudo consultar al backend.
-  static const minimoPorDefecto = 2;
+  static const minimoPorDefecto = 3;
+
+  /// Respaldo del MÁXIMO de fotos de un reclamo (`reclamo_fotos_max`).
+  static const maximoReclamoPorDefecto = 5;
 
   /// Tope de la galería (= `catalogos.MAX_FOTOS` de la web).
   static const maximo = 8;
