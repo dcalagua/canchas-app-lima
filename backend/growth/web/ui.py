@@ -770,8 +770,12 @@ def tarjeta_comision(linea: str, simbolo: str = "S/", iso: str = "PEN") -> str:
         pas = (p["banco_pct"] + p["pasarela_pct"]) * (1 + p["igv_pct"] / 100.0) * (100 - p["reparto_cliente_pct"]) / 100.0
         regla = (f"En cada reserva pagada en línea se descuenta tu parte del costo del pago en línea (≈ {pas:.2f} % "
                  f"del precio; el jugador paga la otra parte)"
-                 + (f" y {p['dueno_pct']:g} % de comisión Pichangol" if p["dueno_pct"] > 0 else ", sin comisión Pichangol")
-                 + (f". En efectivo: {p['dueno_pct']:g} %" if p["dueno_pct"] > 0 else ". En efectivo no se cobra comisión"))
+                 + (f" y {p['dueno_pct']:g} % de comisión Pichangol" if p["dueno_pct"] > 0 else
+                    (f" y una comisión Pichangol de {p['simbolo']} {p['dueno_min']:.2f}" if p.get("dueno_min", 0) > 0
+                     else ", sin comisión Pichangol"))
+                 + (f" (mínimo {p['simbolo']} {p['dueno_min']:.2f})" if p["dueno_pct"] > 0 and p.get("dueno_min", 0) > 0 else "")
+                 + (". En efectivo se cobra la misma comisión Pichangol" if p["dueno_pct"] > 0 or p.get("dueno_min", 0) > 0
+                    else ". En efectivo no se cobra comisión"))
     filas = "".join(
         f"<div class='com-fila'><b>{e(c.get('nombre'))}</b><span>{e(c.get('detalle'))}</span></div>" for c in comps)
     return (f"<div class='panel com-card' style='margin-top:18px'><h3 style='margin:0 0 4px'>Tu comisión Pichangol incluye</h3>"

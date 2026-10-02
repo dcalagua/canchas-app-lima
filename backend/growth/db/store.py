@@ -183,11 +183,14 @@ CONFIG_DEFAULT: dict[str, str] = {
     "modelo_reservas": "1",
     **{f"m2_{_m}_{_k}": _v for _m, _d in {
         "PEN": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
-                "igv_pct": "18", "reparto_cliente_pct": "50", "sobre": "precio"},
+                "igv_pct": "18", "reparto_cliente_pct": "50", "sobre": "precio",
+                "cliente_min": "1", "dueno_min": "0", "cliente_tope_pct": "0"},
         "USD": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
-                "igv_pct": "15", "reparto_cliente_pct": "50", "sobre": "precio"},
+                "igv_pct": "15", "reparto_cliente_pct": "50", "sobre": "precio",
+                "cliente_min": "0.3", "dueno_min": "0", "cliente_tope_pct": "0"},
         "BOB": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
-                "igv_pct": "13", "reparto_cliente_pct": "50", "sobre": "precio"},
+                "igv_pct": "13", "reparto_cliente_pct": "50", "sobre": "precio",
+                "cliente_min": "2", "dueno_min": "0", "cliente_tope_pct": "0"},
     }.items() for _k, _v in _d.items()},
     # FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS (campaña de migración desde
     # las fotos de Google, pedido del director 2-oct-2026,

@@ -28,6 +28,14 @@ modelos y que el operador elija con cuál trabaja, sin borrar el actual.
   Con "precio" la pasarela real cobra un poco más de lo repartido y la
   diferencia sale del ingreso de Pichangol (el simulador lo muestra).
 
+MÍNIMO POR RESERVA (decisión del director, 2-oct-2026, opción B): la
+comisión al jugador es max(% × base jugador, mínimo por moneda) — S/ 1 ·
+$ 0.30 · Bs 2 por defecto —, así en una cancha barata el % efectivo sube
+solo (S/ 30 → S/ 1.00 = 3.2 %) y nunca cobra menos a una cancha más cara.
+`cliente_tope_pct` (0 = sin tope) limita ese mínimo en canchas muy baratas.
+El dueño tiene su propio mínimo (`dueno_min`, 0 = apagado), que también
+aplica en efectivo. Ninguna comisión supera la base de quien la paga.
+
 Solo aplica a RESERVAS. Academias, marketplace y torneos siguen como están.
 El modelo se lee en cada cobro: la cotización del checkout (APK y web vía
 `pagos.router.cotizacion_para`), la liquidación al dueño
@@ -50,11 +58,14 @@ _ISO = {"S/": "PEN", "PEN": "PEN", "$": "USD", "USD": "USD", "BS": "BOB", "BOB":
 # ponerles las tarifas reales de PayPhone y Libélula en la torre.
 PARAMS_DEFAULT: dict[str, dict[str, str]] = {
     "PEN": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
-            "igv_pct": "18", "reparto_cliente_pct": "50", "sobre": "precio"},
+            "igv_pct": "18", "reparto_cliente_pct": "50", "sobre": "precio",
+            "cliente_min": "1", "dueno_min": "0", "cliente_tope_pct": "0"},
     "USD": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
-            "igv_pct": "15", "reparto_cliente_pct": "50", "sobre": "precio"},
+            "igv_pct": "15", "reparto_cliente_pct": "50", "sobre": "precio",
+            "cliente_min": "0.3", "dueno_min": "0", "cliente_tope_pct": "0"},
     "BOB": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
-            "igv_pct": "13", "reparto_cliente_pct": "50", "sobre": "precio"},
+            "igv_pct": "13", "reparto_cliente_pct": "50", "sobre": "precio",
+            "cliente_min": "2", "dueno_min": "0", "cliente_tope_pct": "0"},
 }
 CLAVES_DEFAULT: dict[str, str] = {
     "modelo_reservas": "1",
@@ -62,7 +73,8 @@ CLAVES_DEFAULT: dict[str, str] = {
 }
 # Topes de validación (en %).
 _TOPES = {"cliente_pct": 30.0, "dueno_pct": 30.0, "banco_pct": 15.0, "pasarela_pct": 15.0,
-          "igv_pct": 30.0, "reparto_cliente_pct": 100.0}
+          "igv_pct": 30.0, "reparto_cliente_pct": 100.0,
+          "cliente_min": 100.0, "dueno_min": 100.0, "cliente_tope_pct": 50.0}
 ETIQUETAS = {
     "cliente_pct": "Comisión Pichangol al jugador",
     "dueno_pct": "Comisión Pichangol al dueño",
@@ -70,6 +82,9 @@ ETIQUETAS = {
     "pasarela_pct": "Comisión de la pasarela",
     "igv_pct": "IGV / IVA sobre las comisiones",
     "reparto_cliente_pct": "Parte de la pasarela que paga el jugador",
+    "cliente_min": "Mínimo de la comisión al jugador (monto por reserva)",
+    "dueno_min": "Mínimo de la comisión al dueño (monto por reserva, 0 = sin mínimo)",
+    "cliente_tope_pct": "Tope de la comisión al jugador (% de su base, 0 = sin tope)",
 }
 
 
@@ -109,6 +124,17 @@ def _r(x: float) -> int:
     return int(math.floor(x + 0.5 + 1e-9))
 
 
+def _comision(base: float, pct: float, minimo_centimos: float, tope_pct: float = 0.0) -> float:
+    """Comisión en céntimos = max(% × base, mínimo), con tope opcional en % de
+    la base y nunca más que la base. Sin % ni mínimo → 0."""
+    if base <= 0 or (pct <= 0 and minimo_centimos <= 0):
+        return 0.0
+    c = max(base * pct, minimo_centimos)
+    if tope_pct > 0:
+        c = min(c, base * tope_pct)
+    return min(c, base)
+
+
 def calcular(precio_centimos: int, moneda: str, p: dict | None = None) -> dict:
     """Todo el desglose del modelo 2 para un precio (en céntimos). `p` permite
     simular con parámetros que aún no se guardaron (torre)."""
@@ -120,12 +146,20 @@ def calcular(precio_centimos: int, moneda: str, p: dict | None = None) -> dict:
     s = p["reparto_cliente_pct"] / 100.0
     cc = p["cliente_pct"] / 100.0
     cd = p["dueno_pct"] / 100.0
+    cmin = float(p.get("cliente_min", 0) or 0) * 100.0
+    dmin = float(p.get("dueno_min", 0) or 0) * 100.0
+    ctope = float(p.get("cliente_tope_pct", 0) or 0) / 100.0
     tasa_total = (tasa_banco + tasa_pas) * (1 + igv)
     if p.get("sobre") == "cobrado":
-        # La pasarela cobra sobre lo que paga el jugador: se resuelve el punto
-        # fijo pasarela = tasa × (P + s × pasarela) × (1 + cc).
-        den = 1 - tasa_total * s * (1 + cc)
-        pasarela = tasa_total * (1 + cc) * P / den if den > 0 else 0.0
+        # La pasarela cobra sobre lo que paga el jugador: punto fijo
+        # pasarela = tasa × (base jugador + comisión jugador), base = P + s × pasarela.
+        pasarela = tasa_total * P
+        for _ in range(40):
+            bc = P + s * pasarela
+            nuevo = tasa_total * (bc + _comision(bc, cc, cmin, ctope))
+            if abs(nuevo - pasarela) < 1e-6:
+                break
+            pasarela = nuevo
     else:
         pasarela = tasa_total * P
     # Desglose de la pasarela en proporción a sus tasas (para mostrar).
@@ -136,8 +170,8 @@ def calcular(precio_centimos: int, moneda: str, p: dict | None = None) -> dict:
     pas_dueno = pasarela - pas_cliente
     base_dueno = P - pas_dueno
     base_cliente = P + pas_cliente
-    pcg_dueno = base_dueno * cd
-    pcg_cliente = base_cliente * cc
+    pcg_dueno = _comision(base_dueno, cd, dmin)
+    pcg_cliente = _comision(base_cliente, cc, cmin, ctope)
     dueno_recibe = _r(base_dueno - pcg_dueno)
     cliente_paga = _r(base_cliente + pcg_cliente)
     cargo = max(cliente_paga - P, 0)              # lo que el jugador paga ADEMÁS del precio
@@ -161,6 +195,9 @@ def calcular(precio_centimos: int, moneda: str, p: dict | None = None) -> dict:
         "cargo_cliente_centimos": cargo, "descuento_dueno_centimos": descuento,
         "ingreso_pcg_centimos": ingreso_pcg,
         "pasarela_real_centimos": real, "margen_real_centimos": margen,
+        "cliente_pct_efectivo": round(pcg_cliente / base_cliente * 100, 2) if base_cliente > 0 else 0.0,
+        "dueno_pct_efectivo": round(pcg_dueno / base_dueno * 100, 2) if base_dueno > 0 else 0.0,
+        "cliente_min_aplicado": bool(pcg_cliente > 0 and base_cliente * cc < cmin),
     }
 
 
@@ -172,7 +209,8 @@ def descuento_dueno_centimos(precio_centimos: int, moneda: str) -> int:
 def comision_efectivo_centimos(precio_centimos: int, moneda: str) -> int:
     """Reserva traída por la app y pagada EN EFECTIVO: no hay pasarela ni cargo
     al jugador; solo la comisión Pichangol al dueño (puede ser 0)."""
-    return _r(max(int(precio_centimos or 0), 0) * params(moneda)["dueno_pct"] / 100.0)
+    p = params(moneda)
+    return _r(_comision(max(int(precio_centimos or 0), 0), p["dueno_pct"] / 100.0, p.get("dueno_min", 0) * 100.0))
 
 
 def desglose_cliente(c: dict) -> list[dict]:
@@ -197,7 +235,8 @@ def desglose_cliente(c: dict) -> list[dict]:
 def regla_texto(moneda: str) -> str:
     p = params(moneda)
     return (f"Costo del pago en línea compartido ({p['reparto_cliente_pct']:g} % lo paga el jugador) "
-            f"+ {p['cliente_pct']:g} % de servicio Pichangol")
+            f"+ {p['cliente_pct']:g} % de servicio Pichangol"
+            + (f" (mínimo {p['simbolo']} {p['cliente_min']:.2f})" if p.get("cliente_min", 0) > 0 else ""))
 
 
 def publico() -> dict:

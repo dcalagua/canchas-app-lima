@@ -2983,8 +2983,23 @@ def simular_modelos(monto: float, moneda: str = "PEN", p: dict | None = None) ->
     m1 = {"cliente_paga_centimos": base + cargo1, "dueno_recibe_centimos": base - com, "cargo_cliente_centimos": cargo1,
           "descuento_dueno_centimos": com, "ingreso_pcg_centimos": com + cargo1, "pasarela_real_centimos": pas1,
           "margen_real_centimos": com + cargo1 - pas1}
+    # Curva del modelo 2: cómo cambia la comisión (y su % efectivo) según el
+    # precio de la cancha, para ver el efecto del mínimo antes de guardar.
+    curva = []
+    for precio in _CURVA_PRECIOS.get(iso, _CURVA_PRECIOS["PEN"]):
+        c = _mn.calcular(_soles_a_centimos(precio), iso, p)
+        curva.append({"precio": precio, "cliente_paga_centimos": c["cliente_paga_centimos"],
+                      "pcg_cliente_centimos": c["pcg_cliente_centimos"],
+                      "cliente_pct_efectivo": c["cliente_pct_efectivo"],
+                      "cliente_min_aplicado": c["cliente_min_aplicado"],
+                      "pcg_dueno_centimos": c["pcg_dueno_centimos"],
+                      "dueno_recibe_centimos": c["dueno_recibe_centimos"],
+                      "ingreso_pcg_centimos": c["ingreso_pcg_centimos"]})
     return {"moneda": iso, "simbolo": moneda_simbolo(iso), "monto": base / 100.0, "modelo_1": m1, "modelo_2": m2,
-            "vigente": _mn.modelo_reservas()}
+            "curva": curva, "vigente": _mn.modelo_reservas()}
+
+
+_CURVA_PRECIOS = {"PEN": (20, 30, 50, 90, 150), "USD": (5, 10, 20, 30, 50), "BOB": (30, 50, 100, 200, 300)}
 
 
 def _f_cfg(clave: str) -> float:

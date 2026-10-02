@@ -3748,7 +3748,15 @@ antes del corte.
   dueño %. El operador pone las comisiones jugador/dueño; banco, pasarela,
   IGV, reparto (50) y "sobre precio | sobre lo cobrado" son ajustes por
   moneda (`m2_<PEN|USD|BOB>_*`; PEN = la hoja: 1.2 / 0 / 2.5 / 5.5 / 18 / 50 /
-  precio → S/ 90: jugador S/ 95.38, dueño S/ 85.75, PCG S/ 1.13; con la
+  precio → S/ 90: jugador S/ 95.38, dueño S/ 85.75, PCG S/ 1.13;
+  **MÍNIMO POR RESERVA (opción B del director, 2-oct-2026: "si la cancha es
+  más barata, el % que paga el jugador es mayor"):** comisión jugador =
+  max(% × base, `cliente_min`) (S/ 1 · $ 0.30 · Bs 2) con `cliente_tope_pct`
+  opcional (0 = sin tope) y nunca más que la base; el dueño tiene
+  `dueno_min` (0 = apagado; también en efectivo). S/ 30 → S/ 1.00 (3.18 %),
+  S/ 90 → S/ 1.13 (1.2 %), monótono. `calcular` trae `cliente_pct_efectivo`
+  y `cliente_min_aplicado`; el simulador de la torre suma la tabla "Según el
+  precio de la cancha" (`curva`, `_CURVA_PRECIOS` por moneda); con la
   pasarela cobrando sobre lo cobrado, margen real ≈ S/ 0.63). Solo RESERVAS.
   Engancha en: `cargo_servicio.cotizar` (reservas en modelo 2 = `_cotizar_
   modelo_2`, siempre activo, desglose "Costo del pago en línea" + "Servicio

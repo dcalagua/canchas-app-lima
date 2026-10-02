@@ -98,3 +98,42 @@ def test_modelo_del_pago_sobrevive_al_snapshot():
     s2 = Stores()
     s2.load_state(s.to_state())
     assert s2.pago_por_charge("r1").modelo_cobro == "m2"
+
+
+def test_minimo_por_reserva_sube_el_pct_en_canchas_baratas(monkeypatch):
+    """Opción B del director (2-oct-2026): comisión al jugador = max(1.2 % de
+    su base, S/ 1). En canchas baratas el % efectivo sube; desde ~S/ 80 manda
+    el %. Nunca cobra menos a una cancha más cara."""
+    cli = _cli(monkeypatch)
+    assert mn.params("PEN")["cliente_min"] == 1 and mn.params("USD")["cliente_min"] == 0.3
+    assert mn.params("BOB")["cliente_min"] == 2 and mn.params("PEN")["dueno_min"] == 0
+    c30 = mn.calcular(3000, "PEN")
+    assert c30["pcg_cliente_centimos"] == 100 and c30["cliente_min_aplicado"]
+    assert c30["cliente_pct_efectivo"] == 3.18 and c30["cliente_paga_centimos"] == 3242
+    c90 = mn.calcular(9000, "PEN")      # la hoja del director no cambia
+    assert c90["pcg_cliente_centimos"] == 113 and not c90["cliente_min_aplicado"]
+    prev = -1
+    for precio in range(500, 30001, 500):
+        c = mn.calcular(precio, "PEN")
+        assert c["pcg_cliente_centimos"] >= prev
+        prev = c["pcg_cliente_centimos"]
+    # Tope opcional: con 2 % de tope, la cancha de S/ 30 cobra 2 % y no S/ 1.
+    c = mn.calcular(3000, "PEN", {**mn.params("PEN"), "cliente_tope_pct": 2})
+    assert c["pcg_cliente_centimos"] == 63
+    # Mínimo del dueño: aplica en línea y en efectivo; nunca más que su base.
+    p = {**mn.params("PEN"), "dueno_min": 1.5}
+    assert mn.calcular(3000, "PEN", p)["pcg_dueno_centimos"] == 150
+    assert mn.calcular(100, "PEN", {**p, "dueno_min": 50})["dueno_recibe_centimos"] == 0
+    cli.post("/pagos/modelo-negocio", headers=H, json={"modelo_reservas": "2", "monedas": {"PEN": {"dueno_min": 1.5}}})
+    assert mn.comision_efectivo_centimos(3000, "PEN") == 150
+    r = cli.post("/pagos/comision-reserva", json={"dueno_id": "m2min@x.com", "monto_soles": 30, "reserva_id": "m2min"}).json()
+    assert r["comision_centimos"] == 150
+    # La cotización del checkout usa el mínimo; el simulador trae la curva.
+    q = cli.post("/pagos/cotizar", json={"linea": "reservas", "moneda": "PEN", "base_centimos": 3000}).json()
+    assert q["cargo_centimos"] == 242
+    sim = cli.post("/pagos/modelo-negocio/simular", headers=H,
+                   json={"monto": 30, "moneda": "PEN", "params": {"cliente_min": 2}}).json()
+    assert sim["modelo_2"]["pcg_cliente_centimos"] == 200
+    assert [x["precio"] for x in sim["curva"]] == [20, 30, 50, 90, 150]
+    assert cli.post("/pagos/modelo-negocio", headers=H,
+                    json={"monedas": {"PEN": {"cliente_min": 500}}}).status_code == 400

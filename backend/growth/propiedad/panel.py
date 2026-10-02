@@ -5124,7 +5124,11 @@ async function guardarTarifas(){
 let mnCfg = null, mnMon = 'PEN', mnSel = '1', mnMonto = 90, mnTimer = null;
 const MN_CAMPOS_OP = [['reparto_cliente_pct','Costo de Culqi que paga el jugador (%)','El dueño paga el resto'],
                       ['cliente_pct','Comisión Pichangol al jugador (%)','Sobre lo que paga el jugador antes de la comisión'],
-                      ['dueno_pct','Comisión Pichangol al dueño (%)','Sobre lo que recibe el dueño antes de la comisión']];
+                      ['cliente_min','Mínimo por reserva · jugador','Si el % da menos, se cobra este monto: en canchas baratas el % sube solo'],
+                      ['cliente_tope_pct','Tope de la comisión al jugador (%)','Máximo % efectivo aunque aplique el mínimo · 0 = sin tope'],
+                      ['dueno_pct','Comisión Pichangol al dueño (%)','Sobre lo que recibe el dueño antes de la comisión'],
+                      ['dueno_min','Mínimo por reserva · dueño','0 = sin mínimo · también aplica en efectivo']];
+const MN_MONTO = {cliente_min:1, dueno_min:1};
 const MN_CAMPOS_PAS = [['banco_pct','Comisión del banco (%)'],['pasarela_pct','Comisión Culqi (%)'],
                        ['igv_pct','IGV / IVA sobre las comisiones (%)']];
 function mnF(c, s){ return (s||'S/')+' '+((c||0)/100).toFixed(2); }
@@ -5156,7 +5160,7 @@ function renderModeloNegocio(sim){
     return `<div class="mn-row"><label class="mn-lab" for="mn_${k}"><b>${lab}</b>${ayuda?`<small>${ayuda}</small>`:''}</label>
       <div class="mn-num"><button type="button" aria-label="Bajar" onclick="mnPaso('${k}',-${paso})">−</button>
         <input id="mn_${k}" type="number" inputmode="decimal" min="0" max="${max}" step="${paso}" value="${v}" oninput="mnSimular()">
-        <span class="mn-suf">%</span>
+        <span class="mn-suf">${MN_MONTO[k]?esc(p.simbolo):'%'}</span>
         <button type="button" aria-label="Subir" onclick="mnPaso('${k}',${paso})">+</button></div></div>`; };
   const usar = m => vig===m
       ? `<span class="mn-ok">✓ Este es el modelo en uso para las reservas</span>`
@@ -5237,6 +5241,13 @@ function renderModeloNegocio(sim){
     .mn-fila span:last-child{white-space:nowrap;text-align:right}
     .mn-fila.sub{padding-left:28px;color:#667;font-size:13px}
     .mn-fila.fuerte{font-weight:800} .mn-fila.total{background:#F7F9FB;font-weight:800;font-size:15px}
+    .mn-curva{border:1px solid var(--border);border-radius:14px;overflow-x:auto}
+    .mn-curva table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}
+    .mn-curva th{background:#F7F9FB;color:#667;font-weight:700;text-align:right;padding:7px 8px;text-transform:none;letter-spacing:0;font-size:12px;white-space:normal;line-height:1.2;vertical-align:bottom}
+    .mn-curva td{text-align:right;padding:7px 8px;border-top:1px solid #F1F1F1}
+    .mn-curva th:first-child,.mn-curva td:first-child{text-align:left}
+    .mn-curva tr.on td{background:#F2FBF6}
+    .mn-tag{background:#FFF4E0;color:#B26A00;font-weight:800;font-size:11px;padding:1px 6px;border-radius:999px}
     .mn-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:10px;margin-bottom:12px}
     .mn-kpi{border:1px solid var(--border);border-radius:14px;padding:10px 12px}
     .mn-kpi small{display:block;color:#889;font-size:12px} .mn-kpi b{font-size:20px}
@@ -5253,7 +5264,8 @@ function renderModeloNegocio(sim){
   </div>`;
   pintarSimModelo(sim);
 }
-const MN_PASO = {reparto_cliente_pct:5, cliente_pct:0.1, dueno_pct:0.1, banco_pct:0.1, pasarela_pct:0.1, igv_pct:1};
+const MN_PASO = {reparto_cliente_pct:5, cliente_pct:0.1, dueno_pct:0.1, banco_pct:0.1, pasarela_pct:0.1, igv_pct:1,
+                 cliente_min:0.1, dueno_min:0.1, cliente_tope_pct:1};
 function mnPaso(k, d){
   const el = document.getElementById('mn_'+k); if(!el) return;
   const max = k==='reparto_cliente_pct' ? 100 : 999;
@@ -5306,12 +5318,18 @@ function pintarSimModelo(sim){
     ${fila('· lo paga el dueño ('+(100-(+a.reparto_pct||0))+' %)', mnF(a.pasarela_dueno_centimos,s), 'sub')}
     ${fila('Dueño recibe antes de comisión PCG', mnF(a.base_dueno_centimos,s), 'sub')}
     ${fila('Jugador paga antes de comisión PCG', mnF(a.base_cliente_centimos,s), 'sub')}
-    ${fila('Comisión Pichangol al jugador', mnF(a.pcg_cliente_centimos,s), 'sub')}
+    ${fila('Comisión Pichangol al jugador'+(a.cliente_min_aplicado?' <small style="color:#B26A00">· mínimo ('+a.cliente_pct_efectivo+' %)</small>':''), mnF(a.pcg_cliente_centimos,s), 'sub')}
     ${fila('Comisión Pichangol al dueño', mnF(a.pcg_dueno_centimos,s), 'sub')}
     ${fila('👤 El jugador paga', mnF(a.cliente_paga_centimos,s)+' <small style="color:#889">(+'+mnF(a.cargo_cliente_centimos,s)+')</small>', 'fuerte')}
     ${fila('🏟️ El dueño recibe', mnF(a.dueno_recibe_centimos,s)+' <small style="color:#889">(−'+mnF(a.descuento_dueno_centimos,s)+')</small>', 'fuerte')}
     ${fila('💚 Comisión real Pichangol', mnF(a.ingreso_pcg_centimos,s), 'fuerte', '#0B8A3E')}
   </div>
+  ${(sim.curva||[]).length ? `<div class="mn-h" style="margin-top:16px">📈 Según el precio de la cancha <small>(con lo que tienes en pantalla)</small></div>
+  <div class="mn-curva"><table><thead><tr><th>Cancha</th><th>Jugador paga</th><th>Comisión jugador</th><th>%</th><th>Dueño recibe</th><th>PCG</th></tr></thead><tbody>
+  ${sim.curva.map(c=>`<tr class="${Math.abs(c.precio-sim.monto)<0.005?'on':''}"><td>${mnF(c.precio*100,s)}</td><td>${mnF(c.cliente_paga_centimos,s)}</td>
+    <td>${mnF(c.pcg_cliente_centimos,s)}${c.cliente_min_aplicado?' <span class="mn-tag">mín.</span>':''}</td><td><b>${c.cliente_pct_efectivo} %</b></td>
+    <td>${mnF(c.dueno_recibe_centimos,s)}</td><td style="color:#0B8A3E;font-weight:800">${mnF(c.ingreso_pcg_centimos,s)}</td></tr>`).join('')}
+  </tbody></table></div>` : ''}
 `;
 }
 async function usarModelo(m){
