@@ -269,7 +269,16 @@ def _stores():
     return stores
 
 
-COBERTURA_KM = 3.0  # un punto a ≤3 km de una consulta de 8 km ya está cubierto
+COBERTURA_KM = 20.0  # default: un punto a ≤20 km de una consulta ya pagada la reusa (director, 2-oct-2026)
+
+
+def _cobertura_km() -> float:
+    """Radio de reuso de una consulta a Google (torre: `places_cobertura_km`)."""
+    try:
+        v = float((getattr(_stores(), "config", {}) or {}).get("places_cobertura_km") or COBERTURA_KM)
+        return max(1.0, min(v, 100.0))
+    except (TypeError, ValueError):
+        return COBERTURA_KM
 
 
 def _zonas_vecinas(zona: str) -> list[str]:
@@ -279,18 +288,22 @@ def _zonas_vecinas(zona: str) -> list[str]:
 
 
 def _zona_vigente(zona: str, lat: float | None = None, lng: float | None = None) -> bool:
-    """¿Ya se consultó Google cerca (≤ COBERTURA_KM) hace menos de 30 días?
-    Mira la zona y sus 8 vecinas (un punto en el borde no paga otra vez)."""
+    """¿Ya se consultó Google cerca (≤ `_cobertura_km()`) hace menos de 30
+    días? Con coordenadas recorre todas las zonas registradas de la región
+    (son pocas: una por zona pagada); sin ellas mira la zona y sus vecinas."""
     try:
         reg = getattr(_stores(), "places_zonas", {}) or {}
         ahora = time.time()
-        for z in _zonas_vecinas(zona):
+        cob = _cobertura_km()
+        reg_pref = zona.split(":")[0] + ":"
+        claves = [z for z in reg if z.startswith(reg_pref)] if lat is not None else _zonas_vecinas(zona)
+        for z in claves:
             v = reg.get(z)
             if not isinstance(v, dict):
                 continue
             if ahora - float(v.get("t") or 0) >= ZONA_VIGENCIA_DIAS * 86400:
                 continue
-            if lat is None or _km(lat, lng, float(v["lat"]), float(v["lng"])) <= COBERTURA_KM:
+            if lat is None or _km(lat, lng, float(v["lat"]), float(v["lng"])) <= cob:
                 return True
         return False
     except Exception:  # noqa: BLE001

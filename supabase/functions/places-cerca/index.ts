@@ -14,13 +14,15 @@ const KEY = Deno.env.get("PLACES_API_KEY") ?? "";
 // CACHÉ de consultas (oct-2026, factura de Google): tabla
 // `pichangol_places_consultas` (SQL docs/piloto/supabase_places_consultas.sql).
 // Cada llamada sin caché son ~18 "Text Search Pro" (≈ USD 0.60). Con caché,
-// cualquier punto a ≤ 3 km de una zona consultada en los últimos 30 días
+// cualquier punto a ≤ PLACES_CACHE_KM (secret de la Edge, default 20 km;
+// decisión del director, 2-oct-2026: "súbelo a 20 km") de una zona consultada
+// en los últimos 30 días
 // (1 día si pide fotos) reusa la respuesta: APK nuevo, APK viejo y web.
 // Sin la tabla o sin service role, la función sigue como antes (fail-open).
 const SB_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const TABLA = "pichangol_places_consultas";
-const CACHE_KM = 3;
+const CACHE_KM = Math.max(1, Number(Deno.env.get("PLACES_CACHE_KM") ?? "20") || 20);
 const CACHE_DIAS = 30;
 const CACHE_DIAS_FOTOS = 1;
 
@@ -35,32 +37,35 @@ function kmEntre(a: number, b: number, c: number, d: number): number {
 async function leerCache(region: string, lat: number, lng: number, radio: number, dias: number, fotos: boolean | null): Promise<any[] | null> {
   if (!SB_URL || !SB_KEY) return null;
   try {
-    const d = 0.03; // ~3.3 km
+    const d = CACHE_KM / 111 + 0.01; // caja de búsqueda ≈ CACHE_KM
+    const dLng = d / Math.max(0.2, Math.cos((lat * Math.PI) / 180));
     const desde = new Date(Date.now() - dias * 86400000).toISOString();
     const q = new URLSearchParams();
     q.set("select", "lat,lng,radio,places");
     q.set("region", `eq.${region}`);
     q.append("lat", `gte.${lat - d}`);
     q.append("lat", `lte.${lat + d}`);
-    q.append("lng", `gte.${lng - d}`);
-    q.append("lng", `lte.${lng + d}`);
+    q.append("lng", `gte.${lng - dLng}`);
+    q.append("lng", `lte.${lng + dLng}`);
     q.set("creado_en", `gte.${desde}`);
     if (fotos !== null) q.set("fotos", `eq.${fotos}`);
     q.set("order", "creado_en.desc");
-    q.set("limit", "20");
+    q.set("limit", "100");
     const r = await fetch(`${SB_URL}/rest/v1/${TABLA}?${q}`, {
       headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
     });
     if (!r.ok) return null;
     // deno-lint-ignore no-explicit-any
     const filas: any[] = await r.json();
+    // La consulta guardada MÁS CERCANA dentro del radio de reuso.
+    // deno-lint-ignore no-explicit-any
+    let mejor: any = null, mejorKm = Infinity;
     for (const f of filas) {
-      if (Number(f.radio) >= radio * 0.75 &&
-          kmEntre(lat, lng, Number(f.lat), Number(f.lng)) <= CACHE_KM) {
-        return Array.isArray(f.places) ? f.places : [];
-      }
+      if (Number(f.radio) < radio * 0.75) continue;
+      const km = kmEntre(lat, lng, Number(f.lat), Number(f.lng));
+      if (km <= CACHE_KM && km < mejorKm) { mejor = f; mejorKm = km; }
     }
-    return null;
+    return mejor ? (Array.isArray(mejor.places) ? mejor.places : []) : null;
   } catch (_) {
     return null;
   }

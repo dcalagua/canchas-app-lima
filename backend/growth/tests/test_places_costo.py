@@ -65,3 +65,19 @@ def test_explorador_web_no_busca_solo_al_mover_ni_pide_fotos_a_google():
     html = client.get("/canchas").text
     assert "&fotos=1" not in html
     assert "Buscar canchas en esta zona" in html
+
+
+def test_reuso_de_zona_a_20_km(monkeypatch):
+    """Decisión del director (2-oct-2026): una consulta pagada cubre 20 km."""
+    from web import descubrir
+    from db.store import stores
+    stores.places_zonas = {}
+    z = descubrir._zona(-12.0735, -76.9911, "PE")
+    descubrir._marcar_zona(z, -12.0735, -76.9911)
+    # San Isidro (~4 km) y Callao (~15 km) reusan; Chosica (~27 km) no
+    assert descubrir._zona_vigente(descubrir._zona(-12.0908, -77.0250, "PE"), -12.0908, -77.0250)
+    assert descubrir._zona_vigente(descubrir._zona(-12.0566, -77.1180, "PE"), -12.0566, -77.1180)
+    assert not descubrir._zona_vigente(descubrir._zona(-11.9579, -76.7347, "PE"), -11.9579, -76.7347)
+    stores.config["places_cobertura_km"] = "3"
+    assert not descubrir._zona_vigente(descubrir._zona(-12.0566, -77.1180, "PE"), -12.0566, -77.1180)
+    stores.config["places_cobertura_km"] = "20"

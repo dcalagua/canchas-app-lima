@@ -3897,7 +3897,7 @@ antes del corte.
   zona tiene < 8 canchas cosechadas; sin `robots.txt`. Arreglos: (1)
   `web/descubrir.py`: cosecha compartida `pichangol_canchas_cache` primero
   (lee y escribe, mismo formato que `CanchasCacheRepo`), Google solo si no
-  hay consulta a ≤ 3 km en 30 días (`stores.places_zonas` {zona: {t, lat,
+  hay consulta a ≤ `places_cobertura_km` (20 km desde el 2-oct-2026, decisión del director; antes 3) en 30 días (`stores.places_zonas` {zona: {t, lat,
   lng}} en el SNAPSHOT, sobrevive despliegues; se persiste en segundo plano
   porque llega por GET), una sola llamada SIN fotos, candado por zona, tope
   diario `places_web_tope_dia` (120, `stores.places_uso`), logs `[places]`;
@@ -3906,7 +3906,8 @@ antes del corte.
   `GET /robots.txt` bloquea `/web/`, `/admin`, `/pagos/`, `/anfitrion`…; (4)
   la Edge `places-cerca` guarda cada respuesta en `pichangol_places_consultas`
   (SQL `docs/piloto/supabase_places_consultas.sql`, sin políticas: solo
-  service role) y la reusa para cualquier punto a ≤ 3 km (30 días; 1 día si
+  service role) y la reusa para cualquier punto a ≤ `PLACES_CACHE_KM` (secret de la Edge,
+  default 20 km; elige la consulta guardada más cercana) (30 días; 1 día si
   pide fotos) → también ahorra con APKs VIEJOS. Fail-open sin la tabla.
   **Hay que correr el SQL y redesplegar la Edge en cada ambiente** (QAS: el
   director lo hizo desde el panel de Supabase → Edge Functions → Code →

@@ -46,6 +46,7 @@ CONFIG_DEFAULT: dict[str, str] = {
     # Tope diario de consultas a Google Places desde la WEB (web/descubrir.py):
     # cada una ≈ 20 Text Search Pro ≈ USD 0.65. Pasado el tope, solo cosecha.
     "places_web_tope_dia": "120",
+    "places_cobertura_km": "20",  # reuso de una consulta a Google (2-oct-2026)
     # TARIFA DE LA PASARELA (lo que Culqi / PayPhone / Libélula cobran a
     # Pichangol por cobro): porcentaje + fijo + impuesto sobre la tarifa,
     # editable en la torre → Cobros → "Tarifas de pasarela"; con esto la torre
