@@ -1330,6 +1330,21 @@ def _validar_edicion(c: dict, b: dict) -> tuple[dict | None, str, str]:
 # escribe en cada cancha del local (mismo `club`, mismo dueño), conservando en
 # cada una sus servicios extra propios de cancha.
 
+def _galeria_local(c: dict, hermanas: list[dict]) -> list[dict]:
+    """Fotos de TODAS las canchas del local (la abierta primero), sin repetir,
+    marcando cuáles son PROPIAS (subidas a Pichangol) y cuáles de Google u
+    otro origen (no cuentan para la campaña y se pueden quitar)."""
+    orden = [c] + [h for h in hermanas if h.get("id") != c.get("id")]
+    out, vistos = [], set()
+    for h in orden:
+        for u in _fotos_crudas(h):
+            if u in vistos:
+                continue
+            vistos.add(u)
+            out.append({"url": u, "propia": fotos_reclamo.es_foto_propia(u, str(h.get("id") or ""))})
+    return out
+
+
 @router.get("/anfitrion/local/{cancha_id}/editar", response_class=HTMLResponse)
 def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
     ses, resp = _sesion_o_entrar(request, f"/anfitrion/local/{cancha_id}/editar")
@@ -1382,15 +1397,34 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
         "<label style='margin-top:14px'>Cuentan las reservas de los últimos</label>" + _chips("fid_ventana", [(str(v), ventana_txt[v]) for v in _fid.VENTANAS], {str(fid["ventanaDias"])}) +
         "<label style='margin-top:14px'>Qué reservas cuentan</label>" + _chips("fid_aplica", [("todas", "Todas las pagadas (en línea o en la cancha)"), ("online", "Solo las pagadas en línea")], {fid["aplica"]}) +
         "<p class='sub' style='margin-top:10px;font-size:12.5px'>Las reservas manuales que registras tú no cuentan. Si el jugador cancela una reserva premiada, recupera su premio.</p>")
-    secciones = [("local", "Nombre y dirección"), ("amenidades", "Servicios del local"), ("extras", "Servicios extra del local"), ("fidelidad", "Fidelidad"), ("canchas", "Canchas")]
+    galeria = _galeria_local(c, hermanas)
+    min_local = fotos_locales.minimo()
+    est_local = fotos_locales.estado_de_cancha(c) or {}
+    plazo_txt = ""
+    if est_local.get("estado") == "pendiente" and est_local.get("vence"):
+        plazo_txt = f" Tienes hasta el <b>{fotos_locales.fecha_corta(est_local.get('vence'))}</b>."
+    elif est_local.get("estado") == "vencido":
+        plazo_txt = " <b>El plazo venció:</b> mientras no las subas, tu local se muestra sin fotos."
+    secciones = [("fotos", "Fotos del local"), ("local", "Nombre y dirección"), ("amenidades", "Servicios del local"),
+                 ("extras", "Servicios extra del local"), ("fidelidad", "Fidelidad"), ("canchas", "Canchas")]
     nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
-    cfg = {"id": c["id"]}
+    cfg = {"id": c["id"], "fotos": galeria, "minFotos": min_local, "maxFotos": catalogos.MAX_FOTOS,
+           "storage": almacen.disponible()}
     cuerpo = f"""
 <div class='edit-top'><a class='volver-lnk' href='/anfitrion/canchas'>‹ Canchas</a>
-<h1 class='anf-hola' style='margin-top:8px'>Editar local</h1><p class='sub'>{e(local)} · {len(hermanas)} cancha{'s' if len(hermanas) != 1 else ''}. Lo que cambies aquí se aplica a todas sus canchas; precio, horario, piso, fotos y servicios propios se editan en cada cancha.</p></div>
+<h1 class='anf-hola' style='margin-top:8px'>Editar local</h1><p class='sub'>{e(local)} · {len(hermanas)} cancha{'s' if len(hermanas) != 1 else ''}. Lo que cambies aquí se aplica a todas sus canchas; precio, horario, piso y servicios propios se editan en cada cancha.</p></div>
 <div class='edit-grid'>
 <nav class='edit-nav'>{nav}</nav>
 <form id='fLocal' class='edit-form' autocomplete='off' novalidate>
+ <section class='panel edit-sec' id='sec-fotos'><h2>📷 Fotos del local</h2>
+  <p class='sub'>Sube fotos reales de tu local (cancha, ingreso, vestuarios…). Pichangol necesita al menos <b>{min_local or 3}</b> fotos tuyas.{plazo_txt}
+  Las marcadas <b>Google</b> son temporales: no cuentan y se quitarán; puedes quitarlas tú cuando subas las tuyas. La primera foto es la portada.</p>
+  <div id='contFotos' class='aviso' style='margin:10px 0'></div>
+  <div class='edit-fotos' id='fotos'></div>
+  <div class='acciones' style='margin-top:12px'><label class='btn sec' for='inFotos'>📷 Subir fotos del local</label><input type='file' id='inFotos' accept='image/*' multiple hidden{' disabled' if not almacen.disponible() else ''}>
+  <button type='button' class='btn sec' id='btnSinGoogle' hidden>🧹 Quitar las de Google</button>
+  <span class='sub' id='fotosMsg' style='margin:0'>{'' if almacen.disponible() else 'La subida de fotos desde la web no está disponible en este ambiente; súbelas desde la app.'}</span></div>
+ </section>
  <section class='panel edit-sec' id='sec-local'><h2>Nombre y dirección</h2>
   <label for='local'>Nombre del local / club</label><input id='local' maxlength='{catalogos.NOMBRE_MAX}' value='{e(local)}' placeholder='Ej. Complejo Los Olivos'>
   <label for='direccion'>Dirección</label><input id='direccion' maxlength='160' value='{e(c.get('direccion') or '')}' placeholder='Av. Aviación 1234, San Borja'>
@@ -1432,10 +1466,37 @@ document.addEventListener('click',function(ev){var b=ev.target.closest('.chip[da
   b.classList.toggle('sel')});
 $('btnSug').addEventListener('click',async function(){var t=$('sugTxt').value.trim(),m=$('sugMsg');if(t.length<3){m.textContent='Cuéntanos qué servicio ofrece tu local.';return}
   try{var r=await fetch('/anfitrion/servicios/sugerir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({texto:t,cancha_id:CFG.id})});var j=await r.json();m.textContent=j.ok?'✅ ¡Gracias! Lo revisamos y te avisamos cuando esté disponible.':(j.error||'No se pudo enviar.');if(j.ok)$('sugTxt').value=''}catch(e){m.textContent='No se pudo enviar. Revisa tu conexión.'}});
-$('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');
+// ── FOTOS DEL LOCAL: propias (cuentan) y de Google (temporales, se quitan) ──
+var fotos=(CFG.fotos||[]).slice(),subiendo=0;
+function esc(t){return String(t).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function pintarFotos(){var box=$('fotos');if(!box)return;
+  box.innerHTML=fotos.map(function(f,i){return "<div class='foto' data-url='"+esc(f.url)+"'><img src='"+esc(f.url)+"' alt=''>"+
+    (i===0?"<span class='portada'>Portada</span>":"")+(f.propia?"":"<span class='portada' style='left:auto;right:8px;top:auto;bottom:8px;background:#5F6368;color:#fff'>Google</span>")+
+    "<div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada'>★</button><button type='button' class='mini' data-acc='quitar' title='Quitar'>✕</button></div></div>"}).join('')||
+    "<p class='sub' style='margin:0'>Aún no hay fotos. Sube las de tu local.</p>";
+  var n=fotos.filter(function(f){return f.propia}).length,g=fotos.length-n,m=CFG.minFotos||0,c=$('contFotos');
+  if(c){if(m>0&&n<m){c.className='aviso warn';c.innerHTML='📷 Llevas <b>'+n+' de '+m+'</b> fotos propias: sube '+(m-n)+' más.'}
+        else{c.className='aviso ok';c.innerHTML='✅ Tu local tiene <b>'+n+'</b> fotos propias'+(g?' · aún muestras '+g+' de Google: quítalas para usar solo las tuyas.':'.')}}
+  var bg=$('btnSinGoogle');if(bg)bg.hidden=!(g>0&&n>0)}
+pintarFotos();
+document.addEventListener('click',function(ev){var a=ev.target.closest('#fotos .mini');if(!a)return;var u=a.closest('.foto').dataset.url,i=-1;
+  fotos.forEach(function(f,k){if(f.url===u)i=k});if(i<0)return;
+  if(a.dataset.acc==='quitar')fotos.splice(i,1);if(a.dataset.acc==='portada'&&i>0){var f=fotos.splice(i,1)[0];fotos.unshift(f)}pintarFotos()});
+if($('btnSinGoogle'))$('btnSinGoogle').addEventListener('click',async function(){
+  var ok=await pcgConfirmar({titulo:'¿Quitar las fotos de Google?',mensaje:'Tu local quedará solo con las fotos que subiste. Se aplica al guardar.',confirmar:'Quitar',icono:'🧹'});
+  if(ok){fotos=fotos.filter(function(f){return f.propia});pintarFotos()}});
+function comprimir(file){return new Promise(function(res,rej){var img=new Image(),url=URL.createObjectURL(file);img.onload=function(){var M=1600,w=img.width,h=img.height,k=Math.min(1,M/Math.max(w,h));var cv=document.createElement('canvas');cv.width=Math.round(w*k);cv.height=Math.round(h*k);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(url);cv.toBlob(function(b){b?res(b):rej(new Error('img'))},'image/jpeg',0.85)};img.onerror=function(){URL.revokeObjectURL(url);rej(new Error('img'))};img.src=url})}
+if($('inFotos'))$('inFotos').addEventListener('change',async function(){var files=Array.prototype.slice.call(this.files||[]);this.value='';var msg=$('fotosMsg');
+  for(var i=0;i<files.length;i++){if(fotos.filter(function(f){return f.propia}).length>=CFG.maxFotos){msg.textContent='Máximo '+CFG.maxFotos+' fotos.';break}
+    subiendo++;msg.textContent='Subiendo foto '+(i+1)+' de '+files.length+'…';
+    try{var blob=await comprimir(files[i]);var r=await fetch('/anfitrion/cancha/'+encodeURIComponent(CFG.id)+'/foto',{method:'POST',body:blob,headers:{'Content-Type':'image/jpeg'}});var j=await r.json();
+      if(j.ok&&j.url){var pos=fotos.filter(function(f){return f.propia}).length;fotos.splice(pos,0,{url:j.url,propia:true});pintarFotos();msg.textContent='Foto lista. No olvides «Guardar local».'}else{msg.textContent=j.error||'No se pudo subir la foto.'}}
+    catch(e){msg.textContent='No se pudo subir la foto. Revisa tu conexión.'}
+    subiendo--}});
+$('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('msgGuardar');if(subiendo>0){msg.textContent='Espera a que terminen de subir las fotos.';return}
   var serv=[];document.querySelectorAll('.serv.sel').forEach(function(r){serv.push({clave:r.dataset.serv,precio:parseFloat(r.querySelector('input').value)||0})});
   var fid={activa:sel('fid_activa')[0]==='1',meta:parseInt(sel('fid_meta')[0]||'5',10),premio:sel('fid_premio')[0]||'hora_gratis',descuentoPct:parseInt(sel('fid_pct')[0]||'20',10),ventanaDias:parseInt(sel('fid_ventana')[0]||'180',10),aplica:sel('fid_aplica')[0]||'todas'};
-  var body={nombre_local:$('local').value,direccion:$('direccion').value,amenidades:sel('amenidades'),servicios_extra:serv,fidelidad:fid};
+  var body={nombre_local:$('local').value,direccion:$('direccion').value,amenidades:sel('amenidades'),servicios_extra:serv,fidelidad:fid,fotos_local:fotos.map(function(f){return f.url})};
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Guardando…';
   try{var r=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){location.href=j.url||'/anfitrion/canchas';return}msg.classList.add('err');msg.textContent=j.error||'No se pudo guardar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth'})}}
@@ -1504,6 +1565,7 @@ def _guardar_edicion_local(request: Request, cancha_id: str, _cuerpo_json) -> JS
         if not datos.col_fidelidad_disponible():
             fid_cfg = None  # la base aún no tiene la columna: no se rompe el resto del guardado
     hermanas = _hermanas_local(ses["email"], c)
+    fotos_por, quitadas = _repartir_fotos_local(c, hermanas, b.get("fotos_local"))
     n = 0
     for h in hermanas:
         propios = [_se.completar(x) for x in (h.get("servicios_extra") or []) if x.get("clave")]
@@ -1511,12 +1573,51 @@ def _guardar_edicion_local(request: Request, cancha_id: str, _cuerpo_json) -> JS
         campos = {"club": local, "direccion": direccion or None, "amenidades": amen, "servicios_extra": nuevos}
         if fid_cfg is not None:
             campos["fidelidad"] = fid_cfg
+        if fotos_por is not None and h["id"] in fotos_por:
+            fs = fotos_por[h["id"]]
+            campos["fotos"] = fs
+            campos["foto_url"] = fs[0] if fs else None
         if datos.actualizar_cancha(h["id"], ses["email"], campos):
             n += 1
     if not n:
         return JSONResponse({"ok": False, "error": "No pudimos guardar en este momento. Inténtalo de nuevo."}, status_code=503)
+    if fotos_por is not None:
+        fotos_locales.invalidar()  # el local pudo pasar a "ok" (campaña de fotos propias)
+        if quitadas:
+            _en_segundo_plano(lambda: [almacen.borrar_foto(u) for u in quitadas])
     print(f"[editar-local-web] {ses['email']} guardó {local!r}: {n} canchas · amen={amen} · extras_local={[x['clave'] for x in locales]} · fidelidad={fid_cfg}", flush=True)
     return JSONResponse({"ok": True, "url": f"/anfitrion/canchas?local_guardado={c['id']}", "canchas": n})
+
+
+def _repartir_fotos_local(c: dict, hermanas: list[dict], lista) -> tuple[dict | None, list[str]]:
+    """Aplica la galería de "Fotos del local" (Editar local) a las filas.
+
+    Cada foto que el dueño conserva se queda en la(s) cancha(s) donde ya estaba
+    (en el orden que eligió: la 1.ª es la portada); lo NUEVO solo se acepta si
+    se subió a la carpeta de la cancha abierta (`fotos_reclamo.es_foto_propia`)
+    y se guarda en esa cancha. Lo que quitó desaparece de todas las filas; las
+    propias quitadas que ya ninguna fila usa se borran del bucket. Devuelve
+    ({cancha_id: fotos} solo de las que cambian, urls a borrar) o (None, []) si
+    el cuerpo no trajo la galería (clientes viejos)."""
+    if not isinstance(lista, list):
+        return None, []
+    keep: list[str] = []
+    for u in lista:
+        u = str(u or "").strip()
+        if u.startswith("http") and u not in keep:
+            keep.append(u)
+    antes = {h["id"]: _fotos_crudas(h) for h in hermanas}
+    todas = {u for fs in antes.values() for u in fs}
+    keep = [u for u in keep if u in todas or fotos_reclamo.es_foto_propia(u, str(c["id"]))]
+    por: dict[str, list[str]] = {}
+    for h in hermanas:
+        viejas = antes[h["id"]]
+        nuevas = [u for u in keep if u in viejas or (h["id"] == c["id"] and u not in todas)][:catalogos.MAX_FOTOS]
+        if nuevas != viejas:
+            por[h["id"]] = nuevas
+    quedan = {u for h in hermanas for u in por.get(h["id"], antes[h["id"]])}
+    quitadas = [u for u in todas if u not in quedan and any(fotos_reclamo.es_foto_propia(u, h["id"]) for h in hermanas)]
+    return por, quitadas
 
 
 def _propagar_servicios_local(email: str, cancha_id: str, club: str, servicios: list[dict]) -> int:
