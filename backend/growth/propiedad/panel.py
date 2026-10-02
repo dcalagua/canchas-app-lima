@@ -5103,7 +5103,7 @@ let mnCfg = null, mnMon = 'PEN', mnSel = '1', mnMonto = 90, mnTimer = null;
 const MN_CAMPOS_OP = [['reparto_cliente_pct','Costo de Culqi que paga el jugador (%)','El dueño paga el resto'],
                       ['cliente_pct','Comisión Pichangol al jugador (%)','Sobre lo que paga el jugador antes de la comisión'],
                       ['dueno_pct','Comisión Pichangol al dueño (%)','Sobre lo que recibe el dueño antes de la comisión']];
-const MN_CAMPOS_PAS = [['banco_pct','Comisión del banco (%)'],['pasarela_pct','Comisión de la pasarela (%)'],
+const MN_CAMPOS_PAS = [['banco_pct','Comisión del banco (%)'],['pasarela_pct','Comisión Culqi (%)'],
                        ['igv_pct','IGV / IVA sobre las comisiones (%)']];
 function mnF(c, s){ return (s||'S/')+' '+((c||0)/100).toFixed(2); }
 async function cargarModeloNegocio(){
@@ -5118,7 +5118,7 @@ async function cargarModeloNegocio(){
 function mnValores(){
   const p = {};
   [...MN_CAMPOS_OP, ...MN_CAMPOS_PAS].forEach(([k])=>{ const el=document.getElementById('mn_'+k); if(el) p[k]=el.value; });
-  const so = document.getElementById('mn_sobre'); if(so) p.sobre = so.value;
+  
   return p;
 }
 let mnTab = null;
@@ -5159,13 +5159,9 @@ function renderModeloNegocio(sim){
       <div class="mn-col">
         <div class="mn-h">Lo que pones tú <span class="mn-chips">${chips}</span></div>
         <div class="mn-dos">${MN_CAMPOS_OP.map(([k,l,a])=>inp(k,l,(k==='reparto_cliente_pct'?`<span id="mn_rep_txt">El dueño paga el ${(100-(+p[k]||0)).toFixed(1).replace(/\.0$/,'')} % restante</span>`:a),p[k],true)).join('')}</div>
-        <div class="mn-h" style="margin-top:18px">Costo de Culqi (banco + pasarela) <small>(tarifas, se calcula solo)</small></div>
+        <div class="mn-h" style="margin-top:18px">Comisión total de Culqi <small>(tarifas sinceradas de Culqi · sobre el precio de la cancha)</small></div>
         <div class="mn-dos">${pas}
-          <label class="mn-campo"><span>La pasarela se calcula sobre</span>
-            <select id="mn_sobre" onchange="mnSimular()">
-              <option value="precio" ${p.sobre==='precio'?'selected':''}>El precio de la cancha (tu hoja)</option>
-              <option value="cobrado" ${p.sobre==='cobrado'?'selected':''}>Lo que paga el jugador (lo real)</option>
-            </select></label></div>
+</div>
         <div class="mn-nota">Ecuador y Bolivia arrancan con las tasas de Perú (IVA 15 % y 13 %): pon las tarifas reales de PayPhone y Libélula. En efectivo no hay pasarela: solo se cobra la comisión al dueño.</div>
         <div class="mn-acc"><button class="btn-sec" onclick="guardarModeloNegocio(false)">Guardar comisiones</button>
           ${vig==='2'?usar('2'):`<button class="btn-ap" onclick="guardarModeloNegocio(true)">Guardar y usar el modelo 2</button>`}
@@ -5243,7 +5239,8 @@ function pintarSimModelo(sim){
       <div class="mn-kpi"><small>👤 El jugador paga</small><b>${mnF(x.cliente_paga_centimos,s)}</b></div>
       <div class="mn-kpi"><small>🏟️ El dueño recibe</small><b>${mnF(x.dueno_recibe_centimos,s)}</b></div>
       <div class="mn-kpi"><small>💚 Comisión Pichangol</small><b style="color:#0B8A3E">${mnF(x.ingreso_pcg_centimos,s)}</b></div>
-      <div class="mn-kpi"><small>Margen tras la pasarela</small><b style="color:${x.margen_real_centimos<0?'#C0392B':'#0B8A3E'}">${mnF(x.margen_real_centimos,s)}</b></div></div>`;
+      ${mnTab==='2' ? `<div class="mn-kpi"><small>Comisión total Culqi (repartida)</small><b>${mnF(x.pasarela_total_centimos,s)}</b></div>`
+        : `<div class="mn-kpi"><small>Margen tras la pasarela</small><b style="color:${x.margen_real_centimos<0?'#C0392B':'#0B8A3E'}">${mnF(x.margen_real_centimos,s)}</b></div>`}</div>`;
   if(mnTab==='1'){
     const b = sim.modelo_1;
     el.innerHTML = kpis(b) + `<div class="mn-sim">
@@ -5261,9 +5258,11 @@ function pintarSimModelo(sim){
   const a = sim.modelo_2;
   el.innerHTML = kpis(a) + `<div class="mn-sim">
     ${fila('Precio de la cancha', mnF(a.precio_centimos,s))}
-    ${fila('Comisión banco + IGV', mnF(a.banco_centimos + a.igv_banco_centimos,s), 'sub')}
-    ${fila('Comisión pasarela + IGV', mnF(a.pasarela_centimos + a.igv_pasarela_centimos,s), 'sub')}
-    ${fila('Costo total del pago en línea', mnF(a.pasarela_total_centimos,s), 'fuerte')}
+    ${fila('Comisión banco ('+(+mnValores().banco_pct||0)+' %)', mnF(a.banco_centimos,s), 'sub')}
+    ${fila('IGV comisión banco', mnF(a.igv_banco_centimos,s), 'sub')}
+    ${fila('Comisión Culqi ('+(+mnValores().pasarela_pct||0)+' %)', mnF(a.pasarela_centimos,s), 'sub')}
+    ${fila('IGV comisión Culqi', mnF(a.igv_pasarela_centimos,s), 'sub')}
+    ${fila('Comisión total Culqi', mnF(a.pasarela_total_centimos,s), 'fuerte')}
     ${fila('· lo paga el jugador ('+(+a.reparto_pct||0)+' %)', mnF(a.pasarela_cliente_centimos,s), 'sub')}
     ${fila('· lo paga el dueño ('+(100-(+a.reparto_pct||0))+' %)', mnF(a.pasarela_dueno_centimos,s), 'sub')}
     ${fila('Dueño recibe antes de comisión PCG', mnF(a.base_dueno_centimos,s), 'sub')}
@@ -5273,10 +5272,8 @@ function pintarSimModelo(sim){
     ${fila('👤 El jugador paga', mnF(a.cliente_paga_centimos,s)+' <small style="color:#889">(+'+mnF(a.cargo_cliente_centimos,s)+')</small>', 'fuerte')}
     ${fila('🏟️ El dueño recibe', mnF(a.dueno_recibe_centimos,s)+' <small style="color:#889">(−'+mnF(a.descuento_dueno_centimos,s)+')</small>', 'fuerte')}
     ${fila('💚 Comisión real Pichangol', mnF(a.ingreso_pcg_centimos,s), 'fuerte', '#0B8A3E')}
-    ${fila('Lo que la pasarela cobra de verdad (sobre lo que paga el jugador)', mnF(a.pasarela_real_centimos,s), 'sub')}
-    ${fila('Margen de Pichangol tras pagar la pasarela', mnF(a.margen_real_centimos,s), 'total', a.margen_real_centimos<0?'#C0392B':'#0B8A3E')}
   </div>
-  ${a.sobre==='precio' && a.pasarela_real_centimos>a.pasarela_total_centimos ? `<div class="mn-nota" style="color:#946200">La pasarela cobra sobre lo que paga el jugador (${mnF(a.cliente_paga_centimos,s)}), no sobre el precio: la diferencia (${mnF(a.pasarela_real_centimos-a.pasarela_total_centimos,s)}) sale de tu comisión. Con "Lo que paga el jugador" se reparte también.</div>`:''}`;
+`;
 }
 async function usarModelo(m){
   const r = await fetch('/pagos/modelo-negocio',{method:'POST',headers:headers(),body:JSON.stringify({modelo_reservas:m})});
