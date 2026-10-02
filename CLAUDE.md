@@ -3736,6 +3736,35 @@ antes del corte.
 
 ## Pendientes / backlog
 
+- **MODELO DE NEGOCIO DE LAS RESERVAS ELEGIBLE EN LA TORRE (decisión del
+  director, 2-oct-2026, hoja «Cálculo PCG»):** `pagos/modelo_negocio.py` +
+  torre → Cobros → **"💼 Modelo de negocio · reservas"** (`GET/POST
+  /pagos/modelo-negocio`, `POST …/simular`, admin). `modelo_reservas` en
+  `stores.config` (espejo en `CONFIG_DEFAULT`): **"1" = el de siempre**
+  (comisión 5 % mín. al dueño + cargo por servicio si está encendido) o
+  **"2" = reparto de la pasarela**: pasarela = P × (banco % + pasarela %) ×
+  (1 + IGV %); el jugador paga P + pasarela × reparto + comisión jugador %
+  (sobre esa base) y el dueño recibe P − pasarela × (1 − reparto) − comisión
+  dueño %. El operador pone las comisiones jugador/dueño; banco, pasarela,
+  IGV, reparto (50) y "sobre precio | sobre lo cobrado" son ajustes por
+  moneda (`m2_<PEN|USD|BOB>_*`; PEN = la hoja: 1.2 / 0 / 2.5 / 5.5 / 18 / 50 /
+  precio → S/ 90: jugador S/ 95.38, dueño S/ 85.75, PCG S/ 1.13; con la
+  pasarela cobrando sobre lo cobrado, margen real ≈ S/ 0.63). Solo RESERVAS.
+  Engancha en: `cargo_servicio.cotizar` (reservas en modelo 2 = `_cotizar_
+  modelo_2`, siempre activo, desglose "Costo del pago en línea" + "Servicio
+  Pichangol"; APK y web lo toman de `/pagos/cotizar` y `/config/cargo-servicio`
+  sin cambios de app), `comision_de_linea`, `post_liquidacion_online` (sin
+  billetera-first; comisión CONGELADA en el pago con `PagoRegistro.
+  modelo_cobro = "m2"`, que `_liquidacion_dict` respeta) y `post_comision_
+  reserva` (efectivo: solo el % del dueño; 0 = no se cobra). Simulador
+  modelo 1 vs 2 en la torre. Test `tests/test_modelo_negocio.py`.
+- **PAGOS PERDÍAN DATOS AL REINICIAR (bug de plata hallado el 2-oct-2026):**
+  `pg.cargar_normalizado` REEMPLAZABA los pagos/reclamos del snapshot por las
+  filas de `growth_pagos`/`growth_reclamos` (solo 10/21 columnas) → tras cada
+  arranque se perdían `liquidado` (una liquidación pagada volvía a "por
+  pagar"), medio, comisión congelada, cargo… Ahora `cargar_pagos_rows` /
+  `cargar_reclamos_rows` MEZCLAN: manda el snapshot y la tabla solo agrega
+  ids faltantes. Test `test_arranque_no_pierde_lo_que_la_tabla_no_guarda`.
 - **CARGO POR SERVICIO + MODELO DE COMISIONES (diseño aprobado,
   27-sep-2026; FASES 1 a 4 HECHAS, fase 5 = encendido pendiente):**
   `docs/diseno-cargo-por-servicio.md` (decisiones del director en § 7,

@@ -178,6 +178,17 @@ CONFIG_DEFAULT: dict[str, str] = {
     # torre y público en `GET /config/canal` (`propiedad/fotos_reclamo.py`).
     "reclamo_fotos_min": "3",
     "reclamo_fotos_max": "5",
+    # MODELO DE NEGOCIO de las reservas (2-oct-2026, `pagos/modelo_negocio.py`):
+    # "1" = el de siempre; "2" = reparto de la pasarela + comisión fija.
+    "modelo_reservas": "1",
+    **{f"m2_{_m}_{_k}": _v for _m, _d in {
+        "PEN": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
+                "igv_pct": "18", "reparto_cliente_pct": "50", "sobre": "precio"},
+        "USD": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
+                "igv_pct": "15", "reparto_cliente_pct": "50", "sobre": "precio"},
+        "BOB": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
+                "igv_pct": "13", "reparto_cliente_pct": "50", "sobre": "precio"},
+    }.items() for _k, _v in _d.items()},
     # FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS (campaña de migración desde
     # las fotos de Google, pedido del director 2-oct-2026,
     # `propiedad/fotos_locales.py`): mínimo de fotos propias por LOCAL (0 =
@@ -528,6 +539,10 @@ class PagoRegistro:
     # (`liquidacion_boleador`) se LIBERA recién cuando el turno terminó (por si
     # no se presenta); hasta entonces la torre la ve pero el lote no la paga.
     disponible_en: datetime | None = None
+    # MODELO DE NEGOCIO con que se liquidó (2-oct-2026): "m2" = reparto de la
+    # pasarela (`pagos/modelo_negocio.py`); la comisión del dueño quedó
+    # CONGELADA en `comision_centimos` y no se recalcula. "" = modelo 1.
+    modelo_cobro: str = ""
 
 
 def es_liquidacion_torneo(p: "PagoRegistro") -> bool:
@@ -1611,7 +1626,8 @@ def _pago_from(d: dict) -> PagoRegistro:
         cargo_servicio_centimos=int(d.get("cargo_servicio_centimos", 0) or 0),
         cargo_desglose=(list(d["cargo_desglose"]) if isinstance(d.get("cargo_desglose"), list) else None),
         cargo_ajuste_centimos=int(d.get("cargo_ajuste_centimos", 0) or 0),
-        disponible_en=_dt(d.get("disponible_en")))
+        disponible_en=_dt(d.get("disponible_en")),
+        modelo_cobro=str(d.get("modelo_cobro") or ""))
 
 
 def _insc_from(d: dict) -> Inscripcion:

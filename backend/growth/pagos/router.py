@@ -37,6 +37,7 @@ from . import pozos
 from . import cuentas_cobro as _cc
 from . import tarifas_pasarela as _tp
 from . import cargo_servicio as _cs
+from . import modelo_negocio as _mn
 from . import stock_productos as _stock
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
@@ -1869,6 +1870,9 @@ def post_comision_reserva(req: ComisionReservaReq) -> dict:
     # Sale del saldo → aplica la tarifa configurable de billetera (torre).
     iso = moneda_iso(req.moneda)
     comision = comision_saldo_centimos(req.monto_soles, iso)
+    if _mn.es_modelo_2():
+        # Modelo 2: sin pasarela ni cargo al jugador; solo el % al dueño.
+        comision = _mn.comision_efectivo_centimos(_soles_a_centimos(req.monto_soles), iso)
     # Idempotencia: si esta reserva ya generó comisión, no la cobres de nuevo.
     ya = stores.pago_por_charge(req.reserva_id)
     if ya is not None and ya.tipo == "comision_reserva":
@@ -1876,6 +1880,10 @@ def post_comision_reserva(req: ComisionReservaReq) -> dict:
         return {"ok": True, "duplicada": True,
                 "comision_centimos": ya.monto_centimos,
                 "saldo_centimos": c, "saldo_soles": c / 100.0}
+    if comision <= 0:
+        c = stores.saldo_centimos(req.dueno_id)
+        return {"ok": True, "duplicada": False, "comision_centimos": 0,
+                "promo_usado_centimos": 0, "saldo_centimos": c, "saldo_soles": c / 100.0}
     # El REGALO de bienvenida absorbe la comisión primero (marcha blanca): el
     # dueño no toca su plata hasta agotar el regalo.
     promo_usado, nuevo = stores.debitar_comision(req.dueno_id, comision)
@@ -1921,6 +1929,20 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
                 "bruto_centimos": ya.monto_centimos,
                 "comision_centimos": round(d["comision_soles"] * 100),
                 "neto_centimos": round(d["neto_soles"] * 100)}
+
+    if _mn.es_modelo_2():
+        # MODELO 2: el dueño recibe el precio menos su parte de la pasarela y
+        # su comisión; se descuenta de la TRANSACCIÓN (no del saldo) y queda
+        # CONGELADO en el pago (si el operador cambia los % después, esta
+        # reserva no cambia).
+        desc = _mn.descuento_dueno_centimos(bruto, iso)
+        stores.registrar_pago(
+            tipo="liquidacion_online", cargo_id=(req.charge_id.strip() or None), monto_centimos=bruto, moneda=iso,
+            **_cargo_kw(req), estado="aprobado", dueno_id=req.dueno_id, culqi_charge_id=req.reserva_id,
+            concepto=req.concepto or "Reserva online", medio=req.medio.strip() or None,
+            comision_centimos=desc, modelo_cobro="m2")
+        return {"ok": True, "duplicada": False, "fuente": "transaccion", "modelo": "2",
+                "bruto_centimos": bruto, "comision_centimos": desc, "neto_centimos": bruto - desc}
 
     saldo = stores.saldo_centimos(req.dueno_id)
     promo = stores.saldo_promo_centimos(req.dueno_id)
@@ -2749,6 +2771,7 @@ def _liquidacion_dict(p) -> dict:
     comision = (p.comision_centimos
                 if p.tipo in ("liquidacion_full", "venta_bodega",
                               "inscripcion_torneo_ingreso", "liquidacion_boleador")
+                or getattr(p, "modelo_cobro", "") == "m2"
                 else comision_centimos(bruto / 100.0, p.moneda))
     neto = bruto - comision
     # Costo estimado de la PASARELA (Culqi/PayPhone/Libélula) y margen real de
@@ -2850,6 +2873,8 @@ def comision_de_linea(linea: str, base_centimos: int, iso: str) -> int:
         return 0
     if linea == "academias":
         return int(round(base * _comision_matricula_pct(_pais_de_moneda(iso)) / 100.0))
+    if linea == "reservas" and _mn.es_modelo_2():
+        return _mn.descuento_dueno_centimos(base, iso)
     return comision_centimos(base / 100.0, iso)
 
 
@@ -2903,6 +2928,70 @@ def post_cargo_servicio_config(body: dict = Body(...)) -> dict:
     if not ok:
         raise HTTPException(status_code=400, detail=err)
     return {"ok": True, "config": _cs.publico()}
+
+
+@router.get("/modelo-negocio", dependencies=_ADMIN)
+def get_modelo_negocio(monto: float = 90.0, moneda: str = "PEN") -> dict:
+    """TORRE: modelo de negocio de las reservas (1 = el de siempre, 2 =
+    reparto de la pasarela) con sus parámetros por moneda y una simulación de
+    ambos modelos para comparar."""
+    return {**_mn.leer(), "simulacion": simular_modelos(monto, moneda)}
+
+
+@router.post("/modelo-negocio", dependencies=_ADMIN)
+def post_modelo_negocio(body: dict = Body(...)) -> dict:
+    ok, err = _mn.guardar(body or {})
+    if not ok:
+        raise HTTPException(status_code=400, detail=err)
+    print(f"[modelo] reservas → modelo {_mn.modelo_reservas()} · {body}", flush=True)
+    return {"ok": True, **_mn.leer()}
+
+
+@router.post("/modelo-negocio/simular", dependencies=_ADMIN)
+def post_modelo_negocio_simular(body: dict = Body(...)) -> dict:
+    """TORRE: simula con los valores que el operador está editando (sin guardar)."""
+    body = body or {}
+    iso = moneda_iso(body.get("moneda"))
+    p = _mn.params(iso)
+    for k, v in (body.get("params") or {}).items():
+        if k == "sobre" and v in ("precio", "cobrado"):
+            p["sobre"] = v
+        elif k in _mn.ETIQUETAS:
+            try:
+                p[k] = max(0.0, float(v))
+            except (TypeError, ValueError):
+                pass
+    try:
+        monto = max(0.0, float(body.get("monto") or 0))
+    except (TypeError, ValueError):
+        monto = 0.0
+    return simular_modelos(monto, iso, p)
+
+
+def simular_modelos(monto: float, moneda: str = "PEN", p: dict | None = None) -> dict:
+    """Una reserva de `monto` con cada modelo: lo que paga el jugador, lo que
+    recibe el dueño, el ingreso de Pichangol y el margen tras la pasarela real."""
+    iso = moneda_iso(moneda)
+    base = _soles_a_centimos(max(0.0, float(monto or 0)))
+    m2 = _mn.calcular(base, iso, p)
+    # Modelo 1: comisión del dueño + cargo por servicio (si está encendido).
+    com = comision_centimos(base / 100.0, iso) if base else 0
+    cargo1 = 0
+    if _f_cfg("cargo_activo_reservas") >= 1 and base:
+        cargo1 = _cs.cargo_centimos(base, iso)
+    pas1 = _tp.costo_centimos(base + cargo1, iso, "tarjeta", "liquidacion_online") if base else 0
+    m1 = {"cliente_paga_centimos": base + cargo1, "dueno_recibe_centimos": base - com, "cargo_cliente_centimos": cargo1,
+          "descuento_dueno_centimos": com, "ingreso_pcg_centimos": com + cargo1, "pasarela_real_centimos": pas1,
+          "margen_real_centimos": com + cargo1 - pas1}
+    return {"moneda": iso, "simbolo": moneda_simbolo(iso), "monto": base / 100.0, "modelo_1": m1, "modelo_2": m2,
+            "vigente": _mn.modelo_reservas()}
+
+
+def _f_cfg(clave: str) -> float:
+    try:
+        return float(stores.config.get(clave, 0) or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 @router.get("/tarifas-pasarela", dependencies=_ADMIN)

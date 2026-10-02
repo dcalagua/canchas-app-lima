@@ -143,7 +143,16 @@ def params(moneda: str) -> dict:
 
 
 def activo(linea: str) -> bool:
+    # Modelo 2 de reservas: el jugador SIEMPRE paga su parte (pasarela +
+    # servicio), aunque el flag del cargo del modelo 1 esté apagado.
+    if linea == "reservas" and _modelo_2():
+        return True
     return _f(f"cargo_activo_{linea}") >= 1
+
+
+def _modelo_2() -> bool:
+    from pagos import modelo_negocio as _mn
+    return _mn.es_modelo_2()
 
 
 def textos() -> dict:
@@ -258,8 +267,10 @@ def cotizar(*, linea: str, moneda: str, base_centimos: int, medio: str | None = 
     """Cotización completa para el checkout / la contabilidad."""
     iso = moneda_iso(moneda)
     linea = linea if linea in LINEAS else "reservas"
-    esta_activo = activo(linea) if forzar_activo is None else forzar_activo
     base = max(int(base_centimos or 0), 0)
+    if linea == "reservas" and _modelo_2():
+        return _cotizar_modelo_2(iso, base, partes)
+    esta_activo = activo(linea) if forzar_activo is None else forzar_activo
     if not esta_activo or base <= 0:
         return Cotizacion(linea=linea, moneda=iso, simbolo=_SIMBOLO.get(iso, "S/"), activo=esta_activo, base_centimos=base,
                           cargo_centimos=0, total_centimos=base, regla=regla_texto(iso), titulo=(textos().get(linea) or {}).get("titulo", ""))
@@ -278,6 +289,24 @@ def cotizar(*, linea: str, moneda: str, base_centimos: int, medio: str | None = 
                       desglose=desglose(linea, iso, cargo, deporte), ahorro_centimos=ahorro)
 
 
+def _cotizar_modelo_2(iso: str, base: int, partes: list[int] | None) -> Cotizacion:
+    """Reservas con el MODELO 2 (`modelo_negocio.py`): el cargo del jugador =
+    su parte de la pasarela + la comisión Pichangol al jugador."""
+    from pagos import modelo_negocio as _mn
+    titulo = "Pago en línea y servicio Pichangol"
+    if base <= 0:
+        return Cotizacion(linea="reservas", moneda=iso, simbolo=_SIMBOLO.get(iso, "S/"), activo=True, base_centimos=0,
+                          cargo_centimos=0, total_centimos=0, regla=_mn.regla_texto(iso), titulo=titulo)
+    c = _mn.calcular(base, iso)
+    cargo = c["cargo_cliente_centimos"]
+    ahorro = 0
+    if partes and len(partes) > 1:
+        ahorro = max(sum(_mn.calcular(int(p), iso)["cargo_cliente_centimos"] for p in partes) - cargo, 0)
+    return Cotizacion(linea="reservas", moneda=iso, simbolo=_SIMBOLO.get(iso, "S/"), activo=True, base_centimos=base,
+                      cargo_centimos=cargo, total_centimos=base + cargo, regla=_mn.regla_texto(iso), titulo=titulo,
+                      desglose=_mn.desglose_cliente(c), ahorro_centimos=ahorro)
+
+
 def _tipo_de(linea: str) -> str:
     return {"reservas": "liquidacion_online", "academias": "matricula_online", "marketplace": "venta_producto",
             "torneos": "liquidacion_online"}.get(linea, "liquidacion_online")
@@ -289,6 +318,7 @@ def publico() -> dict:
     return {
         "version": int(t.get("version") or 1),
         "activo": {l: activo(l) for l in LINEAS},
+        "modelo_reservas": "2" if _modelo_2() else "1",
         "monedas": {m: params(m) for m in MONEDAS},
         "regla": {m: regla_texto(m) for m in MONEDAS},
         "textos": {k: t[k] for k in LINEAS if k in t},

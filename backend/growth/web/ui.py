@@ -762,6 +762,16 @@ def tarjeta_comision(linea: str, simbolo: str = "S/", iso: str = "PEN") -> str:
         regla = f"{pct:g} % de cada matrícula pagada en línea"
     else:
         regla = f"{_cfg.COMISION_PORC:g} % de cada reserva pagada en línea, mínimo {simbolo} {_cfg.comision_min(iso):.2f}"
+    from pagos import modelo_negocio as _mn
+    if linea == "reservas" and _mn.es_modelo_2():
+        # Modelo 2 (torre → Modelo de negocio): el costo del pago en línea se
+        # comparte con el jugador y la comisión es la que puso el operador.
+        p = _mn.params(iso)
+        pas = (p["banco_pct"] + p["pasarela_pct"]) * (1 + p["igv_pct"] / 100.0) * (100 - p["reparto_cliente_pct"]) / 100.0
+        regla = (f"En cada reserva pagada en línea se descuenta tu parte del costo del pago en línea (≈ {pas:.2f} % "
+                 f"del precio; el jugador paga la otra parte)"
+                 + (f" y {p['dueno_pct']:g} % de comisión Pichangol" if p["dueno_pct"] > 0 else ", sin comisión Pichangol")
+                 + (f". En efectivo: {p['dueno_pct']:g} %" if p["dueno_pct"] > 0 else ". En efectivo no se cobra comisión"))
     filas = "".join(
         f"<div class='com-fila'><b>{e(c.get('nombre'))}</b><span>{e(c.get('detalle'))}</span></div>" for c in comps)
     return (f"<div class='panel com-card' style='margin-top:18px'><h3 style='margin:0 0 4px'>Tu comisión Pichangol incluye</h3>"
