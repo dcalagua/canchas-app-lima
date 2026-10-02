@@ -27,6 +27,7 @@ import '../models/cargo_servicio.dart';
 import '../models/boleador.dart';
 import '../models/fidelidad.dart';
 import '../widgets/cargo_servicio_info.dart';
+import '../widgets/atribucion_osm.dart';
 import '../widgets/marca.dart';
 import 'bonos_dueno_screen.dart';
 import 'pedir_bodega_screen.dart';
@@ -1177,8 +1178,8 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                         const _Badge('CLUB FUNDADOR', bg: pino, fg: lima),
                       if (c.clubFundador) const SizedBox(width: 6),
                       if (descubierta)
-                        const _Badge('◎ EN GOOGLE',
-                            bg: Color(0xFF3A352E), fg: Colors.white)
+                        _Badge(_cancha.esOsm ? '◎ EN EL MAPA' : '◎ EN GOOGLE',
+                            bg: const Color(0xFF3A352E), fg: Colors.white)
                       else if (_reclamoRechazado)
                         const _Badge('⛔ SOLICITUD RECHAZADA',
                             bg: Color(0xFFFBE7E7), fg: Color(0xFF8A1A17))
@@ -3450,12 +3451,19 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
                   color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('Encontramos esta cancha en Google Maps',
+                child: Text(
+                    cancha.esOsm
+                        ? 'Encontramos esta cancha en el mapa'
+                        : 'Encontramos esta cancha en Google Maps',
                     style:
                         t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
               ),
             ],
           ),
+          if (cancha.esOsm) ...[
+            const SizedBox(height: 4),
+            const AtribucionOsm(),
+          ],
           const SizedBox(height: 10),
           Text(
             'Todavía no está activa en Pichangol, así que aún no se puede '

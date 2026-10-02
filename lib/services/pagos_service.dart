@@ -951,6 +951,47 @@ class PagosService {
     }
   }
 
+  // --- Fotos propias de los locales (campaña de la torre, 2-oct-2026) ------
+  /// `GET /config/fotos-locales` (público): {minimo, plazo_dias, inicio,
+  /// lanzada, sin_google:[ids]}. `sin_google` = canchas cuyo local ya NO usa
+  /// fotos de Google (tiene sus fotos propias o venció el plazo). Null si no
+  /// se pudo consultar (la app conserva su caché).
+  static Future<Map<String, dynamic>?> fotosLocales() async {
+    if (!disponible) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/config/fotos-locales');
+      final r = await http.get(uri).timeout(const Duration(seconds: 8));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body);
+      return j is Map<String, dynamic> ? j : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// `GET /fotos-locales/mios?email=` (X-App-Key): estado de la campaña para
+  /// los locales del dueño (estado, n, minimo, faltan, vence, principal,
+  /// titulo, texto). Null si no se pudo consultar.
+  static Future<List<Map<String, dynamic>>?> fotosLocalesMios(
+      String email) async {
+    if (!disponible || email.trim().isEmpty) return null;
+    try {
+      final uri = Uri.parse('$_baseUrl/fotos-locales/mios')
+          .replace(queryParameters: {'email': email.trim().toLowerCase()});
+      final r = await http.get(uri, headers: await _headersUsuario())
+          .timeout(const Duration(seconds: 10));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body);
+      final l = (j is Map ? j['locales'] : null) as List? ?? const [];
+      return [
+        for (final x in l)
+          if (x is Map) Map<String, dynamic>.from(x)
+      ];
+    } catch (_) {
+      return null;
+    }
+  }
+
   // --- Servicios de marketing (suscripción recurrente) --------------------
   /// Catálogo de servicios (landing/redes/presencia) con su precio mensual.
   static Future<List<Map<String, dynamic>>?> planesServicios(

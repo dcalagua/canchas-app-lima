@@ -8,6 +8,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../utils/moneda.dart';
 import 'court_lines.dart';
+import 'atribucion_osm.dart';
 import 'marca.dart';
 import 'icono_vivo.dart';
 
@@ -84,7 +85,9 @@ class ClubCard extends StatelessWidget {
                       // Descubierta sin fotos propias → baja 1 foto de Google
                       // en vivo (perezoso + caché de sesión compartida con la
                       // ficha, así abrirla después no vuelve a pedir nada).
-                      canchaGoogle: desc ? club.principal : null,
+                      // (Un lugar de OpenStreetMap nunca pide fotos.)
+                      canchaGoogle:
+                          desc && !club.principal.esOsm ? club.principal : null,
                     ),
                   ),
                   Positioned(
@@ -95,8 +98,12 @@ class ClubCard extends StatelessWidget {
                             '${medallaDestacado(nivelDestacado)} DESTACADO',
                             bg: lima, fg: Colors.white)
                         : desc
-                            ? const _Badge('◎ EN GOOGLE',
-                                bg: Colors.black54, fg: Colors.white)
+                            ? _Badge(
+                                club.principal.esOsm
+                                    ? '◎ EN EL MAPA'
+                                    : '◎ EN GOOGLE',
+                                bg: Colors.black54,
+                                fg: Colors.white)
                             : club.clubFundador
                                 ? const _Badge('CLUB FUNDADOR',
                                     bg: pino, fg: lima)
@@ -221,9 +228,19 @@ class ClubCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       if (desc)
-                        Text('Reclama tu cancha',
-                            style: t.titleSmall?.copyWith(
-                                color: clayOscuro, fontWeight: FontWeight.w700))
+                        Flexible(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('Reclama tu cancha',
+                                  style: t.titleSmall?.copyWith(
+                                      color: clayOscuro,
+                                      fontWeight: FontWeight.w700)),
+                              if (club.principal.esOsm) const AtribucionOsm(),
+                            ],
+                          ),
+                        )
                       else
                         Flexible(
                           child: Column(
@@ -262,7 +279,9 @@ class ClubCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(9),
                         ),
                         child: Text(
-                          desc ? 'En Google' : 'Disponible hoy',
+                          desc
+                              ? (club.principal.esOsm ? 'En el mapa' : 'En Google')
+                              : 'Disponible hoy',
                           style: t.bodySmall?.copyWith(
                               color: Colors.white, fontWeight: FontWeight.w700),
                         ),

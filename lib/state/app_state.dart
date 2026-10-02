@@ -5375,7 +5375,9 @@ class AppState extends ChangeNotifier {
       final rapidas = await PlacesService.canchasCerca(centro,
           conFotos: false, radioMetros: radioBusquedaKm * 1000);
       _agregarDescubiertas(rapidas);
-      CanchasCacheRepo.guardar(rapidas); // cosecha (best-effort, sin await UI)
+      // Cosecha (best-effort, sin await UI). Las de OpenStreetMap NO entran:
+      // la cosecha es de Google y su conteo decide cuándo volver a consultarlo.
+      CanchasCacheRepo.guardar(rapidas.where((c) => !c.esOsm).toList());
     } catch (_) {
       // fail-safe: si Places no responde, quedan las cosechadas/registradas
     } finally {
@@ -5918,8 +5920,108 @@ class AppState extends ChangeNotifier {
   }
 
   /// Trae las canchas compartidas desde Supabase (si está disponible).
+  // ── FOTOS PROPIAS DE LOS LOCALES (campaña de la torre, 2-oct-2026) ─────────
+  // Espejo de `backend/growth/propiedad/fotos_locales.py`: los locales que ya
+  // tienen sus fotos propias (`ok`) o cuyo plazo para subirlas venció
+  // (`vencido`) muestran SOLO sus fotos propias (nunca las de Google guardadas
+  // en la fila). La lista la decide el backend (`GET /config/fotos-locales`
+  // → `sin_google`); aquí se cachea (cache-first) y se aplica al bajar canchas.
+
+  /// Canchas cuyo local ya no usa fotos de Google.
+  Set<String> canchasSinGoogle = {};
+  bool _sinGoogleLeido = false;
+
+  /// Estado de la campaña para los locales del dueño (Mis canchas):
+  /// [{key, local, estado, n, minimo, faltan, vence, dias_restantes,
+  /// principal, canchas, titulo, texto}].
+  List<Map<String, dynamic>> fotosMisLocales = const [];
+
+  Future<void> _leerSinGoogleCache() async {
+    if (_sinGoogleLeido) return;
+    _sinGoogleLeido = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final l = prefs.getStringList('fotos_locales_sin_google');
+      if (l != null) canchasSinGoogle = l.toSet();
+    } catch (_) {}
+  }
+
+  /// Refresca `sin_google` del backend en silencio; si aparecen canchas
+  /// nuevas en la lista, se les quita en el acto lo que no es propio.
+  Future<void> _refrescarSinGoogle() async {
+    final j = await PagosService.fotosLocales();
+    final l = j?['sin_google'];
+    if (l is! List) return;
+    final nuevo = {for (final x in l) x.toString()};
+    final agregadas = nuevo.difference(canchasSinGoogle);
+    canchasSinGoogle = nuevo;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('fotos_locales_sin_google', nuevo.toList());
+    } catch (_) {}
+    if (agregadas.isNotEmpty && canchasRemotas.isNotEmpty) {
+      final filtradas = _aplicarFotosLocales(canchasRemotas.toList());
+      canchasRemotas
+        ..clear()
+        ..addAll(filtradas);
+      notifyListeners();
+    }
+  }
+
+  static String _claveLocal(Cancha c) =>
+      '${c.dueno.trim().toLowerCase()}|'
+      '${(c.club.trim().isNotEmpty ? c.club : c.nombre).trim().toLowerCase()}';
+
+  /// Deja SOLO fotos propias en las canchas de `canchasSinGoogle`: las suyas
+  /// primero y, si no tiene, las del resto de su local.
+  List<Cancha> _aplicarFotosLocales(List<Cancha> cs) {
+    if (canchasSinGoogle.isEmpty) return cs;
+    final propiasDe = <String, List<String>>{};
+    final delLocal = <String, List<String>>{};
+    for (final c in cs) {
+      if (!canchasSinGoogle.contains(c.id)) continue;
+      final p = FotosPropias.propias([c.fotoUrl, ...c.fotos], c.id);
+      propiasDe[c.id] = p;
+      final l = delLocal.putIfAbsent(_claveLocal(c), () => []);
+      for (final u in p) {
+        if (!l.contains(u)) l.add(u);
+      }
+    }
+    return [
+      for (final c in cs)
+        if (!canchasSinGoogle.contains(c.id))
+          c
+        else
+          () {
+            final fotos = <String>[...propiasDe[c.id]!];
+            for (final u in delLocal[_claveLocal(c)] ?? const <String>[]) {
+              if (!fotos.contains(u)) fotos.add(u);
+            }
+            final lista = fotos.take(FotosPropias.maximo).toList();
+            return c.copyWith(
+                fotos: lista,
+                fotoUrl: lista.isEmpty ? null : lista.first,
+                sinFotoUrl: lista.isEmpty);
+          }()
+    ];
+  }
+
+  /// Aviso "Sube N fotos de tu local antes del…" de Mis canchas (lo calcula
+  /// el backend: mínimo, plazo y prórrogas los decide la torre).
+  Future<void> cargarFotosMisLocales() async {
+    final email = usuario?.email ?? '';
+    if (email.isEmpty) return;
+    final l = await PagosService.fotosLocalesMios(email);
+    if (l == null) return;
+    fotosMisLocales = l;
+    notifyListeners();
+  }
+
   Future<void> cargarCanchasRemotas() async {
-    final remotas = await CanchasRepo.fetchRemotas();
+    await _leerSinGoogleCache();
+    unawaited(_refrescarSinGoogle());
+    final remotas =
+        _aplicarFotosLocales(await CanchasRepo.fetchRemotas());
     if (remotas.isNotEmpty) {
       canchasRemotas
         ..clear()

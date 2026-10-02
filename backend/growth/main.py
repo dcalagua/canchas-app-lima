@@ -300,6 +300,14 @@ async def _iniciar_cron_liquidaciones() -> None:
             except Exception:  # noqa: BLE001
                 pass
             try:
+                # FOTOS PROPIAS DE LOS LOCALES: avisos al dueño a 7 días, a
+                # 1 día y al vencer el plazo (idempotentes; en un hilo: lee
+                # Postgres y manda push).
+                from propiedad import fotos_locales as _fl
+                await asyncio.to_thread(_fl.recordatorios)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
                 # Comisión REAL de Culqi por cargo (la publica ~12 h después
                 # del pago): se lee en un hilo para no bloquear el loop.
                 from pagos import tarifas_pasarela as _tp
@@ -329,6 +337,19 @@ async def _iniciar_cron_boleadores() -> None:
             await asyncio.sleep(300)
 
     asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _sembrar_canchas_osm() -> None:
+    """Canchas de OpenStreetMap (complemento de Google, ODbL): siembra
+    `pichangol_canchas_osm` en un hilo SOLO si la tabla está vacía o el archivo
+    `web/osm_canchas.json.gz` cambió (`web/osm.py`). Sin DATABASE_URL no hace
+    nada; en los tests no corre."""
+    import sys
+    if "pytest" in sys.modules:
+        return
+    from web import osm as _osm
+    _osm.iniciar_siembra_en_fondo()
 
 
 @app.on_event("startup")

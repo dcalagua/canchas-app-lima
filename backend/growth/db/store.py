@@ -46,6 +46,7 @@ CONFIG_DEFAULT: dict[str, str] = {
     # Tope diario de consultas a Google Places desde la WEB (web/descubrir.py):
     # cada una ≈ 20 Text Search Pro ≈ USD 0.65. Pasado el tope, solo cosecha.
     "places_web_tope_dia": "120",
+    "places_cobertura_km": "20",  # reuso de una consulta a Google (2-oct-2026)
     # TARIFA DE LA PASARELA (lo que Culqi / PayPhone / Libélula cobran a
     # Pichangol por cobro): porcentaje + fijo + impuesto sobre la tarifa,
     # editable en la torre → Cobros → "Tarifas de pasarela"; con esto la torre
@@ -176,6 +177,13 @@ CONFIG_DEFAULT: dict[str, str] = {
     # sus términos no permiten guardarlas). "0" = no se exige. Editable en la
     # torre y público en `GET /config/canal` (`propiedad/fotos_reclamo.py`).
     "reclamo_fotos_min": "2",
+    # FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS (campaña de migración desde
+    # las fotos de Google, pedido del director 2-oct-2026,
+    # `propiedad/fotos_locales.py`): mínimo de fotos propias por LOCAL (0 =
+    # campaña apagada), plazo en días e inicio (ISO; vacío = no lanzada).
+    "fotos_local_min": "3",
+    "fotos_local_plazo_dias": "30",
+    "fotos_local_inicio": "",
     # Tasa efectiva de la PASARELA/BANCO (Culqi) sobre el BRUTO de cada cobro
     # digital: es el COSTO real que paga Pichangol al procesar la tarjeta. Se
     # resta de la comisión que PCG le cobra a la academia para saber el MARGEN
@@ -699,6 +707,10 @@ class Stores:
         # dueño: {fijas: [ReservaFija.toJson], cierres: [CierreCaja.toJson],
         #  notas: {clave_cliente: texto}, recordados: {alumno_id: iso}}.
         self.negocio_web: dict[str, dict] = {}
+        # FOTOS PROPIAS DE LOS LOCALES (`propiedad/fotos_locales.py`), por
+        # local_key "dueño|club": {prorroga_dias, avisos{"<etapa>:<ref>": iso},
+        # ultimo_aviso, historial}.
+        self.fotos_locales: dict[str, dict] = {}
         # MARKETPLACE: unidades APARTADAS por el APK antes de cobrar
         # (`pagos/stock_productos.py`): apartado_id → {producto_id, email,
         # estado: apartado|vendido|devuelto|vencido, ilimitado, en}.
@@ -1223,6 +1235,7 @@ class Stores:
             "reclamaciones": [dict(r) for r in self.reclamaciones],
             "cancelaciones_web": [dict(r) for r in self.cancelaciones_web],
             "negocio_web": {k: dict(v) for k, v in self.negocio_web.items()},
+            "fotos_locales": {k: dict(v) for k, v in self.fotos_locales.items()},
             "apartados_stock": {k: dict(v) for k, v in self.apartados_stock.items()},
             "publicaciones_redes": [dict(r) for r in self.publicaciones_redes],
             "admin_accesos": [dict(r) for r in self.admin_accesos],
@@ -1338,6 +1351,8 @@ class Stores:
         self.reclamaciones = [dict(r) for r in (data.get("reclamaciones") or [])]
         self.cancelaciones_web = [dict(r) for r in (data.get("cancelaciones_web") or [])]
         self.negocio_web = {k: dict(v) for k, v in (data.get("negocio_web") or {}).items()}
+        self.fotos_locales = {str(k): dict(v) for k, v in (data.get("fotos_locales") or {}).items()
+                              if isinstance(v, dict)}
         self.apartados_stock = {k: dict(v) for k, v in (data.get("apartados_stock") or {}).items()}
         self.publicaciones_redes = [dict(r) for r in (data.get("publicaciones_redes") or [])]
         self.admin_accesos = [dict(r) for r in (data.get("admin_accesos") or [])]

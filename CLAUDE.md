@@ -2425,6 +2425,53 @@ propias). **Riesgo conocido:** los reclamos que ya estaban en curso sin fotos
 no se pueden aprobar hasta que el dueño las suba (o el operador baje el
 mínimo a 0). Test `tests/test_fotos_reclamo.py`.
 
+**FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS = campaña con plazo (pedido del
+director, 2-oct-2026: "los que ya registraron usan fotos de Google Place; que
+suban las suyas con un plazo y que la torre lo controle… así bajamos costos"):**
+`backend/growth/propiedad/fotos_locales.py` (reusa la regla de "foto propia" de
+`fotos_reclamo`). LOCAL = canchas reservables del mismo dueño + `club` (mismo
+`local_key` que fidelidad); sus fotos = unión de las propias de sus canchas.
+Config en `stores.config` (espejo en `CONFIG_DEFAULT`): `fotos_local_min` (3;
+0 = campaña pausada), `fotos_local_plazo_dias` (30), `fotos_local_inicio` (ISO
+del lanzamiento; vacío = no lanzada). Estados: `ok` (≥ mínimo, aunque no esté
+lanzada), `pendiente` (dentro del plazo: todo como hoy), `vencido`, `inactiva`.
+El plazo de cada local corre desde max(inicio, activación de su reclamo en
+`stores.reclamos`) + prórrogas (`stores.fotos_locales[key].prorroga_dias`,
+snapshot). **Consecuencia:** `ok` y `vencido` NUNCA piden fotos a Google: la web
+(`router._fotos` → `fotos_locales.fotos_para`, `/web/foto` responde `origen:
+sin_google`, tarjeta y galería sin `data-buscar`/script) muestra SOLO fotos
+propias (las de Google guardadas en la fila se ocultan) y, sin ninguna, el
+placeholder del deporte; la cancha NO se esconde (sigue recibiendo reservas).
+El editor del dueño usa `router._fotos_crudas` (lo que hay en la fila). Mapa
+cancha → estado cacheado 60 s (`invalidar()` al cambiar config/prórroga y al
+guardar Editar cancha). APK: `GET /config/fotos-locales` (público: config +
+`sin_google` = ids) → `AppState.canchasSinGoogle` (cache-first
+`fotos_locales_sin_google`) filtra en `cargarCanchasRemotas`
+(`_aplicarFotosLocales`: propias de la cancha y, si no tiene, las del local;
+`Cancha.copyWith(sinFotoUrl:)`); OJO: el dueño que luego guarda desde el APK
+ya no reescribe las URLs de Google (quedan fuera de la nube). Aviso al dueño:
+web `fotos_locales.avisos_dueno` en Modo anfitrión → Hoy y Mis canchas (ámbar
+"Sube N fotos de <local> antes del <fecha> (te quedan X días)" / rojo "<local>
+ya no muestra fotos", botón "Subir fotos ›" → Editar cancha `#sec-fotos` de la
+cancha PRINCIPAL del local = la que ya tiene más fotos propias) + nota "Tu local
+lleva N de M" en el editor; APK `_AvisoFotosLocal` en `mis_canchas_screen` vía
+`GET /fotos-locales/mios?email=` (X-App-Key + `_require_usuario`). Avisos
+push (`_aviso_push_usuario`, tipo `fotos_local`) + correo (`correos` evento
+`fotos_local`, botón a subir fotos) al LANZAR, a 7 días, a 1 día y al vencer,
+idempotentes por `<etapa>:<vence>` en `stores.fotos_locales[key].avisos` (al
+avisar una etapa se dan por cubiertas las anteriores); cron horario de
+`main.py` (`_iniciar_cron_liquidaciones` → `fotos_locales.recordatorios`).
+Torre → Aprobación y operación → **"🖼️ Fotos de los locales"**: KPIs (con sus
+fotos / en plazo / vencidos / % migrado), chips de mínimo (2-6) y plazo
+(15/30/45/60), "🚀 Lanzar campaña" (inicio = hoy + avisos), "⏸ Pausar" (mínimo
+0), tabla por local con miniaturas, N/mínimo, estado y días, "🔔 Recordar
+ahora" y "⏳ Dar +15 días". Endpoints `GET /admin/api/fotos-locales`, `POST
+…/config|lanzar|pausar|recordar|prorroga` (X-Admin-Token). `GET /config/canal`
+suma `fotos_local_min` (0 si no está lanzada). Sin SQL nuevo. Test
+`tests/test_fotos_locales.py`. **Pendiente del director:** lanzar la campaña
+en la torre de cada ambiente (primero QAS); hasta lanzarla solo cambia que los
+locales que YA tienen 3 fotos propias dejan de usar Google.
+
 ## Backend growth (`backend/growth/`, FastAPI)
 
 Desplegado en **Railway** servicio **`pg-backend`** (root dir `backend/growth`,
@@ -3850,7 +3897,7 @@ antes del corte.
   zona tiene < 8 canchas cosechadas; sin `robots.txt`. Arreglos: (1)
   `web/descubrir.py`: cosecha compartida `pichangol_canchas_cache` primero
   (lee y escribe, mismo formato que `CanchasCacheRepo`), Google solo si no
-  hay consulta a ≤ 3 km en 30 días (`stores.places_zonas` {zona: {t, lat,
+  hay consulta a ≤ `places_cobertura_km` (20 km desde el 2-oct-2026, decisión del director; antes 3) en 30 días (`stores.places_zonas` {zona: {t, lat,
   lng}} en el SNAPSHOT, sobrevive despliegues; se persiste en segundo plano
   porque llega por GET), una sola llamada SIN fotos, candado por zona, tope
   diario `places_web_tope_dia` (120, `stores.places_uso`), logs `[places]`;
@@ -3859,7 +3906,8 @@ antes del corte.
   `GET /robots.txt` bloquea `/web/`, `/admin`, `/pagos/`, `/anfitrion`…; (4)
   la Edge `places-cerca` guarda cada respuesta en `pichangol_places_consultas`
   (SQL `docs/piloto/supabase_places_consultas.sql`, sin políticas: solo
-  service role) y la reusa para cualquier punto a ≤ 3 km (30 días; 1 día si
+  service role) y la reusa para cualquier punto a ≤ `PLACES_CACHE_KM` (secret de la Edge,
+  default 20 km; elige la consulta guardada más cercana) (30 días; 1 día si
   pide fotos) → también ahorra con APKs VIEJOS. Fail-open sin la tabla.
   **Hay que correr el SQL y redesplegar la Edge en cada ambiente** (QAS: el
   director lo hizo desde el panel de Supabase → Edge Functions → Code →
@@ -3872,7 +3920,37 @@ antes del corte.
   fotos por lugar en `pichangol_lugares_fotos` 30 días para todos y devuelve
   URLs públicas sin llave; una sola petición en vuelo por lugar, caché de
   sesión, fail-safe []. Los APK anteriores siguen pidiéndolas a Google hasta
-  actualizarse.
+  actualizarse. **(6) OPENSTREETMAP como COMPLEMENTO permanente (director,
+  2-oct-2026: "siembra OSM solo con nombre… sin que afecte lo actual"):**
+  Google sigue siendo la fuente principal (a OSM le faltan 27-41 % de los
+  locales comerciales); OSM suma gratis y para siempre (ODbL, atribución "©
+  colaboradores de OpenStreetMap") las canchas CON NOMBRE que Google no trajo.
+  Datos: `backend/growth/web/osm_canchas.json.gz` (2712 filas de 12 ciudades
+  PE/EC/BO, `tool/medicion_osm.py` en Actions) → `web/osm.py::procesar`: sport
+  → deporte Pichangol (multi → del nombre o fútbol; vacío → `descubrir.
+  deporte_de`; deportes que no reservamos, fuera), descarta nombres genéricos
+  ("Cancha 2", "Losa deportiva") y los descartes de la heurística + lozas/
+  polifuncionales/colegios del APK, agrupa mismo nombre a ≤150 m → **1468
+  locales**. Web: `descubrir_cerca` las SUMA tras Google/cosecha (tope propio
+  40, nunca desplazan un resultado de Google), sin duplicar Google, cosecha ni
+  registradas (≤150 m o mismo nombre); `fuente: "osm"`, id `osm_…`; jamás van
+  a la cosecha; `/web/foto` con `osm_` responde `origen: osm` sin tocar Google
+  ni la Edge; tarjeta sin `data-buscar` + "© OpenStreetMap"; `/lugar/osm_…`
+  funciona (Cómo llegar, Reclámala) con atribución. Tabla
+  `pichangol_canchas_osm` (SQL `docs/piloto/supabase_canchas_osm.sql`, RLS
+  lectura pública) que el backend siembra al arrancar en el hilo `pcg-osm`
+  SOLO si está vacía o cambió el archivo (`stores.config[
+  osm_semilla_version]`, log `[osm]`). Edge `places-cerca`: SOLO con `osm=1`
+  (APK nuevo) suma hasta 60 OSM del radio en formato place (`fuente: 'osm'`,
+  `deporte`), nunca las guarda en `pichangol_places_consultas`; sin `osm=1` la
+  respuesta es idéntica (APKs viejos tratarían el id como de Google). APK:
+  `Cancha.esOsm`, id `osm_…` (nunca `gp_`), deporte de la Edge, sin fotos ni
+  llamadas a Google, fuera de la cosecha (no infla su conteo de ≥8), badge "◎
+  EN EL MAPA" + `widgets/atribucion_osm.dart`; si la Edge trae solo OSM se
+  hace el mismo fallback directo a Google de siempre y se suman. Términos
+  7-bis atribuyen OSM. En tests OSM va apagado por defecto
+  (`tests/conftest.py`). **Pendiente:** correr el SQL y redesplegar la Edge en
+  cada ambiente (PRD con autorización). Test `tests/test_canchas_osm.py`.
 - **Explorar carga rápida (idea del usuario, para más adelante):**
   1. **GPS colgado con mala señal:** Explorar se queda en "Detectando tu
      ubicación…" indefinidamente. Fix: timeout al GPS + caer a última ubicación
