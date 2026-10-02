@@ -76,6 +76,9 @@ class CotizacionCargo {
   final String titulo;
   final List<ComponenteCargo> desglose;
   final bool delServidor;
+  // Medio con el que se cotizó ('yape' | 'tarjeta' | '' = sin medio). En el
+  // MODELO 2 de reservas el cargo depende del medio (Yape es más barato).
+  final String medio;
 
   const CotizacionCargo({
     required this.linea,
@@ -91,6 +94,7 @@ class CotizacionCargo {
     this.titulo = 'Cargo por servicio Pichangol',
     this.desglose = const [],
     this.delServidor = false,
+    this.medio = '',
   });
 
   bool get hayCargo => activo && cargoCentimos > 0;
@@ -122,6 +126,7 @@ class CotizacionCargo {
           : j['titulo'].toString(),
       desglose: ComponenteCargo.listaDe(j['desglose']),
       delServidor: delServidor,
+      medio: (j['medio'] ?? '').toString(),
     );
   }
 
@@ -188,6 +193,16 @@ class CargoServicio {
     final a = config['activo'];
     return a is Map && a[linea] == true;
   }
+
+  /// ¿El cargo de esta línea DEPENDE DEL MEDIO de pago? Solo en el MODELO 2
+  /// de reservas (`modelo_reservas` = "2" en `/config/cargo-servicio`) y en
+  /// soles, donde hay dos medios con tarifa distinta (Yape más barato que
+  /// tarjeta). En USD/BOB hay un solo medio (pasarela hospedada) y en el
+  /// modelo 1 el medio no cambia el cargo visible → false (todo como antes).
+  static bool dependeDelMedio(String linea, String moneda) =>
+      linea == 'reservas' &&
+      monedaIsoDe(moneda) == 'PEN' &&
+      (config['modelo_reservas'] ?? '1').toString() == '2';
 
   static String monedaIsoDe(String m) {
     switch (m.trim().toUpperCase()) {
@@ -365,6 +380,7 @@ class CargoServicio {
     required int baseCentimos,
     String deporte = '',
     List<int> partes = const [],
+    String medio = '',
   }) {
     final iso = monedaIsoDe(moneda);
     final base = baseCentimos < 0 ? 0 : baseCentimos;
@@ -392,6 +408,7 @@ class CargoServicio {
           ? 'Cargo por servicio Pichangol'
           : t['titulo'].toString(),
       desglose: _desgloseLocal(linea, iso, cargo, deporte),
+      medio: medio,
     );
   }
 
@@ -403,13 +420,17 @@ class CargoServicio {
     required int baseCentimos,
     String deporte = '',
     List<int> partes = const [],
+    // 'yape' | 'tarjeta' | '' (sin medio = como siempre; el backend usa
+    // tarjeta). Solo se manda cuando el cargo depende del medio.
+    String medio = '',
   }) async {
     final iso = monedaIsoDe(moneda);
     final base = baseCentimos < 0 ? 0 : baseCentimos;
     if (!activo(linea) || base <= 0) {
       return CotizacionCargo.inactiva(linea, iso, base);
     }
-    final clave = '$linea|$iso|$base|${deporte.toLowerCase()}|${partes.join(',')}';
+    final clave =
+        '$linea|$iso|$base|${deporte.toLowerCase()}|${partes.join(',')}|$medio';
     final c = _cache[clave];
     if (c != null) return c;
     final j = await PagosService.cotizarCargo(
@@ -417,7 +438,8 @@ class CargoServicio {
         moneda: iso,
         baseCentimos: base,
         deporte: deporte,
-        partes: partes);
+        partes: partes,
+        medio: medio);
     if (j != null && j['ok'] == true) {
       final cot = CotizacionCargo.fromJson(j);
       if (cot.baseCentimos == base) {
@@ -430,7 +452,43 @@ class CargoServicio {
         moneda: iso,
         baseCentimos: base,
         deporte: deporte,
-        partes: partes);
+        partes: partes,
+        medio: medio);
+  }
+
+  /// Cotiza la MISMA base con cada medio de pago de soles (Yape y tarjeta),
+  /// en paralelo, para que la hoja de pago muestre el total del medio que el
+  /// jugador elige. Solo tiene sentido si [dependeDelMedio]; si no, devuelve
+  /// la cotización de siempre (sin medio) para ambos, así nada cambia.
+  static Future<Map<String, CotizacionCargo>> cotizarPorMedio({
+    required String linea,
+    required String moneda,
+    required int baseCentimos,
+    String deporte = '',
+  }) async {
+    if (!dependeDelMedio(linea, moneda)) {
+      final c = await cotizar(
+          linea: linea,
+          moneda: moneda,
+          baseCentimos: baseCentimos,
+          deporte: deporte);
+      return {'yape': c, 'tarjeta': c};
+    }
+    final r = await Future.wait([
+      cotizar(
+          linea: linea,
+          moneda: moneda,
+          baseCentimos: baseCentimos,
+          deporte: deporte,
+          medio: 'yape'),
+      cotizar(
+          linea: linea,
+          moneda: moneda,
+          baseCentimos: baseCentimos,
+          deporte: deporte,
+          medio: 'tarjeta'),
+    ]);
+    return {'yape': r[0], 'tarjeta': r[1]};
   }
 
   /// Cotización síncrona ya conocida para esa base (caché del servidor) o la
@@ -441,17 +499,19 @@ class CargoServicio {
     required int baseCentimos,
     String deporte = '',
     List<int> partes = const [],
+    String medio = '',
   }) {
     final iso = monedaIsoDe(moneda);
     final clave =
-        '$linea|$iso|$baseCentimos|${deporte.toLowerCase()}|${partes.join(',')}';
+        '$linea|$iso|$baseCentimos|${deporte.toLowerCase()}|${partes.join(',')}|$medio';
     return _cache[clave] ??
         local(
             linea: linea,
             moneda: iso,
             baseCentimos: baseCentimos,
             deporte: deporte,
-            partes: partes);
+            partes: partes,
+            medio: medio);
   }
 
   /// Reparte un cargo en céntimos proporcionalmente a [subtotales] (resto al

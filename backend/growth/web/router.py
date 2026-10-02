@@ -1675,14 +1675,16 @@ _JS_RESERVA = r"""
   function deporteSel(){ return ($('deporte') && $('deporte').value) || C.deporteBase || ''; }
   function cotizar(t){
     if(!C.cargo || t <= 0){ cot = null; return; }
-    var base = Math.round(t * 100), k = base + '|' + deporteSel();
+    // MODELO 2: el cargo depende del medio (Yape es más barato que la tarjeta).
+    var md = (C.pasarela && C.pasarela !== 'culqi') ? '' : (window.pcgMedioPago ? pcgMedioPago() : 'yape');
+    var base = Math.round(t * 100), k = base + '|' + deporteSel() + '|' + md;
     if(cotCache[k]){ cot = cotCache[k]; return; }
     cot = null;
     if(cotT) clearTimeout(cotT);
     cotT = setTimeout(function(){
-      fetch('/web/cotizar?linea=reservas&moneda=' + encodeURIComponent(C.moneda) + '&base=' + base + '&deporte=' + encodeURIComponent(k.split('|')[1]))
+      fetch('/web/cotizar?linea=reservas&moneda=' + encodeURIComponent(C.moneda) + '&base=' + base + '&deporte=' + encodeURIComponent(k.split('|')[1]) + '&medio=' + encodeURIComponent(md))
         .then(function(r){ return r.json(); })
-        .then(function(j){ if(j && j.ok){ cotCache[k] = j; if(Math.round(total() * 100) === base) pintarResumen(); } })
+        .then(function(j){ if(j && j.ok){ cotCache[k] = j; pintarResumen(); } })
         .catch(function(){});
     }, 150);
   }
@@ -1693,6 +1695,8 @@ _JS_RESERVA = r"""
     h += '<div style="color:#717171;font-size:12px;margin-top:4px">' + esc(c.regla) + '. El precio de la cancha va completo al local, menos su comisión.</div></div>';
     return h;
   }
+  // Cambiar Yape ⇄ Tarjeta vuelve a cotizar: en el modelo 2 el total cambia.
+  document.addEventListener('pcg-medio', function(){ pintarResumen(); });
   document.addEventListener('click', function(ev){
     var op = ev.target && ev.target.closest ? ev.target.closest('.op-sena') : null;
     if(op){ ev.preventDefault(); if(modoPago !== op.dataset.modo){ modoPago = op.dataset.modo; pintarResumen(); } return; }
@@ -1858,7 +1862,7 @@ _JS_RESERVA = r"""
     ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = true; $(id).textContent = 'Reservando tu horario…'; });
     var blSel = bolLinea();
     fetch('/web/asegurar', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({cancha_id: C.id, horas: horas, extras: extras, deporte: deporte, nombre: d.nombre, celular: d.celular, email: d.email, boleador: blSel ? blSel.slug : '', fidelidad: fidDescuento() > 0, pago: esSena() ? 'sena' : 'total', bono: bonoActivo(), puntos: puntosDesc() > 0})})
+      body: JSON.stringify({cancha_id: C.id, horas: horas, extras: extras, deporte: deporte, nombre: d.nombre, celular: d.celular, email: d.email, boleador: blSel ? blSel.slug : '', fidelidad: fidDescuento() > 0, pago: esSena() ? 'sena' : 'total', bono: bonoActivo(), puntos: puntosDesc() > 0, medio: (window.pcgMedioPago ? pcgMedioPago() : '')})})
       .then(function(r){ return r.json(); })
       .then(function(j){
         if(!j.ok){
@@ -2328,12 +2332,15 @@ class AsegurarReq(BaseModel):
     # "sena" = adelanta la SEÑA del dueño (% de los turnos) y el resto se paga en
     # la cancha; "total" = todo ahora. Vacío = total (navegadores con JS viejo).
     pago: str = ""
+    # Medio elegido en la página (yape | tarjeta): en el modelo 2 el cargo
+    # depende de él. Vacío = tarjeta (JS viejo).
+    medio: str = ""
 
 
 _contador = {"n": 0}
 
 
-def _cotizacion_reserva(c: dict, total_soles: float, deporte: str = "") -> "_cs.Cotizacion":
+def _cotizacion_reserva(c: dict, total_soles: float, deporte: str = "", medio: str | None = None) -> "_cs.Cotizacion":
     """CARGO POR SERVICIO de una reserva web (fase 2 del diseño, sep-2026): la
     MISMA cotización al asegurar (lo que ve el jugador) y al cobrar en
     `/web/pagar` (lo que se le carga). Red de seguridad con la tarifa de
@@ -2342,11 +2349,14 @@ def _cotizacion_reserva(c: dict, total_soles: float, deporte: str = "") -> "_cs.
     from pagos.router import cotizacion_para
     _sim, iso = _moneda_de(c)
     dep = (deporte or "").strip().lower() or ((_deportes_de(c) or [""])[0])
-    return cotizacion_para("reservas", iso, int(round(float(total_soles) * 100)), medio=None, deporte=dep)
+    # MODELO 2: el cargo depende del medio (Yape es más barato que la tarjeta);
+    # sin medio = tarjeta. En el modelo 1 el medio solo toca la red de seguridad.
+    return cotizacion_para("reservas", iso, int(round(float(total_soles) * 100)), medio=(medio or None), deporte=dep)
 
 
 @router.get("/web/cotizar")
-def web_cotizar(linea: str = "reservas", moneda: str = "PEN", base: str = "0", deporte: str = "", partes: str = "") -> dict:
+def web_cotizar(linea: str = "reservas", moneda: str = "PEN", base: str = "0", deporte: str = "", partes: str = "",
+                medio: str = "") -> dict:
     """Cotización PÚBLICA del cargo por servicio para pintar el checkout web
     (espejo de `POST /pagos/cotizar`, que exige X-App-Key). `base` y `partes`
     (separadas por coma) en céntimos. Solo se muestra: el backend recalcula al
@@ -2356,7 +2366,8 @@ def web_cotizar(linea: str = "reservas", moneda: str = "PEN", base: str = "0", d
     if b > 50_000_000:
         return {"ok": False, "error": "base"}
     pts = [int(x) for x in (partes or "").split(",") if x.strip().isdigit()][:12]
-    cot = cotizacion_para(linea if linea in _cs.LINEAS else "reservas", moneda, b, medio=None,
+    md = medio if medio in ("yape", "tarjeta") else None
+    cot = cotizacion_para(linea if linea in _cs.LINEAS else "reservas", moneda, b, medio=md,
                           deporte=(deporte or "")[:20], partes=pts)
     return {"ok": True, **cot.dict()}
 
@@ -2556,7 +2567,7 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
     sena_total = sum(int(f["sena"]) for f in filas)
     base_cobro = sena_total if con_sena else (a_cobrar - (beneficios.DESCUENTO_PUNTOS if con_puntos else 0))
     if base_cobro > 0:
-        cot = _cotizacion_reserva(c, base_cobro, deporte)
+        cot = _cotizacion_reserva(c, base_cobro, deporte, req.medio if req.medio in ("yape", "tarjeta") else None)
         total_c, cargo_c, cargo_d = cot.total_centimos, cot.cargo_centimos, (cot.dict() if cot.activo else None)
     else:
         total_c, cargo_c, cargo_d = 0, 0, None
@@ -2680,7 +2691,8 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
     # lo que se cobra = precio + cargo. El dueño recibe sobre el precio.
     # SEÑA: la fijó /web/asegurar en cada fila; se cobra solo eso (+ su cargo
     # por servicio) y el resto queda "por cobrar en la cancha" (pagado=false).
-    cot = _cotizacion_reserva(c, plan["base_cobro"], str(filas[0].get("deporte") or ""))
+    medio_pedido = "yape" if req.medio == "yape" else "tarjeta"
+    cot = _cotizacion_reserva(c, plan["base_cobro"], str(filas[0].get("deporte") or ""), medio_pedido)
     monto_cobro = cot.total_centimos
     concepto = concepto_reserva(c, filas, plan["es_sena"])
     # Datos del pagador para el antifraude de Culqi: nombre de Google (real) o
@@ -2804,7 +2816,7 @@ def confirmar_reserva_pagada(filas: list[dict], c: dict, email: str, *, plan: di
             post_liquidacion_online(LiquidacionOnlineReq(
                 dueno_id=dueno, monto_soles=(float(sena_total) if es_sena else total_dueno), reserva_id=filas[0]["id"],
                 concepto=f"{'Seña' if es_sena else 'Reserva'} web · {c.get('nombre', '')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}",
-                medio=("sena" if es_sena else medio), moneda=iso, charge_id=charge_id,
+                medio=("sena" if es_sena else medio), medio_pago=medio, moneda=iso, charge_id=charge_id,
                 cargo_servicio_centimos=cargo_centimos, cargo_desglose=list(cargo_desglose or []),
                 cargo_ajuste_centimos=cargo_ajuste))
             rango = f"{filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"

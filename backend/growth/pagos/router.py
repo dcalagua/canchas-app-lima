@@ -271,6 +271,11 @@ class LiquidacionOnlineReq(BaseModel):
     # MEDIO con el que pagó el jugador (yape | tarjeta | sena): trazabilidad
     # para el estado de cuenta del dueño. Vacío = no informado (APKs viejos).
     medio: str = ""
+    # Medio con el que se COBRÓ en la pasarela (yape | tarjeta) aunque `medio`
+    # diga "sena": el modelo 2 descuenta al dueño la pasarela de ESE medio.
+    # Vacío = se toma de `medio` o del cobro ligado; si no, tarjeta (APK viejo,
+    # que también cotizó con tarjeta).
+    medio_pago: str = ""
     moneda: str = "PEN"        # moneda de la cancha (decide el mínimo de comisión)
     # Cargo de Culqi (`chr_…`) con el que pagó el jugador: liga la liquidación
     # con la comisión REAL de la pasarela (sincerada después). Vacío = APK viejo.
@@ -1901,6 +1906,21 @@ def post_comision_reserva(req: ComisionReservaReq) -> dict:
             "saldo_centimos": nuevo, "saldo_soles": nuevo / 100.0}
 
 
+def _medio_pasarela(req: "LiquidacionOnlineReq") -> str:
+    """Medio con el que la pasarela cobró una reserva (para el modelo 2)."""
+    for m in (req.medio_pago, req.medio):
+        m = (m or "").strip().lower()
+        if m in ("yape", "tarjeta"):
+            return m
+    cargo = (req.charge_id or "").strip()
+    if cargo:
+        p = stores.pago_por_charge(cargo)
+        m = (getattr(p, "medio", "") or "").strip().lower() if p else ""
+        if m in ("yape", "tarjeta"):
+            return m
+    return "tarjeta"
+
+
 @router.post("/liquidacion-online", dependencies=_APP)
 def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
     """Reserva pagada ONLINE, modelo **BILLETERA-FIRST**:
@@ -1935,7 +1955,7 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
         # su comisión; se descuenta de la TRANSACCIÓN (no del saldo) y queda
         # CONGELADO en el pago (si el operador cambia los % después, esta
         # reserva no cambia).
-        desc = _mn.descuento_dueno_centimos(bruto, iso)
+        desc = _mn.descuento_dueno_centimos(bruto, iso, _medio_pasarela(req))
         stores.registrar_pago(
             tipo="liquidacion_online", cargo_id=(req.charge_id.strip() or None), monto_centimos=bruto, moneda=iso,
             **_cargo_kw(req), estado="aprobado", dueno_id=req.dueno_id, culqi_charge_id=req.reserva_id,
@@ -2864,7 +2884,7 @@ def post_cotizar(req: CotizarReq) -> dict:
     return {"ok": True, **cot.dict()}
 
 
-def comision_de_linea(linea: str, base_centimos: int, iso: str) -> int:
+def comision_de_linea(linea: str, base_centimos: int, iso: str, medio: str | None = None) -> int:
     """Comisión de quien RECIBE según la línea: reservas/torneos/marketplace =
     `comision_centimos` (5 % con mínimo por moneda); academias = % de matrícula
     del país. Es la que entra a la red de seguridad del cargo."""
@@ -2874,7 +2894,7 @@ def comision_de_linea(linea: str, base_centimos: int, iso: str) -> int:
     if linea == "academias":
         return int(round(base * _comision_matricula_pct(_pais_de_moneda(iso)) / 100.0))
     if linea == "reservas" and _mn.es_modelo_2():
-        return _mn.descuento_dueno_centimos(base, iso)
+        return _mn.descuento_dueno_centimos(base, iso, medio)
     return comision_centimos(base / 100.0, iso)
 
 
@@ -2885,7 +2905,7 @@ def cotizacion_para(linea: str, moneda: str, base_centimos: int, *, medio: str |
     comisión del receptor se calcula aquí salvo que venga dada."""
     iso = moneda_iso(moneda)
     base = max(int(base_centimos or 0), 0)
-    com = max(int(comision_centimos), 0) if comision_centimos is not None else comision_de_linea(linea, base, iso)
+    com = max(int(comision_centimos), 0) if comision_centimos is not None else comision_de_linea(linea, base, iso, medio)
     cot = _cs.cotizar(linea=linea, moneda=iso, base_centimos=base, medio=(medio or None), deporte=deporte or "",
                       comision_centimos=com, partes=[int(x) for x in (partes or []) if str(x).strip()])
     if cot.ajuste_seguridad_centimos:
@@ -2956,6 +2976,8 @@ def post_modelo_negocio_simular(body: dict = Body(...)) -> dict:
     for k, v in (body.get("params") or {}).items():
         if k == "sobre" and v in ("precio", "cobrado"):
             p["sobre"] = v
+        elif k == "igv_aplica":
+            p["igv_aplica"] = "1" if str(v) in ("1", "true", "True") else "0"
         elif k in _mn.ETIQUETAS:
             try:
                 p[k] = max(0.0, float(v))
@@ -2965,15 +2987,19 @@ def post_modelo_negocio_simular(body: dict = Body(...)) -> dict:
         monto = max(0.0, float(body.get("monto") or 0))
     except (TypeError, ValueError):
         monto = 0.0
-    return simular_modelos(monto, iso, p)
+    return simular_modelos(monto, iso, p, medio=str(body.get("medio") or ""))
 
 
-def simular_modelos(monto: float, moneda: str = "PEN", p: dict | None = None) -> dict:
+def simular_modelos(monto: float, moneda: str = "PEN", p: dict | None = None, medio: str = "") -> dict:
     """Una reserva de `monto` con cada modelo: lo que paga el jugador, lo que
     recibe el dueño, el ingreso de Pichangol y el margen tras la pasarela real."""
     iso = moneda_iso(moneda)
     base = _soles_a_centimos(max(0.0, float(monto or 0)))
-    m2 = _mn.calcular(base, iso, p)
+    medios = list(_mn.MEDIOS.get(iso, ("tarjeta",)))
+    # El modelo 2 depende del medio: se simulan todos los de la moneda y el
+    # "principal" es el que pidió la torre (o el primero: Yape en soles).
+    por_medio = {m: _mn.calcular(base, iso, p, medio=m) for m in medios}
+    m2 = por_medio[_mn.medio_de(medio or medios[0], iso)]
     # Modelo 1: comisión del dueño + cargo por servicio (si está encendido).
     com = comision_centimos(base / 100.0, iso) if base else 0
     cargo1 = 0
@@ -2987,16 +3013,20 @@ def simular_modelos(monto: float, moneda: str = "PEN", p: dict | None = None) ->
     # precio de la cancha, para ver el efecto del mínimo antes de guardar.
     curva = []
     for precio in _CURVA_PRECIOS.get(iso, _CURVA_PRECIOS["PEN"]):
-        c = _mn.calcular(_soles_a_centimos(precio), iso, p)
-        curva.append({"precio": precio, "cliente_paga_centimos": c["cliente_paga_centimos"],
-                      "pcg_cliente_centimos": c["pcg_cliente_centimos"],
-                      "cliente_pct_efectivo": c["cliente_pct_efectivo"],
-                      "cliente_min_aplicado": c["cliente_min_aplicado"],
-                      "pcg_dueno_centimos": c["pcg_dueno_centimos"],
-                      "dueno_recibe_centimos": c["dueno_recibe_centimos"],
-                      "ingreso_pcg_centimos": c["ingreso_pcg_centimos"]})
+        fila: dict = {"precio": precio, "por_medio": {}}
+        for m in medios:
+            c = _mn.calcular(_soles_a_centimos(precio), iso, p, medio=m)
+            fila["por_medio"][m] = {
+                "cliente_paga_centimos": c["cliente_paga_centimos"], "pcg_cliente_centimos": c["pcg_cliente_centimos"],
+                "cliente_pct_efectivo": c["cliente_pct_efectivo"], "cliente_min_aplicado": c["cliente_min_aplicado"],
+                "pcg_dueno_centimos": c["pcg_dueno_centimos"], "dueno_recibe_centimos": c["dueno_recibe_centimos"],
+                "ingreso_pcg_centimos": c["ingreso_pcg_centimos"], "pasarela_real_centimos": c["pasarela_real_centimos"],
+                "margen_real_centimos": c["margen_real_centimos"]}
+        # Compatibilidad: los campos planos = el medio principal.
+        fila.update(fila["por_medio"][m2["medio"]])
+        curva.append(fila)
     return {"moneda": iso, "simbolo": moneda_simbolo(iso), "monto": base / 100.0, "modelo_1": m1, "modelo_2": m2,
-            "curva": curva, "vigente": _mn.modelo_reservas()}
+            "modelo_2_medios": por_medio, "medios": medios, "curva": curva, "vigente": _mn.modelo_reservas()}
 
 
 _CURVA_PRECIOS = {"PEN": (20, 30, 50, 90, 150), "USD": (5, 10, 20, 30, 50), "BOB": (30, 50, 100, 200, 300)}

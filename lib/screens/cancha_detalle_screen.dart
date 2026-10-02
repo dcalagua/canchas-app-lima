@@ -93,16 +93,36 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     // CARGO POR SERVICIO Pichangol (fase 3): solo si se paga EN LÍNEA (todo o
     // la seña). Lo cotiza el backend; con la línea apagada es 0.
     CotizacionCargo? cargo;
+    // MODELO 2 en soles: el cargo depende del medio (Yape más barato que
+    // tarjeta): se cotizan ambos y la hoja de pago cobra el del medio elegido.
+    Map<String, CotizacionCargo>? cargosMedio;
+    final baseCobro = exigeSena ? senaMonto.toDouble() : total;
     if (exigeSena || !efectivo) {
-      final baseCobro = exigeSena ? senaMonto.toDouble() : total;
-      cargo = await CargoServicio.cotizar(
-          linea: 'reservas',
-          moneda: cancha.monedaSimbolo,
-          baseCentimos: (baseCobro * 100).round(),
-          deporte: cancha.deporte.name);
-      if (!mounted) return;
+      if (CargoServicio.activo('reservas') &&
+          CargoServicio.dependeDelMedio('reservas', cancha.monedaSimbolo) &&
+          baseCobro > 0) {
+        cargosMedio = await CargoServicio.cotizarPorMedio(
+            linea: 'reservas',
+            moneda: cancha.monedaSimbolo,
+            baseCentimos: (baseCobro * 100).round(),
+            deporte: cancha.deporte.name);
+        if (!mounted) return;
+        // Yape va preseleccionado en la hoja: el diálogo muestra su cargo.
+        cargo = cargosMedio['yape'];
+      } else {
+        cargo = await CargoServicio.cotizar(
+            linea: 'reservas',
+            moneda: cancha.monedaSimbolo,
+            baseCentimos: (baseCobro * 100).round(),
+            deporte: cancha.deporte.name);
+        if (!mounted) return;
+      }
     }
+    final cm = cargosMedio;
     final cargoSoles = (cargo?.hayCargo ?? false) ? cargo!.cargo : 0.0;
+    final cargoTarjeta = (cm?['tarjeta']?.hayCargo ?? false)
+        ? cm!['tarjeta']!.cargo
+        : cargoSoles;
     // TUS DATOS (obligatorios, como en la web y en la ficha del local):
     // prellenados con la cuenta, editables.
     final nombreCtrl =
@@ -133,10 +153,15 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
               FilaCargoServicio(
                   cot: cargo, simbolo: cancha.monedaSimbolo, compacta: true),
               Text(
-                  'Pagas hoy: ${cancha.monedaSimbolo} ${((exigeSena ? senaMonto.toDouble() : total) + cargoSoles).toStringAsFixed(2)}',
+                  'Pagas hoy: ${cancha.monedaSimbolo} ${((exigeSena ? senaMonto.toDouble() : total) + cargoSoles).toStringAsFixed(2)}'
+                  '${cm != null ? ' con Yape' : ''}',
                   style: TextStyle(
                       color: Theme.of(ctx).colorScheme.primary,
                       fontWeight: FontWeight.w800)),
+              if (cm != null && cargoTarjeta != cargoSoles)
+                Text(
+                    'Con tarjeta: ${cancha.monedaSimbolo} ${(baseCobro + cargoTarjeta).toStringAsFixed(2)}',
+                    style: const TextStyle(fontSize: 12, color: textoTenue)),
             ],
             const SizedBox(height: 8),
             Text(
@@ -261,6 +286,18 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
     // N.º de operación del cargo (chr_ de Culqi): viaja con la liquidación para
     // que la torre lea la comisión REAL de la pasarela de ese cobro.
     var operacion = '';
+    // Monto + resumen POR MEDIO (solo si el cargo depende del medio).
+    Map<String, OpcionPago>? porMedio(List<LineaPago> lineas, String nota) =>
+        cm == null
+            ? null
+            : {
+                for (final e in cm.entries)
+                  e.key: OpcionPago(
+                      monto:
+                          baseCobro + (e.value.hayCargo ? e.value.cargo : 0.0),
+                      detalle: DetallePago(
+                          lineas: lineas, cargo: e.value, nota: nota)),
+              };
     if (exigeSena) {
       final pagado = await PagoTarjeta.cobrar(
         context,
@@ -276,6 +313,10 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
             ],
             cargo: cargo,
             nota: 'El resto (${cancha.monedaSimbolo} ${resto.toStringAsFixed(2)}) lo pagas en la cancha.'),
+        porMedio: porMedio([
+          LineaPago('Seña · ${cancha.nombre} · $hora', senaMonto.toDouble())
+        ],
+            'El resto (${cancha.monedaSimbolo} ${resto.toStringAsFixed(2)}) lo pagas en la cancha.'),
       );
       if (!pagado) {
         await appState.liberarBloqueAsegurado([asegurada!]);
@@ -300,6 +341,9 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
         detalle: DetallePago(lineas: [
           LineaPago('${cancha.nombre} · $hora–${cancha.horaFinDe(hora)}', total)
         ], cargo: cargo),
+        porMedio: porMedio([
+          LineaPago('${cancha.nombre} · $hora–${cancha.horaFinDe(hora)}', total)
+        ], ''),
       );
       if (!pagado) {
         await appState.liberarBloqueAsegurado([asegurada!]);
@@ -322,6 +366,16 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
             : (PagoTarjeta.ultimoMetodo.isNotEmpty
                 ? PagoTarjeta.ultimoMetodo
                 : 'online'));
+    // Medio con el que COBRÓ la pasarela: decide la cotización del cargo
+    // realmente pagada (modelo 2) y viaja a la liquidación (`medio_pago`).
+    final medioCobro = (exigeSena || !efectivo)
+        ? (PagoTarjeta.ultimoMedioCobro.isNotEmpty
+            ? PagoTarjeta.ultimoMedioCobro
+            : (PagoTarjeta.ultimoMetodo == 'yape' ? 'yape' : 'tarjeta'))
+        : '';
+    if (cm != null && medioCobro.isNotEmpty) {
+      cargo = cm[medioCobro] ?? cargo;
+    }
     final res = await appState.agregarReservaJugador(
         cancha, cancha.fechaRealSlot(_fechaIso, hora), _dia, hora,
         // seña → adelanto (resto en la cancha); con saldo → efectivo (comisión
@@ -333,6 +387,7 @@ class _CanchaDetalleScreenState extends State<CanchaDetalleScreen> {
         operacionId: operacion,
         asegurada: asegurada,
         cargo: (exigeSena || !efectivo) ? cargo : null,
+        medioPasarela: medioCobro,
         nombreCliente: nombreCliente,
         telefono: celularCliente);
     if (!mounted) return;

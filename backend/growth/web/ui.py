@@ -1045,6 +1045,8 @@ JS_NAV = r"""
       var ch = document.querySelector('#medioPago [data-medio="' + m + '"]');
       mini.dataset.medio = m; mini.innerHTML = ch ? (ch.dataset.corto || ch.dataset.nombre || '') : ''; mini.title = 'Pagas con ' + (ch ? ch.dataset.nombre : 'la pasarela de tu país');
     } else if(mini){ mini.dataset.medio = m; mini.innerHTML = (m === 'yape' ? "<span class='yape'>Yape</span>" : "<span class='visa'>VISA</span><span class='mc'><i></i><i></i></span>") + ' <b>&#8250;</b>'; mini.title = 'Pagas con ' + (m === 'yape' ? 'Yape' : 'tarjeta') + ' · toca para cambiar'; }
+    // Aviso a la página (p. ej. la ficha vuelve a cotizar: en el modelo 2 el total depende del medio).
+    try { document.dispatchEvent(new CustomEvent('pcg-medio', {detail: m})); } catch(e){}
   }
   document.addEventListener('click', function(ev){
     var b = ev.target.closest && ev.target.closest('#medioPago [data-medio]'); if(b){ mpSet(b.dataset.medio); return; }

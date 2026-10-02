@@ -435,6 +435,10 @@ class PagosService {
     int cargoServicioCentimos = 0,
     List<Map<String, dynamic>> cargoDesglose = const [],
     int cargoAjusteCentimos = 0,
+    // Medio con el que COBRÓ la pasarela ('yape' | 'tarjeta'), aunque [medio]
+    // sea 'sena': en el modelo 2 el backend descuenta al dueño la pasarela de
+    // ese medio. Vacío = el backend usa [medio] y si no, tarjeta.
+    String medioPago = '',
   }) async {
     if (!disponible || duenoId.isEmpty) return null;
     try {
@@ -455,6 +459,7 @@ class PagosService {
               if (cargoServicioCentimos > 0) 'cargo_desglose': cargoDesglose,
               if (cargoAjusteCentimos > 0)
                 'cargo_ajuste_centimos': cargoAjusteCentimos,
+              if (medioPago.isNotEmpty) 'medio_pago': medioPago,
             }),
           )
           .timeout(const Duration(seconds: 15));
@@ -1349,6 +1354,7 @@ class PagosService {
     required int baseCentimos,
     String deporte = '',
     List<int> partes = const [],
+    String medio = '', // yape | tarjeta ('' = sin medio, como siempre)
   }) async {
     if (!disponible) return null;
     try {
@@ -1361,6 +1367,7 @@ class PagosService {
                 'base_centimos': baseCentimos,
                 if (deporte.isNotEmpty) 'deporte': deporte,
                 if (partes.isNotEmpty) 'partes': partes,
+                if (medio.isNotEmpty) 'medio': medio,
               }))
           .timeout(const Duration(seconds: 8));
       if (r.statusCode != 200) return null;

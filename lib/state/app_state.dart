@@ -1139,6 +1139,10 @@ class AppState extends ChangeNotifier {
       required String etiqueta,
       String medio = '',
       String chargeId = '',
+      // Medio con el que COBRÓ la pasarela ('yape' | 'tarjeta'), también en
+      // seña y en bono+extras: en el modelo 2 el backend descuenta al dueño
+      // la pasarela de ese medio ('' = el backend usa `medio` o tarjeta).
+      String medioPago = '',
       // Cargo por servicio que pagó el jugador (solo en la 1.ª hora del bloque).
       CotizacionCargo? cargo}) {
     if (cancha.dueno.isEmpty) return null;
@@ -1161,6 +1165,7 @@ class AppState extends ChangeNotifier {
           'online': true,
           // Con qué pagó el jugador (yape/tarjeta): estado de cuenta del dueño.
           'medio': medio, 'moneda': moneda,
+          if (medioPago.isNotEmpty) 'medio_pago': medioPago,
           // Cargo de Culqi: la torre lee de ahí la comisión real de la pasarela.
           'charge_id': chargeId,
           // Cargo por servicio (fase 3): céntimos + desglose congelado + ajuste.
@@ -1180,6 +1185,7 @@ class AppState extends ChangeNotifier {
           'reserva_id': reservaId,
           'concepto': 'Servicios extra (bono) · $etiqueta',
           'online': true, 'medio': medio, 'moneda': moneda,
+          if (medioPago.isNotEmpty) 'medio_pago': medioPago,
           'charge_id': chargeId,
           if (cargo != null && cargo.hayCargo) ...{
             'cargo_centimos': cargo.cargoCentimos,
@@ -1193,6 +1199,7 @@ class AppState extends ChangeNotifier {
           'monto': sena.toDouble(), 'reserva_id': reservaId,
           'concepto': 'Seña · $etiqueta', 'online': true,
           'medio': 'sena', 'moneda': moneda, 'charge_id': chargeId,
+          if (medioPago.isNotEmpty) 'medio_pago': medioPago,
           if (cargo != null && cargo.hayCargo) ...{
             'cargo_centimos': cargo.cargoCentimos,
             'cargo_desglose': cargo.desgloseJson,
@@ -1243,7 +1250,8 @@ class AppState extends ChangeNotifier {
               chargeId: (e['charge_id'] ?? '').toString(),
               cargoServicioCentimos: (e['cargo_centimos'] as num?)?.round() ?? 0,
               cargoDesglose: Reserva.listaMapas(e['cargo_desglose']),
-              cargoAjusteCentimos: (e['cargo_ajuste'] as num?)?.round() ?? 0);
+              cargoAjusteCentimos: (e['cargo_ajuste'] as num?)?.round() ?? 0,
+              medioPago: (e['medio_pago'] ?? '').toString());
         }
         quitar = r != null; // 200 (ok o duplicada) → listo
       }
@@ -8507,7 +8515,10 @@ class AppState extends ChangeNotifier {
       // BONO con servicios extra: los [extras] de esta hora se PAGARON EN
       // LÍNEA ([medioPago] = yape/tarjeta, [operacionId] = el cargo) y se
       // liquidan al dueño, como en la web. La fila queda con medio 'bono'.
-      bool extrasEnLinea = false}) async {
+      bool extrasEnLinea = false,
+      // Medio con el que COBRÓ la pasarela ('yape' | 'tarjeta'), aunque la
+      // fila quede con 'sena'/'bono': viaja a la liquidación (`medio_pago`).
+      String medioPasarela = ''}) async {
     final bonoConExtras = cobro == 'bono' && extrasEnLinea;
     final pagoAdelantado =
         cobro == 'online' || cobro == 'sena' || bonoConExtras;
@@ -8653,6 +8664,9 @@ class AppState extends ChangeNotifier {
             ? '$lugar · $diaLabel $hora'
             : '$lugar · $quien · $diaLabel $hora',
         medio: cobro == 'bono' ? medioPago : reserva.medioPago,
+        medioPago: medioPasarela.isNotEmpty
+            ? medioPasarela
+            : (medioPago == 'yape' || medioPago == 'tarjeta' ? medioPago : ''),
         chargeId: operacionId,
         cargo: cargo);
     if (res == ResultadoReserva.ok) {
@@ -8753,7 +8767,9 @@ class AppState extends ChangeNotifier {
       String nombreCliente = '',
       String telefono = '',
       // BONO con servicios extra pagados en línea (ver agregarReservaJugador).
-      bool extrasEnLinea = false}) async {
+      bool extrasEnLinea = false,
+      // Medio con el que COBRÓ la pasarela (yape|tarjeta), ver arriba.
+      String medioPasarela = ''}) async {
     if (horas.isEmpty) return ResultadoReserva.error;
     final ordenadas = [...horas]..sort();
     // Datos del BLOQUE para los avisos al jugador (un solo aviso por bloque).
@@ -8829,6 +8845,7 @@ class AppState extends ChangeNotifier {
             .firstWhere((r) => r!.horaInicio == h, orElse: () => null),
         cargo: i == 0 ? cargo : null,
         extrasEnLinea: i == 0 && extrasEnLinea,
+        medioPasarela: medioPasarela,
       );
       if (res == ResultadoReserva.ocupado) {
         _avisarJugadorReserva(
