@@ -3373,7 +3373,8 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
     hoy = horarios.ahora_local("PE").date().isoformat()
     proximas = sorted([r for r in filas if str(r.get("fecha") or "") >= hoy], key=lambda r: (r.get("fecha"), r.get("hora_inicio")))
     pasadas = [r for r in filas if str(r.get("fecha") or "") < hoy]
-    canceladas = sorted([x for x in _st.cancelaciones_web if x.get("usuario") == email], key=lambda x: x.get("creado_en", ""), reverse=True)
+    # Solo reservas: un pago devuelto de una matrícula o compra (pasarela $ / Bs) no es una cancha cancelada.
+    canceladas = sorted([x for x in _st.cancelaciones_web if x.get("usuario") == email and (x.get("tipo") or "reserva") == "reserva"], key=lambda x: x.get("creado_en", ""), reverse=True)
     lista = "".join(_tarjeta_viaje(r, canchas.get(r.get("cancha_id")), hoy, ses) for r in proximas) if proximas else (
         "<div class='viaje-vacio'><b>Todavía no tienes reservas próximas</b>"
         "<p class='sub'>Cuando reserves una cancha, aparecerá aquí con su mapa y su comprobante.</p>"
