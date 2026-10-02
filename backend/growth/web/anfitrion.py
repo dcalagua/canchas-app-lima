@@ -39,9 +39,9 @@ import paises
 import servicios_extra as _se
 import fidelidad as _fid
 from db.store import stores
-from propiedad import fotos_reclamo, reclamos
+from propiedad import fotos_locales, fotos_reclamo, reclamos
 from web import almacen, catalogos, datos, horarios, sesion, ui
-from web.router import (PLAY_URL, _deporte, _deportes_de, _fotos, _maps, _moneda_de, _pais_de,
+from web.router import (PLAY_URL, _deporte, _deportes_de, _fotos, _fotos_crudas, _maps, _moneda_de, _pais_de,
                         _zona, e)
 
 router = APIRouter(tags=["web-anfitrion"])
@@ -219,7 +219,7 @@ def pagina_hoy(request: Request) -> HTMLResponse:
         f"<h1 class='anf-hola' style='margin-top:6px'>¡Hola, {e((ses.get('nombre') or ses.get('email') or '').split(' ')[0])}!</h1>"
         f"<p class='sub'>{len(canchas)} cancha{'s' if len(canchas) != 1 else ''} · {n_ver} verificada{'s' if n_ver != 1 else ''} · "
         f"{len(grupos['hoy'])} reserva{'s' if len(grupos['hoy']) != 1 else ''} hoy</p>"
-        f"{_aviso_verificacion(canchas, ses['email'])}"
+        f"{_aviso_verificacion(canchas, ses['email'])}{fotos_locales.avisos_dueno(ses['email'], canchas)}"
         f"<h2 style='margin-top:22px'>Tus reservas</h2><div class='anf-tabs' id='anfTabs'>{tabs}</div>{paneles}"
         "<h2 style='margin-top:30px'>Atajos</h2><div class='kpis'>"
         "<a class='kpi' href='/anfitrion/calendario' style='text-decoration:none'><small>Agenda</small><b style='font-size:16px'>Ver el calendario semanal</b></a>"
@@ -950,7 +950,7 @@ def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
                  + ("Ya está activa y recibe reservas: el local ya estaba verificado." if datos.reservable(agregada)
                     else "Se activará junto con el local cuando aprobemos la verificación.") + "</div>")
     cuerpo = ("<h1 class='anf-hola'>Mis canchas</h1><p class='sub'>Tus locales en Pichangol, con sus canchas. Edita precio, horario, fotos y servicios aquí o en la app: es la misma cancha.</p>"
-              f"{aviso}{_aviso_verificacion(canchas, ses['email'])}"
+              f"{aviso}{_aviso_verificacion(canchas, ses['email'])}{fotos_locales.avisos_dueno(ses['email'], canchas)}"
               f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(min(420px,100%),1fr));margin-top:16px'>{tarjetas}</div>"
               "<p style='margin-top:20px'><a class='btn' href='/anfitrion/nueva'>＋ Registrar otro local</a></p>")
     return ui.shell("Canchas", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True, titulo_tab="Canchas · Modo anfitrión")
@@ -1046,6 +1046,19 @@ def _select_hora(nombre: str, valor: str) -> str:
     return f"<select name='{nombre}' id='{nombre}'>{ops}</select>"
 
 
+def _nota_fotos_local(c: dict) -> str:
+    """Campaña de FOTOS PROPIAS DE LOS LOCALES: cuántas lleva el local y hasta
+    cuándo (cuentan las fotos propias de todas sus canchas)."""
+    est = fotos_locales.estado_de_cancha(c)
+    if not est or est.get("estado") not in ("pendiente", "vencido"):
+        return ""
+    cuando = (f"antes del {fotos_locales.fecha_corta(est.get('vence'))}" if est["estado"] == "pendiente"
+              else "para volver a mostrar fotos")
+    return (f"<div class='aviso {'warn' if est['estado'] == 'pendiente' else 'err'}' style='margin:10px 0'>📷 Tu local lleva "
+            f"<b>{est['n']} de {est['minimo']}</b> fotos propias: sube {est['faltan']} más {cuando}. "
+            "Cuentan las fotos que subas en cualquiera de las canchas del local; las de Google no cuentan.</div>")
+
+
 @router.get("/anfitrion/cancha/{cancha_id}/editar", response_class=HTMLResponse)
 def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
     ses, resp = _sesion_o_entrar(request, f"/anfitrion/cancha/{cancha_id}/editar")
@@ -1063,7 +1076,7 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
     principal = catalogos.deporte_principal(deps)
     dep_ops = [(d, f"{_deporte(d)[1]} {_deporte(d)[0]}") for d in catalogos.DEPORTES_ACTIVOS + [x for x in catalogos.DEPORTES_LEGADO if x in deps]]
     superficies = catalogos.SUPERFICIES.get(principal, [])
-    fotos = _fotos(c)
+    fotos = _fotos_crudas(c)  # el editor muestra lo que hay en la fila
     # Servicios extra DE ESTA CANCHA (árbitro, petos, clase…), filtrados por
     # sus deportes (pelotero solo en raqueta, petos solo en fútbol). Los DEL
     # LOCAL (piscina, sauna, entrada general…) y los servicios gratis del local
@@ -1105,7 +1118,7 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
 <div class='edit-grid'>
 <nav class='edit-nav'>{nav}</nav>
 <form id='fEdit' class='edit-form' autocomplete='off' novalidate>
- <section class='panel edit-sec' id='sec-fotos'><h2>Fotos</h2><p class='sub'>La primera es la portada en Explorar y en la ficha. Hasta {catalogos.MAX_FOTOS} fotos.</p>
+ <section class='panel edit-sec' id='sec-fotos'><h2>Fotos</h2><p class='sub'>La primera es la portada en Explorar y en la ficha. Hasta {catalogos.MAX_FOTOS} fotos.</p>{_nota_fotos_local(c)}
   <div class='edit-fotos' id='fotos'>{fotos_html}</div>
   <div class='acciones' style='margin-top:12px'><label class='btn sec' for='inFotos'>📷 Agregar fotos</label><input type='file' id='inFotos' accept='image/*' multiple hidden{' disabled' if not almacen.disponible() else ''}>
   <span class='sub' id='fotosMsg' style='margin:0'>{'' if almacen.disponible() else 'La subida de fotos desde la web no está disponible en este ambiente; súbelas desde la app.'}</span></div>
@@ -1292,7 +1305,7 @@ def _validar_edicion(c: dict, b: dict) -> tuple[dict | None, str, str]:
                       if x.get("clave") and _se.completar(x).get("ambito") == "local" and str(x.get("clave")) not in vistos]
     # Fotos: solo las que ya tenía la cancha o las subidas a SU carpeta del
     # bucket (nadie cuela una URL ajena en la galería).
-    actuales = set(_fotos(c))
+    actuales = set(_fotos_crudas(c))
     prefijo = almacen.prefijo_cancha(c["id"]) if almacen.disponible() else None
     fotos = []
     for u in (b.get("fotos") or []):
@@ -1582,9 +1595,10 @@ def _guardar_edicion_cancha(request: Request, cancha_id: str, _cuerpo_json) -> J
     if campos is None:
         return JSONResponse({"ok": False, "error": err, "campo": seccion}, status_code=400)
     propagar = bool(campos.pop("_propagar_locales", False))
-    quitadas = [u for u in _fotos(c) if u not in campos["fotos"]]  # antes del UPDATE (c puede ser la misma fila)
+    quitadas = [u for u in _fotos_crudas(c) if u not in campos["fotos"]]  # antes del UPDATE (c puede ser la misma fila)
     if not datos.actualizar_cancha(cancha_id, ses["email"], campos):
         return JSONResponse({"ok": False, "error": "No pudimos guardar en este momento. Inténtalo de nuevo."}, status_code=503)
+    fotos_locales.invalidar()  # el local pudo pasar a "ok" (campaña de fotos propias)
     if quitadas:
         _en_segundo_plano(lambda: [almacen.borrar_foto(u) for u in quitadas])
     if propagar:  # solo si el cuerpo trajo servicios del local (clientes que aún los mandan por cancha)

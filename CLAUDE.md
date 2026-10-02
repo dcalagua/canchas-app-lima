@@ -2425,6 +2425,53 @@ propias). **Riesgo conocido:** los reclamos que ya estaban en curso sin fotos
 no se pueden aprobar hasta que el dueño las suba (o el operador baje el
 mínimo a 0). Test `tests/test_fotos_reclamo.py`.
 
+**FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS = campaña con plazo (pedido del
+director, 2-oct-2026: "los que ya registraron usan fotos de Google Place; que
+suban las suyas con un plazo y que la torre lo controle… así bajamos costos"):**
+`backend/growth/propiedad/fotos_locales.py` (reusa la regla de "foto propia" de
+`fotos_reclamo`). LOCAL = canchas reservables del mismo dueño + `club` (mismo
+`local_key` que fidelidad); sus fotos = unión de las propias de sus canchas.
+Config en `stores.config` (espejo en `CONFIG_DEFAULT`): `fotos_local_min` (3;
+0 = campaña pausada), `fotos_local_plazo_dias` (30), `fotos_local_inicio` (ISO
+del lanzamiento; vacío = no lanzada). Estados: `ok` (≥ mínimo, aunque no esté
+lanzada), `pendiente` (dentro del plazo: todo como hoy), `vencido`, `inactiva`.
+El plazo de cada local corre desde max(inicio, activación de su reclamo en
+`stores.reclamos`) + prórrogas (`stores.fotos_locales[key].prorroga_dias`,
+snapshot). **Consecuencia:** `ok` y `vencido` NUNCA piden fotos a Google: la web
+(`router._fotos` → `fotos_locales.fotos_para`, `/web/foto` responde `origen:
+sin_google`, tarjeta y galería sin `data-buscar`/script) muestra SOLO fotos
+propias (las de Google guardadas en la fila se ocultan) y, sin ninguna, el
+placeholder del deporte; la cancha NO se esconde (sigue recibiendo reservas).
+El editor del dueño usa `router._fotos_crudas` (lo que hay en la fila). Mapa
+cancha → estado cacheado 60 s (`invalidar()` al cambiar config/prórroga y al
+guardar Editar cancha). APK: `GET /config/fotos-locales` (público: config +
+`sin_google` = ids) → `AppState.canchasSinGoogle` (cache-first
+`fotos_locales_sin_google`) filtra en `cargarCanchasRemotas`
+(`_aplicarFotosLocales`: propias de la cancha y, si no tiene, las del local;
+`Cancha.copyWith(sinFotoUrl:)`); OJO: el dueño que luego guarda desde el APK
+ya no reescribe las URLs de Google (quedan fuera de la nube). Aviso al dueño:
+web `fotos_locales.avisos_dueno` en Modo anfitrión → Hoy y Mis canchas (ámbar
+"Sube N fotos de <local> antes del <fecha> (te quedan X días)" / rojo "<local>
+ya no muestra fotos", botón "Subir fotos ›" → Editar cancha `#sec-fotos` de la
+cancha PRINCIPAL del local = la que ya tiene más fotos propias) + nota "Tu local
+lleva N de M" en el editor; APK `_AvisoFotosLocal` en `mis_canchas_screen` vía
+`GET /fotos-locales/mios?email=` (X-App-Key + `_require_usuario`). Avisos
+push (`_aviso_push_usuario`, tipo `fotos_local`) + correo (`correos` evento
+`fotos_local`, botón a subir fotos) al LANZAR, a 7 días, a 1 día y al vencer,
+idempotentes por `<etapa>:<vence>` en `stores.fotos_locales[key].avisos` (al
+avisar una etapa se dan por cubiertas las anteriores); cron horario de
+`main.py` (`_iniciar_cron_liquidaciones` → `fotos_locales.recordatorios`).
+Torre → Aprobación y operación → **"🖼️ Fotos de los locales"**: KPIs (con sus
+fotos / en plazo / vencidos / % migrado), chips de mínimo (2-6) y plazo
+(15/30/45/60), "🚀 Lanzar campaña" (inicio = hoy + avisos), "⏸ Pausar" (mínimo
+0), tabla por local con miniaturas, N/mínimo, estado y días, "🔔 Recordar
+ahora" y "⏳ Dar +15 días". Endpoints `GET /admin/api/fotos-locales`, `POST
+…/config|lanzar|pausar|recordar|prorroga` (X-Admin-Token). `GET /config/canal`
+suma `fotos_local_min` (0 si no está lanzada). Sin SQL nuevo. Test
+`tests/test_fotos_locales.py`. **Pendiente del director:** lanzar la campaña
+en la torre de cada ambiente (primero QAS); hasta lanzarla solo cambia que los
+locales que YA tienen 3 fotos propias dejan de usar Google.
+
 ## Backend growth (`backend/growth/`, FastAPI)
 
 Desplegado en **Railway** servicio **`pg-backend`** (root dir `backend/growth`,

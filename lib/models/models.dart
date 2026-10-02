@@ -650,6 +650,7 @@ class Cancha {
     bool? registrada,
     String? fotoUrl,
     List<String>? fotos,
+    bool sinFotoUrl = false, // limpia la portada (fotoUrl = null)
     String? dueno,
     bool? verificada,
     String? horaApertura,
@@ -682,7 +683,7 @@ class Cancha {
       digitalizada: digitalizada,
       direccion: direccion ?? this.direccion,
       registrada: registrada ?? this.registrada,
-      fotoUrl: fotoUrl ?? this.fotoUrl,
+      fotoUrl: sinFotoUrl ? null : (fotoUrl ?? this.fotoUrl),
       fotos: fotos ?? this.fotos,
       dueno: dueno ?? this.dueno,
       verificada: verificada ?? this.verificada,

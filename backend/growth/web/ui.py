@@ -416,6 +416,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .modal .quien .av{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--tinte);color:var(--teal);font-weight:800;flex:none}
 .chk{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;cursor:pointer}.chk input{width:18px;height:18px;padding:0;margin:0;accent-color:var(--esmeralda)}.chk small{font-weight:500;color:var(--tenue)}
 .aviso.warn{background:var(--warn-bg);color:var(--warn-fg);border-radius:14px;padding:12px 16px;font-weight:600}
+.aviso.err,.aviso.bad{background:var(--bad-bg);color:var(--bad-fg);border-radius:14px;padding:12px 16px;font-weight:600}
 .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:var(--noche);color:#fff;padding:12px 20px;border-radius:12px;font-weight:700;font-size:14.5px;z-index:90;box-shadow:0 8px 24px rgba(10,27,61,.3);opacity:0;transition:opacity .25s,transform .25s;max-width:calc(100vw - 32px)}
 .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
 /* tienda y academia (modo anfitrión) */
