@@ -303,6 +303,16 @@ class FotosReclamoRequest(BaseModel):
     minimo: int
 
 
+class FotosLocalesConfigRequest(BaseModel):
+    minimo: int | None = None
+    plazo_dias: int | None = None
+
+
+class FotosLocalRequest(BaseModel):
+    key: str
+    dias: int | None = None
+
+
 class ContactoRequest(BaseModel):
     contactos: dict[str, str]
 
@@ -432,6 +442,93 @@ def set_reclamo_fotos_admin(req: FotosReclamoRequest,
     _check(x_admin_token)
     from propiedad import fotos_reclamo
     return fotos_reclamo.set_minimo(req.minimo)
+
+
+# ── FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS (campaña, 2-oct-2026) ─────────
+# `propiedad/fotos_locales.py`. Torre → Aprobación y operación → "📷 Fotos de
+# los locales": KPIs, mínimo, plazo, lanzar/pausar y tabla por local con
+# "Recordar ahora" y "Dar +15 días".
+
+@router.get("/admin/api/fotos-locales")
+def get_fotos_locales_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from propiedad import fotos_locales
+    lst = fotos_locales.locales()
+    for x in lst:
+        reg = stores.fotos_locales.get(x["key"]) or {}
+        x["ultimo_aviso"] = reg.get("ultimo_aviso") or ""
+    return {"config": fotos_locales.config_publica(), "kpis": fotos_locales.kpis(lst), "locales": lst}
+
+
+@router.post("/admin/api/fotos-locales/config")
+def set_fotos_locales_admin(req: FotosLocalesConfigRequest,
+                            x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from propiedad import fotos_locales
+    return fotos_locales.set_config(req.minimo, req.plazo_dias)
+
+
+@router.post("/admin/api/fotos-locales/lanzar")
+def lanzar_fotos_locales_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    """Fija el inicio = hoy y avisa (push + correo) a los dueños que aún no
+    tienen el mínimo de fotos propias."""
+    _check(x_admin_token)
+    from propiedad import fotos_locales
+    return fotos_locales.lanzar()
+
+
+@router.post("/admin/api/fotos-locales/pausar")
+def pausar_fotos_locales_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from propiedad import fotos_locales
+    return fotos_locales.pausar()
+
+
+@router.post("/admin/api/fotos-locales/recordar")
+def recordar_fotos_local_admin(req: FotosLocalRequest,
+                               x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from propiedad import fotos_locales
+    return fotos_locales.recordar(req.key)
+
+
+@router.post("/admin/api/fotos-locales/prorroga")
+def prorroga_fotos_local_admin(req: FotosLocalRequest,
+                               x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    from propiedad import fotos_locales
+    return fotos_locales.prorrogar(req.key, req.dias or fotos_locales.PRORROGA_DIAS)
+
+
+@router.get("/config/fotos-locales")
+def get_fotos_locales_publico() -> dict:
+    """PÚBLICO (APK y web): campaña de fotos propias y las canchas cuyo local
+    ya NO usa fotos de Google (`sin_google`: tiene sus fotos o el plazo venció).
+    El APK muestra en esas canchas SOLO las fotos propias."""
+    from propiedad import fotos_locales
+    return {**fotos_locales.config_publica(), "sin_google": fotos_locales.sin_google_ids()}
+
+
+def _app_key(x_app_key: str | None = Header(default=None)) -> None:
+    from pagos.router import _require_app_key
+    _require_app_key(x_app_key)
+
+
+@router.get("/fotos-locales/mios")
+def get_fotos_locales_mios(email: str, x_app_key: str | None = Header(default=None),
+                           x_user_token: str | None = Header(default=None)) -> dict:
+    """APK (X-App-Key): estado de la campaña para los locales del dueño, para
+    pintar el aviso "Sube N fotos de tu local antes del…" en Mis canchas."""
+    _app_key(x_app_key)
+    from pagos.router import _require_usuario
+    from propiedad import fotos_locales
+    em = (email or "").strip().lower()
+    if not em or "@" not in em:
+        raise HTTPException(status_code=400, detail="email_invalido")
+    _require_usuario(em, x_user_token)
+    lst = fotos_locales.locales_de_dueno(em)
+    return {**fotos_locales.config_publica(),
+            "locales": [fotos_locales.para_app(x) for x in lst if x["dueno"] == em]}
 
 
 @router.get("/admin/api/pichangas/modo")
@@ -1866,7 +1963,14 @@ def get_canal_publico() -> dict:
         # Mínimo de fotos PROPIAS que el APK exige antes de enviar un reclamo
         # (decisión del director, 2-oct-2026; 0 = no se exige).
         "reclamo_fotos_min": fotos_reclamo.minimo(),
+        # Campaña de fotos propias de los locales ya verificados (0 = apagada).
+        "fotos_local_min": _fotos_local_min(),
     }
+
+
+def _fotos_local_min() -> int:
+    from propiedad import fotos_locales
+    return fotos_locales.minimo() if fotos_locales.lanzada() else 0
 
 
 def pago_online_disponible() -> bool:
@@ -2572,6 +2676,10 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">📷</span>
             <span class="md-txt"><b>Fotos propias al reclamar</b><small>Mínimo para aprobar</small></span>
           </button>
+          <button class="md-item" onclick="mostrarPane(this,'fotosLoc');cargarFotosLocales()">
+            <span class="md-ico">🖼️</span>
+            <span class="md-txt"><b>Fotos de los locales</b><small>Migrar de Google a fotos propias</small></span>
+          </button>
           <button class="md-item" onclick="mostrarPane(this,'pichangaModo')">
             <span class="md-ico">⚽</span>
             <span class="md-txt"><b>Pichangas</b><small>Partidos abiertos</small></span>
@@ -2581,6 +2689,7 @@ _HTML = r"""<!DOCTYPE html>
           <div class="md-pane" id="modo"></div>
           <div class="md-pane" id="ubic" style="display:none"></div>
           <div class="md-pane" id="fotosRec" style="display:none"></div>
+          <div class="md-pane" id="fotosLoc" style="display:none"></div>
           <div class="md-pane" id="pichangaModo" style="display:none"></div>
         </div>
       </div>
@@ -5546,6 +5655,110 @@ async function setFotosMin(n){
     toast(fotosMin?('Ahora se exigen '+fotosMin+' foto(s) propia(s) para aprobar'):'Ya no se exigen fotos propias');
     renderFotosReclamo(); cargar();
   } else toast('No se pudo cambiar la configuración');
+}
+
+// ── FOTOS DE LOS LOCALES (campaña de fotos propias) ──
+let fotosLoc = null;
+const FL_ESTADO = {ok:['#E9F4EE','#1F6E49','✓ Con sus fotos'], pendiente:['#FDF2D6','#946200','En plazo'],
+  vencido:['#FBE7E7','#C0392B','Vencido'], inactiva:['#F1F1F1','#555','Sin campaña']};
+async function cargarFotosLocales(){
+  const box = document.getElementById('fotosLoc');
+  if(box && !fotosLoc) box.innerHTML = '<div class="card"><div class="row">Cargando locales…</div></div>';
+  const r = await fetch('/admin/api/fotos-locales',{headers:headers()});
+  if(r.status===401){ salir(); return; }
+  if(!r.ok){ if(box) box.innerHTML='<div class="card"><div class="row">No se pudo cargar.</div></div>'; return; }
+  fotosLoc = await r.json();
+  renderFotosLocales();
+}
+function flChip(txt, on, js){
+  return `<button type="button" style="padding:8px 14px;border-radius:999px;border:1px solid ${on?'#0E8F67':'#E4E4E4'};background:${on?'#E7F6EF':'#fff'};color:#222;font-weight:800;cursor:pointer" onclick="${js}">${txt}</button>`;
+}
+function renderFotosLocales(){
+  const box = document.getElementById('fotosLoc');
+  if(!box || !fotosLoc) return;
+  const c = fotosLoc.config, k = fotosLoc.kpis, L = fotosLoc.locales||[];
+  const kp = (v,t,bg)=>`<div style="flex:1;min-width:110px;background:${bg};border-radius:14px;padding:12px 14px"><div style="font-size:22px;font-weight:800">${v}</div><div style="font-size:12px;color:#555;font-weight:700">${t}</div></div>`;
+  const estadoTxt = c.minimo===0 ? 'Campaña PAUSADA (mínimo 0): nada se exige ni se oculta.'
+    : (c.lanzada ? `Lanzada el ${esc(c.inicio)} · plazo ${c.plazo_dias} días por local (desde el lanzamiento o desde que se aprobó el local).`
+                 : 'Aún NO lanzada: los locales que ya tienen el mínimo dejan de usar Google; al resto todavía no se le exige.');
+  const filas = L.map((x,i)=>{
+    const [bg,fg,lab] = FL_ESTADO[x.estado]||FL_ESTADO.inactiva;
+    const dias = x.estado==='pendiente' ? (x.dias_restantes===0?' · último día':` · ${x.dias_restantes} d`) : (x.estado==='vencido'?` · desde ${esc(x.vence)}`:'');
+    const minis = (x.fotos||[]).slice(0,4).map(u=>`<img src="${esc(u)}" alt="" style="width:34px;height:34px;object-fit:cover;border-radius:8px;border:1px solid #eee">`).join('');
+    const acc = (x.estado==='pendiente'||x.estado==='vencido') ?
+      `<button class="btn-ap" style="padding:6px 12px;border-radius:999px;cursor:pointer;font-size:12px" onclick="flRecordar(${i})">🔔 Recordar ahora</button>
+       <button style="padding:6px 12px;border-radius:999px;border:1px solid #E4E4E4;background:#fff;cursor:pointer;font-size:12px;font-weight:700" onclick="flProrroga(${i})">⏳ Dar +${c.prorroga_dias} días</button>` : '';
+    return `<tr style="border-top:1px solid #f0f0f0">
+      <td style="padding:10px 8px"><b>${esc(x.local)}</b><div style="font-size:12px;color:#777">${esc(x.dueno)} · ${esc(x.pais)} · ${x.canchas.length} cancha(s)</div></td>
+      <td style="padding:10px 8px"><div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">${minis||'<span style="color:#999;font-size:12px">sin fotos propias</span>'}<b style="margin-left:4px">${x.n}/${x.minimo}</b></div></td>
+      <td style="padding:10px 8px"><span style="background:${bg};color:${fg};padding:4px 10px;border-radius:999px;font-weight:800;font-size:12px;white-space:nowrap">${lab}${dias}</span>
+        ${x.prorroga_dias?`<div style="font-size:11px;color:#777;margin-top:4px">+${x.prorroga_dias} d de prórroga</div>`:''}
+        ${x.ultimo_aviso?`<div style="font-size:11px;color:#777;margin-top:2px">Último aviso: ${esc(String(x.ultimo_aviso).slice(0,10))}</div>`:''}</td>
+      <td style="padding:10px 8px"><div style="display:flex;gap:6px;flex-wrap:wrap">${acc}</div></td></tr>`;
+  }).join('');
+  box.innerHTML = `<div class="card"><div class="top"><h3>📷 Fotos de los locales</h3></div>
+    <div class="row">Los locales verificados que aún muestran fotos de Google deben subir sus <b>fotos propias</b>
+      (cuentan las de todas sus canchas). Un local que ya tiene el mínimo nunca vuelve a pedir fotos a Google;
+      si vence el plazo sin subirlas deja de mostrar fotos (placeholder del deporte) pero <b>sigue recibiendo reservas</b>.
+      Avisos al dueño por push y correo al lanzar, a 7 días, a 1 día y al vencer.</div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px">
+      ${kp(k.ok,'Con sus fotos','#E9F4EE')}${kp(k.pendiente,'En plazo','#FDF2D6')}${kp(k.vencido,'Vencidos','#FBE7E7')}${kp(k.pct+'%','Migrado ('+k.total+' locales)','#F4F7FA')}
+    </div>
+    <div class="row" style="margin-top:14px;font-weight:800">Fotos propias por local</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+      ${[2,3,4,5,6].map(n=>flChip(n+' fotos', n===c.minimo, `flConfig({minimo:${n}})`)).join('')}
+    </div>
+    <div class="row" style="margin-top:14px;font-weight:800">Plazo para subirlas</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+      ${(c.plazos||[15,30,45,60]).map(n=>flChip(n+' días', n===c.plazo_dias, `flConfig({plazo_dias:${n}})`)).join('')}
+    </div>
+    <div class="row" style="margin-top:12px;color:#555">${estadoTxt}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <button class="btn-ap" style="padding:9px 18px;border-radius:999px;cursor:pointer" onclick="flLanzar()">🚀 ${c.lanzada?'Relanzar campaña (nuevo plazo desde hoy)':'Lanzar campaña'}</button>
+      ${c.minimo>0?`<button style="padding:9px 18px;border-radius:999px;border:1px solid #E4E4E4;background:#fff;font-weight:800;cursor:pointer" onclick="flPausar()">⏸ Pausar</button>`:''}
+    </div></div>
+    <div class="card" style="margin-top:14px;overflow-x:auto"><div class="top"><h3>Locales (${L.length})</h3></div>
+      ${L.length?`<table style="width:100%;border-collapse:collapse;font-size:13px;min-width:620px"><thead><tr style="text-align:left;color:#777;font-size:12px">
+        <th style="padding:6px 8px">Local</th><th style="padding:6px 8px">Fotos propias</th><th style="padding:6px 8px">Estado</th><th style="padding:6px 8px">Acciones</th></tr></thead><tbody>${filas}</tbody></table>`
+      :'<div class="row">Aún no hay locales verificados.</div>'}</div>`;
+}
+async function flPost(url, body){
+  const r = await fetch(url,{method:'POST',headers:headers(),body:JSON.stringify(body||{})});
+  if(r.status===401){ salir(); return null; }
+  return r.json().catch(()=>null);
+}
+async function flConfig(body){
+  const j = await flPost('/admin/api/fotos-locales/config', body);
+  if(j && j.ok){ toast('Configuración guardada'); cargarFotosLocales(); } else toast('No se pudo guardar');
+}
+async function flLanzar(){
+  const c = (fotosLoc||{}).config||{};
+  const ok = await confirmarModal(c.lanzada?'¿Relanzar la campaña?':'¿Lanzar la campaña de fotos?',
+    `Cada local verificado tendrá ${c.plazo_dias} días desde hoy para subir ${c.minimo} fotos propias. Avisaremos a los dueños por push y correo.`);
+  if(!ok) return;
+  const j = await flPost('/admin/api/fotos-locales/lanzar');
+  if(j && j.ok){ toast('Campaña lanzada · '+(j.avisos||0)+' aviso(s) enviado(s)'); cargarFotosLocales(); }
+  else toast((j&&j.mensaje)||'No se pudo lanzar');
+}
+async function flPausar(){
+  const ok = await confirmarModal('¿Pausar la campaña?','Con el mínimo en 0 nada se exige ni se oculta. Puedes volver a lanzarla cuando quieras.');
+  if(!ok) return;
+  const j = await flPost('/admin/api/fotos-locales/pausar');
+  if(j && j.ok){ toast('Campaña pausada'); cargarFotosLocales(); } else toast('No se pudo pausar');
+}
+async function flRecordar(i){
+  const key = (((fotosLoc||{}).locales||[])[i]||{}).key; if(!key) return;
+  const j = await flPost('/admin/api/fotos-locales/recordar',{key});
+  if(j && j.ok){ toast('Recordatorio enviado'); cargarFotosLocales(); } else toast((j&&j.mensaje)||'No se pudo enviar');
+}
+async function flProrroga(i){
+  const x = ((fotosLoc||{}).locales||[])[i]; if(!x) return;
+  const key = x.key, local = x.local;
+  const d = ((fotosLoc||{}).config||{}).prorroga_dias||15;
+  const ok = await confirmarModal('¿Dar '+d+' días más?', 'Se amplía el plazo de '+local+'.');
+  if(!ok) return;
+  const j = await flPost('/admin/api/fotos-locales/prorroga',{key, dias:d});
+  if(j && j.ok){ toast('Plazo ampliado'); cargarFotosLocales(); } else toast('No se pudo ampliar');
 }
 
 const MODO_DESC = {

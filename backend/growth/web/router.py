@@ -142,6 +142,18 @@ def _pasarela_web(iso: str) -> str:
 
 
 def _fotos(c: dict) -> list[str]:
+    # FOTOS PROPIAS DE LOS LOCALES (`propiedad/fotos_locales.py`): un local que
+    # ya tiene sus fotos (`ok`) o cuyo plazo venció (`vencido`) muestra SOLO
+    # sus fotos propias, nunca las de Google guardadas en la fila.
+    from propiedad import fotos_locales as _fl
+    solo_propias = _fl.fotos_para(c)
+    if solo_propias is not None:
+        return solo_propias
+    return _fotos_crudas(c)
+
+
+def _fotos_crudas(c: dict) -> list[str]:
+    """Portada + galería TAL CUAL están en la fila (el editor del dueño)."""
     out = []
     for u in [c.get("foto_url")] + list(c.get("fotos") or []):
         u = str(u or "").strip()
@@ -157,8 +169,19 @@ def _foto_card(c: dict) -> str:
     return f"<div class='sinfoto'>{_deporte(c.get('deporte'))[1]}</div>"
 
 
+def _sin_google(c: dict) -> bool:
+    """¿El local de la cancha ya no usa fotos de Google? (ok / vencido)."""
+    from propiedad import fotos_locales as _fl
+    est = _fl.estado_de_cancha(c)
+    return bool(est and est.get("sin_google"))
+
+
 def _galeria(c: dict) -> str:
     fs = _fotos(c)
+    if not fs and _sin_google(c):
+        # Local cuyo plazo para subir fotos propias venció: placeholder, sin
+        # pedirle nada a Google (`propiedad/fotos_locales.py`).
+        return f"<div class='galeria una' id='galeria'><div class='sinfoto principal'>{_deporte(c.get('deporte'))[1]}</div></div>"
     if not fs:
         # Sin fotos propias: la galería arranca con el placeholder y un script
         # pide a /web/foto la PRIMERA FOTO de Google del lugar (como el app).
@@ -909,6 +932,8 @@ def _tarjeta(canchas: list[dict] | dict, ratings: dict | tuple | None = None, fe
                 fs.append(u)
     if fs:
         fotos = "".join(f"<img src='{e(u)}' alt='' loading='lazy'>" for u in fs[:5])
+    elif _sin_google(c):  # plazo de fotos propias vencido: sin Google
+        fotos = f"<div class='sinfoto'>{_deporte(c.get('deporte'))[1]}</div>"
     else:
         fotos = f"<div class='sinfoto' data-buscar='1'>{_deporte(c.get('deporte'))[1]}</div>"
     extra = ""
@@ -1335,6 +1360,10 @@ def foto_web(id: str = "", nombre: str = "", club: str = "", lat: float = 0.0, l
         propias = _fotos(c)
         if propias:
             return {"ok": True, "fotos": propias[:5], "origen": "propias"}
+        if _sin_google(c):
+            # FOTOS PROPIAS DE LOS LOCALES: plazo vencido sin fotos → nunca
+            # se le pide a Google (ahorro; placeholder del deporte).
+            return {"ok": True, "fotos": [], "origen": "sin_google"}
         nombre, club = c.get("nombre") or nombre, c.get("club") or club
         lat, lng = c.get("lat") or lat, c.get("lng") or lng
     if not (nombre or club) or (not lat and not lng):

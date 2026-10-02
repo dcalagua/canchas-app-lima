@@ -726,11 +726,37 @@ def _armar_boleo_solicitud(ev: dict) -> list[dict]:
                  "dueno", "boleo")]
 
 
+def _armar_fotos_local(ev: dict) -> list[dict]:
+    """FOTOS PROPIAS DE LOS LOCALES (`propiedad/fotos_locales.py`): aviso al
+    dueño para que suba las fotos de su local antes del plazo. No es un pago."""
+    s = ev.get("datos") or {}
+    para = str(s.get("para") or "").strip().lower()
+    if not _correo_valido(para):
+        return []
+    from urllib.parse import quote as _q
+    principal = str(s.get("principal") or "")
+    enlace = f"{base_url()}/anfitrion/cancha/{_q(principal, safe='')}/editar#sec-fotos" if principal else f"{base_url()}/anfitrion/canchas"
+    datos_ = [("Local", str(s.get("local") or "")),
+              ("Fotos propias", f"{int(s.get('minimo') or 0) - int(s.get('faltan') or 0)} de {int(s.get('minimo') or 0)}")]
+    if s.get("vence") and s.get("estado") != "vencido":
+        datos_.append(("Plazo", _fecha_txt(str(s.get("vence")))))
+    return [_msg(str(s.get("clave") or f"fotos_local:{para}:{ev.get('id')}"), para, str(s.get("titulo") or "Sube las fotos de tu local"),
+                 plantilla(titulo=str(s.get("titulo") or "Sube las fotos de tu local"), saludo="Hola,",
+                           intro=str(s.get("cuerpo") or ""), datos=datos_,
+                           boton=("Subir fotos de mi local", enlace),
+                           notas=["Las fotos de Google no se pueden guardar (sus términos no lo permiten): las tuyas quedan "
+                                  "para siempre en tu ficha. Puedes subirlas desde la web (Modo anfitrión → Mis canchas) o "
+                                  "desde la app (Mis canchas → Editar cancha)."],
+                           etiqueta="Aviso de Pichangol"),
+                 "dueno", "fotos_local")]
+
+
 _ARMADORES = {
     "reserva": _armar_reserva, "matricula": _armar_matricula, "venta": _armar_venta,
     "recarga": _armar_simple, "pro": _armar_simple, "servicio": _armar_simple, "torneo": _armar_simple,
     "aporte": _armar_simple, "torneo_ingreso": _armar_torneo_ingreso, "bodega": _armar_bodega,
     "boleo": _armar_boleo, "boleo_solicitud": _armar_boleo_solicitud,
+    "fotos_local": _armar_fotos_local,
 }
 
 

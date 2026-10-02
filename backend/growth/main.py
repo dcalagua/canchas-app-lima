@@ -300,6 +300,14 @@ async def _iniciar_cron_liquidaciones() -> None:
             except Exception:  # noqa: BLE001
                 pass
             try:
+                # FOTOS PROPIAS DE LOS LOCALES: avisos al dueño a 7 días, a
+                # 1 día y al vencer el plazo (idempotentes; en un hilo: lee
+                # Postgres y manda push).
+                from propiedad import fotos_locales as _fl
+                await asyncio.to_thread(_fl.recordatorios)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
                 # Comisión REAL de Culqi por cargo (la publica ~12 h después
                 # del pago): se lee en un hilo para no bloquear el loop.
                 from pagos import tarifas_pasarela as _tp

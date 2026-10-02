@@ -46,6 +46,8 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
     // (duración/precio/horario) que se editó en OTRO equipo del mismo dueño.
     // Sin esto, la copia local de la tablet se quedaba con el valor viejo.
     appState.cargarCanchasRemotas();
+    // Campaña de FOTOS PROPIAS de los locales (torre): aviso por local.
+    appState.cargarFotosMisLocales();
     // Negocio del dueño (backend = lo mismo que la web): cierres de caja (el
     // servidor auto-cierra días pasados sin cerrar), fijas, notas y
     // recordatorios. Y programa el recordatorio diario ~23:00 de cierre.
@@ -98,6 +100,7 @@ class _MisCanchasScreenState extends State<MisCanchasScreen> {
                   onRefresh: () async {
                     await appState.cargarCanchasRemotas();
                     await appState.sincronizarPropiedades();
+                    await appState.cargarFotosMisLocales();
                   },
                   child: canchas.isEmpty
                       ? ListView(
@@ -814,6 +817,7 @@ class _LocalCard extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis),
           ],
+          _AvisoFotosLocal(local: local),
           const SizedBox(height: 8),
           for (final c in local.canchas) _FilaCancha(cancha: c),
           Wrap(
@@ -856,6 +860,75 @@ class _LocalCard extends StatelessWidget {
                           color: cs.primary, fontWeight: FontWeight.w700)),
                 ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// FOTOS PROPIAS DE LOS LOCALES (campaña de la torre, 2-oct-2026): "Sube N
+/// fotos de tu local antes del…" (ámbar) o "Tu local ya no muestra fotos"
+/// (rojo) con acceso directo a subirlas en Editar cancha. El estado (mínimo,
+/// plazo, prórrogas) lo calcula el backend (`GET /fotos-locales/mios`).
+class _AvisoFotosLocal extends StatelessWidget {
+  const _AvisoFotosLocal({required this.local});
+  final Club local;
+
+  @override
+  Widget build(BuildContext context) {
+    final ids = {for (final c in local.canchas) c.id};
+    Map<String, dynamic>? est;
+    for (final x in appState.fotosMisLocales) {
+      final cs = (x['canchas'] as List? ?? const []).map((e) => e.toString());
+      if (cs.any(ids.contains)) {
+        est = x;
+        break;
+      }
+    }
+    final estado = (est?['estado'] ?? '').toString();
+    if (est == null || (estado != 'pendiente' && estado != 'vencido')) {
+      return const SizedBox.shrink();
+    }
+    final vencido = estado == 'vencido';
+    final fondo = vencido ? const Color(0xFFFBE7E7) : const Color(0xFFFDF2D6);
+    final tinta = vencido ? const Color(0xFFC0392B) : const Color(0xFF946200);
+    final principalId = (est['principal'] ?? '').toString();
+    final principal = local.canchas.firstWhere((c) => c.id == principalId,
+        orElse: () => local.principal);
+    final n = (est['n'] as num?)?.toInt() ?? 0;
+    final minimo = (est['minimo'] as num?)?.toInt() ?? 0;
+    final t = Theme.of(context).textTheme;
+    return Container(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      decoration:
+          BoxDecoration(color: fondo, borderRadius: BorderRadius.circular(14)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const IconoVivo(Icons.photo_camera_outlined, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${(est['texto'] ?? '').toString()} Llevas $n de $minimo.',
+                  style: t.bodySmall?.copyWith(
+                      color: tinta, fontWeight: FontWeight.w700, height: 1.35),
+                ),
+              ),
+            ],
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => EditarCanchaScreen(cancha: principal))),
+              child: Text('Subir fotos ›',
+                  style: TextStyle(color: tinta, fontWeight: FontWeight.w800)),
+            ),
           ),
         ],
       ),
