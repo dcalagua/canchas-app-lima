@@ -2424,6 +2424,27 @@ el mínimo a la nube no crea nada) y el reclamo de legado en
 propias). **Riesgo conocido:** los reclamos que ya estaban en curso sin fotos
 no se pueden aprobar hasta que el dueño las suba (o el operador baje el
 mínimo a 0). Test `tests/test_fotos_reclamo.py`.
+**UBICACIÓN + 3 A 5 FOTOS PARA ENVIAR; AL APROBAR SE BORRAN LAS DE GOOGLE
+(decisión del director, 2-oct-2026):** (1) con `exigir_ubicacion_reclamo` (torre
+→ "Verificación de ubicación al reclamar") un reclamo NUEVO no se crea sin el GPS
+del dispositivo a ≤ `RECLAMO_UBICACION_MAX_M` (150 m) del punto
+(`reclamos.validar_ubicacion_envio` en `crear_reclamo` → `ubicacion_requerida` /
+`ubicacion_lejos` con `mensaje`; los reenvíos del mismo dueño con reclamo vivo no
+se bloquean); la web lo valida en `_validar_registro` y el JS pide la ubicación
+fresca antes de enviar (`ubicacionAhora`, modal si falta o está lejos: desde una
+PC normalmente no se puede, hay que reclamar desde el celular en el local); el APK
+(`widgets/ubicacion_reclamo.dart`, `exigirUbicacionReclamo`) lo valida ANTES de
+crear canchas o subir fotos en registro, reclamo de legado y "Volver a
+solicitar". (2) Fotos: mínimo default **3** y máximo `reclamo_fotos_max`
+(default **5**, `fotos_reclamo.maximo()`, editable en la torre "Hasta N") en el
+formulario de reclamo (web y APK); Editar cancha fuera del reclamo sigue hasta 8.
+`GET /config/canal` publica `reclamo_fotos_max`, `reclamo_exigir_ubicacion`,
+`reclamo_ubicacion_max_m` (el APK los cachea). (3) Al APROBAR/activar
+(`_nube_verificada` con verificada) `datos.quedar_solo_fotos_propias` deja en la
+cancha y sus hermanas SOLO las fotos propias (quita Google de `foto_url`/`fotos`).
+Migración única `reclamo_reglas_v2` en `load_state`: snapshots viejos pasan a
+exigir ubicación, mínimo ≥3 y máximo 5 (luego manda la torre; un estado nuevo
+nace con la marca). Tests en `test_fotos_reclamo.py` y `test_reclamo_propiedad.py`.
 
 **FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS = campaña con plazo (pedido del
 director, 2-oct-2026: "los que ya registraron usan fotos de Google Place; que
