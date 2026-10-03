@@ -227,7 +227,15 @@ para la API del APK.
   tarjeta, pone primero el país del usuario (cajas de `paises._CAJAS`
   pasadas al JS) y muestra un mapa **Leaflet + OpenStreetMap** (sin API key)
   con pines de precio y popup "Ver horarios"; la ubicación se recuerda en
-  `localStorage`. Banderas como SVG (`ui.bandera`): los emoji de bandera no
+  `localStorage`. **SOLO LO CERCANO (queja del director, 3-oct-2026: "estoy en Ecuador
+  y me salen canchas de Perú"):** con la ubicación del usuario la web muestra
+  SOLO canchas, descubiertas, academias y pines a ≤ radio (`RADIOS` 5/10/20/30
+  km, **10 por defecto**, selector `#selRadio` en la línea de ubicación,
+  `localStorage pcg_radio`), igual que el APK (`radioBusquedaKm`, default 10
+  desde este cambio con migración única 20→10, `radio_busqueda_10_v1`). Vacío:
+  "No hay canchas a N km de ti…". Buscar por nombre/zona NO aplica el radio.
+  Sin permiso de ubicación se sigue mostrando todo por país (SEO/escritorio).
+  Test `test_explorador_con_ubicacion_solo_muestra_lo_cercano`. Banderas como SVG (`ui.bandera`): los emoji de bandera no
   se ven en Windows. Regla anti scroll horizontal: `html,body{overflow-x:
   hidden}` + `minmax(0,1fr)`/`min-width:0` en las columnas de la grilla.
   **Canchas NO verificadas NO salen en la web hasta ser aprobadas (regla

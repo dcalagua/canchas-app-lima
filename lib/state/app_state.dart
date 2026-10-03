@@ -5184,9 +5184,9 @@ class AppState extends ChangeNotifier {
   }
 
   /// Radio de búsqueda (km) que el usuario elige: define hasta dónde se
-  /// descubren y muestran canchas. Persistente. En el piloto de Chosica el
-  /// corredor es largo (Ñaña–Ricardo Palma), por eso el default es amplio.
-  double radioBusquedaKm = 20;
+  /// descubren y muestran canchas. Persistente. Default 10 km (decisión del
+  /// director, oct-2026: solo lo que de verdad está cerca; igual en la web).
+  double radioBusquedaKm = 10;
   static const double radioMinKm = 2;
   static const double radioMaxKm = 30;
 
@@ -7610,6 +7610,15 @@ class AppState extends ChangeNotifier {
         radioBusquedaKm = (prefs.getDouble(_kRadio) ?? radioBusquedaKm)
             .clamp(radioMinKm, radioMaxKm)
             .toDouble();
+        // Migración única: el default viejo (20 km) se guardaba siempre, así
+        // que no se distingue de una elección; pasa al nuevo default 10 km.
+        if (!(prefs.getBool('radio_busqueda_10_v1') ?? false)) {
+          if (radioBusquedaKm == 20) {
+            radioBusquedaKm = 10;
+            await prefs.setDouble(_kRadio, 10);
+          }
+          await prefs.setBool('radio_busqueda_10_v1', true);
+        }
       }
 
       if (prefs.containsKey(_kTema)) {
