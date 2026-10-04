@@ -19,12 +19,89 @@ dependencies:
   shared_preferences: ^2.3.2
   image_picker: ^1.1.2
   image: ^4.2.0
+  # Enviar ARCHIVOS/documentos en el chat (pdf, docx, xlsx, zip…). Plugin nativo
+  # → de-riskear en CI (Flutter 3.24.5); el CI ya fuerza compileSdk 34 en
+  # subproyectos. Se usa con withData: true para subir los bytes a Storage.
+  file_picker: ^8.1.2
   supabase_flutter: ^2.5.0
   intl: ^0.19.0
   http: ^1.2.0
+  # Deep links: abrir la app desde el enlace compartido de un campeonato
+  # (https://…/c/{id} y pichangol://). Ya estaba clavado en overrides (6.3.3).
+  app_links: ^6.3.3
   google_fonts: ^6.2.1
   font_awesome_flutter: 10.8.0
   url_launcher: ^6.3.0
+  # Llamadas 1-a-1 tipo WhatsApp con WebRTC PROPIO (UI de llamada de la marca,
+  # punta a punta). Reemplaza al Jitsi embebido (no pueden convivir: ambos traen
+  # las clases nativas org.webrtc.*). Plugin nativo pesado → de-riskear en CI
+  # (Flutter 3.24.5). Señalización sobre Supabase Realtime; la grupal sigue por
+  # enlace de Jitsi (meet.jit.si) porque grupo con WebRTC puro necesita un SFU.
+  flutter_webrtc: 0.12.5+hotfix.2
+  # Fase 2 de llamadas: pantalla de LLAMADA ENTRANTE con tono (suena aunque la
+  # app esté cerrada) en Android. Plugin nativo → de-riskear en CI (Flutter
+  # 3.24.5). Se dispara desde el push de llamada (data) y al aceptar une a Jitsi.
+  flutter_callkit_incoming: ^3.1.3
+  # Permisos de micrófono/cámara (estilo WhatsApp): se piden JUSTO antes de la
+  # llamada, con diálogo del sistema, y atajo a Ajustes si se negaron.
+  permission_handler: ^11.3.1
+  # Workaround del bug de flutter_callkit_incoming 3.1.3: su broadcast interno
+  # de "cierra la pantalla entrante" viaja con componente explícito (Activity) y
+  # el receiver dinámico nunca lo recibe → al colgar el que llama, el receptor
+  # se calla pero la PANTALLA queda pegada hasta el timeout. Con este plugin
+  # mandamos NOSOTROS el broadcast implícito correcto (ACTION_ENDED_CALL_INCOMING)
+  # y la pantalla se cierra al instante. Plugin nativo liviano → de-riskear en CI.
+  android_intent_plus: ^5.0.2
+  # Pasarela de pago de BOLIVIA (Libélula): el pago se hace en la página hospedada
+  # de Libélula (QR · tarjeta · Tigo Money) DENTRO de un WebView. El compileSdk de
+  # su plugin nativo lo cubre el fix global de subproyectos (tool/configure_platforms).
+  webview_flutter: ^4.7.0
+  # Notificaciones push del chat (Etapa B). Fail-safe: si el APK no trae la
+  # config de Firebase (google-services.json), el push queda desactivado y la
+  # app sigue igual (ver lib/services/push_service.dart).
+  firebase_core: ^3.6.0
+  firebase_messaging: ^15.1.3
+  # Recordatorio LOCAL (gratis, sin servidor): al dueño le avisa que cobre en
+  # efectivo cuando se acerca la hora de la reserva. Plugin nativo → probar en
+  # CI (Flutter 3.24.5). Se usa en modo INEXACTO (no exige permiso de alarma
+  # exacta). `timezone` es para programar la hora local.
+  flutter_local_notifications: ^17.2.4
+  timezone: ^0.9.4
+  # Notas de voz en el chat: grabar (record) + reproducir (audioplayers) +
+  # archivo temporal (path_provider). record_android se fija abajo a una versión
+  # que hardcodea compileSdk (la 1.5.x usa flutter.compileSdkVersion y rompe CI).
+  record: ^5.1.0
+  audioplayers: ^6.1.0
+  path_provider: ^2.1.4
+  # Video en Estados/Historias (tipo WhatsApp): reproducir el clip subido.
+  # Plugin nativo → probar en CI (Flutter 3.24.5). La captura del video la hace
+  # image_picker.pickVideo (ya es dependencia); esto solo REPRODUCE.
+  video_player: ^2.9.2
+  # Caché EN DISCO de imágenes de red (fotos del chat, avatares): que al reabrir
+  # un chat las fotos ya vistas salgan al instante en vez de re-descargarse.
+  # Dart puro (usa flutter_cache_manager + sqflite/path_provider, ya presentes).
+  cached_network_image: ^3.4.1
+  # Caché EN DISCO de archivos (video de historias device-first): baja una vez y
+  # reproduce de local la próxima. Ya es dependencia transitiva de
+  # cached_network_image; se declara explícita para importarla directo.
+  flutter_cache_manager: ^3.4.1
+  # Compartir historias a la hoja del sistema (Instagram, Facebook, WhatsApp…).
+  # Plugin nativo → validar en CI (Flutter 3.24.5). Se fija en 10.x para mantener
+  # Share.shareXFiles (la 11.x lo removió).
+  share_plus: ^10.1.4
+  # Caché LOCAL device-first del chat (SQLite): pinta al instante desde el
+  # teléfono aunque Android haya matado la app, y solo sincroniza lo nuevo.
+  # Plugin nativo: se prueba en build aislado antes de usarlo (Flutter 3.24.5).
+  sqflite: ^2.3.3+1
+  # Comprobante de pago en PDF (generar) + compartir/descargar (hoja del sistema).
+  # `pdf` es Dart puro; `printing` da la hoja de compartir/guardar del SO.
+  pdf: ^3.11.1
+  printing: ^5.13.3
+  # OCR on-device para validar el documento donde NO hay API oficial (Bolivia/CI):
+  # confirma que la foto ES un documento (palabras clave) y extrae nº + fecha de
+  # nacimiento. Gratis/offline (ML Kit). Plugin nativo: el CI ya fuerza
+  # compileSdk 34 en subproyectos y minSdk 23; en iOS se sube el target a 15.5.
+  google_mlkit_text_recognition: ^0.13.1
 
 dev_dependencies:
   flutter_test:
@@ -41,12 +118,25 @@ dependency_overrides:
   app_links: 6.3.3
   package_info_plus: 8.3.1
   passkeys_doctor: 1.4.0
+  # record_android 1.4+/1.5 usa flutter.compileSdkVersion (rompe CI). La 1.3.3
+  # hardcodea compileSdk 34 (changelog "Gradle compile SDK to 34"), minSdk 23.
+  record_android: 1.3.3
+  # record_platform_interface 1.6.0 agregó startStream() y hasPermission(request:)
+  # que record_linux 0.7.2 NO implementa (record capa record_linux a <1.0.0). Pub
+  # flotaba la interfaz a 1.6.0 por ^1.2.0 y rompía el kernel_snapshot. La clavamos
+  # a 1.2.0 (era real de record_linux 0.7.2): pub baja darwin→1.2.2, web→1.1.9,
+  # windows→1.0.6, todo pre-startStream y consistente. record_android 1.3.3 y
+  # record 5.2.x piden ^1.2.0, así que 1.2.0 les basta.
+  record_platform_interface: 1.2.0
 
 flutter:
   uses-material-design: true
   assets:
     - assets/icon/
     - assets/splash/
+    - assets/geo/
+    - assets/sonidos/
+    - assets/brand/
 
 # Ícono de app (pelota Pichangol sobre verde de marca).
 flutter_launcher_icons:
@@ -54,13 +144,16 @@ flutter_launcher_icons:
   ios: true
   remove_alpha_ios: true
   image_path: "assets/icon/app_icon.png"
-  adaptive_icon_background: "#14463A"
+  # Logo nuevo (pin verde degradado + órbita sobre blanco): el fondo adaptativo
+  # pasa a BLANCO para que el ícono se vea como la tarjeta del logo.
+  adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
 
-# Splash nativo (arranque en frío) — fondo VERDE CLARO + pelota Pichangol.
+# Splash nativo (arranque en frío) — fondo BLANCO premium + logo verde con pelota
+# (identidad Opción A; empalma con el splash claro de la app).
 flutter_native_splash:
-  color: "#AEEA94"
+  color: "#FFFFFF"
   image: assets/splash/logo.png
   android_12:
-    color: "#AEEA94"
+    color: "#FFFFFF"
     image: assets/splash/logo.png

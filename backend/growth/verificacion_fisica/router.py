@@ -22,10 +22,15 @@ def post_evaluar(req: EvaluarRequest) -> dict:
 
 @router.get("/visitas")
 def get_visitas(zona: str | None = None,
-                verificador_id: int | None = None) -> list[dict]:
-    """Cola de visitas del verificador, priorizada por demanda (más pedidas
-    primero)."""
-    return service.visitas(zona, verificador_id)
+                verificador_id: int | None = None,
+                lat: float | None = None,
+                lng: float | None = None,
+                radio_km: float | None = None) -> list[dict]:
+    """Cola de visitas del verificador. Si el verificador manda su GPS
+    (lat/lng), cada visita trae la distancia a él y —si se pasa radio_km— se
+    filtran las que quedan dentro de ese radio (cola por CERCANÍA, no por zonas
+    fijas de Lima). Dentro del radio siguen priorizadas por demanda."""
+    return service.visitas(zona, verificador_id, lat, lng, radio_km)
 
 
 @router.post("/{vf_id}/captura")

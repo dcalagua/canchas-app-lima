@@ -3,7 +3,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../brand.dart';
 import '../theme.dart';
-import 'explorar_home_screen.dart';
+import 'app_shell.dart';
+import '../widgets/icono_vivo.dart';
 
 const String kPrefOnboardingVisto = 'onboarding_visto';
 
@@ -26,13 +27,17 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   final _controller = PageController();
   int _page = 0;
 
+  // El país NO se pregunta al instalar: lo toma el GPS solo (config/pais.dart)
+  // y se propone cambiarlo únicamente cuando detecta que viajaste.
+  int get _total => _slides.length;
+
   static const _slides = [
     _Slide(Icons.map, verdeCancha, 'Encuentra tu cancha',
         'Mira en el mapa las canchas de fútbol, tenis y pádel cerca de ti, con su precio por hora. Buscar es libre, sin registrarte.'),
     _Slide(Icons.bolt, coral, 'Reserva en segundos',
         'Elige día y hora y asegura tu cancha con una seña. Menos plantones, tu hora garantizada.'),
     _Slide(Icons.groups, arena, 'Arma tu partido',
-        'Junta a tu gente y juega a tu nivel. Pichangol conecta jugadores y canchas en toda Lima.'),
+        'Junta a tu gente y juega a tu nivel. Pichangol conecta jugadores y canchas cerca de ti.'),
   ];
 
   @override
@@ -48,12 +53,12 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     } catch (_) {}
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const ExplorarHomeScreen()),
+      MaterialPageRoute(builder: (_) => const AppShell()),
     );
   }
 
   void _siguiente() {
-    if (_page < _slides.length - 1) {
+    if (_page < _total - 1) {
       _controller.nextPage(
           duration: const Duration(milliseconds: 350), curve: Curves.easeOut);
     } else {
@@ -63,7 +68,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final ultimo = _page == _slides.length - 1;
+    final ultimo = _page == _total - 1;
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -79,7 +84,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             Expanded(
               child: PageView.builder(
                 controller: _controller,
-                itemCount: _slides.length,
+                itemCount: _total,
                 onPageChanged: (i) => setState(() => _page = i),
                 itemBuilder: (context, i) {
                   final s = _slides[i];
@@ -95,7 +100,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             color: s.color.withOpacity(0.12),
                             shape: BoxShape.circle,
                           ),
-                          child: Icon(s.icono, size: 72, color: s.color),
+                          child: IconoVivo(s.icono, size: 72, color: s.color),
                         ),
                         const SizedBox(height: 40),
                         Text(
@@ -122,7 +127,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                for (int i = 0; i < _slides.length; i++)
+                for (int i = 0; i < _total; i++)
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 250),
                     margin: const EdgeInsets.symmetric(horizontal: 4),

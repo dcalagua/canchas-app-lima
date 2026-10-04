@@ -1,0 +1,867 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import '../config/features.dart';
+import '../config/pais.dart';
+import '../screens/login_google_sheet.dart';
+import '../screens/pago_sheet.dart';
+import '../services/pagos_service.dart';
+import '../state/app_state.dart';
+import '../theme.dart';
+import '../models/cargo_servicio.dart';
+import 'cargando_pichangol.dart';
+import 'cargo_servicio_info.dart';
+import 'dialogo_pichangol.dart';
+import '../utils/input_formatos.dart';
+import 'marcas_pago.dart';
+import 'pago_libelula.dart';
+import 'pago_payphone.dart';
+import 'pago_procesando.dart';
+import '../utils/moneda.dart';
+import 'icono_vivo.dart';
+
+/// Flujo de cobro reutilizable al jugador (reservas, matrículas). Deja elegir
+/// una **tarjeta guardada** (Culqi One Click) o **una nueva**, tokeniza, cobra
+/// contra el backend y muestra la caja "cobrándose". Devuelve true si el pago
+/// fue exitoso.
+///
+/// Si Culqi no está configurado (o no hay backend), cae a la pasarela SIMULADA
+/// para no romper la demo.
+/// Una línea del "Resumen de tu pago" (espejo de `pcgResumenPago` de la web):
+/// turnos, servicios extra, boleador, descuentos (monto negativo).
+class LineaPago {
+  const LineaPago(this.texto, this.monto);
+  final String texto;
+  final double monto;
+}
+
+/// Detalle que el checkout muestra ANTES de pagar, igual que la web: las
+/// líneas de lo que se compra, el cargo por servicio Pichangol con su ⓘ
+/// (solo si está encendido en la torre) y el total que se cobra hoy.
+class DetallePago {
+  const DetallePago({this.lineas = const [], this.cargo, this.nota = ''});
+  final List<LineaPago> lineas;
+  final CotizacionCargo? cargo;
+  final String nota;
+  bool get vacio => lineas.isEmpty && !(cargo?.hayCargo ?? false);
+}
+
+/// Monto + resumen para UN medio de pago (Yape o tarjeta). En el MODELO 2 de
+/// reservas el cargo que paga el jugador depende del medio (Yape es más
+/// barato), así que el flujo cotiza ambos y la hoja muestra/cobra el del
+/// medio elegido. Ver [PagoTarjeta.cobrar] (`porMedio`).
+class OpcionPago {
+  const OpcionPago({required this.monto, this.detalle});
+  final num monto;
+  final DetallePago? detalle;
+}
+
+/// Tarjeta "Resumen de tu pago" (mismo contenido que el modal de la web).
+class ResumenPagoCard extends StatelessWidget {
+  const ResumenPagoCard(
+      {super.key, required this.detalle, required this.moneda, required this.total});
+  final DetallePago detalle;
+  final String moneda;
+  final num total;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final cargo = detalle.cargo;
+    String m(num v) => '${v < 0 ? '−' : ''}$moneda ${v.abs().toStringAsFixed(2)}';
+    Widget fila(String a, String b, {bool fuerte = false, Color? color}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                  child: Text(a,
+                      style: t.bodyMedium?.copyWith(
+                          color: color,
+                          fontWeight: fuerte ? FontWeight.w800 : FontWeight.w500))),
+              const SizedBox(width: 10),
+              Text(b,
+                  style: t.bodyMedium?.copyWith(
+                      color: color,
+                      fontWeight: fuerte ? FontWeight.w800 : FontWeight.w600)),
+            ],
+          ),
+        );
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Resumen de tu pago',
+              style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          for (final l in detalle.lineas)
+            fila(l.texto, m(l.monto), color: l.monto < 0 ? pino : null),
+          if (cargo != null && cargo.hayCargo)
+            FilaCargoServicio(
+                cot: cargo,
+                simbolo: moneda,
+                compacta: true,
+                nota: cargo.ahorro > 0
+                    ? 'Ahorras $moneda ${cargo.ahorro.toStringAsFixed(2)} pagando todo junto.'
+                    : null),
+          Divider(color: trazo, height: 14),
+          fila('Total a pagar hoy', m(total), fuerte: true),
+          if (detalle.nota.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(detalle.nota,
+                style: t.bodySmall?.copyWith(color: textoTenue)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Para las pasarelas HOSPEDADAS (Libélula, PayPhone) y la simulada, que no
+/// pasan por la hoja de Culqi: muestra el resumen y pide "Continuar" antes de
+/// salir a la página de pago (como `pcgResumenPago` en la web).
+Future<bool> _confirmarResumen(BuildContext context, DetallePago d,
+    String moneda, num total, String medio) async {
+  final ok = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+    builder: (ctx) => SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ResumenPagoCard(detalle: d, moneda: moneda, total: total),
+            const SizedBox(height: 14),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: Text('Continuar con $medio · $moneda ${total.toStringAsFixed(2)}'),
+            ),
+            TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Volver')),
+          ],
+        ),
+      ),
+    ),
+  );
+  return ok == true;
+}
+
+class PagoTarjeta {
+  /// Último medio con el que se cobró OK ('yape' | 'tarjeta'). Lo lee el flujo de
+  /// reserva para guardar la trazabilidad del pago. Se resetea en cada cobro.
+  static String ultimoMetodo = '';
+
+  /// Motivo del último RECHAZO de la pasarela ('' si no hubo rechazo: pago OK
+  /// o el usuario canceló sin intentar). Lo lee el flujo de reserva para
+  /// notificar "pago no procesado" con el motivo real.
+  static String ultimoError = '';
+
+  /// Medio cuya opción de [cobrar] (`porMedio`) se COBRÓ: 'yape' | 'tarjeta'
+  /// ('' si no se cobró). En pasarelas hospedadas (Libélula, PayPhone) y en la
+  /// simulada es 'tarjeta' (una sola tarifa). El flujo lo usa para elegir la
+  /// cotización del cargo realmente pagado y mandar `medio_pago` a la
+  /// liquidación.
+  static String ultimoMedioCobro = '';
+
+  static Future<bool> cobrar(
+    BuildContext context, {
+    required num monto, // monto EN UNIDAD MAYOR (S//Bs/$), admite 2 decimales
+    required String concepto,
+    required String email,
+    String moneda = '',
+    ValueChanged<String>? onToken, // recibe el token (tkn_/crd_) usado si el pago fue OK
+    ValueChanged<String>? onOperacion, // recibe el N.º de operación (charge_id)
+    DetallePago? detalle, // "Resumen de tu pago" (líneas + cargo por servicio)
+    // Monto + resumen POR MEDIO ('yape' / 'tarjeta'): cuando el cargo depende
+    // del medio (modelo 2 de reservas, soles), la hoja cambia el total al
+    // tocar Yape o Tarjeta y cobra el del medio elegido. Null = [monto] y
+    // [detalle] para todos (comportamiento de siempre).
+    Map<String, OpcionPago>? porMedio,
+  }) async {
+    ultimoMetodo = ''; // se setea a 'yape'/'tarjeta' si el cobro por Culqi sale OK
+    ultimoError = ''; // se setea con el motivo si la pasarela RECHAZA el cobro
+    ultimoMedioCobro = '';
+    // Pasarelas hospedadas y simulada = una sola tarifa ('tarjeta').
+    final opTarjeta = porMedio?['tarjeta'];
+    if (opTarjeta != null && paisActual.pasarela != 'culqi') {
+      monto = opTarjeta.monto;
+      detalle = opTarjeta.detalle ?? detalle;
+    }
+    // BOLIVIA: la pasarela es Libélula (no Culqi). Se detecta por el país actual
+    // (GPS/selección). El pago se hace en la página hospedada de Libélula dentro
+    // de un WebView (QR · tarjeta · Tigo Money).
+    final monTxt = moneda.isNotEmpty ? moneda : monedaSimbolo;
+    if (detalle != null && !detalle.vacio && paisActual.pasarela != 'culqi') {
+      final medio = paisActual.pasarela == 'libelula'
+          ? 'Libélula'
+          : (paisActual.pasarela == 'payphone' ? 'PayPhone' : 'el pago');
+      if (!await _confirmarResumen(context, detalle, monTxt, monto, medio)) {
+        return false;
+      }
+      if (!context.mounted) return false;
+    }
+    if (paisActual.pasarela == 'libelula') {
+      final ok = await PagoLibelula.cobrar(context,
+          monto: monto, concepto: concepto, email: email,
+          moneda: moneda.isNotEmpty ? moneda : 'Bs');
+      if (ok) ultimoMedioCobro = 'tarjeta';
+      return ok;
+    }
+    // ECUADOR: la pasarela es PayPhone (botón de pagos hospedado, en USD).
+    if (paisActual.pasarela == 'payphone') {
+      final ok = await PagoPayPhone.cobrar(context,
+          monto: monto, concepto: concepto, email: email,
+          moneda: moneda.isNotEmpty ? moneda : '\$');
+      if (ok) ultimoMedioCobro = 'tarjeta';
+      return ok;
+    }
+
+    final cfg = await PagosService.config();
+    final disponible = cfg != null && cfg['disponible'] == true;
+    if (!context.mounted) return false;
+
+    if (!disponible) {
+      // Sin pasarela real no se cobra. En PRODUCCIÓN jamás se simula: dar por
+      // pagado lo que nadie pagó le mete al vendedor plata que no existe en su
+      // "por recibir", emite un comprobante falso y le miente al comprador.
+      // Se avisa y se devuelve false; el flujo que llamó decide qué hacer.
+      if (kEsProduccion) {
+        await avisarPichangol(
+          context,
+          titulo: 'Pago en la app no disponible',
+          mensaje: 'Todavía no tenemos habilitado el cobro dentro de '
+              'Pichangol, así que no se te cobró nada. Coordina el pago '
+              'directamente con el local o el vendedor.',
+          icono: Icons.credit_card_off_outlined,
+        );
+        return false;
+      }
+      // dev/QAS: pasarela SIMULADA, para poder recorrer el flujo completo sin
+      // llaves reales. Nunca sale de estos entornos. Cobra la opción
+      // 'tarjeta' (la simulada no distingue medio).
+      if (opTarjeta != null) {
+        monto = opTarjeta.monto;
+        detalle = opTarjeta.detalle ?? detalle;
+      }
+      final det = detalle;
+      if (det != null && !det.vacio && paisActual.pasarela == 'culqi') {
+        if (!await _confirmarResumen(context, det, monTxt, monto, 'el pago')) {
+          return false;
+        }
+        if (!context.mounted) return false;
+      }
+      final r = await PagoSheet.mostrar(context,
+          monto: monto, concepto: concepto, moneda: moneda);
+      final ok = r != null && r.exito;
+      if (ok) ultimoMedioCobro = 'tarjeta';
+      return ok;
+    }
+
+    final pk = (cfg['public_key'] ?? '').toString();
+    final esTest = (cfg['modo'] ?? '') == 'test';
+    // Culqi EXIGE un email válido. Resuélvelo (sesión > el pasado) y, si falta,
+    // pide login AQUÍ antes de cobrar (evita el error "invalid_email").
+    var correo = (appState.usuario?.email ?? '').trim();
+    if (!_emailValido(correo)) correo = email.trim();
+    if (!_emailValido(correo)) {
+      final entro = await LoginGoogleSheet.mostrar(context, motivo: 'pagar');
+      if (!context.mounted) return false;
+      if (!entro) return false;
+      correo = (appState.usuario?.email ?? '').trim();
+      if (!_emailValido(correo)) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content:
+                Text('Necesitas una cuenta con correo válido para pagar.')));
+        return false;
+      }
+    }
+    final userId = correo;
+    final ok = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _PagoTarjetaSheet(
+        monto: monto,
+        concepto: concepto,
+        email: correo,
+        userId: userId,
+        pk: pk,
+        esTest: esTest,
+        moneda: moneda,
+        onToken: onToken,
+        onOperacion: onOperacion,
+        detalle: detalle,
+        porMedio: porMedio,
+      ),
+    );
+    return ok == true;
+  }
+
+  /// Email con formato mínimo válido (Culqi lo rechaza si no lo tiene).
+  static bool _emailValido(String e) =>
+      RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(e.trim());
+}
+
+class _PagoTarjetaSheet extends StatefulWidget {
+  const _PagoTarjetaSheet({
+    required this.monto,
+    required this.concepto,
+    required this.email,
+    required this.userId,
+    required this.pk,
+    required this.esTest,
+    this.moneda = '',
+    this.onToken,
+    this.onOperacion,
+    this.detalle,
+    this.porMedio,
+  });
+  final DetallePago? detalle;
+  final Map<String, OpcionPago>? porMedio;
+  final num monto;
+  final String concepto;
+  final String email;
+  final String userId;
+  final String pk;
+  final bool esTest;
+  final String moneda;
+  final ValueChanged<String>? onToken;
+  final ValueChanged<String>? onOperacion;
+
+  @override
+  State<_PagoTarjetaSheet> createState() => _PagoTarjetaSheetState();
+}
+
+enum _Metodo { yape, tarjeta }
+
+class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
+  String get _mon => widget.moneda.isNotEmpty ? widget.moneda : monedaSimbolo;
+  bool _cargando = true;
+  // YAPE POR DEFECTO en Perú (decisión del director, 27-sep-2026): baja el
+  // costo de pasarela a la mitad; el jugador puede cambiar a tarjeta.
+  _Metodo _metodo = paisActual.iso == 'PE' ? _Metodo.yape : _Metodo.tarjeta;
+
+  /// Opción (monto + resumen) del medio elegido; null = la de siempre.
+  OpcionPago? get _opcion =>
+      widget.porMedio?[_metodo == _Metodo.yape ? 'yape' : 'tarjeta'];
+  num get _monto => _opcion?.monto ?? widget.monto;
+  DetallePago? get _detalle => _opcion?.detalle ?? widget.detalle;
+  List<Map<String, dynamic>> _guardadas = [];
+  String? _cardSel; // id de la tarjeta guardada elegida; null = nueva
+  bool _nueva = false; // mostrando el formulario de tarjeta nueva
+  String? _error;
+
+  final _num = TextEditingController();
+  final _exp = TextEditingController();
+  final _cvv = TextEditingController();
+  final _cel = TextEditingController(); // Yape
+  final _otp = TextEditingController(); // Yape
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final lista = await PagosService.metodos(widget.userId);
+    if (!mounted) return;
+    setState(() {
+      _guardadas = lista;
+      _cargando = false;
+      if (lista.isNotEmpty) {
+        _cardSel = lista.first['id'].toString();
+      } else {
+        _nueva = true;
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _num.dispose();
+    _exp.dispose();
+    _cvv.dispose();
+    _cel.dispose();
+    _otp.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pagar() async {
+    setState(() => _error = null);
+    // Céntimos EXACTOS (redondeo solo en el último paso, para Culqi/Yape que
+    // trabajan en enteros). Admite montos con 2 decimales (S/ 25.50, $ 9.99).
+    // El monto del MEDIO elegido (Yape y tarjeta pueden diferir en el
+    // modelo 2): se congela aquí para que el cobro y el texto calcen.
+    final monto = _monto;
+    final centimos = (monto * 100).round();
+
+    // --- YAPE ---
+    if (_metodo == _Metodo.yape) {
+      final cel = _cel.text.replaceAll(RegExp(r'[^0-9]'), '');
+      final otp = _otp.text.replaceAll(RegExp(r'[^0-9]'), '');
+      if (cel.length != 9) {
+        return setState(() => _error = 'Pon tu celular Yape (9 dígitos).');
+      }
+      if (otp.length < 6) {
+        return setState(() => _error = 'Ingresa el código de aprobación de Yape (6 dígitos).');
+      }
+      Future<Map<String, dynamic>> accionYape() async {
+        final t = await PagosService.tokenizarYape(
+            publicKey: widget.pk, celular: cel, otp: otp, montoCentimos: centimos);
+        if (t['ok'] != true) {
+          PagoTarjeta.ultimoError =
+              t['error']?.toString() ?? 'No se pudo validar el Yape.';
+          return {'ok': false, 'error': PagoTarjeta.ultimoError};
+        }
+        final res = await PagosService.cobrar(
+            token: t['token'].toString(), email: widget.email,
+            montoSoles: monto.toDouble(), concepto: widget.concepto);
+        if (res['ok'] == true && res['chargeId'] != null) {
+          widget.onOperacion?.call(res['chargeId'].toString());
+        }
+        if (res['ok'] != true) {
+          PagoTarjeta.ultimoError =
+              res['error']?.toString() ?? 'No se pudo cobrar.';
+        }
+        return res['ok'] == true
+            ? {'ok': true, 'detalle': 'Pago de $_mon ${montoTxt(monto)} aprobado.'}
+            : {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo cobrar.'};
+      }
+      final ok = await PagoProcesando.mostrar(context,
+          titulo: 'Cobrando $_mon ${montoTxt(monto)}', exitoTitulo: '¡Pago aprobado!',
+          accion: accionYape);
+      if (ok == true) {
+        PagoTarjeta.ultimoMetodo = 'yape';
+        PagoTarjeta.ultimoMedioCobro = 'yape';
+      }
+      if (ok == true && mounted) Navigator.of(context).pop(true);
+      return;
+    }
+
+    // --- TARJETA ---
+    String? token = (!_nueva && _cardSel != null) ? _cardSel : null;
+    final numero = _num.text.replaceAll(' ', '');
+    int mes = 0;
+    int anio = 0;
+    if (token == null) {
+      if (numero.length < 15) return setState(() => _error = 'Número de tarjeta inválido.');
+      final partes = _exp.text.split('/');
+      mes = partes.isNotEmpty ? (int.tryParse(partes[0].trim()) ?? 0) : 0;
+      if (partes.length != 2 || mes < 1 || mes > 12) {
+        return setState(() => _error = 'Fecha inválida. MES/AÑO, ej. 09/28.');
+      }
+      anio = int.tryParse(partes[1].trim()) ?? 0;
+      if (anio < 100) anio += 2000;
+      if (_cvv.text.length < 3) return setState(() => _error = 'CVV inválido.');
+    }
+
+    Future<Map<String, dynamic>> accion() async {
+      var tk = token;
+      if (tk == null) {
+        final t = await PagosService.tokenizarTarjeta(
+            publicKey: widget.pk, numero: numero, cvv: _cvv.text.trim(),
+            mesExp: mes, anioExp: anio, email: widget.email);
+        if (t['ok'] != true) {
+          PagoTarjeta.ultimoError =
+              t['error']?.toString() ?? 'Tarjeta rechazada.';
+          return {'ok': false, 'error': PagoTarjeta.ultimoError};
+        }
+        tk = t['token'].toString();
+      }
+      final res = await PagosService.cobrar(
+        token: tk, email: widget.email,
+        montoSoles: monto.toDouble(), concepto: widget.concepto);
+      if (res['ok'] == true) {
+        widget.onToken?.call(tk!);
+        if (res['chargeId'] != null) {
+          widget.onOperacion?.call(res['chargeId'].toString());
+        }
+      }
+      if (res['ok'] != true) {
+        PagoTarjeta.ultimoError =
+            res['error']?.toString() ?? 'No se pudo cobrar.';
+      }
+      return res['ok'] == true
+          ? {'ok': true, 'detalle': 'Pago de $_mon ${montoTxt(monto)} aprobado.'}
+          : {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo cobrar.'};
+    }
+
+    final ok = await PagoProcesando.mostrar(
+      context,
+      titulo: 'Cobrando $_mon ${montoTxt(monto)}',
+      exitoTitulo: '¡Pago aprobado!',
+      accion: accion,
+    );
+    if (ok == true) {
+      PagoTarjeta.ultimoMetodo = 'tarjeta';
+      PagoTarjeta.ultimoMedioCobro = 'tarjeta';
+    }
+    if (ok == true && mounted) Navigator.of(context).pop(true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          20, 16, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+      child: _cargando
+          ? const Padding(
+              padding: EdgeInsets.all(30),
+              child: CargandoPichangol())
+          : SingleChildScrollView(child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40, height: 4,
+                    decoration: BoxDecoration(
+                        color: trazo, borderRadius: BorderRadius.circular(99)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text('Pagar $_mon ${montoTxt(_monto)}',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 20,
+                        color: Theme.of(context).colorScheme.onSurface)),
+                const SizedBox(height: 2),
+                Text(widget.concepto,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: textoTenue, fontSize: 13)),
+                const SizedBox(height: 16),
+                if (_detalle != null && !_detalle!.vacio) ...[
+                  ResumenPagoCard(
+                      detalle: _detalle!, moneda: _mon, total: _monto),
+                  const SizedBox(height: 16),
+                ],
+
+                // Selector de método: Yape o Tarjeta.
+                Row(
+                  children: [
+                    _MetodoMini(
+                      marca: const YapeBadge(alto: 26),
+                      sel: _metodo == _Metodo.yape,
+                      onTap: () => setState(() => _metodo = _Metodo.yape),
+                    ),
+                    const SizedBox(width: 10),
+                    _MetodoMini(
+                      marca: const MarcasTarjeta(),
+                      etiqueta: 'Tarjeta',
+                      sel: _metodo == _Metodo.tarjeta,
+                      onTap: () => setState(() => _metodo = _Metodo.tarjeta),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // --- YAPE ---
+                if (_metodo == _Metodo.yape) ...[
+                  if (widget.esTest)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                          color: const Color(0xFFFFF4E5),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFD9B45A))),
+                      child: const Text(
+                          'En modo prueba, Yape no valida (limitación de Culqi). '
+                          'Para probar usa Tarjeta.',
+                          style: TextStyle(fontSize: 13, color: Color(0xFF7A5B00))),
+                    ),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                        color: limaSuave, borderRadius: BorderRadius.circular(12)),
+                    child: const Text(
+                        'Abre Yape → "Código de aprobación", genera el código de '
+                        '6 dígitos y ponlo aquí con tu celular.',
+                        style: TextStyle(fontSize: 13, color: bosque)),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _cel,
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(9)
+                    ],
+                    decoration: const InputDecoration(
+                        labelText: 'Celular Yape', prefixText: '+51 ',
+                        prefixIcon: IconoVivo(Icons.phone_android)),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _otp,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(6)
+                    ],
+                    decoration: const InputDecoration(
+                        labelText: 'Código de aprobación (6 dígitos)',
+                        prefixIcon: Icon(Icons.password)),
+                  ),
+                ],
+
+                // --- TARJETA (guardadas + nueva) ---
+                if (_metodo == _Metodo.tarjeta) ...[
+                for (final m in _guardadas)
+                  _FilaCard(
+                    marca: (m['marca'] ?? 'Tarjeta').toString(),
+                    ultimos4: (m['ultimos4'] ?? '').toString(),
+                    sel: !_nueva && _cardSel == m['id'].toString(),
+                    onTap: () => setState(() {
+                      _nueva = false;
+                      _cardSel = m['id'].toString();
+                    }),
+                  ),
+                _FilaNueva(
+                  sel: _nueva,
+                  onTap: () => setState(() => _nueva = true),
+                ),
+                if (_nueva) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _num,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [TarjetaNumeroFormatter()],
+                    decoration: const InputDecoration(
+                        labelText: 'Número de tarjeta',
+                        hintText: '1234 5678 9012 3456',
+                        prefixIcon: IconoVivo(Icons.credit_card)),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _exp,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [VencimientoFormatter()],
+                          decoration: const InputDecoration(
+                              labelText: 'Vence (MM/AA)', hintText: '09/28'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _cvv,
+                          keyboardType: TextInputType.number,
+                          obscureText: true,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(4)
+                          ],
+                          decoration: const InputDecoration(labelText: 'CVV'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (widget.esTest)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => setState(() {
+                          _num.text = '4111 1111 1111 1111';
+                          _exp.text = '09/28';
+                          _cvv.text = '123';
+                        }),
+                        icon: const Icon(Icons.auto_fix_high, size: 18),
+                        label: const Text('Usar tarjeta de prueba (Culqi)'),
+                      ),
+                    ),
+                ],
+                ],
+
+                if (_error != null) ...[
+                  const SizedBox(height: 10),
+                  Text(_error!,
+                      style: const TextStyle(
+                          color: Color(0xFFC0392B), fontWeight: FontWeight.w600)),
+                ],
+                const SizedBox(height: 18),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: lima,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 15)),
+                    onPressed: _pagar,
+                    child: Text('Pagar $_mon ${montoTxt(_monto)}'),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Center(
+                  child: Text('Pago seguro procesado por Culqi',
+                      style: TextStyle(color: textoTenue, fontSize: 12)),
+                ),
+              ],
+            ))
+    );
+  }
+}
+
+class _FilaCard extends StatelessWidget {
+  const _FilaCard(
+      {required this.marca,
+      required this.ultimos4,
+      required this.sel,
+      required this.onTap});
+  final String marca;
+  final String ultimos4;
+  final bool sel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final esVisa = marca.toLowerCase().contains('visa');
+    final esMaster = marca.toLowerCase().contains('master');
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: sel ? limaSuave : Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: sel ? lima : const Color(0xFFE4E4E4), width: sel ? 2 : 1),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 42,
+              child: esVisa
+                  ? const VisaMark(alto: 15)
+                  : esMaster
+                      ? const MastercardMark(alto: 22)
+                      : IconoVivo(Icons.credit_card,
+                          color: Theme.of(context).colorScheme.primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text('$marca ···· $ultimos4',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: sel
+                          ? bosque
+                          : Theme.of(context).colorScheme.onSurface)),
+            ),
+            if (sel) const Icon(Icons.check_circle, color: bosque, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Botón mini de método (Yape / Tarjeta) con la marca real y check al elegir.
+class _MetodoMini extends StatelessWidget {
+  const _MetodoMini(
+      {required this.marca, required this.sel, required this.onTap, this.etiqueta});
+  final Widget marca;
+  final String? etiqueta;
+  final bool sel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          height: 56,
+          decoration: BoxDecoration(
+            color: sel ? limaSuave : Theme.of(context).colorScheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: sel ? lima : const Color(0xFFE4E4E4), width: sel ? 2 : 1),
+          ),
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  marca,
+                  if (etiqueta != null) ...[
+                    const SizedBox(width: 8),
+                    Text(etiqueta!,
+                        style: TextStyle(
+                            color: sel
+                                ? bosque
+                                : Theme.of(context).colorScheme.onSurface,
+                            fontWeight: FontWeight.w700)),
+                  ],
+                ],
+              ),
+              if (sel)
+                const Positioned(
+                    top: 4,
+                    right: 6,
+                    child: Icon(Icons.check_circle, color: bosque, size: 16)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FilaNueva extends StatelessWidget {
+  const _FilaNueva({required this.sel, required this.onTap});
+  final bool sel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: sel ? limaSuave : Theme.of(context).colorScheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: sel ? lima : const Color(0xFFE4E4E4), width: sel ? 2 : 1),
+        ),
+        child: Row(
+          children: [
+            IconoVivo(Icons.add_card, color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text('Usar otra tarjeta',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: sel
+                          ? bosque
+                          : Theme.of(context).colorScheme.onSurface)),
+            ),
+            if (sel) const Icon(Icons.check_circle, color: bosque, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}

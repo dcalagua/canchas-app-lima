@@ -1,0 +1,3890 @@
+"""RESERVA WEB (sep-2026). Páginas públicas del dominio de marca, con el mismo
+look & feel del APK (`web/ui.py`):
+
+- GET  /canchas                    → catálogo de canchas verificadas (por país,
+                                     filtro por deporte y buscador).
+- GET  /reservar/{cancha_id}       → ficha + día (tira de 14 días) + horarios
+                                     libres con precio + datos + extras + pago
+                                     (Culqi Checkout: Yape y tarjeta) con
+                                     "Resumen de tu reserva" fijo.
+- GET  /web/disponibilidad/{id}    → JSON de slots del día (precio, ocupado).
+- POST /web/asegurar               → toma los slots (INSERT 'nueva', hold 10 min).
+- POST /web/pagar                  → cargo Culqi → confirma, liquida al dueño
+                                     y le avisa.
+- POST /web/liberar                → el cliente cerró sin pagar: libera el hold.
+- GET  /reserva/{id}               → comprobante (por id o por grupo).
+- GET  /reserva/{id}.ics           → evento para el calendario del cliente.
+
+Misma base y mismas reglas que el APK: las filas van a `pichangol_reservas`
+con el esquema que lee el dueño en su app, el UNIQUE del slot evita la doble
+reserva, la contabilidad usa `/pagos/liquidacion-online` (billetera-first) y
+el dueño recibe el push "Nueva reserva 📅".
+
+MULTI-PAÍS: en soles se cobra con Culqi en la misma página; en \\$ y Bs con
+la pasarela HOSPEDADA del país (`web/pago_hospedado.py`: Ecuador por la
+fachada `pagos/pasarela_ec.py`, Bolivia por Libélula). Sin pasarela
+configurada, en producción la ficha manda a reservar por la app.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+from typing import Any
+import servicios_extra as _se
+import re
+import time
+from datetime import date, datetime, timedelta, timezone
+from urllib.parse import quote
+
+from fastapi import APIRouter, Header, Request, Response
+from fastapi.responses import HTMLResponse, Response
+from pydantic import BaseModel
+
+import config
+import empresa
+from paises import _CAJAS, pais_de_coordenadas, moneda_de_pais, simbolo_de_moneda
+from pagos import culqi
+from pagos import cargo_servicio as _cs
+from pagos import devoluciones as _dev
+from web import beneficios, catalogos, datos, descubrir, horarios, marca, osm, pago_hospedado, sesion, ui
+from web.ui import e
+
+router = APIRouter()
+
+PLAY_URL = "https://play.google.com/store/apps/details?id=pe.ebim.pichangol"
+DIAS_ADELANTE = 30
+DIAS_TIRA = 14
+MAX_SLOTS = 4
+DEPORTES = {"futbol": ("Fútbol", "⚽"), "tenis": ("Tenis", "🎾"), "padel": ("Pádel", "🏓"),
+            "pickleball": ("Pickleball", "🥒"), "voley": ("Vóley", "🏐"), "basquet": ("Básquet", "🏀"),
+            "futsal": ("Futsal", "⚽")}
+CIUDAD_DEFECTO = {"PE": (-12.046, -77.043), "EC": (-2.17, -79.92), "BO": (-16.5, -68.15)}
+NOMBRE_PAIS = {"PE": "Perú", "EC": "Ecuador", "BO": "Bolivia"}
+EXTRAS_NOMBRE = {"arbitro": "Árbitro", "pelotero": "Pelotero (recoge pelotas)",
+                 "pelota": "Alquiler de pelota", "pecheras": "Petos / pecheras",
+                 "hidratacion": "Hidratación"}
+# Claves de amenidades = las del APP (`catalogos.AMENIDADES`; así los chips y
+# el modal de filtros reconocen lo que guardan los dueños). Se conservan las
+# claves viejas de la web para datos que las tuvieran.
+AMENIDAD_NOMBRE = {**{k: v[0] for k, v in catalogos.AMENIDADES.items()},
+                   "estacionamiento": "Estacionamiento", "vestuarios": "Vestuarios",
+                   "iluminacion": "Iluminación", "techada": "Techada", "tribuna": "Tribuna", "seguridad": "Seguridad"}
+
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+
+def _pais_de(c: dict) -> str:
+    return pais_de_coordenadas(c.get("lat"), c.get("lng"))
+
+
+def _moneda_de(c: dict) -> tuple[str, str]:
+    """(símbolo, ISO) de la cancha: su moneda congelada o la del país."""
+    iso = moneda_de_pais(_pais_de(c))
+    sim = (c.get("moneda") or "").strip() or simbolo_de_moneda(iso)
+    if sim == "S/":
+        iso = "PEN"
+    elif sim == "$":
+        iso = "USD"
+    elif sim.lower().startswith("bs"):
+        iso = "BOB"
+    return sim, iso
+
+
+def _deporte(clave: str) -> tuple[str, str]:
+    k = (clave or "").lower()
+    return DEPORTES.get(k, ((clave or "Deporte").capitalize(), "🏟️"))
+
+
+def _deportes_de(c: dict) -> list[str]:
+    lst = [str(x).lower() for x in (c.get("deportes") or []) if x]
+    p = (c.get("deporte") or "").lower()
+    if p and p not in lst:
+        lst.insert(0, p)
+    return lst or ([p] if p else [])
+
+
+def _zona(c: dict) -> str:
+    """Zona visible = el BARRIO real (reverse-geocode), espejo de
+    `Cancha.zonaMostrable` del app. El `distrito` es un enum legado de Lima
+    (sanBorja/surco/laMolina, referencial) que NO se muestra: salía "Sanborja"
+    en canchas de cualquier ciudad (pedido del director, sep-2026)."""
+    return (c.get("barrio") or "").strip()
+
+
+def _secreto() -> bytes:
+    return (config.ADMIN_PANEL_TOKEN or config.APP_API_KEY or "pichangol-web").encode()
+
+
+def _firma(ids: list[str]) -> str:
+    return hmac.new(_secreto(), "|".join(sorted(ids)).encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def _firma_ok(ids: list[str], firma: str) -> bool:
+    return bool(ids) and hmac.compare_digest(_firma(ids), (firma or "")[:32])
+
+
+def _pago_web_disponible(iso: str) -> bool:
+    """¿La web puede cobrar en esa moneda? Soles: Culqi en la misma página (con
+    llave pública cargada, aunque sea de prueba, el formulario se muestra: así
+    lo revisa la pasarela). Dólares / bolivianos: la pasarela HOSPEDADA del
+    país (`web/pago_hospedado.py`: Ecuador por la fachada `pasarela_ec`,
+    Bolivia Libélula; en dev/QAS sin llaves, la simulada)."""
+    if iso == "PEN":
+        return bool(config.CULQI_PUBLIC_KEY)
+    return bool(pago_hospedado.pasarela_para(iso))
+
+
+def _pasarela_web(iso: str) -> str:
+    """'culqi' en soles; la clave de la pasarela hospedada en $ / Bs."""
+    return "culqi" if iso == "PEN" else pago_hospedado.pasarela_para(iso)
+
+
+def _fotos(c: dict) -> list[str]:
+    # FOTOS PROPIAS DE LOS LOCALES (`propiedad/fotos_locales.py`): un local que
+    # ya tiene sus fotos (`ok`) o cuyo plazo venció (`vencido`) muestra SOLO
+    # sus fotos propias, nunca las de Google guardadas en la fila.
+    from propiedad import fotos_locales as _fl
+    solo_propias = _fl.fotos_para(c)
+    if solo_propias is not None:
+        return solo_propias
+    return _fotos_crudas(c)
+
+
+def _fotos_crudas(c: dict) -> list[str]:
+    """Portada + galería TAL CUAL están en la fila (el editor del dueño)."""
+    out = []
+    for u in [c.get("foto_url")] + list(c.get("fotos") or []):
+        u = str(u or "").strip()
+        if u.startswith("http") and u not in out:
+            out.append(u)
+    return out
+
+
+def _foto_card(c: dict) -> str:
+    fs = _fotos(c)
+    if fs:
+        return f"<img src='{e(fs[0])}' alt='{e(c.get('nombre'))}' loading='lazy'>"
+    return f"<div class='sinfoto'>{_deporte(c.get('deporte'))[1]}</div>"
+
+
+def _sin_google(c: dict) -> bool:
+    """¿El local de la cancha ya no usa fotos de Google? (ok / vencido)."""
+    from propiedad import fotos_locales as _fl
+    est = _fl.estado_de_cancha(c)
+    return bool(est and est.get("sin_google"))
+
+
+def _es_osm(lugar_id) -> bool:
+    """Lugar de OpenStreetMap (`osm_n123`; el APK puede mandar `gp_osm_…`)."""
+    i = str(lugar_id or "")
+    return i.startswith("osm_") or i.startswith("gp_osm_")
+
+
+def _galeria(c: dict) -> str:
+    fs = _fotos(c)
+    if not fs and _es_osm(c.get("id")):
+        # Lugar de OpenStreetMap: nunca se le pide foto a Google.
+        return f"<div class='galeria una' id='galeria'><div class='sinfoto principal'>{_deporte(c.get('deporte'))[1]}</div></div>"
+    if not fs and _sin_google(c):
+        # Local cuyo plazo para subir fotos propias venció: placeholder, sin
+        # pedirle nada a Google (`propiedad/fotos_locales.py`).
+        return f"<div class='galeria una' id='galeria'><div class='sinfoto principal'>{_deporte(c.get('deporte'))[1]}</div></div>"
+    if not fs:
+        # Sin fotos propias: la galería arranca con el placeholder y un script
+        # pide a /web/foto la PRIMERA FOTO de Google del lugar (como el app).
+        q = (f"id={quote(str(c.get('id') or ''))}&nombre={quote(str(c.get('nombre') or ''))}"
+             f"&club={quote(str(c.get('club') or ''))}&lat={c.get('lat') or 0}&lng={c.get('lng') or 0}")
+        return (f"<div class='galeria una' id='galeria'><div class='sinfoto principal'>{_deporte(c.get('deporte'))[1]}</div></div>"
+                "<script>(function(){fetch('/web/foto?" + q + "').then(function(r){return r.json();}).then(function(j){"
+                "var f=(j&&j.fotos)||[];if(!f.length)return;var g=document.getElementById('galeria');if(!g)return;"
+                "var esc=function(s){return String(s).replace(/[&<>\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c];});};"
+                "if(f.length===1){g.innerHTML='<img class=principal src=\"'+esc(f[0])+'\" alt=\"\">';return;}"
+                "g.className='galeria';g.innerHTML='<img class=principal src=\"'+esc(f[0])+'\" alt=\"\">'+f.slice(1,3).map(function(u){return '<img src=\"'+esc(u)+'\" alt=\"\" loading=lazy>';}).join('');"
+                "}).catch(function(){});})();</script>")
+    if len(fs) == 1:
+        return f"<div class='galeria una'><img class='principal' src='{e(fs[0])}' alt='{e(c['nombre'])}'></div>"
+    partes = [f"<img class='principal' src='{e(fs[0])}' alt='{e(c['nombre'])}'>"]
+    for u in fs[1:3]:
+        partes.append(f"<img src='{e(u)}' alt='' loading='lazy'>")
+    while len(partes) < 3 and len(fs) > 1:
+        partes.append(f"<div class='sinfoto'>{_deporte(c.get('deporte'))[1]}</div>")
+    return f"<div class='galeria'>{''.join(partes)}</div>"
+
+
+def _maps(c: dict) -> str:
+    return f"https://www.google.com/maps/search/?api=1&query={c.get('lat')},{c.get('lng')}"
+
+
+def _no_encontrada(que: str = "Cancha no disponible") -> HTMLResponse:
+    return ui.shell(que, (f"<div class='panel' style='text-align:center;margin-top:24px'><h1>{e(que)}</h1>"
+                          "<p class='sub'>Puede que el enlace sea viejo o que el local haya dejado de "
+                          "publicar en Pichangol.</p><div class='acciones' style='justify-content:center'>"
+                          "<a class='btn' href='/canchas'>Ver canchas disponibles</a></div></div>"))
+
+
+# ── catálogo ──────────────────────────────────────────────────────────────────
+
+_JS_EXPLORAR = r"""
+(function(){
+  var C = window.__explorar, $ = function(id){ return document.getElementById(id); };
+  var cards = function(){ return Array.prototype.slice.call(document.querySelectorAll('.lst[data-lat]')); };
+  var yo = null, mapa = null, marcadores = [], miPin = null, pinesDesc = [], descubiertas = {}, fotosConocidas = {};
+  var filtro = {q: '', dep: C.dep || '', fecha: '', hora: '', cerca: false};
+  // Radio de cercanía (como el APK: 5/10/20/30 km, 10 por defecto). Con tu
+  // ubicación SOLO salen canchas/academias dentro del radio (nunca las de otro
+  // país); al buscar por zona/nombre el radio no aplica.
+  var RADIOS = [5, 10, 20, 30], radio = 10;
+  try { var rg = parseInt(localStorage.getItem('pcg_radio') || '', 10); if(RADIOS.indexOf(rg) >= 0) radio = rg; } catch(e){}
+  var pend = {q: '', fecha: '', hora: '', cerca: false}; // lo elegido en el buscador; se aplica al pulsar Buscar (como Airbnb)
+  var favs = {};
+  try { favs = JSON.parse(localStorage.getItem('pcg_fav') || '{}') || {}; } catch(e){}
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function km(a, b, c, d){ var R = 6371, dLat = (c-a)*Math.PI/180, dLng = (d-b)*Math.PI/180;
+    var x = Math.sin(dLat/2)*Math.sin(dLat/2) + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+    return 2*R*Math.asin(Math.sqrt(x)); }
+  function fmtKm(d){ return d < 1 ? (Math.round(d*1000) + ' m') : (d < 10 ? d.toFixed(1) + ' km' : Math.round(d) + ' km'); }
+  function paisDe(lat, lng){
+    var dentro = [], best = null, bd = 1e9;
+    Object.keys(C.cajas).forEach(function(k){ var c = C.cajas[k]; if(lat >= c[0] && lat <= c[1] && lng >= c[2] && lng <= c[3]) dentro.push(k); });
+    (dentro.length ? dentro : Object.keys(C.cajas)).forEach(function(k){ var c = C.cajas[k]; var d = Math.hypot(lat-c[4], lng-c[5]); if(d < bd){ bd = d; best = k; } });
+    return best;
+  }
+  // ── corazones (favoritos en este navegador) ──
+  // Un local puede tener varias canchas (data-ids); sin él, la tarjeta es una sola cancha.
+  function idsDe(c){ return (c.dataset.ids || c.dataset.id || '').split(' ').filter(Boolean); }
+  function pintarFavs(){ cards().forEach(function(c){ var b = c.querySelector('.corazon'); if(b) b.classList.toggle('on', !!favs[c.dataset.id]); }); }
+  document.addEventListener('click', function(ev){
+    var b = ev.target.closest('.corazon'); if(!b) return;
+    ev.preventDefault(); ev.stopPropagation();
+    var id = b.closest('.lst').dataset.id; if(favs[id]) delete favs[id]; else favs[id] = 1;
+    try { localStorage.setItem('pcg_fav', JSON.stringify(favs)); } catch(e){}
+    pintarFavs();
+  });
+  // ── carrusel de fotos de cada tarjeta ──
+  document.addEventListener('click', function(ev){
+    var f = ev.target.closest('.flecha'); if(!f) return;
+    ev.preventDefault(); ev.stopPropagation();
+    var box = f.closest('.foto').querySelector('.fotos'); var w = box.clientWidth;
+    box.scrollBy({left: f.classList.contains('der') ? w : -w, behavior: 'smooth'});
+  });
+  document.addEventListener('scroll', function(ev){
+    var box = ev.target; if(!box.classList || !box.classList.contains('fotos')) return;
+    var i = Math.round(box.scrollLeft / Math.max(1, box.clientWidth));
+    var dots = box.parentNode.querySelectorAll('.dots i'); dots.forEach(function(d, j){ d.style.background = j === i ? '#fff' : 'rgba(255,255,255,.6)'; });
+  }, true);
+  // ── filtros (buscador, deporte, fecha, solo verificadas, precio máx) ──
+  function pasaBase(c){
+    if(filtro.q && c.dataset.q !== filtro.q && c.dataset.t.indexOf(filtro.q) < 0) return false;
+    if(yo && !filtro.q && c.dataset.d && parseFloat(c.dataset.d) > radio) return false;
+    if(c.classList.contains('aca')) return true; // academias: solo zona/texto y cercanía
+    if(filtro.hora && !abiertaA(c, filtro.hora)) return false;
+    if(filtro.hora && filtro.fecha && c.dataset.ok === '1'){ var lk = libres[filtro.fecha + '|' + filtro.hora]; if(lk && idsDe(c).every(function(i){ return lk[i] === false; })) return false; }
+    return true;
+  }
+  function aplicar(){
+    var n = 0;
+    cards().forEach(function(c){
+      var ok = pasaBase(c) && (c.classList.contains('aca') || pasaFil(c, fil));
+      c.style.display = ok ? '' : 'none'; if(ok) n++;
+      if(c.dataset.base){ var qs = []; if(filtro.fecha) qs.push('fecha=' + filtro.fecha); if(filtro.hora) qs.push('hora=' + filtro.hora);
+        var base = c.dataset.base; if(filtro.hora && filtro.fecha && c.dataset.ids){ var lk2 = libres[filtro.fecha + '|' + filtro.hora] || {}; var libre = idsDe(c).filter(function(i){ return lk2[i] !== false; })[0]; if(libre) base = '/reservar/' + libre; }
+        c.setAttribute('href', base + (qs.length ? '?' + qs.join('&') : '')); }
+    });
+    // Los pines del mapa siguen a la lista: lo que no se muestra (fuera del
+    // radio o filtrado) tampoco se pinta.
+    if(mapa) marcadores.concat(pinesDesc).forEach(function(m){ if(!m._card) return; var on = m._card.style.display !== 'none';
+      if(on && !mapa.hasLayer(m)) m.addTo(mapa); else if(!on && mapa.hasLayer(m)) m.remove(); });
+    document.querySelectorAll('.grupo-pais, .grupo-aca').forEach(function(g){
+      var vis = Array.prototype.some.call(g.querySelectorAll('.lst'), function(c){ return c.style.display !== 'none'; });
+      g.style.display = vis ? '' : 'none';
+    });
+    var sd = $('descubiertas'); if(sd){ var ls = sd.querySelectorAll('.lst');
+      if(ls.length) sd.style.display = Array.prototype.some.call(ls, function(c){ return c.style.display !== 'none'; }) ? '' : 'none'; }
+    var v = $('vacio'); if(v){ v.style.display = n ? 'none' : '';
+      if(!n && v.dataset.base !== undefined){
+        var why = (yo && !filtro.q && !filtro.hora) ? (C.dep === 'academias' ? 'No hay academias a ' + radio + ' km de ti.' : 'No hay canchas a ' + radio + ' km de ti.') + (radio < 30 ? ' Amplía la distancia o busca otra zona.' : ' Busca otra zona por nombre.')
+                : filtro.hora ? 'Ninguna cancha' + (filtro.cerca ? ' cerca de ti' : '') + ' tiene turno libre ' + (filtro.fecha ? etiquetaFecha(filtro.fecha).toLowerCase() : '') + ' a las ' + filtro.hora + '. Prueba con otra hora u otro día.'
+                              : C.dep === 'academias' ? (filtro.q ? 'No encontramos academias con “' + filtro.q + '”. Prueba con otro nombre o zona.' : 'No hay academias con esa búsqueda. Prueba con otra zona.')
+                              : (filtro.q && C.lugares ? (busqGoogle[filtro.q] === 'pendiente' ? 'Buscando “' + filtro.q + '” también en Google Maps…' : 'No encontramos “' + filtro.q + '” en Pichangol ni en Google Maps. Prueba con otro nombre o zona.')
+                              : 'No hay canchas libres con esa búsqueda. Prueba con otra zona, día u hora.');
+        v.textContent = why; } }
+    if(mapa) marcadores.forEach(function(m){ var ok = m._card.style.display !== 'none'; if(ok){ m.addTo(mapa); } else { m.remove(); } });
+  }
+  // Deporte: lo filtra el SERVIDOR (?deporte=), las pestañas son enlaces normales (SEO, sin JS).
+  var sQ = $('sQ'), sF = $('sF'), sH = $('sH');
+  if(sQ) sQ.addEventListener('input', function(){ pend.cerca = false; pend.q = sQ.value.trim().toLowerCase(); });
+  // ── fecha + hora: calendario tipo Airbnb y panel de horas ──
+  var DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'], MESES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+  var MESES_L = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  function iso(d){ return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+  function deIso(s){ var p = s.split('-'); return new Date(parseInt(p[0]), parseInt(p[1])-1, parseInt(p[2])); }
+  var hoy = new Date(); hoy.setHours(0,0,0,0); var hoyIso = iso(hoy);
+  var maxD = new Date(hoy); maxD.setDate(maxD.getDate() + (C.diasAdelante || 30)); var maxIso = iso(maxD);
+  var calBase = new Date(hoy.getFullYear(), hoy.getMonth(), 1), libres = {}, modoLibre = false;
+  function etiquetaFecha(s){ if(!s) return ''; if(s === hoyIso) return 'Hoy'; var d = deIso(s); var m = new Date(hoy); m.setDate(m.getDate()+1); if(s === iso(m)) return 'Mañana'; return DIAS[d.getDay()] + ' ' + d.getDate() + ' ' + MESES[d.getMonth()]; }
+  function hm(t){ if(!t) return null; var p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]); }
+  function abiertaA(c, hora){
+    var ap = hm(c.dataset.ap || '07:00'), ci = hm(c.dataset.ci || '23:00'), h = hm(hora); if(h == null) return true;
+    if(ci <= ap) ci += 1440; if(h < ap && ci >= 1440) h += 1440;
+    return ap <= h && h <= ci; // el último turno EMPIEZA a la hora de cierre (cierra 23:00 → 23:00–00:00)
+  }
+  function mesHtml(y, m){
+    var primero = new Date(y, m, 1), n = new Date(y, m+1, 0).getDate(), off = (primero.getDay() + 6) % 7;
+    var h = '<div class="cal-mes"><div class="cal-tit">' + MESES_L[m] + ' ' + y + '</div><div class="cal-grid">';
+    ['L','Ma','Mi','J','V','S','D'].forEach(function(d){ h += '<span class="cal-dn">' + d + '</span>'; });
+    for(var i = 0; i < off; i++) h += '<span></span>';
+    for(var d = 1; d <= n; d++){ var s = iso(new Date(y, m, d)); var off2 = s < hoyIso || s > maxIso;
+      h += '<button type="button" class="cal-d' + (off2 ? ' off' : '') + (s === pend.fecha ? ' sel' : '') + (s === hoyIso ? ' hoy' : '') + '" data-f="' + s + '"' + (off2 ? ' disabled' : '') + '>' + d + '</button>'; }
+    return h + '</div></div>';
+  }
+  function pintarCal(){
+    var box = $('calMeses'); if(!box) return;
+    var y = calBase.getFullYear(), m = calBase.getMonth();
+    var dos = window.innerWidth > 900;
+    box.innerHTML = mesHtml(y, m) + (dos ? mesHtml(y + (m === 11 ? 1 : 0), (m + 1) % 12) : '');
+    var ant = document.querySelector('#panCuando .cal-ant'), sig = document.querySelector('#panCuando .cal-sig');
+    if(ant) ant.disabled = calBase <= new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    if(sig) sig.disabled = new Date(y, m + (dos ? 2 : 1), 1) > maxD;
+    var at = $('calAtajos'); if(at && !at.children.length){
+      var man = new Date(hoy); man.setDate(man.getDate()+1);
+      var sab = new Date(hoy); sab.setDate(sab.getDate() + ((6 - sab.getDay() + 7) % 7 || 7));
+      var dom = new Date(hoy); dom.setDate(dom.getDate() + ((7 - dom.getDay()) % 7 || 7));
+      at.innerHTML = [['Hoy', hoyIso], ['Mañana', iso(man)], ['Sábado ' + sab.getDate(), iso(sab)], ['Domingo ' + dom.getDate(), iso(dom)]]
+        .map(function(x){ return '<button type="button" class="chip" data-f="' + x[1] + '">' + x[0] + '</button>'; }).join('');
+    }
+    document.querySelectorAll('#calAtajos .chip').forEach(function(b){ b.classList.toggle('sel', b.dataset.f === pend.fecha); });
+    document.querySelectorAll('#panCuando .cal-modo button').forEach(function(b){ b.classList.toggle('on', (b.dataset.modo === 'libre') === modoLibre); });
+  }
+  function ponerFecha(f, abrirHora){
+    pend.fecha = f || ''; modoLibre = !pend.fecha; if(sF){ sF.value = etiquetaFecha(pend.fecha); sF.dataset.iso = pend.fecha; }
+    pintarCal();
+    // Si la hora elegida ya pasó para HOY, se descarta (no se alquila en el pasado).
+    if(pend.hora && horaPasada(pend.hora)) ponerHora('', true);
+    if(abrirHora){ abrirPanel('panHora'); } else { abrirPanel(null); }
+  }
+  function horaPasada(h){
+    // Con "Hoy" solo valen los turnos que EMPIEZAN después de este momento (misma regla que la ficha).
+    if(pend.fecha !== hoyIso) return false;
+    var n = new Date(); return hm(h) <= n.getHours() * 60 + n.getMinutes();
+  }
+  function pintarHoras(){
+    var grupos = document.querySelectorAll('#panHora .hgrupo'), todas = true;
+    grupos.forEach(function(g){
+      var alguna = false;
+      g.querySelectorAll('.hchip').forEach(function(b){
+        var pasada = horaPasada(b.dataset.hora);
+        // Solo se ofrecen horas en las que ALGUNA cancha de la lista tiene turno (una que cierra 23:00 termina su último turno a las 23:00).
+        var sinTurno = !pasada && !cards().some(function(c){ return abiertaA(c, b.dataset.hora); });
+        var off = pasada || sinTurno;
+        b.classList.toggle('off', off); b.disabled = off; b.title = pasada ? 'Esta hora ya pasó' : (sinTurno ? 'Ninguna cancha tiene turno a esta hora' : '');
+        b.classList.toggle('sel', !off && b.dataset.hora === pend.hora); if(!off) alguna = true; });
+      g.classList.toggle('off', !alguna); if(alguna) todas = false;
+    });
+    var av = $('horaAviso'); if(av){
+      av.style.display = todas ? '' : 'none';
+      if(todas){
+        // Explica el motivo real: ¿ya pasaron todas las horas, o las canchas cierran antes de las horas que quedan?
+        var cierres = cards().map(function(c){ var ci = hm(c.dataset.ci || '23:00'), ap = hm(c.dataset.ap || '07:00'); return ci <= ap ? ci + 1440 : ci; });
+        var cierreMax = cierres.length ? Math.max.apply(null, cierres) : 0;
+        var txtCierre = function(m){ m = m % 1440; return (m < 600 ? '0' : '') + Math.floor(m / 60) + ':' + (m % 60 < 10 ? '0' : '') + (m % 60); };
+        av.textContent = pend.fecha === hoyIso && cierreMax
+          ? 'El último turno de hoy en estas canchas empieza a las ' + txtCierre(cierreMax) + ' y ya pasó. Elige otro día en “Cuándo”.'
+          : (pend.fecha === hoyIso ? 'Hoy ya no quedan turnos por delante. Elige otro día en “Cuándo”.' : 'Ninguna cancha de la lista tiene turnos a estas horas.');
+      } }
+  }
+  function ponerHora(h, sinCerrar){
+    pend.hora = h || ''; if(sH){ sH.value = pend.hora; sH.dataset.hora = pend.hora; }
+    pintarHoras();
+    if(!sinCerrar) abrirPanel(null);
+  }
+  function consultarLibres(){
+    // Con fecha + hora, el servidor dice qué canchas tienen un turno LIBRE que cubra esa hora.
+    if(!filtro.fecha || !filtro.hora) return;
+    var k = filtro.fecha + '|' + filtro.hora; if(libres[k]) return;
+    fetch('/web/libres?fecha=' + filtro.fecha + '&hora=' + filtro.hora).then(function(r){ return r.json(); })
+      .then(function(j){ if(j && j.ok){ libres[k] = j.libres || {}; aplicar(); } }).catch(function(){});
+  }
+  var paneles = ['sugDonde', 'panCuando', 'panHora'];
+  function abrirPanel(id){ paneles.forEach(function(p){ var el = $(p); if(el) el.classList.toggle('open', p === id); }); if(id === 'panCuando') pintarCal(); if(id === 'panHora') pintarHoras(); }
+  document.addEventListener('click', function(ev){
+    // Un clic fuera del buscador cierra los desplegables (si el nodo clicado ya
+    // se repintó —día del calendario— no cuenta como "fuera").
+    if(!ev.target.isConnected) return;
+    if(!ev.target.closest('.busq')) abrirPanel(null);
+  });
+  if(sF){ sF.addEventListener('click', function(){ abrirPanel('panCuando'); }); sF.addEventListener('focus', function(){ abrirPanel('panCuando'); }); }
+  if(sH){ sH.addEventListener('click', function(){ abrirPanel('panHora'); }); sH.addEventListener('focus', function(){ abrirPanel('panHora'); }); }
+  var pc = $('panCuando');
+  if(pc){
+    pc.addEventListener('click', function(ev){
+      var d = ev.target.closest('.cal-d'); if(d && !d.disabled){ ponerFecha(d.dataset.f, true); return; }
+      var a = ev.target.closest('#calAtajos .chip'); if(a){ ponerFecha(a.dataset.f, true); return; }
+      if(ev.target.closest('.cal-ant')){ calBase = new Date(calBase.getFullYear(), calBase.getMonth() - 1, 1); pintarCal(); return; }
+      if(ev.target.closest('.cal-sig')){ calBase = new Date(calBase.getFullYear(), calBase.getMonth() + 1, 1); pintarCal(); return; }
+      var mo = ev.target.closest('.cal-modo button'); if(mo){ if(mo.dataset.modo === 'libre') ponerFecha('', false); else { modoLibre = false; pintarCal(); } }
+    });
+    window.addEventListener('resize', function(){ if(pc.classList.contains('open')) pintarCal(); });
+  }
+  var ph = $('panHora');
+  if(ph) ph.addEventListener('click', function(ev){ var b = ev.target.closest('[data-hora]'); if(b && !b.disabled) ponerHora(b.dataset.hora); });
+  // Fecha/hora que vienen en la URL (?fecha=&hora=) arrancan seleccionadas.
+  if(C.fecha && C.fecha >= hoyIso && C.fecha <= maxIso){ filtro.fecha = pend.fecha = C.fecha; if(sF){ sF.value = etiquetaFecha(C.fecha); sF.dataset.iso = C.fecha; } }
+  if(C.hora && !horaPasada(C.hora)){ filtro.hora = pend.hora = C.hora; if(sH){ sH.value = C.hora; sH.dataset.hora = C.hora; } consultarLibres(); }
+  function pintarResumenBusq(){
+    var r = $('resBusq'); if(!r) return;
+    var partes = []; if(filtro.cerca) partes.push('Cerca de ti'); if(filtro.q) partes.push('“' + filtro.q + '”'); if(filtro.fecha) partes.push(etiquetaFecha(filtro.fecha)); if(filtro.hora) partes.push(filtro.hora);
+    r.innerHTML = partes.length ? '· Buscando: <b>' + esc(partes.join(' · ')) + '</b> <button type="button" id="btnLimpiar">Limpiar</button>' : '';
+    var bl = $('btnLimpiar'); if(bl) bl.addEventListener('click', function(){ pend = {q: '', fecha: '', hora: '', cerca: false}; if(sQ) sQ.value = ''; ponerFecha('', false); ponerHora('', true); buscar(); });
+  }
+  // ── desplegable bajo "Dónde": búsquedas recientes (este navegador) + zonas sugeridas ──
+  var sug = $('sugDonde'), recientes = [];
+  try { recientes = JSON.parse(localStorage.getItem('pcg_busq') || '[]') || []; } catch(e){}
+  function pintarRecientes(){
+    var box = $('sugRecientes'), lst = $('sugRecientesLista'); if(!box || !lst) return;
+    lst.innerHTML = recientes.map(function(q){ return '<button type="button" class="it" data-zona="' + esc(q) + '"><span class="ic">🕘</span><div><b>' + esc(q) + '</b><small>Búsqueda reciente</small></div></button>'; }).join('');
+    box.style.display = recientes.length ? '' : 'none';
+  }
+  function recordar(q){
+    q = (q || '').trim(); if(!q) return;
+    recientes = [q].concat(recientes.filter(function(x){ return x.toLowerCase() !== q.toLowerCase(); })).slice(0, 5);
+    try { localStorage.setItem('pcg_busq', JSON.stringify(recientes)); } catch(e){}
+    pintarRecientes();
+  }
+  function abrirSug(on){ abrirPanel(on ? 'sugDonde' : null); }
+  if(sQ && sug){
+    sQ.addEventListener('focus', function(){ pintarRecientes(); abrirSug(true); });
+    sQ.addEventListener('click', function(){ pintarRecientes(); abrirSug(true); });
+    sQ.addEventListener('keydown', function(ev){ if(ev.key === 'Enter'){ ev.preventDefault(); buscar(); } });
+    sug.addEventListener('click', function(ev){
+      var it = ev.target.closest('.it'); if(!it) return;
+      if(it.dataset.cerca){ pend.cerca = true; pend.q = ''; sQ.value = 'Cerca de ti'; abrirPanel('panCuando'); return; }
+      sQ.value = it.dataset.zona || ''; pend.q = sQ.value.trim().toLowerCase(); abrirPanel('panCuando');
+    });
+  }
+  function buscar(){
+    // Aquí recién se APLICA lo elegido (zona, fecha, hora), como el botón de Airbnb.
+    abrirPanel(null);
+    if(sQ && !pend.cerca){ pend.q = sQ.value.trim().toLowerCase(); recordar(sQ.value); }
+    if(pend.hora && horaPasada(pend.hora)) ponerHora('', true);
+    filtro.q = pend.cerca ? '' : pend.q; filtro.cerca = pend.cerca; filtro.fecha = pend.fecha; filtro.hora = pend.hora;
+    if(filtro.cerca){ if(yo) ordenar(); else ubicar(true); }
+    if(filtro.q) buscarEnGoogle(filtro.q);
+    consultarLibres(); aplicar(); pintarResumenBusq();
+    var g = $('grupos'); if(g) g.scrollIntoView({behavior: 'smooth', block: 'start'});
+  }
+  var bF = $('btnBuscar'); if(bF) bF.addEventListener('click', buscar);
+  // ── buscar por NOMBRE también en Google Maps (caso "Campo deportivo Edu Jr.") ──
+  // Lo escrito en "Dónde" no solo filtra las tarjetas cargadas: se busca en
+  // Google (`/web/lugares`, la misma búsqueda de "Pon tu cancha") y los locales
+  // que la heurística reconoce como cancha entran a "Más canchas cerca de ti"
+  // como descubiertas (ficha /lugar, Cómo llegar, ¿Es tuya? Reclámala).
+  var busqGoogle = {};
+  function buscarEnGoogle(q){
+    if(!C.lugares || C.dep === 'academias' || !q || q.length < 3 || busqGoogle[q]) return;
+    busqGoogle[q] = 'pendiente';
+    var ref = yo || (mapa ? mapa.getCenter() : {lat: C.centro[0], lng: C.centro[1]});
+    fetch('/web/lugares?q=' + encodeURIComponent(q) + '&lat=' + ref.lat + '&lng=' + ref.lng).then(function(r){ return r.json(); })
+      .then(function(j){
+        busqGoogle[q] = 'listo';
+        var lst = (j.lugares || []).filter(function(l){ return l.deporte && (!C.dep || l.deporte === C.dep); });
+        lst.forEach(function(l){ l.q = q; if(!l.fotos) l.fotos = []; });
+        if(lst.length) pintarDescubiertas(lst, false); else aplicar();
+      })
+      .catch(function(){ busqGoogle[q] = 'listo'; aplicar(); });
+  }
+  // ── Filtros tipo Airbnb (modal): amenidades, tipo, precio, superficie, duración ──
+  var fil = {am: {}, tipo: '', sup: '', dur: 0, min: 0, max: 0}, filTmp = null, precioMon = '', pRango = [0, 0];
+  var modal = $('modalFiltros'), bFil = $('btnFiltros');
+  function copiaFil(f){ return {am: Object.assign({}, f.am), tipo: f.tipo, sup: f.sup, dur: f.dur, min: f.min, max: f.max}; }
+  function pasaFil(c, f){
+    for(var a in f.am){ if(f.am[a] && (' ' + (c.dataset.am || '') + ' ').indexOf(' ' + a + ' ') < 0) return false; }
+    if(f.tipo === 'ok' && c.dataset.ok !== '1') return false;
+    if(f.tipo === 'pend' && c.dataset.ok === '1') return false;
+    if(f.sup && (' ' + (c.dataset.sup || '') + ' ').indexOf(' ' + f.sup + ' ') < 0) return false;
+    if(f.dur && (' ' + (c.dataset.pasos || c.dataset.paso || '60') + ' ').indexOf(' ' + f.dur + ' ') < 0) return false;
+    if((f.min || f.max) && c.dataset.mon === precioMon){ var p = parseFloat(c.dataset.pnum || '0'); if(f.min && p < f.min) return false; if(f.max && p > f.max) return false; }
+    return true;
+  }
+  function nFiltros(f){ var n = 0; for(var a in f.am){ if(f.am[a]) n++; } if(f.tipo) n++; if(f.sup) n++; if(f.dur) n++; if(f.min || f.max) n++; return n; }
+  function pintarBadge(){ var b = $('nFiltros'); if(!b) return; var n = nFiltros(fil); b.textContent = n; b.style.display = n ? '' : 'none'; if(bFil) bFil.classList.toggle('on', n > 0); }
+  function pintarQuick(){ document.querySelectorAll('.qam').forEach(function(b){ b.classList.toggle('sel', !!fil.am[b.dataset.am]); }); }
+  document.querySelectorAll('.qam').forEach(function(b){ b.addEventListener('click', function(){ fil.am[b.dataset.am] = !fil.am[b.dataset.am]; pintarQuick(); pintarBadge(); aplicar(); }); });
+  function cuentaModal(){
+    var n = cards().filter(function(c){ return pasaBase(c) && pasaFil(c, filTmp); }).length;
+    var m = $('mostrarFiltros'); if(m) m.textContent = n ? 'Mostrar ' + n + ' cancha' + (n === 1 ? '' : 's') : 'Sin canchas con estos filtros';
+  }
+  function pintarModal(){
+    document.querySelectorAll('#modalFiltros .tile, #modalFiltros .fam').forEach(function(b){ b.classList.toggle('sel', !!filTmp.am[b.dataset.am]); });
+    document.querySelectorAll('#fTipo button').forEach(function(b){ b.classList.toggle('on', b.dataset.tipo === filTmp.tipo); });
+    document.querySelectorAll('#modalFiltros .fsup').forEach(function(b){ b.classList.toggle('sel', b.dataset.sup === filTmp.sup); });
+    document.querySelectorAll('#modalFiltros .fdur').forEach(function(b){ b.classList.toggle('sel', parseInt(b.dataset.dur) === filTmp.dur); });
+    var rMin = $('rMin'), rMax = $('rMax'), pMin = $('pMin'), pMax = $('pMax');
+    if(rMin){ rMin.value = filTmp.min || pRango[0]; rMax.value = filTmp.max || pRango[1]; pMin.value = filTmp.min || pRango[0]; pMax.value = filTmp.max || pRango[1]; pintarHisto(); }
+    cuentaModal();
+  }
+  function pintarHisto(){
+    var h = $('histo'); if(!h) return;
+    var vals = cards().filter(function(c){ return c.dataset.mon === precioMon && c.dataset.pnum; }).map(function(c){ return parseFloat(c.dataset.pnum); });
+    var lo = pRango[0], hi = pRango[1], nb = 24, bins = []; for(var i = 0; i < nb; i++) bins.push(0);
+    vals.forEach(function(v){ var i = hi > lo ? Math.min(nb - 1, Math.floor((v - lo) / (hi - lo) * nb)) : 0; bins[i]++; });
+    var mx = Math.max.apply(null, bins.concat([1])), a = parseFloat($('rMin').value), b = parseFloat($('rMax').value);
+    h.innerHTML = bins.map(function(n, i){ var v = lo + (i + .5) / nb * (hi - lo); return '<i style="height:' + Math.max(5, Math.round(n / mx * 100)) + '%" class="' + (v >= a && v <= b ? 'on' : '') + '"></i>'; }).join('');
+    var mm = $('monMin'), mM = $('monMax'); if(mm) mm.textContent = precioMon; if(mM) mM.textContent = precioMon;
+    var ps = $('precioSub'); if(ps) ps.textContent = 'Precio por hora en ' + precioMon + (vals.length ? ' · ' + vals.length + ' canchas' : '');
+  }
+  function abrirModal(on){
+    if(!modal) return;
+    if(on){
+      var cs = cards().filter(function(c){ return c.dataset.pnum; });
+      var pais = yo ? paisDe(yo.lat, yo.lng) : null;
+      var grupo = pais ? document.querySelector('.grupo-pais[data-pais="' + pais + '"] .lst[data-mon]') : null;
+      precioMon = (grupo || cs[0] || {dataset: {}}).dataset.mon || 'S/';
+      var vals = cs.filter(function(c){ return c.dataset.mon === precioMon; }).map(function(c){ return parseFloat(c.dataset.pnum); });
+      pRango = vals.length ? [Math.floor(Math.min.apply(null, vals)), Math.ceil(Math.max.apply(null, vals))] : [0, 0];
+      ['rMin', 'rMax'].forEach(function(id){ var r = $(id); if(r){ r.min = pRango[0]; r.max = pRango[1]; } });
+      filTmp = copiaFil(fil); pintarModal();
+    }
+    modal.classList.toggle('open', on); document.body.classList.toggle('sin-scroll', on);
+  }
+  if(bFil) bFil.addEventListener('click', function(){ abrirModal(true); });
+  if(modal){
+    $('cerrarFiltros').addEventListener('click', function(){ abrirModal(false); });
+    modal.addEventListener('click', function(ev){ if(ev.target === modal) abrirModal(false); });
+    document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape' && modal.classList.contains('open')) abrirModal(false); });
+    modal.addEventListener('click', function(ev){
+      var t = ev.target.closest('.tile, .fam'); if(t){ filTmp.am[t.dataset.am] = !filTmp.am[t.dataset.am]; pintarModal(); return; }
+      var ty = ev.target.closest('#fTipo button'); if(ty){ filTmp.tipo = ty.dataset.tipo; pintarModal(); return; }
+      var su = ev.target.closest('.fsup'); if(su){ filTmp.sup = filTmp.sup === su.dataset.sup ? '' : su.dataset.sup; pintarModal(); return; }
+      var du = ev.target.closest('.fdur'); if(du){ var d = parseInt(du.dataset.dur); filTmp.dur = filTmp.dur === d ? 0 : d; pintarModal(); return; }
+    });
+    function leerRango(desdeCaja){
+      var rMin = $('rMin'), rMax = $('rMax'), pMin = $('pMin'), pMax = $('pMax');
+      var a = parseFloat(desdeCaja ? pMin.value : rMin.value), b = parseFloat(desdeCaja ? pMax.value : rMax.value);
+      if(isNaN(a)) a = pRango[0]; if(isNaN(b)) b = pRango[1];
+      a = Math.max(pRango[0], Math.min(a, pRango[1])); b = Math.max(pRango[0], Math.min(b, pRango[1]));
+      if(a > b){ if(desdeCaja) b = a; else a = b; }
+      rMin.value = a; rMax.value = b; pMin.value = a; pMax.value = b;
+      filTmp.min = a > pRango[0] ? a : 0; filTmp.max = b < pRango[1] ? b : 0;
+      pintarHisto(); cuentaModal();
+    }
+    ['rMin', 'rMax'].forEach(function(id){ var r = $(id); if(r) r.addEventListener('input', function(){ leerRango(false); }); });
+    ['pMin', 'pMax'].forEach(function(id){ var r = $(id); if(r) r.addEventListener('change', function(){ leerRango(true); }); });
+    $('limpiarFiltros').addEventListener('click', function(){ filTmp = {am: {}, tipo: '', sup: '', dur: 0, min: 0, max: 0}; pintarModal(); });
+    $('mostrarFiltros').addEventListener('click', function(){ fil = copiaFil(filTmp); pintarQuick(); pintarBadge(); aplicar(); abrirModal(false); var g = $('grupos'); if(g) g.scrollIntoView({behavior: 'smooth', block: 'start'}); });
+  }
+  // ── cercanía ──
+  function ordenar(){
+    if(!yo) return;
+    var pais = paisDe(yo.lat, yo.lng);
+    cards().forEach(function(c){ var d = km(yo.lat, yo.lng, parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)); c.dataset.d = d;
+      var el = c.querySelector('.dist'); if(el) el.textContent = 'a ' + fmtKm(d); });
+    document.querySelectorAll('.grupo-pais, .grupo-aca').forEach(function(g){
+      var grid = g.querySelector('.lst-grid'); if(!grid) return;
+      var hijos = Array.prototype.slice.call(grid.children).sort(function(a, b){ return parseFloat(a.dataset.d) - parseFloat(b.dataset.d); });
+      hijos.forEach(function(h){ grid.appendChild(h); });
+    });
+    var ta = document.querySelector('.grupo-aca .cerca'); if(ta) ta.textContent = '· las más cercanas a ti primero';
+    var propio = document.querySelector('.grupo-pais[data-pais="' + pais + '"]');
+    if(propio && propio.parentNode){ propio.parentNode.insertBefore(propio, $('grupos').firstChild); var t = propio.querySelector('.cerca'); if(t) t.textContent = '· las más cercanas a ti primero'; }
+    pintarRadio();
+    aplicar();
+    var bu = $('btnUbic'); if(bu) bu.style.display = 'none';
+    descubrir(yo.lat, yo.lng);
+    if(mapa){ if(miPin) miPin.remove(); miPin = L.marker([yo.lat, yo.lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio yo">Tú</span>', iconSize: null})}).addTo(mapa);
+      ajustarMapa(); }
+  }
+  function pintarRadio(){
+    var u = $('ubicTxt'); if(!u || !yo) return;
+    u.innerHTML = (C.dep === 'academias' ? 'Academias' : 'Canchas') + ' a <select id="selRadio" aria-label="Distancia máxima" style="width:auto;display:inline-block;padding:2px 6px;border:1px solid #DDD;border-radius:999px;font:inherit;font-weight:700;background:#fff">' +
+      RADIOS.map(function(r){ return '<option value="' + r + '"' + (r === radio ? ' selected' : '') + '>' + r + ' km</option>'; }).join('') + '</select> de ti, las más cercanas primero.';
+    $('selRadio').addEventListener('change', function(){ radio = parseInt(this.value, 10) || 10; try { localStorage.setItem('pcg_radio', String(radio)); } catch(e){} aplicar(); ajustarMapa(); });
+  }
+  function ajustarMapa(){
+    if(!mapa || !yo) return;
+    var pts = cards().filter(function(c){ return parseFloat(c.dataset.d) <= radio; }).map(function(c){ return [parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)]; });
+    pts.push([yo.lat, yo.lng]); mapa.fitBounds(L.latLngBounds(pts).pad(0.2), {maxZoom: 14});
+  }
+  function ubicar(interactivo){
+    var u = $('ubicTxt'), bu = $('btnUbic');
+    if(!navigator.geolocation){ if(u) u.textContent = 'Tu navegador no permite ubicación. Busca por zona.'; return; }
+    if(u) u.textContent = 'Buscando tu ubicación…';
+    navigator.geolocation.getCurrentPosition(function(pos){
+      yo = {lat: pos.coords.latitude, lng: pos.coords.longitude};
+      try { localStorage.setItem('pcg_ubic', JSON.stringify(yo)); } catch(e){}
+      ordenar();
+    }, function(){
+      if(u) u.textContent = interactivo ? 'No pudimos leer tu ubicación. Revisa el permiso del navegador o busca por zona.' : 'Permite tu ubicación para ver primero las canchas más cercanas.';
+      if(bu) bu.style.display = '';
+    }, {enableHighAccuracy: false, timeout: 8000, maximumAge: 300000});
+  }
+  // ── descubiertas (Google Places, como el APK) ──
+  function tarjetaDesc(c){
+    // Fotos: las que trae la Edge, o las que ya resolvió /web/foto antes de
+    // este re-pintado (nunca se "esconde" una foto ya mostrada).
+    var fs = (c.fotos && c.fotos.length) ? c.fotos : (fotosConocidas[c.id] || []);
+    if(fs.length) fotosConocidas[c.id] = fs;
+    // OpenStreetMap: nunca se pide foto a Google (placeholder del deporte) y
+    // va la atribución de la licencia ODbL.
+    var esOsm = c.fuente === 'osm';
+    var foto = fs.length ? fs.slice(0, 3).map(function(u){ return '<img src="' + esc(u) + '" alt="" loading="lazy">'; }).join('') : '<div class="sinfoto"' + (esOsm ? '' : ' data-buscar="1"') + '>' + (c.emoji || '🏟️') + '</div>';
+    var extra = fs.length > 1 ? '<button class="flecha izq" aria-label="Anterior">‹</button><button class="flecha der" aria-label="Siguiente">›</button><div class="dots">' + fs.slice(0, 3).map(function(){ return '<i></i>'; }).join('') + '</div>' : '';
+    var hrefLugar = '/lugar/' + encodeURIComponent(c.id) + '?nombre=' + encodeURIComponent(c.nombre) + '&direccion=' + encodeURIComponent(c.direccion) + '&lat=' + c.lat + '&lng=' + c.lng + '&deporte=' + encodeURIComponent(c.deporte);
+    return '<a class="lst pend" href="' + hrefLugar + '" data-id="' + esc(c.id) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-deps="' + esc(c.deporte) + '" data-nombre="' + esc(c.nombre) + '" data-sub="' + esc(c.direccion) + '" data-precio="' + esc(c.deporte_nombre) + '" data-emoji="' + esc(c.emoji || '') + '" data-t="' + esc((c.nombre + ' ' + c.direccion).toLowerCase()) + '" data-q="' + esc(c.q || '') + '"' + (yo && c.km != null ? ' data-d="' + c.km + '"' : '') + '>' +
+      '<div class="foto"><div class="fotos">' + foto + '</div><span class="badge pend">Aún sin registrar</span>' + extra + '</div>' +
+      '<div class="lb"><div class="l1"><b>' + esc(c.nombre) + '</b><span class="rate">' + esc(c.deporte_nombre) + '</span></div>' +
+      '<div class="l2">' + esc(c.direccion) + '</div><div class="l2"><span class="dist">' + (c.km != null ? 'a ' + fmtKm(c.km) : '') + '</span>' +
+      (esOsm ? ' <span class="wa osm-atrib" data-wa="https://www.openstreetmap.org/copyright" style="font-size:11px;color:#717171">© OpenStreetMap</span>' : '') + '</div>' +
+      '<div class="l3"><span class="app">📲 Reservar en la app</span> <span class="app">📍 <span class="ir" data-lat="' + c.lat + '" data-lng="' + c.lng + '">Cómo llegar</span></span> ' +
+      '<span class="app reclamar" data-id="' + esc(c.id) + '" data-nombre="' + esc(c.nombre) + '" data-dir="' + esc(c.direccion) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-dep="' + esc(c.deporte) + '">🏷️ ¿Es tuya? Reclámala</span></div></div></a>';
+  }
+  document.addEventListener('click', function(ev){ var g = ev.target.closest('.ir'); if(!g) return; ev.preventDefault(); ev.stopPropagation();
+    window.open('https://www.google.com/maps/search/?api=1&query=' + g.dataset.lat + ',' + g.dataset.lng, '_blank'); });
+  document.addEventListener('click', function(ev){ var g = ev.target.closest('.wa'); if(!g) return; ev.preventDefault(); ev.stopPropagation(); window.open(g.dataset.wa, '_blank', 'noopener'); });
+  // "¿Es tuya? Reclámala": registro desde la web prellenado con el lugar de Google (mismo flujo que el app).
+  document.addEventListener('click', function(ev){ var g = ev.target.closest('.reclamar'); if(!g) return; ev.preventDefault(); ev.stopPropagation();
+    location.href = '/anfitrion/nueva?place=' + encodeURIComponent(g.dataset.id) + '&nombre=' + encodeURIComponent(g.dataset.nombre) + '&direccion=' + encodeURIComponent(g.dataset.dir) + '&lat=' + g.dataset.lat + '&lng=' + g.dataset.lng + '&deporte=' + encodeURIComponent(g.dataset.dep || ''); });
+  // Las descubiertas se ACUMULAN por id entre búsquedas (cada celda que se
+  // explora suma; la distancia se recalcula desde el usuario o el centro del mapa).
+  var descAcum = {};
+  function kmEntre(a, b, c, d){ var R = 6371, x = (c - a) * Math.PI / 180, y = (d - b) * Math.PI / 180; var h = Math.sin(x/2)*Math.sin(x/2) + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)*Math.sin(y/2); return 2 * R * Math.asin(Math.sqrt(h)); }
+  // Pin de una cancha descubierta: ícono del deporte + NOMBRE del local
+  // (recortado por CSS; con el mapa alejado queda solo el ícono, así no se
+  // enciman). El nombre completo va en el title y en el popup.
+  function pinDesc(nombre, emoji, deporte){
+    var n = (nombre || '').trim() || deporte || 'Cancha';
+    return '<span class="pin-precio pend pin-desc" title="' + esc(n) + '"><i>' + esc(emoji || '🏟️') + '</i><span class="nom">' + esc(n) + '</span></span>';
+  }
+  function zoomPines(){ var el = $('mapa'); if(el && mapa) el.classList.toggle('mapa-lejos', mapa.getZoom() < 13); }
+  function pintarDescubiertas(lista, conFotos){
+    var sec = $('descubiertas'), grid = $('gridDesc');
+    if(!sec || !grid) return;
+    (lista || []).forEach(function(c){ var prev = descAcum[c.id]; if(prev && !(c.fotos && c.fotos.length) && prev.fotos && prev.fotos.length) c.fotos = prev.fotos; descAcum[c.id] = c; });
+    var ref = yo ? yo : (mapa ? {lat: mapa.getCenter().lat, lng: mapa.getCenter().lng} : null);
+    lista = Object.keys(descAcum).map(function(k){ var c = descAcum[k]; if(ref) c.km = Math.round(kmEntre(ref.lat, ref.lng, c.lat, c.lng) * 100) / 100; return c; })
+      .sort(function(a, b){ return (a.km == null ? 1e9 : a.km) - (b.km == null ? 1e9 : b.km); });
+    if(!lista.length){ if(!conFotos) sec.style.display = 'none'; return; }
+    sec.style.display = '';
+    grid.innerHTML = lista.map(tarjetaDesc).join('');
+    resolverFotos();
+    if(mapa && window.L){
+      pinesDesc.forEach(function(m){ m.remove(); }); pinesDesc = [];
+      var hijosDesc = grid.children;
+      lista.forEach(function(c, i){
+        var m = L.marker([c.lat, c.lng], {icon: L.divIcon({className: '', html: pinDesc(c.nombre, c.emoji, c.deporte_nombre), iconSize: null})}).addTo(mapa);
+        m.bindPopup('<b>' + esc(c.nombre) + '</b><br>' + esc(c.direccion) + '<br><a class="btn sec" href="/lugar/' + encodeURIComponent(c.id) + '?nombre=' + encodeURIComponent(c.nombre) + '&direccion=' + encodeURIComponent(c.direccion) + '&lat=' + c.lat + '&lng=' + c.lng + '&deporte=' + encodeURIComponent(c.deporte) + '">Ver lugar</a>');
+        m._card = hijosDesc[i]; pinesDesc.push(m);
+      });
+    }
+    aplicar();
+  }
+  function descubrir(lat, lng){
+    if(C.dep === 'academias' || !$('descubiertas')) return;  // pestaña Academias: sin canchas de Google
+    var k = lat.toFixed(2) + ',' + lng.toFixed(2);
+    if(descubiertas[k]) return; descubiertas[k] = true;
+    var sec = $('descubiertas'); if(sec){ sec.style.display = ''; if(!Object.keys(descAcum).length) $('gridDesc').innerHTML = '<span class="skel"></span><span class="skel"></span><span class="skel"></span>'; }
+    var qd = '&deporte=' + encodeURIComponent(C.dep || '');
+    // UNA sola llamada (antes había una 2.ª con fotos=1: el doble de Google).
+    // Las fotos de cada tarjeta visible las trae /web/foto (guardadas 30 días).
+    fetch('/web/descubrir?lat=' + lat + '&lng=' + lng + qd).then(function(r){ return r.json(); })
+      .then(function(j){ pintarDescubiertas(j.canchas || [], false); })
+      .catch(function(){ if(sec && !Object.keys(descAcum).length) sec.style.display = 'none'; });
+  }
+  // ── mapa (se dibuja al mostrarlo; split view en escritorio, pantalla completa en móvil) ──
+  function pintarMapa(){
+    if(mapa || !window.L || !$('mapa')) return;
+    mapa = L.map('mapa', {scrollWheelZoom: true}).setView(C.centro, 12);
+    // Mover el mapa NO busca solo (cada búsqueda nueva en Google cuesta): sale
+    // el botón "Buscar en esta zona", como en Airbnb (oct-2026, factura Places).
+    var btnZona = document.createElement('button');
+    btnZona.type = 'button'; btnZona.className = 'btn-zona'; btnZona.textContent = '🔎 Buscar canchas en esta zona';
+    btnZona.style.display = 'none';
+    $('mapa').appendChild(btnZona);
+    L.DomEvent.disableClickPropagation(btnZona);
+    btnZona.addEventListener('click', function(){ var c = mapa.getCenter(); btnZona.style.display = 'none'; descubrir(c.lat, c.lng); });
+    mapa.on('zoomend', zoomPines); zoomPines();
+    mapa.on('moveend', function(){ if(mapa.getZoom() < 12) { btnZona.style.display = 'none'; return; } var c = mapa.getCenter(); btnZona.style.display = descubiertas[c.lat.toFixed(2) + ',' + c.lng.toFixed(2)] ? 'none' : ''; });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '&copy; OpenStreetMap'}).addTo(mapa);
+    var pts = [];
+    cards().forEach(function(c){
+      var lat = parseFloat(c.dataset.lat), lng = parseFloat(c.dataset.lng); if(!lat && !lng) return;
+      if(c.classList.contains('pend') && (c.dataset.id.indexOf('gp_') === 0 || c.dataset.id.indexOf('osm_') === 0)) return;
+      pts.push([lat, lng]);
+      var ok = c.dataset.ok === '1', esAca = c.classList.contains('aca');
+      var m = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio' + (ok ? '' : ' pend') + (esAca ? ' aca' : '') + '">' + c.dataset.precio + '</span>', iconSize: null})});
+      m._card = c;
+      m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br>' + (esAca ? '' : '<span style="font-weight:800">' + esc(c.dataset.precio) + ' por hora</span><br>') + '<a class="btn' + (ok ? '' : ' sec') + '" href="' + c.getAttribute('href') + '">' + (esAca ? 'Ver academia' : (ok ? 'Ver horarios' : 'Reservar en la app')) + '</a>');
+      m.on('mouseover', function(){ c.style.outline = '2px solid #0E8F67'; c.style.outlineOffset = '4px'; c.style.borderRadius = '14px'; });
+      m.on('mouseout', function(){ c.style.outline = ''; });
+      marcadores.push(m); m.addTo(mapa);
+    });
+    if(yo){ miPin = L.marker([yo.lat, yo.lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio yo">Tú</span>', iconSize: null})}).addTo(mapa); pts.push([yo.lat, yo.lng]); }
+    if(yo) ajustarMapa(); else if(pts.length) mapa.fitBounds(L.latLngBounds(pts).pad(0.25), {maxZoom: 13});
+    // Las descubiertas ya pintadas también van al mapa.
+    var desc = Array.prototype.slice.call(document.querySelectorAll('#gridDesc .lst'));
+    desc.forEach(function(c){ var m; m = L.marker([parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)], {icon: L.divIcon({className: '', html: pinDesc(c.dataset.nombre, c.dataset.emoji, c.dataset.precio), iconSize: null})}).addTo(mapa);
+      m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br><a class="btn sec" href="' + c.getAttribute('href') + '">Ver lugar</a>'); m._card = c; pinesDesc.push(m); });
+    aplicar();
+  }
+  // ── PRIMERA FOTO siempre (como el app): las tarjetas sin foto propia piden
+  // la de Google en su ubicación (/web/foto, cacheado en el servidor). ──
+  var colaFotos = [], enVuelo = 0, pedidas = {};
+  function pintarFotos(card, fotos){
+    var box = card.querySelector('.fotos'); if(!box || !fotos || !fotos.length) return;
+    fotosConocidas[card.dataset.id] = fotos;
+    box.innerHTML = fotos.slice(0, 3).map(function(u){ return '<img src="' + esc(u) + '" alt="" loading="lazy">'; }).join('');
+    if(fotos.length > 1){
+      var f = card.querySelector('.foto');
+      f.insertAdjacentHTML('beforeend', '<button class="flecha izq" aria-label="Anterior">‹</button><button class="flecha der" aria-label="Siguiente">›</button><div class="dots">' + fotos.slice(0, 3).map(function(){ return '<i></i>'; }).join('') + '</div>');
+    }
+  }
+  function pedirFoto(card){
+    var q = 'id=' + encodeURIComponent(card.dataset.id || '') + '&nombre=' + encodeURIComponent(card.dataset.nombre || '') +
+            '&club=' + encodeURIComponent(card.dataset.club || '') + '&lat=' + card.dataset.lat + '&lng=' + card.dataset.lng;
+    fetch('/web/foto?' + q).then(function(r){ return r.json(); }).then(function(j){ pintarFotos(card, (j && j.fotos) || []); })
+      .catch(function(){}).then(function(){ enVuelo--; siguienteFoto(); });
+  }
+  function siguienteFoto(){
+    while(enVuelo < 2 && colaFotos.length){ enVuelo++; pedirFoto(colaFotos.shift()); }
+  }
+  function encolar(c){
+    if(pedidas[c.dataset.id]) return;
+    if(!parseFloat(c.dataset.lat) && !parseFloat(c.dataset.lng)) return;
+    pedidas[c.dataset.id] = 1; colaFotos.push(c); siguienteFoto();
+  }
+  // Solo se piden las fotos de las tarjetas que ENTRAN en pantalla (cuota de
+  // Google): una página con 60 descubiertas no dispara 60 consultas de golpe.
+  var obs = ('IntersectionObserver' in window) ? new IntersectionObserver(function(entries){
+    entries.forEach(function(en){ if(en.isIntersecting){ obs.unobserve(en.target); encolar(en.target); } });
+  }, {rootMargin: '200px 0px'}) : null;
+  function resolverFotos(){
+    cards().forEach(function(c){
+      if(pedidas[c.dataset.id] || c.dataset.obs || !c.querySelector('.sinfoto[data-buscar]')) return;
+      c.dataset.obs = '1';
+      if(obs) obs.observe(c); else encolar(c);
+    });
+  }
+  var expl = $('expl'), btnMapa = $('btnMapa');
+  function verMapa(on){
+    expl.classList.toggle('con-mapa', on);
+    btnMapa.innerHTML = on ? '<span>Mostrar lista</span> ☰' : '<span>Mostrar mapa</span> 🗺️';
+    try { localStorage.setItem('pcg_mapa', on ? '1' : '0'); } catch(e){}
+    if(on){ pintarMapa(); setTimeout(function(){ if(mapa) mapa.invalidateSize(); }, 60); }
+  }
+  if(btnMapa) btnMapa.addEventListener('click', function(){ verMapa(!expl.classList.contains('con-mapa')); });
+  var bu = $('btnUbic'); if(bu) bu.addEventListener('click', function(){ ubicar(true); });
+  pintarFavs();
+  resolverFotos();
+  try { var g = JSON.parse(localStorage.getItem('pcg_ubic') || 'null'); if(g && g.lat){ yo = g; ordenar(); } } catch(e){}
+  ubicar(false);
+  if(!yo) descubrir(C.centro[0], C.centro[1]);
+  aplicar();
+  try { if(localStorage.getItem('pcg_mapa') === '1' && window.innerWidth > 900) verMapa(true); } catch(e){}
+})();
+"""
+
+_LUPA = ("<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round'>"
+         "<circle cx='11' cy='11' r='7'/><path d='M20 20l-3.5-3.5'/></svg>")
+_CORAZON = "<svg viewBox='0 0 24 24'><path d='M12 21s-7.5-4.6-9.5-9.2C1.2 8.6 3.2 5 6.8 5c2 0 3.4 1.1 5.2 3 1.8-1.9 3.2-3 5.2-3 3.6 0 5.6 3.6 4.3 6.8C19.5 16.4 12 21 12 21z'/></svg>"
+CATEGORIAS = [("", "Todas", "🏟️"), ("futbol", "Fútbol", "⚽"), ("tenis", "Tenis", "🎾"), ("padel", "Pádel", "🏓"),
+              ("futsal", "Futsal", "🥅"), ("pickleball", "Pickleball", "🥒"), ("voley", "Vóley", "🏐"),
+              ("basquet", "Básquet", "🏀"), ("academias", "Academias", "🎓")]
+
+
+def _zonas_sugeridas(lista: list[dict], n: int = 6) -> list[tuple[str, int]]:
+    """Zonas (barrio, distrito) con más canchas, para el desplegable del
+    buscador (como "Destinos sugeridos" de Airbnb)."""
+    cuenta: dict[str, int] = {}
+    for c in lista:
+        z = _zona(c)
+        if z:
+            cuenta[z] = cuenta.get(z, 0) + 1
+    return sorted(cuenta.items(), key=lambda kv: (-kv[1], kv[0]))[:n]
+
+
+def _nav_explorar(dep: str, ses: dict | None = None, zonas: list[tuple[str, int]] | None = None) -> str:
+    """Cabecera tal cual airbnb.com: logo · pestañas por deporte con ícono
+    (centradas) · "Modo dueño" + avatar + ☰ · buscador grande centrado
+    (Dónde · Deporte · Cuándo · Buscar) con desplegable de búsquedas
+    recientes y zonas sugeridas bajo "Dónde"."""
+    ops = "".join(f"<option value='{k}'{' selected' if k == dep else ''}>{n}</option>" for k, n, _ in CATEGORIAS)
+    hoy = date.today().isoformat()
+    tabs = "".join(f"<a class='cat{' sel' if k == dep else ''}' href='/canchas{('?deporte=' + k) if k else ''}' data-dep='{k}'>"
+                   f"<span class='ico'>{ico}</span>{n}</a>" for k, n, ico in CATEGORIAS)
+    sug_zonas = "".join(
+        f"<button type='button' class='it' data-zona='{e(z)}'><span class='ic'>📍</span>"
+        f"<div><b>{e(z)}</b><small>{n} cancha{'s' if n != 1 else ''}</small></div></button>"
+        for z, n in (zonas or []))
+    horas = "".join(
+        f"<div class='hgrupo'><h5>{t}</h5><div class='hchips'>"
+        + "".join(f"<button type='button' class='chip hchip' data-hora='{h:02d}:00'>{h:02d}:00</button>" for h in rango)
+        + "</div></div>"
+        for t, rango in (("Mañana", range(6, 12)), ("Tarde", range(12, 18)), ("Noche", range(18, 24))))
+    busq = (
+        "<div class='busq' role='search'>"
+        f"<label class='seg donde'><small>Dónde</small><input id='sQ' placeholder='{'Busca academias por nombre o zona' if dep == 'academias' else 'Explora zonas, clubes o canchas'}' autocomplete='off'></label>"
+        "<label class='seg cuando'><small>Cuándo</small><input id='sF' placeholder='Agrega fecha' readonly data-iso=''></label>"
+        "<label class='seg hora'><small>Hora</small><input id='sH' placeholder='¿A qué hora?' readonly data-hora=''></label>"
+        f"<button class='lupa' id='btnBuscar' aria-label='Buscar'>{_LUPA}<span>Buscar</span></button>"
+        # Desplegable bajo "Dónde": recientes + zonas sugeridas
+        "<div class='sug' id='sugDonde'>"
+        "<div id='sugRecientes' style='display:none'><h5>Búsquedas recientes</h5><div id='sugRecientesLista'></div></div>"
+        "<h5>Zonas sugeridas</h5>"
+        "<button type='button' class='it cerca' data-cerca='1'><span class='ic'>🧭</span>"
+        "<div><b>Cerca de ti</b><small>Descubre canchas a tu alrededor</small></div></button>"
+        f"{sug_zonas}</div>"
+        # Calendario bajo "Cuándo" (dos meses, como Airbnb)
+        "<div class='sug centro cal-panel' id='panCuando'>"
+        "<div class='cal-modo'><button type='button' class='on' data-modo='fecha'>Fecha</button>"
+        "<button type='button' data-modo='libre'>Cualquier día</button></div>"
+        "<div class='cal-nav'><button type='button' class='cal-ant' aria-label='Mes anterior'>‹</button>"
+        "<button type='button' class='cal-sig' aria-label='Mes siguiente'>›</button></div>"
+        "<div class='cal-meses' id='calMeses'></div>"
+        "<div class='cal-atajos' id='calAtajos'></div></div>"
+        # Horas bajo "Hora"
+        "<div class='sug der hora-panel' id='panHora'>"
+        "<button type='button' class='it' data-hora=''><span class='ic'>🕐</span>"
+        "<div><b>Cualquier hora</b><small>Muestra todas las canchas abiertas</small></div></button>"
+        "<div class='hora-aviso' id='horaAviso' style='display:none'>Hoy ya no quedan horas por delante. Elige otro día en “Cuándo”.</div>"
+        f"{horas}</div>"
+        "</div>")
+    return ui.cabecera(tabs=tabs, busq=busq, ses=ses, volver="/")
+
+
+AMENIDAD_ICONO = {**{k: v[1] for k, v in catalogos.AMENIDADES.items()},
+                  "estacionamiento": "🅿️", "vestuarios": "👕", "iluminacion": "💡", "techada": "🏠",
+                  "tribuna": "🪑", "seguridad": "🛡️"}
+_RECOMENDADAS = ("parking", "luces", "vestuario", "techado", "estacionamiento", "iluminacion", "vestuarios", "techada")
+
+
+def _amenidades_de(lista: list[dict]) -> list[tuple[str, int]]:
+    """Amenidades presentes en las canchas listadas, de más a menos común."""
+    cuenta: dict[str, int] = {}
+    for c in lista:
+        for a in c.get("amenidades") or []:
+            a = str(a).strip().lower()
+            if a:
+                cuenta[a] = cuenta.get(a, 0) + 1
+    return sorted(cuenta.items(), key=lambda kv: (-kv[1], kv[0]))
+
+
+def _barra_filtros(lista: list[dict]) -> str:
+    """Como la barra de Airbnb bajo el buscador: botón "Filtros" + chips
+    rápidos con las amenidades más comunes (aplican al instante)."""
+    chips = "".join(
+        f"<button type='button' class='chip qam' data-am='{e(a)}'>{AMENIDAD_ICONO.get(a, '✓')} {e(AMENIDAD_NOMBRE.get(a, a.capitalize()))}</button>"
+        for a, _n in _amenidades_de(lista)[:6])
+    return ("<div class='barra-filtros'>"
+            "<button type='button' class='filtros' id='btnFiltros'><span class='ico'>⚙️</span> Filtros<span class='n' id='nFiltros' style='display:none'></span></button>"
+            f"<div class='qchips'>{chips}</div></div>")
+
+
+def _modal_filtros(lista: list[dict]) -> str:
+    """Modal "Filtros" tal cual Airbnb: recomendados (tarjetas con ícono),
+    tipo de local, rango de precios con histograma y dos topes, servicios del
+    local, superficie y duración del turno; pie con "Limpiar filtros" y
+    "Mostrar N canchas". Todo se cuenta en vivo y se aplica al pulsar Mostrar."""
+    ams = _amenidades_de(lista)
+    presentes = {a for a, _ in ams}
+    recomendadas = [a for a in _RECOMENDADAS if a in presentes] or [a for a, _ in ams[:4]]
+    tiles = "".join(
+        f"<button type='button' class='tile' data-am='{e(a)}'><span class='ico'>{AMENIDAD_ICONO.get(a, '✓')}</span>"
+        f"<span>{e(AMENIDAD_NOMBRE.get(a, a.capitalize()))}</span></button>" for a in recomendadas)
+    servicios = "".join(
+        f"<button type='button' class='chip fam' data-am='{e(a)}'>{AMENIDAD_ICONO.get(a, '✓')} {e(AMENIDAD_NOMBRE.get(a, a.capitalize()))}"
+        f" <small>({n})</small></button>" for a, n in ams)
+    sups = sorted({(c.get("superficie") or "").strip().lower() for c in lista} - {""})
+    superficies = "".join(f"<button type='button' class='chip fsup' data-sup='{e(x)}'>{e(x.capitalize())}</button>" for x in sups)
+    durs = sorted({int(c.get("duracion_slot_min") or 60) for c in lista})
+    duraciones = "".join(f"<button type='button' class='chip fdur' data-dur='{d}'>{d} min</button>" for d in durs)
+    return (
+        "<div class='modal' id='modalFiltros' role='dialog' aria-modal='true' aria-labelledby='modalTit'>"
+        "<div class='modal-caja'>"
+        "<div class='modal-cab'><button type='button' class='cerrar' id='cerrarFiltros' aria-label='Cerrar'>✕</button><h3 id='modalTit'>Filtros</h3></div>"
+        "<div class='modal-cuerpo'>"
+        + (f"<section><h4>Recomendado para ti</h4><div class='tiles'>{tiles}</div></section>" if tiles else "")
+        + "<section><h4>Rango de precios</h4><p class='sub' id='precioSub'>Precio por hora</p>"
+        "<div class='histo' id='histo'></div>"
+        "<div class='rango'><input type='range' id='rMin' min='0' max='100' value='0'><input type='range' id='rMax' min='0' max='100' value='100'></div>"
+        "<div class='topes'><label>Mínimo<div class='tope'><span id='monMin'></span><input type='number' id='pMin' min='0'></div></label>"
+        "<label>Máximo<div class='tope'><span id='monMax'></span><input type='number' id='pMax' min='0'></div></label></div></section>"
+        + (f"<section><h4>Servicios del local</h4><div class='chips'>{servicios}</div></section>" if servicios else "")
+        + (f"<section><h4>Superficie</h4><div class='chips'>{superficies}</div></section>" if superficies else "")
+        + (f"<section><h4>Duración del turno</h4><div class='chips'>{duraciones}</div></section>" if len(durs) > 1 else "")
+        + "</div>"
+        "<div class='modal-pie'><button type='button' class='limpiar' id='limpiarFiltros'>Limpiar filtros</button>"
+        "<button type='button' class='btn dark' id='mostrarFiltros'>Mostrar canchas</button></div>"
+        "</div></div>")
+
+
+def _hm_min(h: str, default: str) -> int:
+    """'HH:MM' → minutos del día (tolerante)."""
+    try:
+        hh, mm = (h or default).split(":")[:2]
+        return int(hh) * 60 + int(mm)
+    except Exception:  # noqa: BLE001
+        hh, mm = default.split(":")
+        return int(hh) * 60 + int(mm)
+
+
+def _agrupar_locales(lista: list[dict]) -> list[list[dict]]:
+    """Agrupa las canchas por LOCAL (`club`, sin distinguir mayúsculas), como
+    `Club.agrupar` del app: una tarjeta por local en el explorador. Una cancha
+    sin `club` es su propio local. Conserva el orden de llegada."""
+    orden: list[str] = []
+    mapa: dict[str, list[dict]] = {}
+    for c in lista:
+        club = (c.get("club") or "").strip().lower()
+        k = f"club:{club}" if club else f"id:{c['id']}"
+        if k not in mapa:
+            orden.append(k)
+            mapa[k] = []
+        mapa[k].append(c)
+    return [mapa[k] for k in orden]
+
+
+def _tarjeta(canchas: list[dict] | dict, ratings: dict | tuple | None = None, fecha: str = "") -> str:
+    """Tarjeta del explorador = UN LOCAL con sus canchas (queja del director,
+    sep-2026: "sigue saliendo el nombre de la cancha como nombre del local").
+    Igual que `ClubCard` del app: título = local, debajo zona, "N canchas ·
+    deportes · horario", precio "desde" el más barato y ★ promedio de todas
+    sus canchas. Enlaza a la ficha de la primera cancha (la ficha ya tiene
+    chips para cambiar de cancha dentro del local). Los `data-*` que usa el
+    JS (hora libre, precio, duración, superficie, amenidades, mapa, fotos)
+    reúnen los valores de TODAS las canchas del local (`data-ids`,
+    `data-pasos`, `data-sup` con varias superficies)."""
+    cs = [canchas] if isinstance(canchas, dict) else list(canchas)
+    if isinstance(ratings, tuple) or ratings is None:
+        ratings = {cs[0]["id"]: ratings} if ratings else {}
+    c = cs[0]
+    sim, _iso = _moneda_de(c)
+    local = _titulo_local(c)
+    deps: list[str] = []
+    for x in cs:
+        for d in _deportes_de(x):
+            if d not in deps:
+                deps.append(d)
+    deps_txt = " · ".join(_deporte(d)[0] for d in deps[:3])
+    nombres = " ".join(x["nombre"] for x in cs)
+    texto = f"{local} {nombres} {_zona(c)} {deps_txt} {c.get('direccion', '')}".lower()
+    sub = _zona(c) or (c.get("direccion") or "")
+    ok = all(datos.reservable(x) for x in cs)
+    fs: list[str] = []
+    for x in cs:
+        for u in _fotos(x):
+            if u not in fs:
+                fs.append(u)
+    if fs:
+        fotos = "".join(f"<img src='{e(u)}' alt='' loading='lazy'>" for u in fs[:5])
+    elif _sin_google(c):  # plazo de fotos propias vencido: sin Google
+        fotos = f"<div class='sinfoto'>{_deporte(c.get('deporte'))[1]}</div>"
+    else:
+        fotos = f"<div class='sinfoto' data-buscar='1'>{_deporte(c.get('deporte'))[1]}</div>"
+    extra = ""
+    if len(fs) > 1:
+        extra = ("<button class='flecha izq' aria-label='Anterior'>‹</button><button class='flecha der' aria-label='Siguiente'>›</button>"
+                 f"<div class='dots'>{''.join('<i></i>' for _ in fs[:5])}</div>")
+    badge = "<span class='badge'>✓ Verificada</span>" if ok else "<span class='badge pend'>Aún sin verificar</span>"
+    # ★ del local = promedio ponderado de las reseñas de todas sus canchas.
+    suma = 0.0
+    n_res = 0
+    for x in cs:
+        r = ratings.get(x["id"]) if isinstance(ratings, dict) else None
+        if r and r[1] > 0:
+            suma += float(r[0]) * int(r[1])
+            n_res += int(r[1])
+    if n_res:
+        rate = f"<span class='rate'>★ {suma / n_res:.1f}".replace(".", ",") + f" <span style='color:var(--tenue);font-weight:600'>({n_res})</span></span>"
+    else:
+        rate = "<span class='rate' style='color:var(--tenue);font-weight:600'>Nuevo</span>"
+    # Horario del local: el más temprano en abrir y el último en cerrar (el
+    # cierre que cruza medianoche cuenta como día siguiente).
+    aps = [(_hm_min(x.get("hora_apertura"), "07:00"), x.get("hora_apertura") or "07:00") for x in cs]
+    ap_txt = min(aps)[1]
+    cis = []
+    for x in cs:
+        a = _hm_min(x.get("hora_apertura"), "07:00")
+        ci = _hm_min(x.get("hora_cierre"), "23:00")
+        cis.append((ci + 1440 if ci <= a else ci, x.get("hora_cierre") or "23:00"))
+    ci_txt = max(cis)[1]
+    pasos: list[int] = []
+    for x in cs:
+        pv = int(x.get("duracion_slot_min") or 60)
+        if pv not in pasos:
+            pasos.append(pv)
+    paso_txt = "/".join(str(pv) for pv in sorted(pasos))
+    ams: list[str] = []
+    sups: list[str] = []
+    for x in cs:
+        for a in (x.get("amenidades") or []):
+            if str(a) not in ams:
+                ams.append(str(a))
+        sp = (x.get("superficie") or "").strip().lower()
+        if sp and sp not in sups:
+            sups.append(sp)
+    precios = [float(x.get("precio_hora") or 0) for x in cs if float(x.get("precio_hora") or 0) > 0]
+    pmin = min(precios) if precios else float(c.get("precio_hora") or 0)
+    # Todas las canchas del local cobran POR TURNO → se muestra el turno más
+    # barato ("S/ 15 por turno de 1 h 30"); si no, el precio por hora. El filtro
+    # de precios (`data-pnum`) siempre compara por hora.
+    todos_turno = all(float(x.get("precio_turno") or 0) > 0 for x in cs)
+    if todos_turno:
+        barato = min(cs, key=lambda x: float(x.get("precio_turno") or 0))
+        pvis, unidad = horarios.precio_publico(barato)
+        vistos = {float(x.get("precio_turno") or 0) for x in cs}
+    else:
+        pvis, unidad, vistos = pmin, "por hora", set(precios)
+    desde = "desde " if len(cs) > 1 and len(vistos) > 1 else ""
+    n = len(cs)
+    n_txt = f"{n} cancha{'s' if n != 1 else ''}"
+    base = f"/reservar/{c['id']}"
+    href = base + (f"?fecha={fecha}" if fecha else "")
+    ptxt = f"{pvis:.0f}" if abs(pvis - round(pvis)) < 0.005 else f"{pvis:.2f}"
+    precio_html = f"<b>{e(sim)} {ptxt}</b> <span style='color:var(--tenue)'>{e(unidad)}</span>"
+    if desde:
+        precio_html = f"<span style='color:var(--tenue)'>desde</span> " + precio_html
+    l3 = (f"<div class='l3'>{precio_html}</div>" if ok else
+          f"<div class='l3'>{precio_html}<br><span class='app'>📲 Reservar en la app</span></div>")
+    # Debajo del local, la(s) cancha(s): una sola → su nombre; varias → "N canchas".
+    canchas_txt = cs[0]["nombre"] if n == 1 and cs[0]["nombre"].strip().lower() != local.strip().lower() else n_txt
+    return (f"<a class='lst{'' if ok else ' pend'}' href='{e(href)}' data-base='{e(base)}' data-id='{e(c['id'])}' data-ids='{e(' '.join(x['id'] for x in cs))}' data-t='{e(texto)}' "
+            f"data-ap='{e(ap_txt)}' data-ci='{e(ci_txt)}' data-paso='{int(c.get('duracion_slot_min') or 60)}' data-pasos='{e(' '.join(str(pv) for pv in pasos))}' "
+            f"data-am='{e(' '.join(ams))}' data-sup='{e(' '.join(sups))}' data-mon='{e(sim)}' "
+            f"data-deps='{e(' '.join(deps))}' data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(local)}' data-club='{e(c.get('club', ''))}' "
+            f"data-sub='{e(sub)}' data-precio='{e(desde)}{e(sim)} {ptxt}' data-pnum='{pmin:.2f}' data-ok='{1 if ok else 0}'>"
+            f"<div class='foto'><div class='fotos'>{fotos}</div>{badge}"
+            f"<button class='corazon' aria-label='Guardar'>{_CORAZON}</button>{extra}</div>"
+            f"<div class='lb'><div class='l1'><b>{e(local)}</b>{rate}</div>"
+            f"<div class='l2'>{e(sub)}</div>"
+            f"<div class='l2'>{e(canchas_txt)} · {e(deps_txt)} · {e(ap_txt)}–{e(ci_txt)} · {e(paso_txt)} min <span class='dist'></span></div>"
+            f"{l3}</div></a>")
+
+
+# Redes de la academia (`Academia.redes`: red → @usuario o enlace). Íconos SVG
+# inline (currentColor) para no depender de fuentes ni emojis.
+_RED_SVG = ui.RED_SVG  # logos compartidos con el pie (redes oficiales) y la ficha de academia
+
+
+def _url_red(red: str, valor: str) -> str:
+    """Enlace directo a la red: acepta URL completa o @usuario (como lo guarda
+    el app). Vacío si no se puede armar."""
+    v = (valor or "").strip()
+    if not v:
+        return ""
+    if v.startswith("http://") or v.startswith("https://"):
+        return v
+    h = v.lstrip("@").strip("/ ")
+    if not h:
+        return ""
+    base = {"instagram": "https://instagram.com/{h}", "facebook": "https://facebook.com/{h}", "tiktok": "https://www.tiktok.com/@{h}",
+            "youtube": "https://youtube.com/@{h}", "web": "https://{h}"}.get(red)
+    return base.format(h=h) if base else ""
+
+
+def _botones_redes(a: dict) -> str:
+    """Un botón por red registrada, con su logo y enlace directo (pedido del
+    director, sep-2026). Sin redes → nada."""
+    redes = a.get("redes") if isinstance(a.get("redes"), dict) else {}
+    out = []
+    for red, nombre in catalogos.REDES.items():
+        url = _url_red(red, str(redes.get(red) or ""))
+        if url:
+            out.append(f" <span class='app red-{red}'><span class='wa' data-wa='{e(url)}'>{_RED_SVG.get(red, '')} {e(nombre)}</span></span>")
+    return "".join(out)
+
+
+def _landing_lista(academia_id: str) -> bool:
+    """La página pública `/l/{id}` solo existe si el dueño la GENERÓ desde el
+    app (`stores.landings`); si no, `/l/{id}` responde "Landing no disponible"."""
+    try:
+        from db.store import stores as _st
+        return academia_id in (_st.landings or {})
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _tarjeta_academia(a: dict) -> str:
+    """Tarjeta de ACADEMIA en el explorador (pedido del director, sep-2026:
+    las academias también se ven por deporte y por cercanía). Enlaza a su
+    página pública `/l/{id}`; WhatsApp y Cómo llegar como las descubiertas.
+    Comparte la grilla y el orden por distancia de las canchas (`.lst.aca`,
+    `data-lat/lng`) pero NO entra en los filtros de hora, precio ni amenidades."""
+    dep = (a.get("deporte") or "").lower()
+    dep_nombre, emoji = _deporte(dep) if dep else ("Academia", "🎓")
+    iso = _pais_de(a) if (a.get("lat") or a.get("lng")) else ""
+    sim = (a.get("moneda") or "").strip() or (simbolo_de_moneda(moneda_de_pais(iso)) if iso else "S/")
+    precios = [float(p.get("precioMes") or 0) for p in (a.get("planes") or []) if isinstance(p, dict) and float(p.get("precioMes") or 0) > 0]
+    programas = {str(p.get("programa") or p.get("nombre") or "") for p in (a.get("planes") or []) if isinstance(p, dict)}
+    desde = f"<b>{e(sim)} {min(precios):.0f}</b> <span style='color:var(--tenue)'>al mes desde</span>" if precios else "<span style='color:var(--tenue)'>Consulta precios</span>"
+    fs = [u for u in ([a.get("logoUrl")] + list(a.get("fotos") or [])) if isinstance(u, str) and u.startswith("http")]
+    foto = "".join(f"<img src='{e(u)}' alt='' loading='lazy'>" for u in fs[:3]) if fs else f"<div class='sinfoto'>{emoji}</div>"
+    extra = ""
+    if len(fs) > 1:
+        extra = ("<button class='flecha izq' aria-label='Anterior'>‹</button><button class='flecha der' aria-label='Siguiente'>›</button>"
+                 f"<div class='dots'>{''.join('<i></i>' for _ in fs[:3])}</div>")
+    tel = re.sub(r"\D", "", str(a.get("whatsapp") or ""))
+    pref = catalogos.TEL_PREFIJO.get(iso or "PE", "51")
+    if tel and not tel.startswith(pref) and len(tel) <= 10:
+        tel = pref + tel
+    # OJO: la tarjeta ya es un <a>; un <a> anidado rompe el HTML (el navegador parte la tarjeta). Va como <span> con manejador, igual que "Cómo llegar".
+    wa = (f" <span class='app'>💬 <span class='wa' data-wa='https://wa.me/{tel}?text=Hola,%20vi%20tu%20academia%20en%20Pichangol'>WhatsApp</span></span>" if tel else "")
+    ir = (f" <span class='app'>📍 <span class='ir' data-lat='{a.get('lat')}' data-lng='{a.get('lng')}'>Cómo llegar</span></span>" if a.get("lat") or a.get("lng") else "")
+    sub = " · ".join(x for x in (a.get("sedeClub"), a.get("zona")) if x)
+    n_prog = len([x for x in programas if x])
+    texto = f"{a.get('nombre', '')} {a.get('sedeClub', '')} {a.get('zona', '')} {dep_nombre} academia clases".lower()
+    # La tarjeta abre la FICHA WEB /academia/{id} (programas, tarifario y
+    # matrícula), que existe siempre; la landing /l/{id} (marketing, la genera
+    # el dueño desde el app) se enlaza desde la ficha si existe.
+    redes_html = _botones_redes(a)
+    ver = "<span class='app'>Ver academia</span>"
+    return (f"<a class='lst aca' href='/academia/{e(a['id'])}' data-id='ac:{e(a['id'])}' data-t='{e(texto)}' data-deps='{e(dep)}' "
+            f"data-lat='{a.get('lat') or ''}' data-lng='{a.get('lng') or ''}' data-nombre='{e(a.get('nombre', ''))}' data-sub='{e(sub)}' "
+            f"data-precio='🎓 {e(dep_nombre)}' data-ok='1'>"
+            f"<div class='foto'><div class='fotos'>{foto}</div><span class='badge aca'>🎓 Academia</span>{extra}</div>"
+            f"<div class='lb'><div class='l1'><b>{e(a.get('nombre', ''))}</b><span class='rate'>{emoji} {e(dep_nombre)}</span></div>"
+            f"<div class='l2'>{e(sub) or e(a.get('descripcion', '')[:60])}</div>"
+            f"<div class='l2'>{(str(n_prog) + ' programa' + ('s' if n_prog != 1 else '') + ' · ') if n_prog else ''}<span class='dist'></span></div>"
+            f"<div class='l3'>{desde}<br>{ver}{redes_html}{wa}{ir}</div></div></a>")
+
+
+def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None, hora: str = "") -> HTMLResponse:
+    """RAÍZ del dominio, tipo Airbnb: buscador en pastilla, categorías por
+    deporte, grilla de tarjetas con foto/corazón/★, "Mostrar mapa" (split
+    view en escritorio), cercanía por ubicación y canchas descubiertas en
+    Google; debajo, las secciones de marca/comercio (servicios y precios,
+    términos, cancelaciones, Libro de Reclamaciones) que revisan Culqi e
+    INDECOPI."""
+    # Solo canchas APROBADAS (verificada + dueño), como el explorador del app:
+    # una cancha en verificación no sale al público hasta que la torre la
+    # apruebe (regla del director, sep-2026; antes salían con "Aún sin verificar").
+    todas = [c for c in datos.canchas_publicas() if datos.reservable(c)]
+    dep = (deporte or "").strip().lower()
+    # Pestaña "🎓 Academias" (pedido del director, sep-2026): solo academias,
+    # de todos los deportes; sin canchas registradas ni descubiertas.
+    solo_aca = dep == "academias"
+    lista = [] if solo_aca else [c for c in todas if not dep or dep in _deportes_de(c)]
+    fecha = fecha if _es_iso(fecha) else ""
+    ratings = datos.ratings([c["id"] for c in lista])
+    print(f"[explorar] dep={dep or '*'} {len(lista)} canchas: " + " | ".join(
+        f"{c['nombre']} {c['hora_apertura']}-{c['hora_cierre']}/{c['duracion_slot_min']}m{'' if datos.reservable(c) else ' (pend)'}"
+        for c in lista[:20]), flush=True)
+    por_pais: dict[str, list[dict]] = {}
+    for c in lista:
+        por_pais.setdefault(_pais_de(c), []).append(c)
+    cuerpo = ("<div class='ubic-mini'><span>📍</span><span id='ubicTxt'>Permite tu ubicación para ver primero las canchas más cercanas.</span>"
+              "<button id='btnUbic'>Usar mi ubicación</button><span id='resBusq'></span></div>")
+    if not solo_aca:  # amenidades / precio por hora no aplican a academias
+        cuerpo += _barra_filtros(lista) + _modal_filtros(lista)
+    cuerpo += "<div class='expl' id='expl'><div class='lista'><div id='grupos'>"
+    for pais in ("PE", "EC", "BO"):
+        lst = por_pais.get(pais) or []
+        if not lst:
+            continue
+        cards = "".join(_tarjeta(grupo, ratings, fecha) for grupo in _agrupar_locales(lst))  # una tarjeta por LOCAL, como el app
+        cuerpo += (f"<section class='grupo-pais' data-pais='{pais}'><div class='tit'><h2>{ui.bandera(pais)} Canchas en {NOMBRE_PAIS[pais]}"
+                   f"<span class='cerca'></span></h2></div><div class='lst-grid'>{cards}</div></section>")
+    cuerpo += "</div>"
+    if solo_aca:
+        cuerpo += "<div class='vacio' id='vacio' data-base='' style='display:none'>No encontramos academias con esa búsqueda. Prueba con otro nombre o zona.</div>"
+    elif not lista:
+        cuerpo += ("<div class='vacio' id='vacio'><h3>Todavía no hay canchas publicadas aquí</h3>"
+                   "<p class='sub'>Estamos sumando locales. En la app ya puedes explorar el mapa completo.</p>"
+                   f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+    else:
+        cuerpo += "<div class='vacio' id='vacio' data-base='' style='display:none'>No hay canchas libres con esa búsqueda. Prueba con otra zona, día u hora.</div>"
+    if todas and not lista and not solo_aca:
+        cuerpo += ("<div class='vacio'>Todavía no hay canchas de este deporte. "
+                   "<a href='/canchas'>Ver todas las canchas</a></div>")
+    dep_aca = "" if solo_aca else dep
+    acads = [a for a in datos.academias_publicas() if isinstance(a, dict) and a.get("nombre") and (not dep_aca or (a.get("deporte") or "").lower() == dep_aca)]
+    if acads:
+        titulo_aca = "Academias" + (f" de {_deporte(dep_aca)[0].lower()}" if dep_aca else "")
+        cuerpo += (f"<section id='academias' class='grupo-aca'><div class='tit'><h2>🎓 {e(titulo_aca)}<span class='cerca'></span></h2></div>"
+                   "<p class='sub' style='margin:-4px 0 12px'>Clases y programas por nivel. Entra a su página, escribe por WhatsApp o matricúlate en línea.</p>"
+                   f"<div class='lst-grid' id='gridAca'>{''.join(_tarjeta_academia(a) for a in acads)}</div></section>")
+    elif solo_aca:
+        cuerpo += ("<div class='vacio'><h3>Todavía no hay academias publicadas</h3>"
+                   "<p class='sub'>Si tienes una academia, publícala desde Modo anfitrión → Mi academia.</p>"
+                   "<div class='acciones' style='justify-content:center'><a class='btn' href='/anfitrion/academia'>Publicar mi academia</a>"
+                   "<a class='btn sec' href='/canchas'>Ver canchas</a></div></div>")
+    if not solo_aca:
+        cuerpo += ("<section id='descubiertas' style='display:none'><div class='tit'><h2>Más canchas cerca de ti</h2></div>"
+                   "<p class='sub' style='margin:-4px 0 12px'>Locales que aún no están en Pichangol. Reserva desde la app o, si es tu "
+                   "cancha, ¡Reclámala! y empieza a recibir reservas.</p><div class='lst-grid' id='gridDesc'></div></section>")
+    cuerpo += "</div><aside class='mapa-lado'><div class='mapa' id='mapa' aria-label='Mapa de canchas'></div></aside></div>"
+    cuerpo += "<button class='btn-mapa' id='btnMapa'><span>Mostrar mapa</span> 🗺️</button>"
+    css_m, html_m, js_m = marca.secciones()
+    if html_m:
+        cuerpo += f"<div class='marca'>{html_m}</div>"
+    centro = list(CIUDAD_DEFECTO["PE"])
+    c0 = lista[0] if lista else next((a for a in acads if a.get("lat") and a.get("lng")), None)
+    if c0:
+        centro = [c0.get("lat") or centro[0], c0.get("lng") or centro[1]]
+    hora = hora if horarios.hora_en_minutos(hora) is not None else ""
+    cfg = json.dumps({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro, "play": PLAY_URL, "dep": dep,
+                      "fecha": fecha, "hora": hora, "diasAdelante": DIAS_ADELANTE, "lugares": bool(config.PLACES_API_KEY)})
+    head = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
+            "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>"
+            + (f"<style>{css_m}</style>" if css_m else ""))
+    cuerpo += f"<script>window.__explorar={cfg};</script><script>{_JS_EXPLORAR}</script>"
+    if js_m:
+        cuerpo += f"<script>{js_m}</script>"
+    canonical = f"{config.PUBLIC_BASE_URL.rstrip('/')}/" if getattr(config, "PUBLIC_BASE_URL", "") else ""
+    ses = sesion.de_request(request)
+    titulo_tab = ("Pichangol · Academias deportivas cerca de ti" if solo_aca
+                  else "Pichangol · Reserva canchas de fútbol, tenis y pádel")
+    desc = ("Academias de tenis, fútbol, pádel y más cerca de ti: programas, tarifario y matrícula en línea." if solo_aca
+            else "Reserva canchas de fútbol, tenis y pádel cerca de ti y paga con Yape o tarjeta. Perú, Ecuador y Bolivia.")
+    return ui.shell("Pichangol", cuerpo, extra_head=head, nav=_nav_explorar(dep, ses, _zonas_sugeridas(lista)), ancho=True, sesion=ses,
+                    titulo_tab=titulo_tab, canonical=canonical, desc=desc)
+
+
+@router.get("/", response_class=HTMLResponse, include_in_schema=False)
+def pagina_inicio(request: Request, deporte: str = "", fecha: str = "", hora: str = "") -> HTMLResponse:
+    return _explorar(deporte, fecha, request, hora)
+
+
+@router.get("/canchas", response_class=HTMLResponse)
+def pagina_canchas(request: Request, deporte: str = "", fecha: str = "", hora: str = "") -> HTMLResponse:
+    """Alias histórico del explorador (enlaces de la app, la home y el pie)."""
+    return _explorar(deporte, fecha, request, hora)
+
+
+# ── descubrir (Google Places, como el APK) ────────────────────────────────────
+
+@router.get("/web/descubrir")
+def descubrir_web(lat: float, lng: float, fotos: int = 0, deporte: str = "") -> dict:
+    """Canchas que Google conoce cerca del usuario y aún no están en Pichangol:
+    salen en el explorador con "Reservar en la app". Misma Edge Function y
+    heurística que el APK; caché por zona. `deporte` = la pestaña activa (en
+    Tenis no salen canchas de fútbol; queja del director, sep-2026)."""
+    region = pais_de_coordenadas(lat, lng)
+    reg = [{"nombre": c.get("nombre"), "club": c.get("club"), "lat": c.get("lat"), "lng": c.get("lng")}
+           for c in datos.canchas_publicas() if datos.reservable(c) or (c.get("dueno") or "").strip()]
+    lista = descubrir.descubrir_cerca(lat, lng, region=region, fotos=bool(fotos), registradas=reg)
+    dep = (deporte or "").strip().lower()
+    if dep:
+        lista = [c for c in lista if (c.get("deporte") or "").lower() == dep]
+    for c in lista:
+        c["deporte_nombre"], c["emoji"] = _deporte(c["deporte"])
+        if c.get("fotos"):
+            descubrir.recordar_fotos_edge(c)  # cosecha gratis: ya las pagó la Edge
+    return {"ok": True, "region": region, "canchas": lista}
+
+
+# ── sesión con Google (mismo flujo que el APK) ────────────────────────────────
+
+class SesionReq(BaseModel):
+    credential: str
+
+
+@router.post("/web/sesion")
+def abrir_sesion(req: SesionReq, response: Response) -> dict:
+    """Recibe el ID token del botón de Google, lo verifica y deja la cookie
+    firmada de sesión (30 días). Sin `GOOGLE_WEB_CLIENT_ID` → no disponible."""
+    if not sesion.activo():
+        return {"ok": False, "error": "no_configurado"}
+    u = sesion.verificar_id_token(req.credential)
+    if not u:
+        return {"ok": False, "error": "token_invalido"}
+    sesion.poner_cookie(response, sesion.emitir(u))
+    # Celular del perfil (el mismo del app) para prellenar "Tus datos".
+    return {"ok": True, **u, "celular": datos.celular_de_perfil(u.get("email", ""))}
+
+
+class SesionPruebaReq(BaseModel):
+    usuario: str
+    clave: str
+
+
+_revision_intentos: dict[str, tuple[int, float]] = {}   # ip -> (fallos, bloqueado_hasta)
+
+
+@router.post("/web/sesion/prueba")
+def abrir_sesion_prueba(req: SesionPruebaReq, request: Request, response: Response) -> dict:
+    """Acceso de REVISIÓN (Culqi/INDECOPI): usuario + contraseña de
+    `WEB_USUARIOS_PRUEBA` → la misma cookie firmada que el login con Google, así
+    el revisor reserva, paga y ve el comprobante como un cliente. Anti fuerza
+    bruta por IP real (5 fallos → 5 min)."""
+    if not sesion.revision_activa():
+        return {"ok": False, "error": "no_configurado"}
+    xff = request.headers.get("x-forwarded-for", "")
+    ip = (xff.split(",")[0].strip() if xff else (request.client.host if request.client else "?"))[:64]
+    fallos, hasta = _revision_intentos.get(ip, (0, 0.0))
+    if time.time() < hasta:
+        return {"ok": False, "error": "demasiados_intentos"}
+    if not sesion.credenciales_prueba_validas(req.usuario, req.clave):
+        fallos += 1
+        _revision_intentos[ip] = (0, time.time() + 300) if fallos >= 5 else (fallos, 0.0)
+        print(f"[web] acceso de revisión fallido usuario={req.usuario!r} ip={ip}", flush=True)
+        return {"ok": False, "error": "credenciales_invalidas"}
+    _revision_intentos.pop(ip, None)
+    u = {"email": req.usuario.strip().lower(), "nombre": "Cuenta de revisión", "foto": ""}
+    sesion.poner_cookie(response, sesion.emitir(u))
+    print(f"[web] acceso de revisión OK usuario={u['email']} ip={ip}", flush=True)
+    return {"ok": True, **u}
+
+
+@router.post("/web/salir")
+def cerrar_sesion(response: Response) -> dict:
+    sesion.borrar_cookie(response)
+    return {"ok": True}
+
+
+@router.get("/web/sesion")
+def ver_sesion(request: Request) -> dict:
+    u = sesion.de_request(request)
+    return {"ok": True, "activo": sesion.activo(), "sesion": u}
+
+
+def _volver_seguro(volver: str) -> str:
+    v = (volver or "").strip()
+    return v if v.startswith("/") and not v.startswith("//") else "/"
+
+
+@router.get("/entrar", response_class=HTMLResponse)
+def pagina_entrar(request: Request, volver: str = "/") -> HTMLResponse:
+    """Inicio de sesión con Google (como en el app). Al entrar vuelve a la
+    página desde la que se pidió (`volver`)."""
+    v = _volver_seguro(volver)
+    ses = sesion.de_request(request)
+    if ses or not sesion.activo():
+        return HTMLResponse("", status_code=302, headers={"Location": v})
+    cuerpo = ("<div class='panel' style='max-width:460px;margin:40px auto;text-align:center'>"
+              f"<div style='margin-bottom:8px'>{ui.wordmark(26, '/')}</div>"
+              "<h1 style='font-size:22px'>Inicia sesión para reservar</h1>"
+              "<p class='sub'>Usa tu cuenta de Google, la misma del app: tus reservas quedan en "
+              "\"Mis reservas\" y el comprobante llega a tu correo.</p>"
+              f"<div style='display:flex;justify-content:center;margin:22px 0 10px'>{sesion.boton_google()}</div>"
+              "<div class='estado bad' id='sesionErr'></div>"
+              "<p class='sub' style='font-size:12.5px'>Al continuar aceptas los <a href='/legal/terminos'>términos</a> y la "
+              "<a href='/legal/privacidad'>política de privacidad</a>.</p>"
+              + (("<div id='revision' style='margin-top:18px;padding-top:16px;border-top:1px solid #eee;text-align:left'>"
+                  "<b style='font-size:14px'>Acceso de revisión</b>"
+                  "<div class='sub' style='font-size:12.5px;margin:2px 0 10px'>Para revisores (Culqi, INDECOPI): usa el usuario y la contraseña que te entregó Pichangol.</div>"
+                  "<label for='revUsr' style='font-size:12.5px;font-weight:700'>Usuario</label>"
+                  "<input id='revUsr' autocomplete='username' maxlength='120' style='width:100%;margin:4px 0 10px'>"
+                  "<label for='revPwd' style='font-size:12.5px;font-weight:700'>Contraseña</label>"
+                  "<input id='revPwd' type='password' autocomplete='current-password' maxlength='120' style='width:100%;margin:4px 0 12px'>"
+                  "<button type='button' class='btn' style='width:100%' onclick='entrarRevision()'>Entrar como revisor</button>"
+                  "<div class='estado bad' id='revErr'></div></div>") if sesion.revision_activa() else "")
+              + "</div>"
+              f"<script>window.alIniciarSesion=function(){{location.href={json.dumps(v)};}};{sesion.JS_SESION}"
+              "window.entrarRevision=function(){var u=document.getElementById('revUsr').value.trim(),c=document.getElementById('revPwd').value,er=document.getElementById('revErr');er.textContent='';"
+              "fetch('/web/sesion/prueba',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({usuario:u,clave:c})}).then(function(r){return r.json();})"
+              ".then(function(j){if(j&&j.ok){window.alIniciarSesion(j);}else{er.textContent=j&&j.error==='demasiados_intentos'?'Demasiados intentos. Espera 5 minutos.':'Usuario o contraseña incorrectos.';er.style.display='block';}})"
+              ".catch(function(){er.textContent='Sin conexión. Inténtalo de nuevo.';er.style.display='block';});};"
+              "var rp=document.getElementById('revPwd');if(rp)rp.addEventListener('keydown',function(e){if(e.key==='Enter')entrarRevision();});</script>")
+    return ui.shell("Iniciar sesión", cuerpo, extra_head=sesion.GIS_SCRIPT, sesion=None)
+
+
+@router.get("/web/lugares")
+def lugares_web(q: str = "", lat: float | None = None, lng: float | None = None) -> dict:
+    """Busca un local en Google por NOMBRE (para "Pon tu cancha"). Sin
+    `PLACES_API_KEY` responde `disponible:false` y el formulario esconde la caja."""
+    if not config.PLACES_API_KEY:
+        return {"ok": True, "disponible": False, "lugares": []}
+    region = pais_de_coordenadas(lat, lng) if lat is not None else "PE"
+    lugares = descubrir.buscar_lugares(q, lat, lng, region=region)
+    for l in lugares:  # etiqueta + emoji como las descubiertas (el explorador reusa la tarjeta)
+        l["deporte_nombre"], l["emoji"] = _deporte(l["deporte"]) if l.get("deporte") else ("Cancha", "🏟️")
+    return {"ok": True, "disponible": True, "lugares": lugares}
+
+
+@router.get("/web/foto")
+def foto_web(id: str = "", nombre: str = "", club: str = "", lat: float = 0.0, lng: float = 0.0,
+             refrescar: int = 0, x_admin_token: str | None = Header(default=None)) -> dict:
+    """PRIMERA FOTO de una cancha sin fotos propias (regla del director: la web
+    muestra siempre la primera foto, como el app). Para una cancha registrada
+    (`id`) usa sus fotos si las tiene; si no, resuelve las de Google en su
+    ubicación (mismo criterio que `enriquecerSembradas` del APK). Para una
+    descubierta (`gp_…`) o cualquier lugar, por nombre + coordenadas.
+    Un lugar de OpenStreetMap (`osm_…`) NUNCA pide nada a Google: sin foto
+    (placeholder del deporte), sin tocar la base ni la Edge."""
+    if _es_osm(id):
+        return {"ok": True, "fotos": [], "origen": "osm"}
+    c = datos.cancha(id) if id and not id.startswith("gp_") else None
+    if c:
+        propias = _fotos(c)
+        if propias:
+            return {"ok": True, "fotos": propias[:5], "origen": "propias"}
+        if _sin_google(c):
+            # FOTOS PROPIAS DE LOS LOCALES: plazo vencido sin fotos → nunca
+            # se le pide a Google (ahorro; placeholder del deporte).
+            return {"ok": True, "fotos": [], "origen": "sin_google"}
+        nombre, club = c.get("nombre") or nombre, c.get("club") or club
+        lat, lng = c.get("lat") or lat, c.get("lng") or lng
+    if not (nombre or club) or (not lat and not lng):
+        return {"ok": False, "fotos": []}
+    region = pais_de_coordenadas(lat, lng)
+    place_id = id[3:] if id.startswith("gp_") else ""
+    # `refrescar=1` + token de admin: salta cachés y cosecha (diagnóstico).
+    # Solo con la CABECERA X-Admin-Token (sesión de la torre o token clásico); el
+    # token ya no se acepta en la URL, donde queda en logs y en el historial.
+    from propiedad import admin_auth as _aa
+    forzar = bool(refrescar) and _aa.token_admin_valido(x_admin_token)
+    fotos = descubrir.fotos_de_lugar(nombre, club, lat, lng, region=region, place_id=place_id,
+                                     cancha_id="" if place_id else id, forzar=forzar)
+    return {"ok": True, "fotos": fotos, "origen": "google" if fotos else ""}
+
+
+# ── disponibilidad ────────────────────────────────────────────────────────────
+
+def _fechas_validas(pais: str) -> tuple[str, str]:
+    hoy = horarios.ahora_local(pais).date()
+    return hoy.isoformat(), (hoy + timedelta(days=DIAS_ADELANTE)).isoformat()
+
+
+def _slots_del_dia(c: dict, fecha: str) -> list[dict]:
+    """Slots del día con precio y estado. Hoy: se omiten los que ya pasaron."""
+    pais = _pais_de(c)
+    ahora = horarios.ahora_local(pais)
+    desde = None
+    if fecha == ahora.date().isoformat():
+        desde = ahora.hour * 60 + ahora.minute + 1
+    paso = c["duracion_slot_min"]
+    horas = horarios.slots(c["hora_apertura"], c["hora_cierre"], paso, desde)
+    fechas = sorted({horarios.fecha_real(fecha, c["hora_apertura"], c["hora_cierre"], h) for h in horas} | {fecha})
+    ocup = datos.ocupados(c["id"], fechas)
+    desc = datos.descuentos(c["id"], fechas)
+    out = []
+    for h in horas:
+        fr = horarios.fecha_real(fecha, c["hora_apertura"], c["hora_cierre"], h)
+        out.append({
+            "hora": h, "fin": horarios.hora_fin(h, paso), "fecha": fr,
+            "precio": horarios.precio_turno_de(c, h, desc.get((fr, h), 0)),
+            "ocupado": (fr, h) in ocup,
+            "valle": c["descuento_valle"] > 0 and horarios.es_valle(h, c["valle_desde"], c["valle_hasta"]),
+            "promo": desc.get((fr, h), 0),
+        })
+    return out
+
+
+@router.get("/web/disponibilidad/{cancha_id}")
+def disponibilidad(cancha_id: str, fecha: str = "") -> dict:
+    c = datos.cancha(cancha_id)
+    if not c:
+        return {"ok": False, "error": "no_encontrada"}
+    d_min, d_max = _fechas_validas(_pais_de(c))
+    if not fecha or not _es_iso(fecha):
+        return {"ok": False, "error": "fecha_invalida"}
+    if not (d_min <= fecha <= d_max):
+        return {"ok": False, "error": "fecha_fuera_de_rango", "min": d_min, "max": d_max}
+    sim, iso = _moneda_de(c)
+    return {"ok": True, "fecha": fecha, "moneda": sim, "moneda_iso": iso,
+            "slots": _slots_del_dia(c, fecha)}
+
+
+def _hora_libre(c: dict, fecha: str, hora: str, ocup: set[tuple[str, str]]) -> bool:
+    """¿Hay un turno LIBRE que cubra [hora] ese día? (inicio <= hora < fin,
+    misma lógica de slots, madrugada y turnos ya pasados que la ficha)."""
+    h = horarios.hora_en_minutos(hora)
+    if h is None:
+        return False
+    ap, ci = c["hora_apertura"], c["hora_cierre"]
+    ini = horarios.hora_en_minutos(ap)
+    if ini is not None and h < ini and horarios.slot_es_madrugada(ap, ci, hora):
+        h += 24 * 60  # 00:30 en una cancha 18:00→02:00 es la madrugada del día siguiente
+    ahora = horarios.ahora_local(_pais_de(c))
+    desde = ahora.hour * 60 + ahora.minute + 1 if fecha == ahora.date().isoformat() else None
+    paso = c["duracion_slot_min"]
+    for s_ in horarios.slots(ap, ci, paso, desde):
+        m = horarios.hora_en_minutos(s_)
+        if m is None:
+            continue
+        if m < (ini or 0):
+            m += 24 * 60
+        if m <= h < m + paso:
+            return (horarios.fecha_real(fecha, ap, ci, s_), s_) not in ocup
+    return False
+
+
+@router.get("/web/libres")
+def libres(fecha: str = "", hora: str = "") -> dict:
+    """Buscador de la portada: qué canchas reservables tienen un turno libre
+    que cubra [hora] el día [fecha] (una sola consulta de ocupados para todas)."""
+    if not fecha or not _es_iso(fecha) or horarios.hora_en_minutos(hora) is None:
+        return {"ok": False, "error": "parametros_invalidos"}
+    hoy = horarios.ahora_local("PE").date()
+    try:
+        d = date.fromisoformat(fecha)
+    except ValueError:
+        return {"ok": False, "error": "parametros_invalidos"}
+    if not (hoy - timedelta(days=1) <= d <= hoy + timedelta(days=DIAS_ADELANTE + 1)):
+        return {"ok": False, "error": "fecha_fuera_de_rango"}
+    canchas = [c for c in datos.canchas_publicas() if datos.reservable(c)]
+    fechas = [fecha, (d + timedelta(days=1)).isoformat()]
+    ocup = datos.ocupados_varias([c["id"] for c in canchas], fechas)
+    out = {c["id"]: _hora_libre(c, fecha, hora, ocup.get(c["id"], set())) for c in canchas}
+    # Diagnóstico en los logs de Railway (como las líneas [foto]): horario real de cada cancha y el veredicto.
+    print(f"[libres] {fecha} {hora}: " + " | ".join(
+        f"{c['nombre']} {c['hora_apertura']}-{c['hora_cierre']}/{c['duracion_slot_min']}m "
+        f"{'libre' if out[c['id']] else ('ocupada' if any(h == hora for _f, h in ocup.get(c['id'], set())) else 'sin turno')}"
+        for c in canchas[:20]), flush=True)
+    return {"ok": True, "fecha": fecha, "hora": hora, "libres": out}
+
+
+def _es_iso(s: str) -> bool:
+    try:
+        date.fromisoformat(s)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+# ── página de reserva ─────────────────────────────────────────────────────────
+
+_JS_RESERVA = r"""
+(function(){
+  var C = window.__cancha, sel = {}, slots = [], hold = null, fechaSel = C.fecha || C.hoy;
+  // SEÑA del dueño (como el app): por defecto se adelanta la seña y el resto se paga en la
+  // cancha; el cliente puede elegir "Pagar todo ahora". Con boleador todo va en línea.
+  var modoPago = (C.senaPct > 0) ? 'sena' : 'total';
+  function esSena(){ return C.senaPct > 0 && modoPago === 'sena' && !bolLinea() && !bonoActivo(); }
+  function senaTotal(){ var t = 0; Object.keys(sel).forEach(function(k){ t += Math.floor(sel[k].precio * C.senaPct / 100 + 0.5); }); return t; }
+  var $ = function(id){ return document.getElementById(id); };
+  var fmt = function(n){ return C.moneda + ' ' + Number(n).toFixed(2); };
+  var esc = function(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+  function extrasSel(){
+    // precio = TOTAL de la línea: por persona × cantidad elegida, por turno × turnos reservados.
+    var n = Object.keys(sel).length || 1;
+    return Array.prototype.map.call(document.querySelectorAll('input[name=extra]:checked'), function(x){
+      var unit = parseFloat(x.value)||0, tipo = x.dataset.tipo || 'reserva', cant = 1;
+      if(tipo === 'persona'){ var sc = x.parentNode.querySelector('select.cant'); cant = sc ? (parseInt(sc.value)||1) : 1; }
+      else if(tipo === 'turno'){ cant = n; }
+      return {clave: x.dataset.clave, nombre: x.dataset.nombre, tipo: tipo, cantidad: cant, unitario: unit, precio: unit * cant}; });
+  }
+  document.addEventListener('change', function(ev){
+    var t = ev.target; if(!t) return;
+    if(t.name === 'extra'){ var sc = t.parentNode.querySelector('select.cant'); if(sc) sc.disabled = !t.checked; }
+    if(t.name === 'extra' || (t.classList && t.classList.contains('cant'))) pintarResumen();
+    if(t.id === 'benBono'){ usarBono = t.checked; pintarResumen(); }
+    if(t.id === 'benPts'){ usarPts = t.checked; pintarResumen(); }
+  });
+  // BOLEADOR / SPARRING (sep-2026): la lista depende de fecha, hora y turnos (disponibilidad y
+  // otras solicitudes del boleador), así que se pide al servidor cada vez que cambia la selección.
+  var bolSel = null, bolLista = [], bolClave = '';
+  function bolLinea(){
+    if(!C.boleadores || !bolSel) return null;
+    var n = Object.keys(sel).length || 1;
+    return {clave: 'boleador', nombre: C.nombreBoleador + ' · ' + bolSel.nombre, cantidad: n, unitario: bolSel.tarifa, precio: bolSel.tarifa * n, slug: bolSel.slug};
+  }
+  function pintarBoleadores(){
+    var box = $('bolBox'); if(!box) return;
+    if(!bolLista.length){ box.innerHTML = '<span class="sub">' + (Object.keys(sel).length ? 'Ningún ' + C.nombreBoleador.toLowerCase() + ' disponible para ese horario.' : 'Elige un horario para ver quién puede atenderte.') + '</span>'; return; }
+    box.innerHTML = bolLista.map(function(b){
+      var ini = b.foto ? '<img src="' + esc(b.foto) + '" alt="">' : '<span class="ini">' + esc((b.nombre || '?').charAt(0).toUpperCase()) + '</span>';
+      var det = [b.etiquetas && b.etiquetas.length ? b.etiquetas.slice(0, 3).join(' · ') : '', b.aceptadas ? b.aceptadas + ' boleos' : 'Nuevo en Pichangol'].filter(Boolean).join(' · ');
+      return '<div class="bol-card' + (bolSel && bolSel.slug === b.slug ? ' sel' : '') + '" data-slug="' + esc(b.slug) + '" role="button" tabindex="0">' + ini +
+             '<div><span class="nom">' + esc(b.nombre) + '</span><span class="cat">' + esc(b.categoria) + '</span><div class="det">' + esc(det) + '</div></div>' +
+             '<div class="pre">' + fmt(b.tarifa) + '<small>por turno</small></div><span class="chk">✓</span></div>';
+    }).join('');
+    box.querySelectorAll('.bol-card').forEach(function(el){
+      el.addEventListener('click', function(){
+        var s = el.dataset.slug;
+        bolSel = (bolSel && bolSel.slug === s) ? null : bolLista.filter(function(b){ return b.slug === s; })[0] || null;
+        pintarBoleadores(); pintarResumen();
+      });
+    });
+  }
+  function cargarBoleadores(){
+    if(!C.boleadores || !$('bolBox')) return;
+    var ks = Object.keys(sel).sort();
+    if(!ks.length){ bolLista = []; bolSel = null; bolClave = ''; pintarBoleadores(); return; }
+    var p = sel[ks[0]], clave = p.fecha + '|' + p.hora + '|' + ks.length + '|' + deporteSel();
+    if(clave === bolClave) return;
+    bolClave = clave;
+    fetch('/boleadores/disponibles?cancha_id=' + encodeURIComponent(C.id) + '&fecha=' + encodeURIComponent(p.fecha) + '&hora=' + encodeURIComponent(p.hora) + '&turnos=' + ks.length + '&deporte=' + encodeURIComponent(deporteSel()))
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(clave !== bolClave) return;
+        bolLista = (j && j.ok && j.boleadores) || [];
+        if(bolSel && !bolLista.some(function(b){ return b.slug === bolSel.slug; })){ bolSel = null; pintarResumen(); }
+        pintarBoleadores();
+      }).catch(function(){ bolLista = []; pintarBoleadores(); });
+  }
+  // TARJETA DE FIDELIDAD (sep-2026): progreso del jugador en este local y, con
+  // premio disponible, la casilla "Usar mi premio" descuenta el precio de la
+  // cancha (hora gratis = el turno más barato; descuento = % por turno). El
+  // servidor recalcula todo en /web/asegurar; aquí solo se muestra.
+  var fid = null, usarFid = true;
+  function fidDescuento(){
+    if(!C.fidelidad || !fid || !fid.disponible || !usarFid || esSena() || bonoActivo()) return 0;
+    var ps = Object.keys(sel).map(function(k){ return sel[k].precio; });
+    if(!ps.length) return 0;
+    if(fid.premio === 'hora_gratis') return Math.round(Math.min.apply(null, ps));
+    return ps.reduce(function(a, p){ return a + Math.round(p * fid.descuentoPct / 100); }, 0);
+  }
+  function pintarFidelidad(){
+    var box = $('fidBox'); if(!box || !C.fidelidad) return;
+    var f = C.fidelidad, h = '<b>🎁 Tarjeta de fidelidad de ' + esc(fid && fid.local ? fid.local : '') + '</b>';
+    if(!fid){ h += '<div class="sub" style="margin:2px 0 0">Cada ' + f.meta + ' reservas pagadas, ' + esc(f.nombrePremio) + '. Inicia sesión para ver tu progreso.</div>'; box.innerHTML = h; return; }
+    var sellos = ''; for(var i = 0; i < fid.meta; i++) sellos += '<span class="sello' + (i < fid.conteo ? ' on' : '') + '">' + (i < fid.conteo ? '✓' : '') + '</span>';
+    h += '<div class="sellos">' + sellos + '</div>';
+    if(fid.disponible){
+      h += '<div class="sub" style="margin:4px 0 0"><b style="color:var(--verde)">¡Tienes ' + esc(fid.nombrePremio) + '!</b> Se aplica en esta reserva.</div>';
+      h += '<label class="fid-usar"><input type="checkbox" id="fidUsar"' + (usarFid ? ' checked' : '') + '> Usar mi premio ahora (' + esc(fid.premioCorto) + ')</label>';
+    } else {
+      h += '<div class="sub" style="margin:4px 0 0">' + fid.conteo + ' de ' + fid.meta + ' reservas · te falta' + (fid.faltan === 1 ? '' : 'n') + ' ' + fid.faltan + ' para ' + esc(fid.nombrePremio) + '.</div>';
+    }
+    box.innerHTML = h;
+    var ck = $('fidUsar'); if(ck) ck.addEventListener('change', function(){ usarFid = ck.checked; pintarResumen(); });
+  }
+  function cargarFidelidad(){
+    if(!C.fidelidad || !$('fidBox')) return;
+    if(C.login && !C.sesion){ fid = null; pintarFidelidad(); return; }
+    fetch('/web/fidelidad?cancha_id=' + encodeURIComponent(C.id)).then(function(r){ return r.json(); })
+      .then(function(j){ if(j && j.ok){ fid = j; pintarFidelidad(); pintarResumen(); } }).catch(function(){});
+  }
+  // BONO DE HORAS y PUNTOS PICHANGOL (como el resumen de reserva del app): el
+  // bono cubre TODOS los turnos si alcanza (1 h de bono = 1 turno) y solo se
+  // pagan los extras; los puntos (100 = S/ 3) van pagando todo en línea en
+  // soles, sin seña, sin bono y sin premio de fidelidad. El servidor revalida.
+  var ben = null, usarBono = true, usarPts = false;
+  function turnosSel(){ var t = 0; Object.keys(sel).forEach(function(k){ t += sel[k].precio; }); return t; }
+  function bonoActivo(){
+    var n = Object.keys(sel).length;
+    return !!(C.beneficios && ben && ben.activo && ben.bono && usarBono && n > 0 && ben.bono.horas >= n && !bolSel);
+  }
+  function puntosMotivo(){
+    if(!C.beneficios || !ben || !ben.activo || !ben.puntos || !ben.puntos.aplica) return 'no';
+    if(ben.puntos.disponibles < ben.puntos.canje) return 'no';
+    if(bonoActivo()) return 'con tu bono';
+    if(esSena()) return 'pagando solo la seña';
+    if(fidDescuento() > 0) return 'con tu premio de fidelidad';
+    if(Object.keys(sel).length && total() <= ben.puntos.descuento) return 'en reservas de ' + fmt(ben.puntos.descuento) + ' o menos';
+    return '';
+  }
+  function puntosDesc(){ return (usarPts && Object.keys(sel).length && puntosMotivo() === '') ? ben.puntos.descuento : 0; }
+  function pintarBeneficios(){
+    var box = $('benBox'); if(!box) return;
+    var n = Object.keys(sel).length, h = '';
+    if(ben && ben.activo && ben.bono && ben.bono.horas > 0){
+      var hb = ben.bono.horas, hTxt = hb + (hb === 1 ? ' hora' : ' horas');
+      h += '<div class="ben-it"><b>🎟️ Tienes ' + hTxt + ' de bono en ' + esc(ben.local || 'este local') + '</b>';
+      if(!n) h += '<div class="sub">Elige tus turnos y úsalo aquí: cada turno descuenta 1 hora, sin volver a pagar.</div>';
+      else if(bolSel) h += '<div class="sub">Para usar tu bono quita el ' + esc(C.nombreBoleador.toLowerCase()) + ': se paga en línea.</div>';
+      else if(hb < n) h += '<div class="sub">Tu bono cubre hasta ' + hTxt + ': elige ' + hb + (hb === 1 ? ' turno' : ' turnos') + ' o menos para usarlo.</div>';
+      else h += '<label class="fid-usar"><input type="checkbox" id="benBono"' + (usarBono ? ' checked' : '') + '> Usar mi bono · ' + n + ' h · te quedan ' + (usarBono ? hb - n : hb) + ' h</label>';
+      h += '</div>';
+    }
+    var pm = puntosMotivo();
+    if(pm !== 'no'){
+      h += '<div class="ben-it"><b>⭐ Tienes ' + ben.puntos.disponibles + ' puntos Pichangol</b>';
+      if(pm) h += '<div class="sub">Canjea ' + ben.puntos.canje + ' puntos por ' + fmt(ben.puntos.descuento) + ' de descuento pagando todo en línea (no aplica ' + esc(pm) + ').</div>';
+      else h += '<label class="fid-usar"><input type="checkbox" id="benPts"' + (usarPts ? ' checked' : '') + '> Usar ' + ben.puntos.canje + ' puntos: −' + fmt(ben.puntos.descuento) + ' en esta reserva</label>';
+      h += '</div>';
+    }
+    box.innerHTML = h; box.style.display = h ? '' : 'none';
+  }
+  function cargarBeneficios(){
+    if(!C.beneficios || !$('benBox')) return;
+    if(C.login && !C.sesion){ ben = null; pintarBeneficios(); return; }
+    fetch('/web/beneficios?cancha_id=' + encodeURIComponent(C.id)).then(function(r){ return r.json(); })
+      .then(function(j){ ben = (j && j.ok) ? j : null; pintarResumen(); }).catch(function(){});
+  }
+  function total(){
+    var t = bonoActivo() ? 0 : turnosSel();
+    t -= fidDescuento();
+    extrasSel().forEach(function(x){ t += x.precio; });
+    var bl = bolLinea(); if(bl) t += bl.precio;
+    return Math.max(0, t);
+  }
+  // CARGO POR SERVICIO Pichangol (fase 2, sep-2026): el servidor cotiza
+  // (`/web/cotizar`, misma regla que al cobrar); aquí solo se pinta la línea,
+  // el ⓘ con el desglose y el total. Con C.cargo=false no se cotiza nada.
+  var cot = null, cotT = null, cotCache = {};
+  function deporteSel(){ return ($('deporte') && $('deporte').value) || C.deporteBase || ''; }
+  function cotizar(t){
+    if(!C.cargo || t <= 0){ cot = null; return; }
+    // MODELO 2: el cargo depende del medio (Yape es más barato que la tarjeta).
+    var md = (C.pasarela && C.pasarela !== 'culqi') ? '' : (window.pcgMedioPago ? pcgMedioPago() : 'yape');
+    var base = Math.round(t * 100), k = base + '|' + deporteSel() + '|' + md;
+    if(cotCache[k]){ cot = cotCache[k]; return; }
+    cot = null;
+    if(cotT) clearTimeout(cotT);
+    cotT = setTimeout(function(){
+      fetch('/web/cotizar?linea=reservas&moneda=' + encodeURIComponent(C.moneda) + '&base=' + base + '&deporte=' + encodeURIComponent(k.split('|')[1]) + '&medio=' + encodeURIComponent(md))
+        .then(function(r){ return r.json(); })
+        .then(function(j){ if(j && j.ok){ cotCache[k] = j; pintarResumen(); } })
+        .catch(function(){});
+    }, 150);
+  }
+  var BTN_INFO = '<button type="button" class="info-cargo" id="btnCargoInfo" aria-label="Qué incluye el cargo por servicio" style="border:1px solid var(--trazo);background:#fff;color:var(--tinta);border-radius:50%;width:20px;height:20px;line-height:18px;font-size:12px;cursor:pointer;padding:0;margin-left:4px;vertical-align:middle;display:inline-block">ⓘ</button>';
+  function htmlDesglose(c){
+    var h = '<div style="text-align:left;display:grid;gap:8px">';
+    (c.desglose || []).forEach(function(x){ h += '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;border-bottom:1px solid #eee;padding:6px 0"><div><b>' + esc(x.nombre) + '</b><div style="color:#717171;font-size:12.5px">' + esc(x.detalle) + '</div></div><span style="white-space:nowrap;font-weight:700">' + fmt(x.monto_centimos / 100) + '</span></div>'; });
+    h += '<div style="color:#717171;font-size:12px;margin-top:4px">' + esc(c.regla) + '. El precio de la cancha va completo al local, menos su comisión.</div></div>';
+    return h;
+  }
+  // Cambiar Yape ⇄ Tarjeta vuelve a cotizar: en el modelo 2 el total cambia.
+  document.addEventListener('pcg-medio', function(){ pintarResumen(); });
+  document.addEventListener('click', function(ev){
+    var op = ev.target && ev.target.closest ? ev.target.closest('.op-sena') : null;
+    if(op){ ev.preventDefault(); if(modoPago !== op.dataset.modo){ modoPago = op.dataset.modo; pintarResumen(); } return; }
+    var b = ev.target && ev.target.closest ? ev.target.closest('#btnCargoInfo') : null;
+    if(b && cot && window.pcgAvisar) pcgAvisar({titulo: cot.titulo || 'Cargo por servicio Pichangol', html: htmlDesglose(cot), confirmar: 'Entendido', icono: '🛡️'});
+  });
+  function pintarResumen(){
+    var ks = Object.keys(sel).sort(), n = ks.length, t = total(), pd = puntosDesc();
+    var sn = esSena() ? senaTotal() : 0, base = sn > 0 ? sn : t - pd;
+    pintarBeneficios();
+    cotizar(base);
+    var cargo = (cot && cot.activo && cot.cargo_centimos > 0) ? cot.cargo_centimos / 100 : 0;
+    var h = '';
+    if(!n){ h = '<div class="linea"><span style="color:var(--tenue)">Elige un horario para ver tu resumen.</span></div>'; }
+    else {
+      ks.forEach(function(k){ var s = sel[k];
+        h += '<div class="linea"><span>' + esc(C.etiquetas[s.fecha] || s.fecha) + ' · ' + s.hora + '–' + s.fin + '</span><b>' + fmt(s.precio) + '</b></div>'; });
+      extrasSel().forEach(function(x){ h += '<div class="linea"><span>' + esc(x.nombre) + (x.cantidad > 1 ? ' × ' + x.cantidad : '') + '</span><b>' + fmt(x.precio) + '</b></div>'; });
+      var bl = bolLinea(); if(bl) h += '<div class="linea"><span>🎾 ' + esc(bl.nombre) + (bl.cantidad > 1 ? ' × ' + bl.cantidad : '') + '</span><b>' + fmt(bl.precio) + '</b></div>';
+      var fd = fidDescuento(); if(fd > 0) h += '<div class="linea" style="color:var(--verde)"><span>🎁 ' + esc(fid.premioCorto) + ' · fidelidad</span><b>−' + fmt(fd) + '</b></div>';
+      if(bonoActivo()) h += '<div class="linea" style="color:var(--verde)"><span>🎟️ Pagado con tu bono · ' + n + (n === 1 ? ' hora' : ' horas') + '</span><b>−' + fmt(turnosSel()) + '</b></div>';
+      if(pd > 0) h += '<div class="linea" style="color:var(--verde)"><span>⭐ Canje de ' + ben.puntos.canje + ' puntos</span><b>−' + fmt(pd) + '</b></div>';
+      if(C.senaPct > 0 && !bonoActivo()){
+        if(bl) h += '<div class="linea" style="color:var(--tenue);font-size:13px"><span>Con ' + esc(C.nombreBoleador.toLowerCase()) + ' la reserva se paga completa en línea (quítalo si prefieres solo la seña).</span></div>';
+        else {
+          var op = function(m, tit, sub){ var on = modoPago === m; return '<label class="op-sena" data-modo="' + m + '" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1.5px solid ' + (on ? 'var(--esmeralda)' : 'var(--trazo)') + ';border-radius:14px;cursor:pointer;background:' + (on ? '#EEF8F1' : '#fff') + '"><input type="radio" name="modoPago" ' + (on ? 'checked' : '') + ' style="width:auto;flex:none;margin-top:3px;accent-color:#0B8A3E"><span><b>' + tit + '</b><br><small style="color:var(--tenue)">' + sub + '</small></span></label>'; };
+          h += '<div style="display:grid;gap:8px;margin:10px 0 4px">' +
+            op('sena', 'Pagar seña ' + C.senaPct + ' % ahora · ' + fmt(senaTotal()), 'Asegura tu hora; el resto (' + fmt(t - senaTotal()) + ') lo pagas en la cancha.') +
+            op('total', 'Pagar todo ahora · ' + fmt(t), 'No pagas nada en la cancha.') + '</div>';
+          if(sn > 0) h += '<div class="linea" style="color:var(--tenue);font-size:12.5px"><span>La seña no es reembolsable: si no llegas, queda a favor de la cancha.</span></div>';
+          if(sn > 0) h += '<div class="linea"><span>Seña ' + C.senaPct + ' % (pagas hoy)</span><b>' + fmt(sn) + '</b></div><div class="linea" style="color:var(--tenue)"><span>Resto en la cancha</span><b>' + fmt(t - sn) + '</b></div>';
+        }
+      }
+      if(C.cargo && base > 0) h += '<div class="linea" id="lineaCargo"><span>Cargo por servicio Pichangol ' + BTN_INFO + '</span><b>' + (cot ? fmt(cargo) : '…') + '</b></div>';
+    }
+    $('lineas').innerHTML = h;
+    cargarBoleadores();
+    var tt = base + (base > 0 ? cargo : 0);
+    $('tot').textContent = fmt(tt); $('totBarra').textContent = fmt(tt);
+    $('totLbl').textContent = sn > 0 ? 'A pagar hoy' : 'Total'; if($('totBarraLbl')) $('totBarraLbl').textContent = sn > 0 ? 'Seña hoy' : 'Total';
+    var txt = n ? (sn > 0 ? ('Pagar seña ' + fmt(tt) + ' y reservar') : tt > 0 ? ('Reservar y pagar ' + fmt(tt)) : (bonoActivo() ? 'Reservar con mi bono 🎟️' : 'Reservar gratis 🎁')) : 'Elige un horario';
+    ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = !n; $(id).textContent = txt; });
+  }
+  function pintarDias(){
+    $('dias').innerHTML = C.dias.map(function(d){
+      return '<span class="chip' + (d.iso === fechaSel ? ' sel' : '') + '" data-f="' + d.iso + '"><b>' + esc(d.corto) + '</b><small>' + esc(d.sub) + '</small></span>';
+    }).join('');
+    document.querySelectorAll('#dias .chip').forEach(function(el){
+      el.addEventListener('click', function(){ if(el.dataset.f === fechaSel) return; liberar(); fechaSel = el.dataset.f; pintarDias(); cargar(); });
+    });
+  }
+  function cargar(){
+    sel = {}; pintarResumen();
+    $('slots').innerHTML = '<span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span>';
+    fetch('/web/disponibilidad/' + encodeURIComponent(C.id) + '?fecha=' + fechaSel)
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(!j.ok){ $('slots').innerHTML = '<span class="sub">No pudimos cargar los horarios de ese día.</span>'; return; }
+        slots = j.slots;
+        var libres = slots.filter(function(s){ return !s.ocupado; }).length;
+        if(!slots.length){
+          if(fechaSel === C.hoy && !C.fecha && !C._salto && C.dias[1]){ C._salto = true; fechaSel = C.dias[1].iso; pintarDias(); cargar(); return; }
+          $('slots').innerHTML = '<span class="sub">No quedan turnos para este día. Prueba otra fecha.</span>'; return; }
+        // Turnos ORDENADOS por franja (Mañana / Tarde / Noche · madrugada) con el precio de cada uno a la vista.
+        var hmm = function(t){ var p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]); };
+        var franjas = [['Mañana', '🌅', 0], ['Tarde', '☀️', 1], ['Noche', '🌙', 2]], grupos = [[], [], []];
+        slots.forEach(function(s, i){ var m = hmm(s.hora); var g = s.fecha !== fechaSel ? 2 : (m < 12 * 60 ? 0 : (m < 18 * 60 ? 1 : 2)); grupos[g].push([s, i]); });
+        var precios = slots.map(function(s){ return s.precio; }), pmin = Math.min.apply(null, precios), pmax = Math.max.apply(null, precios);
+        var html = '';
+        franjas.forEach(function(f, g){
+          if(!grupos[g].length) return;
+          var lib = grupos[g].filter(function(x){ return !x[0].ocupado; }).length;
+          html += '<div class="slots-grupo"><h5>' + f[1] + ' ' + f[0] + ' <small>· ' + (lib ? lib + ' libre' + (lib === 1 ? '' : 's') : 'sin turnos libres') + '</small></h5><div class="slots-grid">';
+          grupos[g].forEach(function(x){ var s = x[0], i = x[1];
+            var dia = s.fecha !== fechaSel ? '<span class="dia">' + esc(C.etiquetas[s.fecha] || '') + ' · madrugada</span>' : '';
+            var tag = s.promo ? '<span class="tag">−' + s.promo + ' % promo</span>' : (s.valle ? '<span class="tag">⚡ hora feliz</span>' : '');
+            html += '<div class="slot' + (s.ocupado ? ' off' : '') + '" data-i="' + i + '" title="' + (s.ocupado ? 'Ocupado' : 'Disponible') + '">' +
+                    dia + '<b>' + s.hora + ' <small>– ' + s.fin + '</small></b><span class="pr">' + (s.ocupado ? 'Ocupado' : fmt(s.precio)) + '</span>' + tag + '</div>';
+          });
+          html += '</div></div>';
+        });
+        if(pmax > pmin) html += '<p class="slots-nota">El precio varía según la hora: desde ' + fmt(pmin) + ' hasta ' + fmt(pmax) + ' por turno.</p>';
+        $('slots').innerHTML = html + (libres ? '' : '<div class="sub" style="width:100%">Todos los turnos de este día están tomados.</div>');
+        document.querySelectorAll('#slots .slot').forEach(function(el){
+          el.addEventListener('click', function(){
+            var s = slots[parseInt(el.dataset.i)];
+            if(s.ocupado) return;
+            var k = s.fecha + '|' + s.hora;
+            if(sel[k]){ delete sel[k]; el.classList.remove('sel'); }
+            else {
+              if(Object.keys(sel).length >= C.maxSlots){ mostrarError('Puedes reservar hasta ' + C.maxSlots + ' turnos por pedido.'); return; }
+              sel[k] = s; el.classList.add('sel'); ocultarError();
+            }
+            pintarResumen();
+          });
+        });
+        if(C.hora && !C._horaOk){
+          C._horaOk = true;
+          var hm = function(t){ var p = t.split(':'); return parseInt(p[0]) * 60 + parseInt(p[1]); };
+          var want = hm(C.hora);
+          for(var j = 0; j < slots.length; j++){
+            var a = hm(slots[j].hora), b = hm(slots[j].fin); if(b <= a) b += 1440;
+            var ww = want < a && b > 1440 ? want + 1440 : want;
+            if(!slots[j].ocupado && a <= ww && ww < b){ var chip = document.querySelector('#slots .slot[data-i="' + j + '"]'); if(chip){ chip.click(); chip.scrollIntoView({behavior: 'smooth', block: 'center'}); } break; }
+          }
+        }
+      }).catch(function(){ $('slots').innerHTML = '<span class="sub">No pudimos cargar los horarios.</span>'; });
+  }
+  // "Cómo llegar": el mapa se abre AQUÍ (Leaflet + OpenStreetMap), no en otra pestaña.
+  var bLlegar = $('btnLlegar'), mapaFicha = null;
+  if(bLlegar) bLlegar.addEventListener('click', function(ev){
+    ev.preventDefault();
+    var box = $('mapaFicha'), on = !box.classList.contains('open');
+    box.classList.toggle('open', on); bLlegar.textContent = on ? 'Ocultar mapa' : 'Cómo llegar';
+    if(on && !mapaFicha && window.L){
+      var lat = parseFloat(bLlegar.dataset.lat), lng = parseFloat(bLlegar.dataset.lng);
+      mapaFicha = L.map('mapaFichaMapa', {scrollWheelZoom: false}).setView([lat, lng], 16);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '© OpenStreetMap'}).addTo(mapaFicha);
+      L.marker([lat, lng]).addTo(mapaFicha).bindPopup('<b>' + esc(bLlegar.dataset.nombre) + '</b>').openPopup();
+      setTimeout(function(){ mapaFicha.invalidateSize(); }, 80);
+    } else if(on && mapaFicha){ setTimeout(function(){ mapaFicha.invalidateSize(); }, 80); }
+    if(on) box.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  });
+  function mostrarError(m){ var el = $('err'); el.textContent = m; el.style.display = 'block'; el.scrollIntoView({behavior:'smooth', block:'center'}); }
+  function ocultarError(){ $('err').style.display = 'none'; }
+  function datos(){
+    var email = (C.login && C.sesion) ? C.sesion.email : $('email').value.trim().toLowerCase();
+    return { nombre: $('nombre').value.trim(), celular: $('celular').value.trim(), email: email };
+  }
+  // Login con Google (como el app): al entrar, se muestran los datos sin recargar.
+  window.alIniciarSesion = function(u){
+    C.sesion = u;
+    var lb = $('loginBox'), db = $('datosBox'); if(lb) lb.style.display = 'none'; if(db) db.style.display = '';
+    if($('nombre') && !$('nombre').value) $('nombre').value = u.nombre || '';
+    if($('celular') && !$('celular').value) $('celular').value = u.celular || '';
+    if($('email')) $('email').value = u.email || '';
+    if(db && !$('quien')){ db.insertAdjacentHTML('afterbegin', '<div class="quien" id="quien">' + (u.foto ? '<img src="' + esc(u.foto) + '" alt="">' : '') + '<div><b>' + esc(u.nombre || u.email) + '</b><div class="m">' + esc(u.email) + '</div></div><button type="button" class="btn sec" onclick="cerrarSesion()">Cambiar cuenta</button></div>'); }
+    pintarResumen();
+    cargarFidelidad();
+    cargarBeneficios();
+  };
+  function validar(d){
+    if(!Object.keys(sel).length) return 'Elige al menos un horario.';
+    if(C.login && !C.sesion) return 'Inicia sesión con Google para reservar.';
+    if(d.nombre.length < 3) return 'Escribe tu nombre.';
+    if(d.celular.replace(/\D/g,'').length < 8) return 'Escribe un celular válido.';
+    if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(d.email)) return 'Escribe un correo válido: ahí va tu comprobante.';
+    return '';
+  }
+  function liberar(){
+    if(!hold) return;
+    var h = hold; hold = null;
+    fetch('/web/liberar', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ids: h.ids, firma: h.firma})}).catch(function(){});
+  }
+  function pagar(){
+    ocultarError();
+    var d = datos(), v = validar(d);
+    if(v){ mostrarError(v); if(!Object.keys(sel).length) $('slots').scrollIntoView({behavior:'smooth', block:'center'}); else ($('loginBox') && !C.sesion ? $('loginBox') : $('nombre')).scrollIntoView({behavior:'smooth', block:'center'}); return; }
+    var extras = extrasSel().map(function(x){ return {clave: x.clave, cantidad: x.cantidad}; });
+    var horas = Object.keys(sel).map(function(k){ return {fecha: sel[k].fecha, hora: sel[k].hora}; });
+    var deporte = ($('deporte') && $('deporte').value) || '';
+    ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = true; $(id).textContent = 'Reservando tu horario…'; });
+    var blSel = bolLinea();
+    fetch('/web/asegurar', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({cancha_id: C.id, horas: horas, extras: extras, deporte: deporte, nombre: d.nombre, celular: d.celular, email: d.email, boleador: blSel ? blSel.slug : '', fidelidad: fidDescuento() > 0, pago: esSena() ? 'sena' : 'total', bono: bonoActivo(), puntos: puntosDesc() > 0, medio: (window.pcgMedioPago ? pcgMedioPago() : '')})})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(!j.ok){
+          pintarResumen();
+          if(j.error === 'ocupado'){ mostrarError('Alguien acaba de tomar uno de esos horarios. Elige otro, por favor.'); cargar(); }
+          else if(j.error === 'boleador_no_disponible'){ bolSel = null; bolClave = ''; mostrarError('Ese ' + C.nombreBoleador.toLowerCase() + ' ya no está disponible para ese horario. Elige otro o reserva sin él.'); pintarResumen(); }
+          else if(j.error === 'sesion_requerida'){ C.sesion = null; mostrarError('Tu sesión venció. Inicia sesión con Google para reservar.'); var lb = $('loginBox'), db = $('datosBox'); if(lb) lb.style.display = ''; if(db) db.style.display = 'none'; }
+          else if(j.error === 'sin_premio'){ fid = null; usarFid = false; mostrarError('Tu premio de fidelidad ya no está disponible. Revisa el total y vuelve a intentar.'); cargarFidelidad(); }
+          else if(j.error === 'sin_bono'){ usarBono = false; mostrarError('Tu bono ya no alcanza para esos turnos (¿lo usaste en otra pestaña?). Revisa el total y vuelve a intentar.'); cargarBeneficios(); }
+          else if(j.error === 'sin_puntos'){ usarPts = false; mostrarError('Tus puntos ya no alcanzan para el canje o no aplican a esta reserva. Revisa el total y vuelve a intentar.'); cargarBeneficios(); }
+          else if(j.error === 'bono_con_boleador'){ mostrarError('Con tu bono no se puede contratar ' + C.nombreBoleador.toLowerCase() + ': quítalo o reserva sin el bono.'); }
+          else mostrarError('No pudimos reservar el horario. Inténtalo de nuevo.');
+          return;
+        }
+        hold = j;
+        var fdTxt = j.fidelidad ? {t: '🎁 ' + esc(j.fidelidad.texto) + ' · fidelidad', m: -j.fidelidad.descuento} : null;
+        var bnTxt = j.bono ? {t: '🎟️ Pagado con tu bono · ' + j.bono.horas + (j.bono.horas === 1 ? ' hora' : ' horas'), m: -j.bono.cubre} : null;
+        var ptTxt = j.puntos ? {t: '⭐ Canje de ' + j.puntos.puntos + ' puntos Pichangol', m: -j.puntos.descuento} : null;
+        if(j.sin_pago){
+          // RESERVA GRATIS (hora gratis sin extras): no se abre Culqi; se confirma directo.
+          var confirmarGratis = function(){
+            ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).textContent = 'Confirmando tu reserva…'; });
+            var h0 = hold; hold = null;
+            fetch('/web/pagar', {method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ids: h0.ids, firma: h0.firma, token: '', medio: j.bono ? 'bono' : 'fidelidad', email: d.email})})
+              .then(function(r){ return r.json(); })
+              .then(function(p){ if(p.ok){ window.location.href = p.url; } else { mostrarError(p.mensaje || 'No pudimos confirmar la reserva.'); pintarResumen(); cargar(); } })
+              .catch(function(){ mostrarError('No pudimos confirmar la reserva. Inténtalo de nuevo.'); pintarResumen(); });
+          };
+          if(!window.pcgResumenPago){ confirmarGratis(); return; }
+          var lg = Object.keys(sel).sort().map(function(k){ var s = sel[k]; return {t: esc(C.etiquetas[s.fecha] || s.fecha) + ' · ' + s.hora + '–' + s.fin, m: s.precio}; });
+          if(fdTxt) lg.push(fdTxt);
+          if(bnTxt) lg.push(bnTxt);
+          pcgResumenPago({moneda: C.moneda, medio: j.bono ? 'bono' : 'fidelidad', lineas: lg, cargo: null, total: 0, titulo: 'Resumen de tu reserva',
+                          confirmar: j.bono ? 'Confirmar con mi bono 🎟️' : 'Confirmar reserva gratis 🎁',
+                          nota: j.bono ? ('Tus turnos se pagan con tu bono: se descuentan ' + j.bono.horas + ' h y te quedan ' + j.bono.quedan + ' h. No se te cobra nada.')
+                                       : 'Esta reserva sale gratis por tu tarjeta de fidelidad. No se te cobra nada.'})
+            .then(function(ok){ if(ok){ confirmarGratis(); } else { liberar(); pintarResumen(); } });
+          return;
+        }
+        var hosp = !!(C.pasarela && C.pasarela !== 'culqi');
+        if(!hosp && !C.pk){ mostrarError('El pago en línea no está disponible por ahora.'); liberar(); pintarResumen(); return; }
+        // El medio se elige en la página (Yape por defecto) y Culqi se abre SOLO con ese método:
+        // el Checkout v4 siempre abría en Tarjeta aunque Yape fuera primero (pedido del director, 27-sep-2026).
+        // En $ / Bs el medio es la pasarela HOSPEDADA del país (PayPhone, Libélula o la de prueba en QAS).
+        var m = hosp ? C.pasarela : (window.pcgMedioPago ? pcgMedioPago() : 'yape');
+        // COBRO EN USD / BOB: se crea la orden en el servidor (monto recalculado allí) y el navegador va a
+        // la página de la pasarela; al volver, /web/pago/{orden} confirma y lleva al comprobante.
+        var irPasarela = function(){
+          ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).textContent = 'Abriendo ' + C.pasarelaNombre + '…'; });
+          pcgCargando('Abriendo el pago seguro de ' + C.pasarelaNombre + '…');
+          var h = hold;
+          fetch('/web/pago/reserva', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ids: h.ids, firma: h.firma})})
+            .then(function(r){ return r.json(); })
+            .then(function(p){
+              if(p.ok && p.url){ hold = null; try { if(p.orden) sessionStorage.setItem('pcg_orden_' + C.id, p.orden); } catch(e){} window.location.href = p.url; return; }
+              pcgCargando(false); mostrarError(p.mensaje || 'No pudimos abrir el pago. Inténtalo de nuevo.');
+              if(p.error !== 'en_curso'){ liberar(); cargar(); }
+              pintarResumen();
+            }).catch(function(){ pcgCargando(false); mostrarError('Sin conexión. Inténtalo de nuevo.'); liberar(); pintarResumen(); });
+        };
+        // RESUMEN DE TU PAGO (pedido del director, 28-sep-2026): Culqi solo muestra el total; aquí se
+        // confirma el detalle (turnos, extras, cargo por servicio con desglose y total, tal cual lo
+        // cobrará el servidor). "Volver" libera la retención del horario.
+        var abrirCulqi = function(){
+        Culqi.publicKey = C.pk;
+        Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: j.total_centimos });
+        Culqi.options({ lang: 'es', installments: false,
+          paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false },
+          style: { logo: C.logo, bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
+        window.culqi = function(){
+          if(Culqi.token){
+            var token = Culqi.token.id, medio = (Culqi.token.iin && Culqi.token.iin.card_brand) ? 'tarjeta' : 'yape';
+            Culqi.close();
+            ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).textContent = 'Confirmando tu pago…'; });
+            var h = hold; hold = null;
+            fetch('/web/pagar', {method:'POST', headers:{'Content-Type':'application/json'},
+              body: JSON.stringify({ids: h.ids, firma: h.firma, token: token, medio: medio, email: d.email})})
+              .then(function(r){ return r.json(); })
+              .then(function(p){
+                if(p.ok){ window.location.href = p.url; }
+                else { hold = null; mostrarError(p.mensaje || 'El pago no se pudo procesar. No se te cobró nada.'); pintarResumen(); cargar(); }
+              }).catch(function(){ mostrarError('No pudimos confirmar el pago. Escríbenos a ' + CORREO_SOPORTE + ' con tu correo y horario.'); pintarResumen(); });
+          } else if(Culqi.order){
+            mostrarError('Este medio de pago no está habilitado. Usa Yape o tarjeta.');
+          } else {
+            mostrarError((Culqi.error && Culqi.error.user_message) || 'No se pudo procesar el pago.');
+          }
+        };
+        Culqi.open();
+        var chk = setInterval(function(){
+          var abierto = document.getElementById('culqi-container') || document.querySelector('iframe[src*="culqi"]');
+          if(!abierto && hold){ clearInterval(chk); liberar(); pintarResumen(); }
+          if(!hold) clearInterval(chk);
+        }, 1500);
+        };
+        var abrirPago = hosp ? irPasarela : abrirCulqi;
+        if(!window.pcgResumenPago){ abrirPago(); return; }
+        var lineas = Object.keys(sel).sort().map(function(k){ var s = sel[k]; return {t: esc(C.etiquetas[s.fecha] || s.fecha) + ' · ' + s.hora + '–' + s.fin, m: s.precio}; });
+        extrasSel().forEach(function(x){ lineas.push({t: esc(x.nombre) + (x.cantidad > 1 ? ' × ' + x.cantidad : ''), m: x.precio}); });
+        if(blSel) lineas.push({t: '🎾 ' + esc(blSel.nombre) + (blSel.cantidad > 1 ? ' × ' + blSel.cantidad : ''), m: blSel.precio});
+        if(fdTxt) lineas.push(fdTxt);
+        if(bnTxt) lineas.push(bnTxt);
+        if(ptTxt) lineas.push(ptTxt);
+        if(j.pago === 'sena') lineas = [{t: 'Seña ' + j.sena_pct + ' % de ' + fmt(j.total) + ' (asegura tu hora)', m: j.sena}];
+        var cj = j.cargo && j.cargo_centimos > 0 ? {monto: j.cargo_centimos / 100, titulo: j.cargo.titulo, html: htmlDesglose(j.cargo)} : null;
+        pcgResumenPago({moneda: C.moneda, medio: m, medioNombre: hosp ? C.pasarelaNombre : '', lineas: lineas, cargo: cj, total: j.total_centimos / 100,
+                        nota: (j.pago === 'sena' ? 'El resto (' + fmt(j.resto) + ') lo pagas en la cancha. ' : '') + (j.bono ? 'Tus turnos van con tu bono (te quedan ' + j.bono.quedan + ' h); pagas solo los servicios extra. ' : '') + (j.puntos ? 'Los ' + j.puntos.puntos + ' puntos se descuentan solo si el pago entra. ' : '') + (hosp ? 'Te llevamos a la página segura de ' + C.pasarelaNombre + '; el horario queda apartado para ti mientras pagas.' : 'El horario queda reservado para ti mientras pagas (' + Math.round((j.hold_segundos || 600) / 60) + ' min).') + (blSel ? ' El ' + C.nombreBoleador.toLowerCase() + ' confirma después; si no puede, te devolvemos su parte.' : '')})
+          .then(function(ok){ if(ok){ abrirPago(); } else { liberar(); pintarResumen(); } });
+      }).catch(function(){ pintarResumen(); mostrarError('No pudimos reservar el horario. Inténtalo de nuevo.'); });
+  }
+  $('btnPagar').addEventListener('click', pagar);
+  $('btnPagarBarra').addEventListener('click', pagar);
+  document.querySelectorAll('input[name=extra]').forEach(function(x){ x.addEventListener('change', pintarResumen); });
+  window.addEventListener('beforeunload', liberar);
+  // ¿Volvió de la pasarela con el botón "atrás" sin terminar? Su horario sigue apartado por la
+  // orden en curso: se ofrece retomarla (o cancelarla) en vez de chocar con "ocupado".
+  function ordenEnCurso(){
+    var oid = null; try { oid = sessionStorage.getItem('pcg_orden_' + C.id); } catch(e){}
+    if(!oid) return;
+    fetch('/web/pago/' + encodeURIComponent(oid) + '/estado').then(function(r){ return r.json(); }).then(function(j){
+      if(!j || !j.ok || j.estado !== 'pendiente'){ try { sessionStorage.removeItem('pcg_orden_' + C.id); } catch(e){} return; }
+      pcgConfirmar({titulo: 'Tienes un pago en curso', icono: '⏳', confirmar: 'Ver mi pago', cancelar: 'Ahora no',
+                    mensaje: 'Empezaste a pagar una reserva en esta cancha con ' + C.pasarelaNombre + '. Retómala o cancélala para liberar el horario.'})
+        .then(function(ok){ if(ok) window.location.href = '/web/pago/' + encodeURIComponent(oid); });
+    }).catch(function(){});
+  }
+  if(C.pasarela && C.pasarela !== 'culqi'){ ordenEnCurso(); window.addEventListener('pageshow', function(ev){ if(ev.persisted){ pintarResumen(); ordenEnCurso(); } }); }
+  pintarDias(); cargar(); cargarFidelidad(); cargarBeneficios();
+})();
+"""
+
+
+def _tira_dias(pais: str) -> tuple[list[dict], dict]:
+    hoy = horarios.ahora_local(pais).date()
+    dias, etiquetas = [], {}
+    for i in range(DIAS_TIRA):
+        d = hoy + timedelta(days=i)
+        iso = d.isoformat()
+        et = horarios.etiqueta_dia(iso, hoy)
+        corto = et if i < 2 else horarios.DIAS[d.weekday()]
+        sub = f"{d.day} {horarios.MESES[d.month - 1]}"
+        dias.append({"iso": iso, "corto": corto, "sub": sub})
+        etiquetas[iso] = et if i < 2 else f"{horarios.DIAS[d.weekday()]} {d.day}"
+    for i in range(DIAS_TIRA, DIAS_ADELANTE + 2):
+        d = hoy + timedelta(days=i)
+        etiquetas[d.isoformat()] = f"{horarios.DIAS[d.weekday()]} {d.day}"
+    return dias, etiquetas
+
+
+def _titulo_local(c: dict) -> str:
+    """Nombre del LOCAL (club); si la cancha no tiene local, su propio nombre."""
+    return (c.get("club") or "").strip() or c["nombre"]
+
+
+def _hermanas(c: dict, ses: dict | None = None) -> list[dict]:
+    """Canchas del MISMO local (mismo `club`), para los chips de la ficha: las
+    aprobadas y, si quien mira es el dueño, también las suyas en verificación."""
+    club = (c.get("club") or "").strip().lower()
+    if not club:
+        return [c]
+    yo = ((ses or {}).get("email") or "").lower()
+    out = [x for x in datos.canchas_publicas()
+           if (x.get("club") or "").strip().lower() == club
+           and (datos.reservable(x) or x["id"] == c["id"] or (yo and (x.get("dueno") or "").lower() == yo))]
+    return out or [c]
+
+
+def _acciones_local(c: dict, ses: dict | None) -> str:
+    """"Escribir al local" (mensajería web) y "Bodega del local" (pedir a la
+    cancha), como en `club_detalle` del app: solo en locales verificados con
+    dueño y nunca al propio dueño."""
+    dueno = (c.get("dueno") or "").strip().lower()
+    yo = ((ses or {}).get("email") or "").strip().lower()
+    if not datos.reservable(c) or not dueno or dueno == yo:
+        return ""
+    cid = quote(c["id"], safe="")
+    return ("<div class='acciones' style='margin:6px 0 14px'>"
+            f"<a class='btn sec' href='/mensajes/nuevo?cancha={cid}'>💬 Escribir al local</a>"
+            f"<a class='btn sec' href='/bodega/{cid}/pedir'>🧃 Bodega del local</a></div>")
+
+
+def _ficha(c: dict, sim: str, pais: str, verificada: bool = True, hermanas: list[dict] | None = None,
+          ses: dict | None = None) -> str:
+    """Cabecera de la ficha pública: como `club_detalle_screen` del app, el
+    TÍTULO es el LOCAL y la cancha va debajo (antes salía "Cancha-01" grande
+    y el local chico; queja del director, sep-2026). Con varias canchas en el
+    local, chips para cambiar de cancha."""
+    sello = ui.sello_verificada() if verificada else "<span class='pill gris'>Aún sin verificar</span>"
+    lugar = ", ".join(x for x in (c.get("direccion"), _zona(c)) if x)
+    deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c))
+    amen = "".join(f"<span>{e(AMENIDAD_NOMBRE.get(str(a).lower(), str(a).replace('_', ' ').capitalize()))}</span>"
+                   for a in (c.get("amenidades") or [])[:8])
+    local = _titulo_local(c)
+    hs = hermanas or [c]
+    if len(hs) > 1:
+        chips = "".join(f"<a class='chip{' sel' if x['id'] == c['id'] else ''}' href='/reservar/{quote(str(x['id']), safe='')}'>"
+                        f"{_deporte(x.get('deporte'))[1]} {e(x['nombre'])}</a>" for x in hs)
+        cancha_linea = (f"<div class='sub' style='margin-top:6px'>{len(hs)} canchas en este local · elige una:</div>"
+                        f"<div class='chips' style='margin-top:6px'>{chips}</div>")
+    else:
+        cancha_linea = f"<p class='sub' style='margin-top:4px'>{_deporte(c.get('deporte'))[1]} {e(c['nombre'])}</p>"
+    return (f"{_galeria(c)}"
+            "<div style='display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-top:16px'>"
+            f"<div style='min-width:0'><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>"
+            f"<span class='pill gris'>{ui.bandera(pais)} {e(deps)}</span>{sello}</div>"
+            f"<h1 style='margin-top:8px'>{e(local)}</h1>{cancha_linea}</div>"
+            f"<div class='precio' style='font-size:22px;white-space:nowrap'>{e(sim)} {horarios.precio_publico(c)[0]:.2f} <small>{e(horarios.precio_publico(c)[1])}</small></div></div>"
+            "<ul class='datos'>"
+            f"<li>📍 <span>{e(lugar or 'Dirección en la app')} · <a href='#mapaFicha' id='btnLlegar' data-lat='{c.get('lat')}' data-lng='{c.get('lng')}' data-nombre='{e(local)}'>Cómo llegar</a></span></li>"
+            f"<li>🕒 <span>{e(c['hora_apertura'])} a {e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min · último turno {e(c['hora_cierre'])}</span></li>"
+            + (f"<li>⚡ <span>Hora feliz −{c['descuento_valle']} % de {e(c['valle_desde'] or '00:00')} a {e(c['valle_hasta'] or '12:00')}</span></li>" if c['descuento_valle'] > 0 else "")
+            + (f"<li>🏟️ <span>{e(c['superficie'])}</span></li>" if c.get("superficie") else "")
+            + "</ul>"
+            + _acciones_local(c, ses) +
+            "<div class='mapa-ficha' id='mapaFicha'><div class='mapa' id='mapaFichaMapa' aria-label='Mapa de la cancha'></div>"
+            f"<div class='pie-mapa'><span>📍 {e(lugar or local)}</span><a href='{_maps(c)}' target='_blank' rel='noopener'>Abrir en Google Maps</a>"
+            f"<a href='https://www.google.com/maps/dir/?api=1&destination={c.get('lat')},{c.get('lng')}' target='_blank' rel='noopener'>Indicaciones paso a paso</a></div></div>"
+            + (f"<div class='amen'>{amen}</div>" if amen else ""))
+
+
+def _jsonld_cancha(c: dict, sim: str) -> str:
+    return json.dumps({
+        "@context": "https://schema.org", "@type": "SportsActivityLocation",
+        "name": (f"{c['club']} · {c['nombre']}" if (c.get("club") or "").strip() else c["nombre"]), "image": _fotos(c)[:1],
+        "address": {"@type": "PostalAddress", "streetAddress": c.get("direccion") or "",
+                    "addressLocality": _zona(c), "addressCountry": _pais_de(c)},
+        "geo": {"@type": "GeoCoordinates", "latitude": c.get("lat"), "longitude": c.get("lng")},
+        "priceRange": f"{sim} {horarios.precio_publico(c)[0]:.2f} {horarios.precio_publico(c)[1]}",
+        "url": f"{config.PUBLIC_BASE_URL.rstrip('/')}/reservar/{c['id']}" if getattr(config, 'PUBLIC_BASE_URL', '') else "",
+    }, ensure_ascii=False)
+
+
+@router.get("/lugar/{lugar_id}", response_class=HTMLResponse)
+def pagina_lugar(request: Request, lugar_id: str, nombre: str = "", direccion: str = "", lat: float = 0.0, lng: float = 0.0, deporte: str = "") -> HTMLResponse:
+    """Ficha de un lugar DESCUBIERTO en Google que aún no está en Pichangol
+    (antes la tarjeta mandaba a Play y no había dónde reclamarlo): fotos del
+    lugar, cómo llegar, "Reservar en la app" y, en grande, "¿Es tuya?
+    Reclámala" → registro web prellenado. Si el lugar ya fue registrado, va a
+    su ficha real."""
+    es_osm = lugar_id.startswith("osm_")
+    if not (lugar_id.startswith("gp_") or es_osm) or not nombre.strip() or not (lat or lng):
+        r = _no_encontrada("Lugar no disponible"); r.status_code = 404
+        return r
+    ses = sesion.de_request(request)
+    nombre = re.sub(r"\s+", " ", nombre).strip()[:120]
+    direccion = re.sub(r"\s+", " ", direccion).strip()[:200]
+    dep = deporte if deporte in DEPORTES else ""
+    c = {"id": lugar_id, "nombre": nombre, "club": "", "direccion": direccion, "lat": lat, "lng": lng, "deporte": dep or "futbol", "fotos": [], "foto_url": ""}
+    pais = _pais_de(c)
+    q = f"place={quote(lugar_id, safe='')}&nombre={quote(nombre)}&direccion={quote(direccion)}&lat={lat}&lng={lng}&deporte={quote(dep)}"
+    cuerpo = (
+        f"<div style='padding-top:22px'>{_galeria(c)}"
+        "<div style='display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-top:16px'>"
+        f"<div><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><span class='pill gris'>{ui.bandera(pais)} {e(_deporte(dep)[0]) if dep else 'Cancha'}</span>"
+        "<span class='pill gris'>Aún sin registrar</span></div>"
+        f"<h1 style='margin-top:8px'>{e(nombre)}</h1><p class='sub'>{e(direccion) or ('Lugar del mapa de OpenStreetMap' if es_osm else 'Lugar encontrado en Google Maps')}</p></div></div>"
+        "<ul class='datos'>"
+        f"<li>📍 <span>{e(direccion or nombre)} · <a href='{_maps(c)}' target='_blank' rel='noopener'>Abrir en Google Maps</a> · "
+        f"<a href='https://www.google.com/maps/dir/?api=1&destination={lat},{lng}' target='_blank' rel='noopener'>Indicaciones</a></span></li>"
+        "<li>🕒 <span>Horarios y precios aún no publicados: este local todavía no está en Pichangol.</span></li></ul>"
+        + (f"<p class='osm-atrib' style='font-size:12px;color:#717171;margin-top:8px'>Datos del lugar: "
+           f"<a href='{osm.ATRIBUCION_URL}' target='_blank' rel='noopener'>© colaboradores de OpenStreetMap</a></p>" if es_osm else "")
+        + "</div>"
+        "<div class='panel' style='margin-top:20px;border:1px solid var(--verde)'><h2>¿Es tuya esta cancha?</h2>"
+        "<p class='sub'>Publícala en Pichangol en 5 minutos: horarios, precios y fotos. Confirmamos que eres el dueño y empiezas a recibir reservas y pagos en línea.</p>"
+        f"<div class='acciones'><a class='btn' href='/anfitrion/nueva?{q}'>🏷️ Reclámala y recibe reservas</a></div></div>"
+        "<div class='panel' style='margin-top:16px'><h2>¿Quieres jugar aquí?</h2>"
+        "<p class='sub'>Este local aún no acepta reservas en Pichangol. Desde la app puedes guardarlo, ver cómo llegar y avisarle al local que lo estás buscando.</p>"
+        f"<div class='acciones'><a class='btn sec' href='{PLAY_URL}' rel='noopener'>📲 Abrir en la app</a><a class='btn sec' href='/canchas'>Ver canchas disponibles</a></div></div>")
+    return ui.shell(nombre, cuerpo, desc=f"{nombre} · {direccion}", sesion=ses, titulo_tab=f"{nombre} · Pichangol")
+
+
+@router.get("/reservar/{cancha_id}", response_class=HTMLResponse)
+def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str = "") -> HTMLResponse:
+    c = datos.cancha(cancha_id)
+    ses = sesion.de_request(request)
+    if not c or c.get("eliminada") or not c.get("registrada", True):
+        return _no_encontrada()
+    # Como el app: una cancha EN VERIFICACIÓN (con dueño, aún no aprobada) solo
+    # la ve su dueño (vista previa); el público no la encuentra hasta que la
+    # torre la apruebe. El legado sin dueño sí se muestra, para poder reclamarlo.
+    dueno = (c.get("dueno") or "").strip().lower()
+    if not datos.reservable(c) and dueno and dueno != ((ses or {}).get("email") or "").lower():
+        r = _no_encontrada("Esta cancha aún está en verificación"); r.status_code = 404
+        return r
+    sim, iso = _moneda_de(c)
+    pais = _pais_de(c)
+    hermanas = _hermanas(c, ses)
+    ficha = _ficha(c, sim, pais, verificada=datos.reservable(c), hermanas=hermanas, ses=ses)
+    titulo = _titulo_local(c)
+    canonical = (f"{config.PUBLIC_BASE_URL.rstrip('/')}/reservar/{c['id']}"
+                 if getattr(config, "PUBLIC_BASE_URL", "") else "")
+    og = _fotos(c)[0] if _fotos(c) else "/static/brand/logo_pichangol.png"
+
+    if not datos.reservable(c) or not _pago_web_disponible(iso):
+        if not datos.reservable(c):
+            motivo = ("Este local todavía está en proceso de verificación con Pichangol. Desde la app puedes "
+                      "reservar y pagar en la cancha, y te avisamos cuando acepte pagos en línea.")
+        else:
+            motivo = (f"El pago en línea en {e(sim)} desde la web se está habilitando." if iso != "PEN"
+                      else "El pago en línea desde la web se está habilitando.")
+        reclamar = ""
+        if not datos.reservable(c) and not (c.get("dueno") or "").strip():
+            reclamar = ("<div class='panel' style='margin-top:16px;border:1px solid var(--verde)'><h2>¿Es tuya esta cancha?</h2>"
+                        "<p class='sub'>Nadie la administra todavía. Reclámala, confirmamos que eres el dueño y empiezas a recibir reservas y pagos en línea.</p>"
+                        f"<div class='acciones'><a class='btn' href='/anfitrion/nueva?cancha={quote(c['id'], safe='')}'>🏷️ Reclamar esta cancha</a></div></div>")
+        cuerpo = (f"<div style='padding-top:22px'>{ficha}</div>"
+                  f"<div class='panel' style='margin-top:20px'><h2>Reserva desde la app</h2>"
+                  f"<p class='sub'>{motivo} En la app Pichangol reservas y pagas con los medios de tu país.</p>"
+                  f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a>"
+                  f"<a class='btn sec' href='/canchas'>Ver otras canchas</a></div></div>{reclamar}")
+        return ui.shell(titulo, cuerpo, desc=f"{titulo} · {c['nombre']}", canonical=canonical,
+                        og_image=og, jsonld=_jsonld_cancha(c, sim), sesion=ses)
+
+    dias, etiquetas = _tira_dias(pais)
+    deps = _deportes_de(c)
+    selector_dep = ""
+    if len(deps) > 1:
+        ops = "".join(f"<option value='{e(d)}'>{_deporte(d)[1]} {_deporte(d)[0]}</option>" for d in deps)
+        selector_dep = f"<label for='deporte'>¿Qué vas a jugar?</label><select id='deporte'>{ops}</select>"
+    extras_html = ""
+    filas = ""
+    for s in c.get("servicios_extra") or []:
+        s = _se.completar(s)  # nombre/emoji/tipo desde el catálogo si la fila es de un APK viejo
+        clave = str(s.get("clave") or "")
+        try:
+            precio = float(s.get("precio") or 0)
+        except (TypeError, ValueError):
+            precio = 0.0
+        if precio <= 0 or not clave:
+            continue
+        nombre, tipo = s["nombre"], s["tipo"]
+        sufijo = {"persona": " por persona", "turno": " por turno"}.get(tipo, "")
+        # "Por persona" (piscina, entrada general): el jugador elige cuántas.
+        cant = ("<select class='cant' data-for='" + e(clave) + "' disabled aria-label='Cantidad de personas'>"
+                + "".join(f"<option value='{i}'>{i} persona{'s' if i > 1 else ''}</option>" for i in range(1, 13)) + "</select>") if tipo == "persona" else ""
+        filas += (f"<label class='extra' style='display:flex;gap:10px;align-items:center;font-weight:600;margin:8px 0;flex-wrap:wrap'>"
+                  f"<input type='checkbox' name='extra' value='{precio:.2f}' data-clave='{e(clave)}' data-nombre='{e(nombre)}' data-tipo='{e(tipo)}' style='width:auto'>"
+                  f"{s['emoji']} {e(nombre)} <small style='color:var(--tenue)'>+ {e(sim)} {precio:.2f}{sufijo}</small>{cant}</label>")
+    if filas:
+        extras_html = f"<div class='paso'><span>3</span> Servicios extra <small style='color:var(--tenue);font-weight:600'>(opcional)</small></div>{filas}"
+    # BOLEADOR / SPARRING (sep-2026): solo canchas de tenis/pádel cuyo local lo
+    # permite; la lista se pide al elegir el horario (depende de fecha y hora).
+    import boleadores as _bol
+    con_bol = (_bol.activo() and any(d in _bol.DEPORTES for d in _deportes_de(c)) and datos.permite_boleadores(c["id"]))
+    nombre_bol = _bol.nombre_por_pais(pais)
+    if con_bol:
+        extras_html += (f"<div class='paso'><span>{'4' if filas else '3'}</span> 🎾 ¿Quieres un {nombre_bol.lower()}? "
+                        "<small style='color:var(--tenue);font-weight:600'>(opcional)</small></div>"
+                        f"<div class='sub' style='margin:-4px 0 10px;font-size:13px'>Jugadores de la Liga Pichangol que pelotean contigo en este local. "
+                        f"Eliges por categoría y precio por turno; el {nombre_bol.lower()} confirma y, si no puede, te devolvemos su parte.</div>"
+                        "<div id='bolBox' class='bol-box'><span class='sub'>Elige un horario para ver quién puede atenderte.</span></div>")
+
+    # TARJETA DE FIDELIDAD del local (sep-2026): progreso y premio del jugador
+    # con sesión; el JS la pinta con `/web/fidelidad` y aplica el premio en el
+    # resumen. Sin sesión, solo explica la promo.
+    import fidelidad as _fid
+    fid_cfg = _fid.publico_config(c) if _fid.activa_en(c) else None
+    if fid_cfg:
+        extras_html = ("<div id='fidBox' class='fid-box'><b>🎁 Tarjeta de fidelidad de "
+                       f"{e(_titulo_local(c))}</b><div class='sub' style='margin:2px 0 0'>Cada {fid_cfg['meta']} reservas pagadas, "
+                       f"{e(fid_cfg['nombrePremio'])}. Inicia sesión para ver tu progreso.</div></div>") + extras_html
+    # BONO DE HORAS y PUNTOS (como el app): la caja se llena con
+    # `/web/beneficios` para el jugador con sesión; sin nada que ofrecer, oculta.
+    con_ben = sesion.activo() and beneficios.disponible()
+    if con_ben:
+        extras_html = "<div id='benBox' class='fid-box ben-box' style='display:none'></div>" + extras_html
+    pasarela = _pasarela_web(iso)
+    cfg = json.dumps({"id": c["id"], "moneda": sim, "pk": config.CULQI_PUBLIC_KEY if pasarela == "culqi" else "", "maxSlots": MAX_SLOTS,
+                      # Pasarela del checkout: 'culqi' (soles, en la página) o la HOSPEDADA del país
+                      # ($ / Bs: se va a pagar a su página y vuelve a /web/pago/{orden}).
+                      "pasarela": pasarela, "pasarelaNombre": ("" if pasarela == "culqi" else pago_hospedado.nombre_pasarela(pasarela)),
+                      "boleadores": con_bol, "nombreBoleador": nombre_bol, "fidelidad": fid_cfg, "beneficios": con_ben,
+                      "logo": "", "hoy": dias[0]["iso"], "dias": dias, "etiquetas": etiquetas,
+                      # Cargo por servicio (fase 2): con el flag apagado el JS no cotiza ni pinta la línea.
+                      "cargo": _cs.activo("reservas"), "deporteBase": (_deportes_de(c) or [""])[0],
+                      # SEÑA que configuró el dueño (% del precio de los turnos), como el app.
+                      "senaPct": int(c.get("sena_pct") or 0),
+                      # Día preseleccionado desde el buscador de la portada (solo si cae en la tira).
+                      "fecha": fecha if any(d["iso"] == fecha for d in dias) else "",
+                      # Hora buscada en la portada: se marca el turno libre que la cubre.
+                      "hora": hora if horarios.hora_en_minutos(hora) is not None else "",
+                      # Login con Google (como el app): con client id configurado, reservar
+                      # exige sesión; la reserva queda a nombre del correo de Google.
+                      "login": sesion.activo(), "sesion": ses}, ensure_ascii=False)
+    if sesion.activo():
+        quien = ("" if not ses else
+                 f"<div class='quien' id='quien'>{('<img src=' + chr(39) + e(ses['foto']) + chr(39) + ' alt=' + chr(39) + chr(39) + '>') if ses.get('foto') else ''}"
+                 f"<div><b>{e(ses.get('nombre') or ses['email'])}</b><div class='m'>{e(ses['email'])}</div></div>"
+                 "<button type='button' class='btn sec' onclick='cerrarSesion()'>Cambiar cuenta</button></div>")
+        paso_datos = (
+            "<div class='paso'><span>2</span> Tus datos</div>"
+            f"<div class='login-box' id='loginBox'{' style=display:none' if ses else ''}>"
+            "<b>Inicia sesión con Google para reservar</b>"
+            "<div class='sub' style='margin:4px 0 12px'>Como en el app: tu reserva queda en \"Mis reservas\" y el comprobante llega a tu correo.</div>"
+            f"{sesion.boton_google(volver='/reservar/' + c['id'])}<div class='estado bad' id='sesionErr'></div></div>"
+            f"<div id='datosBox'{'' if ses else ' style=display:none'}>{quien}"
+            "<div class='row'><div><label for='nombre'>Nombre y apellido</label>"
+            f"<input id='nombre' autocomplete='name' maxlength='80' placeholder='Como en tu documento' value='{e((ses or {}).get('nombre', ''))}'></div>"
+            f"<div><label for='celular'>Celular</label><input id='celular' inputmode='tel' autocomplete='tel' maxlength='20' placeholder='9 dígitos' value='{e(datos.celular_de_perfil(ses['email']) if ses else '')}'></div></div>"
+            f"<input id='email' type='hidden' value='{e((ses or {}).get('email', ''))}'></div>")
+    else:
+        paso_datos = (
+            "<div class='paso'><span>2</span> Tus datos</div>"
+            "<div class='row'><div><label for='nombre'>Nombre y apellido</label><input id='nombre' autocomplete='name' maxlength='80' placeholder='Como en tu documento'></div>"
+            "<div><label for='celular'>Celular</label><input id='celular' inputmode='tel' autocomplete='tel' maxlength='20' placeholder='9 dígitos'></div></div>"
+            "<label for='email'>Correo</label><input id='email' type='email' autocomplete='email' maxlength='120' placeholder='Aquí va tu comprobante'>")
+    cuerpo = (
+        f"<div style='padding-top:22px'>{ficha}</div>"
+        "<div class='dos' style='margin-top:22px'>"
+        "<div class='panel'>"
+        "<div class='paso' style='margin-top:0'><span>1</span> Elige el día y el horario</div>"
+        "<div class='strip' id='dias'></div>"
+        f"{selector_dep}"
+        f"<div class='sub' style='margin:6px 0 12px;font-size:13px'>Hasta {MAX_SLOTS} turnos por pedido. Toca un horario para agregarlo; vuelve a tocarlo para quitarlo.</div>"
+        "<div id='slots'></div>"
+        f"{paso_datos}"
+        f"{extras_html}"
+        "<div class='estado bad' id='err'></div>"
+        "</div>"
+        "<aside class='resumen'><div class='panel'>"
+        "<h3>Resumen de tu reserva</h3>"
+        f"<div class='sub' style='margin-bottom:10px'>{e(c['nombre'])}{(' · ' + e(c.get('club'))) if c.get('club') else ''}</div>"
+        "<div id='lineas'></div>"
+        "<div class='total'><span id='totLbl'>Total</span><span id='tot'></span></div>"
+        f"<div style='margin-top:14px'>{ui.selector_medio_pago() if pasarela == 'culqi' else pago_hospedado.selector(pasarela)}</div>"
+        "<div style='margin-top:14px'><button class='btn lg' id='btnPagar' disabled>Elige un horario</button></div>"
+        "<div class='sub' style='font-size:12.5px;margin-top:12px'>Reserva confirmada al instante; el local la ve en su agenda. "
+        "Cancelación con más de 6 horas de anticipación: devolución del 100 %. <a href='/#devoluciones'>Ver política</a>.</div>"
+        "</div></aside></div>"
+        "<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0' id='totBarraLbl'>Total</div><div class='t' id='totBarra'></div></div>"
+        f"{ui.medio_pago_mini(pasarela)}<button class='btn' id='btnPagarBarra' disabled>Elige un horario</button></div>"
+        f"<script>window.__cancha={cfg};var CORREO_SOPORTE={json.dumps(empresa.valores()['empresa_correo'])};</script>"
+        + ("<script src='https://checkout.culqi.com/js/v4'></script>" if pasarela == "culqi" else "")
+        + f"<script>{sesion.JS_SESION if sesion.activo() else ''}{_JS_RESERVA}</script>")
+    return ui.shell(f"Reservar en {titulo}", cuerpo, con_barra=True, canonical=canonical, og_image=og,
+                    desc=(f"Reserva {c['nombre']} y paga en línea con Yape o tarjeta." if pasarela == "culqi"
+                          else f"Reserva {c['nombre']} y paga en línea con {pago_hospedado.nombre_pasarela(pasarela)}."),
+                    jsonld=_jsonld_cancha(c, sim),
+                    extra_head=("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
+                                "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>"
+                                + (sesion.GIS_SCRIPT if (sesion.activo() and not ses) else "")), sesion=ses)
+
+
+# ── asegurar / pagar / liberar ────────────────────────────────────────────────
+
+class HoraReq(BaseModel):
+    fecha: str
+    hora: str
+
+
+class AsegurarReq(BaseModel):
+    cancha_id: str
+    horas: list[HoraReq]
+    extras: list[Any] = []  # claves (APK/web viejos) o {clave, cantidad}
+    deporte: str = ""
+    nombre: str
+    celular: str = ""
+    email: str
+    boleador: str = ""  # slug del boleador elegido (sparring por turno, opcional)
+    fidelidad: bool = False  # usar el premio de la tarjeta de fidelidad del local
+    # BONO de horas prepagadas del local (cubre todos los turnos) y canje de
+    # PUNTOS Pichangol (100 pts = S/ 3), como `club_detalle._reservar` del app.
+    bono: bool = False
+    puntos: bool = False
+    # "sena" = adelanta la SEÑA del dueño (% de los turnos) y el resto se paga en
+    # la cancha; "total" = todo ahora. Vacío = total (navegadores con JS viejo).
+    pago: str = ""
+    # Medio elegido en la página (yape | tarjeta): en el modelo 2 el cargo
+    # depende de él. Vacío = tarjeta (JS viejo).
+    medio: str = ""
+
+
+_contador = {"n": 0}
+
+
+def _cotizacion_reserva(c: dict, total_soles: float, deporte: str = "", medio: str | None = None) -> "_cs.Cotizacion":
+    """CARGO POR SERVICIO de una reserva web (fase 2 del diseño, sep-2026): la
+    MISMA cotización al asegurar (lo que ve el jugador) y al cobrar en
+    `/web/pagar` (lo que se le carga). Red de seguridad con la tarifa de
+    TARJETA como peor caso: lo mostrado nunca es menor que lo cobrado. Con el
+    flag `cargo_activo_reservas` en 0 devuelve cargo 0 y total = base."""
+    from pagos.router import cotizacion_para
+    _sim, iso = _moneda_de(c)
+    dep = (deporte or "").strip().lower() or ((_deportes_de(c) or [""])[0])
+    # MODELO 2: el cargo depende del medio (Yape es más barato que la tarjeta);
+    # sin medio = tarjeta. En el modelo 1 el medio solo toca la red de seguridad.
+    return cotizacion_para("reservas", iso, int(round(float(total_soles) * 100)), medio=(medio or None), deporte=dep)
+
+
+@router.get("/web/cotizar")
+def web_cotizar(linea: str = "reservas", moneda: str = "PEN", base: str = "0", deporte: str = "", partes: str = "",
+                medio: str = "") -> dict:
+    """Cotización PÚBLICA del cargo por servicio para pintar el checkout web
+    (espejo de `POST /pagos/cotizar`, que exige X-App-Key). `base` y `partes`
+    (separadas por coma) en céntimos. Solo se muestra: el backend recalcula al
+    cobrar y nunca confía en lo que manda el navegador."""
+    from pagos.router import cotizacion_para
+    b = int(base) if str(base).strip().isdigit() else 0
+    if b > 50_000_000:
+        return {"ok": False, "error": "base"}
+    pts = [int(x) for x in (partes or "").split(",") if x.strip().isdigit()][:12]
+    md = medio if medio in ("yape", "tarjeta") else None
+    cot = cotizacion_para(linea if linea in _cs.LINEAS else "reservas", moneda, b, medio=md,
+                          deporte=(deporte or "")[:20], partes=pts)
+    return {"ok": True, **cot.dict()}
+
+
+def _nuevo_id() -> str:
+    _contador["n"] = (_contador["n"] + 1) % 100000
+    return f"{datos.PREFIJO_ID_WEB}{int(time.time() * 1000)}_{_contador['n']}"
+
+
+def sena_de(precio_turno: int, pct: int) -> int:
+    """Seña de UN turno = `Cancha.senaDe` del app: % del precio redondeado al
+    entero (mitad hacia arriba, como `.round()` de Dart)."""
+    if pct <= 0:
+        return 0
+    return int(precio_turno * min(pct, 100) / 100 + 0.5)
+
+
+@router.post("/web/asegurar")
+def asegurar(req: AsegurarReq, request: Request = None) -> dict:
+    """Toma los slots (INSERT 'nueva') ANTES de cobrar, igual que el APK
+    (`insertarSegura`): así el UNIQUE decide quién se queda con la hora. Si el
+    cliente no paga, `/web/liberar` (o el vencimiento del hold) los suelta."""
+    c = datos.cancha(req.cancha_id)
+    if not c or c.get("eliminada"):
+        return {"ok": False, "error": "no_encontrada"}
+    if not datos.reservable(c):
+        return {"ok": False, "error": "no_verificada"}
+    sim, iso = _moneda_de(c)
+    if not _pago_web_disponible(iso):
+        return {"ok": False, "error": "pago_no_disponible"}
+    # Con login configurado, la reserva es del CORREO de la sesión de Google
+    # (como en el app); sin sesión no se reserva.
+    ses = sesion.de_request(request) if sesion.activo() else None
+    if sesion.activo() and not ses:
+        return {"ok": False, "error": "sesion_requerida"}
+    nombre = (req.nombre.strip() or (ses or {}).get("nombre", ""))[:80]
+    email = (ses["email"] if ses else req.email.strip().lower())[:120]
+    # Nombre y celular OBLIGATORIOS, misma regla que el app (`_ResumenReserva`):
+    # nombre ≥ 3 letras y celular con ≥ 8 dígitos.
+    if len(nombre) < 3 or "@" not in email or len(re.sub(r"\D", "", req.celular or "")) < 8:
+        return {"ok": False, "error": "datos_invalidos"}
+    if ses:
+        datos.guardar_celular_si_falta(email, nombre, req.celular)
+    if not req.horas or len(req.horas) > MAX_SLOTS:
+        return {"ok": False, "error": "horas_invalidas"}
+    for h in req.horas:
+        if not _es_iso(h.fecha):
+            return {"ok": False, "error": "fecha_invalida"}
+    datos.liberar_holds_vencidos(c["id"])
+    pais = _pais_de(c)
+    d_min, d_max = _fechas_validas(pais)
+    pedidos = {(h.fecha, h.hora) for h in req.horas}
+    # Un slot de madrugada pertenece a la grilla del día ANTERIOR: se evalúan
+    # ambos días base y se valida cada hora contra la grilla real.
+    bases = set()
+    for fb in {h.fecha for h in req.horas}:
+        bases.add(fb)
+        bases.add((date.fromisoformat(fb) - timedelta(days=1)).isoformat())
+    validos: dict[tuple[str, str], dict] = {}
+    for fb in sorted(bases):
+        if d_min <= fb <= d_max:
+            for s in _slots_del_dia(c, fb):
+                validos[(s["fecha"], s["hora"])] = s
+    deporte = (req.deporte or "").strip().lower()
+    if deporte and deporte not in _deportes_de(c):
+        deporte = ""
+    extras_ok = []
+    if req.extras:
+        cat = {str(s.get("clave")): s for s in c.get("servicios_extra") or []}
+        for it in req.extras:
+            if isinstance(it, dict):
+                k, cant = str(it.get("clave") or ""), it.get("cantidad") or 1
+            else:
+                k, cant = str(it or ""), 1
+            s = cat.get(k)
+            try:
+                cant = int(cant)
+            except (TypeError, ValueError):
+                cant = 1
+            if s and float(s.get("precio") or 0) > 0 and k not in [x["clave"] for x in extras_ok]:
+                # Línea con el TOTAL (por persona × cantidad, por turno × turnos).
+                extras_ok.append(_se.linea_reserva(s, cant, len(pedidos)))
+    hoy = horarios.ahora_local(pais).date()
+    grupo = f"grp_web_{int(time.time() * 1000)}" if len(pedidos) > 1 else ""
+    filas, total = [], 0
+    for i, key in enumerate(sorted(pedidos)):
+        s = validos.get(key)
+        if not s or s["ocupado"]:
+            return {"ok": False, "error": "ocupado" if s else "hora_invalida"}
+        total += s["precio"]
+    # FIDELIDAD DEL LOCAL (sep-2026): si el jugador pidió usar su premio y de
+    # verdad lo tiene, el descuento sale del precio de la cancha (hora gratis =
+    # el turno más barato a 0; descuento = % por turno). El servidor decide.
+    import fidelidad as _fid
+    desc_por = [0] * len(pedidos)
+    desc_total = 0
+    # SEÑA (como `club_detalle._ResumenReserva` del app): solo si el dueño la
+    # configuró, el cliente la eligió y no lleva boleador (con boleador todo va
+    # en línea). La seña es % del precio de los TURNOS (sin extras) y no se
+    # combina con el premio de fidelidad.
+    sena_pct = max(0, min(100, int(c.get("sena_pct") or 0)))
+    con_sena = sena_pct > 0 and (req.pago or "").strip() == "sena" and not (req.boleador or "").strip()
+    # BONO DE HORAS (= `metodo == 'bono'` del app): cubre TODOS los turnos con
+    # las horas prepagadas del jugador en este local; camino propio, sin seña,
+    # premio de fidelidad, puntos ni boleador. Exige sesión: el bono es de la
+    # cuenta de Google, no de un correo escrito a mano.
+    con_bono = bool(req.bono)
+    if con_bono or req.puntos:
+        if not ses or not beneficios.disponible():
+            return {"ok": False, "error": "sin_bono" if con_bono else "sin_puntos"}
+    if con_bono:
+        if (req.boleador or "").strip():
+            return {"ok": False, "error": "bono_con_boleador"}
+        if beneficios.horas_bono(email, c) < len(pedidos):
+            return {"ok": False, "error": "sin_bono"}
+        con_sena = False
+    if req.fidelidad and not con_sena and not con_bono and _fid.activa_en(c):
+        if not _fid.estado(email, c)["disponible"]:
+            return {"ok": False, "error": "sin_premio"}
+        desc_total, desc_por = _fid.descuento_para(_fid.config_de(c), [validos[k]["precio"] for k in sorted(pedidos)])
+    # BOLEADOR (sparring por turno): el servidor vuelve a comprobar que atiende
+    # en esta cancha, que la franja cae en su disponibilidad y que no tiene otra
+    # solicitud viva cruzada. Entra como una línea más de `extras`.
+    if (req.boleador or "").strip():
+        import boleadores as _bol
+        primero = validos[sorted(pedidos)[0]]
+        ultimo = validos[sorted(pedidos)[-1]]
+        libres = {b["slug"]: b for b in _bol.disponibles(c["id"], primero["fecha"], primero["hora"], len(pedidos), deporte)}
+        b = datos.boleador_por_slug(req.boleador.strip())
+        if not b or _bol.slug_de(b["email"]) not in libres:
+            return {"ok": False, "error": "boleador_no_disponible"}
+        if datos.solicitudes_cruce(b["email"], primero["fecha"], primero["hora"], ultimo["fin"]):
+            return {"ok": False, "error": "boleador_no_disponible"}
+        extras_ok = [x for x in extras_ok if x.get("clave") != "boleador"] + [_bol.linea_reserva(b, len(pedidos))]
+    for i, key in enumerate(sorted(pedidos)):
+        s = validos[key]
+        filas.append({
+            "id": _nuevo_id(), "cancha_id": c["id"], "jugador": nombre, "nivel": "",
+            "fecha": s["fecha"], "dia": horarios.etiqueta_dia(s["fecha"], hoy),
+            "hora_inicio": s["hora"], "hora_fin": s["fin"], "estado": "nueva",
+            "traida_por_app": True, "precio": max(0, int(s["precio"]) - int(desc_por[i])),
+            "sena": sena_de(int(s["precio"]), sena_pct) if con_sena else 0, "pagado": False,
+            "usuario": email, "deporte": deporte, "moneda": sim,
+            "extras": extras_ok if i == 0 else [],
+            "telefono": req.celular.strip()[:20], "grupo_reserva_id": grupo,
+            "medio_pago": "web_hold",
+        })
+    precio_turnos = int(round(total - desc_total))
+    total = int(round(total - desc_total + sum(x["precio"] for x in extras_ok)))
+    if total < 1 and desc_total <= 0:
+        return {"ok": False, "error": "monto_invalido"}
+    total = max(0, total)
+    # Con bono, los turnos ya están pagados (la fila guarda el precio de lista,
+    # como el app): solo se cobran los servicios extra que haya elegido.
+    bono_cubre = precio_turnos if con_bono else 0
+    a_cobrar = total - bono_cubre
+    # PUNTOS (= `canjea` del app): 100 pts = S/ 3, pagando TODO en línea en
+    # soles, sin seña, sin premio de fidelidad, sin bono y con total > S/ 3.
+    con_puntos = False
+    if req.puntos:
+        _g, disp = beneficios.puntos_disponibles(email)
+        if not beneficios.puede_canjear_puntos(iso=iso, total=a_cobrar, desc_fidelidad=desc_total, con_sena=con_sena,
+                                               con_bono=con_bono, disponibles=disp):
+            return {"ok": False, "error": "sin_puntos"}
+        con_puntos = True
+    r = datos.insertar_reservas(filas)
+    if r:
+        return {"ok": False, "error": r}
+    ids = [f["id"] for f in filas]
+    ref = grupo or ids[0]
+    bono_out = puntos_out = None
+    if con_bono:
+        rb = beneficios.apartar_bono(email, c, ref=ref, ids=ids, horas=len(filas), cubre=bono_cubre, iso=iso)
+        if rb:
+            datos.borrar_reservas(ids)
+            return {"ok": False, "error": "sin_bono" if rb == "sin_bono" else "error"}
+        bono_out = {"horas": len(filas), "cubre": bono_cubre, "quedan": max(0, beneficios.horas_bono(email, c))}
+    if con_puntos:
+        rp = beneficios.apartar_puntos(email, c, ref=ref, ids=ids)
+        if rp:
+            datos.borrar_reservas(ids)
+            return {"ok": False, "error": "sin_puntos" if rp == "sin_puntos" else "error"}
+        puntos_out = {"puntos": beneficios.PUNTOS_CANJE, "descuento": beneficios.DESCUENTO_PUNTOS}
+    fid_out = None
+    if desc_total > 0:
+        # Aparta el premio para ESTA reserva (hold): si alguien lo usó en otra
+        # pestaña un segundo antes, se libera el horario y se avisa.
+        rc = _fid.reservar_canje(email, c, reserva_ref=(grupo or ids[0]), reserva_ids=ids, descuento=desc_total, canal="web")
+        if not rc.get("ok"):
+            datos.borrar_reservas(ids)
+            return {"ok": False, "error": "sin_premio"}
+        cfg_f = _fid.config_de(c)
+        fid_out = {"descuento": desc_total, "premio": cfg_f["premio"], "texto": _fid.texto_premio_corto(cfg_f)}
+    # Cargo por servicio (si la línea está activa): el total a cobrar lo decide
+    # el servidor; el navegador solo lo muestra y se lo pasa a Culqi. Con
+    # total 0 (hora gratis sin extras) no hay cargo ni pasarela.
+    sena_total = sum(int(f["sena"]) for f in filas)
+    base_cobro = sena_total if con_sena else (a_cobrar - (beneficios.DESCUENTO_PUNTOS if con_puntos else 0))
+    if base_cobro > 0:
+        cot = _cotizacion_reserva(c, base_cobro, deporte, req.medio if req.medio in ("yape", "tarjeta") else None)
+        total_c, cargo_c, cargo_d = cot.total_centimos, cot.cargo_centimos, (cot.dict() if cot.activo else None)
+    else:
+        total_c, cargo_c, cargo_d = 0, 0, None
+    return {"ok": True, "ids": ids, "grupo": grupo, "firma": _firma(ids),
+            "pago": "sena" if con_sena else "total", "sena": sena_total if con_sena else 0,
+            "sena_pct": sena_pct if con_sena else 0, "resto": (total - sena_total) if con_sena else 0,
+            "total": total, "total_centimos": total_c, "moneda": sim,
+            "cargo_centimos": cargo_c, "cargo": cargo_d,
+            "fidelidad": fid_out, "bono": bono_out, "puntos": puntos_out, "a_pagar": base_cobro,
+            "sin_pago": total_c == 0, "hold_segundos": datos.HOLD_SEGUNDOS}
+
+
+@router.get("/web/fidelidad")
+def web_fidelidad(cancha_id: str, request: Request = None) -> dict:
+    """Progreso del jugador con sesión en la tarjeta de fidelidad de ese local
+    (para la ficha web). Sin sesión, solo la config (sin conteo)."""
+    import fidelidad as _fid
+    c = datos.cancha(cancha_id)
+    if not c or not _fid.activa_en(c):
+        return {"ok": False, "error": "no_activa"}
+    ses = sesion.de_request(request) if sesion.activo() else None
+    email = (ses or {}).get("email", "")
+    return {"ok": True, **_fid.estado(email, c)}
+
+
+@router.get("/web/beneficios")
+def web_beneficios(cancha_id: str, request: Request = None) -> dict:
+    """Bono de horas del local y puntos Pichangol del jugador con sesión,
+    para el checkout de la ficha (como el resumen de reserva del app)."""
+    c = datos.cancha(cancha_id)
+    ses = sesion.de_request(request) if sesion.activo() else None
+    if not c or not ses:
+        return {"ok": False, "error": "sesion_requerida" if c else "no_encontrada"}
+    _sim, iso = _moneda_de(c)
+    return {"ok": True, **beneficios.estado(ses["email"], c, iso)}
+
+
+class LiberarReq(BaseModel):
+    ids: list[str]
+    firma: str
+
+
+@router.post("/web/liberar")
+def liberar(req: LiberarReq) -> dict:
+    if not _firma_ok(req.ids, req.firma):
+        return {"ok": False, "error": "firma"}
+    if pago_hospedado.orden_de_ids(req.ids) is not None:
+        # El jugador está pagando en la pasarela (o el pago ya entró y se está
+        # confirmando): el apartado lo suelta la orden, nunca el navegador.
+        return {"ok": False, "error": "pago_en_curso"}
+    import fidelidad as _fid
+    _fid.revertir_canje(ids=req.ids)
+    beneficios.soltar(ids=req.ids)  # bono / puntos apartados vuelven al jugador
+    return {"ok": datos.borrar_reservas(req.ids)}
+
+
+class PagarReq(BaseModel):
+    ids: list[str]
+    firma: str
+    token: str
+    medio: str = "tarjeta"
+    email: str = ""
+
+
+@router.post("/web/pagar")
+def pagar(req: PagarReq, request: Request = None) -> dict:
+    """Cobra con Culqi el TOTAL del bloque asegurado y confirma las filas.
+    Fallo del cargo → las filas se liberan y no se cobró nada. Éxito →
+    confirmada + pagado + liquidación al dueño (billetera-first) + push.
+    En dólares / bolivianos el cobro va por la pasarela HOSPEDADA del país
+    (`POST /web/pago/reserva`, `web/pago_hospedado.py`); aquí solo llegan,
+    en esas monedas, las reservas sin cobro (hora gratis / bono sin extras)."""
+    ses = sesion.de_request(request) if sesion.activo() else None
+    if sesion.activo() and not ses:
+        return {"ok": False, "error": "sesion_requerida",
+                "mensaje": "Inicia sesión con Google para pagar tu reserva."}
+    if not _firma_ok(req.ids, req.firma):
+        return {"ok": False, "error": "firma",
+                "mensaje": "La sesión de pago venció. Vuelve a elegir el horario."}
+    filas = datos.reservas_de(req.ids)
+    if not filas or len(filas) != len(req.ids):
+        return {"ok": False, "error": "hold_vencido",
+                "mensaje": "El horario ya no está reservado para ti (pasaron más de 10 minutos). Vuelve a elegirlo."}
+    if all(f.get("pagado") or f.get("estado") == "confirmada" for f in filas):
+        return {"ok": True, "url": _url_comprobante(filas)}
+    c = datos.cancha(filas[0]["cancha_id"]) or {}
+    sim, iso = _moneda_de(c) if c else ("S/", "PEN")
+    email = (ses["email"] if ses else (req.email or filas[0].get("usuario") or "")).strip().lower()
+    import fidelidad as _fid
+    plan = plan_cobro_reserva(filas)
+    canje, ben, ref_fid = plan["canje"], plan["ben"], plan["ref"]
+    if plan["a_cobrar"] <= 0:
+        # RESERVA SIN COBRO: hora gratis de la tarjeta de fidelidad o turnos
+        # cubiertos por el bono, sin extras. No hay cargo en Culqi ni
+        # liquidación (el bono ya se le pagó al dueño al venderlo).
+        if not canje and not ben["bono"]:
+            return {"ok": False, "error": "monto_invalido", "mensaje": "No pudimos confirmar la reserva. Vuelve a elegir el horario."}
+        datos.confirmar_reservas(req.ids, "bono" if ben["bono"] else "fidelidad", 0.0, [])
+        if canje:
+            _fid.confirmar_canje(ref_fid)
+        beneficios.confirmar(ref_fid, filas)
+        dueno = (c.get("dueno") or "").strip().lower()
+        if dueno:
+            try:
+                from pagos.router import _aviso_push_usuario
+                rango = f"{filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"
+                _aviso_push_usuario(
+                    dueno, "Nueva reserva 🎟️" if ben["bono"] else "Nueva reserva 🎁",
+                    f"{filas[0]['jugador']} · {c.get('nombre', '')} · {horarios.fecha_larga(filas[0]['fecha'])} {rango} · "
+                    + (f"pagó con su bono de horas ({len(filas)} h)" if ben["bono"] else "usó su premio de fidelidad (hora gratis)"),
+                    tipo="reserva")
+            except Exception:  # noqa: BLE001
+                pass
+        return {"ok": True, "url": _url_comprobante(filas), "charge_id": ""}
+    if iso != "PEN" or any(str(f.get("medio_pago") or "") == datos.MEDIO_HOLD_PASARELA for f in filas):
+        # Culqi cobra en soles; un bloque en $ / Bs (o que ya está en camino a
+        # la pasarela de su país) se paga en `POST /web/pago/reserva`.
+        return {"ok": False, "error": "usa_pasarela",
+                "mensaje": "Esta reserva se paga con la pasarela de su país. Vuelve a la ficha e inténtalo otra vez."}
+    # Cargo por servicio: se RECALCULA aquí (misma regla que en /web/asegurar);
+    # lo que se cobra = precio + cargo. El dueño recibe sobre el precio.
+    # SEÑA: la fijó /web/asegurar en cada fila; se cobra solo eso (+ su cargo
+    # por servicio) y el resto queda "por cobrar en la cancha" (pagado=false).
+    medio_pedido = "yape" if req.medio == "yape" else "tarjeta"
+    cot = _cotizacion_reserva(c, plan["base_cobro"], str(filas[0].get("deporte") or ""), medio_pedido)
+    monto_cobro = cot.total_centimos
+    concepto = concepto_reserva(c, filas, plan["es_sena"])
+    # Datos del pagador para el antifraude de Culqi: nombre de Google (real) o
+    # el que escribió en la reserva, celular de la reserva, país de la cancha.
+    from db.store import stores as _st
+    cliente = _st.cliente_de(
+        email, nombre=((ses or {}).get("nombre") or filas[0].get("jugador") or ""),
+        telefono=str(filas[0].get("telefono") or ""), pais=(pais_de_coordenadas(c.get("lat"), c.get("lng")) or ""))
+    cargo = culqi.crear_cargo(
+        token=req.token.strip(), monto_centimos=monto_cobro, email=email,
+        descripcion=concepto[:80], moneda=iso, cliente=cliente,
+        metadata={"canal": "web", "reserva_id": filas[0]["id"], "cancha_id": filas[0]["cancha_id"],
+                  "cargo_servicio_centimos": cot.cargo_centimos})
+    if not cargo.get("ok"):
+        soltar_bloque(filas)
+        msg = str(cargo.get("error") or "")
+        return {"ok": False, "error": "cargo_rechazado",
+                "mensaje": "El pago fue rechazado por tu banco o billetera. No se te cobró nada y el "
+                           "horario quedó libre para que lo intentes de nuevo." + (f" ({msg[:80]})" if msg else "")}
+    medio = "yape" if req.medio == "yape" else "tarjeta"
+    confirmar_reserva_pagada(filas, c, email, plan=plan, charge_id=str(cargo.get("charge_id") or ""), medio=medio,
+                             monto_cobro=monto_cobro, cargo_centimos=cot.cargo_centimos,
+                             cargo_desglose=list(cot.desglose or []), cargo_ajuste=cot.ajuste_seguridad_centimos)
+    return {"ok": True, "url": _url_comprobante(filas), "charge_id": cargo.get("charge_id")}
+
+
+def plan_cobro_reserva(filas: list[dict]) -> dict:
+    """Qué se cobra de un bloque asegurado (lo mismo para Culqi y para la
+    pasarela hospedada): total de la reserva, lo que cubre el BONO, el
+    descuento de PUNTOS, la SEÑA y la base del cobro (sin el cargo por
+    servicio). Determinístico: se recalcula desde las filas y los apartados,
+    nunca desde lo que diga el navegador."""
+    total = _total_de(filas)
+    ref = _ref_de(filas)
+    canje = datos.canje_por_ref(ref)
+    # BONO / PUNTOS apartados en /web/asegurar: con bono los turnos ya están
+    # pagados (solo se cobran los extras); los puntos restan S/ 3 al cobro,
+    # pero NO a la liquidación del dueño (el descuento lo pone Pichangol).
+    ben = beneficios.de_ref(ref)
+    bono_cubre = sum(int(f["precio"]) for f in filas) if ben["bono"] else 0
+    puntos_desc = beneficios.DESCUENTO_PUNTOS if ben["puntos"] else 0
+    a_cobrar = total - bono_cubre
+    sena_total = sum(int(f.get("sena") or 0) for f in filas)
+    es_sena = sena_total > 0
+    base_cobro = sena_total if es_sena else a_cobrar - puntos_desc
+    return {"total": total, "ref": ref, "canje": canje, "ben": ben, "bono_cubre": bono_cubre, "puntos_desc": puntos_desc,
+            "a_cobrar": a_cobrar, "sena_total": sena_total, "es_sena": es_sena, "base_cobro": base_cobro}
+
+
+def concepto_reserva(c: dict, filas: list[dict], es_sena: bool) -> str:
+    return f"{'Seña · ' if es_sena else ''}Reserva {c.get('nombre', 'cancha')} {filas[0]['fecha']} {filas[0]['hora_inicio']}"
+
+
+def soltar_bloque(filas_o_ids) -> None:
+    """Pago que NO entró (rechazado, cancelado, vencido): el premio de
+    fidelidad y el bono / puntos apartados vuelven al jugador y el horario
+    queda libre. Mismo camino para Culqi y la pasarela hospedada."""
+    import fidelidad as _fid
+    lista = list(filas_o_ids or [])
+    ids = [str(f["id"]) if isinstance(f, dict) else str(f) for f in lista]
+    filas = [f for f in lista if isinstance(f, dict)] or datos.reservas_de(ids)
+    ref = _ref_de(filas) if filas else ""
+    try:
+        if not (ref and _fid.revertir_canje(ref)):
+            _fid.revertir_canje("", ids)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        beneficios.soltar(ref, ids)  # bono / puntos apartados vuelven al jugador
+    except Exception:  # noqa: BLE001
+        pass
+    datos.borrar_reservas(ids)
+
+
+def confirmar_reserva_pagada(filas: list[dict], c: dict, email: str, *, plan: dict, charge_id: str, medio: str,
+                             monto_cobro: int, cargo_centimos: int, cargo_desglose: list, cargo_ajuste: int) -> None:
+    """Lo que pasa DESPUÉS de que la pasarela aprobó el cobro de una reserva
+    web (Culqi en `/web/pagar`; PayPhone / Libélula / simulada en
+    `web/pago_hospedado.py`): confirma las filas (con seña: confirmada sin
+    pagar), usa el premio de fidelidad y el bono / puntos, deja el cobro en el
+    libro (`cobro_web`, ligado a la reserva: así se puede devolver), liquida
+    al dueño en la moneda de la cancha, avisa y abre la solicitud del
+    boleador. `charge_id`: `chr_…` (Culqi) o `pp:` / `lib:` / `sim:` + id."""
+    import fidelidad as _fid
+    from db.store import stores as _st
+    sim, iso = _moneda_de(c) if c else ("S/", "PEN")
+    ids = [str(f["id"]) for f in filas]
+    canje, ben, ref_fid = plan["canje"], plan["ben"], plan["ref"]
+    es_sena, sena_total, total = plan["es_sena"], plan["sena_total"], plan["total"]
+    bono_cubre, a_cobrar, base_cobro = plan["bono_cubre"], plan["a_cobrar"], plan["base_cobro"]
+    # Con seña la reserva queda confirmada pero NO pagada (el dueño cobra el
+    # resto en la cancha), medio 'sena' como en el app.
+    datos.confirmar_reservas(ids, "sena" if es_sena else ("bono" if ben["bono"] else medio), cargo_centimos / 100.0,
+                             list(cargo_desglose or []), pagado=not es_sena)
+    if canje:
+        _fid.confirmar_canje(ref_fid)  # el premio queda USADO con el pago aprobado
+    # Bono usado y, con puntos, el canje queda en `pichangol_puntos_canjes`
+    # (la tabla del app) recién ahora que el pago entró.
+    beneficios.confirmar(ref_fid, filas)
+    try:
+        # El cargo queda en el libro (tipo cobro_web) ligado a la reserva/grupo:
+        # es lo que permite REEMBOLSAR desde la web al cancelar.
+        if _cobro_web(_ref_de(filas)) is None:
+            _st.registrar_pago(tipo="cobro_web", monto_centimos=monto_cobro, moneda=iso, estado="aprobado",
+                               culqi_charge_id=charge_id, email=email, medio=medio,
+                               concepto=f"web:{_ref_de(filas)}", cargo_servicio_centimos=cargo_centimos,
+                               cargo_desglose=(list(cargo_desglose or []) or None), cargo_ajuste_centimos=cargo_ajuste)
+    except Exception:  # noqa: BLE001
+        pass
+    dueno = (c.get("dueno") or "").strip().lower()
+    # La parte del BOLEADOR no es del dueño: sale del bruto de su liquidación y
+    # abre la solicitud al boleador (acepta o rechaza; ver boleadores.py).
+    linea_bol = next((x for f in filas for x in (f.get("extras") or []) if isinstance(x, dict) and x.get("clave") == "boleador"), None)
+    bol_soles = float(linea_bol.get("precio") or 0) if linea_bol else 0.0
+    # Al dueño: el precio COMPLETO (los puntos los absorbe Pichangol, como en
+    # el app); con bono, solo los extras (los turnos los cobró con el pack).
+    total_dueno = max(0.0, float(total) - bol_soles - bono_cubre)
+    if dueno and (es_sena or total_dueno > 0):
+        try:
+            from pagos.router import LiquidacionOnlineReq, post_liquidacion_online, _aviso_push_usuario
+            post_liquidacion_online(LiquidacionOnlineReq(
+                dueno_id=dueno, monto_soles=(float(sena_total) if es_sena else total_dueno), reserva_id=filas[0]["id"],
+                concepto=f"{'Seña' if es_sena else 'Reserva'} web · {c.get('nombre', '')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}",
+                medio=("sena" if es_sena else medio), medio_pago=medio, moneda=iso, charge_id=charge_id,
+                cargo_servicio_centimos=cargo_centimos, cargo_desglose=list(cargo_desglose or []),
+                cargo_ajuste_centimos=cargo_ajuste))
+            rango = f"{filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"
+            _aviso_push_usuario(
+                dueno, "Nueva reserva 📅",
+                f"{filas[0]['jugador']} · {c.get('nombre', '')} · {horarios.fecha_larga(filas[0]['fecha'])} {rango} · "
+                + (f"pagó la seña de {sim} {sena_total:.2f} por la web · cobra {sim} {total - sena_total:.2f} en la cancha" if es_sena
+                 else (f"pagó con su bono de horas ({len(filas)} h) y {sim} {a_cobrar:.2f} de extras por la web" if ben["bono"]
+                       else f"pagó {sim} {total:.2f} por la web")) + (" · usó su premio de fidelidad" if canje else ""), tipo="reserva")
+        except Exception:  # noqa: BLE001 — la contabilidad nunca deshace un cobro
+            pass
+    if linea_bol and bol_soles > 0:
+        try:
+            import boleadores as _bol
+            b = datos.boleador_por_slug(str(linea_bol.get("boleador") or ""))
+            if b:
+                # Parte del cargo del boleador sobre lo COBRADO (con puntos, total − S/ 3), como el app.
+                cargo_bol = int(round(cargo_centimos * bol_soles / float(base_cobro))) if base_cobro and cargo_centimos else 0
+                _bol.crear_solicitud(boleador=b, cliente_email=email, cliente_nombre=str(filas[0].get("jugador") or ""),
+                                     reserva_ids=ids, reserva_ref=_ref_de(filas), cancha=c,
+                                     fecha=str(filas[0]["fecha"]), hora_inicio=str(filas[0]["hora_inicio"]),
+                                     hora_fin=str(filas[-1]["hora_fin"]), turnos=len(filas),
+                                     charge_id=charge_id, cargo_centimos=cargo_bol, medio=medio, canal="web")
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _total_de(filas: list[dict]) -> int:
+    total = sum(int(f["precio"]) for f in filas)
+    total += int(round(sum(float(x.get("precio") or 0) for f in filas for x in (f.get("extras") or []))))
+    return total
+
+
+def _ref_de(filas: list[dict]) -> str:
+    g = (filas[0].get("grupo_reserva_id") or "").strip()
+    return g if g else str(filas[0]["id"])
+
+
+def _inicio_reserva(filas: list[dict], pais: str) -> datetime | None:
+    """Fecha-hora LOCAL (zona del país de la cancha) del primer turno."""
+    try:
+        f = min(filas, key=lambda x: (str(x.get("fecha")), str(x.get("hora_inicio"))))
+        d = date.fromisoformat(str(f["fecha"]))
+        m = horarios.hora_en_minutos(str(f["hora_inicio"])) or 0
+        return datetime(d.year, d.month, d.day, m // 60, m % 60, tzinfo=horarios.ahora_local(pais).tzinfo)
+    except (ValueError, TypeError, KeyError):
+        return None
+
+
+def _cobro_web(ref: str):
+    from db.store import stores as _st
+    for p in reversed(_st.pagos):
+        if p.tipo == "cobro_web" and p.concepto == f"web:{ref}":
+            return p
+    return None
+
+
+def _cargo_pagado(filas: list[dict], cobro) -> tuple[int, list]:
+    """Cargo por servicio que pagó el jugador (céntimos) y su desglose: del
+    `cobro_web` si la reserva se pagó en la web; de la fila (`cargo_servicio`,
+    SQL supabase_reservas_cargo.sql) si se pagó en el app."""
+    if cobro is not None and int(getattr(cobro, "cargo_servicio_centimos", 0) or 0) > 0:
+        return int(cobro.cargo_servicio_centimos), list(getattr(cobro, "cargo_desglose", None) or [])
+    try:
+        c = int(round(float(filas[0].get("cargo_servicio") or 0) * 100))
+    except (TypeError, ValueError):
+        c = 0
+    raw = filas[0].get("cargo_desglose")
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError:
+            raw = []
+    return max(c, 0), (list(raw) if isinstance(raw, list) else [])
+
+
+def _horas_desde_pago(cobro) -> float | None:
+    """Horas desde el pago: del `cobro_web` (web) o de la liquidación / el cargo
+    de Culqi (app), lo que haya."""
+    if cobro is None or not getattr(cobro, "creado_en", None):
+        return None
+    from db.store import ahora as _ahora
+    try:
+        return max((_ahora() - cobro.creado_en).total_seconds() / 3600.0, 0.0)
+    except TypeError:
+        return None
+
+
+def _cargo_app(ids: list[str]):
+    """Reserva pagada EN EL APP: la liquidación del dueño (`culqi_charge_id` =
+    id de la reserva) y la fila del CARGO de Culqi (`chr_…`) con el que pagó el
+    jugador, ligada por `PagoRegistro.cargo_id` (APK desde sep-2026) o
+    inferida por `tarifas_pasarela.cargo_de` (APKs viejos: mismo monto y
+    moneda a ±20 min). Con el cargo a la mano la devolución al medio original
+    va DIRECTO a Culqi, igual que una reserva web; sin él queda `manual`.
+    Devuelve (liquidación, cargo) — cualquiera puede ser None."""
+    from db.store import stores as _st
+    from pagos import tarifas_pasarela as _tp
+    liq = _st.pago_por_charge(ids[0]) if ids else None
+    if liq is None or liq.tipo not in ("liquidacion_online", "liquidacion_full"):
+        return None, None
+    try:
+        cargo = _tp.cargo_de(liq)
+    except Exception:  # noqa: BLE001 — la inferencia nunca rompe una cancelación
+        cargo = None
+    if cargo is not None and not str(cargo.culqi_charge_id or "").startswith("chr_"):
+        cargo = None
+    return liq, cargo
+
+
+def _es_cargo_culqi(p) -> bool:
+    """¿Esa fila es un cargo de Culqi (`chr_…`, reembolsable por su API)? Los
+    cobros por pasarela hospedada (`<pasarela>:…`, `sim:…`) no lo son: su
+    devolución al medio original queda `manual` (la atiende el operador)."""
+    return str(getattr(p, "culqi_charge_id", "") or "").startswith("chr_")
+
+
+def _reembolso_ec_posible(p) -> bool:
+    """Cobro web por la pasarela de Ecuador cuyo módulo SÍ reembolsa por API
+    (hoy PayPhone no: queda `manual`)."""
+    from pagos import pasarela_ec
+    return (str(getattr(p, "culqi_charge_id", "") or "").startswith(pasarela_ec.clave() + ":")
+            and pasarela_ec.soporta_reembolso())
+
+
+def _reembolsar_ec(p, monto_centimos: int) -> dict:
+    from db.store import stores as _st
+    from pagos import pasarela_ec
+    ident = str(p.culqi_charge_id).split(":", 1)[1]
+    d = _st.payphone_pagos.get(ident) or {}
+    return pasarela_ec.reembolsar(transaction_id=str(d.get("transaction_id") or ""), client_tx_id=ident,
+                                  monto_centavos=min(int(monto_centimos), int(p.monto_centimos)))
+
+
+def _saldo_en_moneda(email: str, iso: str) -> bool:
+    try:
+        from pagos.router import moneda_billetera
+        return moneda_billetera(email) == (iso or "PEN")
+    except Exception:  # noqa: BLE001
+        return iso == "PEN"
+
+
+def _filas_de_ref(ref: str) -> list[dict]:
+    """Turnos de una referencia (grupo `grp_…` o id de un turno suelto),
+    ordenados y sin retenciones web sin pagar."""
+    ref = (ref or "").strip()
+    if not ref:
+        return []
+    filas = datos.reservas_por_grupo(ref) if ref.startswith("grp_") else datos.reservas_de([ref])
+    return sorted([f for f in filas if f.get("estado") != "nueva" or f.get("pagado")],
+                  key=lambda x: (str(x.get("fecha")), str(x.get("hora_inicio"))))
+
+
+def estado_cancelacion(filas: list[dict], c: dict | None, email: str, cancela_anfitrion: bool = False) -> dict:
+    """Qué pasa si se cancela AHORA: si se puede, cuántas horas faltan y qué
+    devolución corresponde según la POLÍTICA (`pagos/devoluciones.py`): a
+    saldo 100 % con cargo; al medio original el precio sin el cargo;
+    arrepentimiento (1 h del pago y > 24 h para el turno) y cancelación del
+    anfitrión = 100 % con cargo; tarde = sin devolución. [email] = el jugador;
+    con [cancela_anfitrion] no se exige que sea quien cancela."""
+    if not filas or not email:
+        return {"puede": False, "motivo": "sin_reserva"}
+    if not cancela_anfitrion and any((f.get("usuario") or "").strip().lower() != email for f in filas):
+        return {"puede": False, "motivo": "ajena"}
+    if any(str(f.get("estado") or "") in ("cancelada", "noShow") for f in filas):
+        return {"puede": False, "motivo": "ya_cancelada"}
+    pais = _pais_de(c) if c else "PE"
+    inicio = _inicio_reserva(filas, pais)
+    if inicio is None:
+        return {"puede": False, "motivo": "sin_fecha"}
+    horas = (inicio - horarios.ahora_local(pais)).total_seconds() / 3600.0
+    if horas <= 0:
+        return {"puede": False, "motivo": "ya_empezo", "horas": horas}
+    pagado_online = all(f.get("pagado") for f in filas) and str(filas[0].get("medio_pago") or "") in ("yape", "tarjeta")
+    pagado = all(f.get("pagado") for f in filas)
+    sim = filas[0].get("moneda") or "S/"
+    # Lo que el jugador PAGÓ en plata: sin los turnos que cubrió su bono ni
+    # los S/ 3 de puntos (esos vuelven como horas / puntos, no como dinero).
+    aj = beneficios.ajustes(filas, c)
+    precio_c = max(0, _total_de(filas) - aj["bono_cubre"] - aj["puntos_desc"]) * 100
+    cobro = _cobro_web(_ref_de(filas))
+    liq, cargo_app = (None, None) if cobro is not None else _cargo_app([str(f["id"]) for f in filas])
+    cargo_c, _desg = _cargo_pagado(filas, cobro)
+    if cargo_c <= 0 and liq is not None:
+        cargo_c = max(int(getattr(liq, "cargo_servicio_centimos", 0) or 0), 0)
+    # NUNCA se devuelve más plata de la que entró: (1) con bono, si no hay
+    # ningún cobro registrado (APKs anteriores dejaban los servicios extra en
+    # la fila SIN cobrarlos) no hay plata pagada; (2) con el cargo de la
+    # pasarela a la mano, lo pagado tope = ese cargo (precio + cargo).
+    fila_pago = cobro if cobro is not None else cargo_app
+    if aj["bono_horas"] and fila_pago is None and liq is None:
+        precio_c, cargo_c = 0, 0
+    if fila_pago is not None and int(getattr(fila_pago, "monto_centimos", 0) or 0) > 0:
+        tope = int(fila_pago.monto_centimos)
+        cargo_c = min(cargo_c, tope)
+        precio_c = min(precio_c, max(0, tope - cargo_c))
+    precio = precio_c // 100 if precio_c % 100 == 0 else precio_c / 100.0
+    pol = _dev.resumen(pagado=pagado, horas_para_inicio=horas,
+                       horas_desde_pago=_horas_desde_pago(cobro if cobro is not None else (cargo_app or liq)),
+                       precio_centimos=precio_c, cargo_centimos=cargo_c, simbolo=sim, cancela_anfitrion=cancela_anfitrion)
+    # ¿La devolución al medio original sale sola por Culqi (tenemos el cargo)
+    # o la coordina el operador (pago viejo del app sin cargo ligado, o pago
+    # por una pasarela hospedada —Ecuador / Bolivia— sin reembolso por API)?
+    directo = (cobro is not None and _es_cargo_culqi(cobro)) or cargo_app is not None
+    iso_c = _moneda_de(c)[1] if c else "PEN"
+    if pagado and not _saldo_en_moneda(email, iso_c):
+        # Devolver a SALDO solo si la billetera es de la moneda de la reserva
+        # (nunca se mezclan $ o Bs en un saldo en soles, ni al revés).
+        pol["opciones"] = [o for o in pol.get("opciones") or [] if o.get("medio") != "saldo"]
+    if iso_c != "PEN":
+        for o in pol.get("opciones") or []:
+            if o.get("medio") == "original":
+                o["etiqueta"] = "Al mismo medio de pago (tarjeta / QR)"
+    if pagado and not directo:
+        for o in pol.get("opciones") or []:
+            if o.get("medio") == "original":
+                o["nota"] = (("100 %, incluido el cargo por servicio. " if o.get("incluye_cargo") else
+                              "Se devuelve el precio de la reserva; el cargo por servicio no se devuelve. ")
+                             + "Te escribimos para coordinar la devolución.")
+    reembolsable = pol["motivo"] in ("plazo", "arrepentimiento", "anfitrion")
+    if precio_c <= 0 and cargo_c <= 0:
+        pol["opciones"] = []  # todo con bono: no hay plata que devolver, solo horas
+    return {"puede": True, "horas": round(horas, 1), "pagado": pagado, "pagado_online": pagado_online,
+            "bono_horas": aj["bono_horas"], "puntos": aj["puntos"],
+            "reembolsable": reembolsable, "minimo_horas": config.WEB_CANCELACION_HORAS,
+            "monto": precio, "monto_centimos": precio_c, "moneda": sim, "cargo_centimos": cargo_c,
+            "total_pagado": (precio_c + cargo_c) / 100.0,
+            "reembolso_directo": directo, "politica": pol}
+
+
+class CancelarReq(BaseModel):
+    ref: str
+    # A dónde va la devolución (política fase 4): 'saldo' (100 % con cargo,
+    # al instante) u 'original' (tarjeta/Yape vía Culqi: el precio, sin el
+    # cargo salvo arrepentimiento o cancelación del anfitrión). Los clientes
+    # viejos no lo mandan → original.
+    medio: str = "original"
+
+
+def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: str = "original",
+                      cancela_anfitrion: bool = False, quien: str = "") -> dict:
+    """Cancela un bloque (del jugador o del anfitrión), libera el horario y
+    DEVUELVE según la política: a SALDO acredita al instante en la billetera
+    del jugador (registro `devolucion_saldo`); al medio ORIGINAL reembolsa en
+    Culqi el monto que corresponda (cargo web) o queda `manual` (pagó en el
+    app). Revierte la liquidación del dueño si el jugador recupera su plata;
+    si el dueño ya cobró, deja la deuda anotada; si cancela el anfitrión, el
+    costo de pasarela de la devolución también es deuda suya."""
+    from db.store import stores as _st, ahora as _ahora
+    from pagos import tarifas_pasarela as _tp
+    medio = _dev.medio_valido(medio)
+    est = estado_cancelacion(filas, c, email, cancela_anfitrion=cancela_anfitrion)
+    if medio == "saldo" and est.get("puede") and not any(o.get("medio") == "saldo" for o in (est.get("politica") or {}).get("opciones") or []):
+        medio = "original"  # su billetera es de otra moneda: va al medio de pago
+    if not est.get("puede"):
+        msgs = {"sin_reserva": "No encontramos esa reserva.", "ajena": "Esa reserva no es de tu cuenta.",
+                "ya_cancelada": "Esa reserva ya estaba cancelada.", "ya_empezo": "El turno ya empezó o ya pasó: no se puede cancelar.",
+                "sin_fecha": "No pudimos leer la fecha de la reserva."}
+        return {"ok": False, "error": est.get("motivo"), "mensaje": msgs.get(est.get("motivo"), "No se pudo cancelar.")}
+    ref = _ref_de(filas)
+    ids = [str(f["id"]) for f in filas]
+    monto = est["monto"]; monto_c = int(est["monto_centimos"]); sim = est["moneda"]; iso = _moneda_de(c)[1] if c else "PEN"
+    pol = est["politica"]; mot = pol["motivo"]
+    cargo_c = int(est["cargo_centimos"])
+    monto_dev, incluye_cargo = _dev.monto_devolucion(mot, medio, monto_c, cargo_c)
+    cobro = _cobro_web(ref)
+    _liq, cargo_app = (None, None) if cobro is not None else _cargo_app(ids)
+    # Fila del cargo de Culqi que se reembolsa: el `cobro_web` (web) o el cargo
+    # del app ligado a la liquidación (`chr_…`). Sin ninguno → manual.
+    fila_cargo = cobro if cobro is not None else cargo_app
+    if fila_cargo is not None and int(fila_cargo.monto_centimos or 0) > 0:
+        # Ni a saldo ni al medio original se devuelve más de lo cobrado.
+        monto_dev = min(monto_dev, int(fila_cargo.monto_centimos))
+    reembolso, refund_id, detalle = "no_aplica", None, ""
+    medio_pago = str(filas[0].get("medio_pago") or "")
+    if est["pagado"] and monto_dev > 0:
+        if medio == "saldo":
+            # A la billetera del JUGADOR, al instante y sin pasar por Culqi.
+            if _st.pago_por_charge(f"dev:{ref}") is None:
+                _st.acreditar(email, monto_dev)
+                _st.registrar_pago(tipo="devolucion_saldo", monto_centimos=monto_dev, moneda=iso, estado="aprobado",
+                                   dueno_id=email, culqi_charge_id=f"dev:{ref}", medio=medio_pago,
+                                   concepto=f"Devolución a saldo · {(c or {}).get('nombre', 'reserva')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}")
+            if fila_cargo is not None and fila_cargo.estado == "aprobado":
+                fila_cargo.estado = "devuelto_saldo"
+            reembolso = "saldo"
+        elif fila_cargo is not None and _es_cargo_culqi(fila_cargo) and fila_cargo.estado == "aprobado":
+            r = culqi.reembolsar(charge_id=fila_cargo.culqi_charge_id, monto_centimos=min(monto_dev, fila_cargo.monto_centimos))
+            if r.get("ok"):
+                reembolso, refund_id = "reembolsado", r.get("refund_id")
+                fila_cargo.estado = "reembolsado"
+            else:
+                reembolso, detalle = "fallo", str(r.get("error") or "")[:160]
+        elif fila_cargo is not None and fila_cargo.estado == "aprobado" and _reembolso_ec_posible(fila_cargo):
+            # Pasarela de Ecuador con reembolso por API (si el módulo lo trae).
+            r = _reembolsar_ec(fila_cargo, monto_dev)
+            if r.get("ok"):
+                reembolso, refund_id = "reembolsado", r.get("refund_id")
+                fila_cargo.estado = "reembolsado"
+            else:
+                reembolso, detalle = "fallo", str(r.get("error") or "")[:160]
+        else:
+            reembolso = "manual"  # pago viejo del app sin cargo ligado: el operador devuelve
+    elif est["pagado"]:
+        # Todo con bono (sin plata de por medio): a tiempo se devuelven las
+        # horas; tarde, no (misma política que el dinero).
+        reembolso = "bono" if (est["reembolsable"] and est.get("bono_horas")) else "sin_reembolso"
+    # BONO y PUNTOS: si la cancelación tiene devolución, vuelven al jugador
+    # (horas a sus créditos del local; puntos con una fila negativa en
+    # `pichangol_puntos_canjes`). Tarde se pierden, como el dinero.
+    ben_dev = {"horas": 0, "puntos": 0}
+    if est["pagado"] and est["reembolsable"] and (est.get("bono_horas") or est.get("puntos")):
+        try:
+            ben_dev = beneficios.devolver_por_cancelacion(ref, filas, c, email)
+        except Exception as ex:  # noqa: BLE001
+            print(f"[cancelar] {ref} no se pudieron devolver bono/puntos: {ex}", flush=True)
+    # Reversa contable del dueño solo si el cliente recupera su dinero.
+    deuda = 0
+    costo_pasarela = 0
+    dueno = (c.get("dueno") or "").strip().lower() if c else ""
+    if reembolso in ("reembolsado", "fallo", "manual", "saldo") and dueno:
+        liq = _st.pago_por_charge(ids[0])
+        if liq is not None and liq.tipo in ("liquidacion_online", "liquidacion_full") and liq.estado == "aprobado":
+            if liq.liquidado:
+                from pagos.router import comision_centimos as _com
+                deuda = liq.monto_centimos - (_com(liq.monto_centimos / 100.0, liq.moneda) if liq.tipo == "liquidacion_online" else 0)
+            else:
+                liq.estado = "anulado"
+                com = _st.pago_por_charge(f"{ids[0]}_com")
+                if com is not None and com.estado == "aprobado":
+                    com.estado = "anulado"
+                    promo = min(int(com.promo_centimos or 0), com.monto_centimos)
+                    if promo:
+                        _st.acreditar_promo(dueno, promo)
+                    if com.monto_centimos - promo > 0:
+                        _st.acreditar(dueno, com.monto_centimos - promo)
+        if cancela_anfitrion and reembolso != "saldo":
+            # Culpa del anfitrión: el costo de la pasarela de esa devolución
+            # (Culqi no devuelve su comisión) se le descuenta en la siguiente
+            # liquidación. A saldo no hay costo.
+            base_pasarela = fila_cargo.monto_centimos if fila_cargo is not None else monto_c + cargo_c
+            costo_pasarela = _tp.costo_centimos(base_pasarela, iso, medio_pago or "tarjeta", "liquidacion_online")
+            deuda += costo_pasarela
+        if deuda > 0:
+            _st.registrar_pago(tipo="ajuste_cancelacion", monto_centimos=deuda, moneda=iso, estado="pendiente",
+                               dueno_id=dueno, culqi_charge_id=f"{ids[0]}_ajuste",
+                               concepto=(f"{'Cancelación del local' if cancela_anfitrion else 'Descuento por cancelación web'} · "
+                                         f"{(c or {}).get('nombre', '')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}"
+                                         + (f" (incluye pasarela {sim} {costo_pasarela / 100.0:.2f})" if costo_pasarela else "")))
+    try:
+        import fidelidad as _fid
+        _fid.revertir_canje(ref)  # la reserva premiada se cancela → el premio vuelve al jugador
+    except Exception:  # noqa: BLE001
+        pass
+    if not datos.eliminar_reservas(ids):
+        return {"ok": False, "error": "no_se_pudo", "mensaje": "No pudimos liberar el horario. Inténtalo de nuevo."}
+    # Boleador contratado en esta reserva: su solicitud se cancela y su
+    # liquidación se revierte (la devolución al jugador ya incluyó su parte).
+    try:
+        import boleadores as _bol
+        _bol.cancelar_por_reserva(ref, ids, quien=("local" if cancela_anfitrion else "cliente"))
+    except Exception:  # noqa: BLE001
+        pass
+    reg = {"id": _st.next_id("cancelacion_web"), "ref": ref, "ids": ids, "usuario": email, "cancha_id": filas[0]["cancha_id"],
+           "cancha": (c or {}).get("nombre") or "", "club": (c or {}).get("club") or "", "fecha": str(filas[0]["fecha"]),
+           "hora_inicio": str(filas[0]["hora_inicio"]), "hora_fin": str(filas[-1]["hora_fin"]), "turnos": len(filas),
+           "monto": monto, "moneda": sim, "moneda_iso": iso, "pagado": bool(est["pagado"]), "horas_antes": est["horas"],
+           "reembolso": reembolso, "refund_id": refund_id, "detalle": detalle, "deuda_dueno_centimos": deuda,
+           "dueno": dueno, "creado_en": _ahora().isoformat(),
+           # Política fase 4: qué se devolvió, por dónde y por qué.
+           "motivo": mot, "medio_devolucion": medio if monto_dev > 0 else "", "monto_devuelto_centimos": monto_dev if reembolso != "sin_reembolso" else 0,
+           "cargo_centimos": cargo_c, "incluye_cargo": bool(incluye_cargo and monto_dev > 0),
+           "cancela_anfitrion": bool(cancela_anfitrion), "quien": quien or email, "costo_pasarela_centimos": costo_pasarela,
+           "bono_horas_devueltas": ben_dev["horas"], "puntos_devueltos": ben_dev["puntos"]}
+    _st.cancelaciones_web.append(reg)
+    try:
+        from pagos.router import _aviso_push_usuario
+        rango = f"{filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"
+        dev_txt = f"{sim} {monto_dev / 100.0:.2f}"
+        if dueno and not cancela_anfitrion:
+            _aviso_push_usuario(dueno, "Reserva cancelada 📅",
+                                f"{filas[0].get('jugador') or email} canceló {(c or {}).get('nombre', '')} · {horarios.fecha_larga(str(filas[0]['fecha']))} {rango}. El horario quedó libre.",
+                                tipo="reserva")
+        txt = {"reembolsado": f"Te devolvemos {dev_txt} al mismo medio de pago (3 a 7 días hábiles)."
+                              + ("" if incluye_cargo else " El cargo por servicio no se devuelve."),
+               "saldo": f"Te devolvimos {dev_txt} a tu saldo Pichangol (100 %, cargo incluido). Ya lo puedes usar.",
+               "manual": f"Te devolvemos {dev_txt}; te escribimos para coordinar.",
+               "fallo": "Tu devolución está en proceso; te escribimos en breve.",
+               "bono": "",
+               "sin_reembolso": f"Cancelaste con menos de {int(_dev.horas_minimas())} horas: sin devolución.", "no_aplica": ""}[reembolso]
+        if ben_dev["horas"]:
+            txt = (txt + f" Te devolvimos {ben_dev['horas']} h a tu bono de este local.").strip()
+        if ben_dev["puntos"]:
+            txt = (txt + f" Recuperaste tus {ben_dev['puntos']} puntos Pichangol.").strip()
+        quien_txt = "El local canceló" if cancela_anfitrion else "Reserva cancelada"
+        _aviso_push_usuario(email, quien_txt if cancela_anfitrion else "Reserva cancelada",
+                            f"{(c or {}).get('nombre', '')} · {horarios.fecha_larga(str(filas[0]['fecha']))} {rango}. {txt}".strip(), tipo="reserva")
+    except Exception:  # noqa: BLE001
+        pass
+    print(f"[cancelar] {ref} {email} {reembolso} motivo={mot} medio={medio} monto={monto} dev={monto_dev} "
+          f"cargo={cargo_c} horas={est['horas']} deuda={deuda} anfitrion={int(cancela_anfitrion)} "
+          f"bono_h={ben_dev['horas']} puntos={ben_dev['puntos']} {detalle}", flush=True)
+    return {"ok": True, "reembolso": reembolso, "monto": monto, "moneda": sim, "horas": est["horas"], "refund_id": refund_id,
+            "bono_horas_devueltas": ben_dev["horas"], "puntos_devueltos": ben_dev["puntos"],
+            "motivo": mot, "medio": medio if monto_dev > 0 else "", "monto_devuelto": monto_dev / 100.0,
+            "incluye_cargo": bool(incluye_cargo and monto_dev > 0), "cargo": cargo_c / 100.0}
+
+
+@router.post("/web/cancelar")
+def cancelar(req: CancelarReq, request: Request = None) -> dict:
+    """Cancela una reserva del usuario con sesión (grupo o turno suelto) y
+    devuelve según la política (`pagos/devoluciones.py`, fase 4): `medio`
+    'saldo' = 100 % con cargo a su billetera; 'original' = el precio a la
+    tarjeta/Yape (el cargo solo en arrepentimiento). Todo queda en
+    `stores.cancelaciones_web`."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return {"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión con Google para cancelar."}
+    email = ses["email"]
+    filas = _filas_de_ref(req.ref)
+    c = datos.cancha(filas[0]["cancha_id"]) if filas else None
+    return _cancelar_reserva(filas, c, email, medio=req.medio)
+
+
+_MODAL_CANCELAR = (
+    "<div class='modal' id='modalCancelar' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:520px'>"
+    "<div class='modal-cab'><button type='button' class='cerrar' id='cerrarCancelar' aria-label='Cerrar'>✕</button><h3>Cancelar reserva</h3></div>"
+    "<div class='modal-cuerpo' style='padding:20px 24px'>"
+    "<h4 id='cancTit' style='margin:0 0 6px'>¿Seguro que quieres cancelar?</h4>"
+    "<p class='sub' id='cancTxt' style='margin:0 0 14px'></p>"
+    "<div class='estado' id='cancPol' style='text-align:left'></div>"
+    "<div id='cancOpc' style='display:none;margin-top:12px'><div style='font-weight:800;margin-bottom:6px'>¿A dónde te devolvemos?</div><div id='cancOpcLista'></div></div>"
+    "<div class='estado bad' id='cancErr' style='display:none'></div></div>"
+    "<div class='modal-pie'><button type='button' class='limpiar' id='cancNo'>Mantener reserva</button>"
+    "<button type='button' class='btn dark' id='cancSi'>Sí, cancelar</button></div></div></div>")
+
+JS_CANCELAR = r"""
+(function(){
+  var m = document.getElementById('modalCancelar'); if(!m) return;
+  var ref = '', datos = null;
+  function abrir(on){ m.classList.toggle('open', on); document.body.classList.toggle('sin-scroll', on); }
+  function fmt(mon, n){ return mon + ' ' + Number(n).toFixed(2); }
+  document.addEventListener('click', function(ev){
+    var b = ev.target.closest('[data-cancelar]'); if(!b) return;
+    ev.preventDefault(); ev.stopPropagation();
+    ref = b.dataset.cancelar; datos = b.dataset;
+    document.getElementById('cancTit').textContent = '¿Cancelar ' + (datos.nombre || 'la reserva') + '?';
+    document.getElementById('cancTxt').textContent = (datos.cuando || '') + (datos.monto ? ' · ' + fmt(datos.moneda || 'S/', datos.monto) : '');
+    var pol = document.getElementById('cancPol'), opc = document.getElementById('cancOpc'), lista = document.getElementById('cancOpcLista');
+    var opciones = []; try { opciones = JSON.parse(datos.opciones || '[]'); } catch(e){ opciones = []; }
+    opc.style.display = 'none'; lista.innerHTML = '';
+    if(datos.pagado !== '1' && parseInt(datos.sena || '0') > 0){ pol.className = 'estado'; pol.textContent = 'Adelantaste una seña de ' + fmt(datos.moneda || 'S/', datos.sena) + ': la seña no es reembolsable (queda a favor de la cancha). El horario queda libre para otro jugador.'; }
+    else if(datos.pagado !== '1'){ pol.className = 'estado ok'; pol.textContent = 'Pagabas en la cancha: cancelar no tiene costo. El horario queda libre para otro jugador.'; }
+    else if(datos.reembolsable === '1' && !opciones.length && parseInt(datos.bono || '0') > 0){
+      pol.className = 'estado ok'; pol.textContent = 'Reservaste con tu bono: faltan ' + datos.horas + ' h, así que te devolvemos ' + datos.bono + ' h a tu bono de este local.';
+    }
+    else if(datos.reembolsable === '1' && opciones.length){
+      pol.className = 'estado ok';
+      pol.textContent = (datos.motivo === 'arrepentimiento' ? 'Pagaste hace menos de ' + (datos.arrep || '1') + ' h y faltan más de 24 h: te devolvemos el 100 %, cargo por servicio incluido, por el medio que elijas.'
+                        : 'Faltan ' + datos.horas + ' h: puedes cancelar con devolución. Elige a dónde te la mandamos.');
+      opciones.forEach(function(o, i){
+        lista.innerHTML += '<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--trazo);border-radius:12px;margin-bottom:8px;cursor:pointer">' +
+          '<input type="radio" name="cancMedio" value="' + o.medio + '"' + (i === 0 ? ' checked' : '') + ' style="width:auto;flex:none;margin-top:3px">' +
+          '<span style="flex:1"><b>' + o.etiqueta + ' · ' + fmt(o.simbolo || datos.moneda || 'S/', o.monto) + '</b>' + (i === 0 ? ' <span class="pill ok" style="font-size:11px">Recomendado</span>' : '') +
+          '<div class="sub" style="font-size:12.5px;margin-top:2px">' + o.nota + '</div></span></label>';
+      });
+      opc.style.display = '';
+      if(parseInt(datos.bono || '0') > 0) pol.textContent += ' Además te devolvemos ' + datos.bono + ' h a tu bono.';
+      if(parseInt(datos.puntos || '0') > 0) pol.textContent += ' Recuperas tus ' + datos.puntos + ' puntos Pichangol.';
+    }
+    else { pol.className = 'estado bad'; pol.textContent = 'Faltan menos de ' + datos.minimo + ' h para el turno: la cancelación NO tiene devolución (política publicada)' + (parseInt(datos.bono || '0') > 0 ? ' y las horas de tu bono no vuelven' : '') + '. Puedes mantener la reserva y jugar.'; }
+    document.getElementById('cancErr').style.display = 'none';
+    var si = document.getElementById('cancSi'); si.disabled = false; si.textContent = datos.pagado === '1' && datos.reembolsable !== '1' ? 'Cancelar sin devolución' : 'Sí, cancelar';
+    abrir(true);
+  });
+  document.getElementById('cerrarCancelar').addEventListener('click', function(){ abrir(false); });
+  document.getElementById('cancNo').addEventListener('click', function(){ abrir(false); });
+  m.addEventListener('click', function(ev){ if(ev.target === m) abrir(false); });
+  document.getElementById('cancSi').addEventListener('click', function(){
+    var si = this; si.disabled = true; si.textContent = 'Cancelando…';
+    var sel = document.querySelector('input[name=cancMedio]:checked'), medio = sel ? sel.value : 'original';
+    fetch('/web/cancelar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ref: ref, medio: medio})})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(!j.ok){ var e = document.getElementById('cancErr'); e.textContent = j.mensaje || 'No pudimos cancelar.'; e.style.display = 'block'; si.disabled = false; si.textContent = 'Reintentar'; return; }
+        var dev = fmt(j.moneda, j.monto_devuelto != null ? j.monto_devuelto : j.monto);
+        var msg = {reembolsado: 'Reserva cancelada. Te devolvemos ' + dev + ' al mismo medio de pago en 3 a 7 días hábiles.' + (j.incluye_cargo === false && j.cargo > 0 ? ' El cargo por servicio no se devuelve.' : ''),
+                   saldo: 'Reserva cancelada. Te devolvimos ' + dev + ' a tu saldo Pichangol (cargo incluido): ya lo puedes usar.',
+                   manual: 'Reserva cancelada. Te devolvemos ' + dev + '; te escribimos para coordinar.',
+                   fallo: 'Reserva cancelada. Tu devolución está en proceso; te escribimos en breve.',
+                   bono: 'Reserva cancelada.',
+                   sin_reembolso: 'Reserva cancelada sin devolución.', no_aplica: 'Reserva cancelada. El horario quedó libre.'}[j.reembolso] || 'Reserva cancelada.';
+        if(j.bono_horas_devueltas > 0) msg += ' Te devolvimos ' + j.bono_horas_devueltas + ' h a tu bono.';
+        if(j.puntos_devueltos > 0) msg += ' Recuperaste tus ' + j.puntos_devueltos + ' puntos.';
+        try { sessionStorage.setItem('pcg_aviso', msg); } catch(e){}
+        location.href = '/mis-reservas';
+      }).catch(function(){ var e = document.getElementById('cancErr'); e.textContent = 'Sin conexión. Inténtalo de nuevo.'; e.style.display = 'block'; si.disabled = false; si.textContent = 'Reintentar'; });
+  });
+})();
+"""
+
+
+def _boton_cancelar(filas: list[dict], c: dict | None, ses: dict | None, clase: str = "btn sec") -> str:
+    """Botón "Cancelar reserva" (solo si la reserva es del usuario con sesión
+    y aún no empieza); lleva los datos que el modal necesita explicar."""
+    if not ses:
+        return ""
+    filas = sorted(filas, key=lambda x: (str(x.get("fecha")), str(x.get("hora_inicio"))))
+    est = estado_cancelacion(filas, c, ses["email"])
+    if not est.get("puede"):
+        return ""
+    cuando = f"{horarios.fecha_larga(str(filas[0]['fecha']))} · {filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"
+    pol = est.get("politica") or {}
+    opciones = json.dumps([{k: o[k] for k in ("medio", "monto", "etiqueta", "nota", "simbolo", "incluye_cargo")} for o in pol.get("opciones") or []],
+                          ensure_ascii=False)
+    return (f"<button type='button' class='{clase}' data-cancelar='{e(_ref_de(filas))}' data-nombre='{e((c or {}).get('nombre') or 'la reserva')}' "
+            f"data-cuando='{e(cuando)}' data-monto='{est['monto']}' data-moneda='{e(est['moneda'])}' data-pagado='{1 if est['pagado'] else 0}' "
+            f"data-sena='{sum(int(f.get('sena') or 0) for f in filas) if str(filas[0].get('medio_pago') or '') == 'sena' else 0}' "
+            f"data-reembolsable='{1 if est['reembolsable'] else 0}' data-horas='{est['horas']}' data-minimo='{int(est['minimo_horas'])}' "
+            f"data-motivo='{e(pol.get('motivo') or '')}' data-arrep='{pol.get('arrepentimiento_horas', 1):g}' data-opciones='{e(opciones)}' "
+            f"data-bono='{int(est.get('bono_horas') or 0)}' data-puntos='{int(est.get('puntos') or 0)}'>Cancelar reserva</button>")
+
+
+def _url_comprobante(filas: list[dict]) -> str:
+    g = (filas[0].get("grupo_reserva_id") or "").strip()
+    return f"/reserva/{g if g else filas[0]['id']}"
+
+
+# ── comprobante ───────────────────────────────────────────────────────────────
+
+ESTADO_RESERVA = {"confirmada": ("Confirmada", "ok"), "cancelada": ("Cancelada", "bad"), "noShow": ("No asististe", "bad"),
+                  "nueva": ("Pendiente de pago", "warn"), "completada": ("Jugada", "ok")}
+
+
+def _tarjeta_viaje(r: dict, c: dict | None, hoy: str, ses: dict | None) -> str:
+    """Tarjeta tipo "Viajes" de Airbnb: foto cuadrada · cancha · fecha y hora ·
+    avatar del jugador · estado; clic = detalle/comprobante. Las próximas llevan
+    "Cancelar"."""
+    sim = r.get("moneda") or (c and _moneda_de(c)[0]) or "S/"
+    estado = str(r.get("estado") or "")
+    if estado == "noShow":
+        pill = "<span class='pill bad'>No asististe</span>"
+    elif r.get("pagado") and str(r.get("medio_pago") or "") == "bono":
+        pill = "<span class='pill ok'>Pagada con bono 🎟️</span>"
+    elif r.get("pagado"):
+        pill = "<span class='pill ok'>Pagada</span>"
+    else:
+        pill = "<span class='pill warn'>Pagas en la cancha</span>"
+    ref = r.get("grupo_reserva_id") or r.get("id")
+    pasada = str(r.get("fecha") or "") < hoy
+    nombre = (c or {}).get("nombre") or "Cancha"
+    con_comprobante = bool(r.get("pagado") or estado == "confirmada")
+    href = f"/reserva/{e(ref)}" if con_comprobante else (f"/reservar/{e(c['id'])}" if c else "#")
+    fs = _fotos(c) if c else []
+    if fs:
+        foto = f"<img src='{e(fs[0])}' alt='' loading='lazy'>"
+    elif c:
+        foto = (f"<div class='sinfoto' data-buscar='1' data-id='{e(c['id'])}' data-nombre='{e(c.get('nombre'))}' data-club='{e(c.get('club') or '')}' "
+                f"data-lat='{c.get('lat')}' data-lng='{c.get('lng')}'>{_deporte(c.get('deporte'))[1]}</div>")
+    else:
+        foto = "<div class='sinfoto'>🏟️</div>"
+    avatar = (f"<img class='av' src='{e(ses.get('foto'))}' alt=''>" if ses and ses.get("foto")
+              else f"<span class='av ini'>{e(((ses or {}).get('nombre') or (ses or {}).get('email') or '?')[:1].upper())}</span>")
+    cuando = f"{horarios.fecha_larga(str(r.get('fecha') or ''))} · {e(r.get('hora_inicio'))}–{e(r.get('hora_fin'))}"
+    if int(r.get("turnos") or 1) > 1:
+        cuando += f" · {r['turnos']} turnos"
+    filas_r = r.get("_filas") or [r]
+    cancelar = _boton_cancelar(filas_r, c, ses, "lnk") if not pasada else ""
+    return (f"<a class='viaje{' pasada' if pasada else ''}' href='{href}' data-lat='{(c or {}).get('lat') or ''}' data-lng='{(c or {}).get('lng') or ''}' "
+            f"data-nombre='{e(nombre)}' data-cuando='{e(cuando)}'>"
+            f"<div class='vfoto'>{foto}</div>"
+            f"<div class='vtxt'><b>{e(nombre)}</b><div class='sub' style='margin:2px 0 0;font-size:13.5px'>{e((c or {}).get('club') or '')}</div>"
+            f"<div class='vcuando'>{cuando}</div>"
+            f"<div class='vpie'>{avatar}{pill}<span class='vprecio'>"
+            + (f"🎟️ {int(r.get('turnos') or 1)} h de bono" if str(r.get("medio_pago") or "") == "bono" else f"{e(sim)} {int(r.get('precio') or 0):.2f}")
+            + "</span>"
+            + (f"<span class='vacc'>{cancelar}</span>" if cancelar else "") + "</div></div></a>")
+
+
+def _agrupar_reservas(filas: list[dict]) -> list[dict]:
+    """Los turnos de UNA misma reserva (mismo `grupo_reserva_id`, mismo día)
+    se muestran como una sola tarjeta: 19:00–21:00 · 2 turnos, precio sumado."""
+    grupos: dict[str, dict] = {}
+    out: list[dict] = []
+    for r in filas:
+        g = r.get("grupo_reserva_id")
+        clave = f"{g}|{r.get('fecha')}" if g else ""
+        if clave and clave in grupos:
+            a = grupos[clave]
+            a["hora_inicio"] = min(a["hora_inicio"], r["hora_inicio"]) if a["hora_inicio"] and r.get("hora_inicio") else a["hora_inicio"]
+            a["hora_fin"] = max(a["hora_fin"], r["hora_fin"]) if a["hora_fin"] and r.get("hora_fin") else a["hora_fin"]
+            a["precio"] = int(a.get("precio") or 0) + int(r.get("precio") or 0)
+            a["turnos"] = a.get("turnos", 1) + 1
+            a["extras"] = (a.get("extras") or []) + (r.get("extras") or [])
+            a["_filas"].append(r)
+            continue
+        d = dict(r); d["turnos"] = 1; d["_filas"] = [r]
+        out.append(d)
+        if clave:
+            grupos[clave] = d
+    return out
+
+
+@router.get("/mis-reservas", response_class=HTMLResponse)
+def pagina_mis_reservas(request: Request) -> HTMLResponse:
+    """"Mis reservas" en la web: las reservas del correo de Google con sesión
+    (las mismas que el app), próximas y pasadas, con comprobante y cancha."""
+    ses = sesion.de_request(request)
+    if not ses:
+        if sesion.activo():
+            return HTMLResponse("", status_code=302, headers={"Location": "/entrar?volver=%2Fmis-reservas"})
+        cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'>"
+                  "<h1 style='font-size:22px'>Mis reservas</h1>"
+                  "<p class='sub'>En esta web aún no está activo el inicio de sesión. Tus reservas están en la app.</p>"
+                  f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+        return ui.shell("Mis reservas", cuerpo, sesion=None)
+    email = ses["email"]
+    from db.store import stores as _st
+    filas = _agrupar_reservas(datos.reservas_de_usuario(email))
+    canchas = {}
+    for r in filas:
+        cid = r.get("cancha_id")
+        if cid and cid not in canchas:
+            canchas[cid] = datos.cancha(cid)
+    hoy = horarios.ahora_local("PE").date().isoformat()
+    proximas = sorted([r for r in filas if str(r.get("fecha") or "") >= hoy], key=lambda r: (r.get("fecha"), r.get("hora_inicio")))
+    pasadas = [r for r in filas if str(r.get("fecha") or "") < hoy]
+    # Solo reservas: un pago devuelto de una matrícula o compra (pasarela $ / Bs) no es una cancha cancelada.
+    canceladas = sorted([x for x in _st.cancelaciones_web if x.get("usuario") == email and (x.get("tipo") or "reserva") == "reserva"], key=lambda x: x.get("creado_en", ""), reverse=True)
+    lista = "".join(_tarjeta_viaje(r, canchas.get(r.get("cancha_id")), hoy, ses) for r in proximas) if proximas else (
+        "<div class='viaje-vacio'><b>Todavía no tienes reservas próximas</b>"
+        "<p class='sub'>Cuando reserves una cancha, aparecerá aquí con su mapa y su comprobante.</p>"
+        "<a class='btn' href='/canchas'>Explorar canchas</a></div>")
+    pasadas_html = "".join(_tarjeta_viaje(r, canchas.get(r.get("cancha_id")), hoy, ses) for r in pasadas)
+    def _fila_cancel(x: dict) -> str:
+        est = {"reembolsado": ("Devolución en camino", "ok"), "saldo": ("Devuelto a tu saldo", "ok"), "reembolsado_manual": ("Devuelto", "ok"),
+               "manual": ("Devolución en proceso", "warn"), "fallo": ("Devolución en proceso", "warn"),
+               "sin_reembolso": ("Sin devolución", "bad"), "no_aplica": ("Sin costo", "ok")}.get(x.get("reembolso"), ("", ""))
+        return (f"<div class='cancelada'><div><b>{e(x.get('cancha') or 'Cancha')}</b><div class='sub' style='font-size:13px;margin:0'>"
+                f"{e(horarios.fecha_larga(str(x.get('fecha') or '')))} · {e(x.get('hora_inicio'))}–{e(x.get('hora_fin'))}"
+                + (f" · {x.get('turnos')} turnos" if int(x.get('turnos') or 1) > 1 else "") + "</div></div>"
+                f"<div style='text-align:right'><span class='pill {est[1]}'>{est[0]}</span>"
+                + (f"<div class='sub' style='font-size:12.5px;margin:4px 0 0'>{e(x.get('moneda') or 'S/')} {float(x.get('monto') or 0):.2f}</div>" if x.get("pagado") else "")
+                + "</div></div>")
+    cuerpo = (
+        "<div class='viajes'><div class='viajes-lista'>"
+        "<div class='aviso ok' id='avisoCancel' style='display:none'></div>"
+        "<h1>Reservas</h1>"
+        f"<p class='sub' style='margin-top:2px'>{e(ses.get('nombre') or email)} · {e(email)} · las mismas que ves en la app.</p>"
+        f"<div class='viajes-cards' id='proximas'>{lista}</div>"
+        + (f"<details class='viajes-det'><summary>Dónde has jugado <small>· {len(pasadas)}</small></summary><div class='viajes-cards'>{pasadas_html}</div></details>" if pasadas else "")
+        + f"<details class='viajes-det'{' open' if canceladas else ''}><summary><span class='ico'>🗓️</span> Reservaciones canceladas <small>· {len(canceladas)}</small></summary>"
+        + ("".join(_fila_cancel(x) for x in canceladas) if canceladas else "<p class='sub' style='padding:8px 4px 2px'>No has cancelado ninguna reserva.</p>")
+        + "</details>"
+        f"<p class='sub' style='font-size:12.5px;margin-top:18px'>Cancelación con más de {int(config.WEB_CANCELACION_HORAS)} horas de anticipación: devolución del 100 % al mismo medio de pago. "
+        f"Dudas: <a href='mailto:{empresa.datos()['correo']}'>{empresa.datos()['correo']}</a>.</p>"
+        "</div><aside class='viajes-mapa'><div class='mapa' id='mapaViajes' aria-label='Mapa de tus reservas'></div></aside></div>"
+        + _MODAL_CANCELAR
+        + "<script>" + JS_CANCELAR + r"""
+(function(){
+  try { var av = sessionStorage.getItem('pcg_aviso'); if(av){ var el = document.getElementById('avisoCancel'); el.textContent = av; el.style.display = 'block'; sessionStorage.removeItem('pcg_aviso'); } } catch(e){}
+  // Fotos que faltan (canchas sembradas): la primera foto, como en el explorador.
+  document.querySelectorAll('.viaje .sinfoto[data-buscar]').forEach(function(ph){
+    var q = '/web/foto?id=' + encodeURIComponent(ph.dataset.id) + '&nombre=' + encodeURIComponent(ph.dataset.nombre) + '&club=' + encodeURIComponent(ph.dataset.club) + '&lat=' + ph.dataset.lat + '&lng=' + ph.dataset.lng;
+    fetch(q).then(function(r){ return r.json(); }).then(function(j){ if(j && j.fotos && j.fotos.length){ var im = document.createElement('img'); im.src = j.fotos[0]; im.alt = ''; ph.replaceWith(im); } }).catch(function(){});
+  });
+  // Mapa con un pin por reserva próxima (Leaflet + OpenStreetMap, como el explorador).
+  var caja = document.getElementById('mapaViajes'); if(!caja || !window.L) return;
+  var pts = Array.prototype.slice.call(document.querySelectorAll('#proximas .viaje[data-lat]')).filter(function(a){ return a.dataset.lat && a.dataset.lng; });
+  var mapa = L.map('mapaViajes', {scrollWheelZoom: false});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '© OpenStreetMap'}).addTo(mapa);
+  if(!pts.length){ mapa.setView([-12.05, -77.04], 11); return; }
+  var b = [];
+  pts.forEach(function(a){
+    var lat = parseFloat(a.dataset.lat), lng = parseFloat(a.dataset.lng); b.push([lat, lng]);
+    var mk = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio">' + a.dataset.nombre.replace(/</g, '&lt;') + '</span>', iconSize: null})}).addTo(mapa);
+    mk.bindPopup('<b>' + a.dataset.nombre.replace(/</g, '&lt;') + '</b><br>' + a.dataset.cuando.replace(/</g, '&lt;') + '<br><a class="btn" href="' + a.getAttribute('href') + '">Ver reserva</a>');
+    a.addEventListener('mouseenter', function(){ mk.openPopup(); });
+  });
+  if(b.length === 1) mapa.setView(b[0], 15); else mapa.fitBounds(L.latLngBounds(b).pad(0.3));
+})();
+</script>""")
+    head = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
+            "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>")
+    return ui.shell("Mis reservas", cuerpo, sesion=ses, titulo_tab="Mis reservas · Pichangol", extra_head=head, ancho=True)
+
+
+
+# --- Perfil (= pantalla Perfil del app) --------------------------------------
+_EMOJI_DEP = {"tenis": "🎾", "padel": "🏸", "futbol": "⚽", "pickleball": "🏓", "voley": "🏐",
+              "basquet": "🏀", "natacion": "🏊", "frontón": "🎾", "fronton": "🎾"}
+
+_CSS_PERFIL = """
+.perf{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:48px;align-items:start;max-width:1080px;margin:18px auto 110px}
+.perf h1{font-size:30px;margin:0 0 18px;letter-spacing:-.3px}
+.perf-id{background:#fff;border-radius:24px;box-shadow:0 6px 20px rgba(0,0,0,.08);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,150px);align-items:center;padding:26px 22px}
+.perf-yo{text-align:center;min-width:0}
+.perf-av{position:relative;width:104px;height:104px;margin:0 auto 10px}
+.perf-av img,.perf-av .ini{width:104px;height:104px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;background:var(--noche,#0A1B3D);color:#fff;font-size:42px;font-weight:700}
+.perf-av .pro{position:absolute;right:-4px;bottom:4px;background:#F2C94C;color:#3a2a00;border:3px solid #fff;border-radius:99px;font-size:11px;font-weight:800;padding:3px 8px}
+.perf-av .ok{position:absolute;left:-2px;bottom:6px;background:#0B8A3E;color:#fff;border:3px solid #fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px}
+.perf-yo b{display:block;font-size:22px;line-height:1.2;overflow-wrap:anywhere}
+.perf-yo small{display:block;color:#6a6a6a;font-size:13px;margin-top:4px;overflow-wrap:anywhere}
+.perf-stats{border-left:1px solid #EBEBEB;padding-left:18px;display:grid;gap:10px}
+.perf-stats div{border-bottom:1px solid #EBEBEB;padding-bottom:8px}
+.perf-stats div:last-child{border:0;padding:0}
+.perf-stats b{display:block;font-size:20px}
+.perf-stats small{font-size:12px;color:#444;font-weight:600}
+.perf-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:16px 0}
+.perf-tile{position:relative;background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:26px 14px 18px;text-align:center;color:inherit;text-decoration:none;cursor:pointer;border:0;font:inherit}
+.perf-tile .em{font-size:52px;line-height:1;display:block;margin-bottom:12px}
+.perf-tile b{font-size:15px}
+.perf-tile .nov{position:absolute;top:12px;right:12px;background:#0A1B3D;color:#fff;font-size:10px;font-weight:800;letter-spacing:.6px;border-radius:99px;padding:4px 8px}
+.perf-ban{display:flex;gap:14px;align-items:center;background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px;color:inherit;text-decoration:none;margin-bottom:16px}
+.perf-ban .em{font-size:44px;flex:none}
+.perf-ban b{display:block;font-size:16px}
+.perf-ban small{color:#6a6a6a;font-size:13.5px;line-height:1.4}
+.perf-nivel{background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px}
+.perf-nivel h3{margin:0 0 4px;font-size:16px}
+.perf-nivel p{margin:0 0 10px;color:#6a6a6a;font-size:13.5px}
+.perf-niv{display:flex;flex-wrap:wrap;gap:8px}
+.perf-niv span{background:#F4F7FA;border-radius:99px;padding:7px 12px;font-size:13.5px;font-weight:600}
+.perf-menu{display:flex;flex-direction:column}
+.perf-it{display:flex;align-items:center;gap:14px;padding:16px 2px;border:0;border-bottom:1px solid #EBEBEB;background:none;color:inherit;text-decoration:none;font:inherit;font-size:16px;text-align:left;cursor:pointer;width:100%}
+.perf-it .em{font-size:24px;width:30px;text-align:center;flex:none}
+.perf-it .tx{flex:1;min-width:0}
+.perf-it .tx small{display:block;color:#6a6a6a;font-size:13px;margin-top:2px}
+.perf-it .app{font-size:11.5px;font-weight:700;color:#067A38;background:#E9F6EE;border-radius:99px;padding:3px 9px;white-space:nowrap}
+.perf-it .bdg{background:#E0245E;color:#fff;font-size:12px;font-weight:800;border-radius:99px;min-width:22px;height:22px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center}
+.perf-it .chev{color:#b0b0b0;font-size:22px;line-height:1}
+.perf-it.rojo{color:#C0392B}
+.perf-sep{height:14px}
+.perf-sub{padding-left:44px}
+.perf-sub .perf-it{font-size:15px;padding:13px 2px}
+details.perf-grp>summary{list-style:none}
+details.perf-grp>summary::-webkit-details-marker{display:none}
+details.perf-grp[open] .chev{transform:rotate(90deg)}
+.perf-host{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(22px + env(safe-area-inset-bottom));background:#222;color:#fff;border-radius:99px;padding:13px 20px;font-weight:700;text-decoration:none;box-shadow:0 8px 24px rgba(0,0,0,.25);display:flex;gap:8px;align-items:center;z-index:30;white-space:nowrap}
+@media(max-width:900px){.perf{grid-template-columns:minmax(0,1fr);gap:22px;margin-top:6px}}
+@media(max-width:420px){.perf-id{grid-template-columns:minmax(0,1fr) minmax(0,118px);padding:22px 14px}.perf-stats{padding-left:12px}.perf-av,.perf-av img,.perf-av .ini{width:88px;height:88px}.perf-yo b{font-size:19px}.perf-tile .em{font-size:44px}}
+"""
+
+
+def _item_perfil(em: str, titulo: str, *, href: str = "", sub: str = "", app: str = "",
+                 badge: int = 0, clase: str = "", onclick: str = "") -> str:
+    """Fila del menú del Perfil (= `_ItemAirbnb` del app). [app] = qué se hace
+    en la app: la fila abre un modal "Esto está en la app" en vez de navegar."""
+    der = ""
+    if badge:
+        der += f"<span class='bdg'>{badge}</span>"
+    if app:
+        der += "<span class='app'>En la app</span>"
+    der += "<span class='chev'>›</span>"
+    cuerpo = (f"<span class='em' aria-hidden='true'>{em}</span><span class='tx'>{e(titulo)}"
+              + (f"<small>{e(sub)}</small>" if sub else "") + f"</span>{der}")
+    cls = f"perf-it {clase}".strip()
+    if app:
+        return (f"<button type='button' class='{cls}' data-app='{e(app)}' data-titulo='{e(titulo)}' "
+                f"data-em='{e(em)}'>{cuerpo}</button>")
+    if onclick:
+        return f"<button type='button' class='{cls}' onclick=\"{onclick}\">{cuerpo}</button>"
+    return f"<a class='{cls}' href='{e(href)}'>{cuerpo}</a>"
+
+
+@router.get("/perfil", response_class=HTMLResponse)
+def pagina_perfil(request: Request) -> HTMLResponse:
+    """Perfil en la web = pantalla Perfil del app (pedido del director,
+    29-sep-2026: "esto no lo veo en la web"): tarjeta de identidad con foto,
+    PRO y verificado + Reservas / Deportes con nivel / Retos pendientes,
+    atajos Mis reservas y Marketplace, "¿Tienes una cancha o academia?",
+    nivel de jugador y el MISMO menú. Lo que la web aún no tiene abre un modal
+    "Esto lo encuentras en la app" (nunca un enlace roto)."""
+    ses = sesion.de_request(request)
+    if not ses:
+        if sesion.activo():
+            return HTMLResponse("", status_code=302, headers={"Location": "/entrar?volver=%2Fperfil"})
+        cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'>"
+                  "<h1 style='font-size:22px'>Perfil</h1>"
+                  "<p class='sub'>En esta web aún no está activo el inicio de sesión. Tu perfil está en la app.</p>"
+                  f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+        return ui.shell("Perfil", cuerpo, sesion=None)
+    from db.store import stores as _st
+    from retos.router import _auto_confirmar, _lado_retado, _lado_retador, _participantes
+    email = (ses.get("email") or "").strip().lower()
+    nombre = ses.get("nombre") or email
+    reservas = len(datos.reservas_de_usuario(email))
+    niveles = datos.niveles_de(email)
+    try:
+        _auto_confirmar()
+    except Exception:  # noqa: BLE001
+        pass
+    retos = 0
+    for r in _st.retos:
+        if email not in _participantes(r):
+            continue
+        if email in _lado_retado(r) and r.estado in ("pendiente", "aceptado"):
+            retos += 1
+        elif email in _lado_retador(r) and r.estado == "aceptado":
+            retos += 1
+    pro = _st.pro_activo(email)
+    verificado = datos.esta_verificado(email)
+    puntos = datos.puntos_de(email)["disponibles"]
+    matriculas = datos.tiene_matriculas(email)
+    try:
+        es_boleador = bool(datos.boleador(email))
+    except Exception:  # noqa: BLE001
+        es_boleador = False
+
+    ini = e((nombre or "?")[:1].upper())
+    foto = (f"<img src='{e(ses.get('foto'))}' alt='' referrerpolicy='no-referrer'>" if ses.get("foto")
+            else f"<span class='ini'>{ini}</span>")
+    def _stat(n: int, uno: str, varios: str) -> str:
+        return f"<div><b>{n}</b><small>{uno if n == 1 else varios}</small></div>"
+    ident = (
+        "<div class='perf-id'><div class='perf-yo'><div class='perf-av'>" + foto
+        + ("<span class='pro'>👑 PRO</span>" if pro else "")
+        + ("<span class='ok' title='Identidad verificada'>✓</span>" if verificado else "")
+        + f"</div><b>{e(nombre)}</b><small>{e(email)}</small></div>"
+        "<div class='perf-stats'>"
+        + _stat(reservas, "Reserva", "Reservas")
+        + _stat(len(niveles), "Deporte con nivel", "Deportes con nivel")
+        + _stat(retos, "Reto pendiente", "Retos pendientes")
+        + "</div></div>")
+    tiles = ("<div class='perf-tiles'>"
+             "<a class='perf-tile' href='/mis-reservas'><span class='em'>📅</span><b>Mis reservas</b></a>"
+             "<a class='perf-tile' href='/marketplace'><span class='nov'>NOVEDAD</span><span class='em'>🛍️</span><b>Marketplace</b></a>"
+             "<a class='perf-tile' href='/mensajes'><span class='nov' data-badge-mensajes hidden style='background:#E0245E'></span><span class='em'>💬</span><b>Mensajes</b></a>"
+             "<a class='perf-tile' href='/mis-pedidos-bodega'><span class='em'>🧃</span><b>Pedidos a la cancha</b></a>"
+             "<a class='perf-tile' href='/novedades'><span class='em'>📰</span><b>Novedades</b></a>"
+             "<a class='perf-tile' href='/canales'><span class='em'>📢</span><b>Canales</b></a>"
+             "</div>")
+    banner = ("<a class='perf-ban' href='/anfitrion'><span class='em'>🏟️</span><span>"
+              "<b>¿Tienes una cancha o academia?</b><small>Publícala y genera ingresos adicionales, ¡es muy sencillo!</small></span></a>")
+    if niveles:
+        chips = "".join(f"<span>{_EMOJI_DEP.get(n['deporte'].lower(), '🏅')} {e(n['deporte'].capitalize())} · {n['nivel']:.1f}</span>" for n in niveles)
+        nivel = ("<div class='perf-nivel'><h3>📈 Tu nivel de jugador</h3>"
+                 "<p>Sube o baja solo con tus resultados en retos y campeonatos.</p>"
+                 f"<div class='perf-niv'>{chips}</div><a class='btn sec' style='margin-top:12px' href='/mi-nivel'>Reevaluar / agregar deporte</a></div>")
+    else:
+        nivel = ("<div class='perf-nivel'><h3>📈 Tu nivel de jugador</h3>"
+                 "<p>Autoevalúate en 30 segundos y encuentra rivales de tu nivel.</p>"
+                 "<a class='btn sec' href='/mi-nivel'>Autoevaluarme</a></div>")
+
+    menu = ""
+    if matriculas:
+        menu += _item_perfil("🎓", "Mis clases y pagos", href="/mis-clases", sub="Cuotas, pagos y comprobantes de tu academia")
+    menu += _item_perfil("🎟️", "Mis bonos", href="/mis-bonos", sub="Horas prepagadas en tus locales")
+    menu += _item_perfil("🧾", "Mis pagos", href="/mis-pagos", sub="Todo lo que pagaste, con comprobantes")
+    menu += _item_perfil("⭐", f"Mis puntos · {puntos} ⭐" if puntos > 0 else "Mis puntos",
+                         href="/mis-puntos", sub="Ganas puntos con cada reserva pagada")
+    menu += _item_perfil("⚽", "Partidos", href="/partidos", sub="Arma o únete a un partido cerca de ti")
+    menu += _item_perfil("📅", "Pichangas de mi club", href="/pichangas", sub="Convocatorias con cupos y lista de espera")
+    menu += _item_perfil("🏆", "Campeonatos", href="/anfitrion/campeonatos", sub="Únete con un código o mira dónde participas")
+    menu += _item_perfil("🎁", "Invita y gana", href="/referidos", sub="Comparte tu código con tus amigos")
+    tenis = (
+        _item_perfil("🥇", "Liga de tenis Pichangol", href="/liga", sub="Ranking, retos y resultados")
+        + _item_perfil("🥎", "Soy boleador" if es_boleador else "Ser boleador", href="/anfitrion/boleador",
+                       sub="Bolea en las canchas de tu zona y cobra por turno"))
+    menu += ("<details class='perf-grp'><summary class='perf-it'><span class='em'>🎾</span>"
+             "<span class='tx'>Mundo tenis<small>Entrena, bolea y compite</small></span>"
+             + (f"<span class='bdg'>{retos}</span>" if retos else "") + "<span class='chev'>›</span></summary>"
+             f"<div class='perf-sub'>{tenis}</div></details>")
+    menu += _item_perfil("👑", "Pichangol Pro", href="/pro", sub="Retos sin límite, campeonatos, bodega y más")
+    menu += _item_perfil("💳", "Métodos de pago", href="/cuenta/tarjetas", sub="Tus tarjetas guardadas")
+    menu += _item_perfil("👛", "Mi billetera", href="/mi-billetera", sub="Saldo, recargas, cupones y movimientos")
+    menu += "<div class='perf-sep'></div>"
+    menu += _item_perfil("🌎", "Mi país", href="/mi-pais", sub="Define la moneda de tu saldo")
+    menu += _item_perfil("⚙️", "Configuración de la cuenta", href="/cuenta/configuracion", sub="Foto, nombre, celular e identidad")
+    menu += _item_perfil("🚪", "Cierra la sesión", onclick="window.pcgSalir&&pcgSalir()")
+    menu += _item_perfil("🗑️", "Eliminar mi cuenta", href="/legal/eliminar-cuenta", clase="rojo")
+
+    cuerpo = (
+        f"<style>{_CSS_PERFIL}</style>"
+        "<div class='perf'><div><h1>Perfil</h1>" + ident + tiles + banner + nivel + "</div>"
+        f"<div><div class='perf-menu'>{menu}</div></div></div>"
+        "<a class='perf-host' href='/anfitrion'>🔁 Cambiar a modo anfitrión</a>"
+        "<script>(function(){\n"
+        "document.querySelectorAll('[data-app]').forEach(function(b){ b.addEventListener('click', function(ev){ ev.preventDefault();\n"
+        "  pcgConfirmar({titulo: b.dataset.titulo, mensaje: b.dataset.app, icono: b.dataset.em || '📱', confirmar: 'Abrir la app', cancelar: 'Ahora no'})\n"
+        f"   .then(function(ok){{ if(ok) window.open({json.dumps(PLAY_URL)}, '_blank', 'noopener'); }});\n"
+        "}); });\n"
+        "})();</script>")
+    return ui.shell("Perfil", cuerpo, sesion=ses, titulo_tab="Perfil · Pichangol")
+
+
+def _filas_comprobante(ref: str) -> list[dict]:
+    filas = datos.reservas_por_grupo(ref) if ref.startswith("grp_") else datos.reservas_de([ref])
+    return [f for f in filas if f.get("pagado") or f.get("estado") == "confirmada"]
+
+
+@router.get("/reserva/{ref}.ics")
+def comprobante_ics(ref: str) -> Response:
+    """Evento(s) para el calendario del cliente (Google/Apple/Outlook)."""
+    filas = _filas_comprobante(ref)
+    if not filas:
+        return Response("No encontrada", status_code=404)
+    c = datos.cancha(filas[0]["cancha_id"]) or {}
+    pais = _pais_de(c) if c else "PE"
+    tz = horarios.ahora_local(pais).tzinfo
+    lugar = ", ".join(x for x in (c.get("nombre"), c.get("direccion"), _zona(c)) if x)
+    ahora = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    ev = []
+    for f in filas:
+        try:
+            d = date.fromisoformat(f["fecha"])
+            hi = horarios.hora_en_minutos(f["hora_inicio"]) or 0
+            hf = horarios.hora_en_minutos(f["hora_fin"]) or hi + 60
+            if hf <= hi:
+                hf += 24 * 60
+            ini = datetime(d.year, d.month, d.day, tzinfo=tz) + timedelta(minutes=hi)
+            fin = datetime(d.year, d.month, d.day, tzinfo=tz) + timedelta(minutes=hf)
+        except (ValueError, TypeError):
+            continue
+        ev.append("BEGIN:VEVENT\r\n"
+                  f"UID:{f['id']}@pichangol.app\r\nDTSTAMP:{ahora}\r\n"
+                  f"DTSTART:{ini.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}\r\n"
+                  f"DTEND:{fin.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}\r\n"
+                  f"SUMMARY:Pichangol · {_ics(c.get('nombre') or 'Reserva')}\r\n"
+                  f"LOCATION:{_ics(lugar)}\r\n"
+                  f"DESCRIPTION:Reserva {_ics(ref)}. Comprobante: {_ics((config.PUBLIC_BASE_URL or '').rstrip('/'))}/reserva/{_ics(ref)}\r\n"
+                  "END:VEVENT\r\n")
+    body = ("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Pichangol//Reserva web//ES\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n"
+            + "".join(ev) + "END:VCALENDAR\r\n")
+    return Response(body, media_type="text/calendar; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename=pichangol-{ref}.ics"})
+
+
+def _ics(s) -> str:
+    return str(s or "").replace("\\", "\\\\").replace(";", "\;").replace(",", "\\,").replace("\n", "\\n")
+
+
+@router.get("/reserva/{ref}", response_class=HTMLResponse)
+def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
+    filas = _filas_comprobante(ref)
+    if not filas:
+        return _no_encontrada("Reserva no encontrada")
+    ses = sesion.de_request(request)
+    c = datos.cancha(filas[0]["cancha_id"]) or {}
+    sim = filas[0].get("moneda") or "S/"
+    total = _total_de(filas)
+    # Cargo por servicio cobrado (congelado en el libro con su desglose).
+    cobro = _cobro_web(_ref_de(filas))
+    cargo_c = int(getattr(cobro, "cargo_servicio_centimos", 0) or 0) if cobro else 0
+    desglose_guardado = list(getattr(cobro, "cargo_desglose", None) or []) if cobro else []
+    if cargo_c <= 0:
+        # Reserva pagada desde el APP: el cargo viene en la fila (columnas
+        # `cargo_servicio`/`cargo_desglose`, SQL supabase_reservas_cargo.sql).
+        try:
+            cargo_c = int(round(float(filas[0].get("cargo_servicio") or 0) * 100))
+        except (TypeError, ValueError):
+            cargo_c = 0
+        raw = filas[0].get("cargo_desglose")
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except ValueError:
+                raw = []
+        desglose_guardado = list(raw or []) if isinstance(raw, list) else []
+    # BONO / PUNTOS: los turnos que cubrió el bono y los S/ 3 de puntos no se
+    # pagaron en plata (la fila guarda el precio de lista, como el app).
+    aj = beneficios.ajustes(filas, c)
+    pagado = max(0, total - aj["bono_cubre"] - aj["puntos_desc"]) + cargo_c / 100.0
+    # SEÑA: se pagó solo la seña (+ su cargo); el resto se paga en la cancha.
+    sena_c = sum(int(f.get("sena") or 0) for f in filas) if str(filas[0].get("medio_pago") or "") == "sena" else 0
+    resto_cancha = 0.0
+    if sena_c > 0:
+        resto_cancha = max(0.0, total - sena_c)
+        pagado = sena_c + cargo_c / 100.0
+    extras = [x for f in filas for x in (f.get("extras") or [])]
+    # Estado del BOLEADOR (si lo contrató): Esperando confirmación / Confirmado / devuelto.
+    estado_bol = ""
+    if any(isinstance(x, dict) and x.get("clave") == "boleador" for x in extras):
+        try:
+            import boleadores as _bol
+            estado_bol = _bol.estado_visible(datos.solicitud_por_reserva(ref))
+        except Exception:  # noqa: BLE001
+            estado_bol = ""
+    lineas = "".join(
+        f"<div class='linea'><span>{e(horarios.fecha_larga(f['fecha']))} · {e(f['hora_inicio'])}–{e(f['hora_fin'])}</span>"
+        f"<b>{e(sim)} {int(f['precio']):.2f}</b></div>" for f in filas)
+    lineas += "".join(
+        f"<div class='linea'><span>{e(x.get('nombre') or EXTRAS_NOMBRE.get(str(x.get('clave')), str(x.get('clave')).capitalize()))}"
+        f"{(' × ' + str(int(x.get('cantidad')))) if int(x.get('cantidad') or 1) > 1 else ''}"
+        f"{(' <small class=' + chr(39) + 'sub' + chr(39) + ' style=' + chr(39) + 'font-size:12px' + chr(39) + '>· ' + e(estado_bol) + '</small>') if (x.get('clave') == 'boleador' and estado_bol) else ''}</span>"
+        f"<b>{e(sim)} {float(x.get('precio') or 0):.2f}</b></div>" for x in extras)
+    # Premio de FIDELIDAD usado en esta reserva (el precio de arriba ya va descontado).
+    canje_fid = datos.canje_por_ref(ref)
+    if canje_fid and canje_fid.get("estado") == "usado":
+        import fidelidad as _fid
+        lineas += (f"<div class='linea' style='color:var(--verde)'><span>🎁 Premio de fidelidad · "
+                   f"{'hora gratis' if canje_fid.get('tipo') == 'hora_gratis' else 'descuento'}</span>"
+                   f"<b>ya descontado {e(sim)} {float(canje_fid.get('descuento') or 0):.2f}</b></div>")
+    if aj["bono_cubre"] > 0:
+        lineas += (f"<div class='linea' style='color:var(--verde)'><span>🎟️ Pagado con tu bono · {aj['bono_horas']} "
+                   f"{'hora' if aj['bono_horas'] == 1 else 'horas'}</span><b>−{e(sim)} {aj['bono_cubre']:.2f}</b></div>")
+    if aj["puntos_desc"] > 0:
+        lineas += (f"<div class='linea' style='color:var(--verde)'><span>⭐ Canje de {aj['puntos']} puntos Pichangol</span>"
+                   f"<b>−{e(sim)} {aj['puntos_desc']:.2f}</b></div>")
+    if cargo_c > 0:
+        lineas += (f"<div class='linea'><span>Cargo por servicio Pichangol</span><b>{e(sim)} {cargo_c / 100.0:.2f}</b></div>")
+    detalle_cargo = ""
+    if cargo_c > 0:
+        _s, _iso_c = _moneda_de(c) if c else (sim, _cs.moneda_iso(sim))
+        detalle_cargo = ("<details style='margin-top:8px;text-align:left'><summary class='sub' style='cursor:pointer;font-size:13px'>Qué incluye el cargo por servicio</summary>"
+                         f"{ui.desglose_cargo_html(desglose_guardado, sim, _cs.regla_texto(_iso_c))}</details>")
+    lugar = ", ".join(x for x in (c.get("direccion"), _zona(c)) if x)
+    base = (config.PUBLIC_BASE_URL or "").rstrip("/")
+    boton_wa = ui.boton_whatsapp(
+        f"Reservé en {c.get('nombre', 'una cancha')} por Pichangol: "
+        f"{horarios.fecha_larga(filas[0]['fecha'])} {filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}. "
+        f"Comprobante: {base}/reserva/{ref}", etiqueta="💬 Compartir", clase="btn sec")
+    medio = {"yape": "Yape", "tarjeta": "tarjeta", "fidelidad": "tu premio de fidelidad 🎁", "sena": "seña en línea",
+             "bono": "tu bono de horas 🎟️"}.get(str(filas[0].get("medio_pago") or ""), "en línea")
+    if cobro is not None and not _es_cargo_culqi(cobro) and ":" in str(cobro.culqi_charge_id or ""):
+        # Cobro por pasarela hospedada ($ / Bs): se nombra la pasarela.
+        medio += f" · {pago_hospedado.nombre_pasarela(str(cobro.culqi_charge_id).split(':', 1)[0])}"
+    cuerpo = (
+        "<div style='max-width:640px;margin:26px auto 0'>"
+        f"<div class='panel' style='text-align:center'>{ui.check_svg()}"
+        "<h1>¡Reserva confirmada!</h1>"
+        f"<p class='sub'>Comprobante <b>{e(ref)}</b> · pagado con {e(medio)}</p>"
+        f"<h3 style='margin-top:16px'>{e(c.get('nombre') or 'Cancha')}</h3>"
+        f"<div class='sub'>{e(c.get('club'))}{(' · ' + e(lugar)) if lugar else ''}</div>"
+        f"<div style='text-align:left;margin-top:16px'>{lineas}"
+        + (f"<div class='linea'><span>Total de la reserva</span><b>{e(sim)} {total:.2f}</b></div>" if sena_c else "")
+        + f"<div class='total'><span>{'Pagaste hoy (seña)' if sena_c else 'Total pagado'}</span><span>{e(sim)} {pagado:.2f}</span></div>"
+        + (f"<div class='linea' style='font-weight:700'><span>Por pagar en la cancha</span><b>{e(sim)} {resto_cancha:.2f}</b></div>"
+           "<div class='sub' style='font-size:12.5px'>La seña no es reembolsable: si no llegas, queda a favor de la cancha.</div>" if sena_c else "")
+        + f"{detalle_cargo}</div>"
+        f"<div class='sub' style='margin-top:12px'>A nombre de <b>{e(filas[0].get('jugador'))}</b> · {e(filas[0].get('usuario'))}. "
+        "Guarda este enlace: es tu comprobante.</div>"
+        "<div class='acciones'>"
+        f"<a class='btn sec' href='/reserva/{e(ref)}.ics'>📅 Agregar al calendario</a>"
+        + (f"<a class='btn sec' href='{_maps(c)}' target='_blank' rel='noopener'>📍 Cómo llegar</a>" if c else "")
+        + boton_wa
+        + "</div>"
+        + (f"<div class='acciones'>{_boton_cancelar(filas, c, ses, 'btn sec')}</div>" if _boton_cancelar(filas, c, ses) else "")
+        + f"<div class='estado ok' style='text-align:left'>Cancelación con más de {int(config.WEB_CANCELACION_HORAS)} horas de anticipación: devolución del 100 % al mismo medio de pago. "
+        f"Puedes cancelar desde aquí o desde <a href='/mis-reservas'>Mis reservas</a>. Dudas: <a href='mailto:{empresa.datos()['correo']}'>{empresa.datos()['correo']}</a>.</div>"
+        "</div>"
+        "<div class='panel' style='margin-top:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap'>"
+        "<img src='/static/brand/logo_pin.png' alt='' style='width:56px;height:56px;border-radius:14px;border:1px solid var(--trazo)'>"
+        "<div style='flex:1;min-width:200px'><b>Lleva tus reservas contigo</b>"
+        "<div class='sub' style='font-size:13px'>Con la app ves tu agenda, acumulas puntos y reservas en dos toques.</div></div>"
+        f"<a class='btn' href='{PLAY_URL}'>Descargar la app</a></div>"
+        "<div style='text-align:center;margin-top:16px'><a href='/canchas'>Reservar otra cancha</a></div>"
+        f"</div>{_MODAL_CANCELAR}<script>{JS_CANCELAR}</script>")
+    return ui.shell("Reserva confirmada", cuerpo, sesion=ses)
