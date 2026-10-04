@@ -2801,6 +2801,12 @@ off → redeploy inmediato en cada push). URL pública:
     variables. CAMBIÓ `lib/` → APK/AAB de PRD = run 1531 (`workflow_dispatch`,
     `ref=prd`, `entorno=prod`). OJO: un APK anterior no exige ubicación ni el
     rango de fotos al enviar, pero el servidor sí (rechaza con mensaje).
+    **Pase del 4-oct-2026 (autorizado: "pasa a PRD"):** `prd` = 7365e66
+    (explorar solo lo cercano: radio 10 km en web y APK; tarifa de pasarela
+    por medio Yape/tarjeta en el modelo 2 —PRD sigue en modelo 1, no cambia
+    cobros hasta elegirlo en la torre—). Sin SQL, sin Edge, sin variables.
+    CAMBIÓ `lib/` → APK/AAB de PRD por `workflow_dispatch` (`ref=prd`,
+    `entorno=prod`).
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
