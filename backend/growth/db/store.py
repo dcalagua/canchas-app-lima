@@ -183,14 +183,17 @@ CONFIG_DEFAULT: dict[str, str] = {
     "modelo_reservas": "1",
     **{f"m2_{_m}_{_k}": _v for _m, _d in {
         "PEN": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
-                "igv_pct": "18", "reparto_cliente_pct": "50", "sobre": "precio",
-                "cliente_min": "1", "dueno_min": "0", "cliente_tope_pct": "0"},
+                "igv_pct": "18", "reparto_cliente_pct": "50", "sobre": "cobrado",
+                "cliente_min": "1", "dueno_min": "0", "cliente_tope_pct": "0",
+                "igv_aplica": "0", "tarjeta_fijo": "0", "yape_pct": "3.44", "yape_fijo": "0.77"},
         "USD": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
-                "igv_pct": "15", "reparto_cliente_pct": "50", "sobre": "precio",
-                "cliente_min": "0.3", "dueno_min": "0", "cliente_tope_pct": "0"},
+                "igv_pct": "15", "reparto_cliente_pct": "50", "sobre": "cobrado",
+                "cliente_min": "0.3", "dueno_min": "0", "cliente_tope_pct": "0",
+                "igv_aplica": "0", "tarjeta_fijo": "0", "yape_pct": "3.44", "yape_fijo": "0.77"},
         "BOB": {"cliente_pct": "1.2", "dueno_pct": "0", "banco_pct": "2.5", "pasarela_pct": "5.5",
-                "igv_pct": "13", "reparto_cliente_pct": "50", "sobre": "precio",
-                "cliente_min": "2", "dueno_min": "0", "cliente_tope_pct": "0"},
+                "igv_pct": "13", "reparto_cliente_pct": "50", "sobre": "cobrado",
+                "cliente_min": "2", "dueno_min": "0", "cliente_tope_pct": "0",
+                "igv_aplica": "0", "tarjeta_fijo": "0", "yape_pct": "3.44", "yape_fijo": "0.77"},
     }.items() for _k, _v in _d.items()},
     # FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS (campaña de migración desde
     # las fotos de Google, pedido del director 2-oct-2026,
@@ -560,6 +563,7 @@ class Stores:
         # Un estado NUEVO ya nace con las reglas de reclamo vigentes: la
         # migración `reclamo_reglas_v2` solo toca snapshots anteriores.
         self.config["reclamo_reglas_v2"] = "1"
+        self.config["m2_tarifas_v2"] = "1"
         self.movimientos: list[PuntosMovimiento] = []
         self.canjes: list[PremioCanje] = []
         self.solicitudes: list[SolicitudCancha] = []
@@ -1306,6 +1310,14 @@ class Stores:
             self.config["reclamo_fotos_min"] = str(max(3, mn))
             self.config["reclamo_fotos_max"] = "5"
             self.config["reclamo_reglas_v2"] = "1"
+        # Migración única (2-oct-2026, director: "Culqi cobra sobre lo cobrado,
+        # Yape es más barato y sin IGV"): el modelo 2 pasa a calcular la
+        # pasarela sobre lo COBRADO y sin IGV (Culqi: comisiones inafectas).
+        if not self.config.get("m2_tarifas_v2"):
+            for _m in ("PEN", "USD", "BOB"):
+                self.config[f"m2_{_m}_sobre"] = "cobrado"
+                self.config[f"m2_{_m}_igv_aplica"] = "0"
+            self.config["m2_tarifas_v2"] = "1"
         self.movimientos = [_mov_from(d) for d in data.get("movimientos", [])]
         self.canjes = [_canje_from(d) for d in data.get("canjes", [])]
         self.solicitudes = [_sol_from(d) for d in data.get("solicitudes", [])]

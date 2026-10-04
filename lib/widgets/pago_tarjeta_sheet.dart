@@ -46,6 +46,16 @@ class DetallePago {
   bool get vacio => lineas.isEmpty && !(cargo?.hayCargo ?? false);
 }
 
+/// Monto + resumen para UN medio de pago (Yape o tarjeta). En el MODELO 2 de
+/// reservas el cargo que paga el jugador depende del medio (Yape es más
+/// barato), así que el flujo cotiza ambos y la hoja muestra/cobra el del
+/// medio elegido. Ver [PagoTarjeta.cobrar] (`porMedio`).
+class OpcionPago {
+  const OpcionPago({required this.monto, this.detalle});
+  final num monto;
+  final DetallePago? detalle;
+}
+
 /// Tarjeta "Resumen de tu pago" (mismo contenido que el modal de la web).
 class ResumenPagoCard extends StatelessWidget {
   const ResumenPagoCard(
@@ -159,6 +169,13 @@ class PagoTarjeta {
   /// notificar "pago no procesado" con el motivo real.
   static String ultimoError = '';
 
+  /// Medio cuya opción de [cobrar] (`porMedio`) se COBRÓ: 'yape' | 'tarjeta'
+  /// ('' si no se cobró). En pasarelas hospedadas (Libélula, PayPhone) y en la
+  /// simulada es 'tarjeta' (una sola tarifa). El flujo lo usa para elegir la
+  /// cotización del cargo realmente pagado y mandar `medio_pago` a la
+  /// liquidación.
+  static String ultimoMedioCobro = '';
+
   static Future<bool> cobrar(
     BuildContext context, {
     required num monto, // monto EN UNIDAD MAYOR (S//Bs/$), admite 2 decimales
@@ -168,9 +185,21 @@ class PagoTarjeta {
     ValueChanged<String>? onToken, // recibe el token (tkn_/crd_) usado si el pago fue OK
     ValueChanged<String>? onOperacion, // recibe el N.º de operación (charge_id)
     DetallePago? detalle, // "Resumen de tu pago" (líneas + cargo por servicio)
+    // Monto + resumen POR MEDIO ('yape' / 'tarjeta'): cuando el cargo depende
+    // del medio (modelo 2 de reservas, soles), la hoja cambia el total al
+    // tocar Yape o Tarjeta y cobra el del medio elegido. Null = [monto] y
+    // [detalle] para todos (comportamiento de siempre).
+    Map<String, OpcionPago>? porMedio,
   }) async {
     ultimoMetodo = ''; // se setea a 'yape'/'tarjeta' si el cobro por Culqi sale OK
     ultimoError = ''; // se setea con el motivo si la pasarela RECHAZA el cobro
+    ultimoMedioCobro = '';
+    // Pasarelas hospedadas y simulada = una sola tarifa ('tarjeta').
+    final opTarjeta = porMedio?['tarjeta'];
+    if (opTarjeta != null && paisActual.pasarela != 'culqi') {
+      monto = opTarjeta.monto;
+      detalle = opTarjeta.detalle ?? detalle;
+    }
     // BOLIVIA: la pasarela es Libélula (no Culqi). Se detecta por el país actual
     // (GPS/selección). El pago se hace en la página hospedada de Libélula dentro
     // de un WebView (QR · tarjeta · Tigo Money).
@@ -185,15 +214,19 @@ class PagoTarjeta {
       if (!context.mounted) return false;
     }
     if (paisActual.pasarela == 'libelula') {
-      return PagoLibelula.cobrar(context,
+      final ok = await PagoLibelula.cobrar(context,
           monto: monto, concepto: concepto, email: email,
           moneda: moneda.isNotEmpty ? moneda : 'Bs');
+      if (ok) ultimoMedioCobro = 'tarjeta';
+      return ok;
     }
     // ECUADOR: la pasarela es PayPhone (botón de pagos hospedado, en USD).
     if (paisActual.pasarela == 'payphone') {
-      return PagoPayPhone.cobrar(context,
+      final ok = await PagoPayPhone.cobrar(context,
           monto: monto, concepto: concepto, email: email,
           moneda: moneda.isNotEmpty ? moneda : '\$');
+      if (ok) ultimoMedioCobro = 'tarjeta';
+      return ok;
     }
 
     final cfg = await PagosService.config();
@@ -217,16 +250,24 @@ class PagoTarjeta {
         return false;
       }
       // dev/QAS: pasarela SIMULADA, para poder recorrer el flujo completo sin
-      // llaves reales. Nunca sale de estos entornos.
-      if (detalle != null && !detalle.vacio && paisActual.pasarela == 'culqi') {
-        if (!await _confirmarResumen(context, detalle, monTxt, monto, 'el pago')) {
+      // llaves reales. Nunca sale de estos entornos. Cobra la opción
+      // 'tarjeta' (la simulada no distingue medio).
+      if (opTarjeta != null) {
+        monto = opTarjeta.monto;
+        detalle = opTarjeta.detalle ?? detalle;
+      }
+      final det = detalle;
+      if (det != null && !det.vacio && paisActual.pasarela == 'culqi') {
+        if (!await _confirmarResumen(context, det, monTxt, monto, 'el pago')) {
           return false;
         }
         if (!context.mounted) return false;
       }
       final r = await PagoSheet.mostrar(context,
           monto: monto, concepto: concepto, moneda: moneda);
-      return r != null && r.exito;
+      final ok = r != null && r.exito;
+      if (ok) ultimoMedioCobro = 'tarjeta';
+      return ok;
     }
 
     final pk = (cfg['public_key'] ?? '').toString();
@@ -266,6 +307,7 @@ class PagoTarjeta {
         onToken: onToken,
         onOperacion: onOperacion,
         detalle: detalle,
+        porMedio: porMedio,
       ),
     );
     return ok == true;
@@ -288,8 +330,10 @@ class _PagoTarjetaSheet extends StatefulWidget {
     this.onToken,
     this.onOperacion,
     this.detalle,
+    this.porMedio,
   });
   final DetallePago? detalle;
+  final Map<String, OpcionPago>? porMedio;
   final num monto;
   final String concepto;
   final String email;
@@ -312,6 +356,12 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
   // YAPE POR DEFECTO en Perú (decisión del director, 27-sep-2026): baja el
   // costo de pasarela a la mitad; el jugador puede cambiar a tarjeta.
   _Metodo _metodo = paisActual.iso == 'PE' ? _Metodo.yape : _Metodo.tarjeta;
+
+  /// Opción (monto + resumen) del medio elegido; null = la de siempre.
+  OpcionPago? get _opcion =>
+      widget.porMedio?[_metodo == _Metodo.yape ? 'yape' : 'tarjeta'];
+  num get _monto => _opcion?.monto ?? widget.monto;
+  DetallePago? get _detalle => _opcion?.detalle ?? widget.detalle;
   List<Map<String, dynamic>> _guardadas = [];
   String? _cardSel; // id de la tarjeta guardada elegida; null = nueva
   bool _nueva = false; // mostrando el formulario de tarjeta nueva
@@ -357,7 +407,10 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
     setState(() => _error = null);
     // Céntimos EXACTOS (redondeo solo en el último paso, para Culqi/Yape que
     // trabajan en enteros). Admite montos con 2 decimales (S/ 25.50, $ 9.99).
-    final centimos = (widget.monto * 100).round();
+    // El monto del MEDIO elegido (Yape y tarjeta pueden diferir en el
+    // modelo 2): se congela aquí para que el cobro y el texto calcen.
+    final monto = _monto;
+    final centimos = (monto * 100).round();
 
     // --- YAPE ---
     if (_metodo == _Metodo.yape) {
@@ -379,7 +432,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
         }
         final res = await PagosService.cobrar(
             token: t['token'].toString(), email: widget.email,
-            montoSoles: widget.monto.toDouble(), concepto: widget.concepto);
+            montoSoles: monto.toDouble(), concepto: widget.concepto);
         if (res['ok'] == true && res['chargeId'] != null) {
           widget.onOperacion?.call(res['chargeId'].toString());
         }
@@ -388,13 +441,16 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
               res['error']?.toString() ?? 'No se pudo cobrar.';
         }
         return res['ok'] == true
-            ? {'ok': true, 'detalle': 'Pago de $_mon ${montoTxt(widget.monto)} aprobado.'}
+            ? {'ok': true, 'detalle': 'Pago de $_mon ${montoTxt(monto)} aprobado.'}
             : {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo cobrar.'};
       }
       final ok = await PagoProcesando.mostrar(context,
-          titulo: 'Cobrando $_mon ${montoTxt(widget.monto)}', exitoTitulo: '¡Pago aprobado!',
+          titulo: 'Cobrando $_mon ${montoTxt(monto)}', exitoTitulo: '¡Pago aprobado!',
           accion: accionYape);
-      if (ok == true) PagoTarjeta.ultimoMetodo = 'yape';
+      if (ok == true) {
+        PagoTarjeta.ultimoMetodo = 'yape';
+        PagoTarjeta.ultimoMedioCobro = 'yape';
+      }
       if (ok == true && mounted) Navigator.of(context).pop(true);
       return;
     }
@@ -431,7 +487,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
       }
       final res = await PagosService.cobrar(
         token: tk, email: widget.email,
-        montoSoles: widget.monto.toDouble(), concepto: widget.concepto);
+        montoSoles: monto.toDouble(), concepto: widget.concepto);
       if (res['ok'] == true) {
         widget.onToken?.call(tk!);
         if (res['chargeId'] != null) {
@@ -443,17 +499,20 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
             res['error']?.toString() ?? 'No se pudo cobrar.';
       }
       return res['ok'] == true
-          ? {'ok': true, 'detalle': 'Pago de $_mon ${montoTxt(widget.monto)} aprobado.'}
+          ? {'ok': true, 'detalle': 'Pago de $_mon ${montoTxt(monto)} aprobado.'}
           : {'ok': false, 'error': res['error']?.toString() ?? 'No se pudo cobrar.'};
     }
 
     final ok = await PagoProcesando.mostrar(
       context,
-      titulo: 'Cobrando $_mon ${montoTxt(widget.monto)}',
+      titulo: 'Cobrando $_mon ${montoTxt(monto)}',
       exitoTitulo: '¡Pago aprobado!',
       accion: accion,
     );
-    if (ok == true) PagoTarjeta.ultimoMetodo = 'tarjeta';
+    if (ok == true) {
+      PagoTarjeta.ultimoMetodo = 'tarjeta';
+      PagoTarjeta.ultimoMedioCobro = 'tarjeta';
+    }
     if (ok == true && mounted) Navigator.of(context).pop(true);
   }
 
@@ -478,7 +537,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                   ),
                 ),
                 const SizedBox(height: 16),
-                Text('Pagar $_mon ${montoTxt(widget.monto)}',
+                Text('Pagar $_mon ${montoTxt(_monto)}',
                     style: TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 20,
@@ -489,9 +548,9 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: textoTenue, fontSize: 13)),
                 const SizedBox(height: 16),
-                if (widget.detalle != null && !widget.detalle!.vacio) ...[
+                if (_detalle != null && !_detalle!.vacio) ...[
                   ResumenPagoCard(
-                      detalle: widget.detalle!, moneda: _mon, total: widget.monto),
+                      detalle: _detalle!, moneda: _mon, total: _monto),
                   const SizedBox(height: 16),
                 ],
 
@@ -649,7 +708,7 @@ class _PagoTarjetaSheetState extends State<_PagoTarjetaSheet> {
                         foregroundColor: Colors.white,
                         padding: const EdgeInsets.symmetric(vertical: 15)),
                     onPressed: _pagar,
-                    child: Text('Pagar $_mon ${montoTxt(widget.monto)}'),
+                    child: Text('Pagar $_mon ${montoTxt(_monto)}'),
                   ),
                 ),
                 const SizedBox(height: 8),

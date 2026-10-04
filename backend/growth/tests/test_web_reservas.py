@@ -2325,3 +2325,14 @@ def test_sena_del_dueno_en_la_reserva_web_como_el_app(db, monkeypatch):
         "cancha_id": "c_lima", "horas": [{"fecha": f, "hora": "19:00"}], "extras": [], "nombre": "Ana Pérez",
         "celular": "999888777", "email": "ana@x.com", "pago": "sena"}).json()
     assert j3["pago"] == "total" and j3["sena"] == 0
+
+
+def test_explorador_con_ubicacion_solo_muestra_lo_cercano(db):
+    """Con la ubicación del usuario la web muestra SOLO lo que está a ≤ radio
+    (10 km por defecto, 5/10/20/30 como el APK): estando en Ecuador no salen
+    canchas de Perú. Buscar por nombre/zona no aplica el radio."""
+    home = client.get("/").text
+    assert "var RADIOS = [5, 10, 20, 30], radio = 10;" in home
+    assert "if(yo && !filtro.q && c.dataset.d && parseFloat(c.dataset.d) > radio) return false;" in home
+    assert "id=\"selRadio\"" in home and "pcg_radio" in home
+    assert "No hay canchas a ' + radio + ' km de ti." in home

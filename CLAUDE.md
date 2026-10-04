@@ -227,7 +227,15 @@ para la API del APK.
   tarjeta, pone primero el país del usuario (cajas de `paises._CAJAS`
   pasadas al JS) y muestra un mapa **Leaflet + OpenStreetMap** (sin API key)
   con pines de precio y popup "Ver horarios"; la ubicación se recuerda en
-  `localStorage`. Banderas como SVG (`ui.bandera`): los emoji de bandera no
+  `localStorage`. **SOLO LO CERCANO (queja del director, 3-oct-2026: "estoy en Ecuador
+  y me salen canchas de Perú"):** con la ubicación del usuario la web muestra
+  SOLO canchas, descubiertas, academias y pines a ≤ radio (`RADIOS` 5/10/20/30
+  km, **10 por defecto**, selector `#selRadio` en la línea de ubicación,
+  `localStorage pcg_radio`), igual que el APK (`radioBusquedaKm`, default 10
+  desde este cambio con migración única 20→10, `radio_busqueda_10_v1`). Vacío:
+  "No hay canchas a N km de ti…". Buscar por nombre/zona NO aplica el radio.
+  Sin permiso de ubicación se sigue mostrando todo por país (SEO/escritorio).
+  Test `test_explorador_con_ubicacion_solo_muestra_lo_cercano`. Banderas como SVG (`ui.bandera`): los emoji de bandera no
   se ven en Windows. Regla anti scroll horizontal: `html,body{overflow-x:
   hidden}` + `minmax(0,1fr)`/`min-width:0` en las columnas de la grilla.
   **Canchas NO verificadas NO salen en la web hasta ser aprobadas (regla
@@ -2783,6 +2791,16 @@ off → redeploy inmediato en cada push). URL pública:
     `resend._domainkey`, CNAME `rsend`/`send`, `_dmarc`; Gmail intacto) →
     crear llaves "Pichangol QAS/PRD" y poner `RESEND_API_KEY` en `pg-backend`
     y `pg-backend-prd`; hasta entonces los correos quedan `sin_proveedor`.
+    **Pase del 2-oct-2026 (autorizado: "pasa a PRD"):** `prd` = e0edc37
+    (arreglo de pagos que perdían `liquidado`/medio/comisión al reiniciar,
+    reglas de reclamo —ubicación en el local + 3 a 5 fotos propias, Google
+    fuera al aprobar; la migración `reclamo_reglas_v2` las enciende sola en el
+    snapshot de PRD—, modelo de negocio 2 elegible en la torre con mínimo por
+    reserva —PRD sigue en modelo 1 hasta que el director lo cambie en Cobros →
+    Modelo de negocio— y menú lateral colapsable). Sin SQL, sin Edge, sin
+    variables. CAMBIÓ `lib/` → APK/AAB de PRD = run 1531 (`workflow_dispatch`,
+    `ref=prd`, `entorno=prod`). OJO: un APK anterior no exige ubicación ni el
+    rango de fotos al enviar, pero el servidor sí (rechaza con mensaje).
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -3756,8 +3774,29 @@ antes del corte.
   `dueno_min` (0 = apagado; también en efectivo). S/ 30 → S/ 1.00 (3.18 %),
   S/ 90 → S/ 1.13 (1.2 %), monótono. `calcular` trae `cliente_pct_efectivo`
   y `cliente_min_aplicado`; el simulador de la torre suma la tabla "Según el
-  precio de la cancha" (`curva`, `_CURVA_PRECIOS` por moneda); con la
-  pasarela cobrando sobre lo cobrado, margen real ≈ S/ 0.63). Solo RESERVAS.
+  precio de la cancha" (`curva`, `_CURVA_PRECIOS` por moneda).
+  **TARIFA POR MEDIO + SOBRE LO COBRADO (director, 2-oct-2026, calculadora de
+  Culqi: Yape 3.44 % + $ 0.20, "comisiones inafectas a IGV"):** la torre
+  mostraba S/ 1.26 de ganancia pero en realidad se ganaba S/ 0.70 con tarjeta
+  y S/ 6.28 con Yape (se cobraba de más al jugador). Ahora `calcular(…,
+  medio=)` usa la tarifa del medio: Yape `yape_pct` + `yape_fijo` (S/ 0.77) y
+  tarjeta `banco_pct` + `pasarela_pct` + `tarjeta_fijo`; IGV solo con
+  `igv_aplica`="1" (default "0"); `sobre` default "cobrado" (punto fijo:
+  Culqi cobra sobre lo que paga el jugador) → Pichangol gana de verdad lo
+  configurado con cualquier medio. S/ 100: Yape jugador 103.39 / dueño 97.84;
+  tarjeta 105.47 / 95.78; PCG ≈ 1.25. Medios por moneda `MEDIOS` (PEN: yape,
+  tarjeta; USD/BOB: solo "tarjeta" = pasarela hospedada); medio desconocido
+  (seña, APK viejo) = tarjeta (`medio_de`). Migración única `m2_tarifas_v2`
+  (sobre=cobrado, sin IGV). Cotización con medio: `/pagos/cotizar {medio}`,
+  `/web/cotizar?medio=`, `/web/asegurar {medio}`, `/web/pagar` (medio del
+  token); la ficha web re-cotiza al cambiar Yape⇄Tarjeta (evento `pcg-medio`
+  de `ui.JS_NAV`). Liquidación al dueño con `LiquidacionOnlineReq.medio_pago`
+  (`_medio_pasarela`: medio_pago → medio → medio del cobro ligado → tarjeta).
+  Torre: secciones Yape / Tarjeta / Cálculo (toggles IGV y "Culqi cobra
+  sobre"), simulador con pestañas por medio, comparación y "Pichangol gana de
+  verdad". APK: `CargoServicio.cotizarPorMedio`, `PagoTarjeta.cobrar(
+  porMedio:)` (la hoja cambia total y resumen al tocar Yape/Tarjeta),
+  `ultimoMedioCobro`, `liquidacionOnline(medioPago:)`. Solo RESERVAS.
   Engancha en: `cargo_servicio.cotizar` (reservas en modelo 2 = `_cotizar_
   modelo_2`, siempre activo, desglose "Costo del pago en línea" + "Servicio
   Pichangol"; APK y web lo toman de `/pagos/cotizar` y `/config/cargo-servicio`

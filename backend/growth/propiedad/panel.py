@@ -5128,9 +5128,16 @@ const MN_CAMPOS_OP = [['reparto_cliente_pct','Costo de Culqi que paga el jugador
                       ['cliente_tope_pct','Tope de la comisión al jugador (%)','Máximo % efectivo aunque aplique el mínimo · 0 = sin tope'],
                       ['dueno_pct','Comisión Pichangol al dueño (%)','Sobre lo que recibe el dueño antes de la comisión'],
                       ['dueno_min','Mínimo por reserva · dueño','0 = sin mínimo · también aplica en efectivo']];
-const MN_MONTO = {cliente_min:1, dueno_min:1};
-const MN_CAMPOS_PAS = [['banco_pct','Comisión del banco (%)'],['pasarela_pct','Comisión Culqi (%)'],
-                       ['igv_pct','IGV / IVA sobre las comisiones (%)']];
+const MN_MONTO = {cliente_min:1, dueno_min:1, yape_fijo:1, tarjeta_fijo:1};
+// TARIFA POR MEDIO (2-oct-2026): Yape y tarjeta cuestan distinto; el jugador y
+// el dueño pagan la del medio con que se cobró.
+const MN_CAMPOS_YAPE = [['yape_pct','Comisión Culqi con Yape (%)','Calculadora de Culqi: 3.44 %'],
+                        ['yape_fijo','Fijo por cobro con Yape','$ 0.20 ≈ S/ 0.77 (va en dólares: revisa con el tipo de cambio)']];
+const MN_CAMPOS_TARJ = [['banco_pct','Comisión del banco (%)','Comisión del emisor de la tarjeta'],['pasarela_pct','Comisión Culqi (%)',''],
+                        ['tarjeta_fijo','Fijo por cobro con tarjeta','0 = sin fijo']];
+const MN_CAMPOS_PAS = [...MN_CAMPOS_YAPE, ...MN_CAMPOS_TARJ, ['igv_pct','IGV / IVA (%)','Solo se suma si la pasarela cobra IGV']];
+const MN_TOGGLES = {igv_aplica:[['0','No'],['1','Sí']], sobre:[['cobrado','Lo cobrado'],['precio','El precio']]};
+let mnMedio = 'yape';
 function mnF(c, s){ return (s||'S/')+' '+((c||0)/100).toFixed(2); }
 async function cargarModeloNegocio(){
   const box = document.getElementById('modeloPanel'); if(!box) return;
@@ -5144,7 +5151,7 @@ async function cargarModeloNegocio(){
 function mnValores(){
   const p = {};
   [...MN_CAMPOS_OP, ...MN_CAMPOS_PAS].forEach(([k])=>{ const el=document.getElementById('mn_'+k); if(el) p[k]=el.value; });
-  
+  Object.keys(MN_TOGGLES).forEach(k=>{ const el=document.querySelector('.mn-seg[data-k="'+k+'"] .on'); if(el) p[k]=el.dataset.v; });
   return p;
 }
 let mnTab = null;
@@ -5183,12 +5190,20 @@ function renderModeloNegocio(sim){
       <div class="mn-col"><div class="mn-simhead"><div class="mn-h">🧮 Simulador</div>${precio}</div><div id="mn_sim"></div></div>
     </div>`;
   } else {
-    const pas = MN_CAMPOS_PAS.map(([k,l])=>inp(k,l,'',p[k])).join('');
+    const seg = (k, lab, ayuda) => `<div class="mn-row"><div class="mn-lab"><b>${lab}</b>${ayuda?`<small>${ayuda}</small>`:''}</div>
+        <div class="mn-seg" data-k="${k}">${MN_TOGGLES[k].map(([v,t])=>`<button type="button" data-v="${v}" class="${String(p[k])===v?'on':''}" onclick="mnToggle('${k}','${v}')">${t}</button>`).join('')}</div></div>`;
+    const conYape = (p.medios||[]).includes('yape');
+    const pas = (conYape ? `<div class="mn-sub">📱 Yape</div>` + MN_CAMPOS_YAPE.map(([k,l,a])=>inp(k,l,a,p[k])).join('') : '')
+      + `<div class="mn-sub">💳 ${conYape?'Tarjeta':'Pasarela del país'}</div>` + MN_CAMPOS_TARJ.map(([k,l,a])=>inp(k,l,a,p[k])).join('')
+      + `<div class="mn-sub">⚙️ Cálculo</div>`
+      + seg('igv_aplica','La pasarela cobra IGV / IVA','Culqi: «comisiones inafectas a IGV» · tu cobro real de S/ 15 se abonó sin IGV')
+      + inp('igv_pct','IGV / IVA (%)','Solo se usa si la pasarela cobra IGV',p.igv_pct)
+      + seg('sobre','Culqi cobra sobre','Real = sobre lo que paga el jugador; la hoja original lo calculaba sobre el precio');
     cuerpo = `<div class="mn-grid">
       <div class="mn-col">
         <div class="mn-h">Lo que pones tú <span class="mn-chips">${chips}</span></div>
         <div class="mn-filas">${MN_CAMPOS_OP.map(([k,l,a])=>inp(k,l,(k==='reparto_cliente_pct'?`<span id="mn_rep_txt">El dueño paga el ${(100-(+p[k]||0)).toFixed(1).replace(/\.0$/,'')} % restante</span>`:a),p[k])).join('')}</div>
-        <div class="mn-h" style="margin-top:18px">Comisión total de Culqi <small>(tarifas sinceradas de Culqi · sobre el precio de la cancha)</small></div>
+        <div class="mn-h" style="margin-top:18px">Tarifa de la pasarela por medio <small>(el jugador y el dueño pagan la del medio con que se cobró)</small></div>
         <div class="mn-filas">${pas}</div>
         <div class="mn-nota">Ecuador y Bolivia arrancan con las tasas de Perú (IVA 15 % y 13 %): pon las tarifas reales de PayPhone y Libélula. En efectivo no hay pasarela: solo se cobra la comisión al dueño.</div>
         <div class="mn-acc"><button class="btn-sec" onclick="guardarModeloNegocio(false)">Guardar comisiones</button>
@@ -5241,6 +5256,14 @@ function renderModeloNegocio(sim){
     .mn-fila span:last-child{white-space:nowrap;text-align:right}
     .mn-fila.sub{padding-left:28px;color:#667;font-size:13px}
     .mn-fila.fuerte{font-weight:800} .mn-fila.total{background:#F7F9FB;font-weight:800;font-size:15px}
+    .mn-sub{padding:8px 14px;background:#F7F9FB;font-weight:800;font-size:12.5px;color:#445;border-bottom:1px solid #F1F1F1}
+    .mn-seg{display:flex;flex:none;border:1px solid #E4E4E4;border-radius:999px;overflow:hidden;background:#fff}
+    .mn-seg button{border:0;background:none;padding:7px 12px;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;color:#556}
+    .mn-seg button.on{background:#E7F6EF;color:#0B8A3E}
+    .mn-medios{display:flex;gap:8px;margin:2px 0 10px;flex-wrap:wrap}
+    .mn-medios button{padding:7px 14px;border-radius:999px;border:1px solid #E4E4E4;background:#fff;font-weight:800;cursor:pointer;font-family:inherit;font-size:13px}
+    .mn-medios button.on{border-color:#0B8A3E;background:#E7F6EF;color:#0B8A3E}
+    .mn-compara{font-size:12.5px;color:#556;margin:-4px 0 12px}
     .mn-curva{border:1px solid var(--border);border-radius:14px;overflow-x:auto}
     .mn-curva table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}
     .mn-curva th{background:#F7F9FB;color:#667;font-weight:700;text-align:right;padding:7px 8px;text-transform:none;letter-spacing:0;font-size:12px;white-space:normal;line-height:1.2;vertical-align:bottom}
@@ -5265,7 +5288,11 @@ function renderModeloNegocio(sim){
   pintarSimModelo(sim);
 }
 const MN_PASO = {reparto_cliente_pct:5, cliente_pct:0.1, dueno_pct:0.1, banco_pct:0.1, pasarela_pct:0.1, igv_pct:1,
-                 cliente_min:0.1, dueno_min:0.1, cliente_tope_pct:1};
+                 cliente_min:0.1, dueno_min:0.1, cliente_tope_pct:1, yape_pct:0.01, yape_fijo:0.01, tarjeta_fijo:0.01};
+function mnToggle(k, v){
+  document.querySelectorAll('.mn-seg[data-k="'+k+'"] button').forEach(b=>b.classList.toggle('on', b.dataset.v===v));
+  mnSimular();
+}
 function mnPaso(k, d){
   const el = document.getElementById('mn_'+k); if(!el) return;
   const max = k==='reparto_cliente_pct' ? 100 : 999;
@@ -5278,7 +5305,7 @@ function mnSimular(){
   if(rep && rt){ const v = Math.min(100, Math.max(0, +rep.value||0)); rt.textContent = 'El dueño paga el '+(100-v).toFixed(1).replace(/\.0$/,'')+' % restante'; }
   mnTimer = setTimeout(async ()=>{
     const r = await fetch('/pagos/modelo-negocio/simular',{method:'POST',headers:headers(),
-      body:JSON.stringify({monto:mnMonto, moneda:mnMon, params: mnTab==='2' ? mnValores() : {}})});
+      body:JSON.stringify({monto:mnMonto, moneda:mnMon, medio:mnMedio, params: mnTab==='2' ? mnValores() : {}})});
     if(r.ok){ const j = await r.json(); mnCfg.simulacion = j; pintarSimModelo(j); }
   }, 250);
 }
@@ -5290,7 +5317,7 @@ function pintarSimModelo(sim){
       <div class="mn-kpi"><small>👤 El jugador paga</small><b>${mnF(x.cliente_paga_centimos,s)}</b></div>
       <div class="mn-kpi"><small>🏟️ El dueño recibe</small><b>${mnF(x.dueno_recibe_centimos,s)}</b></div>
       <div class="mn-kpi"><small>💚 Comisión Pichangol</small><b style="color:#0B8A3E">${mnF(x.ingreso_pcg_centimos,s)}</b></div>
-      ${mnTab==='2' ? `<div class="mn-kpi"><small>Comisión total Culqi (repartida)</small><b>${mnF(x.pasarela_total_centimos,s)}</b></div>`
+      ${mnTab==='2' ? `<div class="mn-kpi"><small>Costo de la pasarela (repartido)</small><b>${mnF(x.pasarela_total_centimos,s)}</b></div>`
         : `<div class="mn-kpi"><small>Margen tras la pasarela</small><b style="color:${x.margen_real_centimos<0?'#C0392B':'#0B8A3E'}">${mnF(x.margen_real_centimos,s)}</b></div>`}</div>`;
   if(mnTab==='1'){
     const b = sim.modelo_1;
@@ -5306,14 +5333,20 @@ function pintarSimModelo(sim){
     </div>`;
     return;
   }
-  const a = sim.modelo_2;
-  el.innerHTML = kpis(a) + `<div class="mn-sim">
+  const medios = sim.medios || ['tarjeta'];
+  if(!medios.includes(mnMedio)) mnMedio = medios[0];
+  const pm = sim.modelo_2_medios || {}; const a = pm[mnMedio] || sim.modelo_2;
+  const nom = m => m==='yape' ? '📱 Yape' : (medios.length>1 ? '💳 Tarjeta' : '💳 Pasarela');
+  const tabsMedio = medios.length>1 ? `<div class="mn-medios">${medios.map(m=>`<button type="button" class="${m===mnMedio?'on':''}" onclick="mnMedio='${m}';pintarSimModelo(mnCfg.simulacion)">${nom(m)}</button>`).join('')}</div>
+    <div class="mn-compara">${medios.map(m=>`${nom(m)}: jugador ${mnF((pm[m]||{}).cliente_paga_centimos,s)} · dueño ${mnF((pm[m]||{}).dueno_recibe_centimos,s)}`).join(' &nbsp;|&nbsp; ')}</div>` : '';
+  const partes = (a.partes_pasarela||[]).map(x=>fila(esc(x.nombre)+' ('+x.pct+' %)', mnF(x.centimos,s), 'sub')).join('');
+  const sobre = a.sobre==='cobrado' ? 'sobre lo cobrado' : 'sobre el precio';
+  el.innerHTML = tabsMedio + kpis(a) + `<div class="mn-sim">
     ${fila('Precio de la cancha', mnF(a.precio_centimos,s))}
-    ${fila('Comisión banco ('+(+mnValores().banco_pct||0)+' %)', mnF(a.banco_centimos,s), 'sub')}
-    ${fila('IGV comisión banco', mnF(a.igv_banco_centimos,s), 'sub')}
-    ${fila('Comisión Culqi ('+(+mnValores().pasarela_pct||0)+' %)', mnF(a.pasarela_centimos,s), 'sub')}
-    ${fila('IGV comisión Culqi', mnF(a.igv_pasarela_centimos,s), 'sub')}
-    ${fila('Comisión total Culqi', mnF(a.pasarela_total_centimos,s), 'fuerte')}
+    ${partes}
+    ${a.fijo_centimos ? fila('Fijo por cobro', mnF(a.fijo_centimos,s), 'sub') : ''}
+    ${a.igv_aplica ? fila('IGV / IVA de la pasarela', mnF(a.igv_centimos,s), 'sub') : ''}
+    ${fila('Comisión total de la pasarela <small style="color:#889">('+sobre+(a.igv_aplica?'':' · sin IGV')+')</small>', mnF(a.pasarela_total_centimos,s), 'fuerte')}
     ${fila('· lo paga el jugador ('+(+a.reparto_pct||0)+' %)', mnF(a.pasarela_cliente_centimos,s), 'sub')}
     ${fila('· lo paga el dueño ('+(100-(+a.reparto_pct||0))+' %)', mnF(a.pasarela_dueno_centimos,s), 'sub')}
     ${fila('Dueño recibe antes de comisión PCG', mnF(a.base_dueno_centimos,s), 'sub')}
@@ -5322,13 +5355,15 @@ function pintarSimModelo(sim){
     ${fila('Comisión Pichangol al dueño', mnF(a.pcg_dueno_centimos,s), 'sub')}
     ${fila('👤 El jugador paga', mnF(a.cliente_paga_centimos,s)+' <small style="color:#889">(+'+mnF(a.cargo_cliente_centimos,s)+')</small>', 'fuerte')}
     ${fila('🏟️ El dueño recibe', mnF(a.dueno_recibe_centimos,s)+' <small style="color:#889">(−'+mnF(a.descuento_dueno_centimos,s)+')</small>', 'fuerte')}
-    ${fila('💚 Comisión real Pichangol', mnF(a.ingreso_pcg_centimos,s), 'fuerte', '#0B8A3E')}
+    ${fila('💚 Comisión Pichangol', mnF(a.ingreso_pcg_centimos,s), 'fuerte', '#0B8A3E')}
+    ${fila('La pasarela cobra de verdad (sobre lo cobrado)', '−'+mnF(a.pasarela_real_centimos,s), 'sub')}
+    ${fila('Pichangol gana de verdad', mnF(a.margen_real_centimos,s), 'total', a.margen_real_centimos<0?'#C0392B':'#0B8A3E')}
   </div>
-  ${(sim.curva||[]).length ? `<div class="mn-h" style="margin-top:16px">📈 Según el precio de la cancha <small>(con lo que tienes en pantalla)</small></div>
-  <div class="mn-curva"><table><thead><tr><th>Cancha</th><th>Jugador paga</th><th>Comisión jugador</th><th>%</th><th>Dueño recibe</th><th>PCG</th></tr></thead><tbody>
-  ${sim.curva.map(c=>`<tr class="${Math.abs(c.precio-sim.monto)<0.005?'on':''}"><td>${mnF(c.precio*100,s)}</td><td>${mnF(c.cliente_paga_centimos,s)}</td>
+  ${(sim.curva||[]).length ? `<div class="mn-h" style="margin-top:16px">📈 Según el precio de la cancha <small>(${nom(mnMedio)} · con lo que tienes en pantalla)</small></div>
+  <div class="mn-curva"><table><thead><tr><th>Cancha</th><th>Jugador paga</th><th>Comisión jugador</th><th>%</th><th>Dueño recibe</th><th>PCG gana</th></tr></thead><tbody>
+  ${sim.curva.map(c0=>{ const c = (c0.por_medio||{})[mnMedio] || c0; return `<tr class="${Math.abs(c0.precio-sim.monto)<0.005?'on':''}"><td>${mnF(c0.precio*100,s)}</td><td>${mnF(c.cliente_paga_centimos,s)}</td>
     <td>${mnF(c.pcg_cliente_centimos,s)}${c.cliente_min_aplicado?' <span class="mn-tag">mín.</span>':''}</td><td><b>${c.cliente_pct_efectivo} %</b></td>
-    <td>${mnF(c.dueno_recibe_centimos,s)}</td><td style="color:#0B8A3E;font-weight:800">${mnF(c.ingreso_pcg_centimos,s)}</td></tr>`).join('')}
+    <td>${mnF(c.dueno_recibe_centimos,s)}</td><td style="color:#0B8A3E;font-weight:800">${mnF(c.margen_real_centimos!=null?c.margen_real_centimos:c.ingreso_pcg_centimos,s)}</td></tr>`; }).join('')}
   </tbody></table></div>` : ''}
 `;
 }

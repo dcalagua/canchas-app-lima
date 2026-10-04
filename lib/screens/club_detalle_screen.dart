@@ -733,14 +733,32 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // lo que se cobra; si cambió la base (o no llegó), se vuelve a cotizar
     // ANTES de cobrar. Con la línea apagada es 0 y no cambia nada.
     CotizacionCargo? cargo = r.cargo;
+    // MODELO 2 en soles: el cargo DEPENDE DEL MEDIO (Yape más barato que
+    // tarjeta). Se cotizan ambos (en paralelo, con caché) y la hoja de pago
+    // muestra y cobra el del medio que el jugador elige; tras pagar se usa la
+    // cotización del medio realmente cobrado. Null = un solo cargo (modelo 1,
+    // USD/BOB o línea apagada): todo como antes.
+    Map<String, CotizacionCargo>? cargosMedio;
+    var baseCobro = 0.0;
     if (pagoOnline || esSena || pagoBono) {
-      final baseCobro = pagoOnline
+      baseCobro = pagoOnline
           ? total - descuentoPuntos
           : esSena
               ? senaMonto.toDouble()
               : extrasBono;
       final baseC = (baseCobro * 100).round();
       if (CargoServicio.activo('reservas') &&
+          CargoServicio.dependeDelMedio('reservas', mon) &&
+          baseC > 0) {
+        cargosMedio = await CargoServicio.cotizarPorMedio(
+            linea: 'reservas',
+            moneda: mon,
+            baseCentimos: baseC,
+            deporte: _deporteEfectivo.name);
+        if (!mounted) return;
+        // Mientras no se elija, el de referencia es tarjeta (el mayor).
+        cargo = cargosMedio['tarjeta'];
+      } else if (CargoServicio.activo('reservas') &&
           (cargo == null || cargo.baseCentimos != baseC)) {
         cargo = await CargoServicio.cotizar(
             linea: 'reservas',
@@ -782,14 +800,25 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         lineasPago.add(LineaPago('⭐ Canje de puntos', -descuentoPuntos));
       }
     }
-    final detallePago = DetallePago(
-        lineas: lineasPago,
-        cargo: cargo,
-        nota: esSena
-            ? 'El resto ($mon ${(total - senaMonto).toStringAsFixed(2)}) lo pagas en la cancha.'
-            : pagoBono
-                ? 'Tus turnos van con tu bono (te quedan ${appState.miSaldoBono(_cancha.club) - slots.length} h); pagas solo los servicios extra.'
-                : '');
+    final notaPago = esSena
+        ? 'El resto ($mon ${(total - senaMonto).toStringAsFixed(2)}) lo pagas en la cancha.'
+        : pagoBono
+            ? 'Tus turnos van con tu bono (te quedan ${appState.miSaldoBono(_cancha.club) - slots.length} h); pagas solo los servicios extra.'
+            : '';
+    final detallePago =
+        DetallePago(lineas: lineasPago, cargo: cargo, nota: notaPago);
+    // Monto + resumen POR MEDIO para la hoja de pago (solo si el cargo depende
+    // del medio). La base ([baseCobro]) es la misma; cambia solo el cargo.
+    final cm = cargosMedio;
+    final Map<String, OpcionPago>? porMedio = cm == null
+        ? null
+        : {
+            for (final e in cm.entries)
+              e.key: OpcionPago(
+                  monto: baseCobro + (e.value.hayCargo ? e.value.cargo : 0.0),
+                  detalle: DetallePago(
+                      lineas: lineasPago, cargo: e.value, nota: notaPago)),
+          };
     // FIDELIDAD: con el bloque asegurado, el servidor APARTA el premio para
     // esta reserva antes de cobrar (si otro equipo lo usó un segundo antes,
     // se libera el horario y se avisa; nunca se cobra de menos sin premio).
@@ -836,6 +865,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         moneda: mon,
         onOperacion: (o) => operacion = o,
         detalle: detallePago,
+        porMedio: porMedio,
       );
       if (!pagado) {
         await appState.liberarBloqueAsegurado(aseguradas!);
@@ -862,6 +892,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         moneda: mon,
         onOperacion: (o) => operacion = o,
         detalle: detallePago,
+        porMedio: porMedio,
       );
       if (!pagado) {
         await appState.liberarBloqueAsegurado(aseguradas!);
@@ -885,6 +916,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         moneda: mon,
         onOperacion: (o) => operacion = o,
         detalle: detallePago,
+        porMedio: porMedio,
       );
       if (!pagado) {
         await appState.liberarBloqueAsegurado(aseguradas!);
@@ -897,6 +929,18 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         }
         return;
       }
+    }
+    // Medio con el que COBRÓ la pasarela (yape|tarjeta): decide qué
+    // cotización del cargo se pagó de verdad (modelo 2) y viaja a la
+    // liquidación como `medio_pago` (también en seña y bono+extras).
+    final cobroPasarela = (pagoOnline && !gratis) || esSena || pagoBono;
+    final medioCobro = !cobroPasarela
+        ? ''
+        : PagoTarjeta.ultimoMedioCobro.isNotEmpty
+            ? PagoTarjeta.ultimoMedioCobro
+            : (PagoTarjeta.ultimoMetodo == 'yape' ? 'yape' : 'tarjeta');
+    if (cm != null && medioCobro.isNotEmpty) {
+      cargo = cm[medioCobro] ?? cargo;
     }
     // 'cancha' → sin pasarela: se reserva y el dueño cobra en efectivo.
     // Crea una Reserva por hora (mismo grupo). Con bloque asegurado, CONFIRMA
@@ -922,6 +966,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         aseguradas: aseguradas,
         cargo: (pagoOnline || esSena || pagoBono) ? cargo : null,
         extrasEnLinea: pagoBono,
+        medioPasarela: medioCobro,
         descuentos: descPorHora,
         nombreCliente: nombreCliente,
         telefono: celularCliente);
@@ -999,7 +1044,9 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
         'turnos': slots.length,
         'charge_id': operacion,
         'cargo_centimos': cargoBol,
-        'medio': PagoTarjeta.ultimoMetodo,
+        'medio': PagoTarjeta.ultimoMetodo.isNotEmpty
+            ? PagoTarjeta.ultimoMetodo
+            : medioCobro,
       }).then((_) {
         final email = appState.usuario?.email ?? '';
         if (email.isNotEmpty) Boleadores.refrescarSolicitudes(email);
@@ -2171,19 +2218,40 @@ class _ResumenReservaState extends State<_ResumenReserva> {
     final mon = cancha.monedaSimbolo;
     final dep = widget.deporte.name;
     final base = _baseOnlineCentimos;
+    // MODELO 2 en soles: el cargo depende del medio; el resumen muestra el de
+    // YAPE (preseleccionado en la hoja de pago, el más barato). La hoja
+    // recalcula si el jugador cambia a tarjeta.
+    final medio =
+        CargoServicio.dependeDelMedio('reservas', mon) ? 'yape' : '';
     _cot = CargoServicio.inmediata(
-        linea: 'reservas', moneda: mon, baseCentimos: base, deporte: dep);
+        linea: 'reservas',
+        moneda: mon,
+        baseCentimos: base,
+        deporte: dep,
+        medio: medio);
     CargoServicio.cotizar(
-            linea: 'reservas', moneda: mon, baseCentimos: base, deporte: dep)
+            linea: 'reservas',
+            moneda: mon,
+            baseCentimos: base,
+            deporte: dep,
+            medio: medio)
         .then((c) {
       if (mounted && _baseOnlineCentimos == base) setState(() => _cot = c);
     });
     if (_exigeSena) {
       final bs = _senaMonto * 100;
       _cotSena = CargoServicio.inmediata(
-          linea: 'reservas', moneda: mon, baseCentimos: bs, deporte: dep);
+          linea: 'reservas',
+          moneda: mon,
+          baseCentimos: bs,
+          deporte: dep,
+          medio: medio);
       CargoServicio.cotizar(
-              linea: 'reservas', moneda: mon, baseCentimos: bs, deporte: dep)
+              linea: 'reservas',
+              moneda: mon,
+              baseCentimos: bs,
+              deporte: dep,
+              medio: medio)
           .then((c) {
         if (mounted && _senaMonto * 100 == bs) setState(() => _cotSena = c);
       });

@@ -232,6 +232,11 @@ _JS_EXPLORAR = r"""
   var cards = function(){ return Array.prototype.slice.call(document.querySelectorAll('.lst[data-lat]')); };
   var yo = null, mapa = null, marcadores = [], miPin = null, pinesDesc = [], descubiertas = {}, fotosConocidas = {};
   var filtro = {q: '', dep: C.dep || '', fecha: '', hora: '', cerca: false};
+  // Radio de cercanía (como el APK: 5/10/20/30 km, 10 por defecto). Con tu
+  // ubicación SOLO salen canchas/academias dentro del radio (nunca las de otro
+  // país); al buscar por zona/nombre el radio no aplica.
+  var RADIOS = [5, 10, 20, 30], radio = 10;
+  try { var rg = parseInt(localStorage.getItem('pcg_radio') || '', 10); if(RADIOS.indexOf(rg) >= 0) radio = rg; } catch(e){}
   var pend = {q: '', fecha: '', hora: '', cerca: false}; // lo elegido en el buscador; se aplica al pulsar Buscar (como Airbnb)
   var favs = {};
   try { favs = JSON.parse(localStorage.getItem('pcg_fav') || '{}') || {}; } catch(e){}
@@ -272,7 +277,7 @@ _JS_EXPLORAR = r"""
   // ── filtros (buscador, deporte, fecha, solo verificadas, precio máx) ──
   function pasaBase(c){
     if(filtro.q && c.dataset.q !== filtro.q && c.dataset.t.indexOf(filtro.q) < 0) return false;
-    if(filtro.cerca && yo && c.dataset.d && parseFloat(c.dataset.d) > 30) return false;
+    if(yo && !filtro.q && c.dataset.d && parseFloat(c.dataset.d) > radio) return false;
     if(c.classList.contains('aca')) return true; // academias: solo zona/texto y cercanía
     if(filtro.hora && !abiertaA(c, filtro.hora)) return false;
     if(filtro.hora && filtro.fecha && c.dataset.ok === '1'){ var lk = libres[filtro.fecha + '|' + filtro.hora]; if(lk && idsDe(c).every(function(i){ return lk[i] === false; })) return false; }
@@ -287,13 +292,20 @@ _JS_EXPLORAR = r"""
         var base = c.dataset.base; if(filtro.hora && filtro.fecha && c.dataset.ids){ var lk2 = libres[filtro.fecha + '|' + filtro.hora] || {}; var libre = idsDe(c).filter(function(i){ return lk2[i] !== false; })[0]; if(libre) base = '/reservar/' + libre; }
         c.setAttribute('href', base + (qs.length ? '?' + qs.join('&') : '')); }
     });
+    // Los pines del mapa siguen a la lista: lo que no se muestra (fuera del
+    // radio o filtrado) tampoco se pinta.
+    if(mapa) marcadores.concat(pinesDesc).forEach(function(m){ if(!m._card) return; var on = m._card.style.display !== 'none';
+      if(on && !mapa.hasLayer(m)) m.addTo(mapa); else if(!on && mapa.hasLayer(m)) m.remove(); });
     document.querySelectorAll('.grupo-pais, .grupo-aca').forEach(function(g){
       var vis = Array.prototype.some.call(g.querySelectorAll('.lst'), function(c){ return c.style.display !== 'none'; });
       g.style.display = vis ? '' : 'none';
     });
+    var sd = $('descubiertas'); if(sd){ var ls = sd.querySelectorAll('.lst');
+      if(ls.length) sd.style.display = Array.prototype.some.call(ls, function(c){ return c.style.display !== 'none'; }) ? '' : 'none'; }
     var v = $('vacio'); if(v){ v.style.display = n ? 'none' : '';
       if(!n && v.dataset.base !== undefined){
-        var why = filtro.hora ? 'Ninguna cancha' + (filtro.cerca ? ' cerca de ti' : '') + ' tiene turno libre ' + (filtro.fecha ? etiquetaFecha(filtro.fecha).toLowerCase() : '') + ' a las ' + filtro.hora + '. Prueba con otra hora u otro día.'
+        var why = (yo && !filtro.q && !filtro.hora) ? (C.dep === 'academias' ? 'No hay academias a ' + radio + ' km de ti.' : 'No hay canchas a ' + radio + ' km de ti.') + (radio < 30 ? ' Amplía la distancia o busca otra zona.' : ' Busca otra zona por nombre.')
+                : filtro.hora ? 'Ninguna cancha' + (filtro.cerca ? ' cerca de ti' : '') + ' tiene turno libre ' + (filtro.fecha ? etiquetaFecha(filtro.fecha).toLowerCase() : '') + ' a las ' + filtro.hora + '. Prueba con otra hora u otro día.'
                               : C.dep === 'academias' ? (filtro.q ? 'No encontramos academias con “' + filtro.q + '”. Prueba con otro nombre o zona.' : 'No hay academias con esa búsqueda. Prueba con otra zona.')
                               : (filtro.q && C.lugares ? (busqGoogle[filtro.q] === 'pendiente' ? 'Buscando “' + filtro.q + '” también en Google Maps…' : 'No encontramos “' + filtro.q + '” en Pichangol ni en Google Maps. Prueba con otro nombre o zona.')
                               : 'No hay canchas libres con esa búsqueda. Prueba con otra zona, día u hora.');
@@ -576,13 +588,23 @@ _JS_EXPLORAR = r"""
     var ta = document.querySelector('.grupo-aca .cerca'); if(ta) ta.textContent = '· las más cercanas a ti primero';
     var propio = document.querySelector('.grupo-pais[data-pais="' + pais + '"]');
     if(propio && propio.parentNode){ propio.parentNode.insertBefore(propio, $('grupos').firstChild); var t = propio.querySelector('.cerca'); if(t) t.textContent = '· las más cercanas a ti primero'; }
-    var u = $('ubicTxt'); if(u) u.textContent = 'Mostrando las canchas más cercanas a ti.';
-    if(filtro.cerca) aplicar();
+    pintarRadio();
+    aplicar();
     var bu = $('btnUbic'); if(bu) bu.style.display = 'none';
     descubrir(yo.lat, yo.lng);
     if(mapa){ if(miPin) miPin.remove(); miPin = L.marker([yo.lat, yo.lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio yo">Tú</span>', iconSize: null})}).addTo(mapa);
-      var pts = cards().filter(function(c){ return parseFloat(c.dataset.d) < 60; }).map(function(c){ return [parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)]; });
-      pts.push([yo.lat, yo.lng]); mapa.fitBounds(L.latLngBounds(pts).pad(0.2), {maxZoom: 14}); }
+      ajustarMapa(); }
+  }
+  function pintarRadio(){
+    var u = $('ubicTxt'); if(!u || !yo) return;
+    u.innerHTML = (C.dep === 'academias' ? 'Academias' : 'Canchas') + ' a <select id="selRadio" aria-label="Distancia máxima" style="width:auto;display:inline-block;padding:2px 6px;border:1px solid #DDD;border-radius:999px;font:inherit;font-weight:700;background:#fff">' +
+      RADIOS.map(function(r){ return '<option value="' + r + '"' + (r === radio ? ' selected' : '') + '>' + r + ' km</option>'; }).join('') + '</select> de ti, las más cercanas primero.';
+    $('selRadio').addEventListener('change', function(){ radio = parseInt(this.value, 10) || 10; try { localStorage.setItem('pcg_radio', String(radio)); } catch(e){} aplicar(); ajustarMapa(); });
+  }
+  function ajustarMapa(){
+    if(!mapa || !yo) return;
+    var pts = cards().filter(function(c){ return parseFloat(c.dataset.d) <= radio; }).map(function(c){ return [parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)]; });
+    pts.push([yo.lat, yo.lng]); mapa.fitBounds(L.latLngBounds(pts).pad(0.2), {maxZoom: 14});
   }
   function ubicar(interactivo){
     var u = $('ubicTxt'), bu = $('btnUbic');
@@ -609,7 +631,7 @@ _JS_EXPLORAR = r"""
     var foto = fs.length ? fs.slice(0, 3).map(function(u){ return '<img src="' + esc(u) + '" alt="" loading="lazy">'; }).join('') : '<div class="sinfoto"' + (esOsm ? '' : ' data-buscar="1"') + '>' + (c.emoji || '🏟️') + '</div>';
     var extra = fs.length > 1 ? '<button class="flecha izq" aria-label="Anterior">‹</button><button class="flecha der" aria-label="Siguiente">›</button><div class="dots">' + fs.slice(0, 3).map(function(){ return '<i></i>'; }).join('') + '</div>' : '';
     var hrefLugar = '/lugar/' + encodeURIComponent(c.id) + '?nombre=' + encodeURIComponent(c.nombre) + '&direccion=' + encodeURIComponent(c.direccion) + '&lat=' + c.lat + '&lng=' + c.lng + '&deporte=' + encodeURIComponent(c.deporte);
-    return '<a class="lst pend" href="' + hrefLugar + '" data-id="' + esc(c.id) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-deps="' + esc(c.deporte) + '" data-nombre="' + esc(c.nombre) + '" data-sub="' + esc(c.direccion) + '" data-precio="' + esc(c.deporte_nombre) + '" data-emoji="' + esc(c.emoji || '') + '" data-t="' + esc((c.nombre + ' ' + c.direccion).toLowerCase()) + '" data-q="' + esc(c.q || '') + '">' +
+    return '<a class="lst pend" href="' + hrefLugar + '" data-id="' + esc(c.id) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-deps="' + esc(c.deporte) + '" data-nombre="' + esc(c.nombre) + '" data-sub="' + esc(c.direccion) + '" data-precio="' + esc(c.deporte_nombre) + '" data-emoji="' + esc(c.emoji || '') + '" data-t="' + esc((c.nombre + ' ' + c.direccion).toLowerCase()) + '" data-q="' + esc(c.q || '') + '"' + (yo && c.km != null ? ' data-d="' + c.km + '"' : '') + '>' +
       '<div class="foto"><div class="fotos">' + foto + '</div><span class="badge pend">Aún sin registrar</span>' + extra + '</div>' +
       '<div class="lb"><div class="l1"><b>' + esc(c.nombre) + '</b><span class="rate">' + esc(c.deporte_nombre) + '</span></div>' +
       '<div class="l2">' + esc(c.direccion) + '</div><div class="l2"><span class="dist">' + (c.km != null ? 'a ' + fmtKm(c.km) : '') + '</span>' +
@@ -648,10 +670,11 @@ _JS_EXPLORAR = r"""
     resolverFotos();
     if(mapa && window.L){
       pinesDesc.forEach(function(m){ m.remove(); }); pinesDesc = [];
-      lista.forEach(function(c){
+      var hijosDesc = grid.children;
+      lista.forEach(function(c, i){
         var m = L.marker([c.lat, c.lng], {icon: L.divIcon({className: '', html: pinDesc(c.nombre, c.emoji, c.deporte_nombre), iconSize: null})}).addTo(mapa);
         m.bindPopup('<b>' + esc(c.nombre) + '</b><br>' + esc(c.direccion) + '<br><a class="btn sec" href="/lugar/' + encodeURIComponent(c.id) + '?nombre=' + encodeURIComponent(c.nombre) + '&direccion=' + encodeURIComponent(c.direccion) + '&lat=' + c.lat + '&lng=' + c.lng + '&deporte=' + encodeURIComponent(c.deporte) + '">Ver lugar</a>');
-        pinesDesc.push(m);
+        m._card = hijosDesc[i]; pinesDesc.push(m);
       });
     }
     aplicar();
@@ -697,11 +720,11 @@ _JS_EXPLORAR = r"""
       marcadores.push(m); m.addTo(mapa);
     });
     if(yo){ miPin = L.marker([yo.lat, yo.lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio yo">Tú</span>', iconSize: null})}).addTo(mapa); pts.push([yo.lat, yo.lng]); }
-    if(pts.length) mapa.fitBounds(L.latLngBounds(pts).pad(0.25), {maxZoom: 13});
+    if(yo) ajustarMapa(); else if(pts.length) mapa.fitBounds(L.latLngBounds(pts).pad(0.25), {maxZoom: 13});
     // Las descubiertas ya pintadas también van al mapa.
     var desc = Array.prototype.slice.call(document.querySelectorAll('#gridDesc .lst'));
-    desc.forEach(function(c){ var m = L.marker([parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)], {icon: L.divIcon({className: '', html: pinDesc(c.dataset.nombre, c.dataset.emoji, c.dataset.precio), iconSize: null})}).addTo(mapa);
-      m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br><a class="btn sec" href="' + c.getAttribute('href') + '">Ver lugar</a>'); pinesDesc.push(m); });
+    desc.forEach(function(c){ var m; m = L.marker([parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)], {icon: L.divIcon({className: '', html: pinDesc(c.dataset.nombre, c.dataset.emoji, c.dataset.precio), iconSize: null})}).addTo(mapa);
+      m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br><a class="btn sec" href="' + c.getAttribute('href') + '">Ver lugar</a>'); m._card = c; pinesDesc.push(m); });
     aplicar();
   }
   // ── PRIMERA FOTO siempre (como el app): las tarjetas sin foto propia piden
@@ -1675,14 +1698,16 @@ _JS_RESERVA = r"""
   function deporteSel(){ return ($('deporte') && $('deporte').value) || C.deporteBase || ''; }
   function cotizar(t){
     if(!C.cargo || t <= 0){ cot = null; return; }
-    var base = Math.round(t * 100), k = base + '|' + deporteSel();
+    // MODELO 2: el cargo depende del medio (Yape es más barato que la tarjeta).
+    var md = (C.pasarela && C.pasarela !== 'culqi') ? '' : (window.pcgMedioPago ? pcgMedioPago() : 'yape');
+    var base = Math.round(t * 100), k = base + '|' + deporteSel() + '|' + md;
     if(cotCache[k]){ cot = cotCache[k]; return; }
     cot = null;
     if(cotT) clearTimeout(cotT);
     cotT = setTimeout(function(){
-      fetch('/web/cotizar?linea=reservas&moneda=' + encodeURIComponent(C.moneda) + '&base=' + base + '&deporte=' + encodeURIComponent(k.split('|')[1]))
+      fetch('/web/cotizar?linea=reservas&moneda=' + encodeURIComponent(C.moneda) + '&base=' + base + '&deporte=' + encodeURIComponent(k.split('|')[1]) + '&medio=' + encodeURIComponent(md))
         .then(function(r){ return r.json(); })
-        .then(function(j){ if(j && j.ok){ cotCache[k] = j; if(Math.round(total() * 100) === base) pintarResumen(); } })
+        .then(function(j){ if(j && j.ok){ cotCache[k] = j; pintarResumen(); } })
         .catch(function(){});
     }, 150);
   }
@@ -1693,6 +1718,8 @@ _JS_RESERVA = r"""
     h += '<div style="color:#717171;font-size:12px;margin-top:4px">' + esc(c.regla) + '. El precio de la cancha va completo al local, menos su comisión.</div></div>';
     return h;
   }
+  // Cambiar Yape ⇄ Tarjeta vuelve a cotizar: en el modelo 2 el total cambia.
+  document.addEventListener('pcg-medio', function(){ pintarResumen(); });
   document.addEventListener('click', function(ev){
     var op = ev.target && ev.target.closest ? ev.target.closest('.op-sena') : null;
     if(op){ ev.preventDefault(); if(modoPago !== op.dataset.modo){ modoPago = op.dataset.modo; pintarResumen(); } return; }
@@ -1858,7 +1885,7 @@ _JS_RESERVA = r"""
     ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = true; $(id).textContent = 'Reservando tu horario…'; });
     var blSel = bolLinea();
     fetch('/web/asegurar', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({cancha_id: C.id, horas: horas, extras: extras, deporte: deporte, nombre: d.nombre, celular: d.celular, email: d.email, boleador: blSel ? blSel.slug : '', fidelidad: fidDescuento() > 0, pago: esSena() ? 'sena' : 'total', bono: bonoActivo(), puntos: puntosDesc() > 0})})
+      body: JSON.stringify({cancha_id: C.id, horas: horas, extras: extras, deporte: deporte, nombre: d.nombre, celular: d.celular, email: d.email, boleador: blSel ? blSel.slug : '', fidelidad: fidDescuento() > 0, pago: esSena() ? 'sena' : 'total', bono: bonoActivo(), puntos: puntosDesc() > 0, medio: (window.pcgMedioPago ? pcgMedioPago() : '')})})
       .then(function(r){ return r.json(); })
       .then(function(j){
         if(!j.ok){
@@ -2328,12 +2355,15 @@ class AsegurarReq(BaseModel):
     # "sena" = adelanta la SEÑA del dueño (% de los turnos) y el resto se paga en
     # la cancha; "total" = todo ahora. Vacío = total (navegadores con JS viejo).
     pago: str = ""
+    # Medio elegido en la página (yape | tarjeta): en el modelo 2 el cargo
+    # depende de él. Vacío = tarjeta (JS viejo).
+    medio: str = ""
 
 
 _contador = {"n": 0}
 
 
-def _cotizacion_reserva(c: dict, total_soles: float, deporte: str = "") -> "_cs.Cotizacion":
+def _cotizacion_reserva(c: dict, total_soles: float, deporte: str = "", medio: str | None = None) -> "_cs.Cotizacion":
     """CARGO POR SERVICIO de una reserva web (fase 2 del diseño, sep-2026): la
     MISMA cotización al asegurar (lo que ve el jugador) y al cobrar en
     `/web/pagar` (lo que se le carga). Red de seguridad con la tarifa de
@@ -2342,11 +2372,14 @@ def _cotizacion_reserva(c: dict, total_soles: float, deporte: str = "") -> "_cs.
     from pagos.router import cotizacion_para
     _sim, iso = _moneda_de(c)
     dep = (deporte or "").strip().lower() or ((_deportes_de(c) or [""])[0])
-    return cotizacion_para("reservas", iso, int(round(float(total_soles) * 100)), medio=None, deporte=dep)
+    # MODELO 2: el cargo depende del medio (Yape es más barato que la tarjeta);
+    # sin medio = tarjeta. En el modelo 1 el medio solo toca la red de seguridad.
+    return cotizacion_para("reservas", iso, int(round(float(total_soles) * 100)), medio=(medio or None), deporte=dep)
 
 
 @router.get("/web/cotizar")
-def web_cotizar(linea: str = "reservas", moneda: str = "PEN", base: str = "0", deporte: str = "", partes: str = "") -> dict:
+def web_cotizar(linea: str = "reservas", moneda: str = "PEN", base: str = "0", deporte: str = "", partes: str = "",
+                medio: str = "") -> dict:
     """Cotización PÚBLICA del cargo por servicio para pintar el checkout web
     (espejo de `POST /pagos/cotizar`, que exige X-App-Key). `base` y `partes`
     (separadas por coma) en céntimos. Solo se muestra: el backend recalcula al
@@ -2356,7 +2389,8 @@ def web_cotizar(linea: str = "reservas", moneda: str = "PEN", base: str = "0", d
     if b > 50_000_000:
         return {"ok": False, "error": "base"}
     pts = [int(x) for x in (partes or "").split(",") if x.strip().isdigit()][:12]
-    cot = cotizacion_para(linea if linea in _cs.LINEAS else "reservas", moneda, b, medio=None,
+    md = medio if medio in ("yape", "tarjeta") else None
+    cot = cotizacion_para(linea if linea in _cs.LINEAS else "reservas", moneda, b, medio=md,
                           deporte=(deporte or "")[:20], partes=pts)
     return {"ok": True, **cot.dict()}
 
@@ -2556,7 +2590,7 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
     sena_total = sum(int(f["sena"]) for f in filas)
     base_cobro = sena_total if con_sena else (a_cobrar - (beneficios.DESCUENTO_PUNTOS if con_puntos else 0))
     if base_cobro > 0:
-        cot = _cotizacion_reserva(c, base_cobro, deporte)
+        cot = _cotizacion_reserva(c, base_cobro, deporte, req.medio if req.medio in ("yape", "tarjeta") else None)
         total_c, cargo_c, cargo_d = cot.total_centimos, cot.cargo_centimos, (cot.dict() if cot.activo else None)
     else:
         total_c, cargo_c, cargo_d = 0, 0, None
@@ -2680,7 +2714,8 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
     # lo que se cobra = precio + cargo. El dueño recibe sobre el precio.
     # SEÑA: la fijó /web/asegurar en cada fila; se cobra solo eso (+ su cargo
     # por servicio) y el resto queda "por cobrar en la cancha" (pagado=false).
-    cot = _cotizacion_reserva(c, plan["base_cobro"], str(filas[0].get("deporte") or ""))
+    medio_pedido = "yape" if req.medio == "yape" else "tarjeta"
+    cot = _cotizacion_reserva(c, plan["base_cobro"], str(filas[0].get("deporte") or ""), medio_pedido)
     monto_cobro = cot.total_centimos
     concepto = concepto_reserva(c, filas, plan["es_sena"])
     # Datos del pagador para el antifraude de Culqi: nombre de Google (real) o
@@ -2804,7 +2839,7 @@ def confirmar_reserva_pagada(filas: list[dict], c: dict, email: str, *, plan: di
             post_liquidacion_online(LiquidacionOnlineReq(
                 dueno_id=dueno, monto_soles=(float(sena_total) if es_sena else total_dueno), reserva_id=filas[0]["id"],
                 concepto=f"{'Seña' if es_sena else 'Reserva'} web · {c.get('nombre', '')} · {filas[0]['fecha']} {filas[0]['hora_inicio']}",
-                medio=("sena" if es_sena else medio), moneda=iso, charge_id=charge_id,
+                medio=("sena" if es_sena else medio), medio_pago=medio, moneda=iso, charge_id=charge_id,
                 cargo_servicio_centimos=cargo_centimos, cargo_desglose=list(cargo_desglose or []),
                 cargo_ajuste_centimos=cargo_ajuste))
             rango = f"{filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"
