@@ -2807,6 +2807,16 @@ off → redeploy inmediato en cada push). URL pública:
     cobros hasta elegirlo en la torre—). Sin SQL, sin Edge, sin variables.
     CAMBIÓ `lib/` → APK/AAB de PRD por `workflow_dispatch` (`ref=prd`,
     `entorno=prod`).
+    **Pase del 10-oct-2026 (autorizado: "pasa a PRD"):** `prd` = bfee428
+    (Plan Academia tipo Spotify + pago directo con código de seguridad de
+    Yape, fase 1, y Yape automático leyendo la notificación del celular de la
+    academia, fase 2). Sin SQL ni Edge; sin variables (todo nace en
+    `CONFIG_DEFAULT`: `acad_modelo=suscripcion` → al abrirse cada academia de
+    PRD arranca su prueba de 30 días; se vuelve al modelo anterior en la torre
+    → Cobros → Plan Academia → "Comisión"). CAMBIÓ `lib/` → APK/AAB de PRD =
+    run 1543 (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un APK
+    anterior no conoce el modelo de suscripción (sigue cobrando en línea) ni
+    el Yape automático → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
