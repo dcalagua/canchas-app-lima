@@ -918,7 +918,9 @@ para la API del APK.
   `juego_avisos_activo="0"` (ambos en `CONFIG_DEFAULT`). Push tipo `partido`
   con `partido_id`/`tipo_partido` → APK `PushService.alAbrirPartidos` abre
   "Juega ya" en su pestaña. Tests `tests/test_juego.py`; Playwright
-  `$SP/pw_jy.js` (390 px, cero diálogos del navegador). **Filtros
+  `$SP/pw_jy.js` (390 px, cero diálogos del navegador). Menú ☰ (`ui.py`
+  `.menu-panel`): `max-height: calc(100dvh - 110px)` + scroll propio (en
+  pantallas bajas los últimos ítems quedaban fuera). **Filtros
   INTELIGENTES (pedido del director, 10-oct-2026, captura: "por defecto debe
   marcar el país donde me localizo; si busco partner que marque tenis y hoy"):**
   el PAÍS es el de la ubicación real (web: el servidor manda todos los partidos
@@ -931,8 +933,7 @@ para la API del APK.
   nada, se abre solo a los próximos días con el aviso "Hoy no hay nada cerca:
   te mostramos los próximos días". Lo que el usuario toca manda (`cuAuto`/
   `_cuandoAuto`, `_depAuto`). Playwright `$SP/pw_jy2.js` (Quito → Ecuador;
-  Lima partner → Tenis + respaldo de días). **Pendiente:** correr el SQL en
-  QAS y, con autorización, en PRD.
+  Lima partner → Tenis + respaldo de días). SQL corrido en QAS y PRD.
 - **NOVEDADES Y CANALES EN LA WEB (30-sep-2026):** `web/jugador_novedades.py`.
   `/novedades` (feed de historias de MIS CONTACTOS de `pichangol_agenda`, sin
   bloqueados, 24 h; visor con barras, 5 s foto/texto, 15 s con música, video
@@ -2884,6 +2885,16 @@ off → redeploy inmediato en cada push). URL pública:
     (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un APK anterior
     sigue mostrando el chip 🎓 y "Mi academia" en BO/EC (el servidor igual
     bloquea la ficha, la matrícula y guardar una sede ahí) → actualizar.
+    **Pase del 10-oct-2026 (3.º, autorizado: "pasa a PRD"):** `prd` = 9823407
+    (Juega ya: buscar/organizar partido, busco partner, jugadores disponibles,
+    avisos push de partidos cerca, país por ubicación y filtros inteligentes)
+    + 13c88a6 (menú ☰ con scroll propio). SQL
+    `docs/piloto/supabase_partidos_juega_ya.sql` APLICADO en PCG-PRD vía
+    `apply_migration` (`pichangol_partidos_juega_ya`) y por el director en QAS.
+    Sin Edge ni variables (`juego_avisos_*` nacen en `CONFIG_DEFAULT`). CAMBIÓ
+    `lib/` → APK/AAB de PRD = run 1552 (`workflow_dispatch`, `ref=prd`,
+    `entorno=prod`). OJO: un APK anterior publica partidos con título/nota
+    libres (se ven igual) y no tiene "Busco partner" ni avisos → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
