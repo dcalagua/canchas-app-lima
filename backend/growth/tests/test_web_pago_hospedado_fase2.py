@@ -30,6 +30,14 @@ from web import jugador_clases as jc  # noqa: E402
 from web import jugador_market as jm  # noqa: E402
 from test_web_pago_hospedado import BASE, _cli, _pagos, db, gw  # noqa: E402,F401  (fixtures)
 
+
+@pytest.fixture(autouse=True)
+def _modelo_comision(monkeypatch):
+    """Estas pruebas cubren el modelo "comision" (Pichangol cobra matrículas y
+    cuotas en línea); el Plan Academia (suscripción) va en test_web_academia_plan."""
+    from db.store import stores as _st
+    monkeypatch.setitem(_st.config, "acad_modelo", "comision")
+
 AC_EC = {"nombre": "Academia Quito", "deporte": "tenis", "dueno": "profe.ec@gmail.com", "lat": -0.2, "lng": -78.5,
          "whatsapp": "991234567", "descuentoPrepago": 10, "mesesMinPrepago": 3, "descuentoHermano2": 10, "descuentoHermano3": 20,
          "planes": [{"id": "adultos", "nombre": "Adultos · 2x/sem", "programa": "Adultos", "precioMes": 60, "frecuenciaSemana": 2},

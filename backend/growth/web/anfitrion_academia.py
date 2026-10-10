@@ -33,6 +33,7 @@ from urllib.parse import quote
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
+import academia_plan as _ap
 import config
 import paises
 from web import almacen, catalogos, datos, sesion, ui
@@ -47,6 +48,24 @@ _EMOJI = {**{k: v[1] for k, v in DEPORTES.items()}, "natacion": "🏊"}
 _NOMBRE = {**{k: v[0] for k, v in DEPORTES.items()}, "natacion": "Natación"}
 # Claves de `Academia.toJson` que la web NO edita y conserva tal cual.
 _CONSERVAR = ("sedes", "horarios", "preciosSede", "partidos", "categorias", "landingUrl")
+
+
+def _apw():
+    from web import academia_plan_web
+    return academia_plan_web
+
+
+def _seccion_cobro(cd: dict) -> str:
+    """Editor → "💜 Cobro directo por Yape" (Plan Academia): número y titular."""
+    yape = re.sub(r"\D", "", str(cd.get("yape") or ""))
+    return ("<section class='panel edit-sec' id='sec-cobro'><h2>💜 Cobro directo por Yape</h2>"
+            "<p class='sub'>Tus alumnos te pagan directo a tu Yape y reportan en Pichangol el código de seguridad de su comprobante; "
+            "tú lo comparas con la notificación de tu Yape y confirmas con un toque. <b>Pichangol no toca tu plata ni cobra comisión.</b></p>"
+            "<div class='row'><div><label for='cdYape'>Número de Yape <span class='req'>celular de 9 dígitos</span></label>"
+            f"<div class='inp-moneda' style='max-width:260px'><span>+51</span><input id='cdYape' inputmode='numeric' maxlength='11' value='{e(yape)}' placeholder='987 654 321'></div></div>"
+            "<div><label for='cdTitular'>Nombre del titular <span class='req'>como sale en tu Yape</span></label>"
+            f"<input id='cdTitular' maxlength='60' value='{e(str(cd.get('titular') or ''))}' placeholder='Ej. Academia Ace SAC'></div></div>"
+            "<p class='sub' style='font-size:12.5px;margin-top:10px'>Déjalo vacío si prefieres coordinar el pago por WhatsApp.</p></section>")
 
 
 def _cab(ses: dict | None, sel: str = "") -> str:
@@ -94,7 +113,7 @@ def _tarjeta(a: dict, n_alumnos: int) -> str:
     zona = a.get("zona") or ""
     return (f"<div class='anf-cancha'><div class='f'>{logo}</div><div style='flex:1;min-width:0'>"
             f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b style='font-size:16px'>{e(a.get('nombre') or 'Academia')}</b>"
-            f"<span class='pill'>{_EMOJI.get(dep, '')} {e(_NOMBRE.get(dep, dep.capitalize()))}</span></div>"
+            f"<span class='pill'>{_EMOJI.get(dep, '')} {e(_NOMBRE.get(dep, dep.capitalize()))}</span>{_apw().pill_plan(a)}</div>"
             f"<div class='sub' style='margin:2px 0 0'>📍 {e(sede)}{(' · ' + e(zona)) if zona else ''}</div>"
             f"<div class='sub' style='margin:6px 0 0;color:var(--noche);font-weight:600'>{n_alumnos} alumno{'s' if n_alumnos != 1 else ''} · {len(planes)} plan{'es' if len(planes) != 1 else ''}"
             f"{(' · ' + e(_moneda(a)) + ' ' + format(min(float(p.get('precioMes') or 0) for p in planes), '.2f') + '/mes desde') if planes else ''}</div>"
@@ -102,7 +121,8 @@ def _tarjeta(a: dict, n_alumnos: int) -> str:
             f"<a class='btn' href='/anfitrion/academia/{e(a['id'])}/editar'>✏️ Editar</a>"
             f"<a class='btn sec' href='/anfitrion/academia/alumnos?academia={e(a['id'])}'>🎓 Alumnos</a>"
             f"<a class='btn sec' href='/l/{e(a['id'])}' target='_blank' rel='noopener'>🌐 Landing</a>"
-            "</div><div class='acciones' style='margin-top:8px'>"
+            + (f"<a class='btn sec' href='/anfitrion/academia/plan?academia={e(a['id'])}'>🎓 Plan Academia</a>" if _ap.es_suscripcion() else "")
+            + "</div><div class='acciones' style='margin-top:8px'>"
             + "".join(f"<a class='btn sec' href='{ruta}?academia={e(a['id'])}'>{txt}</a>" for txt, ruta in (
                 ("💰 Cobros", "/anfitrion/cobros"), ("✅ Asistencia", "/anfitrion/academia/asistencia"),
                 ("📋 Evaluación", "/anfitrion/academia/evaluaciones"), ("🏆 Ranking", "/anfitrion/academia/ranking"),
@@ -144,9 +164,9 @@ def pagina_academias(request: Request, guardado: str = "") -> HTMLResponse:
               "<div><h1 class='anf-hola' style='margin-top:6px'>Mi academia</h1>"
               f"<p class='sub'>{len(acads)} academia{'s' if len(acads) != 1 else ''} · {len(mats)} alumno{'s' if len(mats) != 1 else ''}. Edita aquí o en la app: es la misma academia.</p></div>"
               "<a class='btn sec' href='/anfitrion/academia/nueva'>＋ Otra academia</a></div>"
-              f"{aviso}"
+              f"{aviso}{_apw().banner_plan(acads)}"
               f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(min(360px,100%),1fr));margin-top:16px'>{''.join(_tarjeta(a, por_ac.get(a['id'], 0)) for a in acads)}</div>"
-              + ui.tarjeta_comision('academias', *_simbolo_iso(acads[0])))
+              + ("" if _ap.es_suscripcion() else ui.tarjeta_comision('academias', *_simbolo_iso(acads[0]))))
     return ui.shell("Mi academia", cuerpo, nav=_cab(ses, "academias"), sesion=ses, ancho=True, titulo_tab="Mi academia · Modo anfitrión")
 
 
@@ -165,6 +185,12 @@ def pagina_alumnos(request: Request, academia: str = "") -> HTMLResponse:
     if not acads:
         return HTMLResponse("", status_code=302, headers={"Location": "/anfitrion/academia"})
     a = next((x for x in acads if x["id"] == academia), acads[0])
+    a.setdefault("dueno", ses["email"])
+    if not _apw().beneficios(a):
+        chips = "".join(f"<a class='chip{' sel' if x['id'] == a['id'] else ''}' href='/anfitrion/academia/alumnos?academia={e(x['id'])}'>{e(x.get('nombre') or 'Academia')}</a>" for x in acads)
+        cuerpo = ("<a class='anf-back' href='/anfitrion/academia'>‹ Mi academia</a><h1 class='anf-hola' style='margin-top:6px'>Alumnos</h1>"
+                  + (f"<div class='chips' style='margin-top:12px'>{chips}</div>" if len(acads) > 1 else "") + _apw().paywall(a))
+        return ui.shell("Alumnos", cuerpo, nav=_cab(ses, "alumnos"), sesion=ses, ancho=True, titulo_tab="Alumnos · Mi academia")
     sim = _moneda(a)
     mats = datos.matriculas_de_academias([a["id"]])
     hoy = date.today().isoformat()
@@ -257,6 +283,9 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
            "frec": catalogos.FRECUENCIAS, "durs": catalogos.DURACIONES_CLASE, "tel": catalogos.TEL_PREFIJO, "telLen": catalogos.TEL_LONGITUD,
            "monedas": {k: paises.simbolo_de_moneda(v) for k, v in paises.MONEDA_POR_PAIS.items()}, "labels": catalogos.GEO_LABELS}
     secciones = [("identidad", "Identidad"), ("sede", "Sede y contacto"), ("fotos", "Fotos"), ("redes", "Redes"), ("planes", "Programas y tarifario"), ("reglas", "Reglas de cobro")]
+    cd = _ap.cobro_directo(a) or (a.get("cobroDirecto") if isinstance(a.get("cobroDirecto"), dict) else {}) or {}
+    if _ap.es_suscripcion():
+        secciones.append(("cobro", "Cobro directo por Yape"))
     nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
     dep_ops = [(d, f"{_EMOJI.get(d, '')} {_NOMBRE.get(d, d.capitalize())}") for d in catalogos.DEPORTES_ACADEMIA]
     pct = lambda v: "Sin descuento" if v == 0 else f"{v} %"  # noqa: E731
@@ -301,6 +330,7 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
   <label for='retri'>Retribución al club / sede <span class='req'>% de lo cobrado · 0 = no aplica</span></label><div class='inp-moneda' style='max-width:160px'><input id='retri' type='number' min='0' max='50' step='1' value='{float(a.get('retribucionClubPct') or 0):.0f}'><span>%</span></div>
   <p class='sub' style='font-size:12.5px;margin-top:14px'>Sedes adicionales, horarios y precios por sede se editan en «📍 Sedes y horarios» y el ranking interno en «🏆 Ranking» (en la tarjeta de tu academia); se conservan al guardar aquí.</p>
  </section>
+{_seccion_cobro(cd) if _ap.es_suscripcion() else ''}
 </form></div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Los cambios se ven al instante en la app y en tu landing.</span>
 {'' if nueva else "<button type='button' class='btn sec' id='btnEliminar' style='color:var(--rojo);margin-right:8px'>🗑 Eliminar</button>"}<button type='button' class='btn' id='btnGuardar'>{'Crear academia' if nueva else 'Guardar cambios'}</button></div></div>
@@ -407,6 +437,7 @@ $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('ms
   var body={id:CFG.id,nombre:$('nombre').value,deporte:sel('deporte'),descripcion:$('desc').value,sedeClub:$('sede').value,lat:lat,lng:lng,zona:$('g3').value,whatsapp:$('wa').value,
     logoUrl:logo,fotos:fotos,redes:redes,planes:planes,recargoInvitado:parseFloat($('recargo').value)||0,descuentoHermano2:+sel('descuentoHermano2'),descuentoHermano3:+sel('descuentoHermano3'),descuentoFamiliar:sel('descuentoFamiliar')!=='0',
     descuentoPrepago:+sel('descuentoPrepago'),mesesMinPrepago:+sel('mesesMinPrepago'),retribucionClubPct:parseFloat($('retri').value)||0};
+  if($('cdYape'))body.cobroDirecto={yape:$('cdYape').value,titular:$('cdTitular').value};
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Guardando…';
   try{var r=await fetch('/anfitrion/academia/guardar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){location.href='/anfitrion/academia?guardado=1';return}msg.classList.add('err');msg.textContent=j.error||'No se pudo guardar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth'})}}
@@ -509,6 +540,16 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
         "descuentoFamiliar": b.get("descuentoFamiliar", (actual or {}).get("descuentoFamiliar", True)) is not False,
         "mesesMinPrepago": mmin, "retribucionClubPct": retri,
     })
+    if "cobroDirecto" in b:
+        # PLAN ACADEMIA: el Yape donde los alumnos le pagan directo a la academia.
+        try:
+            cd = _ap.validar_cobro_directo(b.get("cobroDirecto") if isinstance(b.get("cobroDirecto"), dict) else {})
+        except ValueError as ex:
+            return None, str(ex), "cobro"
+        if cd:
+            data["cobroDirecto"] = cd
+        else:
+            data.pop("cobroDirecto", None)
     if logo:
         data["logoUrl"] = logo
     else:

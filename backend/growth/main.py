@@ -36,6 +36,7 @@ from boleadores import router as boleadores_router
 from fidelidad import router as fidelidad_router
 from academia_plan import router as academia_plan_router
 from web.academia import router as academia_web_router
+from web.academia_plan_web import router as academia_plan_web_router
 from web.jugador_clases import router as jugador_clases_router
 from web.jugador_market import router as jugador_market_router
 from web.jugador_billetera import router as jugador_billetera_router
@@ -186,6 +187,7 @@ app.include_router(referidos_router)  # /referidos/estado y /referidos/canjear (
 app.include_router(jugador_partidos_router)  # /partidos, /pichangas, /referidos, /jugador/{ref}, /anfitrion/llenar (antes del comodín)
 app.include_router(jugador_novedades_router)  # /novedades (estados/historias) y /canales
 app.include_router(jugador_pro_router)  # /pro, /pro/planes, /cuenta/tarjetas, /buscar, /anfitrion/recordatorios (antes del comodín)
+app.include_router(academia_plan_web_router)  # Plan Academia web: /anfitrion/academia/plan, pago directo por Yape (antes del comodín)
 app.include_router(anfitrion_academia_router)  # antes del comodín /anfitrion/{modulo}
 app.include_router(anfitrion_tienda_router)
 app.include_router(anfitrion_bodega_router)  # /anfitrion/bodega (antes del comodín /anfitrion/{modulo})

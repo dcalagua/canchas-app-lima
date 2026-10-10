@@ -3815,6 +3815,52 @@ antes del corte.
   dueño paga el resto) y las dos comisiones PCG (pedido del director: "Dueño
   recibe / Cliente paga antes de comisión PCG" salen de ese reparto). Test
   `tests/test_modelo_negocio.py`.
+- **ACADEMIAS = PLAN ACADEMIA (suscripción tipo Spotify) + PAGO DIRECTO
+  (decisión del director, 10-oct-2026: "manejemos las academias como una
+  suscripción tipo Spotify, no manejamos plata ajena, pero damos beneficios;
+  uno es recordar a los alumnos cuándo pagar"; canchas NO cambian):**
+  `backend/growth/academia_plan.py`. Flag `acad_modelo` = "suscripcion"
+  (default) | "comision" (todo como antes: matrícula/cuotas cobradas en línea
+  por Pichangol con comisión). **Plan:** S/ 11.50 · $ 3.00 · Bs 21.00 al mes
+  (`acad_plan_precio_<PEN|USD|BOB>`) con prueba gratis `acad_plan_prueba_dias`
+  (30, arranca en el 1.er `estado()` de la academia: ficha, panel o cron), por
+  ACADEMIA (`stores.planes_academia`, snapshot). Se paga con el SALDO del
+  dueño en la moneda de la academia (`pagar`, pago `suscripcion_academia` →
+  correo "academia_plan"); pagar en la prueba no pierde días. Renueva solo
+  desde el saldo si ya pagó alguna vez y no apagó la renovación (la prueba
+  NUNCA se cobra sola). Avisos al dueño (push + correo) a 3 / 1 / 0 días y al
+  vencer (`procesar`, cron horario de `main.py`). Sin plan vigente =
+  `beneficios(a)` False: la ficha pública queda sin matrícula ("recibe
+  matrículas por WhatsApp"), sin recordatorios y con candado en la gestión
+  (alumnos, asistencia, evaluaciones, ranking, reportes, chats, sedes,
+  cobros); confirmar pagos reportados SIEMPRE se permite. Torre → Cobros →
+  **"🎓 Plan Academia"** (`/admin/api/academias-plan[/config|/{id}/cortesia]`:
+  modelo, precios, prueba, KPIs, ingreso mensual, +30 días). **Pago
+  directo:** la academia registra `cobroDirecto {yape, titular}` (solo PE,
+  `validar_cobro_directo`); el alumno yapea y reporta el CÓDIGO DE SEGURIDAD de
+  3 dígitos de su comprobante de Yape + N.º de operación opcional
+  (`reportar_pago` → cuota `reporte{estado: por_confirmar}` + push al dueño);
+  la academia lo compara con la notificación de su Yape y confirma/rechaza
+  (`resolver_pago` → `pagada`, `medioPago='yape_directo'`, `operacionId=
+  'yape:<op>'`; recibo por correo y push). `datos.mutar_matricula` (FOR
+  UPDATE). Sin Yape registrado (o fuera de PE): "Coordina el pago con la
+  academia". **Recordatorios a los alumnos** (`recordatorios_alumnos`, cron
+  horario, desde las 9:00 de Lima): 3 días antes, el día y al día siguiente de
+  vencer, una vez por etapa (`stores.recordatorios_cuotas`); correo genérico
+  `correos` evento "aviso". API APK (X-App-Key): `GET /config/academias`,
+  `GET /academias/plan/{id}`, `POST …/pagar|renovacion`, `POST
+  /academias/pago-directo/reportar|resolver`, `GET …/pendientes?email`. Web
+  (`web/academia_plan_web.py` + `/web/matricular-directo`): matrícula sin cobro
+  (cuotas pendientes, adelantado = una cuota con el total), caja "Paga a la
+  academia" en comprobante y `/mis-clases`, "💜 Pagos por confirmar" en
+  `/anfitrion/cobros`, `/anfitrion/academia/plan`, Yape en el editor; los
+  endpoints de cobro en línea de academias responden `pago_directo`. APK:
+  `academia_plan_service.dart`, `plan_academia_screen.dart`,
+  `pago_directo_sheet.dart`, `Academia.cobroDirecto`, `Cuota.reporte/
+  medioPago`; config sin cargar = "comision" (comportamiento anterior). Tests
+  `tests/test_academia_plan.py`, `tests/test_web_academia_plan.py`.
+  **Fase 2 (pendiente):** confirmar SOLO leyendo la notificación de Yape en el
+  celular de la academia (necesita captura del texto de la notificación).
 - **PAGOS PERDÍAN DATOS AL REINICIAR (bug de plata hallado el 2-oct-2026):**
   `pg.cargar_normalizado` REEMPLAZABA los pagos/reclamos del snapshot por las
   filas de `growth_pagos`/`growth_reclamos` (solo 10/21 columnas) → tras cada

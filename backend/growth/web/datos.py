@@ -1069,6 +1069,7 @@ def academias_de_dueno(email: str) -> list[dict]:
             for aid, data in cur.fetchall():
                 d = _json_dict(data)
                 d["id"] = aid
+                d["dueno"] = email  # el plan de la academia (`academia_plan`) se cobra a su dueño
                 out.append(d)
             return out
     except Exception:  # noqa: BLE001

@@ -18,6 +18,14 @@ from web import sesion
 
 
 
+
+@pytest.fixture(autouse=True)
+def _modelo_comision(monkeypatch):
+    """Estas pruebas cubren el modelo "comision" (Pichangol cobra matrículas y
+    cuotas en línea); el Plan Academia (suscripción) va en test_web_academia_plan."""
+    from db.store import stores as _st
+    monkeypatch.setitem(_st.config, "acad_modelo", "comision")
+
 def _cli(monkeypatch, email="dennis@gmail.com", nombre="Dennis Calagua"):
     monkeypatch.setattr(config, "GOOGLE_WEB_CLIENT_ID", "cid-web")
     cli = TestClient(app, base_url="https://testserver")
