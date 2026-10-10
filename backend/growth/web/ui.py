@@ -269,7 +269,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .redondo:hover{background:#E3E8E4}.redondo svg{width:18px;height:18px}
 .redondo img,.redondo .ini{width:100%;height:100%;object-fit:cover;display:inline-flex;align-items:center;justify-content:center;background:var(--tinte);color:var(--teal);font-weight:800;font-size:15px}
 .menu{position:relative}
-.menu-panel{display:none;position:absolute;right:0;top:48px;width:264px;background:var(--blanco);border-radius:16px;box-shadow:0 8px 28px rgba(15,27,45,.18);border:1px solid var(--trazo);padding:8px 0;z-index:40;text-align:left}
+.menu-panel{display:none;position:absolute;right:0;top:48px;width:264px;max-height:calc(100vh - 110px);max-height:calc(100dvh - 110px);overflow-y:auto;overscroll-behavior:contain;background:var(--blanco);border-radius:16px;box-shadow:0 8px 28px rgba(15,27,45,.18);border:1px solid var(--trazo);padding:8px 0;z-index:40;text-align:left}
 .menu-panel.open{display:block}
 .menu-panel a,.menu-panel button{display:flex;align-items:center;gap:10px;width:100%;padding:11px 16px;border:0;background:transparent;color:var(--noche);text-decoration:none;font-size:14px;font-weight:500;cursor:pointer;font-family:inherit;text-align:left}
 .menu-panel a:hover,.menu-panel button:hover{background:var(--gris)}
