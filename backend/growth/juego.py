@@ -134,6 +134,22 @@ def km_publico(d: float | None) -> float | None:
     return max(0.5, round(d * 2) / 2)
 
 
+def deporte_sugerido(tab: str, prefs: dict, niveles: list[dict]) -> str:
+    """Deporte con el que arranca el filtro (inteligente, sin preguntar):
+    · Busco partner: el deporte de raqueta de mis preferencias; si no, el de
+      raqueta en el que más he jugado (`pichangol_niveles`); si no, tenis.
+    · Busco partido: el primero de mis preferencias; si no, "Todos" ('')."""
+    mios = [d for d in (prefs.get("deportes") or []) if d in DEPORTES_JUEGO]
+    if tab == "partner":
+        for d in mios:
+            if d in DEPORTES_PARTNER:
+                return d
+        jugados = sorted((n for n in niveles or [] if n.get("deporte") in DEPORTES_PARTNER),
+                         key=lambda n: -int(n.get("partidos") or 0))
+        return jugados[0]["deporte"] if jugados else DEPORTES_PARTNER[0]
+    return mios[0] if mios else ""
+
+
 def config_publica() -> dict:
     """Catálogos para el APK y la web (`GET /juego/config`)."""
     return {

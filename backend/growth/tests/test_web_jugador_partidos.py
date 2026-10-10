@@ -67,7 +67,7 @@ def test_partidos_como_el_app(monkeypatch, aislado):
     monkeypatch.setattr(JP, "datos_ranking", lambda: {"academias": [], "retos": [], "campeonatos": []})
     html = _cli(monkeypatch).get("/partidos").text
     assert "Fulbito de los viernes" in html and "Faltan 3" in html and "Traer pechera" in html
-    assert "p_1700000000000003" not in html                         # filtro por país
+    assert "data-pais='EC'" in html and "data-fpais='PE'" in html   # el país lo filtra el navegador (por ubicación)
     assert "data-apuntar='p_1700000000000001'" in html               # no estoy → Me apunto
     assert "data-cupo='p_1700000000000002'" in html and "data-eliminar='p_1700000000000002'" in html  # soy creadora
     assert "href='/mensajes/" in html                                # Coordinar = chat del grupo

@@ -208,6 +208,15 @@ def test_barrido_avisa_partidos_nuevos_de_app_y_web_y_partner(monkeypatch, jy):
 
 # ── API del APK y página web ─────────────────────────────────────────────────
 
+def test_deporte_sugerido_es_inteligente():
+    assert juego.deporte_sugerido("partner", {"deportes": ["futbol", "pickleball"]}, []) == "pickleball"
+    assert juego.deporte_sugerido("partner", {}, [{"deporte": "tenis", "partidos": 2},
+                                                  {"deporte": "pickleball", "partidos": 9}]) == "pickleball"
+    assert juego.deporte_sugerido("partner", {}, []) == "tenis"
+    assert juego.deporte_sugerido("partidos", {"deportes": ["voley"]}, []) == "voley"
+    assert juego.deporte_sugerido("partidos", {}, []) == ""
+
+
 def test_api_del_apk_y_snapshot(monkeypatch, jy):
     cli = TestClient(app)
     c = cli.get("/juego/config").json()
@@ -248,6 +257,8 @@ def test_pagina_juega_ya_con_partner_y_avisos(monkeypatch, jy):
     assert "p_1760000000000002" in html and "p_1760000000000001" not in html
     assert "Jugadores disponibles cerca" in html and "🎾 Juego contigo" in html
     assert '"misNiveles": {"tenis": "avanzado"}' in html
+    assert "class='chip sel' data-fdep='tenis'" in html                                  # partner arranca en tenis
+    assert "class='chip sel' data-fcu='hoy'" in html                                      # y en "Hoy"
     assert "org@x.com" not in html
     r = cli.post("/web/juego/prefs", json={"avisos": True, "deportes": ["tenis"], "radio_km": 20, "lat": -12.1, "lng": -77.0})
     assert r.json()["ok"] and "Avisos encendidos" in r.json()["texto"] and "a 20 km" in r.json()["texto"]

@@ -52,7 +52,11 @@ class _PartidosScreenState extends State<PartidosScreen> {
 
   // Filtros (como la web).
   Deporte? _dep;
-  String _cuando = 'todos'; // todos | hoy | manana | finde
+  String _cuando = 'hoy'; // todos | hoy | manana | finde
+  // Inteligente (pedido del director): arranca en mi deporte y en "Hoy"; si
+  // hoy no hay nada, abre a los próximos días. Lo que el usuario toca manda.
+  bool _depAuto = true;
+  bool _cuandoAuto = true;
   bool _deMiNivel = false;
   int _radio = Juego.radioDefault;
   LatLng? _yo;
@@ -68,6 +72,7 @@ class _PartidosScreenState extends State<PartidosScreen> {
     super.initState();
     _radio = appState.radioBusquedaKm.round();
     if (!Juego.radios.contains(_radio)) _radio = Juego.radioDefault;
+    _dep = _depSugerido();
     _cargar();
     _ubicar();
     _cargarPrefs();
@@ -99,7 +104,43 @@ class _PartidosScreenState extends State<PartidosScreen> {
     if (c != null && mounted) setState(() => _prefs = c);
     final p = await JuegoService.prefs(_email);
     if (p != null && mounted) setState(() => _prefs = p);
+    if (mounted && _depAuto) {
+      setState(() => _dep = _depSugerido());
+      _cargarDisponibles();
+    }
   }
+
+  /// = `juego.deporte_sugerido`: partner → raqueta de mis preferencias, si no
+  /// la que más jugué, si no tenis; partido → la 1.ª de mis preferencias.
+  Deporte? _depSugerido() {
+    Deporte? de(String n) {
+      for (final d in Deporte.values) {
+        if (d.name == n) return d;
+      }
+      return null;
+    }
+
+    final mios = [
+      for (final n in _prefs?.deportes ?? const <String>[])
+        if (de(n) != null && deportesActivos.contains(de(n))) de(n)!
+    ];
+    if (_tab == 1) {
+      for (final d in mios) {
+        if (Juego.deportesPartner.contains(d)) return d;
+      }
+      final jugados = [
+        for (final n in appState.misNiveles)
+          if (de(n.deporte) != null && Juego.deportesPartner.contains(de(n.deporte))) n
+      ]..sort((a, b) => b.partidos.compareTo(a.partidos));
+      return jugados.isNotEmpty ? de(jugados.first.deporte) : Juego.deportesPartner.first;
+    }
+    return mios.isNotEmpty ? mios.first : null;
+  }
+
+  /// País que se mira: el de mi ubicación real (GPS); sin GPS, el del app.
+  String get _paisVista => _yo != null
+      ? paisDeCoordenadas(_yo!.latitude, _yo!.longitude).iso
+      : paisActual.iso;
 
   Future<void> _cargarDisponibles() async {
     if (_tab != 1 || _yo == null || _email.isEmpty) return;
@@ -119,19 +160,9 @@ class _PartidosScreenState extends State<PartidosScreen> {
   Future<void> _cargar() async {
     final lista = await PartidosRepo.abiertos();
     if (!mounted) return;
-    // Filtro por país (como las academias): partidos del país donde estás; los
-    // que no tienen ubicación se muestran igual (no se puede discriminar).
-    final iso = paisActual.iso;
-    final filtrados = [
-      for (final p in lista)
-        if (p.ubicacion == null ||
-            paisDeCoordenadas(p.ubicacion!.latitude, p.ubicacion!.longitude)
-                    .iso ==
-                iso)
-          p
-    ];
+    // El país se filtra al mostrar (`_paisVista`: el de mi GPS).
     setState(() {
-      _partidos = filtrados;
+      _partidos = lista;
       _cargando = false;
     });
   }
@@ -142,15 +173,16 @@ class _PartidosScreenState extends State<PartidosScreen> {
     return Juego.km(_yo!.latitude, _yo!.longitude, u.latitude, u.longitude);
   }
 
-  bool _cuandoOk(String fecha) {
-    if (_cuando == 'todos') return true;
+  bool _cuandoOk(String fecha, String cuando) {
+    if (cuando == 'todos') return true;
     final d = DateTime.tryParse(fecha);
     if (d == null) return true;
     final n = DateTime.now();
     final hoy = DateTime(n.year, n.month, n.day);
     final dif = DateTime(d.year, d.month, d.day).difference(hoy).inDays;
-    if (_cuando == 'hoy') return dif == 0;
-    if (_cuando == 'manana') return dif == 1;
+    if (dif < 0) return false;
+    if (cuando == 'hoy') return dif == 0;
+    if (cuando == 'manana') return dif == 1;
     // Este finde: el sábado y domingo más próximos.
     final hastaDom = 7 - hoy.weekday; // domingo = 7
     return dif >= 0 &&
@@ -158,11 +190,35 @@ class _PartidosScreenState extends State<PartidosScreen> {
         (d.weekday == DateTime.saturday || d.weekday == DateTime.sunday);
   }
 
-  List<PartidoAbierto> get _visibles => [
+  /// (lista, true si "Hoy" no tenía nada y se abrió a los próximos días).
+  (List<PartidoAbierto>, bool) get _visibles {
+    final v = _filtrar(_cuando);
+    if (v.isEmpty && _cuandoAuto && _cuando == 'hoy') {
+      final w = _filtrar('todos');
+      if (w.isNotEmpty) return (w, true);
+    }
+    return (v, false);
+  }
+
+  bool _noPasado(String fecha) {
+    final d = DateTime.tryParse(fecha);
+    if (d == null) return true;
+    final n = DateTime.now();
+    return !DateTime(d.year, d.month, d.day).isBefore(DateTime(n.year, n.month, n.day));
+  }
+
+  bool _enPaisVista(PartidoAbierto p) {
+    final u = p.ubicacion;
+    return u == null || paisDeCoordenadas(u.latitude, u.longitude).iso == _paisVista;
+  }
+
+  List<PartidoAbierto> _filtrar(String cuando) => [
         for (final p in _partidos)
           if (p.esPartner == (_tab == 1) &&
+              _noPasado(p.fecha) &&
+              _enPaisVista(p) &&
               (_dep == null || p.deporte == _dep) &&
-              _cuandoOk(p.fecha) &&
+              _cuandoOk(p.fecha, cuando) &&
               (!_deMiNivel ||
                   p.nivel.isEmpty ||
                   p.nivel ==
@@ -381,9 +437,13 @@ class _PartidosScreenState extends State<PartidosScreen> {
     if (t == _tab) return;
     setState(() {
       _tab = t;
-      if (t == 1 && _dep != null && !Juego.deportesPartner.contains(_dep)) {
-        _dep = null;
+      if (_depAuto ||
+          (t == 1 && _dep != null && !Juego.deportesPartner.contains(_dep))) {
+        _depAuto = true;
+        _dep = _depSugerido();
       }
+      _cuando = 'hoy';
+      _cuandoAuto = true;
     });
     _cargarDisponibles();
   }
@@ -466,7 +526,8 @@ class _PartidosScreenState extends State<PartidosScreen> {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final partner = _tab == 1;
-    final visibles = _visibles;
+    final (visibles, abrioDias) = _visibles;
+    final cuandoVisto = abrioDias ? 'todos' : _cuando;
     final deps = partner ? Juego.deportesPartner : deportesActivos;
     final lado = ladoTablet(context, 16, 760);
     return Scaffold(
@@ -601,12 +662,18 @@ class _PartidosScreenState extends State<PartidosScreen> {
                 padding: EdgeInsets.fromLTRB(lado, 6, lado, 0),
                 child: Row(children: [
                   _chip('Todos', _dep == null, () {
-                    setState(() => _dep = null);
+                    setState(() {
+                      _dep = null;
+                      _depAuto = false;
+                    });
                     _cargarDisponibles();
                   }),
                   for (final d in deps)
                     _chip(d.etiqueta, _dep == d, () {
-                      setState(() => _dep = d);
+                      setState(() {
+                        _dep = d;
+                        _depAuto = false;
+                      });
                       _cargarDisponibles();
                     }),
                 ]),
@@ -621,8 +688,10 @@ class _PartidosScreenState extends State<PartidosScreen> {
                     ('manana', 'Mañana'),
                     ('finde', 'Este finde'),
                   ])
-                    _chip(c.$2, _cuando == c.$1,
-                        () => setState(() => _cuando = c.$1)),
+                    _chip(c.$2, cuandoVisto == c.$1, () => setState(() {
+                          _cuando = c.$1;
+                          _cuandoAuto = false;
+                        })),
                   _chip('De mi nivel', _deMiNivel,
                       () => setState(() => _deMiNivel = !_deMiNivel),
                       emoji: '📊'),
@@ -641,6 +710,19 @@ class _PartidosScreenState extends State<PartidosScreen> {
                 child: Text(partner ? '🎾 Buscan partner' : '⚽ Partidos abiertos',
                     style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
               ),
+              if (abrioDias && !_cargando)
+                Padding(
+                  padding: EdgeInsets.fromLTRB(lado, 0, lado, 10),
+                  child: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                        color: const Color(0xFFFFF6E0),
+                        borderRadius: BorderRadius.circular(12)),
+                    child: const Text(
+                        'Hoy no hay nada cerca: te mostramos los próximos días.',
+                        style: TextStyle(color: Color(0xFF7A5B00), fontSize: 13)),
+                  ),
+                ),
               if (_cargando)
                 const Padding(
                     padding: EdgeInsets.symmetric(vertical: 40),

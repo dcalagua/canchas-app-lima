@@ -569,7 +569,8 @@ def _tarjeta_partido(p: dict, yo: str) -> str:
                else f"<button type='button' class='btn' data-apuntar='{pid}'>{'🎾 Juego contigo' if partner else '＋ Me apunto'}</button>")
     if p.get("cancha_id"):
         acc += f"<a class='btn sec' href='/reservar/{quote(p['cancha_id'], safe='')}'>🏟️ Ver cancha</a>"
-    attrs = (f" data-dep='{e(p['deporte'])}' data-fecha='{e(p['fecha'])}' data-nivel='{e(p.get('nivel') or '')}'"
+    pais_p = paises.pais_de_coordenadas(p["lat"], p["lng"]) if p["lat"] is not None and p["lng"] is not None else ""
+    attrs = (f" data-dep='{e(p['deporte'])}' data-fecha='{e(p['fecha'])}' data-nivel='{e(p.get('nivel') or '')}' data-pais='{pais_p}'"
              + (f" data-lat='{p['lat']}' data-lng='{p['lng']}'" if p["lat"] is not None and p["lng"] is not None else ""))
     return (f"<div class='jp-card jp-p'{attrs}><div class='jp-top'><span class='jp-dep'>{_emo(p['deporte'])}</span>"
             f"<div class='t'><b>{e(p['titulo'])}</b><small>{e(fecha_legible(p['fecha'], p['hora']))}</small></div>{chip}</div>"
@@ -598,6 +599,7 @@ _CSS_JY = """
 .jp-ubic{display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:#555;font-size:13.5px;margin:4px 0 6px}
 .jp-ubic select{width:auto;padding:6px 10px;border:1px solid #E4E4E4;border-radius:999px;background:#fff;font:inherit}
 .jp-km{font-weight:700;color:#067A38;margin-left:4px}
+.jp-nota{background:#FFF6E0;color:#7A5B00;border-radius:12px;padding:10px 12px;font-size:13px;margin:0 0 10px}
 .jp-ets{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
 .jp-et{background:#F4F7FA;border:1px solid #EBEBEB;border-radius:999px;padding:4px 10px;font-size:12.5px}
 .jp-jug{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #F0F0F0;min-width:0}
@@ -621,20 +623,24 @@ def pagina_partidos(request: Request, pais: str = "", tab: str = "") -> HTMLResp
         return sin_sesion(request, "/partidos", "Juega ya", "Buscar y organizar partidos")
     yo = _low(ses["email"])
     tab = "partner" if tab == "partner" else "partidos"
-    iso = pais if pais in dict(_PAISES) else _pais_usuario(yo)
+    # País: el que el usuario elige (?pais=) o, si no, el de DONDE ESTÁ (lo
+    # decide el navegador con su ubicación); `iso` es solo el respaldo sin GPS.
+    pais_fijo = pais if pais in dict(_PAISES) else ""
+    iso = pais_fijo or _pais_usuario(yo)
     hoy = horarios.ahora_local(iso).date()
-    todos = [p for p in partidos_desde(hoy.isoformat())
-             if p["lat"] is None or p["lng"] is None or paises.pais_de_coordenadas(p["lat"], p["lng"]) == iso]
+    todos = partidos_desde((hoy - timedelta(days=1)).isoformat())
     lista = [p for p in todos if (p.get("tipo") == "partner") == (tab == "partner")]
     deps = juego.DEPORTES_PARTNER if tab == "partner" else juego.DEPORTES_JUEGO
-    chips = "".join(f"<a class='chip{' sel' if k == iso else ''}' href='/partidos?pais={k}&tab={tab}'>{ui.bandera(k)} {n}</a>" for k, n in _PAISES)
+    chips = "".join(f"<button type='button' class='chip{' sel' if k == iso else ''}' data-fpais='{k}'>{ui.bandera(k)} {n}</button>" for k, n in _PAISES)
     vacio_txt = ("<b>Nadie busca partner por ahora</b>Publica “Busco partner” o escríbele a un jugador disponible de abajo."
                  if tab == "partner" else
                  "<b>No hay partidos abiertos cerca</b>¿Te falta gente para jugar? Organiza tu partido y deja que otros se apunten; te avisamos a los de la zona.")
     tarjetas = "".join(_tarjeta_partido(p, yo) for p in lista)
     vacio = f"<div class='jp-vacio' id='jpVacio' style='{'' if not lista else 'display:none'}'><span class='em'>{'🎾' if tab == 'partner' else '⚽'}</span>{vacio_txt}</div>"
     pr = juego.prefs_de(yo)
-    mis_niveles = {n["deporte"]: juego.nivel_banda(n["nivel"]) for n in datos.niveles_de(yo)}
+    niveles = datos.niveles_de(yo)
+    mis_niveles = {n["deporte"]: juego.nivel_banda(n["nivel"]) for n in niveles}
+    dep_ini = juego.deporte_sugerido(tab, pr, niveles)
     cfg = {"presets": PRESETS, "tab": tab,
            "deportes": [[d, _etq(d), _emo(d)] for d in juego.DEPORTES_JUEGO],
            "partner": juego.DEPORTES_PARTNER,
@@ -644,13 +650,15 @@ def pagina_partidos(request: Request, pais: str = "", tab: str = "") -> HTMLResp
            "maxEts": juego.MAX_ETIQUETAS, "radios": juego.RADIOS,
            "franjas": [[k, t] for k, t in juego.FRANJAS], "dias": [[k, t] for k, t in juego.DIAS],
            "prefs": juego.publicas(pr), "misNiveles": mis_niveles, "nivelSinDato": juego.nivel_banda(None),
+           "paisFijo": pais_fijo, "paisDefault": iso, "cajas": paises._CAJAS, "depIni": dep_ini,
+           "nombresPais": dict(_PAISES),
            "hoy": hoy.isoformat(), "max": (hoy + timedelta(days=90)).isoformat(),
            "proximos": [[(hoy + timedelta(days=i)).isoformat(), "Hoy" if i == 0 else "Mañana" if i == 1 else fecha_legible((hoy + timedelta(days=i)).isoformat())] for i in range(7)]}
     locales = locales_conocidos()
     opciones = "".join(f"<option value='{e(n)}'>" for n in sorted(locales)[:600])
-    f_deps = "<button type='button' class='chip sel' data-fdep=''>Todos</button>" + "".join(
-        f"<button type='button' class='chip' data-fdep='{d}'>{_emo(d)} {e(_etq(d))}</button>" for d in deps)
-    f_cu = "".join(f"<button type='button' class='chip{' sel' if k == 'todos' else ''}' data-fcu='{k}'>{t}</button>"
+    f_deps = f"<button type='button' class='chip{' sel' if not dep_ini else ''}' data-fdep=''>Todos</button>" + "".join(
+        f"<button type='button' class='chip{' sel' if d == dep_ini else ''}' data-fdep='{d}'>{_emo(d)} {e(_etq(d))}</button>" for d in deps)
+    f_cu = "".join(f"<button type='button' class='chip{' sel' if k == 'hoy' else ''}' data-fcu='{k}'>{t}</button>"
                    for k, t in (("todos", "Cuando sea"), ("hoy", "Hoy"), ("manana", "Mañana"), ("finde", "Este finde")))
     radios = "".join(f"<option value='{r}'>{r} km</option>" for r in juego.RADIOS)
     tiles = (f"<a class='jp-tile{' sel' if tab == 'partidos' else ''}' href='/partidos?tab=partidos'><span class='em'>⚽</span><b>Busco partido</b><small>Únete a uno que esté cerca</small></a>"
@@ -674,6 +682,7 @@ def pagina_partidos(request: Request, pais: str = "", tab: str = "") -> HTMLResp
               f"<div class='jp-chips'>{f_deps}</div><div class='jp-chips'>{f_cu}"
               "<button type='button' class='chip' data-fniv='1'>📊 De mi nivel</button></div>"
               f"<div class='jp-sec'>{'🎾 Buscan partner' if tab == 'partner' else '⚽ Partidos abiertos'}</div>"
+              "<div class='jp-nota' id='jpNota' style='display:none'></div>"
               f"{tarjetas}{vacio}{seccion_disp}"
               f"<div class='jp-chips' style='margin-top:18px'>{chips}</div></div>"
               f"{fab}<datalist id='jpSedes'>{opciones}</datalist>"
@@ -682,43 +691,69 @@ def pagina_partidos(request: Request, pais: str = "", tab: str = "") -> HTMLResp
 
 
 _JS_PARTIDOS = r"""
-var JY = {yo: null, dep: '', cu: 'todos', niv: false, radio: (JP.prefs && JP.prefs.radio_km) || 10};
+var JY = {yo: null, dep: JP.depIni || '', cu: 'hoy', cuAuto: true, niv: false,
+  pais: JP.paisFijo || JP.paisDefault, paisAuto: !JP.paisFijo, radio: (JP.prefs && JP.prefs.radio_km) || 10};
 try { var _r = +localStorage.getItem('pcg_radio'); if([5,10,20,30].indexOf(_r) >= 0) JY.radio = _r; } catch(e){}
 function jpKm(a, b, c, d){ var R = 6371, r = Math.PI / 180, x = Math.sin((c - a) * r / 2), y = Math.sin((d - b) * r / 2);
   var h = x * x + Math.cos(a * r) * Math.cos(c * r) * y * y; return 2 * R * Math.asin(Math.min(1, Math.sqrt(h))); }
 function jpFmtKm(k){ return k < 1 ? '< 1' : (Math.round(k * 10) / 10).toString().replace('.', ','); }
+// País de una coordenada (= `paises.pais_de_coordenadas`).
+function jpPaisDe(lat, lng){
+  var dentro = [], todos = [];
+  Object.keys(JP.cajas).forEach(function(k){ var c = JP.cajas[k]; todos.push(k);
+    if(lat >= c[0] && lat <= c[1] && lng >= c[2] && lng <= c[3]) dentro.push(k); });
+  var cand = dentro.length ? dentro : todos;
+  return cand.sort(function(a, b){ var A = JP.cajas[a], B = JP.cajas[b];
+    return Math.hypot(lat - A[4], lng - A[5]) - Math.hypot(lat - B[4], lng - B[5]); })[0];
+}
+function jpEnMiPais(){ return !!JY.yo && jpPaisDe(JY.yo.lat, JY.yo.lng) === JY.pais; }
+function jpHoyLocal(){ var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
 function jpCuando(f){
   if(JY.cu === 'todos') return true;
-  var hoy = new Date(JP.hoy + 'T12:00:00'), d = new Date(f + 'T12:00:00'), dif = Math.round((d - hoy) / 86400000);
+  var hoy = new Date(jpHoyLocal() + 'T12:00:00'), d = new Date(f + 'T12:00:00'), dif = Math.round((d - hoy) / 86400000);
   if(JY.cu === 'hoy') return dif === 0;
   if(JY.cu === 'manana') return dif === 1;
   var wd = d.getDay(); return dif >= 0 && dif <= 7 && (wd === 0 || wd === 6) && (dif <= (6 - hoy.getDay()) + 1);
 }
+function jpSel(attr, val){ document.querySelectorAll('[' + attr + ']').forEach(function(c){ c.classList.toggle('sel', c.getAttribute(attr) === val); }); }
 function jpAplicar(){
-  var n = 0;
+  var n = 0, hoy = jpHoyLocal(), cerca = jpEnMiPais();
   document.querySelectorAll('.jp-p').forEach(function(c){
-    var ok = (!JY.dep || c.dataset.dep === JY.dep) && jpCuando(c.dataset.fecha);
+    var ok = c.dataset.fecha >= hoy && (!c.dataset.pais || c.dataset.pais === JY.pais)
+      && (!JY.dep || c.dataset.dep === JY.dep) && jpCuando(c.dataset.fecha);
     if(ok && JY.niv && c.dataset.nivel){ ok = c.dataset.nivel === (JP.misNiveles[c.dataset.dep] || JP.nivelSinDato); }
     var kmEl = c.querySelector('.jp-km');
-    if(JY.yo && c.dataset.lat){
+    if(cerca && c.dataset.lat){
       var k = jpKm(JY.yo.lat, JY.yo.lng, +c.dataset.lat, +c.dataset.lng);
       if(kmEl) kmEl.textContent = ' · a ' + jpFmtKm(k) + ' km';
       if(k > JY.radio) ok = false;
     } else if(kmEl) kmEl.textContent = '';
     c.style.display = ok ? '' : 'none'; if(ok) n++;
   });
+  var nota = document.getElementById('jpNota');
+  // Inteligente: arranca en "Hoy"; si hoy no hay nada, abre a los próximos días.
+  if(!n && JY.cuAuto && JY.cu !== 'todos'){
+    JY.cu = 'todos'; jpSel('data-fcu', 'todos'); jpAplicar();
+    if(nota && document.querySelector('.jp-p:not([style*="none"])')){ nota.textContent = 'Hoy no hay nada cerca: te mostramos los próximos días.'; nota.style.display = ''; }
+    return;
+  }
+  if(nota && (!JY.cuAuto || JY.cu === 'hoy')) nota.style.display = 'none';
   var v = document.getElementById('jpVacio'); if(v) v.style.display = n ? 'none' : '';
 }
 function jpUbicTxt(){
-  var u = document.getElementById('jpUbic');
-  if(u) u.textContent = JY.yo ? '📍 Cerca de ti · hasta' : '📍 Sin tu ubicación: ves todo el país';
+  var u = document.getElementById('jpUbic'), r = document.getElementById('jpRadio');
+  var cerca = jpEnMiPais();
+  if(u) u.textContent = cerca ? '📍 Cerca de ti · hasta' : '📍 Viendo todo ' + (JP.nombresPais[JY.pais] || '') + (JY.yo ? '' : ' (sin tu ubicación)');
+  if(r) r.style.display = cerca ? '' : 'none';
   var b = document.getElementById('jpUbicBtn'); if(b) b.style.display = JY.yo ? 'none' : '';
+  jpSel('data-fpais', JY.pais);
 }
 window.jpUbicar = function(interactivo){
   if(!navigator.geolocation){ jpUbicTxt(); return; }
   navigator.geolocation.getCurrentPosition(function(pos){
     JY.yo = {lat: pos.coords.latitude, lng: pos.coords.longitude};
     try { localStorage.setItem('pcg_ubic', JSON.stringify(JY.yo)); } catch(e){}
+    if(JY.paisAuto) JY.pais = jpPaisDe(JY.yo.lat, JY.yo.lng);
     jpUbicTxt(); jpAplicar(); jpDisponibles();
     if(JP.prefs && (JP.prefs.avisos || JP.prefs.disponible))
       fetch('/web/juego/tocar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(JY.yo)}).catch(function(){});
@@ -726,7 +761,7 @@ window.jpUbicar = function(interactivo){
   {enableHighAccuracy: false, timeout: 8000, maximumAge: 300000});
 };
 function jpDisponibles(){
-  var box = document.getElementById('jpDisp'); if(!box || !JY.yo) return;
+  var box = document.getElementById('jpDisp'); if(!box || !JY.yo || !jpEnMiPais()) return;
   var dep = JY.dep || JP.partner[0];
   box.innerHTML = "<div class='jp-vacio' style='padding:18px'>Buscando jugadores cerca…</div>";
   fetch('/web/juego/disponibles?deporte=' + dep + '&lat=' + JY.yo.lat + '&lng=' + JY.yo.lng + '&radio_km=' + JY.radio)
@@ -856,7 +891,8 @@ window.jpPrefs = function(){
 document.addEventListener('click', function(ev){
   var t;
   if((t = ev.target.closest('[data-fdep]'))){ JY.dep = t.dataset.fdep; document.querySelectorAll('[data-fdep]').forEach(function(c){ c.classList.toggle('sel', c === t); }); jpAplicar(); jpDisponibles(); return; }
-  if((t = ev.target.closest('[data-fcu]'))){ JY.cu = t.dataset.fcu; document.querySelectorAll('[data-fcu]').forEach(function(c){ c.classList.toggle('sel', c === t); }); jpAplicar(); return; }
+  if((t = ev.target.closest('[data-fpais]'))){ JY.pais = t.dataset.fpais; JY.paisAuto = false; jpUbicTxt(); jpAplicar(); jpDisponibles(); return; }
+  if((t = ev.target.closest('[data-fcu]'))){ JY.cu = t.dataset.fcu; JY.cuAuto = false; var nt = document.getElementById('jpNota'); if(nt) nt.style.display = 'none'; document.querySelectorAll('[data-fcu]').forEach(function(c){ c.classList.toggle('sel', c === t); }); jpAplicar(); return; }
   if((t = ev.target.closest('[data-fniv]'))){ JY.niv = !JY.niv; t.classList.toggle('sel', JY.niv); jpAplicar(); return; }
   if((t = ev.target.closest('[data-pdep]'))){ var P = window._jpP, d = t.dataset.pdep, i = P.deportes.indexOf(d); if(i >= 0){ if(P.deportes.length > 1) P.deportes.splice(i, 1); } else P.deportes.push(d);
     document.querySelectorAll('[data-pdep]').forEach(function(c){ c.classList.toggle('sel', P.deportes.indexOf(c.dataset.pdep) >= 0); }); return; }
@@ -897,7 +933,7 @@ document.addEventListener('click', function(ev){
       if(!ok) return; jpPost('/web/partidos/' + pid + '/eliminar', {}, 'Eliminando…').then(function(j){ if(j.ok){ pcgToast('Partido eliminado.'); pcgRecargar(); } else jpFallo(j); });
     }); return; }
 });
-try { var _g = JSON.parse(localStorage.getItem('pcg_ubic') || 'null'); if(_g && _g.lat){ JY.yo = _g; } } catch(e){}
+try { var _g = JSON.parse(localStorage.getItem('pcg_ubic') || 'null'); if(_g && _g.lat){ JY.yo = _g; if(JY.paisAuto) JY.pais = jpPaisDe(_g.lat, _g.lng); } } catch(e){}
 jpUbicTxt(); jpAplicar(); jpDisponibles(); jpUbicar(false);
 """
 

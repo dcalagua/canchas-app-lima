@@ -918,8 +918,21 @@ para la API del APK.
   `juego_avisos_activo="0"` (ambos en `CONFIG_DEFAULT`). Push tipo `partido`
   con `partido_id`/`tipo_partido` → APK `PushService.alAbrirPartidos` abre
   "Juega ya" en su pestaña. Tests `tests/test_juego.py`; Playwright
-  `$SP/pw_jy.js` (390 px, cero diálogos del navegador). **Pendiente:** correr
-  el SQL en QAS y, con autorización, en PRD.
+  `$SP/pw_jy.js` (390 px, cero diálogos del navegador). **Filtros
+  INTELIGENTES (pedido del director, 10-oct-2026, captura: "por defecto debe
+  marcar el país donde me localizo; si busco partner que marque tenis y hoy"):**
+  el PAÍS es el de la ubicación real (web: el servidor manda todos los partidos
+  con `data-pais` y el navegador elige con `jpPaisDe` = `paises._CAJAS`; los
+  chips de país son selección manual, `?pais=` lo fija; APK: `_paisVista` =
+  país del GPS, si no `paisActual`); el DEPORTE arranca con
+  `juego.deporte_sugerido` (partner: raqueta de mis preferencias → la que más
+  jugué en `pichangol_niveles` → tenis; partido: 1.º de mis preferencias o
+  Todos; espejo Dart `_depSugerido`); CUÁNDO arranca en "Hoy" y, si hoy no hay
+  nada, se abre solo a los próximos días con el aviso "Hoy no hay nada cerca:
+  te mostramos los próximos días". Lo que el usuario toca manda (`cuAuto`/
+  `_cuandoAuto`, `_depAuto`). Playwright `$SP/pw_jy2.js` (Quito → Ecuador;
+  Lima partner → Tenis + respaldo de días). **Pendiente:** correr el SQL en
+  QAS y, con autorización, en PRD.
 - **NOVEDADES Y CANALES EN LA WEB (30-sep-2026):** `web/jugador_novedades.py`.
   `/novedades` (feed de historias de MIS CONTACTOS de `pichangol_agenda`, sin
   bloqueados, 24 h; visor con barras, 5 s foto/texto, 15 s con música, video
