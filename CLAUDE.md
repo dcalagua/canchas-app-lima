@@ -2801,6 +2801,12 @@ off → redeploy inmediato en cada push). URL pública:
     variables. CAMBIÓ `lib/` → APK/AAB de PRD = run 1531 (`workflow_dispatch`,
     `ref=prd`, `entorno=prod`). OJO: un APK anterior no exige ubicación ni el
     rango de fotos al enviar, pero el servidor sí (rechaza con mensaje).
+    **Pase del 4-oct-2026 (autorizado: "pasa a PRD"):** `prd` = 7365e66
+    (explorar solo lo cercano: radio 10 km en web y APK; tarifa de pasarela
+    por medio Yape/tarjeta en el modelo 2 —PRD sigue en modelo 1, no cambia
+    cobros hasta elegirlo en la torre—). Sin SQL, sin Edge, sin variables.
+    CAMBIÓ `lib/` → APK/AAB de PRD por `workflow_dispatch` (`ref=prd`,
+    `entorno=prod`).
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -3809,6 +3815,82 @@ antes del corte.
   dueño paga el resto) y las dos comisiones PCG (pedido del director: "Dueño
   recibe / Cliente paga antes de comisión PCG" salen de ese reparto). Test
   `tests/test_modelo_negocio.py`.
+- **ACADEMIAS = PLAN ACADEMIA (suscripción tipo Spotify) + PAGO DIRECTO
+  (decisión del director, 10-oct-2026: "manejemos las academias como una
+  suscripción tipo Spotify, no manejamos plata ajena, pero damos beneficios;
+  uno es recordar a los alumnos cuándo pagar"; canchas NO cambian):**
+  `backend/growth/academia_plan.py`. Flag `acad_modelo` = "suscripcion"
+  (default) | "comision" (todo como antes: matrícula/cuotas cobradas en línea
+  por Pichangol con comisión). **Plan:** S/ 11.50 · $ 3.00 · Bs 21.00 al mes
+  (`acad_plan_precio_<PEN|USD|BOB>`) con prueba gratis `acad_plan_prueba_dias`
+  (30, arranca en el 1.er `estado()` de la academia: ficha, panel o cron), por
+  ACADEMIA (`stores.planes_academia`, snapshot). Se paga con el SALDO del
+  dueño en la moneda de la academia (`pagar`, pago `suscripcion_academia` →
+  correo "academia_plan"); pagar en la prueba no pierde días. Renueva solo
+  desde el saldo si ya pagó alguna vez y no apagó la renovación (la prueba
+  NUNCA se cobra sola). Avisos al dueño (push + correo) a 3 / 1 / 0 días y al
+  vencer (`procesar`, cron horario de `main.py`). Sin plan vigente =
+  `beneficios(a)` False: la ficha pública queda sin matrícula ("recibe
+  matrículas por WhatsApp"), sin recordatorios y con candado en la gestión
+  (alumnos, asistencia, evaluaciones, ranking, reportes, chats, sedes,
+  cobros); confirmar pagos reportados SIEMPRE se permite. Torre → Cobros →
+  **"🎓 Plan Academia"** (`/admin/api/academias-plan[/config|/{id}/cortesia]`:
+  modelo, precios, prueba, KPIs, ingreso mensual, +30 días). **Pago
+  directo:** la academia registra `cobroDirecto {yape, titular}` (solo PE,
+  `validar_cobro_directo`); el alumno yapea y reporta el CÓDIGO DE SEGURIDAD de
+  3 dígitos de su comprobante de Yape + N.º de operación opcional
+  (`reportar_pago` → cuota `reporte{estado: por_confirmar}` + push al dueño);
+  la academia lo compara con la notificación de su Yape y confirma/rechaza
+  (`resolver_pago` → `pagada`, `medioPago='yape_directo'`, `operacionId=
+  'yape:<op>'`; recibo por correo y push). `datos.mutar_matricula` (FOR
+  UPDATE). Sin Yape registrado (o fuera de PE): "Coordina el pago con la
+  academia". **Recordatorios a los alumnos** (`recordatorios_alumnos`, cron
+  horario, desde las 9:00 de Lima): 3 días antes, el día y al día siguiente de
+  vencer, una vez por etapa (`stores.recordatorios_cuotas`); correo genérico
+  `correos` evento "aviso". API APK (X-App-Key): `GET /config/academias`,
+  `GET /academias/plan/{id}`, `POST …/pagar|renovacion`, `POST
+  /academias/pago-directo/reportar|resolver`, `GET …/pendientes?email`. Web
+  (`web/academia_plan_web.py` + `/web/matricular-directo`): matrícula sin cobro
+  (cuotas pendientes, adelantado = una cuota con el total), caja "Paga a la
+  academia" en comprobante y `/mis-clases`, "💜 Pagos por confirmar" en
+  `/anfitrion/cobros`, `/anfitrion/academia/plan`, Yape en el editor; los
+  endpoints de cobro en línea de academias responden `pago_directo`. APK:
+  `academia_plan_service.dart`, `plan_academia_screen.dart`,
+  `pago_directo_sheet.dart`, `Academia.cobroDirecto`, `Cuota.reporte/
+  medioPago`; config sin cargar = "comision" (comportamiento anterior). Tests
+  `tests/test_academia_plan.py`, `tests/test_web_academia_plan.py`.
+  **FASE 2 = YAPE AUTOMÁTICO (hecho 10-oct-2026, "seguimos con la fase 2"):**
+  `backend/growth/yape_auto.py`. El dueño activa en el APK → Plan Academia →
+  "Confirmar mis pagos automáticamente" (`widgets/yape_auto_card.dart`, solo
+  Android, con Yape registrado y plan vigente; aviso destacado de Play antes de
+  pedir el permiso "Acceso a notificaciones"; en APK fuera de Play Android 13+
+  puede exigir "Permitir ajustes restringidos", la tarjeta lo explica). `POST
+  /academias/yape/vincular` (sesión) da un TOKEN DE DISPOSITIVO (solo se guarda
+  su SHA-256; un celular por dueño, vincular otro apaga el anterior). El
+  servicio nativo `YapeListener` (`tool/android/YapeListener.kt`, lo copia
+  `configure_platforms.py` + `<service>` en el manifest + MethodChannel
+  `pichangol/yape_auto` en MainActivity: permisoActivo, abrirPermiso,
+  abrirInfoApp, configurar, estado, reintentar) ve SOLO los paquetes de
+  `yape_paquetes` y manda título + texto a `POST /academias/yape/notificacion`
+  (X-App-Key + `X-Yape-Token`; cola de 50 sin red; 401 lo apaga solo). El
+  backend lee monto / código (3 dígitos) / nombre con EXPRESIONES EDITABLES en
+  la torre (`yape_regex_*`, espejo en `CONFIG_DEFAULT`; si Yape cambia su texto
+  se arregla sin APK) y CONCILIA: un pago "por confirmar" de una academia del
+  dueño CON plan vigente se confirma (`resolver_pago(..., auto=True)` →
+  `reporte.auto`, push "Pago confirmado solo ✅" al dueño + recibo al alumno)
+  si coinciden código Y monto total, dentro de `yape_ventana_horas` (48) y la
+  coincidencia es ÚNICA en ambos sentidos (ambigua → queda manual, nota
+  `ambigua`); cada notificación se usa una vez; Android re-publica → se
+  deduplica por huella 24 h. Se concilia al llegar la notificación y al
+  reportar el alumno. Notificaciones en `stores.yape_notificaciones` (7 días,
+  texto ≤300) y dispositivos en `stores.yape_dispositivos` (snapshot). Torre →
+  Cobros → Plan Academia → "📲 Yape automático": encender/pausar, paquetes,
+  expresiones, ventana, probador de texto, KPIs y últimas notificaciones
+  (`/admin/api/yape-auto[/config|/probar]`). Privacidad declara la lectura.
+  **Calibrar:** los textos por defecto suponen "¡Yape! <Nombre> te envió un
+  pago por S/ 50. El cód. de seguridad es: 427"; con la primera notificación
+  real, revisar en la torre si se leyó (columna Resultado) y ajustar. iPhone:
+  sigue manual. Test `tests/test_yape_auto.py`.
 - **PAGOS PERDÍAN DATOS AL REINICIAR (bug de plata hallado el 2-oct-2026):**
   `pg.cargar_normalizado` REEMPLAZABA los pagos/reclamos del snapshot por las
   filas de `growth_pagos`/`growth_reclamos` (solo 10/21 columnas) → tras cada

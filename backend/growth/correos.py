@@ -152,6 +152,7 @@ _EVENTO_DE_TIPO = {
     "venta_producto": "venta",
     "recarga": "recarga",
     "suscripcion_pro": "pro",
+    "suscripcion_academia": "academia_plan",
     "suscripcion": "servicio",
     "venta_bodega": "bodega",
     "inscripcion_torneo": "torneo",
@@ -595,7 +596,7 @@ def _armar_simple(ev: dict) -> list[dict]:
     if not _correo_valido(email):
         return []
     moneda = p.moneda or "PEN"
-    if tipo in ("pro", "servicio", "torneo"):
+    if tipo in ("pro", "servicio", "torneo"):  # academia_plan ya trae la moneda de la academia
         try:
             from pagos.router import moneda_billetera
             moneda = moneda_billetera(email) or moneda
@@ -610,6 +611,8 @@ def _armar_simple(ev: dict) -> list[dict]:
     cfg = {
         "recarga": ("✅ Recarga confirmada", "Tu recarga está confirmada", "Ya puedes usar tu saldo para reservar, pagar clases o comprar en Pichangol.",
                     ("Ver mi billetera", "/mi-billetera"), [("Saldo actual", saldo)]),
+        "academia_plan": ("🎓 Plan Academia activo", "Tu Plan Academia está activo", "Pagaste el plan de tu academia con tu saldo: recordatorios automáticos a tus alumnos, matrículas y panel de cobros.",
+                          ("Ver mi Plan Academia", "/anfitrion/academia/plan"), [("Saldo restante", saldo)]),
         "pro": ("👑 Pichangol Pro activo", "Tu Pichangol Pro está activo", "Pagaste tu suscripción Pro con tu saldo.",
                 ("Ver Pichangol Pro", "/pro"), [("Saldo restante", saldo)]),
         "servicio": ("✅ Suscripción pagada", "Tu suscripción está pagada", "Pagaste tu servicio Pichangol.",
@@ -751,12 +754,36 @@ def _armar_fotos_local(ev: dict) -> list[dict]:
                  "dueno", "fotos_local")]
 
 
+def _armar_aviso(ev: dict) -> list[dict]:
+    """Aviso genérico (no es un cobro de Pichangol): recordatorios de cuota a
+    los alumnos, recibo de un pago DIRECTO a la academia y avisos del Plan
+    Academia (`academia_plan.py`). `datos` del evento: para, clave, titulo,
+    intro, datos[[et, val]], lineas[[et, monto]], total[et, monto], boton[txt,
+    ruta], etiqueta, nota."""
+    s = ev.get("datos") or {}
+    para = str(s.get("para") or "").strip().lower()
+    if not _correo_valido(para):
+        return []
+    bt = s.get("boton") or None
+    boton = (str(bt[0]), base_url() + str(bt[1])) if bt and len(bt) == 2 else None
+    total = s.get("total")
+    titulo = str(s.get("titulo") or "Aviso de Pichangol")
+    return [_msg(str(s.get("clave") or f"aviso:{para}:{ev.get('id')}"), para, titulo,
+                 plantilla(titulo=titulo, saludo=_hola(_nombre_de(para)), intro=str(s.get("intro") or ""),
+                           datos=[(str(a), str(b)) for a, b in (s.get("datos") or [])],
+                           lineas=[(str(a), str(b)) for a, b in (s.get("lineas") or [])] or None,
+                           total=(str(total[0]), str(total[1])) if total and len(total) == 2 else None,
+                           boton=boton, notas=[str(s["nota"])] if s.get("nota") else None,
+                           etiqueta=str(s.get("etiqueta") or "Aviso de Pichangol")),
+                 "cliente", "aviso")]
+
+
 _ARMADORES = {
     "reserva": _armar_reserva, "matricula": _armar_matricula, "venta": _armar_venta,
     "recarga": _armar_simple, "pro": _armar_simple, "servicio": _armar_simple, "torneo": _armar_simple,
     "aporte": _armar_simple, "torneo_ingreso": _armar_torneo_ingreso, "bodega": _armar_bodega,
     "boleo": _armar_boleo, "boleo_solicitud": _armar_boleo_solicitud,
-    "fotos_local": _armar_fotos_local,
+    "fotos_local": _armar_fotos_local, "aviso": _armar_aviso, "academia_plan": _armar_simple,
 }
 
 

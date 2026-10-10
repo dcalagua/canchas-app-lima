@@ -20,6 +20,14 @@ from web import router as web  # noqa: E402
 
 client = TestClient(app)
 
+
+@pytest.fixture(autouse=True)
+def _modelo_comision(monkeypatch):
+    """Estas pruebas cubren el modelo "comision" (Pichangol cobra matrículas y
+    cuotas en línea); el Plan Academia (suscripción) va en test_web_academia_plan."""
+    from db.store import stores as _st
+    monkeypatch.setitem(_st.config, "acad_modelo", "comision")
+
 LIMA = {"id": "c_lima", "nombre": "Cancha Central", "club": "Club Raqueta", "distrito": "lima_moderna",
         "barrio": "San Borja", "deporte": "futbol", "deportes": ["futbol"], "precio_hora": 60.0,
         "lat": -12.09, "lng": -77.0, "direccion": "Av. Aviación 123", "foto_url": "", "fotos": [],

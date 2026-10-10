@@ -159,6 +159,10 @@ class Academia {
   /// CATEGORÍA de cada alumno en el ranking (ej. "7ma", "Intermedio").
   /// Clave = alumnoId → categoría. Vacío = sin categoría.
   final Map<String, String> categorias;
+  /// COBRO DIRECTO (Plan Academia, decisión del director 10-oct-2026): el Yape
+  /// de la academia al que sus alumnos le pagan DIRECTO (Pichangol no toca la
+  /// plata). null = no lo registró. JSON `cobroDirecto: {yape, titular}`.
+  final CobroDirecto? cobroDirecto;
 
   const Academia({
     required this.id,
@@ -188,6 +192,7 @@ class Academia {
     this.preciosSede = const {},
     this.partidos = const [],
     this.categorias = const {},
+    this.cobroDirecto,
   });
 
   /// Sedes EFECTIVAS: las declaradas; si no hay ninguna, una sede única derivada
@@ -388,6 +393,8 @@ class Academia {
     Map<String, double>? preciosSede,
     List<PartidoRanking>? partidos,
     Map<String, String>? categorias,
+    CobroDirecto? cobroDirecto,
+    bool limpiarCobroDirecto = false,
   }) =>
       Academia(
         id: id ?? this.id,
@@ -417,6 +424,9 @@ class Academia {
         preciosSede: preciosSede ?? this.preciosSede,
         partidos: partidos ?? this.partidos,
         categorias: categorias ?? this.categorias,
+        cobroDirecto: limpiarCobroDirecto
+            ? null
+            : (cobroDirecto ?? this.cobroDirecto),
       );
 
   Map<String, dynamic> toJson() => {
@@ -448,6 +458,7 @@ class Academia {
         'preciosSede': preciosSede,
         'partidos': partidos.map((p) => p.toJson()).toList(),
         'categorias': categorias,
+        if (cobroDirecto != null) 'cobroDirecto': cobroDirecto!.toJson(),
       };
 
   factory Academia.fromJson(Map<String, dynamic> j) => Academia(
@@ -501,6 +512,7 @@ class Academia {
         categorias: (j['categorias'] as Map?)
                 ?.map((k, v) => MapEntry(k.toString(), v.toString())) ??
             const {},
+        cobroDirecto: CobroDirecto.deJson(j['cobroDirecto']),
       );
 
   // ── Circuito / Ranking interno (Fase 0) ─────────────────────────────────────
@@ -939,6 +951,93 @@ class Alumno {
       );
 }
 
+/// Yape de la academia para el PAGO DIRECTO de sus alumnos (Plan Academia).
+/// Solo Perú (Yape): celular de 9 dígitos que empieza con 9 + titular.
+class CobroDirecto {
+  final String yape;
+  final String titular;
+  const CobroDirecto({required this.yape, this.titular = ''});
+
+  static final _reYape = RegExp(r'^9\d{8}$');
+
+  /// ¿Número válido? (misma regla que `academia_plan.cobro_directo`).
+  bool get valido => _reYape.hasMatch(yape);
+
+  /// "987 654 321" para leerlo y dictarlo fácil.
+  String get yapeBonito => yape.length == 9
+      ? '${yape.substring(0, 3)} ${yape.substring(3, 6)} ${yape.substring(6)}'
+      : yape;
+
+  Map<String, dynamic> toJson() => {'yape': yape, 'titular': titular};
+
+  /// Lee el JSON (de la academia o del backend). null si no hay número válido.
+  static CobroDirecto? deJson(dynamic j) {
+    if (j is! Map) return null;
+    final yape = (j['yape'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
+    if (yape.isEmpty) return null;
+    final c = CobroDirecto(
+        yape: yape, titular: (j['titular'] ?? '').toString().trim());
+    return c.valido ? c : null;
+  }
+}
+
+/// Reporte de un PAGO DIRECTO (Yape) hecho por el alumno sobre una cuota:
+/// el código de seguridad de 3 dígitos que muestra Yape + N.º de operación
+/// (opcional). La academia lo compara con su Yape y confirma o rechaza.
+/// Estados: `por_confirmar` · `confirmado` · `rechazado` (con [motivo]).
+class ReportePago {
+  final String codigo;
+  final String operacion;
+  final double monto;
+  final String fecha; // ISO
+  final String por; // correo de quien reportó
+  final String estado;
+  final String motivo;
+  const ReportePago({
+    required this.codigo,
+    this.operacion = '',
+    this.monto = 0,
+    this.fecha = '',
+    this.por = '',
+    this.estado = 'por_confirmar',
+    this.motivo = '',
+  });
+
+  bool get porConfirmar => estado == 'por_confirmar';
+  bool get rechazado => estado == 'rechazado';
+  bool get confirmado => estado == 'confirmado';
+
+  /// Huella para saber si cambió (fusión con la nube).
+  String get clave => '$estado|$codigo|$operacion|$fecha|$motivo';
+
+  Map<String, dynamic> toJson() => {
+        'codigo': codigo,
+        'operacion': operacion,
+        'monto': monto,
+        'fecha': fecha,
+        'por': por,
+        'estado': estado,
+        if (motivo.isNotEmpty) 'motivo': motivo,
+      };
+
+  static ReportePago? deJson(dynamic j) {
+    if (j is! Map) return null;
+    final codigo = (j['codigo'] ?? '').toString();
+    final estado = (j['estado'] ?? '').toString();
+    if (codigo.isEmpty && estado.isEmpty) return null;
+    final m = j['monto'];
+    return ReportePago(
+      codigo: codigo,
+      operacion: (j['operacion'] ?? '').toString(),
+      monto: m is num ? m.toDouble() : double.tryParse('${m ?? ''}') ?? 0,
+      fecha: (j['fecha'] ?? '').toString(),
+      por: (j['por'] ?? '').toString(),
+      estado: estado.isEmpty ? 'por_confirmar' : estado,
+      motivo: (j['motivo'] ?? '').toString(),
+    );
+  }
+}
+
 /// Una cuota de cobro (mensualidad o clase suelta). Modelo estilo "provisión":
 /// vencimiento + monto + estado. La mora se calcula al vencer (Fase 1: simple).
 class Cuota {
@@ -963,6 +1062,12 @@ class Cuota {
   /// familia), [cargoPersonas] > 1 y el comprobante lo explica. 0 = sin cargo.
   final double cargoServicio;
   final int cargoPersonas;
+  /// Medio con que se pagó si no fue Culqi: `yape_directo` (pago directo a la
+  /// academia confirmado por ella). '' = el de siempre.
+  final String medioPago;
+  /// Último reporte de pago directo (Yape) del alumno. Lo escribe el backend;
+  /// el app solo lo muestra (y la fusión con la nube nunca lo pisa).
+  final ReportePago? reporte;
 
   const Cuota({
     required this.id,
@@ -977,7 +1082,15 @@ class Cuota {
     this.operacionId = '',
     this.cargoServicio = 0,
     this.cargoPersonas = 1,
+    this.medioPago = '',
+    this.reporte,
   });
+
+  /// ¿Pagada directo a la academia por Yape (Plan Academia)?
+  bool get pagadaDirecto => medioPago == 'yape_directo';
+
+  /// ¿Reportada por el alumno y esperando que la academia confirme?
+  bool get porConfirmar => !pagada && (reporte?.porConfirmar ?? false);
 
   /// Vencida = no pagada y ya pasó su fecha de vencimiento.
   bool vencidaAl(DateTime hoy) =>
@@ -989,7 +1102,10 @@ class Cuota {
           bool limpiarFechaPago = false,
           String? operacionId,
           double? cargoServicio,
-          int? cargoPersonas}) =>
+          int? cargoPersonas,
+          String? medioPago,
+          ReportePago? reporte,
+          bool limpiarReporte = false}) =>
       Cuota(
         id: id,
         academiaId: academiaId,
@@ -1003,6 +1119,8 @@ class Cuota {
         operacionId: operacionId ?? this.operacionId,
         cargoServicio: cargoServicio ?? this.cargoServicio,
         cargoPersonas: cargoPersonas ?? this.cargoPersonas,
+        medioPago: medioPago ?? this.medioPago,
+        reporte: limpiarReporte ? null : (reporte ?? this.reporte),
       );
 
   Map<String, dynamic> toJson() => {
@@ -1018,6 +1136,8 @@ class Cuota {
         if (operacionId.isNotEmpty) 'operacionId': operacionId,
         if (cargoServicio > 0) 'cargoServicio': cargoServicio,
         if (cargoServicio > 0 && cargoPersonas > 1) 'cargoPersonas': cargoPersonas,
+        if (medioPago.isNotEmpty) 'medioPago': medioPago,
+        if (reporte != null) 'reporte': reporte!.toJson(),
       };
 
   factory Cuota.fromJson(Map<String, dynamic> j) => Cuota(
@@ -1037,6 +1157,8 @@ class Cuota {
         operacionId: (j['operacionId'] ?? '') as String,
         cargoServicio: ((j['cargoServicio'] ?? 0) as num).toDouble(),
         cargoPersonas: ((j['cargoPersonas'] ?? 1) as num).toInt(),
+        medioPago: (j['medioPago'] ?? '').toString(),
+        reporte: ReportePago.deJson(j['reporte']),
       );
 }
 

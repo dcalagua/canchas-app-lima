@@ -12,7 +12,9 @@ import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/ilustracion_pichangol.dart';
 import '../widgets/responsive.dart';
+import '../widgets/icono_vivo.dart';
 import '../widgets/logo_academia.dart';
+import '../widgets/pago_directo_sheet.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import '../widgets/sesion_requerida.dart';
 
@@ -53,7 +55,11 @@ class MisClasesScreen extends StatelessWidget {
                   'únete con el código de tu profe.',
             );
           }
-          final familia = _pendientesFamilia(matriculas);
+          // PLAN ACADEMIA: se le paga DIRECTO a cada academia (Yape), no hay
+          // pago en línea agrupado.
+          final familia = appState.academiasPorSuscripcion
+              ? const <_GrupoFamilia>[]
+              : _pendientesFamilia(matriculas);
           return ListView(
             // Regla app: contenido centrado (ancho máx) en pantallas anchas.
             padding: EdgeInsets.fromLTRB(
@@ -277,7 +283,17 @@ class MisClasesScreen extends StatelessWidget {
                         trailingIcon: Icons.autorenew,
                         color: textoTenue),
                 ],
-                if (proximas.isNotEmpty && academia != null)
+                if (proximas.isNotEmpty &&
+                    academia != null &&
+                    appState.academiasPorSuscripcion)
+                  _PagoDirectoCuotas(
+                    key: ValueKey('pd_${al.id}'),
+                    academia: academia,
+                    alumno: al,
+                    cuotas: proximas,
+                    moneda: mon,
+                  )
+                else if (proximas.isNotEmpty && academia != null)
                   _ProximosPagos(
                     cuotas: proximas,
                     moneda: mon,
@@ -465,8 +481,11 @@ class MisClasesScreen extends StatelessWidget {
                   fuerte: true),
             ],
             const SizedBox(height: 10),
-            const Text('Pago procesado por Pichangol.',
-                style: TextStyle(color: textoTenue, fontSize: 12)),
+            Text(
+                c.pagadaDirecto
+                    ? 'Pagado directo a la academia por Yape y confirmado por ella.'
+                    : 'Pago procesado por Pichangol.',
+                style: const TextStyle(color: textoTenue, fontSize: 12)),
           ],
         ),
         acciones: [
@@ -540,7 +559,10 @@ class MisClasesScreen extends StatelessWidget {
               _pdfLinea('Monto', '$mon ${c.monto.toStringAsFixed(2)}',
                   fuerte: true),
               pw.SizedBox(height: 18),
-              pw.Text('Pago procesado por Pichangol.',
+              pw.Text(
+                  c.pagadaDirecto
+                      ? 'Pagado directo a la academia por Yape.'
+                      : 'Pago procesado por Pichangol.',
                   style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
             ],
           ),
@@ -672,6 +694,195 @@ class _SuscripcionMesAMesState extends State<_SuscripcionMesAMes> {
                 style: TextStyle(color: clayOscuro, fontWeight: FontWeight.w700)),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// PLAN ACADEMIA (pago directo): próximos pagos de un alumno que se le pagan
+/// DIRECTO a la academia por Yape. Se eligen las cuotas (de esta matrícula) y
+/// se reporta el código de seguridad. Estados por cuota: pendiente,
+/// "⏳ Por confirmar" (la academia aún no lo ve) y "Rechazado: motivo".
+class _PagoDirectoCuotas extends StatefulWidget {
+  const _PagoDirectoCuotas({
+    super.key,
+    required this.academia,
+    required this.alumno,
+    required this.cuotas,
+    required this.moneda,
+  });
+  final Academia academia;
+  final Alumno alumno;
+  final List<Cuota> cuotas; // pendientes, orden cronológico
+  final String moneda;
+
+  @override
+  State<_PagoDirectoCuotas> createState() => _PagoDirectoCuotasState();
+}
+
+class _PagoDirectoCuotasState extends State<_PagoDirectoCuotas> {
+  static const _meses = [
+    'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+    'jul', 'ago', 'set', 'oct', 'nov', 'dic'
+  ];
+  final Set<String> _sel = {};
+  bool _abriendo = false;
+
+  List<Cuota> get _pagables =>
+      widget.cuotas.where((c) => !c.porConfirmar).toList();
+
+  @override
+  void initState() {
+    super.initState();
+    _elegirPrimera();
+  }
+
+  /// Por defecto, la que vence primero (no se empuja a pagar meses futuros).
+  void _elegirPrimera() {
+    final p = _pagables;
+    if (_sel.isEmpty && p.isNotEmpty) _sel.add(p.first.id);
+  }
+
+  @override
+  void didUpdateWidget(_PagoDirectoCuotas old) {
+    super.didUpdateWidget(old);
+    final ids = _pagables.map((c) => c.id).toSet();
+    _sel.retainWhere(ids.contains);
+    _elegirPrimera();
+  }
+
+  String _fecha(DateTime d) => '${d.day} ${_meses[d.month - 1]} ${d.year}';
+
+  double get _totalSel => widget.cuotas
+      .where((c) => _sel.contains(c.id))
+      .fold<double>(0, (s, c) => s + c.monto);
+
+  Future<void> _pagar() async {
+    final sel = _pagables.where((c) => _sel.contains(c.id)).toList();
+    if (sel.isEmpty || _abriendo) return;
+    setState(() => _abriendo = true);
+    final ok = await PagoDirectoSheet.mostrar(context,
+        academia: widget.academia, alumno: widget.alumno, cuotas: sel);
+    if (!mounted) return;
+    setState(() {
+      _abriendo = false;
+      if (ok) _sel.clear();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final conYape = widget.academia.cobroDirecto != null;
+    final hayPagables = _pagables.isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 12),
+        const Text('Próximos pagos',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+        const SizedBox(height: 2),
+        Text(
+            conYape
+                ? 'Le pagas directo a ${widget.academia.nombre} por Yape. Marca qué pagas.'
+                : 'Le pagas directo a ${widget.academia.nombre}.',
+            style: const TextStyle(color: textoTenue, fontSize: 12)),
+        for (final c in widget.cuotas) _filaCuota(c),
+        if (hayPagables) ...[
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: lima,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12)),
+              onPressed: (_sel.isEmpty || _abriendo) ? null : _pagar,
+              icon: const Icon(Icons.qr_code_2, size: 18),
+              label: Text(
+                  conYape
+                      ? 'Pagar a la academia (Yape) · ${widget.moneda} ${_totalSel.toStringAsFixed(2)}'
+                      : 'Cómo pagar a la academia',
+                  style: const TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _filaCuota(Cuota c) {
+    final rep = c.reporte;
+    final porConfirmar = c.porConfirmar;
+    final rechazado = !porConfirmar && (rep?.rechazado ?? false);
+    final seleccionable = !porConfirmar;
+    final String sub;
+    if (porConfirmar) {
+      sub = '⏳ Por confirmar · la academia revisa tu Yape';
+    } else if (rechazado) {
+      final m = rep?.motivo ?? '';
+      sub = 'Rechazado${m.isNotEmpty ? ': $m' : ''} · Reportar de nuevo';
+    } else {
+      sub = 'Vence ${_fecha(c.vencimiento)}';
+    }
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: seleccionable
+          ? () => setState(() {
+                if (!_sel.remove(c.id)) _sel.add(c.id);
+              })
+          : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          children: [
+            if (seleccionable)
+              Checkbox(
+                value: _sel.contains(c.id),
+                activeColor: lima,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+                onChanged: (v) => setState(() {
+                  if (v == true) {
+                    _sel.add(c.id);
+                  } else {
+                    _sel.remove(c.id);
+                  }
+                }),
+              )
+            else
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: IconoVivo(Icons.hourglass_top, size: 20),
+              ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(c.concepto,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 13.5, fontWeight: FontWeight.w600)),
+                  Text(sub,
+                      style: TextStyle(
+                          color: rechazado
+                              ? clayOscuro
+                              : (porConfirmar ? estadoWarnFg : textoTenue),
+                          fontSize: 12,
+                          fontWeight: (rechazado || porConfirmar)
+                              ? FontWeight.w700
+                              : FontWeight.w400)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text('${widget.moneda} ${c.monto.toStringAsFixed(2)}',
+                style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: porConfirmar ? textoTenue : clayOscuro)),
+          ],
+        ),
       ),
     );
   }

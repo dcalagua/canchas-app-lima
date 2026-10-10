@@ -135,7 +135,15 @@ class MatriculasRepo {
         } else if (previa['pagada'] == true && !c.pagada) {
           // La nube ya la tiene pagada (web / otro equipo): se queda pagada.
         } else {
-          porId[c.id] = {...previa, ...local};
+          final unida = <String, dynamic>{...previa, ...local};
+          // PAGO DIRECTO (Plan Academia): el `reporte` del código de Yape y el
+          // medio `yape_directo` los escribe el BACKEND (alumno reporta /
+          // academia confirma). El teléfono nunca los pisa con una copia vieja.
+          if (previa.containsKey('reporte')) unida['reporte'] = previa['reporte'];
+          if ((previa['medioPago'] ?? '').toString().isNotEmpty) {
+            unida['medioPago'] = previa['medioPago'];
+          }
+          porId[c.id] = unida;
         }
       }
       final fusion = [for (final id in orden) porId[id]!];

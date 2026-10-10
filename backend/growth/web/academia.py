@@ -37,6 +37,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
+import academia_plan as _ap
 import config
 import empresa
 from pagos import culqi
@@ -257,11 +258,20 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
     lugar = " · ".join(x for x in (a.get("sedeClub"), a.get("zona")) if x)
     tel = _wa(a)
     con_mapa = bool(a.get("lat") or a.get("lng"))
-    # En $ / Bs la matrícula va por la pasarela HOSPEDADA del país (necesita la
-    # cuenta de Google: la orden queda a su nombre).
-    puede = _pago_web_disponible(iso) and bool(_planes(a)) and (iso == "PEN" or sesion.activo())
-    pasarela = _pasarela_web(iso) if puede else ""
-    hosp = bool(pasarela) and pasarela != "culqi"
+    # PLAN ACADEMIA (suscripción, 10-oct-2026): los alumnos le pagan DIRECTO a
+    # la academia (Yape); aquí solo se registra la matrícula, sin Culqi, sin
+    # pasarela y sin cargo por servicio. Sin plan vigente: solo ficha pública.
+    directo = _ap.es_suscripcion()
+    con_plan = _ap.beneficios(a) if directo else True
+    if directo:
+        puede = con_plan and bool(_planes(a)) and sesion.activo()
+        pasarela, hosp = "", False
+    else:
+        # En $ / Bs la matrícula va por la pasarela HOSPEDADA del país (necesita la
+        # cuenta de Google: la orden queda a su nombre).
+        puede = _pago_web_disponible(iso) and bool(_planes(a)) and (iso == "PEN" or sesion.activo())
+        pasarela = _pasarela_web(iso) if puede else ""
+        hosp = bool(pasarela) and pasarela != "culqi"
     landing = ""
     try:
         from db.store import stores as _st
@@ -294,8 +304,22 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
     tarifario = _tarifario(a, sim, puede)
 
     # Panel de matrícula (mismo flujo que el app) o "desde la app".
+    if directo and not puede and (not con_plan or not _planes(a)):
+        # Sin plan vigente (o sin precios): la academia recibe matrículas por WhatsApp.
+        wa_url = ui.enlace_whatsapp(f"Hola, vi {a['nombre']} en Pichangol y quiero matricularme.", tel) if tel else ""
+        es_otro = (a.get("dueno") or "").strip().lower() != ((ses or {}).get("email") or "").lower()
+        panel = ("<div class='panel' style='margin-top:20px'><h2>¿Quieres matricularte?</h2>"
+                 f"<p class='sub'>{'Esta academia recibe matrículas por WhatsApp.' if _planes(a) else 'Esta academia aún no publicó sus precios.'} Escríbele y coordina tu horario y tu pago.</p>"
+                 "<div class='acciones'>"
+                 + (f"<a class='btn' href='{e(wa_url)}' target='_blank' rel='noopener'>💬 Escribir por WhatsApp</a>" if wa_url else "")
+                 + (f"<a class='btn{' sec' if wa_url else ''}' href='/mensajes/nuevo?academia={e(academia_id)}'>✉️ Escribir al profe</a>" if (a.get("dueno") and es_otro) else "")
+                 + "</div></div>")
+        cuerpo = f"<div style='padding-top:22px'>{ficha}</div>{tarifario}{panel}"
+        return ui.shell(a["nombre"], cuerpo, desc=f"{a['nombre']} · academia de {dep_nombre.lower()} · {lugar}", sesion=ses,
+                        og_image=(_fotos_academia(a) or ["/static/brand/logo_pichangol.png"])[0], extra_head=_LEAFLET if con_mapa else "")
     if not puede:
         motivo = ("Esta academia aún no publicó sus precios." if not _planes(a) else
+                  "La matrícula desde la web necesita iniciar sesión con Google." if directo else
                   (f"Esta academia cobra en {e(sim)} y el pago en línea en esa moneda aún no está disponible en la web."
                    if iso != "PEN" else "El pago en línea desde la web se está habilitando."))
         panel = (f"<div class='panel' style='margin-top:20px'><h2>Matricúlate desde la app</h2><p class='sub'>{motivo} En la app Pichangol te matriculas y pagas con los medios de tu país.</p>"
@@ -337,32 +361,39 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
         + "".join(f"<button type='button' class='chip{' sel' if n == 1 else ''}' data-n='{n}'>{n}</button>" for n in (1, 2, 3, 6, 12)) + "</div></div>"
         # CARRITO (pedido del director, 26-sep-2026): varias personas de la familia, un solo pago.
         "<div class='paso'><span>5</span> ¿Matriculas a más personas?</div>"
-        "<div class='sub' style='margin-top:4px'>Tu pareja, tus hijos… cada uno con su programa y su forma de pago. Todo se paga en un solo cobro y el descuento familiar se aplica solo por orden (1.º completo, 2.º y 3.º con descuento).</div>"
-        "<div style='margin-top:10px'><button type='button' class='btn sec' id='btnAgregar' hidden>➕ Guardar a esta persona y agregar otra</button></div>"
+        + ("<div class='sub' style='margin-top:4px'>Tu pareja, tus hijos… cada uno con su programa y su forma de pago. Se registran juntos y el descuento familiar se aplica solo por orden (1.º completo, 2.º y 3.º con descuento).</div>"
+           if directo else
+           "<div class='sub' style='margin-top:4px'>Tu pareja, tus hijos… cada uno con su programa y su forma de pago. Todo se paga en un solo cobro y el descuento familiar se aplica solo por orden (1.º completo, 2.º y 3.º con descuento).</div>")
+        + "<div style='margin-top:10px'><button type='button' class='btn sec' id='btnAgregar' hidden>➕ Guardar a esta persona y agregar otra</button></div>"
         "<div class='estado bad' id='err'></div></div>"
         "<aside class='resumen'><div class='panel'><h3>Tu matrícula <span class='sub' id='nPersonas' style='font-weight:600;font-size:13px'></span></h3>"
         f"<div class='sub' style='margin-bottom:10px'>{e(a['nombre'])}</div><div id='lineas'><div class='sub'>Sin programa elegido.</div></div>"
-        "<div class='total'><span>Pagas hoy</span><span id='tot'>—</span></div>"
+        f"<div class='total'><span>{'A pagar a la academia' if directo else 'Pagas hoy'}</span><span id='tot'>—</span></div>"
         "<div class='sub' id='notaModo' style='font-size:12.5px;margin-top:6px'></div>"
-        f"<div style='margin-top:14px'>{ph.selector(pasarela) if hosp else ui.selector_medio_pago()}</div>"
-        "<div style='margin-top:14px'><button class='btn lg' id='btnPagar' disabled>Elige un programa</button></div>"
-        "<div class='sub' style='font-size:12.5px;margin-top:12px'>Al pagar, la matrícula queda registrada en la academia y en tu app (Mis academias). "
-        f"Dudas: <a href='mailto:{e(empresa.valores()['empresa_correo'])}'>{e(empresa.valores()['empresa_correo'])}</a>.</div>"
+        + ("<div class='aviso' style='margin-top:12px;background:#F6EEF8;color:#4A1257;border-radius:14px;padding:12px 14px;font-size:13px'>💜 Aquí no pagas nada. "
+           "Al matricularte ves el <b>Yape de la academia</b>: le yapeas directo y reportas el código de seguridad de tu comprobante. Pichangol no cobra comisión.</div>"
+           if directo else f"<div style='margin-top:14px'>{ph.selector(pasarela) if hosp else ui.selector_medio_pago()}</div>")
+        + "<div style='margin-top:14px'><button class='btn lg' id='btnPagar' disabled>Elige un programa</button></div>"
+        + ("<div class='sub' style='font-size:12.5px;margin-top:12px'>La matrícula queda registrada en la academia y en tu app (Mis clases). " if directo else
+           "<div class='sub' style='font-size:12.5px;margin-top:12px'>Al pagar, la matrícula queda registrada en la academia y en tu app (Mis academias). ")
+        + f"Dudas: <a href='mailto:{e(empresa.valores()['empresa_correo'])}'>{e(empresa.valores()['empresa_correo'])}</a>.</div>"
         "</div></aside></div>"
-        "<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0'>Pagas hoy</div><div class='t' id='totBarra'>—</div></div>"
-        f"{ui.medio_pago_mini(pasarela)}<button class='btn' id='btnPagarBarra' disabled>Elige un programa</button></div>")
-    cfg = json.dumps({"id": academia_id, "moneda": sim, "pk": "" if hosp else config.CULQI_PUBLIC_KEY, "planes": _planes(a),
+        f"<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0'>{'A pagar a la academia' if directo else 'Pagas hoy'}</div><div class='t' id='totBarra'>—</div></div>"
+        f"{'' if directo else ui.medio_pago_mini(pasarela)}<button class='btn' id='btnPagarBarra' disabled>Elige un programa</button></div>")
+    cfg = json.dumps({"id": academia_id, "moneda": sim, "pk": "" if (hosp or directo) else config.CULQI_PUBLIC_KEY, "planes": _planes(a),
+                      # PLAN ACADEMIA: matrícula sin cobro (el alumno le paga directo a la academia).
+                      "directo": directo,
                       # COBRO EN $ / Bs (fase 2 parte 2): pasarela hospedada del país, sin débito automático.
                       "pasarela": pasarela, "pasarelaNombre": ph.nombre_pasarela(pasarela) if hosp else "",
                       "descuentoPrepago": float(a.get("descuentoPrepago") or 0), "mesesMinPrepago": int(a.get("mesesMinPrepago") or 3),
                       "dtoFam": _dto_fam_por_quien(a, (ses or {}).get("email") or ""), "fam": _fam_base(a, (ses or {}).get("email") or ""),
                       "lat": a.get("lat"), "lng": a.get("lng"), "nombre": a.get("nombre"),
                       # Cargo por servicio (fase 2): con el flag apagado el JS no cotiza ni pinta la línea.
-                      "cargo": _cs.activo("academias"), "deporte": str(a.get("deporte") or ""),
+                      "cargo": (not directo) and _cs.activo("academias"), "deporte": str(a.get("deporte") or ""),
                       "login": sesion.activo(), "sesion": ses}, ensure_ascii=False)
     cuerpo = (f"<div style='padding-top:22px'>{ficha}</div>{tarifario}{panel}"
               f"<script>window.__academia={cfg};</script>"
-              + ("" if hosp else "<script src='https://checkout.culqi.com/js/v4'></script>")
+              + ("" if (hosp or directo) else "<script src='https://checkout.culqi.com/js/v4'></script>")
               + f"<script>{sesion.JS_SESION if sesion.activo() else ''}{ph.JS_IR_PASARELA if hosp else ''}{_JS_ACADEMIA}</script>")
     return ui.shell(a["nombre"], cuerpo, con_barra=True, desc=f"{a['nombre']} · academia de {dep_nombre.lower()} · {lugar}. Matricúlate en línea.",
                     og_image=(_fotos_academia(a) or ["/static/brand/logo_pichangol.png"])[0], sesion=ses,
@@ -382,6 +413,8 @@ _JS_ACADEMIA = r"""
 (function(){
   var C = window.__academia, $ = function(id){ return document.getElementById(id); };
   var HOSP = !!(C.pasarela && C.pasarela !== 'culqi');
+  // PLAN ACADEMIA: matrícula sin cobro; el alumno le yapea directo a la academia después.
+  var DIRECTO = !!C.directo;
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function fmt(v){ return C.moneda + ' ' + (Math.round(v * 100) / 100).toFixed(2); }
   // CARRITO DE MATRÍCULA: `carrito` = personas ya guardadas; el formulario es la
@@ -506,12 +539,16 @@ _JS_ACADEMIA = r"""
     // Con la pasarela hospedada ($ / Bs) no hay tarjeta guardada: los meses siguientes se pagan desde Mis clases.
     var SIG = HOSP ? ' se pagan cada mes desde Mis clases (sin débito automático).' : ' se cobran mes a mes a la misma tarjeta.';
     var nota = '';
-    if(personas === 1 && r) nota = r.mesAMes ? ('Hoy pagas 1 mes; los ' + (st.n - 1) + ' siguientes' + SIG) : (st.n > 1 ? 'Pago adelantado: quedas al día ' + st.n + ' ' + unidad(p) + '.' : '');
+    if(DIRECTO){
+      nota = 'No pagas nada aquí: al matricularte ves el Yape de la academia y le yapeas ' + fmt(totalPagar) + ' directo' +
+        (mesAMesNombres.length ? '; los meses siguientes también se los pagas a la academia (te los recordamos antes de cada vencimiento).' : '.');
+    }
+    else if(personas === 1 && r) nota = r.mesAMes ? ('Hoy pagas 1 mes; los ' + (st.n - 1) + ' siguientes' + SIG) : (st.n > 1 ? 'Pago adelantado: quedas al día ' + st.n + ' ' + unidad(p) + '.' : '');
     else if(personas === 1 && nCar) nota = st.carrito[0].r.mesAMes ? ('Hoy pagas 1 mes; los siguientes' + SIG) : '';
     else if(mesAMesNombres.length) nota = 'Un solo cobro hoy. Los meses siguientes de ' + mesAMesNombres.join(', ') + SIG;
     else nota = 'Un solo cobro por las ' + personas + ' personas.';
     $('notaModo').textContent = nota;
-    ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = false; $(id).textContent = 'Pagar ' + fmt(totalPagar) + (personas > 1 ? ' · ' + personas + ' personas' : ''); });
+    ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = false; $(id).textContent = DIRECTO ? (personas > 1 ? 'Matricular a ' + personas + ' personas' : 'Matricularme') : ('Pagar ' + fmt(totalPagar) + (personas > 1 ? ' · ' + personas + ' personas' : '')); });
   }
   document.addEventListener('click', function(ev){
     var q = ev.target.closest('.quitar');
@@ -579,6 +616,20 @@ _JS_ACADEMIA = r"""
     var personas = st.carrito.map(aReq);
     if(st.plan){ var v = validarActual(); if(v){ mostrarError(v); return; } personas.push(aReq(itemActual())); }
     if(!personas.length){ mostrarError('Elige un programa en el tarifario.'); window.scrollTo({top: 0, behavior: 'smooth'}); return; }
+    if(DIRECTO){
+      // Sin Culqi ni pasarela: se registra la matrícula y el comprobante muestra el Yape de la academia.
+      ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = true; });
+      pcgCargando('Registrando tu matrícula…');
+      fetch('/web/matricular-directo', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({academia_id: C.id, personas: personas})})
+        .then(function(x){ return x.json().catch(function(){ return {ok: false}; }); })
+        .then(function(p){
+          if(p.ok){ pcgIr(p.url, 'Abriendo tu matrícula…'); return; }
+          pcgCargando(false); pintar();
+          if(p.error === 'sesion_requerida'){ C.sesion = null; var lb = $('loginBox'), db = $('datosBox'); if(lb) lb.style.display = ''; if(db) db.style.display = 'none'; }
+          mostrarError(p.mensaje || 'No pudimos registrar tu matrícula. Inténtalo de nuevo.');
+        }).catch(function(){ pcgCargando(false); pintar(); mostrarError('No pudimos registrar tu matrícula. Revisa tu conexión.'); });
+      return;
+    }
     if(!C.pk && !HOSP){ mostrarError('El pago en línea no está disponible por ahora.'); return; }
     var total = totalCarrito() + (st.plan ? calc().total : 0);
     // El monto que ve Culqi = base + cargo por servicio cotizado por el servidor
@@ -789,7 +840,8 @@ def _preparar_personas(a: dict, email: str, personas: list[PersonaReq]) -> tuple
 
 
 def _fila_matricula(a: dict, ses: dict | None, email: str, it: dict, charge_id: str, medio: str, ahora: datetime, us: int,
-                    cargo: dict | None = None, auto_debito: bool = True, pasarela: str = "") -> tuple[str, dict]:
+                    cargo: dict | None = None, auto_debito: bool = True, pasarela: str = "",
+                    directo: bool = False) -> tuple[str, dict]:
     """La fila de `pichangol_matriculas` EXACTAMENTE como `AppState.matricular`
     (el profe la ve en su app): `Alumno.toJson` + `cuotas` + extras web.
     `auto_debito=False` (cobro por pasarela hospedada en $ / Bs, sin tarjeta
@@ -813,6 +865,29 @@ def _fila_matricula(a: dict, ses: dict | None, email: str, it: dict, charge_id: 
     if es_menor and it["edad"]:
         alumno["edad"] = it["edad"]
     cuotas = []
+    if directo:
+        # PLAN ACADEMIA: NINGUNA cuota nace pagada ni con débito automático; el
+        # alumno le yapea a la academia y reporta el código de seguridad.
+        if plan["tipo"] == "porClase":
+            cuotas.append({"id": f"cu_{us}", "academiaId": a["id"], "alumnoId": alumno_id,
+                           "concepto": f"{n} clase{'' if n == 1 else 's'} particular{'' if n == 1 else 'es'} · {plan['nombre']}{nota_dto}",
+                           "monto": round(float(it["total"]), 2), "vencimiento": ahora.isoformat(), "pagada": False})
+        elif it["mes_a_mes"]:
+            for i in range(n):
+                venc = _sumar_meses(ahora, i)
+                cuotas.append({"id": f"cu_{us}_{i}", "academiaId": a["id"], "alumnoId": alumno_id,
+                               "concepto": f"{plan['nombre']} · {_mes_nombre(venc)}{nota_dto}", "monto": precio_mes,
+                               "vencimiento": venc.isoformat(), "pagada": False})
+        else:
+            meses = (1 if plan["tipo"] == "mensual" else plan["meses"]) * n
+            concepto = (f"{plan['nombre']} · {_mes_nombre(ahora)}{nota_dto}" if meses == 1
+                        else f"{plan['nombre']} · {meses} meses (adelantado)")
+            cuotas.append({"id": f"cu_{us}_0", "academiaId": a["id"], "alumnoId": alumno_id, "concepto": concepto,
+                           "monto": round(float(it["total"]), 2), "vencimiento": ahora.isoformat(), "pagada": False})
+        data = dict(alumno, cuotas=cuotas, canal="web",
+                    pagoDirecto={"total": float(it["total"]), "ahorro": float(it["ahorro"]), "dtoFamiliar": float(it["dto_fam"]),
+                                 "fecha": ahora.isoformat()})
+        return alumno_id, data
     if plan["tipo"] == "porClase":
         cuotas.append({"id": f"cu_{us}", "academiaId": a["id"], "alumnoId": alumno_id,
                        "concepto": f"{n} clase{'' if n == 1 else 's'} particular{'' if n == 1 else 'es'} · {plan['nombre']}",
@@ -987,6 +1062,10 @@ def matricular_pagado(a: dict, ses: dict | None, email: str, items: list[dict], 
 def _validar_cabecera(request: Request | None, academia_id: str, hospedado: bool = False) -> tuple[dict | None, dict | None, dict | None]:
     """(ses, academia, error): sesión (si el login está activo), academia
     existente y pago web disponible en su moneda."""
+    if _ap.es_suscripcion():
+        # PLAN ACADEMIA: Pichangol no cobra matrículas; van por /web/matricular-directo.
+        return None, None, {"ok": False, "error": "pago_directo",
+                            "mensaje": "Esta academia recibe el pago directo por Yape. Recarga la página para matricularte."}
     ses = sesion.de_request(request) if sesion.activo() else None
     if sesion.activo() and not ses:
         return None, None, {"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión con Google para matricularte."}
@@ -1037,6 +1116,74 @@ def matricular_varios(req: MatricularVariosReq, request: Request = None) -> dict
     if error:
         return error
     return _cobrar_y_matricular(a, ses, req.token, req.medio, items)
+
+
+# ── matrícula DIRECTA (Plan Academia: el alumno le paga a la academia) ──────
+
+class MatricularDirectoReq(BaseModel):
+    academia_id: str
+    personas: list[PersonaReq]
+
+
+@router.post("/web/matricular-directo")
+def matricular_directo(req: MatricularDirectoReq, request: Request = None) -> dict:
+    """PLAN ACADEMIA (suscripción, 10-oct-2026): registra la matrícula (una
+    persona o el carrito) SIN cobrar. Misma validación y descuentos que el
+    camino con cobro (`_preparar_personas`); las cuotas nacen PENDIENTES (mes
+    a mes: una por mes, la 1.ª vence hoy; adelantado: una sola con el total
+    con descuento; por clase: una). Sin `post_matricula`, sin `cobro_web`,
+    sin comisión: el alumno le yapea a la academia y reporta el código de
+    seguridad en el comprobante o en Mis clases."""
+    if not _ap.es_suscripcion():
+        return {"ok": False, "error": "modelo", "mensaje": "Esta academia cobra la matrícula en línea. Recarga la página."}
+    ses = sesion.de_request(request) if sesion.activo() else None
+    if not ses:
+        return {"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión con Google para matricularte."}
+    a = datos.academia(req.academia_id)
+    if not a or not a.get("nombre"):
+        return {"ok": False, "error": "academia", "mensaje": "La academia ya no está disponible."}
+    a.setdefault("id", req.academia_id)
+    if not _ap.beneficios(a):
+        return {"ok": False, "error": "sin_plan", "mensaje": "Esta academia recibe matrículas por WhatsApp. Escríbele desde su ficha."}
+    if not req.personas:
+        return {"ok": False, "error": "vacio", "mensaje": "Agrega al menos una persona a tu matrícula."}
+    if len(req.personas) > 8:
+        return {"ok": False, "error": "tope", "mensaje": "Puedes matricular hasta 8 personas a la vez."}
+    email = (ses.get("email") or "").strip().lower()
+    items, error = _preparar_personas(a, email, req.personas)
+    if error:
+        return error
+    sim, _iso_m = _moneda(a)
+    ahora = datetime.now()
+    base_us = int(time.time() * 1_000_000)
+    guardadas: list[tuple[str, dict]] = []
+    for k, it in enumerate(items):
+        alumno_id, data = _fila_matricula(a, ses, email, it, "", "", ahora, base_us + k, directo=True)
+        if datos.insertar_matricula(alumno_id, a["id"], email, data):
+            guardadas.append((alumno_id, it))
+        else:
+            print(f"[matricula-directa] no se guardó {it['nombre']} ({email}, {a['id']})", flush=True)
+    if not guardadas:
+        return {"ok": False, "error": "guardar", "mensaje": "No pudimos registrar la matrícula. Inténtalo de nuevo en un momento."}
+    total = round(sum(float(it["total"]) for _a, it in guardadas), 2)
+    dueno = (a.get("dueno") or "").strip().lower()
+    if dueno:
+        try:
+            from pagos.router import _aviso_push_usuario
+            if len(guardadas) == 1:
+                it = guardadas[0][1]
+                _aviso_push_usuario(dueno, "Nuevo alumno 🎓", f"{it['nombre']} se matriculó en {a['nombre']} · {it['plan']['nombre']} "
+                                                              f"(pago pendiente: {sim} {total:.2f} por Yape directo).", tipo="academia")
+            else:
+                lista = ", ".join(f"{it['nombre']} ({it['plan']['nombre']})" for _x, it in guardadas)
+                _aviso_push_usuario(dueno, f"{len(guardadas)} alumnos nuevos 🎓", f"{(ses or {}).get('nombre') or email} matriculó a {lista} en {a['nombre']} "
+                                                                                 f"(pago pendiente: {sim} {total:.2f} por Yape directo).", tipo="academia")
+        except Exception:  # noqa: BLE001
+            pass
+    ids = [aid for aid, _x in guardadas]
+    print(f"[matricula-directa] {email} → {a['nombre']} · {len(ids)} persona(s) · {sim} {total:.2f} pendiente · {','.join(ids)}", flush=True)
+    url = f"/academia/{a['id']}/matricula/{ids[0]}" if len(ids) == 1 else f"/academia/{a['id']}/matriculas?ids={','.join(ids)}"
+    return {"ok": True, "url": url, "alumno_id": ids[0], "alumno_ids": ids, "total": total}
 
 
 # ── matrícula en $ / Bs por PASARELA HOSPEDADA (fase 2 parte 2, oct-2026) ─────
@@ -1119,6 +1266,8 @@ def comprobante_matricula(request: Request, academia_id: str, alumno_id: str) ->
         return ui.shell("Matrícula", ("<div class='panel' style='text-align:center;margin-top:24px'><h1>Esta matrícula es privada</h1>"
                                       "<p class='sub'>Inicia sesión con la cuenta de Google con la que te matriculaste.</p>"
                                       f"<div class='acciones' style='justify-content:center'><a class='btn' href='/entrar?volver={e(volver)}'>Iniciar sesión</a></div></div>"), sesion=ses)
+    if _ap.es_suscripcion():
+        return _comprobante_directo(a, [m], ses)
     sim, _iso_m = _moneda(a)
     cuotas = [c for c in (m.get("cuotas") or []) if isinstance(c, dict)]
     pagadas = [c for c in cuotas if c.get("pagada")]
@@ -1212,6 +1361,8 @@ def comprobante_matriculas(request: Request, academia_id: str, ids: str = "") ->
                 return ui.shell("Matrícula", ("<div class='panel' style='text-align:center;margin-top:24px'><h1>Esta matrícula es privada</h1>"
                                               "<p class='sub'>Solo la ve quien la pagó.</p></div>"), sesion=ses)
             return comprobante_matricula(request, academia_id, mia["id"])
+    if _ap.es_suscripcion():
+        return _comprobante_directo(a, ms, ses)
     sim, _iso_m = _moneda(a)
     total = ahorro = 0.0
     bloques = ""
@@ -1250,4 +1401,46 @@ def comprobante_matriculas(request: Request, academia_id: str, ids: str = "") ->
               + (f"<a class='btn' href='{wa}' target='_blank' rel='noopener'>💬 Escribir a la academia</a>" if tel else "")
               + f"<a class='btn sec' href='/academia/{e(academia_id)}'>Ver la academia</a><a class='btn sec' href='{PLAY_URL}'>Abrir en la app</a></div></div>"
               "<script>(function(){try{var a=sessionStorage.getItem('pcg_aviso_mat');if(a){var el=document.getElementById('avisoMat');el.textContent=a;el.style.display='block';sessionStorage.removeItem('pcg_aviso_mat');}}catch(e){}})();</script>")
+    return ui.shell("Matrícula registrada", cuerpo, sesion=ses, extra_head=_CSS_CARRITO)
+
+
+# ── comprobante con PAGO DIRECTO a la academia (Plan Academia) ────────────────
+
+def _comprobante_directo(a: dict, ms: list[dict], ses: dict | None) -> HTMLResponse:
+    """Matrícula registrada + "Paga a la academia": cuotas con su estado
+    (pendiente / por confirmar / pagado / rechazado) y la caja con el Yape de
+    la academia para reportar el código de seguridad."""
+    from web import academia_plan_web as apw
+    sim, _iso_m = _moneda(a)
+    bloques, pagado = "", 0.0
+    for m in ms:
+        cuotas = sorted([c for c in (m.get("cuotas") or []) if isinstance(c, dict)], key=lambda c: str(c.get("vencimiento") or ""))
+        pagado += sum(float(c.get("monto") or 0) for c in cuotas if c.get("pagada"))
+        quien = {"hijo": "Mi hijo(a)", "familiar": "Familiar"}.get(m.get("parentesco") or "", "Yo")
+        pd = m.get("pagoDirecto") if isinstance(m.get("pagoDirecto"), dict) else {}
+        dto = float(pd.get("dtoFamiliar") or 0)
+        filas = "".join(
+            f"<li style='align-items:flex-start'><span style='min-width:0'>{e(c.get('concepto'))} · {e(sim)} {float(c.get('monto') or 0):.2f}"
+            f"{'' if c.get('pagada') else ' · vence ' + e(str(c.get('vencimiento'))[:10])}<br>{apw.pill_cuota(c)}</span></li>" for c in cuotas)
+        bloques += (f"<div class='cart-it' style='margin-top:12px'><div class='ci-t'><div><b>{e(m.get('nombre'))}</b> <span class='sub'>{quien}</span>"
+                    + (f"<div class='sub' style='color:#0B7A55'>🎉 Descuento familiar −{dto:.0f} % ({'2.º' if int(m.get('ordenHermano') or 1) == 2 else '3.º o más'} de tu familia)</div>" if dto > 0 else "")
+                    + (f"<div class='sub' style='color:#0B7A55'>Ahorras {e(sim)} {float(pd.get('ahorro') or 0):.2f} en descuentos</div>" if float(pd.get("ahorro") or 0) > 0 and dto <= 0 else "")
+                    + f"</div></div><ul class='datos' style='margin-top:8px'>{filas}</ul></div>")
+    nombres = ", ".join(str(m.get("nombre") or "") for m in ms)
+    varios = len(ms) > 1
+    pago = apw.bloque_pago_directo(a, [(m, [c for c in (m.get("cuotas") or []) if isinstance(c, dict)]) for m in ms])
+    tel = _wa(a)
+    wa = ui.enlace_whatsapp(f"Hola, acabo de matricular a {nombres} en {a['nombre']} por Pichangol.", tel) if tel else ""
+    cuerpo = (f"<style>{apw.CSS_PD}</style><div class='panel' style='margin-top:24px'><div class='check-ok'>✓</div>"
+              f"<h1 style='text-align:center'>{'¡Matrícula familiar registrada!' if varios else '¡Matrícula registrada!'}</h1>"
+              f"<p class='sub' style='text-align:center'>{e(nombres)} {'ya son alumnos' if varios else 'ya es alumno'} de <b>{e(a['nombre'])}</b>. "
+              "El profe lo ve en su lista y tú en Mis clases (web y app).</p>"
+              f"{bloques}"
+              + (f"<div class='total'><span>Pagado</span><span>{e(sim)} {pagado:.2f}</span></div>" if pagado > 0 else "")
+              + "</div>" + pago
+              + "<div class='acciones' style='margin-top:14px'>"
+              + "<a class='btn sec' href='/mis-clases'>Mis clases y pagos</a>"
+              + (f"<a class='btn sec' href='{wa}' target='_blank' rel='noopener'>💬 Escribir a la academia</a>" if wa else "")
+              + f"<a class='btn sec' href='/academia/{e(a['id'])}'>Ver la academia</a></div>"
+              + f"<script>{apw.JS_PD}</script>")
     return ui.shell("Matrícula registrada", cuerpo, sesion=ses, extra_head=_CSS_CARRITO)

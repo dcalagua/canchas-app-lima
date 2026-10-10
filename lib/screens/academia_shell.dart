@@ -12,6 +12,7 @@ import 'cobros_screen.dart';
 import 'crear_academia_screen.dart';
 import 'cuenta_screen.dart';
 import 'mi_academia_screen.dart';
+import 'plan_academia_screen.dart';
 import 'planes_screen.dart';
 import 'reporte_academia_screen.dart';
 import 'servicios_screen.dart';
@@ -48,12 +49,17 @@ class _AcademiaShellState extends State<AcademiaShell> {
           const azul = Color(0xFF2AA9E0);
           final paginas = <Widget>[
             const MiAcademiaScreen(), // panel (alumnos, plata, código)
-            PlanesScreen(academia: ac), // plan de trabajo + evaluación
+            // PLAN ACADEMIA: sin plan vigente, la gestión muestra el candado
+            // (Cobros sigue abierto para confirmar los pagos reportados).
+            CandadoPlanAcademia(
+                academia: ac, child: PlanesScreen(academia: ac)),
             CobrosScreen(academiaId: ac.id),
-            AsistenciaScreen(academiaId: ac.id),
+            CandadoPlanAcademia(
+                academia: ac, child: AsistenciaScreen(academiaId: ac.id)),
             ChatsAcademiaScreen(academiaId: ac.id),
             CampeonatosScreen(academiaId: ac.id),
-            ReporteAcademiaScreen(academiaId: ac.id),
+            CandadoPlanAcademia(
+                academia: ac, child: ReporteAcademiaScreen(academiaId: ac.id)),
             const CuentaScreen(), // billetera única (saldo + movimientos)
           ];
           final iconos = <IconData>[
@@ -150,12 +156,17 @@ class _AcademiaShellState extends State<AcademiaShell> {
                     index: idx,
                     children: [
                       const MiAcademiaScreen(),
-                      PlanesScreen(academia: ac),
+                      CandadoPlanAcademia(
+                          academia: ac, child: PlanesScreen(academia: ac)),
                       CobrosScreen(academiaId: ac.id),
                       ChatsAcademiaScreen(academiaId: ac.id),
                       CampeonatosScreen(academiaId: ac.id),
-                      AsistenciaScreen(academiaId: ac.id),
-                      ReporteAcademiaScreen(academiaId: ac.id),
+                      CandadoPlanAcademia(
+                          academia: ac,
+                          child: AsistenciaScreen(academiaId: ac.id)),
+                      CandadoPlanAcademia(
+                          academia: ac,
+                          child: ReporteAcademiaScreen(academiaId: ac.id)),
                       if (kServiciosPichangolActivo)
                         ServiciosScreen(
                             negocio: appState.negocioServiciosDeAcademia(ac),

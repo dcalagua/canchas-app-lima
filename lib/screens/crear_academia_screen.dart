@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:image_picker/image_picker.dart';
@@ -44,6 +45,36 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   late final TextEditingController _sede =
       TextEditingController(text: widget.academia?.sedeClub ?? '');
   // Zona / distrito (para el ranking global por ciudad).
+  // COBRO DIRECTO por Yape (Plan Academia): a este Yape le pagan los alumnos.
+  late final TextEditingController _yape = TextEditingController(
+      text: widget.academia?.cobroDirecto?.yape ?? '');
+  late final TextEditingController _yapeTitular = TextEditingController(
+      text: widget.academia?.cobroDirecto?.titular ?? '');
+  String? _errYape;
+  String? _errYapeTitular;
+
+  /// ¿Se muestra la sección "Cobro directo por Yape"? Solo con academias por
+  /// suscripción y sede en Perú (Yape es peruano).
+  bool get _conCobroDirecto =>
+      appState.academiasPorSuscripcion && _paisAcademia.iso == 'PE';
+
+  /// Valida el Yape (misma regla que el backend). Devuelve el error o null.
+  String? _validarYape() {
+    if (!_conCobroDirecto) return null;
+    final y = _yape.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final t = _yapeTitular.text.trim();
+    if (y.isEmpty && t.isEmpty) return null;
+    if (!RegExp(r'^9\d{8}$').hasMatch(y)) {
+      setState(() => _errYape = 'Debe ser un celular de 9 dígitos que empiece con 9.');
+      return 'El Yape debe ser un celular peruano de 9 dígitos que empiece con 9.';
+    }
+    if (t.length < 3) {
+      setState(() => _errYapeTitular = 'Escribe el nombre que sale en tu Yape.');
+      return 'Escribe el nombre que sale en tu Yape (así lo reconocen tus alumnos).';
+    }
+    return null;
+  }
+
   late final TextEditingController _zona =
       TextEditingController(text: widget.academia?.zona ?? '');
   late final TextEditingController _desc =
@@ -467,6 +498,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   void dispose() {
     _nombre.dispose();
     _whatsapp.dispose();
+    _yape.dispose();
+    _yapeTitular.dispose();
     _sede.dispose();
     _zona.dispose();
     _nombreFocus.dispose();
@@ -827,8 +860,27 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       _avisarRojo(eW);
       return false;
     }
+    final eY = _validarYape();
+    if (eY != null) {
+      setState(() => _paso = 1);
+      _avisarRojo(eY);
+      return false;
+    }
     return true;
   }
+
+  /// Yape escrito en el editor (ya validado). null = no tocar / vacío.
+  CobroDirecto? _cobroDirectoNuevo() {
+    if (!_conCobroDirecto) return null;
+    final y = _yape.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (y.isEmpty) return null;
+    return CobroDirecto(yape: y, titular: _yapeTitular.text.trim());
+  }
+
+  /// El dueño borró su Yape en el editor → se quita de la academia.
+  bool _limpiarCobroDirecto() =>
+      _conCobroDirecto &&
+      _yape.text.replaceAll(RegExp(r'[^0-9]'), '').isEmpty;
 
   Future<void> _guardar() async {
     if (!_validar()) return;
@@ -930,6 +982,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
         sedes: _sedesAcademia,
         horarios: horarios,
         preciosSede: preciosSede,
+        cobroDirecto: _cobroDirectoNuevo(),
+        limpiarCobroDirecto: _limpiarCobroDirecto(),
       );
       return appState.guardarAcademia(academia);
     }, texto: 'Guardando…');
@@ -973,6 +1027,11 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
         setState(() => _errWhatsapp = m);
         _whatsappFocus.requestFocus();
         _avisarRojo(m);
+        return false;
+      }
+      final eY = _validarYape();
+      if (eY != null) {
+        _avisarRojo(eY);
         return false;
       }
     }
@@ -1156,6 +1215,77 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 prefixText: '+${_paisAcademia.codigoTel} ',
                 errorText: _errWhatsapp),
           ),
+          if (_conCobroDirecto) ...[
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: trazo),
+                boxShadow: const [
+                  BoxShadow(
+                      color: Color(0x0F000000),
+                      blurRadius: 10,
+                      offset: Offset(0, 3)),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      IconoVivo(Icons.payments_outlined),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text('Cobro directo por Yape',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 15)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                      'Tus alumnos te yapean directo a este número y te avisan '
+                      'en Pichangol con el código de seguridad de su Yape. Tú '
+                      'confirmas con un toque. Pichangol no toca tu plata.',
+                      style: TextStyle(color: textoTenue, fontSize: 12.5)),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _yape,
+                    keyboardType: TextInputType.phone,
+                    maxLength: 9,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: (_) {
+                      if (_errYape != null) setState(() => _errYape = null);
+                    },
+                    decoration: InputDecoration(
+                        labelText: 'Tu número de Yape',
+                        hintText: '9XXXXXXXX',
+                        counterText: '',
+                        prefixIcon: const IconoVivo(Icons.phone_iphone),
+                        errorText: _errYape),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _yapeTitular,
+                    textCapitalization: TextCapitalization.words,
+                    maxLength: 60,
+                    onChanged: (_) {
+                      if (_errYapeTitular != null) {
+                        setState(() => _errYapeTitular = null);
+                      }
+                    },
+                    decoration: InputDecoration(
+                        labelText: 'Nombre del titular (como sale en Yape)',
+                        counterText: '',
+                        prefixIcon: const IconoVivo(Icons.person_outline),
+                        errorText: _errYapeTitular),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           TextField(
             controller: _desc,

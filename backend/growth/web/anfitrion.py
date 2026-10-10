@@ -65,12 +65,18 @@ MENU = [
     ("disponibilidad", "Disponibilidad", "Abre o cierra turnos de tus canchas", "#7CB518", "🟢", "/anfitrion/disponibilidad", True),
     ("academia", "Mi academia", "Soy profe: alumnos, cuotas y cobros", "#E07A3F", "📣", "/anfitrion/academia", True),
     ("cobros", "Cobros de academia", "Quién debe, recordatorios y cobro en efectivo", "#D4B048", "💳", "/anfitrion/cobros", True),
+    ("plan-academia", "Plan Academia", "Tu suscripción: prueba gratis, precio fijo al mes y tus alumnos te pagan directo", "#742284", "🎓", "/anfitrion/academia/plan", True),
     ("campeonatos", "Mis campeonatos", "Organiza torneos (fútbol, tenis…), invita y sortea", "#D4B048", "🏆", "/anfitrion/campeonatos", True),
     ("tienda", "Mi tienda", "Vende en el Marketplace Pichangol: raquetas, pelotas y más", "#7B61FF", "🏪", "/anfitrion/tienda", True),
     ("bodega", "Mi bodega", "Caja rápida, stock, pedidos a la cancha y carta con QR (Pro)", "#E07A3F", "🧃", "/anfitrion/bodega", True),
     ("boleador", "Soy boleador", "Peloteo por turno: pon tu categoría, tu tarifa y dónde atiendes", "#0E8F67", "🎾", "/anfitrion/boleador", True),
     ("verificador", "Verificador", "Rol de campo: visitas con foto, GPS y firma", "#0E8F67", "🛡️", "/anfitrion/verificador", True),
 ]
+
+
+def _plan_academia_activo() -> bool:
+    import academia_plan
+    return academia_plan.es_suscripcion()
 
 
 def _cabecera(seccion: str, ses: dict | None, tabs_visibles: bool = True) -> str:
@@ -104,7 +110,8 @@ def pagina_menu(request: Request) -> HTMLResponse:
         f"<a class='anf-item' href='{href}'><span class='ico' style='background:{color}'>{ico}</span>"
         f"<span class='txt'><b>{e(titulo)}</b><small>{e(desc)}</small></span>"
         + ("" if web else "<span class='pill gris'>En la app</span>")
-        + "<span class='chev'>›</span></a>" for _k, titulo, desc, color, ico, href, web in MENU)
+        + "<span class='chev'>›</span></a>" for _k, titulo, desc, color, ico, href, web in MENU
+        if _k != "plan-academia" or _plan_academia_activo())
     cuerpo = ("<div class='anf-hero'><a class='volver' href='/' aria-label='Volver'>‹</a><h1>Modo anfitrión</h1>"
               "<p>Publica tu cancha o academia y recibe reservas y alumnos.</p></div>"
               f"<div class='anf-menu'>{items}</div>")

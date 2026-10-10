@@ -1718,6 +1718,18 @@ def pagina_cobros(request: Request, academia: str = "") -> HTMLResponse:
                   "<a href='/anfitrion/academia'>Créala aquí</a> y cobra las mensualidades de tus alumnos.</div>")
         return _pagina("Cobros de academia", cuerpo, ses, "cobros")
     a = next((x for x in acads if x["id"] == academia), acads[0])
+    for x in acads:
+        x.setdefault("dueno", ses["email"])
+    from web import academia_plan_web as apw
+    # PLAN ACADEMIA: los yapeos que reportaron los alumnos SIEMPRE se confirman aquí,
+    # aunque el plan esté vencido (es plata de los alumnos, no del plan).
+    por_confirmar = apw.seccion_por_confirmar(acads)
+    if not apw.beneficios(a):
+        chips = ("<div class='chips' style='margin-top:12px'>" + "".join(
+            f"<a class='chip{' sel' if x['id'] == a['id'] else ''}' href='?academia={e(x['id'])}'>{e(x.get('nombre') or 'Academia')}</a>" for x in acads)
+            + "</div>") if len(acads) > 1 else ""
+        cuerpo = (f"<h1 class='anf-hola'>Cobros · {e(a.get('nombre') or 'Mi academia')}</h1>{chips}{por_confirmar}" + apw.paywall(a))
+        return _pagina("Cobros de academia", cuerpo, ses, "cobros")
     sim = _moneda(a)
     hoy = date.today().isoformat()
     mes = hoy[:7]
@@ -1761,7 +1773,7 @@ def pagina_cobros(request: Request, academia: str = "") -> HTMLResponse:
         + "</div>") if len(acads) > 1 else ""
     cuerpo = (
         f"<h1 class='anf-hola'>Cobros · {e(a.get('nombre') or 'Mi academia')}</h1><p class='sub'>Lo que abres a diario para cobrar: quién debe, "
-        "recordatorios por la app o WhatsApp y el cobro en efectivo por cuota.</p>" + chips
+        "recordatorios por la app o WhatsApp y el cobro en efectivo por cuota.</p>" + chips + por_confirmar
         + "<div class='kpis'>" + _kpi("Por cobrar", e(_m(por_cobrar, sim))) + _kpi("Vencido", e(_m(vencido, sim)), "", "bad" if vencido > 0 else "")
         + _kpi("Cobrado este mes", e(_m(cobrado, sim)), "", "ok") + "</div>"
         + (f"<div class='ng-rec'><b>🔔 Tienes {len(por_recordar)} alumno{'s' if len(por_recordar) != 1 else ''} por recordar</b>"

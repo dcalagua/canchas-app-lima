@@ -196,6 +196,24 @@ def android_manifest(text):
             '        </provider>\n    </application>'
         )
         text = text.replace("</application>", prov, 1)
+    # YAPE AUTOMÁTICO (fase 2 del Plan Academia, 10-oct-2026): servicio que
+    # lee SOLO las notificaciones de Yape del celular de la academia (con el
+    # permiso "Acceso a notificaciones" que el dueño da a mano en Ajustes) para
+    # confirmar solos los pagos que sus alumnos reportan. Código en
+    # tool/android/YapeListener.kt.
+    if ".YapeListener" not in text:
+        serv = (
+            '        <service\n'
+            '            android:name=".YapeListener"\n'
+            '            android:label="Pichangol · pagos de Yape"\n'
+            '            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"\n'
+            '            android:exported="false">\n'
+            '            <intent-filter>\n'
+            '                <action android:name="android.service.notification.NotificationListenerService"/>\n'
+            '            </intent-filter>\n'
+            '        </service>\n    </application>'
+        )
+        text = text.replace("</application>", serv, 1)
     # Ícono + color por defecto de las notificaciones push (FCM). Sin esto,
     # Android pinta un ícono genérico (cuadrito) en vez del pin de Pichangol.
     if "default_notification_icon" not in text:
@@ -856,6 +874,8 @@ def configurar_sonido_notificacion():
         "import android.net.Uri\n"
         "import android.os.Build\n"
         "import android.os.Bundle\n"
+        "import android.provider.Settings\n"
+        "import androidx.core.app.NotificationManagerCompat\n"
         "import androidx.core.content.FileProvider\n"
         "import io.flutter.embedding.android.FlutterActivity\n"
         "import io.flutter.embedding.engine.FlutterEngine\n"
@@ -877,6 +897,55 @@ def configurar_sonido_notificacion():
         "                        val isVideo = call.argument<Boolean>(\"video\") ?: false\n"
         "                        val appId = call.argument<String>(\"appId\") ?: \"\"\n"
         "                        result.success(compartirHistoria(call.method, path, isVideo, appId))\n"
+        "                    }\n"
+        "                    else -> result.notImplemented()\n"
+        "                }\n"
+        "            }\n"
+        "        // Yape automático (fase 2 del Plan Academia): permiso de acceso a\n"
+        "        // notificaciones + configuración del YapeListener.\n"
+        "        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, \"pichangol/yape_auto\")\n"
+        "            .setMethodCallHandler { call, result ->\n"
+        "                when (call.method) {\n"
+        "                    \"permisoActivo\" -> result.success(\n"
+        "                        NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName))\n"
+        "                    \"abrirPermiso\" -> {\n"
+        "                        try {\n"
+        "                            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))\n"
+        "                            result.success(true)\n"
+        "                        } catch (e: Exception) {\n"
+        "                            result.success(false)\n"
+        "                        }\n"
+        "                    }\n"
+        "                    \"abrirInfoApp\" -> {\n"
+        "                        try {\n"
+        "                            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,\n"
+        "                                Uri.parse(\"package:\" + packageName)))\n"
+        "                            result.success(true)\n"
+        "                        } catch (e: Exception) {\n"
+        "                            result.success(false)\n"
+        "                        }\n"
+        "                    }\n"
+        "                    \"configurar\" -> {\n"
+        "                        YapeAuto.configurar(applicationContext,\n"
+        "                            call.argument<String>(\"url\") ?: \"\",\n"
+        "                            call.argument<String>(\"appKey\") ?: \"\",\n"
+        "                            call.argument<String>(\"email\") ?: \"\",\n"
+        "                            call.argument<String>(\"token\") ?: \"\",\n"
+        "                            call.argument<List<String>>(\"paquetes\") ?: emptyList(),\n"
+        "                            call.argument<Boolean>(\"activo\") ?: false)\n"
+        "                        YapeAuto.enviarPendientes(applicationContext)\n"
+        "                        result.success(true)\n"
+        "                    }\n"
+        "                    \"estado\" -> {\n"
+        "                        val p = YapeAuto.prefs(applicationContext)\n"
+        "                        result.success(mapOf(\n"
+        "                            \"activo\" to p.getBoolean(\"activo\", false),\n"
+        "                            \"vinculado\" to !(p.getString(\"token\", \"\") ?: \"\").isEmpty(),\n"
+        "                            \"pendientes\" to YapeAuto.pendientes(applicationContext)))\n"
+        "                    }\n"
+        "                    \"reintentar\" -> {\n"
+        "                        YapeAuto.enviarPendientes(applicationContext)\n"
+        "                        result.success(true)\n"
         "                    }\n"
         "                    else -> result.notImplemented()\n"
         "                }\n"
@@ -938,6 +1007,11 @@ def configurar_sonido_notificacion():
     )
     with open(kt, "w", encoding="utf-8") as f:
         f.write(contenido)
+    # Yape automático: el servicio nativo vive en el repo como archivo real.
+    origen_yape = os.path.join("tool", "android", "YapeListener.kt")
+    if os.path.exists(origen_yape):
+        shutil.copyfile(origen_yape, os.path.join(kt_dir, "YapeListener.kt"))
+        print("  YapeListener.kt copiado (Yape automático)")
     print("  MainActivity: canal pichan_msgs_v2 + MethodChannel share_story; provider_paths_app.xml")
 
 

@@ -432,7 +432,33 @@ def _tarjeta_familia(g: dict, hoy: str, k: int) -> str:
             f"<div class='mc-body' data-grupo='{grupo}' data-mon='{e(sim)}' data-dep=''>{filas}{_bloque_pago(grupo, sim, puede, iso, familia=True)}</div></div>")
 
 
-def _tarjeta_matricula(m: dict, a: dict | None, email: str, hoy: str) -> str:
+def _grupos_academia(ms: list[dict], acs: dict[str, dict]) -> list[dict]:
+    """PLAN ACADEMIA (pago directo): por ACADEMIA, cuando 2+ personas que
+    administro tienen cuotas por pagar a la MISMA academia (un solo yapeo)."""
+    from web import academia_plan_web as apw
+    por_ac: dict[str, list[tuple[dict, list[dict]]]] = {}
+    for m in ms:
+        a = acs.get(m["academiaId"])
+        if not a:
+            continue
+        sus = _suscripcion(m["id"])
+        pend = [c for c in _cuotas(m) if not c.get("pagada") and not _auto_bloqueada(c, sus) and apw.seleccionable(c)]
+        if pend:
+            por_ac.setdefault(a["id"], []).append((m, pend))
+    return [{"academia": acs[k], "items": v} for k, v in por_ac.items() if len(v) >= 2]
+
+
+def _tarjeta_familia_directa(g: dict) -> str:
+    from web import academia_plan_web as apw
+    a = g["academia"]
+    return (f"<div class='mc-card mc-fam'><div class='mc-cab'><div class='mc-logo'>👨‍👩‍👧</div><div class='tx'>"
+            f"<b>Mi familia · {e(a.get('nombre') or 'Academia')}</b><small>{len(g['items'])} personas con cuotas por pagar. "
+            "Un solo yapeo a la academia por todas.</small></div></div><div class='mc-body'>"
+            + apw.bloque_pago_directo(a, g["items"], titulo="Paga todo junto a la academia")
+            + "</div></div>")
+
+
+def _tarjeta_matricula(m: dict, a: dict | None, email: str, hoy: str, directo: bool = False) -> str:
     nombre_aca = (a or {}).get("nombre") or "Academia"
     if a:
         sim, iso = _moneda_academia(a)
@@ -459,7 +485,16 @@ def _tarjeta_matricula(m: dict, a: dict | None, email: str, hoy: str) -> str:
         h += (f"<div class='mc-sus'><span>🔁</span><span class='tx'>Mes a mes activo: {e(sim)} {int(sus.get('monto_centimos') or 0) / 100:.2f} automático cada mes."
               + (f" Próximo cobro: {_fecha_txt(sus.get('proximo_cobro'))}." if sus.get("proximo_cobro") else "") + "</span>"
               + (f"<button type='button' data-cancelar-sus='{e(m['id'])}'>Cancelar</button>" if paga else "") + "</div>")
-    if proximas and a:
+    if proximas and a and directo:
+        # PLAN ACADEMIA: el alumno le paga DIRECTO a la academia (Yape + código de seguridad).
+        from web import academia_plan_web as apw
+        auto = [c for c in proximas if _auto_bloqueada(c, sus)]
+        resto = [c for c in proximas if not _auto_bloqueada(c, sus)]
+        if auto:
+            h += "<div class='mc-h'>Débito automático</div>" + "".join(_fila_pend(c, sim, hoy, sus, grupo, m["id"], False) for c in auto)
+        if resto:
+            h += apw.bloque_pago_directo(a, [(m, resto)], titulo="Próximos pagos · paga a la academia")
+    elif proximas and a:
         h += ("<div class='mc-h'>Próximos pagos</div><div class='mc-hs'>Marca las que quieres pagar.</div>"
               + "".join(_fila_pend(c, sim, hoy, sus, grupo, m["id"], puede) for c in proximas))
         if any(not _auto_bloqueada(c, sus) for c in proximas):
@@ -507,8 +542,13 @@ def pagina_mis_clases(request: Request, pagado: str = "") -> HTMLResponse:
                   "<p class='sub'>Entra a «Academias» en Explorar y matricúlate, o únete con el código de tu profe en la app.</p>"
                   "<div class='acciones' style='justify-content:center'><a class='btn' href='/?deporte=academias'>Ver academias</a></div></div></div>")
         return ui.shell("Mis clases y pagos", cuerpo, sesion=ses, titulo_tab="Mis clases y pagos · Pichangol")
-    familia = "".join(_tarjeta_familia(g, hoy, k) for k, g in enumerate(_grupos_familia(ms, acs)))
-    tarjetas = "".join(_tarjeta_matricula(m, acs.get(m["academiaId"]), email, hoy) for m in ms)
+    import academia_plan as _ap
+    directo = _ap.es_suscripcion()
+    if directo:
+        familia = "".join(_tarjeta_familia_directa(g) for g in _grupos_academia(ms, acs))
+    else:
+        familia = "".join(_tarjeta_familia(g, hoy, k) for k, g in enumerate(_grupos_familia(ms, acs)))
+    tarjetas = "".join(_tarjeta_matricula(m, acs.get(m["academiaId"]), email, hoy, directo=directo) for m in ms)
     html_pagos = familia + tarjetas
     # Grupos que pagan con Culqi (soles) vs. con la pasarela hospedada ($ / Bs).
     n_pagar = html_pagos.count("data-pagar=")
@@ -530,8 +570,19 @@ def pagina_mis_clases(request: Request, pagado: str = "") -> HTMLResponse:
               f"{familia}{medio}{tarjetas}</div>"
               f"<script>window.__misClases={cfg};</script>"
               + ("<script src='https://checkout.culqi.com/js/v4'></script>" if hay_culqi else "")
-              + f"<script>{_ph_js() if n_hosp else ''}{_JS}</script>")
+              + f"<script>{_ph_js() if n_hosp else ''}{_JS}</script>"
+              + (f"<style>{_apw_css()}</style><script>{_apw_js()}</script>" if directo else ""))
     return ui.shell("Mis clases y pagos", cuerpo, sesion=ses, titulo_tab="Mis clases y pagos · Pichangol")
+
+
+def _apw_css() -> str:
+    from web import academia_plan_web as apw
+    return apw.CSS_PD
+
+
+def _apw_js() -> str:
+    from web import academia_plan_web as apw
+    return apw.JS_PD
 
 
 def _ph_js() -> str:
@@ -705,6 +756,10 @@ def pagar_cuotas(req: PagarCuotasReq, request: Request = None) -> dict:
     ses = sesion.de_request(request) if request is not None else None
     if not ses:
         return _json(False, error="sesion_requerida", mensaje="Inicia sesión con Google para pagar tus cuotas.")
+    import academia_plan as _ap
+    if _ap.es_suscripcion():
+        # PLAN ACADEMIA: las cuotas se pagan DIRECTO a la academia (Yape), nunca por Pichangol.
+        return _json(False, error="pago_directo", mensaje="Tus cuotas se pagan directo a la academia por Yape. Recarga la página.")
     email = (ses.get("email") or "").strip().lower()
     pedidas = [(x.alumno_id.strip(), x.cuota_id.strip()) for x in (req.cuotas or []) if x.alumno_id and x.cuota_id]
     if not pedidas or not req.token.strip():
@@ -984,6 +1039,10 @@ def pagar_cuotas_pasarela(req: PagarCuotasPasarelaReq, request: Request = None) 
     ses = sesion.de_request(request) if request is not None else None
     if not ses:
         return _json(False, error="sesion_requerida", mensaje="Inicia sesión con Google para pagar tus cuotas.")
+    import academia_plan as _ap
+    if _ap.es_suscripcion():
+        # PLAN ACADEMIA: las cuotas se pagan DIRECTO a la academia (Yape), nunca por Pichangol.
+        return _json(False, error="pago_directo", mensaje="Tus cuotas se pagan directo a la academia por Yape. Recarga la página.")
     email = (ses.get("email") or "").strip().lower()
     pedidas = [(x.alumno_id.strip(), x.cuota_id.strip()) for x in (req.cuotas or []) if x.alumno_id and x.cuota_id]
     if not pedidas:

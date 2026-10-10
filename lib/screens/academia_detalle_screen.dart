@@ -5,6 +5,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/academia.dart';
 import '../models/cargo_servicio.dart';
 import '../widgets/cargo_servicio_info.dart';
+import '../data/matriculas_repo.dart';
+import '../services/academia_plan_service.dart';
 import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
@@ -15,6 +17,7 @@ import '../widgets/ancho_lectura.dart';
 import '../widgets/chat_burbuja.dart';
 import '../utils/ubicacion_share.dart';
 import '../widgets/logo_academia.dart';
+import '../widgets/pago_directo_sheet.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import 'campeonatos_screen.dart';
 import 'ranking_academia_screen.dart';
@@ -581,6 +584,16 @@ class _PlanesSectionState extends State<_PlanesSection> {
   final _carrito = _CarritoMatricula();
 
   @override
+  void initState() {
+    super.initState();
+    // PLAN ACADEMIA: ¿la academia tiene su plan vigente? (sin él no recibe
+    // matrículas en línea). Cache-first; repinta al llegar.
+    if (appState.academiasPorSuscripcion) {
+      AcademiaPlanService.plan(widget.academia.id);
+    }
+  }
+
+  @override
   void dispose() {
     _carrito.dispose();
     super.dispose();
@@ -789,6 +802,11 @@ String _quienTexto(String parentesco) => switch (parentesco) {
 Future<bool> _pagarMatriculas(
     BuildContext context, Academia academia, List<_DatosMatricula> itemsIn) async {
   if (itemsIn.isEmpty) return false;
+  // PLAN ACADEMIA (10-oct-2026): la academia cobra DIRECTO por Yape; aquí no
+  // se cobra nada (ni comisión ni cargo por servicio).
+  if (appState.academiasPorSuscripcion) {
+    return _matricularSinCobro(context, academia, itemsIn);
+  }
   final items = _recalcularCarrito(academia, itemsIn);
   final total = double.parse(
       items.fold<double>(0, (s, x) => s + x.total).toStringAsFixed(2));
@@ -970,6 +988,126 @@ Future<bool> _pagarMatriculas(
   return true;
 }
 
+/// La academia aún no tiene su Plan Academia vigente: no recibe matrículas en
+/// línea; se ofrece escribirle (chat / WhatsApp).
+Future<void> _avisarSinMatricula(BuildContext context, Academia academia) =>
+    avisarCoordinarPago(context, academia,
+        titulo: 'Inscríbete con la academia',
+        mensaje: '${academia.nombre} todavía no recibe matrículas en línea por '
+            'Pichangol. Escríbele y te inscribe directo.');
+
+/// PLAN ACADEMIA (pago directo): crea la matrícula de cada persona con TODAS
+/// sus cuotas PENDIENTES (sin débito automático) y luego ofrece pagarle a la
+/// academia por Yape reportando el código de seguridad. Pichangol no cobra.
+Future<bool> _matricularSinCobro(BuildContext context, Academia academia,
+    List<_DatosMatricula> itemsIn) async {
+  final est = await AcademiaPlanService.plan(academia.id);
+  if (!context.mounted) return false;
+  if (est != null && !est.beneficios) {
+    await _avisarSinMatricula(context, academia);
+    return false;
+  }
+  final items = _recalcularCarrito(academia, itemsIn);
+  final mon = academia.monedaSimbolo;
+  final creados = <Alumno>[];
+  for (final d in items) {
+    final esHijo = d.parentesco == 'hijo';
+    final factorFam = 1 - d.dtoFamiliarPct / 100;
+    final precioMesSede = academia.precioMesEnSede(d.plan, d.sedeId) * factorFam;
+    final notaDto = d.dtoFamiliarPct > 0
+        ? ' (−${d.dtoFamiliarPct.toStringAsFixed(0)}% familiar)'
+        : '';
+    final alumno = appState.matricular(
+      academiaId: academia.id,
+      nombre: d.nombre,
+      whatsapp: d.whatsapp,
+      plan: d.plan,
+      cantidad: d.cantidad,
+      apoderadoNombre: esHijo ? (appState.usuario?.nombre ?? 'Apoderado') : '',
+      apoderadoWhatsapp: esHijo ? d.whatsapp : '',
+      edad: esHijo ? d.edad : null,
+      sedeId: d.sedeId,
+      precioMesOverride: precioMesSede,
+      parentesco: d.parentesco,
+      emailAlumno: d.emailAlumno,
+      ordenHermano: d.orden,
+      notaDescuento: notaDto,
+      pagoDirecto: true,
+      // Adelantado / por clase: UNA cuota con el total ya con descuentos.
+      // Mes a mes: una cuota por mes (la 1.ª vence hoy).
+      totalAdelantado: (d.mesAMes && d.plan.tipo == TipoPlan.mensual)
+          ? null
+          : d.total,
+    );
+    creados.add(alumno);
+  }
+  if (!context.mounted || creados.isEmpty) return true;
+  final varios = creados.length > 1;
+  // Lo que toca pagar HOY: la cuota que vence primero de cada persona.
+  final hoyPorPagar = <Cuota>[];
+  for (final al in creados) {
+    final pend = appState
+        .cuotasDeAlumno(al.id)
+        .where((c) => !c.pagada)
+        .toList()
+      ..sort((a, b) => a.vencimiento.compareTo(b.vencimiento));
+    if (pend.isNotEmpty) hoyPorPagar.add(pend.first);
+  }
+  final aPagar = hoyPorPagar.fold<double>(0, (s, c) => s + c.monto);
+  final tieneYape = academia.cobroDirecto != null ||
+      (est?.cobroDirecto != null);
+  final mensaje = varios
+      ? 'Ya están inscritos en ${academia.nombre}: '
+          '${items.map((d) => d.nombre).join(', ')}. '
+          'Págale a la academia $mon ${aPagar.toStringAsFixed(2)} '
+          '${tieneYape ? 'por Yape desde «Mis clases y pagos» (cada persona por separado).' : 'como te indique la academia.'}'
+      : 'Ya estás inscrito en ${academia.nombre} (${items.first.plan.nombre}). '
+          'Págale $mon ${aPagar.toStringAsFixed(2)} directo a la academia'
+          '${tieneYape ? ' por Yape y avísale con el código de seguridad.' : '.'}';
+  final pagarAhora = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => DialogoPichangol(
+      titulo: varios ? '¡Matrícula familiar lista!' : '¡Matrícula lista!',
+      icono: Icons.check_circle,
+      mensaje: mensaje,
+      acciones: [
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          style: TextButton.styleFrom(foregroundColor: textoTenue),
+          child: Text(varios || !tieneYape ? 'Ver mis clases' : 'Más tarde'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(
+              backgroundColor: lima,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
+          onPressed: () => Navigator.of(ctx).pop(true),
+          child: Text(
+              !varios && tieneYape ? 'Pagar ahora con Yape' : 'Listo',
+              style: const TextStyle(fontWeight: FontWeight.w800)),
+        ),
+      ],
+    ),
+  );
+  if (!context.mounted) return true;
+  if (pagarAhora == true && !varios && tieneYape && hoyPorPagar.isNotEmpty) {
+    final al = creados.first;
+    // La fila debe existir en la nube antes de reportar el pago.
+    await MatriculasRepo.guardar(al, cuotas: appState.cuotasDeAlumno(al.id))
+        .timeout(const Duration(seconds: 12), onTimeout: () => null);
+    if (!context.mounted) return true;
+    await PagoDirectoSheet.mostrar(context,
+        academia: academia, alumno: al, cuotas: [hoyPorPagar.first]);
+  }
+  if (!context.mounted) return true;
+  Navigator.of(context)
+      .push(MaterialPageRoute(builder: (_) => const MisClasesScreen()));
+  return true;
+}
+
 /// Tarjeta del carrito bajo los planes: quién va, con qué programa, el total
 /// con los descuentos por orden y "Pagar todo". Se oculta si está vacío.
 class _CarritoCard extends StatelessWidget {
@@ -986,8 +1124,10 @@ class _CarritoCard extends StatelessWidget {
         final items = _recalcularCarrito(academia, carrito.items);
         final total = items.fold<double>(0, (s, x) => s + x.total);
         final mon = academia.monedaSimbolo;
+        // Plan Academia: sin cobro en Pichangol (se le paga a la academia).
+        final directo = appState.academiasPorSuscripcion;
         // Cargo por servicio de todo el carrito (una cotización, con ahorro).
-        final cot = carrito.cotizador.para(
+        final cot = directo ? null : carrito.cotizador.para(
             linea: 'academias',
             moneda: mon,
             baseCentimos: (total * 100).round(),
@@ -1021,9 +1161,11 @@ class _CarritoCard extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 4),
-              const Text(
-                  'Toca «Matricularme» en otro programa para agregar a alguien más. Pagas todo en un solo cobro.',
-                  style: TextStyle(color: textoTenue, fontSize: 12.5)),
+              Text(
+                  directo
+                      ? 'Toca «Matricularme» en otro programa para agregar a alguien más. Le pagas directo a la academia.'
+                      : 'Toca «Matricularme» en otro programa para agregar a alguien más. Pagas todo en un solo cobro.',
+                  style: const TextStyle(color: textoTenue, fontSize: 12.5)),
               const SizedBox(height: 10),
               for (var i = 0; i < items.length; i++)
                 Container(
@@ -1074,8 +1216,8 @@ class _CarritoCard extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('Pagas hoy',
-                      style: TextStyle(fontWeight: FontWeight.w700)),
+                  Text(directo ? 'Pagarás a la academia' : 'Pagas hoy',
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
                   Text('$mon ${(total + cargo).toStringAsFixed(2)}',
                       style: const TextStyle(
                           fontWeight: FontWeight.w800,
@@ -1097,7 +1239,9 @@ class _CarritoCard extends StatelessWidget {
                     if (ok) carrito.limpiar();
                   },
                   child: Text(
-                      'Pagar todo · $mon ${(total + cargo).toStringAsFixed(2)}',
+                      directo
+                          ? 'Matricular a ${items.length == 1 ? '1 persona' : '${items.length} personas'}'
+                          : 'Pagar todo · $mon ${(total + cargo).toStringAsFixed(2)}',
                       style: const TextStyle(fontWeight: FontWeight.w800)),
                 ),
               ),
@@ -1189,11 +1333,28 @@ class _TarjetaPlan extends StatelessWidget {
                       color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.w800,
                       fontSize: 18)),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                    backgroundColor: lima, foregroundColor: Colors.white),
-                onPressed: () => _matricular(context),
-                child: const Text('Matricularme'),
+              // Plan Academia vencido: no se ofrece matrícula en línea, solo
+              // escribirle a la academia.
+              ValueListenableBuilder<int>(
+                valueListenable: AcademiaPlanService.cambios,
+                builder: (context, _, __) =>
+                    AcademiaPlanService.tieneBeneficios(academia.id)
+                        ? FilledButton(
+                            style: FilledButton.styleFrom(
+                                backgroundColor: lima,
+                                foregroundColor: Colors.white),
+                            onPressed: () => _matricular(context),
+                            child: const Text('Matricularme'),
+                          )
+                        : OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                                foregroundColor: bosque,
+                                side: const BorderSide(color: trazo)),
+                            onPressed: () =>
+                                abrirChatAcademia(context, academia),
+                            icon: const Icon(Icons.forum_outlined, size: 18),
+                            label: const Text('Escribir a la academia'),
+                          ),
               ),
             ],
           ),
@@ -1211,6 +1372,15 @@ class _TarjetaPlan extends StatelessWidget {
       return;
     }
     if (!context.mounted) return;
+    // PLAN ACADEMIA: sin plan vigente la academia no recibe matrículas.
+    if (appState.academiasPorSuscripcion) {
+      final est = await AcademiaPlanService.plan(academia.id);
+      if (!context.mounted) return;
+      if (est != null && !est.beneficios) {
+        await _avisarSinMatricula(context, academia);
+        return;
+      }
+    }
     // 1) Datos de la persona + MODO (mes a mes / adelantado) + cantidad + total.
     //    La hoja conoce el carrito: calcula el orden familiar en secuencia y
     //    ofrece "Agregar otra persona" (pedido del director, 26-sep-2026).
@@ -1379,7 +1549,11 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
             .map((x) => (x.total * 100).round()),
         (_total * 100).round(),
       ]);
-  double get _cargo => (_cot?.hayCargo ?? false) ? _cot!.cargo : 0.0;
+  double get _cargo => _directo
+      ? 0.0
+      : ((_cot?.hayCargo ?? false) ? _cot!.cargo : 0.0);
+  // PLAN ACADEMIA: la academia cobra directo (Yape); aquí no se paga nada.
+  bool get _directo => appState.academiasPorSuscripcion;
   String? _error; // mensaje de validación inline (visible)
   // Sede elegida (academias multi-sede): por defecto la primera.
   late String? _sedeId =
@@ -1546,7 +1720,8 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                         'Ya llevas ${widget.carrito.length} '
                         '${widget.carrito.length == 1 ? 'persona' : 'personas'} '
                         '(${widget.moneda} ${_totalCarrito.toStringAsFixed(2)}). '
-                        'Esta será la persona ${widget.carrito.length + 1}: todo se paga en un solo cobro.',
+                        'Esta será la persona ${widget.carrito.length + 1}: '
+                        '${_directo ? 'se matriculan juntas.' : 'todo se paga en un solo cobro.'}',
                         style: const TextStyle(fontSize: 12.5, color: bosque)),
                   ),
                 ],
@@ -1696,7 +1871,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                 Expanded(
                   child: _ChipModo(
                     titulo: 'Mes a mes',
-                    subtitulo: 'Débito automático',
+                    subtitulo: _directo ? 'Pagas cada mes' : 'Débito automático',
                     activo: _mesAMes,
                     onTap: () => setState(() => _mesAMes = true),
                   ),
@@ -1748,14 +1923,27 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                    _mesAMes
-                        ? 'Pagas hoy 1 mes: ${widget.moneda} ${_total.toStringAsFixed(2)}'
-                        : 'Pagarás ahora: ${widget.moneda} ${_total.toStringAsFixed(2)}',
+                    _directo
+                        ? (_mesAMes
+                            ? 'Pagarás a la academia ${widget.moneda} ${_total.toStringAsFixed(2)} al mes'
+                            : 'Pagarás a la academia: ${widget.moneda} ${_total.toStringAsFixed(2)}')
+                        : _mesAMes
+                            ? 'Pagas hoy 1 mes: ${widget.moneda} ${_total.toStringAsFixed(2)}'
+                            : 'Pagarás ahora: ${widget.moneda} ${_total.toStringAsFixed(2)}',
                     style: const TextStyle(
                         color: bosque,
                         fontWeight: FontWeight.w800,
                         fontSize: 15)),
-                if (_mesAMes) ...[
+                if (_directo) ...[
+                  const SizedBox(height: 2),
+                  const Text(
+                      'Le pagas directo a la academia (Yape). Pichangol no cobra nada y te recuerda cada pago.',
+                      style: TextStyle(
+                          color: bosque,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12.5)),
+                ],
+                if (_mesAMes && !_directo) ...[
                   const SizedBox(height: 2),
                   Text(
                       // Con 1 mes no queda ningún cobro automático: antes decía
@@ -1799,7 +1987,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                       style: const TextStyle(
                           color: textoTenue, fontSize: 12.5)),
                 ],
-                if (_mesAMes && _cantidad > 1) ...[
+                if (_mesAMes && _cantidad > 1 && !_directo) ...[
                   const SizedBox(height: 4),
                   const Text('Se cobra automático de tu tarjeta. Cancela cuando quieras.',
                       style: TextStyle(color: textoTenue, fontSize: 12.5)),
@@ -1854,7 +2042,11 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                 final d = _armar(agregarOtra: false);
                 if (d != null) Navigator.of(context).pop(d);
               },
-              child: Text(widget.carrito.isNotEmpty
+              child: Text(_directo
+                  ? (widget.carrito.isNotEmpty
+                      ? 'Matricular a ${widget.carrito.length + 1} personas'
+                      : 'Matricularme')
+                  : widget.carrito.isNotEmpty
                   ? 'Pagar todo · ${widget.moneda} ${(_totalCarrito + _total + _cargo).toStringAsFixed(2)} · ${widget.carrito.length + 1} personas'
                   : _mesAMes
                       ? 'Pagar 1.er mes ${widget.moneda} ${(_total + _cargo).toStringAsFixed(2)}'
@@ -1880,8 +2072,11 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                       if (d != null) Navigator.of(context).pop(d);
                     },
               icon: const Icon(Icons.person_add_alt_1_outlined, size: 18),
-              label: const Text('Agregar otra persona (pago después, todo junto)',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
+              label: Text(
+                  _directo
+                      ? 'Agregar otra persona (se matriculan juntas)'
+                      : 'Agregar otra persona (pago después, todo junto)',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
           ),
         ],

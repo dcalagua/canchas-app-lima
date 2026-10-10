@@ -536,6 +536,11 @@ def _chips_academia(acads: list[dict], a: dict, ruta: str) -> str:
 def _pagina(ses: dict, acads: list[dict], a: dict, sel: str, titulo: str, sub: str, cuerpo: str, js: str = "",
             extra_head: str = "") -> HTMLResponse:
     ruta = f"/anfitrion/academia/{sel}"
+    a.setdefault("dueno", ses.get("email") or "")
+    from web import academia_plan_web as apw
+    if not apw.beneficios(a):
+        # PLAN ACADEMIA vencido: la gestión se pausa; los pagos reportados siguen en Cobros.
+        cuerpo, js, extra_head = apw.paywall(a), "", ""
     cfg = json.dumps({"aid": a["id"], "sim": _sim(a)}, ensure_ascii=False).replace("</", "<\\/")
     html = ("<a class='anf-back' href='/anfitrion/academia'>‹ Mi academia</a>"
             f"<h1 class='anf-hola' style='margin-top:6px'>{e(titulo)}</h1><p class='sub'>{e(a.get('nombre') or 'Academia')} · {sub}</p>"
