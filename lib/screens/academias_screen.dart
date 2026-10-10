@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 
+import '../services/academia_plan_service.dart';
 import '../models/academia.dart';
 import '../models/invitacion.dart';
 import '../models/models.dart';
@@ -122,12 +123,14 @@ class _AcademiasScreenState extends State<AcademiasScreen> {
           final email = appState.usuario?.email.toLowerCase();
           final crudas = [
             for (final a in appState.academias)
-              if (email != null && a.dueno.toLowerCase() == email ||
+              // Países sin academias habilitadas (BO/EC hoy): no salen.
+              if (AcademiaPlanService.habilitada(a) &&
+                  (email != null && a.dueno.toLowerCase() == email ||
                   a.sedeUbicacion == null ||
                   paisDeCoordenadas(a.sedeUbicacion!.latitude,
                           a.sedeUbicacion!.longitude)
                           .iso ==
-                      iso)
+                      iso))
                 a
           ]..sort((a, b) {
               // Primero por destacado; a igualdad, la más COMPLETA (más fotos +

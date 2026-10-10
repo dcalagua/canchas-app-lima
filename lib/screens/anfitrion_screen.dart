@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../services/academia_plan_service.dart';
 import '../services/growth_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -136,6 +137,13 @@ class AnfitrionScreen extends StatelessWidget {
                       'Registra y administra: canchas, agenda, reservas, cuenta',
                   onTap: () => _abrirPanel(context),
                 ),
+                // Mi academia solo en los países habilitados (ocultas en BO/EC);
+                // quien ya tiene una academia la sigue viendo.
+                if (AcademiaPlanService.paisHabilitado(
+                        appState.paisBilletera.iso) ||
+                    appState.academias.any((a) =>
+                        a.dueno.toLowerCase() ==
+                        (appState.usuario?.email ?? '').toLowerCase()))
                 _Tile(
                   icon: Icons.sports,
                   color: naranja,

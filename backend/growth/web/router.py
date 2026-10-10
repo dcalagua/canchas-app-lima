@@ -50,6 +50,7 @@ from pagos import cargo_servicio as _cs
 from pagos import devoluciones as _dev
 from web import beneficios, catalogos, datos, descubrir, horarios, marca, osm, pago_hospedado, sesion, ui
 from web.ui import e
+import academia_plan as _ap
 
 router = APIRouter()
 
@@ -578,6 +579,11 @@ _JS_EXPLORAR = r"""
   function ordenar(){
     if(!yo) return;
     var pais = paisDe(yo.lat, yo.lng);
+    // Academias ocultas en los países que la torre no habilitó (BO/EC hoy).
+    if(C.acadPaises && C.acadPaises.indexOf(pais) < 0){
+      document.querySelectorAll('.cat[data-dep="academias"]').forEach(function(x){ x.style.display = 'none'; });
+      var ga = $('academias'); if(ga) ga.remove();
+    }
     cards().forEach(function(c){ var d = km(yo.lat, yo.lng, parseFloat(c.dataset.lat), parseFloat(c.dataset.lng)); c.dataset.d = d;
       var el = c.querySelector('.dist'); if(el) el.textContent = 'a ' + fmtKm(d); });
     document.querySelectorAll('.grupo-pais, .grupo-aca').forEach(function(g){
@@ -808,10 +814,11 @@ def _nav_explorar(dep: str, ses: dict | None = None, zonas: list[tuple[str, int]
     (centradas) · "Modo dueño" + avatar + ☰ · buscador grande centrado
     (Dónde · Deporte · Cuándo · Buscar) con desplegable de búsquedas
     recientes y zonas sugeridas bajo "Dónde"."""
-    ops = "".join(f"<option value='{k}'{' selected' if k == dep else ''}>{n}</option>" for k, n, _ in CATEGORIAS)
+    ops = "".join(f"<option value='{k}'{' selected' if k == dep else ''}>{n}</option>" for k, n, _ in CATEGORIAS if k != "academias" or _ap.paises_habilitados())
     hoy = date.today().isoformat()
+    cats = [c for c in CATEGORIAS if c[0] != "academias" or _ap.paises_habilitados()]
     tabs = "".join(f"<a class='cat{' sel' if k == dep else ''}' href='/canchas{('?deporte=' + k) if k else ''}' data-dep='{k}'>"
-                   f"<span class='ico'>{ico}</span>{n}</a>" for k, n, ico in CATEGORIAS)
+                   f"<span class='ico'>{ico}</span>{n}</a>" for k, n, ico in cats)
     sug_zonas = "".join(
         f"<button type='button' class='it' data-zona='{e(z)}'><span class='ic'>📍</span>"
         f"<div><b>{e(z)}</b><small>{n} cancha{'s' if n != 1 else ''}</small></div></button>"
@@ -1197,7 +1204,10 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
         cuerpo += ("<div class='vacio'>Todavía no hay canchas de este deporte. "
                    "<a href='/canchas'>Ver todas las canchas</a></div>")
     dep_aca = "" if solo_aca else dep
-    acads = [a for a in datos.academias_publicas() if isinstance(a, dict) and a.get("nombre") and (not dep_aca or (a.get("deporte") or "").lower() == dep_aca)]
+    # Academias solo de los países habilitados en la torre (decisión del
+    # director, 10-oct-2026: ocultas en Bolivia y Ecuador).
+    acads = [a for a in datos.academias_publicas() if isinstance(a, dict) and a.get("nombre")
+             and (not dep_aca or (a.get("deporte") or "").lower() == dep_aca) and _ap.habilitada(a)]
     if acads:
         titulo_aca = "Academias" + (f" de {_deporte(dep_aca)[0].lower()}" if dep_aca else "")
         cuerpo += (f"<section id='academias' class='grupo-aca'><div class='tit'><h2>🎓 {e(titulo_aca)}<span class='cerca'></span></h2></div>"
@@ -1223,7 +1233,8 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
         centro = [c0.get("lat") or centro[0], c0.get("lng") or centro[1]]
     hora = hora if horarios.hora_en_minutos(hora) is not None else ""
     cfg = json.dumps({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro, "play": PLAY_URL, "dep": dep,
-                      "fecha": fecha, "hora": hora, "diasAdelante": DIAS_ADELANTE, "lugares": bool(config.PLACES_API_KEY)})
+                      "fecha": fecha, "hora": hora, "diasAdelante": DIAS_ADELANTE, "lugares": bool(config.PLACES_API_KEY),
+                      "acadPaises": _ap.paises_habilitados()})
     head = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
             "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>"
             + (f"<style>{css_m}</style>" if css_m else ""))

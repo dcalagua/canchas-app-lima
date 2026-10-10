@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../config/pais.dart';
+import '../services/academia_plan_service.dart';
 import '../models/club.dart';
 import '../services/location_service.dart';
 import '../models/models.dart';
@@ -556,6 +558,7 @@ class _MapaCanchasScreenState extends State<MapaCanchasScreen> {
                     onTap: () => _cambiarFiltro(Deporte.natacion)),
                 _chip('🏛️', 'Clubes',
                     activo: _soloClubes, onTap: _activarClubes),
+                if (AcademiaPlanService.paisHabilitado(paisActual.iso))
                 _chip('🎓', 'Academias',
                     activo: false,
                     onTap: () => Navigator.of(context).push(MaterialPageRoute(

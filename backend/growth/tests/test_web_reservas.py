@@ -2344,3 +2344,40 @@ def test_explorador_con_ubicacion_solo_muestra_lo_cercano(db):
     assert "if(yo && !filtro.q && c.dataset.d && parseFloat(c.dataset.d) > radio) return false;" in home
     assert "id=\"selRadio\"" in home and "pcg_radio" in home
     assert "No hay canchas a ' + radio + ' km de ti." in home
+
+
+def test_academias_ocultas_en_bolivia_y_ecuador(db, monkeypatch):
+    """Decisión del director (10-oct-2026): "ocultamos las academias para
+    Bolivia y Ecuador". `acad_paises` (torre, default "PE") decide en qué
+    países existen: fuera de ellos no salen en el explorador ni en su ficha,
+    no aceptan matrícula, no se pueden crear y el APK recibe `paises` en
+    /config/academias."""
+    import academia_plan as ap
+    from db.store import stores as _st
+    monkeypatch.setitem(_st.config, "acad_paises", "PE")
+    db.academias["ac_pe"] = {"nombre": "Academia Lima", "deporte": "tenis", "dueno": "pe@gmail.com", "lat": -12.09, "lng": -77.03, "planes": []}
+    db.academias["ac_ec"] = {"nombre": "Academia Quito", "deporte": "tenis", "dueno": "ec@gmail.com", "lat": -0.18, "lng": -78.47, "planes": []}
+    db.academias["ac_bo"] = {"nombre": "Academia La Paz", "deporte": "tenis", "dueno": "bo@gmail.com", "lat": -16.5, "lng": -68.15, "planes": []}
+    assert ap.paises_habilitados() == ["PE"]
+    assert ap.habilitada(db.academias["ac_pe"]) and not ap.habilitada(db.academias["ac_ec"]) and not ap.habilitada(db.academias["ac_bo"])
+    cli = TestClient(app, base_url="https://testserver")
+    home = cli.get("/?deporte=academias").text
+    assert "Academia Lima" in home and "Academia Quito" not in home and "Academia La Paz" not in home
+    assert '"acadPaises": ["PE"]' in home and "C.acadPaises.indexOf(pais) < 0" in home
+    assert "Academia no disponible" in cli.get("/academia/ac_ec").text
+    assert "Academia no disponible" not in cli.get("/academia/ac_pe").text
+    assert cli.get("/config/academias").json()["paises"] == ["PE"]
+    # Torre: habilitar Ecuador la vuelve visible; sin países, la pestaña desaparece.
+    ap.set_config(paises=["PE", "EC"])
+    assert ap.habilitada(db.academias["ac_ec"]) and "Academia Quito" in cli.get("/?deporte=academias").text
+    ap.set_config(paises=[])
+    assert "data-dep='academias'" not in cli.get("/").text
+    import pytest as _pt
+    with _pt.raises(ValueError):
+        ap.set_config(paises=["XX"])
+    ap.set_config(paises=["PE"])
+    # No se puede crear/guardar una academia con sede en un país oculto.
+    from web import anfitrion_academia as aa
+    data, err, campo = aa._validar({"nombre": "X", "deporte": "tenis", "sedeClub": "Club", "lat": -0.18, "lng": -78.47,
+                                    "whatsapp": "0991234567"}, None, "ec@gmail.com")
+    assert data is None and campo == "sede" and "solo están disponibles en Perú" in err

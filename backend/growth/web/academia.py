@@ -249,6 +249,12 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
     a = datos.academia(academia_id)
     if not a or not a.get("nombre"):
         return _no_encontrada("Academia no disponible")
+    if not _ap.habilitada(a):
+        # País sin academias habilitadas (Bolivia y Ecuador hoy): no existe al
+        # público, salvo para su dueño (que la sigue gestionando).
+        ses0 = sesion.de_request(request) if sesion.activo() else None
+        if ((ses0 or {}).get("email") or "").lower() != str(a.get("dueno") or "").strip().lower():
+            return _no_encontrada("Academia no disponible")
     from web import pago_hospedado as ph
     ses = sesion.de_request(request)
     sim, iso = _moneda(a)
@@ -1070,7 +1076,7 @@ def _validar_cabecera(request: Request | None, academia_id: str, hospedado: bool
     if sesion.activo() and not ses:
         return None, None, {"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión con Google para matricularte."}
     a = datos.academia(academia_id)
-    if not a or not a.get("nombre"):
+    if not a or not a.get("nombre") or not _ap.habilitada(a):
         return ses, None, {"ok": False, "error": "academia", "mensaje": "La academia ya no está disponible."}
     a.setdefault("id", academia_id)
     _sim, iso = _moneda(a)
@@ -1140,7 +1146,7 @@ def matricular_directo(req: MatricularDirectoReq, request: Request = None) -> di
     if not ses:
         return {"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión con Google para matricularte."}
     a = datos.academia(req.academia_id)
-    if not a or not a.get("nombre"):
+    if not a or not a.get("nombre") or not _ap.habilitada(a):
         return {"ok": False, "error": "academia", "mensaje": "La academia ya no está disponible."}
     a.setdefault("id", req.academia_id)
     if not _ap.beneficios(a):

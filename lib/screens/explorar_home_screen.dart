@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart' show LatLng;
 
+import '../services/academia_plan_service.dart';
 import '../models/models.dart';
 import '../models/club.dart';
 import '../widgets/club_card.dart';
@@ -1170,7 +1171,9 @@ class _FiltrosDeporte extends StatelessWidget {
                   onTap: () => onSeleccion(Deporte.natacion)),
               chip('🏛️', 'Clubes', activo: soloClubes, onTap: onClubes),
               // Acceso (no filtro): abre la pantalla de Academias.
-              chip('🎓', 'Academias', activo: false, onTap: onAcademias),
+              // Academias solo en los países habilitados (ocultas en BO/EC).
+              if (AcademiaPlanService.paisHabilitado(paisActual.iso))
+                chip('🎓', 'Academias', activo: false, onTap: onAcademias),
             ],
           ),
         ),

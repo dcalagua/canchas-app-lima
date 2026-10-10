@@ -2807,6 +2807,16 @@ off → redeploy inmediato en cada push). URL pública:
     cobros hasta elegirlo en la torre—). Sin SQL, sin Edge, sin variables.
     CAMBIÓ `lib/` → APK/AAB de PRD por `workflow_dispatch` (`ref=prd`,
     `entorno=prod`).
+    **Pase del 10-oct-2026 (autorizado: "pasa a PRD"):** `prd` = bfee428
+    (Plan Academia tipo Spotify + pago directo con código de seguridad de
+    Yape, fase 1, y Yape automático leyendo la notificación del celular de la
+    academia, fase 2). Sin SQL ni Edge; sin variables (todo nace en
+    `CONFIG_DEFAULT`: `acad_modelo=suscripcion` → al abrirse cada academia de
+    PRD arranca su prueba de 30 días; se vuelve al modelo anterior en la torre
+    → Cobros → Plan Academia → "Comisión"). CAMBIÓ `lib/` → APK/AAB de PRD =
+    run 1543 (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un APK
+    anterior no conoce el modelo de suscripción (sigue cobrando en línea) ni
+    el Yape automático → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -3859,6 +3869,22 @@ antes del corte.
   `pago_directo_sheet.dart`, `Academia.cobroDirecto`, `Cuota.reporte/
   medioPago`; config sin cargar = "comision" (comportamiento anterior). Tests
   `tests/test_academia_plan.py`, `tests/test_web_academia_plan.py`.
+  **ACADEMIAS OCULTAS EN BOLIVIA Y ECUADOR (decisión del director,
+  10-oct-2026: "ocultamos las academias para Bolivia y Ecuador"):**
+  `stores.config["acad_paises"]` (default "PE", espejo en `CONFIG_DEFAULT`;
+  torre → Cobros → Plan Academia → casillas "Academias visibles en";
+  `academia_plan.paises_habilitados/pais_habilitado/habilitada(a)` = país de la
+  sede por `moneda_de`). Fuera de esos países: el explorador web no las lista
+  (y oculta la pestaña 🎓 si el visitante está en un país no habilitado,
+  `C.acadPaises`; sin ningún país la pestaña no se pinta), `/academia/{id}`
+  responde "Academia no disponible" (salvo a su dueño), `/l/{id}` 404, la
+  matrícula web responde `academia`, y Mi academia web/APK no deja guardar una
+  sede ahí. `/config/academias` publica `paises`; el APK
+  (`AcademiaPlanService.paises`, default ['PE'] sin config) oculta el chip 🎓
+  de Explorar y del mapa, filtra el directorio y esconde "Mi academia" en Modo
+  anfitrión si `paisBilletera` no está habilitado (salvo que ya tenga una).
+  En los tests la suite habilita los 3 países (`tests/conftest.py`); la regla
+  real la prueba `test_academias_ocultas_en_bolivia_y_ecuador`.
   **FASE 2 = YAPE AUTOMÁTICO (hecho 10-oct-2026, "seguimos con la fase 2"):**
   `backend/growth/yape_auto.py`. El dueño activa en el APK → Plan Academia →
   "Confirmar mis pagos automáticamente" (`widgets/yape_auto_card.dart`, solo

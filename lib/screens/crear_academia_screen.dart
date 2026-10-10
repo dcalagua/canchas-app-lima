@@ -12,6 +12,7 @@ import '../data/canchas_repo.dart';
 import '../models/academia.dart';
 import '../models/club.dart';
 import '../models/models.dart';
+import '../services/academia_plan_service.dart';
 import '../services/pagos_service.dart';
 import '../services/places_service.dart';
 import '../services/whatsapp_link.dart';
@@ -831,7 +832,12 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
     final tel = _whatsapp.text.replaceAll(RegExp(r'[^0-9]'), '');
     final minTel = _paisAcademia.telLongitud;
     final eN = nombre.isEmpty ? 'Ponle un nombre a tu academia.' : null;
-    final eS = sede.isEmpty ? 'Indica dónde entrenas (sede actual).' : null;
+    final eS = sede.isEmpty
+        ? 'Indica dónde entrenas (sede actual).'
+        : (!AcademiaPlanService.paisHabilitado(_paisAcademia.iso)
+            ? 'Por ahora las academias no están disponibles en '
+                '${_paisAcademia.nombre}.'
+            : null);
     final eW = tel.length < minTel
         ? 'Pon un WhatsApp válido ($minTel dígitos).'
         : null;

@@ -597,6 +597,16 @@ def ver_campeonato(campeonato_id: str, request: Request,
 @router.get("/l/{academia_id}", response_class=HTMLResponse)
 def ver_landing(academia_id: str, request: Request) -> str:
     d = stores.landings.get(academia_id)
+    if d:
+        # Academias ocultas en los países no habilitados (BO/EC hoy).
+        try:
+            import academia_plan as _ap
+            from web import datos as _d
+            a = _d.academia(academia_id)
+            if a and not _ap.habilitada(a):
+                d = None
+        except Exception:  # noqa: BLE001
+            pass
     if not d:
         return HTMLResponse(
             "<!doctype html><meta charset='utf-8'>"
