@@ -899,12 +899,13 @@ def academias_publicas() -> list[dict]:
         return []
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute("SELECT id, data FROM pichangol_academias WHERE coalesce(eliminada,false) = false "
+            cur.execute("SELECT id, dueno, data FROM pichangol_academias WHERE coalesce(eliminada,false) = false "
                         "ORDER BY updated_at DESC LIMIT 500")
             out = []
-            for aid, data in cur.fetchall():
+            for aid, dueno, data in cur.fetchall():
                 d = _json_dict(data)
                 d["id"] = aid
+                d["dueno"] = dueno or d.get("dueno") or ""
                 out.append(d)
             return out
     except Exception:  # noqa: BLE001
@@ -986,6 +987,44 @@ def matricula(alumno_id: str) -> dict | None:
             d.setdefault("email", row[2] or "")
             return d
     except Exception:  # noqa: BLE001
+        return None
+
+
+def mutar_matricula(alumno_id: str, fn, *, academia_id: str = "") -> object | None:
+    """Lee la matrícula con `SELECT … FOR UPDATE`, llama `fn(data)` y, si
+    devuelve algo distinto de None, guarda `data` (que `fn` puede modificar) en
+    la MISMA transacción y devuelve ese resultado. None = no existe / sin base /
+    `fn` no quiso guardar. Base del pago directo a la academia
+    (`academia_plan.py`): dos toques a la vez no pisan la misma cuota."""
+    if not pg.habilitado or not alumno_id:
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            q = ("SELECT academia_id, email, data FROM pichangol_matriculas WHERE id = %s "
+                 "AND coalesce(eliminada,false) = false")
+            args: list = [alumno_id]
+            if academia_id:
+                q += " AND academia_id = %s"
+                args.append(academia_id)
+            cur.execute(q + " FOR UPDATE", tuple(args))
+            row = cur.fetchone()
+            if not row:
+                conn.rollback()
+                return None
+            data = _json_dict(row[2])
+            data.setdefault("id", alumno_id)
+            data["academiaId"] = row[0]
+            data.setdefault("email", row[1] or "")
+            res = fn(data)
+            if res is None:
+                conn.rollback()
+                return None
+            cur.execute("UPDATE pichangol_matriculas SET data = %s::jsonb, updated_at = now() WHERE id = %s",
+                        (json.dumps(data), alumno_id))
+            conn.commit()
+            return res
+    except Exception as ex:  # noqa: BLE001
+        print(f"[matricula] no se pudo actualizar {alumno_id}: {ex}", flush=True)
         return None
 
 

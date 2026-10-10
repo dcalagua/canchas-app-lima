@@ -202,6 +202,16 @@ CONFIG_DEFAULT: dict[str, str] = {
     "fotos_local_min": "3",
     "fotos_local_plazo_dias": "30",
     "fotos_local_inicio": "",
+    # PLAN ACADEMIA = suscripción tipo Spotify (decisión del director,
+    # 10-oct-2026, `academia_plan.py`): las academias pagan una suscripción
+    # mensual a Pichangol y sus alumnos les pagan DIRECTO (Pichangol no maneja
+    # plata ajena ni cobra comisión). "suscripcion" | "comision" (el modelo
+    # anterior: matrícula y cuotas cobradas en línea por Pichangol).
+    "acad_modelo": "suscripcion",
+    "acad_plan_precio_PEN": "11.50",
+    "acad_plan_precio_USD": "3.00",
+    "acad_plan_precio_BOB": "21.00",
+    "acad_plan_prueba_dias": "30",
     # Tasa efectiva de la PASARELA/BANCO (Culqi) sobre el BRUTO de cada cobro
     # digital: es el COSTO real que paga Pichangol al procesar la tarjeta. Se
     # resta de la comisión que PCG le cobra a la academia para saber el MARGEN
@@ -737,6 +747,12 @@ class Stores:
         # local_key "dueño|club": {prorroga_dias, avisos{"<etapa>:<ref>": iso},
         # ultimo_aviso, historial}.
         self.fotos_locales: dict[str, dict] = {}
+        # PLAN ACADEMIA (`academia_plan.py`), por academia_id: {dueno, moneda,
+        # prueba_desde, prueba_hasta, hasta, auto_renovar, pagado, avisos{}}.
+        self.planes_academia: dict[str, dict] = {}
+        # Recordatorios de cuota ya enviados a los alumnos:
+        # "<alumno_id>|<cuota_id>" → ["antes", "hoy", "vencida"].
+        self.recordatorios_cuotas: dict[str, list] = {}
         # MARKETPLACE: unidades APARTADAS por el APK antes de cobrar
         # (`pagos/stock_productos.py`): apartado_id → {producto_id, email,
         # estado: apartado|vendido|devuelto|vencido, ilimitado, en}.
@@ -1262,6 +1278,8 @@ class Stores:
             "cancelaciones_web": [dict(r) for r in self.cancelaciones_web],
             "negocio_web": {k: dict(v) for k, v in self.negocio_web.items()},
             "fotos_locales": {k: dict(v) for k, v in self.fotos_locales.items()},
+            "planes_academia": {k: dict(v) for k, v in self.planes_academia.items()},
+            "recordatorios_cuotas": {k: list(v) for k, v in self.recordatorios_cuotas.items()},
             "apartados_stock": {k: dict(v) for k, v in self.apartados_stock.items()},
             "publicaciones_redes": [dict(r) for r in self.publicaciones_redes],
             "admin_accesos": [dict(r) for r in self.admin_accesos],
@@ -1400,6 +1418,10 @@ class Stores:
         self.fotos_locales = {str(k): dict(v) for k, v in (data.get("fotos_locales") or {}).items()
                               if isinstance(v, dict)}
         self.apartados_stock = {k: dict(v) for k, v in (data.get("apartados_stock") or {}).items()}
+        self.planes_academia = {str(k): dict(v) for k, v in (data.get("planes_academia") or {}).items()
+                                if isinstance(v, dict)}
+        self.recordatorios_cuotas = {str(k): list(v) for k, v in (data.get("recordatorios_cuotas") or {}).items()
+                                     if isinstance(v, list)}
         self.publicaciones_redes = [dict(r) for r in (data.get("publicaciones_redes") or [])]
         self.admin_accesos = [dict(r) for r in (data.get("admin_accesos") or [])]
         ag = data.get("agente_fb") or {}

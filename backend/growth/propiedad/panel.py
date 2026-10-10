@@ -445,6 +445,74 @@ def set_reclamo_fotos_admin(req: FotosReclamoRequest,
     return fotos_reclamo.set_minimo(req.minimo, req.maximo)
 
 
+# ── PLAN ACADEMIA (suscripción tipo Spotify, 10-oct-2026) ─────────────────────
+# `academia_plan.py`. Torre → Cobros → "🎓 Plan Academia": modelo (suscripción
+# o comisión), precio por moneda, días de prueba y lista de academias con su
+# estado; "+30 días" de cortesía.
+
+class PlanAcademiaConfigRequest(BaseModel):
+    modelo: str | None = None
+    precios: dict | None = None
+    prueba_dias: int | None = None
+
+
+class PlanAcademiaCortesiaRequest(BaseModel):
+    dias: int = 30
+
+
+@router.get("/admin/api/academias-plan")
+def get_academias_plan_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    import academia_plan as ap
+    try:
+        from web import datos as _d
+        acads = _d.academias_publicas()
+    except Exception:  # noqa: BLE001
+        acads = []
+    filas = []
+    for a in acads:
+        if not a.get("id"):
+            continue
+        e = ap.estado(a)
+        r = stores.planes_academia.get(str(a["id"])) or {}
+        filas.append({"id": a["id"], "nombre": a.get("nombre") or "", "dueno": a.get("dueno") or "",
+                      "estado": e["estado"], "vence": e.get("vence"), "vence_txt": e.get("vence_txt", ""),
+                      "dias": e.get("dias_restantes"), "precio": e["precio"], "simbolo": e["simbolo"],
+                      "pagado": bool(r.get("pagado")), "auto_renovar": bool(r.get("auto_renovar", True)),
+                      "yape": bool(ap.cobro_directo(a))})
+    orden = {"vencida": 0, "prueba": 1, "activa": 2, "libre": 3}
+    filas.sort(key=lambda x: (orden.get(x["estado"], 9), x["vence"] or ""))
+    kpis = {k: sum(1 for f in filas if f["estado"] == k) for k in ("prueba", "activa", "vencida")}
+    mrr = {}
+    for f in filas:
+        if f["estado"] == "activa" and f["pagado"]:
+            mrr[f["simbolo"]] = round(mrr.get(f["simbolo"], 0) + f["precio"], 2)
+    return {"config": ap.config_publica(), "academias": filas, "kpis": kpis, "mrr": mrr}
+
+
+@router.post("/admin/api/academias-plan/config")
+def set_academias_plan_admin(req: PlanAcademiaConfigRequest, x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    import academia_plan as ap
+    try:
+        return ap.set_config(modelo_nuevo=req.modelo, precios=req.precios, prueba=req.prueba_dias)
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=str(ex)) from None
+
+
+@router.post("/admin/api/academias-plan/{academia_id}/cortesia")
+def cortesia_academia_plan_admin(academia_id: str, req: PlanAcademiaCortesiaRequest,
+                                 x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    import academia_plan as ap
+    from web import datos as _d
+    a = _d.academia(academia_id)
+    try:
+        return ap.extender_cortesia(academia_id, req.dias, a)
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=str(ex)) from None
+
+
 # ── FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS (campaña, 2-oct-2026) ─────────
 # `propiedad/fotos_locales.py`. Torre → Aprobación y operación → "📷 Fotos de
 # los locales": KPIs, mínimo, plazo, lanzar/pausar y tabla por local con
@@ -2627,6 +2695,10 @@ _HTML = r"""<!DOCTYPE html>
             <span class="md-ico">🎁</span>
             <span class="md-txt"><b>Promociones</b><small>Bono de recarga · cupones</small></span>
           </button>
+          <button class="md-item" data-pane="planAcadPanel" onclick="mostrarPane(this,'planAcadPanel');cargarPlanAcademia()">
+            <span class="md-ico">🎓</span>
+            <span class="md-txt"><b>Plan Academia</b><small>Suscripción mensual de las academias · prueba gratis · pago directo de los alumnos</small></span>
+          </button>
           <button class="md-item" data-pane="modeloPanel" onclick="mostrarPane(this,'modeloPanel');cargarModeloNegocio()">
             <span class="md-ico">💼</span>
             <span class="md-txt"><b>Modelo de negocio · reservas</b><small>Modelo 1 (actual) o 2 (reparto de pasarela) · tú pones las comisiones</small></span>
@@ -2657,6 +2729,7 @@ _HTML = r"""<!DOCTYPE html>
           <div class="md-pane" id="proPanel" style="display:none"></div>
           <div class="md-pane" id="recargasQr" style="display:none"></div>
           <div class="md-pane" id="promosPanel" style="display:none"></div>
+          <div class="md-pane" id="planAcadPanel" style="display:none"></div>
           <div class="md-pane" id="modeloPanel" style="display:none"></div>
           <div class="md-pane" id="tarifasPanel" style="display:none"></div>
           <div class="md-pane" id="cargoPanel" style="display:none"></div>
@@ -4988,6 +5061,69 @@ async function desactivarCupon(codigo){
 // comisión?". La torre estima el costo de la pasarela con la tarifa contratada
 // y muestra el margen real (comisión Pichangol − pasarela).
 let tarifasCache = null;
+async function cargarPlanAcademia(){
+  const box = document.getElementById('planAcadPanel');
+  if(!box) return;
+  box.innerHTML = '<div class="card">Cargando…</div>';
+  try{
+    const r = await fetch('/admin/api/academias-plan',{headers:headers(), cache:'no-store'});
+    if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; return; }
+    const j = await r.json(); const c = j.config;
+    const inp = (id, v, step, w) => `<input id="${id}" type="number" min="0" step="${step}" value="${v}" style="width:${w||90}px;padding:8px;border-radius:10px;border:1px solid var(--border)">`;
+    const pill = e => ({prueba:'<span class="liq-tag">🎁 prueba</span>', activa:'<span class="liq-tag ok">✓ activa</span>',
+      vencida:'<span class="liq-tag" style="background:#FDECEC;color:#B42318">vencida</span>', libre:'<span class="liq-tag">libre</span>'}[e]||esc(e));
+    const mrr = Object.entries(j.mrr||{}).map(([s,v])=>`${esc(s)} ${Number(v).toFixed(2)}`).join(' · ') || '—';
+    const filas = (j.academias||[]).map(a=>`<tr>
+        <td><b>${esc(a.nombre)}</b><br><small style="color:#667">${esc(a.dueno)}</small></td>
+        <td>${pill(a.estado)}${a.pagado?' <small style="color:#667">pagó</small>':''}</td>
+        <td>${esc(a.vence_txt||'—')}${a.dias!=null&&a.estado!=='vencida'?'<br><small style="color:#667">'+a.dias+' días</small>':''}</td>
+        <td>${a.yape?'✓ Yape':'<small style="color:#B54708">sin Yape</small>'}</td>
+        <td><button class="btn-sec" onclick="cortesiaPlanAcademia('${esc(a.id)}')">+30 días</button></td></tr>`).join('');
+    box.innerHTML = `
+      <div class="card" style="margin-bottom:12px;background:#F4FBF7">
+        <div style="font-weight:800;font-size:15px;margin-bottom:4px">🎓 Plan Academia · tipo Spotify</div>
+        <div style="color:#667;font-size:12.5px">Las academias pagan una suscripción mensual fija con su saldo y sus alumnos les pagan <b>directo</b> (Yape de la academia + código de seguridad de 3 dígitos que la academia confirma). Pichangol no maneja plata ajena ni cobra comisión. Beneficios: recordatorios automáticos a los alumnos (push + correo), matrícula en línea y panel de cobros. Sin plan vigente la academia queda solo con su ficha pública.</div>
+      </div>
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:end">
+          <label style="font-size:12px">Modelo de academias<br>
+            <select id="pa_modelo" style="padding:8px;border-radius:10px;border:1px solid var(--border)">
+              <option value="suscripcion" ${c.modelo==='suscripcion'?'selected':''}>Suscripción (alumnos pagan directo)</option>
+              <option value="comision" ${c.modelo==='comision'?'selected':''}>Comisión (cobro en línea por Pichangol)</option>
+            </select></label>
+          <label style="font-size:12px">Precio S/ al mes<br>${inp('pa_PEN', c.precios.PEN, '0.10')}</label>
+          <label style="font-size:12px">Precio $ al mes<br>${inp('pa_USD', c.precios.USD, '0.10')}</label>
+          <label style="font-size:12px">Precio Bs al mes<br>${inp('pa_BOB', c.precios.BOB, '0.10')}</label>
+          <label style="font-size:12px">Prueba gratis (días)<br>${inp('pa_prueba', c.prueba_dias, '1', 80)}</label>
+          <button class="btn-ap" onclick="guardarPlanAcademia()">Guardar</button>
+          <span id="pa_msg" style="font-size:12.5px;color:#667"></span>
+        </div>
+      </div>
+      <div class="kpi-row" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div class="card" style="flex:1;min-width:130px"><small>En prueba</small><div style="font-size:22px;font-weight:800">${j.kpis.prueba||0}</div></div>
+        <div class="card" style="flex:1;min-width:130px"><small>Activas (pagando)</small><div style="font-size:22px;font-weight:800">${j.kpis.activa||0}</div></div>
+        <div class="card" style="flex:1;min-width:130px"><small>Vencidas</small><div style="font-size:22px;font-weight:800">${j.kpis.vencida||0}</div></div>
+        <div class="card" style="flex:1;min-width:130px"><small>Ingreso mensual</small><div style="font-size:18px;font-weight:800">${mrr}</div></div>
+      </div>
+      <div class="card" style="overflow-x:auto"><table class="tabla" style="width:100%;font-size:13px">
+        <thead><tr><th>Academia</th><th>Estado</th><th>Vence</th><th>Cobro directo</th><th></th></tr></thead>
+        <tbody>${filas || '<tr><td colspan="5">Aún no hay academias.</td></tr>'}</tbody></table></div>`;
+  }catch(e){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; }
+}
+async function guardarPlanAcademia(){
+  const v = id => document.getElementById(id).value;
+  const body = {modelo: v('pa_modelo'), precios: {PEN: v('pa_PEN'), USD: v('pa_USD'), BOB: v('pa_BOB')}, prueba_dias: parseInt(v('pa_prueba')||'0',10)};
+  const msg = document.getElementById('pa_msg');
+  const r = await fetch('/admin/api/academias-plan/config',{method:'POST', headers:{...headers(),'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok){ msg.textContent = j.detail || 'No se pudo guardar.'; msg.style.color='#B42318'; return; }
+  msg.textContent = 'Guardado ✓'; msg.style.color='#0B8A3E';
+  setTimeout(cargarPlanAcademia, 600);
+}
+async function cortesiaPlanAcademia(id){
+  const r = await fetch('/admin/api/academias-plan/'+encodeURIComponent(id)+'/cortesia',{method:'POST', headers:{...headers(),'Content-Type':'application/json'}, body: JSON.stringify({dias:30})});
+  if(r.ok) cargarPlanAcademia();
+}
 async function cargarTarifas(){
   const box = document.getElementById('tarifasPanel');
   if(!box) return;

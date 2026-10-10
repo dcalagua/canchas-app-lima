@@ -34,6 +34,7 @@ from web.anfitrion_negocio import router as anfitrion_negocio_router
 from web.anfitrion_verificador import router as anfitrion_verificador_router
 from boleadores import router as boleadores_router
 from fidelidad import router as fidelidad_router
+from academia_plan import router as academia_plan_router
 from web.academia import router as academia_web_router
 from web.jugador_clases import router as jugador_clases_router
 from web.jugador_market import router as jugador_market_router
@@ -194,7 +195,8 @@ app.include_router(anfitrion_negocio_router)  # reportes, caja, clientes, bonos,
 app.include_router(anfitrion_verificador_router)  # /anfitrion/verificador, /anfitrion/verificacion/{id} (antes del comodín)
 app.include_router(anfitrion_router)
 app.include_router(boleadores_router)  # /boleadores/* (APK + ficha web)
-app.include_router(fidelidad_router)  # /fidelidad/* (tarjeta de fidelidad del local)
+app.include_router(fidelidad_router)
+app.include_router(academia_plan_router)  # /academias/* y /config/academias (Plan Academia + pago directo)  # /fidelidad/* (tarjeta de fidelidad del local)
 # Assets de marca de la web pública (pin, logo para OG/favicon). Ruta fija
 # junto a este archivo para que Railway (root dir backend/growth) los sirva.
 app.mount("/static", StaticFiles(directory=os.path.join(
@@ -305,6 +307,16 @@ async def _iniciar_cron_liquidaciones() -> None:
                 # Postgres y manda push).
                 from propiedad import fotos_locales as _fl
                 await asyncio.to_thread(_fl.recordatorios)
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                # PLAN ACADEMIA (`academia_plan.py`): arranca la prueba de las
+                # academias nuevas, renueva desde el saldo, avisa al dueño y
+                # manda los recordatorios de cuota a los alumnos (beneficio
+                # del plan). En un hilo: lee Postgres y manda push/correo.
+                import academia_plan as _ap
+                await asyncio.to_thread(_ap.procesar)
+                await asyncio.to_thread(_ap.recordatorios_alumnos)
             except Exception:  # noqa: BLE001
                 pass
             try:
