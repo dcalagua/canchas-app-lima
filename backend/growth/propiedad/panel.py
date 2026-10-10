@@ -454,6 +454,7 @@ class PlanAcademiaConfigRequest(BaseModel):
     modelo: str | None = None
     precios: dict | None = None
     prueba_dias: int | None = None
+    paises: list[str] | None = None
 
 
 class PlanAcademiaCortesiaRequest(BaseModel):
@@ -495,7 +496,8 @@ def set_academias_plan_admin(req: PlanAcademiaConfigRequest, x_admin_token: str 
     _check(x_admin_token)
     import academia_plan as ap
     try:
-        return ap.set_config(modelo_nuevo=req.modelo, precios=req.precios, prueba=req.prueba_dias)
+        return ap.set_config(modelo_nuevo=req.modelo, precios=req.precios, prueba=req.prueba_dias,
+                             paises=req.paises)
     except ValueError as ex:
         raise HTTPException(status_code=400, detail=str(ex)) from None
 
@@ -5138,6 +5140,7 @@ async function cargarPlanAcademia(){
           <label style="font-size:12px">Precio $ al mes<br>${inp('pa_USD', c.precios.USD, '0.10')}</label>
           <label style="font-size:12px">Precio Bs al mes<br>${inp('pa_BOB', c.precios.BOB, '0.10')}</label>
           <label style="font-size:12px">Prueba gratis (días)<br>${inp('pa_prueba', c.prueba_dias, '1', 80)}</label>
+          <div style="font-size:12px">Academias visibles en<br>${['PE','EC','BO'].map(p=>`<label style="margin-right:10px;white-space:nowrap"><input type="checkbox" class="pa_pais" value="${p}" style="width:auto;flex:none" ${(c.paises||[]).includes(p)?'checked':''}> ${({PE:'Perú',EC:'Ecuador',BO:'Bolivia'})[p]}</label>`).join('')}</div>
           <button class="btn-ap" onclick="guardarPlanAcademia()">Guardar</button>
           <span id="pa_msg" style="font-size:12.5px;color:#667"></span>
         </div>
@@ -5225,7 +5228,8 @@ async function probarYapeAuto(){
 }
 async function guardarPlanAcademia(){
   const v = id => document.getElementById(id).value;
-  const body = {modelo: v('pa_modelo'), precios: {PEN: v('pa_PEN'), USD: v('pa_USD'), BOB: v('pa_BOB')}, prueba_dias: parseInt(v('pa_prueba')||'0',10)};
+  const body = {modelo: v('pa_modelo'), precios: {PEN: v('pa_PEN'), USD: v('pa_USD'), BOB: v('pa_BOB')}, prueba_dias: parseInt(v('pa_prueba')||'0',10),
+    paises: [...document.querySelectorAll('.pa_pais')].filter(x=>x.checked).map(x=>x.value)};
   const msg = document.getElementById('pa_msg');
   const r = await fetch('/admin/api/academias-plan/config',{method:'POST', headers:{...headers(),'Content-Type':'application/json'}, body: JSON.stringify(body)});
   const j = await r.json().catch(()=>({}));

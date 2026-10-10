@@ -102,14 +102,42 @@ def prueba_dias() -> int:
         return 30
 
 
+PAISES = ("PE", "EC", "BO")
+NOMBRE_PAIS = {"PE": "Perú", "EC": "Ecuador", "BO": "Bolivia"}
+
+
+def paises_habilitados() -> list[str]:
+    """Países donde las academias EXISTEN para el público (decisión del
+    director, 10-oct-2026: "ocultamos las academias para Bolivia y Ecuador").
+    `acad_paises` en la torre; vacío = ninguno."""
+    raw = stores.config.get("acad_paises")
+    raw = "PE" if raw is None else str(raw)
+    return [p for p in PAISES if p in {x.strip().upper() for x in raw.split(",")}]
+
+
+def pais_habilitado(iso: str) -> bool:
+    return (iso or "").strip().upper() in paises_habilitados()
+
+
+def pais_de(a: dict | None) -> str:
+    """País de la academia = el de su sede (por la moneda que ya resuelve la
+    ficha: coordenadas de la sede o moneda congelada)."""
+    return pais_de_moneda(moneda_de(a or {}))
+
+
+def habilitada(a: dict | None) -> bool:
+    """¿Esta academia se muestra al público y acepta matrículas?"""
+    return bool(a) and pais_habilitado(pais_de(a))
+
+
 def config_publica() -> dict:
     return {"modelo": modelo(), "prueba_dias": prueba_dias(), "periodo_dias": DIAS_PERIODO,
             "precios": {m: precio_centimos(m) / 100.0 for m in MONEDAS},
-            "simbolos": dict(SIMBOLO)}
+            "simbolos": dict(SIMBOLO), "paises": paises_habilitados()}
 
 
 def set_config(*, modelo_nuevo: str | None = None, precios: dict | None = None,
-               prueba: int | None = None) -> dict:
+               prueba: int | None = None, paises: list | None = None) -> dict:
     """Torre → Cobros → Plan Academia. Valida y guarda en `stores.config`."""
     if modelo_nuevo is not None:
         m = str(modelo_nuevo).strip().lower()
@@ -132,6 +160,12 @@ def set_config(*, modelo_nuevo: str | None = None, precios: dict | None = None,
         if p < 0 or p > 365:
             raise ValueError("La prueba debe estar entre 0 y 365 días.")
         stores.config["acad_plan_prueba_dias"] = str(p)
+    if paises is not None:
+        lista = [str(x).strip().upper() for x in (paises if isinstance(paises, list) else str(paises).split(","))]
+        malos = [x for x in lista if x and x not in PAISES]
+        if malos:
+            raise ValueError("País no válido: " + ", ".join(malos))
+        stores.config["acad_paises"] = ",".join(p for p in PAISES if p in lista)
     return config_publica()
 
 

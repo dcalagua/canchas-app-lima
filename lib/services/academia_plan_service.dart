@@ -160,6 +160,21 @@ class AcademiaPlanService {
   /// ¿Academias por SUSCRIPCIÓN? (si no, todo como siempre).
   static bool get esSuscripcion => modelo == 'suscripcion';
 
+  /// Países donde las academias existen para el público (torre → Plan
+  /// Academia; decisión del director, 10-oct-2026: ocultas en Bolivia y
+  /// Ecuador). Sin config cargada = solo Perú.
+  static List<String> get paises {
+    final l = config['paises'];
+    if (l is List) return [for (final p in l) p.toString().toUpperCase()];
+    return const ['PE'];
+  }
+
+  static bool paisHabilitado(String iso) =>
+      paises.contains(iso.trim().toUpperCase());
+
+  /// ¿Se muestra al público? (país de su sede; sin sede ubicada: su moneda).
+  static bool habilitada(Academia a) => paisHabilitado(a.pais.iso);
+
   static int get pruebaDias {
     final v = config['prueba_dias'];
     return v is num ? v.toInt() : 30;

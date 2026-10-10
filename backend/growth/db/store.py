@@ -212,6 +212,9 @@ CONFIG_DEFAULT: dict[str, str] = {
     "acad_plan_precio_USD": "3.00",
     "acad_plan_precio_BOB": "21.00",
     "acad_plan_prueba_dias": "30",
+    # Países donde las academias se muestran al público (decisión del
+    # director, 10-oct-2026: ocultas en Bolivia y Ecuador). "PE,EC,BO" = todos.
+    "acad_paises": "PE",
     # Fase 2: confirmación automática leyendo la notificación de Yape en el
     # celular de la academia (`yape_auto.py`; espejo de `yape_auto.DEFAULTS`).
     "yape_auto_activo": "1",

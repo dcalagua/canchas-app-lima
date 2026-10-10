@@ -3869,6 +3869,22 @@ antes del corte.
   `pago_directo_sheet.dart`, `Academia.cobroDirecto`, `Cuota.reporte/
   medioPago`; config sin cargar = "comision" (comportamiento anterior). Tests
   `tests/test_academia_plan.py`, `tests/test_web_academia_plan.py`.
+  **ACADEMIAS OCULTAS EN BOLIVIA Y ECUADOR (decisión del director,
+  10-oct-2026: "ocultamos las academias para Bolivia y Ecuador"):**
+  `stores.config["acad_paises"]` (default "PE", espejo en `CONFIG_DEFAULT`;
+  torre → Cobros → Plan Academia → casillas "Academias visibles en";
+  `academia_plan.paises_habilitados/pais_habilitado/habilitada(a)` = país de la
+  sede por `moneda_de`). Fuera de esos países: el explorador web no las lista
+  (y oculta la pestaña 🎓 si el visitante está en un país no habilitado,
+  `C.acadPaises`; sin ningún país la pestaña no se pinta), `/academia/{id}`
+  responde "Academia no disponible" (salvo a su dueño), `/l/{id}` 404, la
+  matrícula web responde `academia`, y Mi academia web/APK no deja guardar una
+  sede ahí. `/config/academias` publica `paises`; el APK
+  (`AcademiaPlanService.paises`, default ['PE'] sin config) oculta el chip 🎓
+  de Explorar y del mapa, filtra el directorio y esconde "Mi academia" en Modo
+  anfitrión si `paisBilletera` no está habilitado (salvo que ya tenga una).
+  En los tests la suite habilita los 3 países (`tests/conftest.py`); la regla
+  real la prueba `test_academias_ocultas_en_bolivia_y_ecuador`.
   **FASE 2 = YAPE AUTOMÁTICO (hecho 10-oct-2026, "seguimos con la fase 2"):**
   `backend/growth/yape_auto.py`. El dueño activa en el APK → Plan Academia →
   "Confirmar mis pagos automáticamente" (`widgets/yape_auto_card.dart`, solo

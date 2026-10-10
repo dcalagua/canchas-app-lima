@@ -471,6 +471,12 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
     except (TypeError, ValueError):
         return None, "Ubicación inválida.", "sede"
     iso = paises.pais_de_coordenadas(lat, lng)
+    import academia_plan as _ap
+    if lat is not None and not _ap.pais_habilitado(iso):
+        # Decisión del director (10-oct-2026): academias ocultas en BO/EC.
+        hab = [_ap.NOMBRE_PAIS[p] for p in _ap.paises_habilitados()]
+        return None, ("Por ahora las academias solo están disponibles en " + " y ".join(hab) + "."
+                      if hab else "Por ahora las academias no están disponibles."), "sede"
     tel = re.sub(r"\D", "", str(b.get("whatsapp") or ""))
     if len(tel) < catalogos.TEL_LONGITUD.get(iso, 9):
         return None, f"Pon un WhatsApp válido ({catalogos.TEL_LONGITUD.get(iso, 9)} dígitos).", "sede"
