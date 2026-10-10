@@ -8,6 +8,7 @@ import 'config/pais.dart';
 import 'data/presencia_repo.dart';
 import 'models/models.dart';
 import 'models/boleador.dart';
+import 'screens/partidos_screen.dart';
 import 'screens/bodega_screen.dart';
 import 'screens/boleador_screen.dart';
 import 'screens/mis_reservas_screen.dart';
@@ -75,6 +76,13 @@ void main() async {
         builder: (_) => Boleadores.soyBoleador
             ? const BoleadorScreen()
             : const MisReservasScreen()));
+  };
+  // Push de JUEGA YA (partido o partner cerca): abre la pantalla en su pestaña.
+  PushService.alAbrirPartidos = (partner) {
+    final nav = PushService.navigatorKey.currentState;
+    if (nav == null) return;
+    nav.push(MaterialPageRoute(
+        builder: (_) => PartidosScreen(tabInicial: partner ? 1 : 0)));
   };
   // Al tocar el push de un PEDIDO DE BODEGA siendo DUEÑO, abre Mi bodega
   // directo en la pestaña Pedidos.

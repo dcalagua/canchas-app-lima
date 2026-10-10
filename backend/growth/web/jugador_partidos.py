@@ -51,6 +51,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 import config
 import paises
+import juego
 from convocatorias import service as conv
 from db import pg
 from db.store import MODOS_ASIGNACION, stores
@@ -206,6 +207,12 @@ _CSS = """
 
 def _fila_partido(cols, f) -> dict:
     d = dict(zip(cols, f))
+    ets = d.get("etiquetas")
+    if isinstance(ets, str):
+        try:
+            ets = json.loads(ets)
+        except ValueError:
+            ets = []
     return {"id": str(d.get("id") or ""), "creador_email": _low(d.get("creador_email")),
             "creador_nombre": str(d.get("creador_nombre") or ""), "deporte": str(d.get("deporte") or "futbol"),
             "titulo": str(d.get("titulo") or ""), "fecha": str(d.get("fecha") or ""), "hora": str(d.get("hora") or ""),
@@ -213,11 +220,41 @@ def _fila_partido(cols, f) -> dict:
             "lat": float(d["lat"]) if d.get("lat") is not None else None,
             "lng": float(d["lng"]) if d.get("lng") is not None else None,
             "cupos": int(d.get("cupos") or 10), "nota": str(d.get("nota") or ""),
+            "tipo": str(d.get("tipo") or "partido"), "modalidad": str(d.get("modalidad") or ""),
+            "nivel": str(d.get("nivel") or ""), "etiquetas": [str(x) for x in (ets or []) if x],
+            "cancha_id": str(d.get("cancha_id") or ""),
             "jugadores": [], "nombres": []}
 
 
 _COLS_P = ["id", "creador_email", "creador_nombre", "deporte", "titulo", "fecha", "hora", "sede_nombre",
            "lat", "lng", "cupos", "nota"]
+# JUEGA YA (SQL `docs/piloto/supabase_partidos_juega_ya.sql`): tipo, modalidad,
+# nivel, etiquetas y cancha. Se leen/escriben solo si la base ya las tiene.
+_COLS_V2 = ["tipo", "modalidad", "nivel", "etiquetas", "cancha_id"]
+_cols_v2_estado = {"ok": None, "t": 0.0}
+
+
+def cols_v2() -> bool:
+    """¿Corrió el SQL de Juega ya? Un sí se recuerda; un no se re-pregunta a
+    los 5 min (así no hace falta reiniciar el servicio tras correr el SQL)."""
+    est = _cols_v2_estado
+    if est["ok"] or (est["ok"] is False and time.time() - est["t"] < 300):
+        return bool(est["ok"])
+    if not pg.habilitado:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' "
+                        "AND table_name = 'pichangol_partidos' AND column_name = ANY(%s)", (_COLS_V2,))
+            ok = int(cur.fetchone()[0]) == len(_COLS_V2)
+    except Exception:  # noqa: BLE001
+        return False
+    est.update(ok=ok, t=time.time())
+    return ok
+
+
+def _cols_p() -> list[str]:
+    return _COLS_P + (_COLS_V2 if cols_v2() else [])
 
 
 def _roster(cur, ids: list[str]) -> dict[str, list[tuple[str, str]]]:
@@ -242,8 +279,9 @@ def partidos_desde(hoy_iso: str) -> list[dict]:
         return []
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute(f"SELECT {', '.join(_COLS_P)} FROM pichangol_partidos WHERE fecha >= %s ORDER BY fecha, hora", (hoy_iso,))
-            ps = [_fila_partido(_COLS_P, f) for f in cur.fetchall()]
+            cols = _cols_p()
+            cur.execute(f"SELECT {', '.join(cols)} FROM pichangol_partidos WHERE fecha >= %s ORDER BY fecha, hora", (hoy_iso,))
+            ps = [_fila_partido(cols, f) for f in cur.fetchall()]
             ros = _roster(cur, [p["id"] for p in ps])
     except Exception:  # noqa: BLE001
         return []
@@ -259,17 +297,39 @@ def partido(pid: str) -> dict | None:
         return None
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute(f"SELECT {', '.join(_COLS_P)} FROM pichangol_partidos WHERE id = %s", (pid,))
+            cols = _cols_p()
+            cur.execute(f"SELECT {', '.join(cols)} FROM pichangol_partidos WHERE id = %s", (pid,))
             f = cur.fetchone()
             if not f:
                 return None
-            p = _fila_partido(_COLS_P, f)
+            p = _fila_partido(cols, f)
             r = _roster(cur, [pid]).get(pid, [])
     except Exception:  # noqa: BLE001
         return None
     p["jugadores"] = [x[0] for x in r]
     p["nombres"] = [x[1] for x in r]
     return p
+
+
+def partidos_creados_desde(desde: datetime, fecha_min: str) -> list[dict]:
+    """Partidos CREADOS desde `desde` (app, web o APKs viejos) que aún no se
+    jugaron, con su roster: el barrido de avisos de `juego.py`."""
+    if not pg.habilitado:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cols = _cols_p()
+            cur.execute(f"SELECT {', '.join(cols)} FROM pichangol_partidos WHERE creado >= %s AND fecha >= %s "
+                        "ORDER BY creado", (desde, fecha_min))
+            ps = [_fila_partido(cols, f) for f in cur.fetchall()]
+            ros = _roster(cur, [p["id"] for p in ps])
+    except Exception:  # noqa: BLE001
+        return []
+    for p in ps:
+        r = ros.get(p["id"], [])
+        p["jugadores"] = [x[0] for x in r]
+        p["nombres"] = [x[1] for x in r]
+    return ps
 
 
 def crear_partido(p: dict) -> bool:
@@ -279,10 +339,16 @@ def crear_partido(p: dict) -> bool:
         return False
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute("INSERT INTO pichangol_partidos (id, creador_email, creador_nombre, deporte, titulo, fecha, hora, "
-                        "sede_nombre, lat, lng, cupos, nota) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                        (p["id"], p["creador_email"], p["creador_nombre"], p["deporte"], p["titulo"], p["fecha"], p["hora"],
-                         p["sede"], p.get("lat"), p.get("lng"), p["cupos"], p["nota"]))
+            cols = ["id", "creador_email", "creador_nombre", "deporte", "titulo", "fecha", "hora",
+                    "sede_nombre", "lat", "lng", "cupos", "nota"]
+            vals = [p["id"], p["creador_email"], p["creador_nombre"], p["deporte"], p["titulo"], p["fecha"], p["hora"],
+                    p["sede"], p.get("lat"), p.get("lng"), p["cupos"], p.get("nota") or ""]
+            if cols_v2():
+                cols += _COLS_V2
+                vals += [p.get("tipo") or "partido", p.get("modalidad") or "", p.get("nivel") or "",
+                         json.dumps(p.get("etiquetas") or []), p.get("cancha_id") or None]
+            marcas = ", ".join("%s::jsonb" if c == "etiquetas" else "%s" for c in cols)
+            cur.execute(f"INSERT INTO pichangol_partidos ({', '.join(cols)}) VALUES ({marcas})", vals)
             cur.execute("SAVEPOINT g")
             try:
                 cur.execute("INSERT INTO pichangol_grupos (id, nombre, creador_email) VALUES (%s, %s, %s)",
@@ -374,6 +440,23 @@ def eliminar_partido(pid: str, creador: str) -> bool:
         return False
 
 
+def locales_info() -> dict[str, dict]:
+    """Locales conocidos → {lat, lng, cancha_id}. `cancha_id` (para "Ver
+    cancha") solo si el local es reservable (verificado y con dueño)."""
+    out: dict[str, dict] = {}
+    for c in datos.canchas_publicas():
+        n = (c.get("club") or c.get("nombre") or "").strip()
+        if not n or c.get("lat") is None or c.get("lng") is None:
+            continue
+        reservable = bool(c.get("verificada")) and bool(str(c.get("dueno") or "").strip())
+        cur = out.get(n)
+        if cur is None:
+            out[n] = {"lat": float(c["lat"]), "lng": float(c["lng"]), "cancha_id": str(c.get("id") or "") if reservable else ""}
+        elif not cur["cancha_id"] and reservable:
+            cur["cancha_id"] = str(c.get("id") or "")
+    return out
+
+
 def locales_conocidos() -> dict[str, tuple[float, float]]:
     """Sedes para "¿Dónde se juega?" (= `Club.agrupar(todasLasCanchas)`): nombre
     del local → ubicación."""
@@ -423,6 +506,25 @@ def _preview_circuito() -> str:
             + (f"<div style='margin-top:8px'>{filas}</div>" if filas else "") + "</a>")
 
 
+def _nombre_modalidad(p: dict) -> str:
+    """"Fut 7", "Singles", "Dobles"… según el tipo y los cupos."""
+    if p.get("tipo") == "partner":
+        m = juego.modalidad_partner(p.get("modalidad") or "")
+        return m[1] if m else "Partner"
+    for etq, n in PRESETS.get(p.get("deporte") or "", []):
+        if n == p.get("cupos"):
+            return etq
+    return _etq(p.get("deporte") or "")
+
+
+def titulo_auto(p: dict) -> str:
+    """Título SIN texto libre: "Fut 7 · Sabor Golazo", "Singles de tenis · Club X"."""
+    mod = _nombre_modalidad(p)
+    if p.get("tipo") == "partner":
+        mod = f"{mod} de {_etq(p['deporte']).lower()}"
+    return f"{mod} · {p['sede']}"[:80]
+
+
 def _tarjeta_partido(p: dict, yo: str) -> str:
     from web.jugador_mensajes import clave_de, hilo_grupo
     apuntado = yo in p["jugadores"]
@@ -430,12 +532,25 @@ def _tarjeta_partido(p: dict, yo: str) -> str:
     n = len(p["jugadores"])
     lleno = n >= p["cupos"]
     faltan = max(0, p["cupos"] - n)
-    chip = ("<span class='jp-pill gris'>Completo</span>" if lleno else f"<span class='jp-pill ok'>Faltan {faltan}</span>")
+    partner = p.get("tipo") == "partner"
+    if lleno:
+        chip = "<span class='jp-pill gris'>Completo</span>"
+    elif partner:
+        chip = "<span class='jp-pill info'>Busca partner</span>" if faltan == 1 else f"<span class='jp-pill info'>Faltan {faltan}</span>"
+    else:
+        chip = f"<span class='jp-pill ok'>Faltan {faltan}</span>"
     lin = ""
     if p["sede"]:
-        lin += f"<div class='jp-lin'><span>📍</span><span>{e(p['sede'])}</span></div>"
-    lin += f"<div class='jp-lin'><span>👥</span><span>{n} de {p['cupos']} jugadores · {e(_etq(p['deporte']))}</span></div>"
-    if p["nota"]:
+        lin += f"<div class='jp-lin'><span>📍</span><span>{e(p['sede'])}<b class='jp-km'></b></span></div>"
+    lin += (f"<div class='jp-lin'><span>👥</span><span>{n} de {p['cupos']} jugadores · {e(_nombre_modalidad(p))}"
+            f"{'' if partner else ' · ' + e(_etq(p['deporte']))}</span></div>")
+    if p.get("nivel"):
+        lin += f"<div class='jp-lin'><span>📊</span><span>Nivel {e(juego.etiqueta_nivel(p['nivel']))}</span></div>"
+    if p.get("etiquetas"):
+        lin += "<div class='jp-ets'>" + "".join(
+            f"<span class='jp-et'>{e(juego.ETIQUETAS[k][0])} {e(juego.ETIQUETAS[k][1])}</span>"
+            for k in p["etiquetas"] if k in juego.ETIQUETAS) + "</div>"
+    elif p["nota"]:   # publicado por un APK anterior (texto libre)
         lin += f"<div class='jp-lin'><span>🗒️</span><span>{e(p['nota'])}</span></div>"
     if p["nombres"]:
         nombres = ", ".join(x.split(" ")[0] for x in p["nombres"][:12] if x) or ""
@@ -450,94 +565,319 @@ def _tarjeta_partido(p: dict, yo: str) -> str:
         else:
             acc += f"<button type='button' class='btn sec' data-salir='{pid}'>Salir</button>"
     else:
-        acc = (f"<button type='button' class='btn' disabled style='background:#BDBDBD'>Completo</button>" if lleno
-               else f"<button type='button' class='btn' data-apuntar='{pid}'>＋ Me apunto</button>")
-    return (f"<div class='jp-card'><div class='jp-top'><span class='jp-dep'>{_emo(p['deporte'])}</span>"
+        acc = ("<button type='button' class='btn' disabled style='background:#BDBDBD'>Completo</button>" if lleno
+               else f"<button type='button' class='btn' data-apuntar='{pid}'>{'🎾 Juego contigo' if partner else '＋ Me apunto'}</button>")
+    if p.get("cancha_id"):
+        acc += f"<a class='btn sec' href='/reservar/{quote(p['cancha_id'], safe='')}'>🏟️ Ver cancha</a>"
+    attrs = (f" data-dep='{e(p['deporte'])}' data-fecha='{e(p['fecha'])}' data-nivel='{e(p.get('nivel') or '')}'"
+             + (f" data-lat='{p['lat']}' data-lng='{p['lng']}'" if p["lat"] is not None and p["lng"] is not None else ""))
+    return (f"<div class='jp-card jp-p'{attrs}><div class='jp-top'><span class='jp-dep'>{_emo(p['deporte'])}</span>"
             f"<div class='t'><b>{e(p['titulo'])}</b><small>{e(fecha_legible(p['fecha'], p['hora']))}</small></div>{chip}</div>"
             f"{lin}<div class='jp-acc'>{acc}</div></div>")
 
 
+def _texto_prefs(pr: dict) -> str:
+    if not pr.get("avisos") and not pr.get("disponible"):
+        return "Te avisamos cuando alguien publique un partido cerca de ti, de tu deporte y a tu hora."
+    partes = []
+    if pr.get("avisos"):
+        partes.append("🔔 Avisos encendidos")
+    if pr.get("disponible"):
+        partes.append("🙋 Apareces como disponible")
+    deps = ", ".join(_etq(d) for d in pr.get("deportes") or [])
+    return " · ".join(partes) + (f" · {deps}" if deps else "") + f" · a {pr.get('radio_km') or juego.RADIO_DEFAULT} km"
+
+
+_CSS_JY = """
+.jp-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:4px 0 6px}
+.jp-tile{display:flex;flex-direction:column;align-items:flex-start;gap:4px;background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:16px;padding:12px;text-decoration:none;font:inherit;text-align:left;cursor:pointer;min-width:0}
+.jp-tile .em{font-size:24px}.jp-tile b{font-size:14.5px}.jp-tile small{opacity:.9;font-size:12px}
+.jp-tile.sel{background:#fff;color:#0A1B3D}
+.jp-av-card{display:flex;gap:12px;align-items:center}
+.jp-av-card .t{flex:1;min-width:0}.jp-av-card .t b{display:block}.jp-av-card .t small{color:#6a6a6a}
+.jp-ubic{display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:#555;font-size:13.5px;margin:4px 0 6px}
+.jp-ubic select{width:auto;padding:6px 10px;border:1px solid #E4E4E4;border-radius:999px;background:#fff;font:inherit}
+.jp-km{font-weight:700;color:#067A38;margin-left:4px}
+.jp-ets{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+.jp-et{background:#F4F7FA;border:1px solid #EBEBEB;border-radius:999px;padding:4px 10px;font-size:12.5px}
+.jp-jug{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #F0F0F0;min-width:0}
+.jp-jug:first-child{border-top:0}
+.jp-jug .q{flex:1;min-width:0}.jp-jug .q b{display:block;overflow-wrap:anywhere}.jp-jug .q small{color:#6a6a6a}
+.jp-jug .acc{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.jp-jug .acc .btn{padding:8px 12px;font-size:13px}
+.jp-av-img{width:46px;height:46px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#0E8F67;color:#fff;font-weight:800;font-size:18px}
+.jp-sw{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-top:1px solid #F0F0F0;cursor:pointer;text-align:left}
+.jp-sw input{width:auto!important;flex:none;margin-top:3px;transform:scale(1.2)}
+.jp-sw b{display:block}.jp-sw small{color:#6a6a6a}
+@media (max-width:600px){#jpAvisos{flex-wrap:wrap}#jpAvisos .btn{width:100%}.jp-tiles{grid-template-columns:minmax(0,1fr)}.jp-tile{flex-direction:row;align-items:center}.jp-tile small{display:none}
+.jp-jug{flex-wrap:wrap}.jp-jug .acc{width:100%;justify-content:flex-start}}
+"""
+
+
 @router.get("/partidos", response_class=HTMLResponse)
-def pagina_partidos(request: Request, pais: str = "") -> HTMLResponse:
+def pagina_partidos(request: Request, pais: str = "", tab: str = "") -> HTMLResponse:
     ses = sesion.de_request(request)
     if not ses:
-        return sin_sesion(request, "/partidos", "Partidos", "Publicar y unirte a partidos")
+        return sin_sesion(request, "/partidos", "Juega ya", "Buscar y organizar partidos")
     yo = _low(ses["email"])
+    tab = "partner" if tab == "partner" else "partidos"
     iso = pais if pais in dict(_PAISES) else _pais_usuario(yo)
     hoy = horarios.ahora_local(iso).date()
-    lista = [p for p in partidos_desde(hoy.isoformat())
+    todos = [p for p in partidos_desde(hoy.isoformat())
              if p["lat"] is None or p["lng"] is None or paises.pais_de_coordenadas(p["lat"], p["lng"]) == iso]
-    chips = "".join(f"<a class='chip{' sel' if k == iso else ''}' href='/partidos?pais={k}'>{ui.bandera(k)} {n}</a>" for k, n in _PAISES)
-    tarjetas = "".join(_tarjeta_partido(p, yo) for p in lista) or (
-        "<div class='jp-vacio'><span class='em'>⚽</span><b>Todavía no hay partidos abiertos</b>"
-        "¿Te falta gente para jugar? Publica tu partido con el botón “Crear partido” y deja que otros se apunten.</div>")
-    locales = locales_conocidos()
-    cfg = {"presets": PRESETS, "deportes": [[d, _etq(d), _emo(d)] for d in DEPORTES_ACTIVOS],
+    lista = [p for p in todos if (p.get("tipo") == "partner") == (tab == "partner")]
+    deps = juego.DEPORTES_PARTNER if tab == "partner" else juego.DEPORTES_JUEGO
+    chips = "".join(f"<a class='chip{' sel' if k == iso else ''}' href='/partidos?pais={k}&tab={tab}'>{ui.bandera(k)} {n}</a>" for k, n in _PAISES)
+    vacio_txt = ("<b>Nadie busca partner por ahora</b>Publica “Busco partner” o escríbele a un jugador disponible de abajo."
+                 if tab == "partner" else
+                 "<b>No hay partidos abiertos cerca</b>¿Te falta gente para jugar? Organiza tu partido y deja que otros se apunten; te avisamos a los de la zona.")
+    tarjetas = "".join(_tarjeta_partido(p, yo) for p in lista)
+    vacio = f"<div class='jp-vacio' id='jpVacio' style='{'' if not lista else 'display:none'}'><span class='em'>{'🎾' if tab == 'partner' else '⚽'}</span>{vacio_txt}</div>"
+    pr = juego.prefs_de(yo)
+    mis_niveles = {n["deporte"]: juego.nivel_banda(n["nivel"]) for n in datos.niveles_de(yo)}
+    cfg = {"presets": PRESETS, "tab": tab,
+           "deportes": [[d, _etq(d), _emo(d)] for d in juego.DEPORTES_JUEGO],
+           "partner": juego.DEPORTES_PARTNER,
+           "modalidades": [[k, t, n] for k, t, n in juego.MODALIDADES_PARTNER],
+           "niveles": [[k, t] for k, t, _, _ in juego.NIVELES],
+           "etiquetas": [[k, em, tx, deps_ or []] for k, (em, tx, deps_) in juego.ETIQUETAS.items()],
+           "maxEts": juego.MAX_ETIQUETAS, "radios": juego.RADIOS,
+           "franjas": [[k, t] for k, t in juego.FRANJAS], "dias": [[k, t] for k, t in juego.DIAS],
+           "prefs": juego.publicas(pr), "misNiveles": mis_niveles, "nivelSinDato": juego.nivel_banda(None),
            "hoy": hoy.isoformat(), "max": (hoy + timedelta(days=90)).isoformat(),
-           "dias": [[(hoy + timedelta(days=i)).isoformat(), "Hoy" if i == 0 else "Mañana" if i == 1 else fecha_legible((hoy + timedelta(days=i)).isoformat())] for i in range(7)]}
+           "proximos": [[(hoy + timedelta(days=i)).isoformat(), "Hoy" if i == 0 else "Mañana" if i == 1 else fecha_legible((hoy + timedelta(days=i)).isoformat())] for i in range(7)]}
+    locales = locales_conocidos()
     opciones = "".join(f"<option value='{e(n)}'>" for n in sorted(locales)[:600])
-    cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap con-fab'><a class='jp-volver' href='/perfil'>‹ Perfil</a>"
-              "<div class='jp-hero'><h1>Partidos</h1><p>Publica un partido y encuentra con quién jugar.</p>"
+    f_deps = "<button type='button' class='chip sel' data-fdep=''>Todos</button>" + "".join(
+        f"<button type='button' class='chip' data-fdep='{d}'>{_emo(d)} {e(_etq(d))}</button>" for d in deps)
+    f_cu = "".join(f"<button type='button' class='chip{' sel' if k == 'todos' else ''}' data-fcu='{k}'>{t}</button>"
+                   for k, t in (("todos", "Cuando sea"), ("hoy", "Hoy"), ("manana", "Mañana"), ("finde", "Este finde")))
+    radios = "".join(f"<option value='{r}'>{r} km</option>" for r in juego.RADIOS)
+    tiles = (f"<a class='jp-tile{' sel' if tab == 'partidos' else ''}' href='/partidos?tab=partidos'><span class='em'>⚽</span><b>Busco partido</b><small>Únete a uno que esté cerca</small></a>"
+             "<button type='button' class='jp-tile' onclick=\"jpCrear('partido')\"><span class='em'>📣</span><b>Organizo un partido</b><small>Publica y completa tu equipo</small></button>"
+             f"<a class='jp-tile{' sel' if tab == 'partner' else ''}' href='/partidos?tab=partner'><span class='em'>🎾</span><b>Busco partner</b><small>Tenis y pickleball</small></a>")
+    seccion_disp = ("" if tab != "partner" else
+                    "<div class='jp-sec'>🙋 Jugadores disponibles cerca</div>"
+                    "<div class='jp-card' id='jpDisp'><div class='jp-vacio' style='padding:18px'>Activa tu ubicación para ver quién quiere jugar cerca de ti.</div></div>")
+    fab = ("<button type='button' class='btn jp-fab' onclick=\"jpCrear('partner')\">＋ Busco partner</button>" if tab == "partner"
+           else "<button type='button' class='btn jp-fab' onclick=\"jpCrear('partido')\">＋ Organizar partido</button>")
+    cuerpo = (f"<style>{_CSS}{_CSS_JY}</style><div class='jp-wrap con-fab'><a class='jp-volver' href='/perfil'>‹ Perfil</a>"
+              "<div class='jp-hero'><h1>Juega ya</h1><p>Encuentra un partido, organiza el tuyo o busca con quién jugar.</p>"
+              f"<div class='jp-tiles'>{tiles}</div>"
               "<a class='jp-link' href='/pichangas'>📅 Pichangas de mi club ›</a>"
               "<a class='jp-link' href='/liga'>🏆 Liga y retos ›</a></div>"
-              + _preview_circuito()
-              + f"<div class='jp-chips'>{chips}</div>{tarjetas}</div>"
-              "<button type='button' class='btn jp-fab' onclick='jpCrear()'>＋ Crear partido</button>"
-              f"<datalist id='jpSedes'>{opciones}</datalist>"
+              "<div class='jp-card jp-av-card' id='jpAvisos'><span class='jp-dep'>🔔</span><div class='t'>"
+              f"<b>Avísame partidos cerca</b><small id='jpAvTxt'>{e(_texto_prefs(pr))}</small></div>"
+              "<button type='button' class='btn sec' onclick='jpPrefs()'>Configurar</button></div>"
+              f"<div class='jp-ubic'><span id='jpUbic'>📍 Buscando tu ubicación…</span><select id='jpRadio' aria-label='Radio'>{radios}</select>"
+              "<button type='button' class='chip' id='jpUbicBtn' style='display:none' onclick='jpUbicar(true)'>Usar mi ubicación</button></div>"
+              f"<div class='jp-chips'>{f_deps}</div><div class='jp-chips'>{f_cu}"
+              "<button type='button' class='chip' data-fniv='1'>📊 De mi nivel</button></div>"
+              f"<div class='jp-sec'>{'🎾 Buscan partner' if tab == 'partner' else '⚽ Partidos abiertos'}</div>"
+              f"{tarjetas}{vacio}{seccion_disp}"
+              f"<div class='jp-chips' style='margin-top:18px'>{chips}</div></div>"
+              f"{fab}<datalist id='jpSedes'>{opciones}</datalist>"
               f"<script>window.JP={_js(cfg)};</script><script>{_JS_BASE}{_JS_PARTIDOS}</script>")
-    return ui.shell("Partidos", cuerpo, sesion=ses, titulo_tab="Partidos · Pichangol")
+    return ui.shell("Juega ya", cuerpo, sesion=ses, titulo_tab="Juega ya · Pichangol")
 
 
 _JS_PARTIDOS = r"""
-function jpHoras(){ var h = ''; for(var i = 6; i <= 23; i++){ ['00','30'].forEach(function(m){ var v = (i < 10 ? '0' : '') + i + ':' + m; h += "<option" + (v === '20:00' ? ' selected' : '') + ">" + v + "</option>"; }); } return h; }
-var F = {dep: 'futbol', cupos: 10}, V = null;
-function pintarPresets(){
-  var ps = JP.presets[F.dep] || [], h = '';
-  ps.forEach(function(p){ h += "<button type='button' class='chip" + (F.cupos === p[1] ? ' sel' : '') + "' data-pre='" + p[1] + "'>" + jpEsc(p[0]) + " (" + p[1] + ")</button>"; });
-  var box = document.getElementById('jpPre'); if(box) box.innerHTML = h;
-  var n = document.getElementById('jpN'); if(n) n.textContent = F.cupos;
-  var f = document.getElementById('jpFaltan'); if(f) f.textContent = 'Tú ya cuentas como 1 · te faltan ' + (F.cupos - 1);
+var JY = {yo: null, dep: '', cu: 'todos', niv: false, radio: (JP.prefs && JP.prefs.radio_km) || 10};
+try { var _r = +localStorage.getItem('pcg_radio'); if([5,10,20,30].indexOf(_r) >= 0) JY.radio = _r; } catch(e){}
+function jpKm(a, b, c, d){ var R = 6371, r = Math.PI / 180, x = Math.sin((c - a) * r / 2), y = Math.sin((d - b) * r / 2);
+  var h = x * x + Math.cos(a * r) * Math.cos(c * r) * y * y; return 2 * R * Math.asin(Math.min(1, Math.sqrt(h))); }
+function jpFmtKm(k){ return k < 1 ? '< 1' : (Math.round(k * 10) / 10).toString().replace('.', ','); }
+function jpCuando(f){
+  if(JY.cu === 'todos') return true;
+  var hoy = new Date(JP.hoy + 'T12:00:00'), d = new Date(f + 'T12:00:00'), dif = Math.round((d - hoy) / 86400000);
+  if(JY.cu === 'hoy') return dif === 0;
+  if(JY.cu === 'manana') return dif === 1;
+  var wd = d.getDay(); return dif >= 0 && dif <= 7 && (wd === 0 || wd === 6) && (dif <= (6 - hoy.getDay()) + 1);
 }
-window.jpCrear = function(reusar){
-  if(!reusar){ F = {dep: 'futbol', cupos: 10}; V = null; }
-  var deps = JP.deportes.map(function(d){ return "<button type='button' class='chip" + (d[0] === F.dep ? ' sel' : '') + "' data-dep='" + d[0] + "'>" + d[2] + ' ' + jpEsc(d[1]) + "</button>"; }).join('');
-  var dias = JP.dias.map(function(d){ return "<button type='button' class='chip' data-dia='" + d[0] + "'>" + jpEsc(d[1]) + "</button>"; }).join('');
+function jpAplicar(){
+  var n = 0;
+  document.querySelectorAll('.jp-p').forEach(function(c){
+    var ok = (!JY.dep || c.dataset.dep === JY.dep) && jpCuando(c.dataset.fecha);
+    if(ok && JY.niv && c.dataset.nivel){ ok = c.dataset.nivel === (JP.misNiveles[c.dataset.dep] || JP.nivelSinDato); }
+    var kmEl = c.querySelector('.jp-km');
+    if(JY.yo && c.dataset.lat){
+      var k = jpKm(JY.yo.lat, JY.yo.lng, +c.dataset.lat, +c.dataset.lng);
+      if(kmEl) kmEl.textContent = ' · a ' + jpFmtKm(k) + ' km';
+      if(k > JY.radio) ok = false;
+    } else if(kmEl) kmEl.textContent = '';
+    c.style.display = ok ? '' : 'none'; if(ok) n++;
+  });
+  var v = document.getElementById('jpVacio'); if(v) v.style.display = n ? 'none' : '';
+}
+function jpUbicTxt(){
+  var u = document.getElementById('jpUbic');
+  if(u) u.textContent = JY.yo ? '📍 Cerca de ti · hasta' : '📍 Sin tu ubicación: ves todo el país';
+  var b = document.getElementById('jpUbicBtn'); if(b) b.style.display = JY.yo ? 'none' : '';
+}
+window.jpUbicar = function(interactivo){
+  if(!navigator.geolocation){ jpUbicTxt(); return; }
+  navigator.geolocation.getCurrentPosition(function(pos){
+    JY.yo = {lat: pos.coords.latitude, lng: pos.coords.longitude};
+    try { localStorage.setItem('pcg_ubic', JSON.stringify(JY.yo)); } catch(e){}
+    jpUbicTxt(); jpAplicar(); jpDisponibles();
+    if(JP.prefs && (JP.prefs.avisos || JP.prefs.disponible))
+      fetch('/web/juego/tocar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(JY.yo)}).catch(function(){});
+  }, function(){ jpUbicTxt(); if(interactivo) pcgAvisar({titulo: 'No pudimos leer tu ubicación', icono: '📍', mensaje: 'Revisa el permiso de ubicación del navegador.'}); },
+  {enableHighAccuracy: false, timeout: 8000, maximumAge: 300000});
+};
+function jpDisponibles(){
+  var box = document.getElementById('jpDisp'); if(!box || !JY.yo) return;
+  var dep = JY.dep || JP.partner[0];
+  box.innerHTML = "<div class='jp-vacio' style='padding:18px'>Buscando jugadores cerca…</div>";
+  fetch('/web/juego/disponibles?deporte=' + dep + '&lat=' + JY.yo.lat + '&lng=' + JY.yo.lng + '&radio_km=' + JY.radio)
+    .then(function(r){ return r.json(); }).then(function(j){
+      var js = (j && j.jugadores) || [];
+      if(!js.length){
+        box.innerHTML = "<div class='jp-vacio' style='padding:18px'><b>Nadie disponible a " + JY.radio + " km por ahora</b>"
+          + "Márcate como disponible para que otros te encuentren, o publica “Busco partner”.</div>"
+          + "<button type='button' class='btn sec' style='width:100%' onclick='jpPrefs()'>🙋 Aparecer como disponible</button>";
+        return;
+      }
+      box.innerHTML = js.map(function(x){
+        var av = x.foto ? "<img class='jp-av-img' src='" + jpEsc(x.foto) + "' alt='' referrerpolicy='no-referrer'>" : "<span class='jp-av-img'>" + jpEsc((x.nombre || '?').charAt(0).toUpperCase()) + "</span>";
+        var fr = (x.franjas || []).map(function(k){ var f = JP.franjas.filter(function(y){ return y[0] === k; })[0]; return f ? f[1] : ''; }).join(' · ');
+        return "<div class='jp-jug'>" + av + "<div class='q'><b>" + jpEsc(x.nombre) + "</b><small>" + jpEsc(x.nivel_txt)
+          + " · a " + jpFmtKm(x.km) + " km" + (fr ? ' · ' + jpEsc(fr) : '') + "</small></div><div class='acc'>"
+          + "<a class='btn' href='/mensajes/nuevo?persona=" + encodeURIComponent(x.ref) + "'>💬 Escribir</a>"
+          + "<a class='btn sec' href='/jugador/" + encodeURIComponent(x.ref) + "?deporte=" + dep + "'>Ver perfil</a></div></div>";
+      }).join('');
+    }).catch(function(){ box.innerHTML = "<div class='jp-vacio' style='padding:18px'>No se pudo cargar. Reintenta.</div>"; });
+}
+document.getElementById('jpRadio').value = String(JY.radio);
+document.getElementById('jpRadio').addEventListener('change', function(){
+  JY.radio = +this.value; try { localStorage.setItem('pcg_radio', String(JY.radio)); } catch(e){}
+  jpAplicar(); jpDisponibles();
+});
+
+// ── Organizar / Busco partner (todo por selección) ──
+function jpHoras(sel){ var h = ''; for(var i = 6; i <= 23; i++){ ['00','30'].forEach(function(m){ var v = (i < 10 ? '0' : '') + i + ':' + m; h += "<option" + (v === sel ? ' selected' : '') + ">" + v + "</option>"; }); } return h; }
+var F = null, V = null;
+function jpNuevoF(tipo){ var dep = tipo === 'partner' ? (JY.dep && JP.partner.indexOf(JY.dep) >= 0 ? JY.dep : JP.partner[0]) : 'futbol';
+  return {tipo: tipo, dep: dep, cupos: tipo === 'partner' ? 2 : 10, mod: 'singles', nivel: '', ets: []}; }
+function jpPintarForm(){
+  var ps = JP.presets[F.dep] || [], h = '';
+  if(F.tipo === 'partner'){
+    JP.modalidades.forEach(function(m){ h += "<button type='button' class='chip" + (F.mod === m[0] ? ' sel' : '') + "' data-mod='" + m[0] + "' data-c='" + m[2] + "'>" + jpEsc(m[1]) + "</button>"; });
+  } else {
+    ps.forEach(function(p){ h += "<button type='button' class='chip" + (F.cupos === p[1] ? ' sel' : '') + "' data-pre='" + p[1] + "'>" + jpEsc(p[0]) + " (" + p[1] + ")</button>"; });
+  }
+  var box = document.getElementById('jpPre'); if(box) box.innerHTML = h;
+  var st = document.getElementById('jpStep'); if(st) st.style.display = F.tipo === 'partner' ? 'none' : '';
+  var n = document.getElementById('jpN'); if(n) n.textContent = F.cupos;
+  var f = document.getElementById('jpFaltan'); if(f) f.textContent = F.tipo === 'partner' ? (F.cupos === 4 ? 'Buscas 3 jugadores más' : 'Buscas 1 jugador') : 'Tú ya cuentas como 1 · te faltan ' + (F.cupos - 1);
+  var nv = '<button type="button" class="chip' + (F.nivel === '' ? ' sel' : '') + '" data-niv="">Todos los niveles</button>';
+  JP.niveles.forEach(function(x){ nv += "<button type='button' class='chip" + (F.nivel === x[0] ? ' sel' : '') + "' data-niv='" + x[0] + "'>" + jpEsc(x[1]) + "</button>"; });
+  var bn = document.getElementById('jpNiv'); if(bn) bn.innerHTML = nv;
+  var et = '';
+  JP.etiquetas.forEach(function(x){ if(x[3].length && x[3].indexOf(F.dep) < 0) return;
+    et += "<button type='button' class='chip" + (F.ets.indexOf(x[0]) >= 0 ? ' sel' : '') + "' data-et='" + x[0] + "'>" + x[1] + ' ' + jpEsc(x[2]) + "</button>"; });
+  var be = document.getElementById('jpEts'); if(be) be.innerHTML = et;
+  document.querySelectorAll('#jpDeps .chip').forEach(function(c){ c.classList.toggle('sel', c.dataset.dep === F.dep); });
+}
+window.jpCrear = function(tipo, reusar){
+  if(!reusar){ F = jpNuevoF(tipo || 'partido'); V = null; }
+  var lista = F.tipo === 'partner' ? JP.deportes.filter(function(d){ return JP.partner.indexOf(d[0]) >= 0; }) : JP.deportes;
+  var deps = lista.map(function(d){ return "<button type='button' class='chip' data-dep='" + d[0] + "'>" + d[2] + ' ' + jpEsc(d[1]) + "</button>"; }).join('');
+  var dias = JP.proximos.map(function(d){ return "<button type='button' class='chip' data-dia='" + d[0] + "'>" + jpEsc(d[1]) + "</button>"; }).join('');
   var html = "<div class='jp-form' style='text-align:left'>"
     + "<label class='l'>Deporte</label><div class='jp-chips' id='jpDeps'>" + deps + "</div>"
-    + "<label class='l'>¿Dónde se juega?</label><input type='text' id='jpSede' list='jpSedes' maxlength='80' placeholder='Cancha o lugar (ej.: La Molina)'>"
+    + "<label class='l'>¿Dónde se juega?</label><div class='ayuda'>Elige un local de Pichangol; si es otro lugar, usamos tu ubicación para avisar a los de la zona.</div>"
+    + "<input type='text' id='jpSede' list='jpSedes' maxlength='80' placeholder='Busca la cancha o el lugar'>"
     + "<label class='l'>Fecha</label><div class='jp-chips' id='jpDias'>" + dias + "</div>"
     + "<input type='date' id='jpFecha' min='" + JP.hoy + "' max='" + JP.max + "'>"
-    + "<label class='l'>Hora</label><select id='jpHora'>" + jpHoras() + "</select>"
-    + "<label class='l'>Jugadores en total</label><div class='ayuda' id='jpFaltan'></div><div class='jp-chips' id='jpPre'></div>"
-    + "<div class='jp-step'><button type='button' data-paso='-1' aria-label='Menos'>−</button><b id='jpN'></b><button type='button' data-paso='1' aria-label='Más'>+</button></div>"
-    + "<label class='l'>Título (opcional)</label><input type='text' id='jpTit' maxlength='60' placeholder='Ej.: Fulbito de los viernes'>"
-    + "<label class='l'>Nota (opcional)</label><input type='text' id='jpNota' maxlength='160' placeholder='Nivel, si traer pechera, cómo se paga la cancha…'>"
+    + "<label class='l'>Hora</label><select id='jpHora'>" + jpHoras('20:00') + "</select>"
+    + "<label class='l'>" + (F.tipo === 'partner' ? '¿Qué buscas?' : 'Jugadores en total') + "</label><div class='ayuda' id='jpFaltan'></div><div class='jp-chips' id='jpPre'></div>"
+    + "<div class='jp-step' id='jpStep'><button type='button' data-paso='-1' aria-label='Menos'>−</button><b id='jpN'></b><button type='button' data-paso='1' aria-label='Más'>+</button></div>"
+    + "<label class='l'>Nivel</label><div class='jp-chips' id='jpNiv'></div>"
+    + "<label class='l'>Detalles (hasta " + JP.maxEts + ")</label><div class='jp-chips' id='jpEts'></div>"
     + "</div>";
-  pcgConfirmar({titulo: 'Nuevo partido', icono: '⚽', html: html, confirmar: 'Publicar partido', cancelar: 'Cancelar'}).then(function(ok){
+  pcgConfirmar({titulo: F.tipo === 'partner' ? 'Busco partner' : 'Organizar partido', icono: F.tipo === 'partner' ? '🎾' : '⚽', html: html,
+    confirmar: 'Publicar', cancelar: 'Cancelar'}).then(function(ok){
     if(!ok) return;
-    V = {sede: document.getElementById('jpSede').value, fecha: document.getElementById('jpFecha').value, hora: document.getElementById('jpHora').value,
-      tit: document.getElementById('jpTit').value, nota: document.getElementById('jpNota').value};
-    var body = {deporte: F.dep, sede: V.sede, fecha: V.fecha, hora: V.hora, cupos: F.cupos, titulo: V.tit, nota: V.nota};
+    V = {sede: document.getElementById('jpSede').value, fecha: document.getElementById('jpFecha').value, hora: document.getElementById('jpHora').value};
+    var body = {tipo: F.tipo, deporte: F.dep, modalidad: F.tipo === 'partner' ? F.mod : '', sede: V.sede, fecha: V.fecha, hora: V.hora,
+      cupos: F.cupos, nivel: F.nivel, etiquetas: F.ets};
+    if(JY.yo){ body.lat = JY.yo.lat; body.lng = JY.yo.lng; }
     jpPost('/web/partidos/crear', body, 'Publicando…').then(function(j){
-      if(j.ok){ pcgToast('¡Partido publicado! Ya pueden apuntarse.'); pcgRecargar('Actualizando…'); return; }
+      if(j.ok){ pcgToast(F.tipo === 'partner' ? '¡Publicado! Te avisamos cuando alguien quiera jugar contigo.' : '¡Partido publicado! Avisamos a los jugadores de la zona.');
+        pcgIr('/partidos?tab=' + (F.tipo === 'partner' ? 'partner' : 'partidos'), 'Actualizando…'); return; }
       if(j.error === 'sesion_requerida'){ jpFallo(j); return; }
-      pcgAvisar({titulo: 'Falta un dato', icono: '⚠️', mensaje: j.mensaje || 'Reintenta en un momento.', confirmar: 'Corregir'}).then(function(){ jpCrear(true); });
+      pcgAvisar({titulo: 'Falta un dato', icono: '⚠️', mensaje: j.mensaje || 'Reintenta en un momento.', confirmar: 'Corregir'}).then(function(){ jpCrear(F.tipo, true); });
     });
   });
   setTimeout(function(){
-    pintarPresets();
-    document.querySelectorAll('#jpDeps .chip').forEach(function(c){ c.classList.toggle('sel', c.dataset.dep === F.dep); });
-    if(V){ document.getElementById('jpSede').value = V.sede; document.getElementById('jpFecha').value = V.fecha; document.getElementById('jpHora').value = V.hora;
-      document.getElementById('jpTit').value = V.tit; document.getElementById('jpNota').value = V.nota; }
+    jpPintarForm();
+    if(V){ document.getElementById('jpSede').value = V.sede; document.getElementById('jpFecha').value = V.fecha; document.getElementById('jpHora').value = V.hora; }
     document.querySelectorAll('#jpDias .chip').forEach(function(c){ c.classList.toggle('sel', !!V && c.dataset.dia === V.fecha); });
   }, 0);
 };
+
+// ── Preferencias: avisos y disponible ──
+window.jpPrefs = function(){
+  var P = JSON.parse(JSON.stringify(JP.prefs || {}));
+  P.deportes = P.deportes || []; P.franjas = P.franjas || [];
+  if(!P.deportes.length) P.deportes = [JP.tab === 'partner' ? JP.partner[0] : 'futbol'];
+  var deps = JP.deportes.map(function(d){ return "<button type='button' class='chip" + (P.deportes.indexOf(d[0]) >= 0 ? ' sel' : '') + "' data-pdep='" + d[0] + "'>" + d[2] + ' ' + jpEsc(d[1]) + "</button>"; }).join('');
+  var fr = JP.franjas.map(function(f){ return "<button type='button' class='chip" + (P.franjas.indexOf(f[0]) >= 0 ? ' sel' : '') + "' data-pfr='" + f[0] + "'>" + jpEsc(f[1]) + "</button>"; }).join('');
+  var di = JP.dias.map(function(f){ return "<button type='button' class='chip" + ((P.dias || 'todos') === f[0] ? ' sel' : '') + "' data-pdi='" + f[0] + "'>" + jpEsc(f[1]) + "</button>"; }).join('');
+  var ra = JP.radios.map(function(r){ return "<button type='button' class='chip" + ((P.radio_km || 10) === r ? ' sel' : '') + "' data-pra='" + r + "'>" + r + " km</button>"; }).join('');
+  var html = "<div class='jp-form' style='text-align:left'>"
+    + "<label class='jp-sw'><input type='checkbox' id='jpPAv'" + (P.avisos ? ' checked' : '') + "><span><b>🔔 Avísame partidos cerca</b><small>Te llega una notificación cuando alguien publica un partido que te calza (máx. 3 al día).</small></span></label>"
+    + "<label class='jp-sw'><input type='checkbox' id='jpPDi'" + (P.disponible ? ' checked' : '') + "><span><b>🙋 Aparecer como disponible</b><small>Otros jugadores cerca te ven y te pueden escribir para jugar. Solo ven tu nombre, tu nivel y la distancia aproximada.</small></span></label>"
+    + "<label class='l'>Deportes</label><div class='jp-chips'>" + deps + "</div>"
+    + "<label class='l'>¿Hasta qué distancia?</label><div class='jp-chips'>" + ra + "</div>"
+    + "<label class='l'>¿A qué hora juegas?</label><div class='ayuda'>Sin elegir = a cualquier hora.</div><div class='jp-chips'>" + fr + "</div>"
+    + "<label class='l'>¿Qué días?</label><div class='jp-chips'>" + di + "</div></div>";
+  window._jpP = P;
+  pcgConfirmar({titulo: 'Avisos y disponibilidad', icono: '🔔', html: html, confirmar: 'Guardar', cancelar: 'Cancelar'}).then(function(ok){
+    if(!ok) return;
+    P.avisos = document.getElementById('jpPAv').checked; P.disponible = document.getElementById('jpPDi').checked;
+    var enviar = function(u){
+      var b = {deportes: P.deportes, radio_km: P.radio_km || 10, franjas: P.franjas, dias: P.dias || 'todos', avisos: P.avisos, disponible: P.disponible};
+      if(u){ b.lat = u.lat; b.lng = u.lng; }
+      jpPost('/web/juego/prefs', b, 'Guardando…').then(function(j){
+        if(j.ok){ JP.prefs = j.prefs; document.getElementById('jpAvTxt').textContent = j.texto || ''; pcgToast('Listo, guardado.'); jpDisponibles(); }
+        else jpFallo(j, 'No se pudo guardar');
+      });
+    };
+    if((P.avisos || P.disponible) && navigator.geolocation){
+      pcgCargando('Leyendo tu ubicación…');
+      navigator.geolocation.getCurrentPosition(function(pos){ pcgCargando(false); JY.yo = {lat: pos.coords.latitude, lng: pos.coords.longitude}; enviar(JY.yo); },
+        function(){ pcgCargando(false); enviar(JY.yo); }, {enableHighAccuracy: false, timeout: 8000, maximumAge: 300000});
+    } else enviar(JY.yo);
+  });
+};
+
 document.addEventListener('click', function(ev){
   var t;
-  if((t = ev.target.closest('[data-dep]'))){ F.dep = t.dataset.dep; var ps = JP.presets[F.dep] || []; if(ps.length) F.cupos = ps[0][1];
-    document.querySelectorAll('#jpDeps .chip').forEach(function(c){ c.classList.toggle('sel', c === t); }); pintarPresets(); return; }
-  if((t = ev.target.closest('[data-pre]'))){ F.cupos = +t.dataset.pre; pintarPresets(); return; }
-  if((t = ev.target.closest('[data-paso]'))){ F.cupos = Math.max(2, Math.min(40, F.cupos + (+t.dataset.paso))); pintarPresets(); return; }
+  if((t = ev.target.closest('[data-fdep]'))){ JY.dep = t.dataset.fdep; document.querySelectorAll('[data-fdep]').forEach(function(c){ c.classList.toggle('sel', c === t); }); jpAplicar(); jpDisponibles(); return; }
+  if((t = ev.target.closest('[data-fcu]'))){ JY.cu = t.dataset.fcu; document.querySelectorAll('[data-fcu]').forEach(function(c){ c.classList.toggle('sel', c === t); }); jpAplicar(); return; }
+  if((t = ev.target.closest('[data-fniv]'))){ JY.niv = !JY.niv; t.classList.toggle('sel', JY.niv); jpAplicar(); return; }
+  if((t = ev.target.closest('[data-pdep]'))){ var P = window._jpP, d = t.dataset.pdep, i = P.deportes.indexOf(d); if(i >= 0){ if(P.deportes.length > 1) P.deportes.splice(i, 1); } else P.deportes.push(d);
+    document.querySelectorAll('[data-pdep]').forEach(function(c){ c.classList.toggle('sel', P.deportes.indexOf(c.dataset.pdep) >= 0); }); return; }
+  if((t = ev.target.closest('[data-pfr]'))){ var P2 = window._jpP, k = t.dataset.pfr, j2 = P2.franjas.indexOf(k); if(j2 >= 0) P2.franjas.splice(j2, 1); else P2.franjas.push(k);
+    t.classList.toggle('sel', P2.franjas.indexOf(k) >= 0); return; }
+  if((t = ev.target.closest('[data-pdi]'))){ window._jpP.dias = t.dataset.pdi; document.querySelectorAll('[data-pdi]').forEach(function(c){ c.classList.toggle('sel', c === t); }); return; }
+  if((t = ev.target.closest('[data-pra]'))){ window._jpP.radio_km = +t.dataset.pra; document.querySelectorAll('[data-pra]').forEach(function(c){ c.classList.toggle('sel', c === t); }); return; }
+  if((t = ev.target.closest('[data-dep]'))){ F.dep = t.dataset.dep; var ps = JP.presets[F.dep] || []; if(F.tipo !== 'partner' && ps.length) F.cupos = ps[0][1];
+    F.ets = F.ets.filter(function(k){ var x = JP.etiquetas.filter(function(y){ return y[0] === k; })[0]; return x && (!x[3].length || x[3].indexOf(F.dep) >= 0); });
+    jpPintarForm(); return; }
+  if((t = ev.target.closest('[data-mod]'))){ F.mod = t.dataset.mod; F.cupos = +t.dataset.c; jpPintarForm(); return; }
+  if((t = ev.target.closest('[data-pre]'))){ F.cupos = +t.dataset.pre; jpPintarForm(); return; }
+  if((t = ev.target.closest('[data-paso]'))){ F.cupos = Math.max(2, Math.min(40, F.cupos + (+t.dataset.paso))); jpPintarForm(); return; }
+  if((t = ev.target.closest('[data-niv]'))){ F.nivel = t.dataset.niv; jpPintarForm(); return; }
+  if((t = ev.target.closest('[data-et]'))){ var k3 = t.dataset.et, i3 = F.ets.indexOf(k3);
+    if(i3 >= 0) F.ets.splice(i3, 1);
+    else { if(F.ets.length >= JP.maxEts){ pcgToast('Elige hasta ' + JP.maxEts + ' detalles.'); return; }
+      if(k3 === 'mixto') F.ets = F.ets.filter(function(x){ return x !== 'solo_mujeres'; });
+      if(k3 === 'solo_mujeres') F.ets = F.ets.filter(function(x){ return x !== 'mixto'; });
+      F.ets.push(k3); }
+    jpPintarForm(); return; }
   if((t = ev.target.closest('[data-dia]'))){ document.getElementById('jpFecha').value = t.dataset.dia;
     document.querySelectorAll('#jpDias .chip').forEach(function(c){ c.classList.toggle('sel', c === t); }); return; }
   if((t = ev.target.closest('[data-apuntar]'))){
@@ -557,11 +897,15 @@ document.addEventListener('click', function(ev){
       if(!ok) return; jpPost('/web/partidos/' + pid + '/eliminar', {}, 'Eliminando…').then(function(j){ if(j.ok){ pcgToast('Partido eliminado.'); pcgRecargar(); } else jpFallo(j); });
     }); return; }
 });
+try { var _g = JSON.parse(localStorage.getItem('pcg_ubic') || 'null'); if(_g && _g.lat){ JY.yo = _g; } } catch(e){}
+jpUbicTxt(); jpAplicar(); jpDisponibles(); jpUbicar(false);
 """
 
 
 def validar_partido(b: dict, hoy: date) -> tuple[dict | None, str]:
-    """Reglas de `_CrearPartidoSheet._publicar`."""
+    """Reglas de `_CrearPartidoSheet._publicar` + Juega ya (tipo, modalidad,
+    nivel y etiquetas por selección; título automático, sin texto libre)."""
+    tipo = str(b.get("tipo") or "partido")
     dep = str(b.get("deporte") or "")
     if dep not in DEPORTES_ACTIVOS:
         return None, "Elige el deporte."
@@ -577,15 +921,21 @@ def validar_partido(b: dict, hoy: date) -> tuple[dict | None, str]:
     sede = re.sub(r"\s+", " ", str(b.get("sede") or "")).strip()[:80]
     if not sede:
         return None, "¿Dónde se juega? Pon la cancha o el lugar."
-    try:
-        cupos = int(b.get("cupos") or 0)
-    except (TypeError, ValueError):
-        cupos = 0
-    if not 2 <= cupos <= 40:
-        return None, "El partido es de 2 a 40 jugadores."
-    titulo = re.sub(r"\s+", " ", str(b.get("titulo") or "")).strip()[:60] or f"{_etq(dep)} · {sede}"
-    nota = re.sub(r"\s+", " ", str(b.get("nota") or "")).strip()[:160]
-    return {"deporte": dep, "fecha": fecha, "hora": hora, "sede": sede, "cupos": cupos, "titulo": titulo, "nota": nota}, ""
+    ext, msg = juego.validar_extras(tipo, dep, str(b.get("modalidad") or ""), str(b.get("nivel") or ""), b.get("etiquetas"))
+    if ext is None:
+        return None, msg
+    if ext["tipo"] == "partner":
+        cupos = juego.modalidad_partner(ext["modalidad"])[2]
+    else:
+        try:
+            cupos = int(b.get("cupos") or 0)
+        except (TypeError, ValueError):
+            cupos = 0
+        if not 2 <= cupos <= 40:
+            return None, "El partido es de 2 a 40 jugadores."
+    v = {"deporte": dep, "fecha": fecha, "hora": hora, "sede": sede, "cupos": cupos, "nota": "", **ext}
+    v["titulo"] = titulo_auto(v)
+    return v, ""
 
 
 @router.post("/web/partidos/crear")
@@ -598,12 +948,61 @@ def crear(request: Request, body: dict = Body(default_factory=dict)) -> JSONResp
     v, msg = validar_partido(body, hoy)
     if v is None:
         return JSONResponse({"ok": False, "mensaje": msg}, status_code=400)
-    ubic = locales_conocidos().get(v["sede"])
+    info = locales_info().get(v["sede"])
+    lat = lng = None
+    if info:
+        lat, lng = info["lat"], info["lng"]
+        v["cancha_id"] = info["cancha_id"]
+    else:
+        # Otro lugar: la ubicación del organizador (navegador) ubica el partido
+        # para el filtro "cerca de mí" y los avisos a los de la zona.
+        try:
+            la, ln = float(body.get("lat")), float(body.get("lng"))
+            if -60 <= la <= 15 and -95 <= ln <= -30:
+                lat, lng = round(la, 4), round(ln, 4)
+        except (TypeError, ValueError):
+            pass
     p = {**v, "id": f"p_{time.time_ns() // 1000}", "creador_email": yo, "creador_nombre": mi_nombre(ses),
-         "lat": ubic[0] if ubic else None, "lng": ubic[1] if ubic else None}
+         "lat": lat, "lng": lng}
     if not crear_partido(p):
         return JSONResponse({"ok": False, "mensaje": "No se pudo publicar. Reintenta."}, status_code=500)
     return JSONResponse({"ok": True, "id": p["id"]})
+
+
+# ── Juega ya: preferencias y jugadores disponibles (web) ─────────────────────
+
+@router.post("/web/juego/prefs")
+def web_prefs(request: Request, body: dict = Body(default_factory=dict)) -> JSONResponse:
+    ses, err = _ses_o_401(request)
+    if err:
+        return err
+    try:
+        p = juego.guardar_prefs(ses["email"], body, mi_nombre(ses))
+    except ValueError as ex:
+        return JSONResponse({"ok": False, "mensaje": str(ex)}, status_code=400)
+    return JSONResponse({"ok": True, "prefs": juego.publicas(p), "texto": _texto_prefs(p)})
+
+
+@router.post("/web/juego/tocar")
+def web_tocar(request: Request, body: dict = Body(default_factory=dict)) -> JSONResponse:
+    ses, err = _ses_o_401(request)
+    if err:
+        return err
+    juego.tocar(ses["email"], body.get("lat"), body.get("lng"))
+    return JSONResponse({"ok": True})
+
+
+@router.get("/web/juego/disponibles")
+def web_disponibles(request: Request, deporte: str, lat: float, lng: float, radio_km: int = juego.RADIO_DEFAULT) -> JSONResponse:
+    ses, err = _ses_o_401(request)
+    if err:
+        return err
+    js = juego.disponibles(ses["email"], deporte, lat, lng, radio_km)
+    out = [{"ref": ref_de(j["email"]), "nombre": j["nombre"], "foto": j["foto"], "km": j["km"],
+            "nivel_txt": (f"{juego.etiqueta_nivel(j['banda'])} · {j['nivel']:.1f}" if j["nivel"] is not None
+                          else juego.etiqueta_nivel(j["banda"])),
+            "franjas": j["franjas"], "dias": j["dias"]} for j in js]
+    return JSONResponse({"ok": True, "jugadores": out})
 
 
 @router.post("/web/partidos/{pid}/apuntarse")

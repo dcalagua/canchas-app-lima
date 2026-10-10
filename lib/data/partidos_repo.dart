@@ -18,7 +18,12 @@ class PartidosRepo {
     if (!disponible) return false;
     try {
       final c = SupabaseService.client;
-      await c.from(_tPartidos).insert(p.toInsert());
+      try {
+        await c.from(_tPartidos).insert(p.toInsert());
+      } catch (_) {
+        // Base sin las columnas de Juega ya: publica igual, sin esos datos.
+        await c.from(_tPartidos).insert(p.toInsertBase());
+      }
       // Grupo de chat homónimo (para coordinar el partido) — best-effort.
       try {
         await c.from(_tGrupos).insert({

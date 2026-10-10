@@ -71,7 +71,7 @@ def test_partidos_como_el_app(monkeypatch, aislado):
     assert "data-apuntar='p_1700000000000001'" in html               # no estoy → Me apunto
     assert "data-cupo='p_1700000000000002'" in html and "data-eliminar='p_1700000000000002'" in html  # soy creadora
     assert "href='/mensajes/" in html                                # Coordinar = chat del grupo
-    assert "href='/pichangas'" in html and "Crear partido" in html
+    assert "href='/pichangas'" in html and "Organizar partido" in html and "Avísame partidos cerca" in html
     assert _sin_popups_nativos(html)
     assert "luis@x.com" not in html                                  # los correos de otros no viajan
 
@@ -89,7 +89,7 @@ def test_partidos_como_el_app(monkeypatch, aislado):
     r = cli.post("/web/partidos/crear", json={"deporte": "futbol", "sede": "Sabor Golazo", "fecha": hoy, "hora": "20:30", "cupos": 10})
     assert r.json()["ok"] is True
     p = creados[0]
-    assert p["creador_email"] == "ana@gmail.com" and p["titulo"] == "Fútbol · Sabor Golazo"  # título por defecto del app
+    assert p["creador_email"] == "ana@gmail.com" and p["titulo"] == "Fut 5 · Sabor Golazo"  # título automático (sin texto libre)
     assert (p["lat"], p["lng"]) == (-12.1, -77.0) and p["id"].startswith("p_")                # ubicación del local conocido
 
     # Apuntarse lleno → 409 con el texto del app; salir siendo creador → no.

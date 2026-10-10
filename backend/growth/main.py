@@ -36,6 +36,7 @@ from boleadores import router as boleadores_router
 from fidelidad import router as fidelidad_router
 from academia_plan import router as academia_plan_router
 from yape_auto import router as yape_auto_router
+from juego import router as juego_router
 from web.academia import router as academia_web_router
 from web.academia_plan_web import router as academia_plan_web_router
 from web.jugador_clases import router as jugador_clases_router
@@ -200,6 +201,7 @@ app.include_router(anfitrion_router)
 app.include_router(boleadores_router)  # /boleadores/* (APK + ficha web)
 app.include_router(fidelidad_router)
 app.include_router(yape_auto_router)  # /academias/yape/* (fase 2: confirmación automática con la notificación de Yape)
+app.include_router(juego_router)  # /juego/* (Juega ya: preferencias, jugadores disponibles cerca)
 app.include_router(academia_plan_router)  # /academias/* y /config/academias (Plan Academia + pago directo)  # /fidelidad/* (tarjeta de fidelidad del local)
 # Assets de marca de la web pública (pin, logo para OG/favicon). Ruta fija
 # junto a este archivo para que Railway (root dir backend/growth) los sirva.
@@ -351,6 +353,30 @@ async def _iniciar_cron_boleadores() -> None:
             except Exception:  # noqa: BLE001
                 pass
             await asyncio.sleep(300)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_juego() -> None:
+    """JUEGA YA: cada minuto avisa por push los partidos NUEVOS a los jugadores
+    que pidieron "Avísame partidos cerca" y les calzan (`juego.avisar_nuevos`,
+    idempotente por partido y con tope diario). En un hilo: lee Postgres."""
+    import sys
+    if "pytest" in sys.modules:
+        return
+
+    async def _loop() -> None:
+        await asyncio.sleep(75)
+        while True:
+            try:
+                import juego as _jg
+                n = await asyncio.to_thread(_jg.avisar_nuevos)
+                if n:
+                    pg.persistir_en_segundo_plano(stores)
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(60)
 
     asyncio.create_task(_loop())
 

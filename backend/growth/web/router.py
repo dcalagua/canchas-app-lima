@@ -3701,7 +3701,7 @@ def pagina_perfil(request: Request) -> HTMLResponse:
     menu += _item_perfil("🧾", "Mis pagos", href="/mis-pagos", sub="Todo lo que pagaste, con comprobantes")
     menu += _item_perfil("⭐", f"Mis puntos · {puntos} ⭐" if puntos > 0 else "Mis puntos",
                          href="/mis-puntos", sub="Ganas puntos con cada reserva pagada")
-    menu += _item_perfil("⚽", "Partidos", href="/partidos", sub="Arma o únete a un partido cerca de ti")
+    menu += _item_perfil("⚽", "Juega ya", href="/partidos", sub="Partidos cerca, organiza el tuyo o busca partner")
     menu += _item_perfil("📅", "Pichangas de mi club", href="/pichangas", sub="Convocatorias con cupos y lista de espera")
     menu += _item_perfil("🏆", "Campeonatos", href="/anfitrion/campeonatos", sub="Únete con un código o mira dónde participas")
     menu += _item_perfil("🎁", "Invita y gana", href="/referidos", sub="Comparte tu código con tus amigos")

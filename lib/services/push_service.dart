@@ -92,6 +92,9 @@ class PushService {
   /// ✅", "Sin boleador esta vez 😕"…): abre "Soy boleador" si el usuario es
   /// boleador (ahí acepta/rechaza) o Mis reservas si es el cliente.
   static void Function()? alAbrirBoleador;
+  /// Push de Juega ya ("Partido cerca" / "Buscan partner cerca"): abre la
+  /// pantalla en la pestaña que corresponde (true = Busco partner).
+  static void Function(bool partner)? alAbrirPartidos;
 
   /// Invoca la Edge Function `push-reserva` para avisar al DUEÑO de la cancha
   /// que entró una reserva (push dedicado, fuera del chat). Se pasa SOLO el id
@@ -193,6 +196,10 @@ class PushService {
     }
     if (data['tipo'] == 'boleador') {
       alAbrirBoleador?.call();
+      return;
+    }
+    if (data['tipo'] == 'partido') {
+      alAbrirPartidos?.call(data['tipo_partido'] == 'partner');
       return;
     }
     final hilo = (data['hilo'] ?? '').toString();

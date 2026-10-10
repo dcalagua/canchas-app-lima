@@ -204,6 +204,13 @@ def privacidad() -> str:
       pagos que tus alumnos reportan. No leemos chats ni notificaciones de otras
       apps; puedes apagarlo cuando quieras desde la app o quitando el permiso
       "Acceso a notificaciones" en Ajustes.</li>
+      <li><b>Juega ya (opcional):</b> si activas "Avísame partidos cerca" o
+      "Aparecer como disponible", guardamos tus deportes, horarios y una
+      <b>ubicación aproximada</b> (redondeada a unos 100 m) para avisarte de
+      partidos cercanos y para que otros jugadores te encuentren. Los demás
+      solo ven tu nombre, tu foto, tu nivel y la <b>distancia aproximada</b>,
+      nunca tu ubicación. Lo apagas cuando quieras y se borra al eliminar tu
+      cuenta.</li>
       <li><b>Entrenador virtual (opcional):</b> el video corto de tu golpe. Se
       analiza y <b>el video se borra automáticamente</b> apenas se genera tu
       informe; sólo queda el texto del análisis.</li>
