@@ -34,6 +34,14 @@ class PagosService {
 
   static int solesACentimos(double soles) => (soles * 100).round();
 
+  /// Para otros clientes del MISMO backend (p. ej. `AcademiaPlanService`): la
+  /// URL base y las cabeceras (app key + identidad del usuario).
+  static String get baseUrl => _baseUrl;
+  static Map<String, String> appHeaders({bool json = false}) =>
+      _appHeaders(json: json);
+  static Future<Map<String, String>> headersUsuario({bool json = false}) =>
+      _headersUsuario(json: json);
+
   // --- 1) Config pública (llave pk, modo, comisión) -----------------------
   static Future<Map<String, dynamic>?> config() async {
     if (!disponible) return null;

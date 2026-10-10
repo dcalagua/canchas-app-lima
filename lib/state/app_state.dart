@@ -59,6 +59,7 @@ import '../models/reserva_fija.dart';
 import '../models/temporada.dart';
 import '../models/usuario.dart';
 import '../services/auth_service.dart';
+import '../services/academia_plan_service.dart';
 import '../services/avisos_service.dart';
 import '../services/circuito_service.dart';
 import '../services/convocatorias_service.dart';
@@ -3780,12 +3781,88 @@ class AppState extends ChangeNotifier {
         cuotas.add(c);
         cambio = true;
       } else if (c.pagada && !cuotas[i].pagada) {
-        cuotas[i] = cuotas[i]
-            .copyWith(pagada: true, fechaPago: c.fechaPago ?? DateTime.now());
+        cuotas[i] = cuotas[i].copyWith(
+            pagada: true,
+            fechaPago: c.fechaPago ?? DateTime.now(),
+            operacionId: c.operacionId.isNotEmpty ? c.operacionId : null,
+            medioPago: c.medioPago.isNotEmpty ? c.medioPago : null,
+            reporte: c.reporte);
+        cambio = true;
+      } else if (c.reporte != null &&
+          c.reporte!.clave != (cuotas[i].reporte?.clave ?? '')) {
+        // Pago directo (Yape): el reporte lo escribe el backend (el alumno
+        // reporta / la academia confirma o rechaza) → la nube manda.
+        cuotas[i] = cuotas[i].copyWith(
+            reporte: c.reporte,
+            medioPago: c.medioPago.isNotEmpty ? c.medioPago : null);
         cambio = true;
       }
     }
     return cambio;
+  }
+
+  /// PAGO DIRECTO (Plan Academia): el alumno reportó su Yape → sus cuotas
+  /// quedan "por confirmar" en este teléfono al instante (el backend ya las
+  /// marcó en la nube; no se re-suben para no pisar nada).
+  void marcarCuotasReportadas(List<String> cuotaIds,
+      {required String codigo, String operacion = ''}) {
+    final ahora = DateTime.now().toUtc().toIso8601String();
+    final por = usuario?.email ?? '';
+    var cambio = false;
+    for (final id in cuotaIds) {
+      final i = cuotas.indexWhere((c) => c.id == id);
+      if (i < 0 || cuotas[i].pagada) continue;
+      cuotas[i] = cuotas[i].copyWith(
+          reporte: ReportePago(
+              codigo: codigo,
+              operacion: operacion,
+              monto: cuotas[i].monto,
+              fecha: ahora,
+              por: por));
+      cambio = true;
+    }
+    if (cambio) {
+      notifyListeners();
+      _persistirDatos();
+    }
+  }
+
+  /// La ACADEMIA resolvió un pago directo: refleja el resultado en este
+  /// teléfono al instante (confirmado → pagada con `yape_directo`; rechazado →
+  /// vuelve a pendiente con el motivo). La nube ya quedó escrita por el backend.
+  void aplicarResolucionPagoDirecto(List<String> cuotaIds,
+      {required bool aceptar, String motivo = ''}) {
+    final ahora = DateTime.now();
+    var cambio = false;
+    for (final id in cuotaIds) {
+      final i = cuotas.indexWhere((c) => c.id == id);
+      if (i < 0) continue;
+      final rep = cuotas[i].reporte;
+      final nuevo = ReportePago(
+          codigo: rep?.codigo ?? '',
+          operacion: rep?.operacion ?? '',
+          monto: rep?.monto ?? cuotas[i].monto,
+          fecha: rep?.fecha ?? '',
+          por: rep?.por ?? '',
+          estado: aceptar ? 'confirmado' : 'rechazado',
+          motivo: aceptar ? '' : motivo);
+      if (aceptar) {
+        final op = rep?.operacion ?? '';
+        cuotas[i] = cuotas[i].copyWith(
+            pagada: true,
+            fechaPago: ahora,
+            medioPago: 'yape_directo',
+            operacionId: op.isNotEmpty ? 'yape:$op' : null,
+            reporte: nuevo);
+      } else {
+        cuotas[i] = cuotas[i].copyWith(reporte: nuevo);
+      }
+      cambio = true;
+    }
+    if (cambio) {
+      notifyListeners();
+      _persistirDatos();
+    }
   }
 
   /// RECONCILIA las cuotas de mes a mes: consulta al backend cuántos cobros
@@ -4386,6 +4463,12 @@ class AppState extends ChangeNotifier {
     // Cargo por servicio pagado en este pago (una vez; en la 1.ª cuota pagada).
     double cargoServicio = 0,
     int cargoPersonas = 1,
+    // PLAN ACADEMIA (pago directo por Yape): Pichangol NO cobra; TODAS las
+    // cuotas quedan PENDIENTES y sin débito automático. Con
+    // [totalAdelantado] (pago adelantado) se crea UNA cuota con ese total
+    // (ya con descuentos) en vez de una por mes.
+    bool pagoDirecto = false,
+    double? totalAdelantado,
   }) {
     final n = cantidad < 1 ? 1 : cantidad;
     // Precio mensual/por-clase efectivo: el de la sede si vino, si no el del plan.
@@ -4413,7 +4496,44 @@ class AppState extends ChangeNotifier {
     // Cuotas de la matrícula (pagadas). Se guardan localmente Y se embeben en la
     // subida para que el PROFE vea, desde su dispositivo, el programa y el pago.
     final nuevasCuotas = <Cuota>[];
-    if (plan.tipo == TipoPlan.porClase) {
+    if (pagoDirecto) {
+      if (plan.tipo == TipoPlan.porClase) {
+        nuevasCuotas.add(Cuota(
+          id: 'cu_${hoy.microsecondsSinceEpoch}',
+          academiaId: academiaId,
+          alumnoId: alumno.id,
+          concepto:
+              '$n clase${n == 1 ? '' : 's'} particular${n == 1 ? '' : 'es'} · ${plan.nombre}$notaDescuento',
+          monto: totalAdelantado ?? precioMes * n,
+          vencimiento: hoy,
+        ));
+      } else {
+        final meses = (plan.tipo == TipoPlan.mensual ? 1 : plan.meses) * n;
+        if (totalAdelantado != null) {
+          nuevasCuotas.add(Cuota(
+            id: 'cu_${hoy.microsecondsSinceEpoch}_0',
+            academiaId: academiaId,
+            alumnoId: alumno.id,
+            concepto:
+                '${plan.nombre} · $meses ${meses == 1 ? 'mes' : 'meses'} (adelantado)$notaDescuento',
+            monto: double.parse(totalAdelantado.toStringAsFixed(2)),
+            vencimiento: hoy,
+          ));
+        } else {
+          for (var i = 0; i < meses; i++) {
+            final venc = DateTime(hoy.year, hoy.month + i, hoy.day);
+            nuevasCuotas.add(Cuota(
+              id: 'cu_${hoy.microsecondsSinceEpoch}_$i',
+              academiaId: academiaId,
+              alumnoId: alumno.id,
+              concepto: '${plan.nombre} · ${_mesNombre(venc)}$notaDescuento',
+              monto: double.parse(precioMes.toStringAsFixed(2)),
+              vencimiento: venc,
+            ));
+          }
+        }
+      }
+    } else if (plan.tipo == TipoPlan.porClase) {
       nuevasCuotas.add(Cuota(
         id: 'cu_${hoy.microsecondsSinceEpoch}',
         academiaId: academiaId,
@@ -7931,9 +8051,22 @@ class AppState extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// PLAN ACADEMIA (10-oct-2026): ¿las academias van por SUSCRIPCIÓN (sus
+  /// alumnos les pagan directo por Yape) o por comisión (lo de siempre)?
+  /// Default "comision" mientras la config no cargue: nada cambia.
+  bool get academiasPorSuscripcion => AcademiaPlanService.esSuscripcion;
+
+  /// `GET /config/academias`: cache-first + refresco en silencio.
+  Future<void> cargarConfigAcademias() async {
+    try {
+      if (await AcademiaPlanService.cargarConfig()) notifyListeners();
+    } catch (_) {}
+  }
+
   Future<void> cargarCanalComunicacion() async {
     cargarCatalogoServicios(); // best-effort, en paralelo
     cargarCargoServicio(); // best-effort, en paralelo
+    cargarConfigAcademias(); // best-effort, en paralelo
     SharedPreferences? prefs;
     try {
       prefs = await SharedPreferences.getInstance();

@@ -3,11 +3,13 @@ import 'package:flutter/material.dart';
 import '../data/mensajes_repo.dart';
 import '../models/academia.dart';
 import '../models/mensaje.dart';
+import '../services/academia_plan_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart';
 import 'mi_academia_screen.dart' show AlumnoDetalleScreen;
+import 'plan_academia_screen.dart' show TarjetaActivaPlan;
 import '../widgets/icono_vivo.dart';
 
 /// TABLERO DE COBROS de la academia: lo que el profe abre a diario para cobrar.
@@ -26,11 +28,315 @@ class CobrosScreen extends StatefulWidget {
 class _CobrosScreenState extends State<CobrosScreen> {
   String get _id => widget.academiaId;
 
+  // PLAN ACADEMIA: pagos que los alumnos reportaron (código de Yape) y que la
+  // academia debe confirmar. null = aún no se consultó.
+  List<PagoPorConfirmar>? _pendientes;
+  final Set<String> _resolviendo = {};
+
   @override
   void initState() {
     super.initState();
     // "Recordado hace X": las marcas del backend (también las de la web).
     appState.sincronizarNegocio();
+    if (appState.academiasPorSuscripcion) {
+      AcademiaPlanService.plan(_id);
+      _cargarPendientes();
+    }
+  }
+
+  Future<void> _cargarPendientes() async {
+    if (!appState.academiasPorSuscripcion) return;
+    final email = appState.usuario?.email ?? '';
+    final l = await AcademiaPlanService.pendientes(email);
+    if (!mounted || l == null) return;
+    setState(() =>
+        _pendientes = l.where((p) => p.academiaId == _id).toList());
+  }
+
+  Future<void> _refrescar() async {
+    await Future.wait([
+      _cargarPendientes(),
+      appState.cargarMatriculasRemotas(),
+    ]);
+  }
+
+  String _clavePago(PagoPorConfirmar p) =>
+      '${p.alumnoId}|${p.cuotas.map((c) => c.id).join(',')}';
+
+  Future<void> _resolver(PagoPorConfirmar p, bool aceptar) async {
+    String motivo = '';
+    if (!aceptar) {
+      final m = await _elegirMotivo();
+      if (m == null || !mounted) return;
+      motivo = m;
+    }
+    final clave = _clavePago(p);
+    setState(() => _resolviendo.add(clave));
+    final ids = p.cuotas.map((c) => c.id).toList();
+    final r = await AcademiaPlanService.resolver(
+      academiaId: p.academiaId,
+      alumnoId: p.alumnoId,
+      email: appState.usuario?.email ?? '',
+      cuotaIds: ids,
+      aceptar: aceptar,
+      motivo: motivo,
+    );
+    if (!mounted) return;
+    setState(() => _resolviendo.remove(clave));
+    if (r['ok'] == true) {
+      final hechas = (r['cuotas'] is List)
+          ? (r['cuotas'] as List).map((e) => e.toString()).toList()
+          : ids;
+      appState.aplicarResolucionPagoDirecto(hechas,
+          aceptar: aceptar, motivo: motivo);
+      setState(() => _pendientes?.removeWhere((x) => _clavePago(x) == clave));
+      _msg(aceptar
+          ? 'Pago de ${p.alumno} confirmado ✅'
+          : 'Le avisamos a ${p.alumno} que no encontraste su pago.');
+      // Estado real de la nube (cuotas pagadas / rechazadas).
+      appState.cargarMatriculasRemotas();
+      return;
+    }
+    _msg((r['mensaje'] ?? 'No se pudo. Reintenta.').toString());
+    _cargarPendientes();
+  }
+
+  /// "No lo encontré": motivo por SELECCIÓN (sin texto libre).
+  Future<String?> _elegirMotivo() {
+    const motivos = [
+      'No llegó ese yapeo',
+      'El código no coincide',
+      'El monto no coincide',
+    ];
+    String? sel;
+    return showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSt) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('¿Qué pasó con este pago?',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17)),
+              const SizedBox(height: 4),
+              const Text(
+                  'Le avisamos al alumno para que lo revise y lo reporte de nuevo.',
+                  style: TextStyle(color: textoTenue, fontSize: 12.5)),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final m in motivos)
+                    ChoiceChip(
+                      label: Text(m),
+                      selected: sel == m,
+                      selectedColor: const Color(0xFFEBEBEB),
+                      backgroundColor: Colors.white,
+                      side: const BorderSide(color: Color(0xFFE4E4E4)),
+                      labelStyle: const TextStyle(
+                          fontWeight: FontWeight.w600, color: bosque),
+                      onSelected: (_) => setSt(() => sel = m),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: clayOscuro,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 13)),
+                  onPressed: sel == null ? null : () => Navigator.pop(ctx, sel),
+                  child: const Text('Avisar al alumno',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _fechaCorta(String iso) {
+    final d = DateTime.tryParse(iso)?.toLocal();
+    if (d == null) return '';
+    const meses = [
+      'ene', 'feb', 'mar', 'abr', 'may', 'jun',
+      'jul', 'ago', 'set', 'oct', 'nov', 'dic'
+    ];
+    final hh = d.hour.toString().padLeft(2, '0');
+    final mm = d.minute.toString().padLeft(2, '0');
+    return '${d.day} ${meses[d.month - 1]} · $hh:$mm';
+  }
+
+  /// Tarjeta de un pago reportado: el CÓDIGO DE SEGURIDAD grande para
+  /// compararlo con la notificación de Yape, y Confirmar / No lo encontré.
+  Widget _tarjetaPorConfirmar(PagoPorConfirmar p) {
+    final ocupado = _resolviendo.contains(_clavePago(p));
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFD9C6E4)),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x0F000000), blurRadius: 10, offset: Offset(0, 3)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(p.alumno,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 15)),
+                    Text(
+                        [
+                          if (p.fecha.isNotEmpty) _fechaCorta(p.fecha),
+                          if (p.operacion.isNotEmpty) 'Op. ${p.operacion}',
+                        ].join(' · '),
+                        style:
+                            const TextStyle(color: textoTenue, fontSize: 12)),
+                  ],
+                ),
+              ),
+              Text('${p.simbolo} ${p.total.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w900, fontSize: 17)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            decoration: BoxDecoration(
+                color: const Color(0xFFF5EEF8),
+                borderRadius: BorderRadius.circular(12)),
+            child: Column(
+              children: [
+                const Text('Código de seguridad',
+                    style: TextStyle(
+                        color: Color(0xFF742284),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12)),
+                Text(p.codigo,
+                    style: const TextStyle(
+                        color: Color(0xFF742284),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 34,
+                        letterSpacing: 10)),
+                const Text('Compáralo con la notificación de tu Yape',
+                    style: TextStyle(color: textoTenue, fontSize: 11.5)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (final c in p.cuotas)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(c.concepto,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12.5)),
+                  ),
+                  Text('${p.simbolo} ${c.monto.toStringAsFixed(2)}',
+                      style: const TextStyle(fontSize: 12.5)),
+                ],
+              ),
+            ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: clayOscuro,
+                      side: const BorderSide(color: trazo),
+                      padding: const EdgeInsets.symmetric(vertical: 12)),
+                  onPressed: ocupado ? null : () => _resolver(p, false),
+                  child: const Text('No lo encontré',
+                      style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: lima,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 12)),
+                  onPressed: ocupado ? null : () => _resolver(p, true),
+                  child: ocupado
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2.2, color: Colors.white))
+                      : const Text('Confirmar',
+                          style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Sección "💜 Pagos por confirmar" (siempre visible, aun sin plan).
+  List<Widget> _seccionPorConfirmar() {
+    final l = _pendientes;
+    if (!appState.academiasPorSuscripcion || l == null || l.isEmpty) {
+      return const [];
+    }
+    return [
+      Row(
+        children: [
+          const Text('💜 Pagos por confirmar',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(
+                color: const Color(0xFF742284),
+                borderRadius: BorderRadius.circular(999)),
+            child: Text('${l.length}',
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 12)),
+          ),
+        ],
+      ),
+      const SizedBox(height: 4),
+      const Text(
+          'Tus alumnos te yapearon. Revisa que el código coincida con tu Yape y confirma.',
+          style: TextStyle(color: textoTenue, fontSize: 12.5)),
+      const SizedBox(height: 10),
+      for (final p in l) _tarjetaPorConfirmar(p),
+      const SizedBox(height: 14),
+    ];
   }
 
   String get _moneda {
@@ -249,18 +555,39 @@ class _CobrosScreenState extends State<CobrosScreen> {
         ],
       ),
       body: ListenableBuilder(
-        listenable: appState,
+        listenable: Listenable.merge([appState, AcademiaPlanService.cambios]),
         builder: (context, _) {
+          // PLAN ACADEMIA vencido: solo se confirman los pagos reportados; el
+          // resto de la gestión queda tras el candado.
+          if (!AcademiaPlanService.tieneBeneficios(_id)) {
+            final ac = appState.academiaPorId(_id);
+            return RefreshIndicator(
+              color: lima,
+              onRefresh: _refrescar,
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(ladoTablet(context, 16, 760), 14,
+                    ladoTablet(context, 16, 760), 28),
+                children: [
+                  ..._seccionPorConfirmar(),
+                  if (ac != null) TarjetaActivaPlan(academia: ac),
+                ],
+              ),
+            );
+          }
           final porCobrar = appState.porCobrarDe(_id);
           final vencido = appState.vencidoDe(_id);
           final cobradoMes = appState.cobradoMesDe(_id);
           final morosos = appState.morososDe(_id);
           final porRecordar = appState.porRecordarDe(_id);
-          return ListView(
+          return RefreshIndicator(
+            color: lima,
+            onRefresh: _refrescar,
+            child: ListView(
             // Regla app: contenido centrado (ancho máx) en pantallas anchas.
             padding: EdgeInsets.fromLTRB(
                 ladoTablet(context, 16, 760), 14, ladoTablet(context, 16, 760), 28),
             children: [
+              ..._seccionPorConfirmar(),
               // KPIs
               Row(
                 children: [
@@ -325,6 +652,7 @@ class _CobrosScreenState extends State<CobrosScreen> {
               else
                 for (final a in morosos) _FilaMoroso(alumno: a, cobros: this),
             ],
+            ),
           );
         },
       ),

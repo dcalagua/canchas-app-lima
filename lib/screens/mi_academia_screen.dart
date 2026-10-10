@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../config/features.dart';
 import '../models/academia.dart';
 import '../models/invitacion.dart';
+import '../services/academia_plan_service.dart';
 import '../services/pagos_service.dart';
 import '../services/whatsapp_link.dart';
 import '../state/app_state.dart';
@@ -15,6 +16,7 @@ import '../widgets/logo_academia.dart';
 import '../widgets/vacio_airbnb.dart';
 import 'cobros_screen.dart';
 import 'crear_academia_screen.dart';
+import 'plan_academia_screen.dart';
 import 'post_del_dia_screen.dart';
 import 'ranking_academia_screen.dart';
 import 'recargar_saldo_screen.dart';
@@ -33,7 +35,7 @@ class MiAcademiaScreen extends StatelessWidget {
     return Scaffold(
       body: AnchoLectura(
         child: ListenableBuilder(
-        listenable: appState,
+        listenable: Listenable.merge([appState, AcademiaPlanService.cambios]),
         builder: (context, _) {
           final ac = appState.miAcademia;
           if (ac == null) {
@@ -65,6 +67,10 @@ class MiAcademiaScreen extends StatelessWidget {
               padding: EdgeInsets.zero,
               children: [
               _Header(academia: ac),
+              // PLAN ACADEMIA: días de prueba / plan vencido → Ver plan.
+              BannerPlanAcademia(
+                  academia: ac,
+                  margen: const EdgeInsets.fromLTRB(18, 14, 18, 0)),
               // Hazte Pro visible para el profe (solo si NO es Pro).
               const BannerPro(
                   margen: EdgeInsets.fromLTRB(18, 14, 18, 0),
@@ -122,8 +128,16 @@ class MiAcademiaScreen extends StatelessWidget {
                   ],
                 ),
               ),
-              _RosterAlumnos(academia: ac),
-              _SeccionInvitaciones(academia: ac),
+              // Sin Plan Academia vigente: la gestión de alumnos queda tras
+              // el candado (la ficha pública sigue visible).
+              if (AcademiaPlanService.tieneBeneficios(ac.id)) ...[
+                _RosterAlumnos(academia: ac),
+                _SeccionInvitaciones(academia: ac),
+              ] else
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 8, 18, 8),
+                  child: TarjetaActivaPlan(academia: ac),
+                ),
               if (kServiciosPichangolActivo) _CmPostDelDiaTile(academia: ac),
               // Secundario y PLEGABLE: compartir código, nivel/destacar y
               // ranking. Colapsado por defecto → no roba espacio a lo importante.
