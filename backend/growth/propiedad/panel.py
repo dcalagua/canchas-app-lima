@@ -513,6 +513,49 @@ def cortesia_academia_plan_admin(academia_id: str, req: PlanAcademiaCortesiaRequ
         raise HTTPException(status_code=400, detail=str(ex)) from None
 
 
+# ── YAPE AUTOMÁTICO (fase 2 del Plan Academia, 10-oct-2026) ───────────────────
+# `yape_auto.py`. Torre → Cobros → "📲 Yape automático": encender/pausar,
+# paquetes de Android, expresiones de lectura (editables sin publicar APK),
+# probador y últimas notificaciones leídas.
+
+class YapeAutoConfigRequest(BaseModel):
+    activo: bool | None = None
+    paquetes: str | None = None
+    regex_monto: str | None = None
+    regex_codigo: str | None = None
+    regex_nombre: str | None = None
+    ventana_horas: int | None = None
+
+
+class YapeAutoProbarRequest(BaseModel):
+    titulo: str = ""
+    texto: str = ""
+
+
+@router.get("/admin/api/yape-auto")
+def get_yape_auto_admin(x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    import yape_auto
+    return yape_auto.resumen_torre()
+
+
+@router.post("/admin/api/yape-auto/config")
+def set_yape_auto_admin(req: YapeAutoConfigRequest, x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    import yape_auto
+    try:
+        return yape_auto.set_config(req.model_dump())
+    except ValueError as ex:
+        raise HTTPException(status_code=400, detail=str(ex)) from None
+
+
+@router.post("/admin/api/yape-auto/probar")
+def probar_yape_auto_admin(req: YapeAutoProbarRequest, x_admin_token: str | None = Header(default=None)) -> dict:
+    _check(x_admin_token)
+    import yape_auto
+    return yape_auto.leer(req.titulo, req.texto)
+
+
 # ── FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS (campaña, 2-oct-2026) ─────────
 # `propiedad/fotos_locales.py`. Torre → Aprobación y operación → "📷 Fotos de
 # los locales": KPIs, mínimo, plazo, lanzar/pausar y tabla por local con
@@ -5107,8 +5150,78 @@ async function cargarPlanAcademia(){
       </div>
       <div class="card" style="overflow-x:auto"><table class="tabla" style="width:100%;font-size:13px">
         <thead><tr><th>Academia</th><th>Estado</th><th>Vence</th><th>Cobro directo</th><th></th></tr></thead>
-        <tbody>${filas || '<tr><td colspan="5">Aún no hay academias.</td></tr>'}</tbody></table></div>`;
+        <tbody>${filas || '<tr><td colspan="5">Aún no hay academias.</td></tr>'}</tbody></table></div>
+      <div id="yapeAutoBox" style="margin-top:12px"></div>`;
+    cargarYapeAuto();
   }catch(e){ box.innerHTML='<div class="card">No se pudo cargar.</div>'; }
+}
+// Fase 2 (10-oct-2026): confirmación automática con la notificación de Yape
+// del celular de la academia (`yape_auto.py`).
+async function cargarYapeAuto(){
+  const box = document.getElementById('yapeAutoBox');
+  if(!box) return;
+  box.innerHTML = '<div class="card">Cargando Yape automático…</div>';
+  try{
+    const r = await fetch('/admin/api/yape-auto',{headers:headers(), cache:'no-store'});
+    if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar Yape automático.</div>'; return; }
+    const j = await r.json(); const c = j.config, k = j.kpis;
+    const campo = (id, v, w) => `<input id="${id}" value="${esc(v)}" style="width:${w||'100%'};padding:8px;border-radius:10px;border:1px solid var(--border);font-family:monospace;font-size:12px">`;
+    const notas = {sin_datos:'<span class="liq-tag" style="background:#FFF4E5;color:#B54708">no se leyó</span>', ambigua:'<span class="liq-tag" style="background:#FFF4E5;color:#B54708">ambigua</span>'};
+    const filas = (j.notificaciones||[]).map(n=>`<tr>
+        <td><small>${esc((n.recibida||'').slice(0,16).replace('T',' '))}</small><br><small style="color:#667">${esc(n.email)}</small></td>
+        <td style="max-width:340px"><small>${esc(n.titulo)} · ${esc(n.texto)}</small></td>
+        <td>${n.monto!=null?'S/ '+Number(n.monto).toFixed(2):'—'}</td><td>${esc(n.codigo||'—')}</td>
+        <td>${n.usada?'<span class="liq-tag ok">✓ confirmó '+esc(n.usada.alumno||'')+'</span>':(notas[n.nota]||'<small style="color:#667">esperando reporte</small>')}</td></tr>`).join('');
+    const disp = (j.dispositivos||[]).map(d=>`<li>${esc(d.email)} · ${esc(d.modelo||'Android')} · ${d.recibidas||0} leídas${d.ultimo?' · última '+esc(d.ultimo.slice(0,16).replace('T',' ')):''}</li>`).join('');
+    box.innerHTML = `
+      <div class="card" style="margin-bottom:12px;background:#F7F3FF">
+        <div style="font-weight:800;font-size:15px;margin-bottom:4px">📲 Yape automático · fase 2</div>
+        <div style="color:#667;font-size:12.5px">El celular Android de la academia lee la notificación de su Yape y Pichangol confirma solo el pago reportado cuyo <b>código de seguridad y monto</b> coinciden (una sola coincidencia, dentro de la ventana). Lo ambiguo o no leído queda para que la academia confirme a mano. Si Yape cambia el texto de su notificación, ajusta aquí las expresiones (no hace falta publicar un APK).</div>
+      </div>
+      <div class="kpi-row" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div class="card" style="flex:1;min-width:120px"><small>Celulares vinculados</small><div style="font-size:22px;font-weight:800">${k.dispositivos}</div></div>
+        <div class="card" style="flex:1;min-width:120px"><small>Notificaciones (7 días)</small><div style="font-size:22px;font-weight:800">${k.recibidas}</div></div>
+        <div class="card" style="flex:1;min-width:120px"><small>Leídas bien</small><div style="font-size:22px;font-weight:800">${k.leidas}</div></div>
+        <div class="card" style="flex:1;min-width:120px"><small>Confirmadas solas</small><div style="font-size:22px;font-weight:800">${k.confirmadas}</div></div>
+        <div class="card" style="flex:1;min-width:120px"><small>No leídas / ambiguas</small><div style="font-size:22px;font-weight:800">${k.sin_datos} / ${k.ambiguas}</div></div>
+      </div>
+      <div class="card" style="margin-bottom:12px;display:grid;gap:10px">
+        <label style="font-size:12.5px;display:flex;gap:8px;align-items:center"><input type="checkbox" id="ya_activo" style="width:auto;flex:none" ${c.activo?'checked':''}> Confirmación automática encendida</label>
+        <label style="font-size:12px">Paquetes de Android (separados por coma)<br>${campo('ya_paquetes', (c.paquetes||[]).join(', '))}</label>
+        <label style="font-size:12px">Expresión del MONTO<br>${campo('ya_monto', c.regex_monto)}</label>
+        <label style="font-size:12px">Expresión del CÓDIGO de seguridad (3 dígitos)<br>${campo('ya_codigo', c.regex_codigo)}</label>
+        <label style="font-size:12px">Expresión del NOMBRE de quien yapeó<br>${campo('ya_nombre', c.regex_nombre)}</label>
+        <label style="font-size:12px">Ventana entre el reporte y el yapeo (horas)<br><input id="ya_ventana" type="number" min="1" max="168" value="${c.ventana_horas}" style="width:90px;padding:8px;border-radius:10px;border:1px solid var(--border)"></label>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn-ap" onclick="guardarYapeAuto()">Guardar</button>
+          <span id="ya_msg" style="font-size:12.5px;color:#667"></span></div>
+      </div>
+      <div class="card" style="margin-bottom:12px">
+        <div style="font-weight:700;margin-bottom:6px">🧪 Probar con un texto de notificación</div>
+        ${campo('ya_prueba','Yape! Juan Pérez te envió un pago por S/ 50. El cód. de seguridad es: 427')}
+        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn-sec" onclick="probarYapeAuto()">Leer</button><span id="ya_res" style="font-size:12.5px"></span></div>
+      </div>
+      ${disp?`<div class="card" style="margin-bottom:12px"><div style="font-weight:700;margin-bottom:6px">Celulares vinculados</div><ul style="margin:0;padding-left:18px;font-size:12.5px">${disp}</ul></div>`:''}
+      <div class="card" style="overflow-x:auto"><table class="tabla" style="width:100%;font-size:13px">
+        <thead><tr><th>Llegó</th><th>Notificación</th><th>Monto</th><th>Código</th><th>Resultado</th></tr></thead>
+        <tbody>${filas || '<tr><td colspan="5">Aún no llega ninguna notificación.</td></tr>'}</tbody></table></div>`;
+  }catch(e){ box.innerHTML='<div class="card">No se pudo cargar Yape automático.</div>'; }
+}
+async function guardarYapeAuto(){
+  const v = id => document.getElementById(id).value;
+  const body = {activo: document.getElementById('ya_activo').checked, paquetes: v('ya_paquetes'),
+    regex_monto: v('ya_monto'), regex_codigo: v('ya_codigo'), regex_nombre: v('ya_nombre'), ventana_horas: parseInt(v('ya_ventana')||'48',10)};
+  const msg = document.getElementById('ya_msg');
+  const r = await fetch('/admin/api/yape-auto/config',{method:'POST', headers:{...headers(),'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const j = await r.json().catch(()=>({}));
+  if(!r.ok){ msg.textContent = j.detail || 'No se pudo guardar.'; msg.style.color='#B42318'; return; }
+  msg.textContent = 'Guardado ✓'; msg.style.color='#0B8A3E';
+}
+async function probarYapeAuto(){
+  const res = document.getElementById('ya_res');
+  const r = await fetch('/admin/api/yape-auto/probar',{method:'POST', headers:{...headers(),'Content-Type':'application/json'}, body: JSON.stringify({texto: document.getElementById('ya_prueba').value})});
+  const j = await r.json().catch(()=>({}));
+  const ok = j.monto!=null && j.codigo;
+  res.innerHTML = `${ok?'✅':'⚠️'} Monto: <b>${j.monto!=null?Number(j.monto).toFixed(2):'—'}</b> · Código: <b>${esc(j.codigo||'—')}</b> · Nombre: <b>${esc(j.nombre||'—')}</b>`;
 }
 async function guardarPlanAcademia(){
   const v = id => document.getElementById(id).value;

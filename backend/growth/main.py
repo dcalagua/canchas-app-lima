@@ -35,6 +35,7 @@ from web.anfitrion_verificador import router as anfitrion_verificador_router
 from boleadores import router as boleadores_router
 from fidelidad import router as fidelidad_router
 from academia_plan import router as academia_plan_router
+from yape_auto import router as yape_auto_router
 from web.academia import router as academia_web_router
 from web.academia_plan_web import router as academia_plan_web_router
 from web.jugador_clases import router as jugador_clases_router
@@ -198,6 +199,7 @@ app.include_router(anfitrion_verificador_router)  # /anfitrion/verificador, /anf
 app.include_router(anfitrion_router)
 app.include_router(boleadores_router)  # /boleadores/* (APK + ficha web)
 app.include_router(fidelidad_router)
+app.include_router(yape_auto_router)  # /academias/yape/* (fase 2: confirmación automática con la notificación de Yape)
 app.include_router(academia_plan_router)  # /academias/* y /config/academias (Plan Academia + pago directo)  # /fidelidad/* (tarjeta de fidelidad del local)
 # Assets de marca de la web pública (pin, logo para OG/favicon). Ruta fija
 # junto a este archivo para que Railway (root dir backend/growth) los sirva.

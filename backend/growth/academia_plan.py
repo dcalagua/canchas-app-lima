@@ -475,12 +475,20 @@ def reportar_pago(alumno_id: str, email: str, cuota_ids: list[str], codigo: str,
                                 f"Compáralo con tu Yape y confírmalo.", tipo="academia")
         except Exception:  # noqa: BLE001
             pass
+    if dueno:
+        # Fase 2: si la academia tiene la confirmación automática, la
+        # notificación de su Yape quizá ya llegó → se concilia al instante.
+        try:
+            import yape_auto
+            yape_auto.conciliar_en_segundo_plano(dueno)
+        except Exception:  # noqa: BLE001
+            pass
     print(f"[pago-directo] {alumno_id} reporta {len(hechas)} cuota(s) {sim} {total:.2f} cód {codigo}", flush=True)
     return {"ok": True, "cuotas": [c["id"] for c in hechas], "total": total}
 
 
 def resolver_pago(academia_id: str, alumno_id: str, cuota_ids: list[str], email: str, aceptar: bool,
-                  motivo: str = "", ahora: datetime | None = None) -> dict:
+                  motivo: str = "", ahora: datetime | None = None, *, auto: bool = False) -> dict:
     """La ACADEMIA confirma (la cuota queda pagada, `operacionId` = el N.º de
     operación de Yape) o rechaza (vuelve a pendiente con el motivo)."""
     from web import datos
@@ -512,6 +520,10 @@ def resolver_pago(academia_id: str, alumno_id: str, cuota_ids: list[str], email:
                 rep["motivo"] = motivo or "La academia no encontró ese yapeo."
             rep["resuelto"] = ahora.isoformat()
             rep["resuelto_por"] = email
+            if auto:
+                # Fase 2: lo confirmó la notificación de Yape del celular de
+                # la academia (`yape_auto.py`), no un toque del dueño.
+                rep["auto"] = "yape_notificacion"
             c["reporte"] = rep
             hechas.append(dict(c))
         return (hechas, data) if hechas else None
@@ -524,6 +536,15 @@ def resolver_pago(academia_id: str, alumno_id: str, cuota_ids: list[str], email:
     total = sum(float(c.get("monto") or 0) for c in hechas)
     destinos = {str(data.get("email") or "").strip().lower(), str(data.get("emailAlumno") or "").strip().lower()} - {""}
     nombre_a = a.get("nombre") or "la academia"
+    if aceptar and auto:
+        try:
+            from pagos.router import _aviso_push_usuario
+            _aviso_push_usuario(email, "Pago confirmado solo ✅",
+                                f"Tu Yape recibió {sim} {total:.2f} de {data.get('nombre') or 'un alumno'} con el código "
+                                f"{(hechas[0].get('reporte') or {}).get('codigo') or ''}: lo marcamos como pagado.",
+                                tipo="academia")
+        except Exception:  # noqa: BLE001
+            pass
     if aceptar:
         titulo, cuerpo = ("Pago confirmado ✅",
                           f"{nombre_a} confirmó tu pago de {sim} {total:.2f} ({', '.join(str(c.get('concepto') or '') for c in hechas)[:120]}).")

@@ -48,7 +48,7 @@ BENEFICIOS = [
     ("🔔", "Recordatorios automáticos a tus alumnos", "Push y correo antes de que venza cada cuota, el día y al vencer."),
     ("📝", "Matrícula en línea", "Desde tu ficha en Pichangol y la app, con descuentos familiares y por adelantar."),
     ("📊", "Panel de gestión", "Alumnos, cobros, asistencia, evaluaciones, ranking, reportes, chats y sedes."),
-    ("💜", "Tus alumnos te pagan directo por Yape", "0 % de comisión: confirmas cada pago con el código de seguridad de Yape."),
+    ("💜", "Tus alumnos te pagan directo por Yape", "0 % de comisión: confirmas cada pago con el código de seguridad de Yape, o tu celular Android lo confirma solo (actívalo en la app → Plan Academia)."),
 ]
 
 

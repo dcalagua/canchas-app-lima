@@ -8,6 +8,7 @@ import '../widgets/dialogo_pichangol.dart';
 import '../widgets/icono_vivo.dart';
 import '../widgets/logo_academia.dart';
 import '../widgets/responsive.dart';
+import '../widgets/yape_auto_card.dart';
 import 'crear_academia_screen.dart';
 import 'recargar_saldo_screen.dart';
 
@@ -180,9 +181,18 @@ class _PlanAcademiaScreenState extends State<PlanAcademiaScreen> {
                     icono: Icons.payments_outlined,
                     titulo: 'Cobras directo, sin comisión',
                     texto:
-                        'Tus alumnos te yapean a ti. Confirmas cada pago con el código de seguridad de su Yape.'),
+                        'Tus alumnos te yapean a ti. Confirmas cada pago con el código de seguridad de su Yape, o deja que tu celular Android lo confirme solo.'),
                 const SizedBox(height: 14),
                 _tarjetaYape(est),
+                // Fase 2: confirmación automática leyendo la notificación de
+                // Yape (solo Android, con Yape registrado y plan vigente).
+                if ((_ac.cobroDirecto ?? est?.cobroDirecto) != null &&
+                    est != null &&
+                    est.beneficios &&
+                    !est.libre) ...[
+                  const SizedBox(height: 14),
+                  const TarjetaYapeAuto(),
+                ],
                 if (est != null && !est.libre) ...[
                   const SizedBox(height: 14),
                   Container(

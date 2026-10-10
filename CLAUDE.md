@@ -3859,8 +3859,38 @@ antes del corte.
   `pago_directo_sheet.dart`, `Academia.cobroDirecto`, `Cuota.reporte/
   medioPago`; config sin cargar = "comision" (comportamiento anterior). Tests
   `tests/test_academia_plan.py`, `tests/test_web_academia_plan.py`.
-  **Fase 2 (pendiente):** confirmar SOLO leyendo la notificación de Yape en el
-  celular de la academia (necesita captura del texto de la notificación).
+  **FASE 2 = YAPE AUTOMÁTICO (hecho 10-oct-2026, "seguimos con la fase 2"):**
+  `backend/growth/yape_auto.py`. El dueño activa en el APK → Plan Academia →
+  "Confirmar mis pagos automáticamente" (`widgets/yape_auto_card.dart`, solo
+  Android, con Yape registrado y plan vigente; aviso destacado de Play antes de
+  pedir el permiso "Acceso a notificaciones"; en APK fuera de Play Android 13+
+  puede exigir "Permitir ajustes restringidos", la tarjeta lo explica). `POST
+  /academias/yape/vincular` (sesión) da un TOKEN DE DISPOSITIVO (solo se guarda
+  su SHA-256; un celular por dueño, vincular otro apaga el anterior). El
+  servicio nativo `YapeListener` (`tool/android/YapeListener.kt`, lo copia
+  `configure_platforms.py` + `<service>` en el manifest + MethodChannel
+  `pichangol/yape_auto` en MainActivity: permisoActivo, abrirPermiso,
+  abrirInfoApp, configurar, estado, reintentar) ve SOLO los paquetes de
+  `yape_paquetes` y manda título + texto a `POST /academias/yape/notificacion`
+  (X-App-Key + `X-Yape-Token`; cola de 50 sin red; 401 lo apaga solo). El
+  backend lee monto / código (3 dígitos) / nombre con EXPRESIONES EDITABLES en
+  la torre (`yape_regex_*`, espejo en `CONFIG_DEFAULT`; si Yape cambia su texto
+  se arregla sin APK) y CONCILIA: un pago "por confirmar" de una academia del
+  dueño CON plan vigente se confirma (`resolver_pago(..., auto=True)` →
+  `reporte.auto`, push "Pago confirmado solo ✅" al dueño + recibo al alumno)
+  si coinciden código Y monto total, dentro de `yape_ventana_horas` (48) y la
+  coincidencia es ÚNICA en ambos sentidos (ambigua → queda manual, nota
+  `ambigua`); cada notificación se usa una vez; Android re-publica → se
+  deduplica por huella 24 h. Se concilia al llegar la notificación y al
+  reportar el alumno. Notificaciones en `stores.yape_notificaciones` (7 días,
+  texto ≤300) y dispositivos en `stores.yape_dispositivos` (snapshot). Torre →
+  Cobros → Plan Academia → "📲 Yape automático": encender/pausar, paquetes,
+  expresiones, ventana, probador de texto, KPIs y últimas notificaciones
+  (`/admin/api/yape-auto[/config|/probar]`). Privacidad declara la lectura.
+  **Calibrar:** los textos por defecto suponen "¡Yape! <Nombre> te envió un
+  pago por S/ 50. El cód. de seguridad es: 427"; con la primera notificación
+  real, revisar en la torre si se leyó (columna Resultado) y ajustar. iPhone:
+  sigue manual. Test `tests/test_yape_auto.py`.
 - **PAGOS PERDÍAN DATOS AL REINICIAR (bug de plata hallado el 2-oct-2026):**
   `pg.cargar_normalizado` REEMPLAZABA los pagos/reclamos del snapshot por las
   filas de `growth_pagos`/`growth_reclamos` (solo 10/21 columnas) → tras cada
