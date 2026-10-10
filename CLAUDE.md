@@ -2817,6 +2817,13 @@ off → redeploy inmediato en cada push). URL pública:
     run 1543 (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un APK
     anterior no conoce el modelo de suscripción (sigue cobrando en línea) ni
     el Yape automático → actualizar.
+    **Pase del 10-oct-2026 (2.º, autorizado: "pasa a PRD"):** `prd` = 69afa03
+    (academias ocultas en Bolivia y Ecuador: `acad_paises` = "PE" por defecto,
+    editable en la torre → Cobros → Plan Academia → "Academias visibles en").
+    Sin SQL, sin Edge, sin variables. CAMBIÓ `lib/` → APK/AAB de PRD = run 1546
+    (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un APK anterior
+    sigue mostrando el chip 🎓 y "Mi academia" en BO/EC (el servidor igual
+    bloquea la ficha, la matrícula y guardar una sede ahí) → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
