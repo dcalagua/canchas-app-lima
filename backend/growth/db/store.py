@@ -215,6 +215,10 @@ CONFIG_DEFAULT: dict[str, str] = {
     # Países donde las academias se muestran al público (decisión del
     # director, 10-oct-2026: ocultas en Bolivia y Ecuador). "PE,EC,BO" = todos.
     "acad_paises": "PE",
+    # JUEGA YA (`juego.py`): avisos de partidos cerca (push) y su tope diario
+    # por persona, para que no sea spam.
+    "juego_avisos_activo": "1",
+    "juego_avisos_tope_dia": "3",
     # Fase 2: confirmación automática leyendo la notificación de Yape en el
     # celular de la academia (`yape_auto.py`; espejo de `yape_auto.DEFAULTS`).
     "yape_auto_activo": "1",
@@ -769,6 +773,12 @@ class Stores:
         # leídas (7 días).
         self.yape_dispositivos: dict[str, dict] = {}
         self.yape_notificaciones: list[dict] = []
+        # JUEGA YA (`juego.py`): preferencias de juego por correo (deportes,
+        # radio, franjas, días, avisos, disponible, ubicación aproximada),
+        # partidos ya avisados {partido_id: {t, n}} y avisos por persona y día.
+        self.juego_prefs: dict[str, dict] = {}
+        self.juego_avisos: dict[str, dict] = {}
+        self.juego_avisos_dia: dict[str, dict] = {}
         # MARKETPLACE: unidades APARTADAS por el APK antes de cobrar
         # (`pagos/stock_productos.py`): apartado_id → {producto_id, email,
         # estado: apartado|vendido|devuelto|vencido, ilimitado, en}.
@@ -1017,6 +1027,10 @@ class Stores:
         for k in [k for k in list(self.saldos_promo) if _match(k)]:
             self.saldos_promo.pop(k, None)
         self.bienvenidas.pop(clave, None)  # re-registrar en pruebas re-regala
+        # "Eliminar mi cuenta" / "Dejar en virgen": deja de aparecer como
+        # disponible y de recibir avisos de partidos (`juego.py`).
+        self.juego_prefs.pop(clave, None)
+        self.juego_avisos_dia.pop(clave, None)
         antes = len(self.pagos)
         self.pagos = [p for p in self.pagos if not _match(p.dueno_id)]
         return {"saldo": saldo_habia, "pagos": antes - len(self.pagos)}
@@ -1298,6 +1312,9 @@ class Stores:
             "recordatorios_cuotas": {k: list(v) for k, v in self.recordatorios_cuotas.items()},
             "yape_dispositivos": {k: dict(v) for k, v in self.yape_dispositivos.items()},
             "yape_notificaciones": [dict(n) for n in self.yape_notificaciones],
+            "juego_prefs": {k: dict(v) for k, v in self.juego_prefs.items()},
+            "juego_avisos": {k: dict(v) for k, v in self.juego_avisos.items()},
+            "juego_avisos_dia": {k: dict(v) for k, v in self.juego_avisos_dia.items()},
             "apartados_stock": {k: dict(v) for k, v in self.apartados_stock.items()},
             "publicaciones_redes": [dict(r) for r in self.publicaciones_redes],
             "admin_accesos": [dict(r) for r in self.admin_accesos],
@@ -1443,6 +1460,8 @@ class Stores:
         self.yape_dispositivos = {str(k): dict(v) for k, v in (data.get("yape_dispositivos") or {}).items()
                                   if isinstance(v, dict)}
         self.yape_notificaciones = [dict(n) for n in (data.get("yape_notificaciones") or []) if isinstance(n, dict)]
+        for _k in ("juego_prefs", "juego_avisos", "juego_avisos_dia"):
+            setattr(self, _k, {str(k): dict(v) for k, v in (data.get(_k) or {}).items() if isinstance(v, dict)})
         self.publicaciones_redes = [dict(r) for r in (data.get("publicaciones_redes") or [])]
         self.admin_accesos = [dict(r) for r in (data.get("admin_accesos") or [])]
         ag = data.get("agente_fb") or {}

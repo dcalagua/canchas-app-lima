@@ -23,8 +23,15 @@ class PartidoAbierto {
   final double? lat;
   final double? lng;
   final int cupos; // jugadores que se necesitan en total (incluye al creador)
-  final String nota; // "traigan pechera", "nivel intermedio", etc.
+  final String nota; // texto libre de APKs anteriores (ya no se escribe)
   final DateTime creado;
+
+  // ── Juega ya (SQL `supabase_partidos_juega_ya.sql`) ──────────────────────
+  final String tipo; // 'partido' (completar equipo) | 'partner' (raqueta)
+  final String modalidad; // partner: 'singles' | 'dobles' | 'pelotear'
+  final String nivel; // '' = todos | 'inicial' | 'intermedio' | ...
+  final List<String> etiquetas; // claves de `Juego.etiquetas`
+  final String canchaId; // local de Pichangol donde se juega ('' = otro lugar)
 
   // ── Runtime (del roster en pichangol_grupo_miembros) ──────────────────────
   final List<String> jugadoresEmails; // correos apuntados (incluye al creador)
@@ -44,6 +51,11 @@ class PartidoAbierto {
     this.lng,
     this.cupos = 10,
     this.nota = '',
+    this.tipo = 'partido',
+    this.modalidad = '',
+    this.nivel = '',
+    this.etiquetas = const [],
+    this.canchaId = '',
     this.jugadoresEmails = const [],
     this.jugadoresNombres = const [],
   });
@@ -53,6 +65,7 @@ class PartidoAbierto {
   int get inscritos => jugadoresEmails.length;
   int get faltan => (cupos - inscritos).clamp(0, cupos);
   bool get lleno => inscritos >= cupos;
+  bool get esPartner => tipo == 'partner';
 
   bool apuntado(String? email) =>
       email != null &&
@@ -80,6 +93,11 @@ class PartidoAbierto {
         lng: lng,
         cupos: cupos,
         nota: nota,
+        tipo: tipo,
+        modalidad: modalidad,
+        nivel: nivel,
+        etiquetas: etiquetas,
+        canchaId: canchaId,
         jugadoresEmails: jugadoresEmails ?? this.jugadoresEmails,
         jugadoresNombres: jugadoresNombres ?? this.jugadoresNombres,
       );
@@ -99,7 +117,20 @@ class PartidoAbierto {
         if (lng != null) 'lng': lng,
         'cupos': cupos,
         'nota': nota,
+        'tipo': tipo,
+        'modalidad': modalidad,
+        'nivel': nivel,
+        'etiquetas': etiquetas,
+        if (canchaId.isNotEmpty) 'cancha_id': canchaId,
       };
+
+  /// Fila sin las columnas de Juega ya (base que aún no corrió su SQL).
+  Map<String, dynamic> toInsertBase() => Map.of(toInsert())
+    ..remove('tipo')
+    ..remove('modalidad')
+    ..remove('nivel')
+    ..remove('etiquetas')
+    ..remove('cancha_id');
 
   factory PartidoAbierto.fromRow(Map<String, dynamic> r) => PartidoAbierto(
         id: (r['id'] ?? '').toString(),
@@ -116,6 +147,15 @@ class PartidoAbierto {
         lng: (r['lng'] as num?)?.toDouble(),
         cupos: (r['cupos'] as num?)?.toInt() ?? 10,
         nota: (r['nota'] ?? '').toString(),
+        tipo: (r['tipo'] ?? 'partido').toString(),
+        modalidad: (r['modalidad'] ?? '').toString(),
+        nivel: (r['nivel'] ?? '').toString(),
+        etiquetas: [
+          if (r['etiquetas'] is List)
+            for (final x in r['etiquetas'] as List)
+              if (x != null && x.toString().isNotEmpty) x.toString()
+        ],
+        canchaId: (r['cancha_id'] ?? '').toString(),
         creado: DateTime.tryParse((r['creado'] ?? '').toString())?.toLocal() ??
             DateTime.now(),
       );

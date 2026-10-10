@@ -105,7 +105,7 @@ class _AppShellState extends State<AppShell> {
               const NavigationDestination(
                   icon: Icon(Icons.groups_outlined),
                   selectedIcon: Icon(Icons.groups),
-                  label: 'Partidos'),
+                  label: 'Juega ya'),
               const NavigationDestination(
                   icon: Icon(Icons.event_note_outlined),
                   selectedIcon: Icon(Icons.event_note),

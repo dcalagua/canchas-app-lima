@@ -873,6 +873,66 @@ para la API del APK.
   libres de hoy/mañana con descuento real en `pichangol_descuentos_slot` +
   aviso por chat o WhatsApp; en el MENU anfitrión). Perfil: Partidos,
   Pichangas de mi club, Invita y gana. Test `tests/test_web_jugador_partidos.py`.
+- **JUEGA YA (fases 1 y 2, 10-oct-2026, pedido del director: "¿cómo hace
+  una persona sola para buscar u organizar un partido de fútbol o un partner
+  de tenis?"):** la pestaña "Partidos" del app y `/partidos` de la web pasan a
+  llamarse **"Juega ya"** con tres caminos: ⚽ Busco partido · 📣 Organizo un
+  partido · 🎾 Busco partner (tenis/pickleball). Fuente única
+  `backend/growth/juego.py` (catálogos + reglas; espejo Dart
+  `lib/models/juego.dart`). (1) **Publicar por selección, sin texto libre:**
+  `pichangol_partidos` suma `tipo` (`partido`|`partner`), `modalidad`
+  (singles 2 / dobles 4 / pelotear 2), `nivel` (bandas sobre el nivel 1.0–7.0:
+  inicial <2.5, intermedio, avanzado ≥4, competitivo ≥5.5; sin dato = 3.0),
+  `etiquetas` (máx. 4 de `juego.ETIQUETAS`: cancha reservada, se divide,
+  pechera, falta arquero, llevo pelotas, mixto/solo mujeres —excluyentes—…) y
+  `cancha_id` (local reservable → "Ver cancha"); el título se arma solo
+  (`titulo_auto`: "Fut 7 · Club X", "Singles de tenis · Club X"); título y
+  nota libres desaparecen (la nota de APKs viejos se sigue mostrando). Otro
+  lugar → la ubicación del organizador ubica el partido. SQL
+  `docs/piloto/supabase_partidos_juega_ya.sql` (sin él, web y APK publican
+  igual sin esos datos: la web chequea columnas con `cols_v2()` —un "no" se
+  re-pregunta a los 5 min—; el APK reintenta con `toInsertBase()`). (2)
+  **Buscar cerca:** filtro por radio 5/10/20/30 km desde la ubicación del
+  usuario (web `pcg_ubic`/`pcg_radio`, APK `LocationService`), deporte, cuándo
+  (hoy/mañana/este finde) y "De mi nivel". (3) **Partner:** publicaciones tipo
+  partner ("🎾 Juego contigo") + **Jugadores disponibles cerca**
+  (`juego.disponibles`: quienes se marcaron disponibles en ese deporte, dentro
+  del radio de ambos, vigentes 60 días; se ve nombre, foto, nivel y distancia
+  redondeada a 0,5 km, NUNCA coordenadas; web con `ref` opaco → "💬 Escribir"
+  `/mensajes/nuevo?persona=` y carnet; APK → chat directo). (4)
+  **Preferencias** `stores.juego_prefs[correo]` (snapshot; deportes, radio,
+  franjas mañana/tarde/noche, días todos/semana/finde, `avisos`,
+  `disponible`, ubicación aproximada a 3 decimales): web `POST
+  /web/juego/prefs`, `/web/juego/tocar`, `GET /web/juego/disponibles`; APK
+  `GET/POST /juego/prefs`, `GET /juego/disponibles`, `GET /juego/config`
+  (X-App-Key + `_require_usuario`; `lib/services/juego_service.dart`,
+  cache-first). Se borran con "Eliminar mi cuenta"/"Dejar en virgen"
+  (`reset_billetera_de`). Privacidad lo declara. (5) **FASE 2 = avisos push de
+  partidos cerca:** cron de 1 min (`main.py::_iniciar_cron_juego` →
+  `juego.avisar_nuevos`) lee los partidos CREADOS en las últimas 6 h (app,
+  web y APKs viejos: `jugador_partidos.partidos_creados_desde`) y avisa una
+  vez por partido (`stores.juego_avisos`, poda a 7 días) a quien pidió avisos
+  y le calza deporte, distancia ≤ su radio, franja, día y nivel; nunca al
+  creador ni a los ya apuntados; solo con cupos libres y si empieza en > 30
+  min. Tope `juego_avisos_tope_dia` (3) por persona y día; corte
+  `juego_avisos_activo="0"` (ambos en `CONFIG_DEFAULT`). Push tipo `partido`
+  con `partido_id`/`tipo_partido` → APK `PushService.alAbrirPartidos` abre
+  "Juega ya" en su pestaña. Tests `tests/test_juego.py`; Playwright
+  `$SP/pw_jy.js` (390 px, cero diálogos del navegador). **Filtros
+  INTELIGENTES (pedido del director, 10-oct-2026, captura: "por defecto debe
+  marcar el país donde me localizo; si busco partner que marque tenis y hoy"):**
+  el PAÍS es el de la ubicación real (web: el servidor manda todos los partidos
+  con `data-pais` y el navegador elige con `jpPaisDe` = `paises._CAJAS`; los
+  chips de país son selección manual, `?pais=` lo fija; APK: `_paisVista` =
+  país del GPS, si no `paisActual`); el DEPORTE arranca con
+  `juego.deporte_sugerido` (partner: raqueta de mis preferencias → la que más
+  jugué en `pichangol_niveles` → tenis; partido: 1.º de mis preferencias o
+  Todos; espejo Dart `_depSugerido`); CUÁNDO arranca en "Hoy" y, si hoy no hay
+  nada, se abre solo a los próximos días con el aviso "Hoy no hay nada cerca:
+  te mostramos los próximos días". Lo que el usuario toca manda (`cuAuto`/
+  `_cuandoAuto`, `_depAuto`). Playwright `$SP/pw_jy2.js` (Quito → Ecuador;
+  Lima partner → Tenis + respaldo de días). **Pendiente:** correr el SQL en
+  QAS y, con autorización, en PRD.
 - **NOVEDADES Y CANALES EN LA WEB (30-sep-2026):** `web/jugador_novedades.py`.
   `/novedades` (feed de historias de MIS CONTACTOS de `pichangol_agenda`, sin
   bloqueados, 24 h; visor con barras, 5 s foto/texto, 15 s con música, video
@@ -2817,6 +2877,13 @@ off → redeploy inmediato en cada push). URL pública:
     run 1543 (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un APK
     anterior no conoce el modelo de suscripción (sigue cobrando en línea) ni
     el Yape automático → actualizar.
+    **Pase del 10-oct-2026 (2.º, autorizado: "pasa a PRD"):** `prd` = 69afa03
+    (academias ocultas en Bolivia y Ecuador: `acad_paises` = "PE" por defecto,
+    editable en la torre → Cobros → Plan Academia → "Academias visibles en").
+    Sin SQL, sin Edge, sin variables. CAMBIÓ `lib/` → APK/AAB de PRD = run 1546
+    (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un APK anterior
+    sigue mostrando el chip 🎓 y "Mi academia" en BO/EC (el servidor igual
+    bloquea la ficha, la matrícula y guardar una sede ahí) → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,

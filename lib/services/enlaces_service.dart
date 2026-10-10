@@ -169,6 +169,9 @@ class EnlacesService {
   /// `/reservar/{canchaId}` → ficha del LOCAL (como la web: la ficha es el
   /// local, con la cancha del enlace seleccionada). Si las canchas de la nube
   /// aún no bajaron, las trae primero.
+  /// Público: «Ver cancha» de un partido de Juega ya.
+  static Future<void> abrirCancha(String canchaId) => _abrirCancha(canchaId);
+
   static Future<void> _abrirCancha(String canchaId) async {
     final nav = await _esperarNavegador();
     if (nav == null) return;
