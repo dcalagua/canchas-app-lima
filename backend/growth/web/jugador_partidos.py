@@ -145,7 +145,7 @@ _CSS = """
 .jp-chips .chip{max-width:100%;white-space:normal}
 .jp-wrap.con-fab{padding-bottom:70px}
 .pcg-dlg .caja .jp-fila .q{text-align:left}
-.jp-fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:30;box-shadow:0 8px 22px rgba(0,0,0,.18);border-radius:999px}
+.jp-fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:15;box-shadow:0 8px 22px rgba(0,0,0,.18);border-radius:999px}
 .jp-sec{font-weight:800;font-size:16px;margin:18px 0 8px}
 .jp-barra{height:8px;border-radius:999px;background:#EBEBEB;overflow:hidden;margin:12px 0 8px}
 .jp-barra i{display:block;height:100%;background:#0B8A3E;border-radius:999px}
