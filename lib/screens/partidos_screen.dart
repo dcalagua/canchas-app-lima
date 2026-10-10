@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../config/pais.dart';
 import '../data/partidos_repo.dart';
+import '../models/academia.dart';
 import '../models/club.dart';
 import '../models/juego.dart';
 import '../models/models.dart';
