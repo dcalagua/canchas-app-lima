@@ -55,16 +55,41 @@ def _apw():
     return academia_plan_web
 
 
-def _seccion_cobro(cd: dict) -> str:
-    """Editor → "💜 Cobro directo por Yape" (Plan Academia): número y titular."""
+def _seccion_cobro(cd: dict, iso: str) -> str:
+    """Editor → "💜 Cobro directo" (Plan Academia) según el país de la sede:
+    Perú = Yape (número + titular); Ecuador / Bolivia = imagen del QR de cobro
+    + app o banco (selección) + titular. Ambos bloques viajan en la página y el
+    JS muestra el del país del punto en el mapa (si el dueño mueve la sede)."""
     yape = re.sub(r"\D", "", str(cd.get("yape") or ""))
-    return ("<section class='panel edit-sec' id='sec-cobro'><h2>💜 Cobro directo por Yape</h2>"
+    qr_url = str(cd.get("qr_url") or "")
+    app = str(cd.get("app") or "")
+    apps = "".join(
+        f"<div class='chips cd-apps' data-pais='{p}'{'' if p == iso else ' hidden'}>"
+        + "".join(f"<button type='button' class='chip{' sel' if (k == app and p == iso) else ''}' data-g='cdApp_{p}' data-v='{e(k)}'>{e(n)}</button>"
+                  for k, n in lista) + "</div>"
+        for p, lista in _ap.QR_APPS.items())
+    es_qr = _ap.medio_cobro_de_pais(iso) == "qr"
+    img_qr = f"<img src='{e(qr_url)}' alt='Tu QR de cobro'>" if qr_url else "<span>▦</span>"
+    return ("<section class='panel edit-sec' id='sec-cobro'><h2>💜 Cobro directo a tu academia</h2>"
+            f"<div id='cdYapeBox'{' hidden' if es_qr else ''}>"
             "<p class='sub'>Tus alumnos te pagan directo a tu Yape y reportan en Pichangol el código de seguridad de su comprobante; "
             "tú lo comparas con la notificación de tu Yape y confirmas con un toque. <b>Pichangol no toca tu plata ni cobra comisión.</b></p>"
             "<div class='row'><div><label for='cdYape'>Número de Yape <span class='req'>celular de 9 dígitos</span></label>"
             f"<div class='inp-moneda' style='max-width:260px'><span>+51</span><input id='cdYape' inputmode='numeric' maxlength='11' value='{e(yape)}' placeholder='987 654 321'></div></div>"
             "<div><label for='cdTitular'>Nombre del titular <span class='req'>como sale en tu Yape</span></label>"
-            f"<input id='cdTitular' maxlength='60' value='{e(str(cd.get('titular') or ''))}' placeholder='Ej. Academia Ace SAC'></div></div>"
+            f"<input id='cdTitular' maxlength='60' value='{e(str(cd.get('titular') or '') if not es_qr else '')}' placeholder='Ej. Academia Ace SAC'></div></div></div>"
+            f"<div id='cdQrBox'{'' if es_qr else ' hidden'}>"
+            "<p class='sub'>Sube el <b>código QR</b> donde recibes pagos (DeUna!, tu banco o QR Simple). Tus alumnos lo escanean y pagan un "
+            "<b>monto único</b> (su cuota + unos centavos); si activas la confirmación automática en la app, tu celular reconoce el pago "
+            "y la cuota queda pagada sola. <b>Pichangol no toca tu plata ni cobra comisión.</b></p>"
+            "<div style='display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:10px'>"
+            f"<div class='logo-pick' id='cdQrImg' style='border-radius:14px'>{img_qr}</div>"
+            f"<div><label class='btn sec' for='inQr' style='margin:0'>📷 {'Cambiar QR' if qr_url else 'Subir mi QR'}</label><input type='file' id='inQr' accept='image/*' hidden{'' if almacen.disponible() else ' disabled'}>"
+            "<div class='sub' id='qrMsg' style='margin:6px 0 0;font-size:12.5px'>Una captura nítida del QR de tu app de cobros.</div></div></div>"
+            "<label style='margin-top:14px;display:block'>¿Dónde recibes los pagos?</label>"
+            + apps +
+            "<div style='margin-top:12px'><label for='cdTitularQr'>Nombre del titular <span class='req'>como sale al escanear tu QR</span></label>"
+            f"<input id='cdTitularQr' maxlength='60' value='{e(str(cd.get('titular') or '') if es_qr else '')}' placeholder='Ej. Academia Ace Quito'></div></div>"
             "<p class='sub' style='font-size:12.5px;margin-top:10px'>Déjalo vacío si prefieres coordinar el pago por WhatsApp.</p></section>")
 
 
@@ -277,7 +302,8 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
         f"<div class='serv{' sel' if k in redes else ''}' data-red='{k}'><button type='button' class='chip{' sel' if k in redes else ''}' data-g='redes' data-v='{k}'>{e(n)}</button>"
         f"<label class='precio-serv'{'' if k in redes else ' hidden'}><input type='text' name='red_{k}' maxlength='120' value='{e(redes.get(k, ''))}' placeholder='{'https://…' if k == 'web' else '@usuario o enlace'}' style='width:260px'></label></div>"
         for k, n in catalogos.REDES.items())
-    cfg = {"id": a["id"], "nueva": nueva, "lat": a.get("lat"), "lng": a.get("lng"), "iso": iso, "zona": a.get("zona") or "", "buscar": bool(config.PLACES_API_KEY), "recargo": float(a.get("recargoInvitado") or 0),
+    cfg = {"qr": str((a.get("cobroDirecto") or {}).get("qr_url") or "") if isinstance(a.get("cobroDirecto"), dict) else "",
+           "id": a["id"], "nueva": nueva, "lat": a.get("lat"), "lng": a.get("lng"), "iso": iso, "zona": a.get("zona") or "", "buscar": bool(config.PLACES_API_KEY), "recargo": float(a.get("recargoInvitado") or 0),
            "planes": [p for p in (a.get("planes") or []) if isinstance(p, dict)], "fotos": fotos, "logo": a.get("logoUrl") or "",
            "moneda": _moneda(a), "storage": almacen.disponible(), "tipos": catalogos.TIPOS_PLAN, "meses": catalogos.MESES_PREPAGO,
            "frec": catalogos.FRECUENCIAS, "durs": catalogos.DURACIONES_CLASE, "tel": catalogos.TEL_PREFIJO, "telLen": catalogos.TEL_LONGITUD,
@@ -285,7 +311,7 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
     secciones = [("identidad", "Identidad"), ("sede", "Sede y contacto"), ("fotos", "Fotos"), ("redes", "Redes"), ("planes", "Programas y tarifario"), ("reglas", "Reglas de cobro")]
     cd = _ap.cobro_directo(a) or (a.get("cobroDirecto") if isinstance(a.get("cobroDirecto"), dict) else {}) or {}
     if _ap.es_suscripcion():
-        secciones.append(("cobro", "Cobro directo por Yape"))
+        secciones.append(("cobro", "Cobro directo"))
     nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
     dep_ops = [(d, f"{_EMOJI.get(d, '')} {_NOMBRE.get(d, d.capitalize())}") for d in catalogos.DEPORTES_ACADEMIA]
     pct = lambda v: "Sin descuento" if v == 0 else f"{v} %"  # noqa: E731
@@ -330,7 +356,7 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
   <label for='retri'>Retribución al club / sede <span class='req'>% de lo cobrado · 0 = no aplica</span></label><div class='inp-moneda' style='max-width:160px'><input id='retri' type='number' min='0' max='50' step='1' value='{float(a.get('retribucionClubPct') or 0):.0f}'><span>%</span></div>
   <p class='sub' style='font-size:12.5px;margin-top:14px'>Sedes adicionales, horarios y precios por sede se editan en «📍 Sedes y horarios» y el ranking interno en «🏆 Ranking» (en la tarjeta de tu academia); se conservan al guardar aquí.</p>
  </section>
-{_seccion_cobro(cd) if _ap.es_suscripcion() else ''}
+{_seccion_cobro(cd, iso) if _ap.es_suscripcion() else ''}
 </form></div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Los cambios se ven al instante en la app y en tu landing.</span>
 {'' if nueva else "<button type='button' class='btn sec' id='btnEliminar' style='color:var(--rojo);margin-right:8px'>🗑 Eliminar</button>"}<button type='button' class='btn' id='btnGuardar'>{'Crear academia' if nueva else 'Guardar cambios'}</button></div></div>
@@ -353,7 +379,7 @@ document.addEventListener('click',function(ev){var b=ev.target.closest('.chip[da
 // ── mapa de la sede ──
 function paisDe(la,ln){var C={PE:[-18.4,-0.03,-81.4,-68.6],EC:[-5.1,1.7,-81.1,-75.1],BO:[-22.95,-9.6,-69.7,-57.4]};for(var k in C){var c=C[k];if(la>=c[0]&&la<=c[1]&&ln>=c[2]&&ln<=c[3])return k}return 'PE'}
 function ponerPunto(la,ln,centrar){lat=la;lng=ln;$('ubicTxt').textContent=la.toFixed(5)+', '+ln.toFixed(5);if(mapa){if(marker)marker.setLatLng([la,ln]);else marker=L.marker([la,ln]).addTo(mapa);if(centrar)mapa.setView([la,ln],15)}
-  var p=paisDe(la,ln);if(p!==iso){iso=p;$('telPre').textContent='+'+CFG.tel[iso];if(CFG.nueva)$('monSpan').textContent=CFG.monedas[iso]||'S/';cargarGeo()}}
+  var p=paisDe(la,ln);if(p!==iso){iso=p;$('telPre').textContent='+'+CFG.tel[iso];if(CFG.nueva)$('monSpan').textContent=CFG.monedas[iso]||'S/';cargarGeo();pintarCobro()}}
 if(window.L){var c0=lat!=null?[lat,lng]:{PE:[-12.05,-77.04],EC:[-2.17,-79.92],BO:[-16.5,-68.15]}[iso];mapa=L.map('mapaSede').setView(c0,lat!=null?15:11);
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap'}).addTo(mapa);
   if(lat!=null)marker=L.marker([lat,lng]).addTo(mapa);mapa.on('click',function(ev){ponerPunto(ev.latlng.lat,ev.latlng.lng,false)});
@@ -389,6 +415,13 @@ $('inLogo').addEventListener('change',async function(){var f=this.files&&this.fi
 $('inFotos').addEventListener('change',async function(){var files=Array.prototype.slice.call(this.files||[]);this.value='';var msg=$('fotosMsg');
   for(var i=0;i<files.length;i++){if(fotos.length>=8){msg.textContent='Máximo 8 fotos.';break}subiendo++;msg.textContent='Subiendo foto '+(i+1)+' de '+files.length+'…';
     try{var j=await subir(files[i],'foto',1600);if(j.ok){fotos.push(j.url);pintarFotos();msg.textContent=''}else msg.textContent=j.error||'No se pudo subir.'}catch(e){msg.textContent='No se pudo subir la foto.'}subiendo--}});
+// ── cobro directo: Yape (PE) o QR (EC/BO) ──
+var qrCobro=CFG.qr||'';
+function pintarCobro(){if(!$('cdYapeBox'))return;var qr=iso!=='PE';$('cdYapeBox').hidden=qr;$('cdQrBox').hidden=!qr;
+  document.querySelectorAll('.cd-apps').forEach(function(c){c.hidden=c.dataset.pais!==iso})}
+if($('inQr'))$('inQr').addEventListener('change',async function(){var f=this.files&&this.files[0];this.value='';if(!f)return;subiendo++;$('qrMsg').textContent='Subiendo tu QR…';
+  try{var j=await subir(f,'qr',1400);if(j.ok){qrCobro=j.url;$('cdQrImg').innerHTML="<img src='"+esc(qrCobro)+"' alt='Tu QR de cobro'>";$('qrMsg').textContent='Listo. Revisa que se vea nítido.'}else $('qrMsg').textContent=j.error||'No se pudo subir.'}
+  catch(e){$('qrMsg').textContent='No se pudo subir el QR.'}subiendo--});
 // ── planes ──
 function chips(g,ops,val,fmt){return "<div class='chips' style='margin-top:6px'>"+ops.map(function(o){var k=typeof o==='object'?o[0]:o,t=typeof o==='object'?o[1]:(fmt?fmt(o):o);return "<button type='button' class='chip"+(String(k)===String(val)?' sel':'')+"' data-g='"+g+"' data-v='"+esc(k)+"'>"+esc(t)+"</button>"}).join('')+"</div>"}
 // PROGRAMAS DEL TARIFARIO = el MISMO editor del app (`_EditorPrograma`): un
@@ -437,7 +470,8 @@ $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('ms
   var body={id:CFG.id,nombre:$('nombre').value,deporte:sel('deporte'),descripcion:$('desc').value,sedeClub:$('sede').value,lat:lat,lng:lng,zona:$('g3').value,whatsapp:$('wa').value,
     logoUrl:logo,fotos:fotos,redes:redes,planes:planes,recargoInvitado:parseFloat($('recargo').value)||0,descuentoHermano2:+sel('descuentoHermano2'),descuentoHermano3:+sel('descuentoHermano3'),descuentoFamiliar:sel('descuentoFamiliar')!=='0',
     descuentoPrepago:+sel('descuentoPrepago'),mesesMinPrepago:+sel('mesesMinPrepago'),retribucionClubPct:parseFloat($('retri').value)||0};
-  if($('cdYape'))body.cobroDirecto={yape:$('cdYape').value,titular:$('cdTitular').value};
+  if($('cdYape')){if(iso==='PE')body.cobroDirecto={yape:$('cdYape').value,titular:$('cdTitular').value};
+    else{var ap=document.querySelector(".cd-apps[data-pais='"+iso+"'] .chip.sel");body.cobroDirecto={qr_url:qrCobro,app:ap?ap.dataset.v:'',titular:$('cdTitularQr').value}}}
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Guardando…';
   try{var r=await fetch('/anfitrion/academia/guardar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){location.href='/anfitrion/academia?guardado=1';return}msg.classList.add('err');msg.textContent=j.error||'No se pudo guardar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth'})}}
@@ -628,7 +662,8 @@ def _subir_imagen_academia(request: Request, aid: str, tipo: str = "foto", _cuer
     cuerpo = _cuerpo_bytes
     if not cuerpo or len(cuerpo) > almacen.MAX_BYTES:
         return JSONResponse({"ok": False, "error": "La imagen pesa demasiado (máx. 6 MB)."}, status_code=413)
-    nombre = "logo_web.jpg" if tipo == "logo" else f"web_{int(time.time() * 1000)}.jpg"
+    nombre = ("logo_web.jpg" if tipo == "logo" else f"qr_cobro_{int(time.time() * 1000)}.jpg" if tipo == "qr"
+              else f"web_{int(time.time() * 1000)}.jpg")
     url = almacen.subir(almacen.BUCKET, f"academia_{aid}/{nombre}", cuerpo, ctype)
     if not url:
         return JSONResponse({"ok": False, "error": "No se pudo subir la imagen. Inténtalo de nuevo."}, status_code=502)
