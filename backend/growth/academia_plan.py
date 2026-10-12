@@ -21,6 +21,18 @@ Tres piezas:
    notificación de su Yape y confirma (o rechaza) con un toque. La fase 2
    confirmará sola leyendo la notificación en el celular de la academia.
 
+2-bis. **Pago directo por QR con MONTO ÚNICO** (Ecuador y Bolivia, pedido
+   del director, 12-oct-2026: "el usuario escanea el código, paga, le llega al
+   dueño y el sistema lo registra automáticamente"): la academia sube la
+   imagen de su QR de cobro y elige su app (`cobroDirecto = {tipo: qr,
+   qr_url, app, titular}`). Al pagar, Pichangol crea una INTENCIÓN
+   (`stores.qr_intenciones`) con un monto único = lo que debe + unos centavos
+   que nadie más está usando con esa academia (p. ej. $ 30.00 → $ 30.03). El
+   celular de la academia lee la notificación de SU app de cobros
+   (`yape_auto.py`, paquete elegido por el dueño) y, si el monto calza con UNA
+   sola intención viva, la cuota queda pagada sola. Sin el celular vinculado,
+   el alumno toca "Ya pagué" y la academia confirma a mano.
+
 3. **Recordatorios a los alumnos** (beneficio del plan): push + correo 3 días
    antes del vencimiento de cada cuota, el día y al vencer. Una vez por etapa
    (`stores.recordatorios_cuotas`).
@@ -30,6 +42,7 @@ Las MISMAS funciones las usan la web y el APK (endpoints `/academias/*`).
 from __future__ import annotations
 
 import re
+import secrets
 import threading
 from datetime import date, datetime, timedelta, timezone
 
@@ -133,7 +146,9 @@ def habilitada(a: dict | None) -> bool:
 def config_publica() -> dict:
     return {"modelo": modelo(), "prueba_dias": prueba_dias(), "periodo_dias": DIAS_PERIODO,
             "precios": {m: precio_centimos(m) / 100.0 for m in MONEDAS},
-            "simbolos": dict(SIMBOLO), "paises": paises_habilitados()}
+            "simbolos": dict(SIMBOLO), "paises": paises_habilitados(),
+            "qr_apps": {p: [{"clave": k, "nombre": n} for k, n in apps] for p, apps in QR_APPS.items()},
+            "qr_vida_horas": qr_vida_horas()}
 
 
 def set_config(*, modelo_nuevo: str | None = None, precios: dict | None = None,
@@ -349,6 +364,10 @@ def procesar(ahora: datetime | None = None, academias: list[dict] | None = None)
     registro, (2) renueva desde el saldo a las que ya pagaron alguna vez y
     tienen la renovación prendida, (3) avisa al dueño antes y al vencer."""
     ahora = ahora or _ahora()
+    try:
+        vencer_qr(ahora)
+    except Exception as ex:  # noqa: BLE001
+        print(f"[pago-qr] vencer falló: {ex}", flush=True)
     if not es_suscripcion():
         return {"ok": True, "modelo": modelo()}
     if academias is None:
@@ -420,32 +439,89 @@ def procesar(ahora: datetime | None = None, academias: list[dict] | None = None)
 
 # ── Pago directo a la academia (código de seguridad de Yape) ─────────────────
 
+# Apps donde la academia recibe pagos por QR (selección, sin texto libre).
+QR_APPS: dict[str, list[tuple[str, str]]] = {
+    "EC": [("deuna", "DeUna!"), ("pichincha", "Banco Pichincha"), ("guayaquil", "Banco Guayaquil"),
+           ("pacifico", "Banco del Pacífico"), ("produbanco", "Produbanco"), ("cooperativa", "Cooperativa"),
+           ("otro", "Otro banco")],
+    "BO": [("simple", "QR Simple (cualquier banco)"), ("bnb", "BNB"), ("bmsc", "Banco Mercantil Santa Cruz"),
+           ("bcp", "BCP Bolivia"), ("union", "Banco Unión"), ("ganadero", "Banco Ganadero"), ("bisa", "Banco BISA"),
+           ("fie", "Banco FIE"), ("otro", "Otro banco")],
+}
+
+
+def medio_cobro_de_pais(pais: str) -> str:
+    """Perú cobra por Yape (código de seguridad); Ecuador y Bolivia por QR."""
+    return "yape" if (pais or "PE") == "PE" else "qr"
+
+
+def _app_nombre(pais: str, app: str) -> str:
+    return next((n for k, n in QR_APPS.get(pais, []) if k == app), "")
+
+
+def _qr_url_valida(url: str) -> bool:
+    """Imagen subida a NUESTRO Storage (nunca un enlace de afuera)."""
+    url = str(url or "").strip()
+    if not url.startswith("https://") or "/storage/v1/object/public/" not in url or len(url) > 400:
+        return False
+    import config
+    base = str(getattr(config, "SUPABASE_URL", "") or "").strip()
+    if base:
+        host = re.sub(r"^https?://", "", base).split("/")[0]
+        return url.startswith(f"https://{host}/")
+    return True
+
+
 def cobro_directo(a: dict | None) -> dict | None:
-    """{yape, titular} si la academia registró su Yape (número peruano válido)."""
+    """Cómo le pagan los alumnos DIRECTO a la academia, según su país:
+    · Perú → {tipo: yape, yape, titular} (número peruano válido).
+    · Ecuador / Bolivia → {tipo: qr, qr_url, app, app_nombre, titular}.
+    None si no registró nada válido."""
     if not a:
         return None
     cd = a.get("cobroDirecto") or {}
     if not isinstance(cd, dict):
         return None
-    yape = re.sub(r"\D", "", str(cd.get("yape") or ""))
-    if not re.fullmatch(r"9\d{8}", yape):
+    pais = pais_de(a)
+    titular = str(cd.get("titular") or "").strip()[:60]
+    if medio_cobro_de_pais(pais) == "yape":
+        yape = re.sub(r"\D", "", str(cd.get("yape") or ""))
+        if not re.fullmatch(r"9\d{8}", yape):
+            return None
+        return {"tipo": "yape", "yape": yape, "titular": titular}
+    app = str(cd.get("app") or "")
+    if not _qr_url_valida(cd.get("qr_url")) or not _app_nombre(pais, app) or len(titular) < 3:
         return None
-    return {"yape": yape, "titular": str(cd.get("titular") or "").strip()[:60]}
+    return {"tipo": "qr", "qr_url": str(cd["qr_url"]).strip(), "app": app, "app_nombre": _app_nombre(pais, app),
+            "titular": titular}
 
 
-def validar_cobro_directo(cd: dict | None) -> dict:
-    """Valida lo que el dueño escribe en su editor. {} = sin Yape (permitido)."""
+def validar_cobro_directo(cd: dict | None, pais: str = "PE") -> dict:
+    """Valida lo que el dueño registra en su editor (web o APK) según el país
+    de la sede. {} = sin cobro directo (permitido: coordina por WhatsApp)."""
     if not cd:
         return {}
-    yape = re.sub(r"\D", "", str(cd.get("yape") or ""))
     titular = re.sub(r"\s+", " ", str(cd.get("titular") or "")).strip()[:60]
-    if not yape and not titular:
+    if medio_cobro_de_pais(pais) == "yape":
+        yape = re.sub(r"\D", "", str(cd.get("yape") or ""))
+        if not yape and not titular:
+            return {}
+        if not re.fullmatch(r"9\d{8}", yape):
+            raise ValueError("El Yape debe ser un celular peruano de 9 dígitos que empiece con 9.")
+        if len(titular) < 3:
+            raise ValueError("Escribe el nombre que sale en tu Yape (así lo reconocen tus alumnos).")
+        return {"yape": yape, "titular": titular}
+    qr_url = str(cd.get("qr_url") or "").strip()
+    app = str(cd.get("app") or "")
+    if not qr_url and not app and not titular:
         return {}
-    if not re.fullmatch(r"9\d{8}", yape):
-        raise ValueError("El Yape debe ser un celular peruano de 9 dígitos que empiece con 9.")
+    if not _qr_url_valida(qr_url):
+        raise ValueError("Sube la imagen de tu código QR de cobro.")
+    if not _app_nombre(pais, app):
+        raise ValueError("Elige la app o banco donde recibes los pagos.")
     if len(titular) < 3:
-        raise ValueError("Escribe el nombre que sale en tu Yape (así lo reconocen tus alumnos).")
-    return {"yape": yape, "titular": titular}
+        raise ValueError("Escribe el nombre del titular como sale al escanear tu QR (así lo reconocen tus alumnos).")
+    return {"tipo": "qr", "qr_url": qr_url, "app": app, "titular": titular}
 
 
 def _es_del_alumno(m: dict, email: str) -> bool:
@@ -479,6 +555,9 @@ def reportar_pago(alumno_id: str, email: str, cuota_ids: list[str], codigo: str,
     a = datos.academia(m0.get("academiaId") or "")
     if not a:
         return {"ok": False, "error": "academia", "mensaje": "La academia ya no está disponible."}
+    cd = cobro_directo(a)
+    if cd and cd.get("tipo") == "qr":
+        return {"ok": False, "error": "usa_qr", "mensaje": "Esta academia cobra por QR: toca «Pagar con QR»."}
     sim = _sim_de(a)
 
     def fn(data: dict):
@@ -522,7 +601,8 @@ def reportar_pago(alumno_id: str, email: str, cuota_ids: list[str], codigo: str,
 
 
 def resolver_pago(academia_id: str, alumno_id: str, cuota_ids: list[str], email: str, aceptar: bool,
-                  motivo: str = "", ahora: datetime | None = None, *, auto: bool = False) -> dict:
+                  motivo: str = "", ahora: datetime | None = None, *, auto: bool = False,
+                  intencion: str = "", silencioso: bool = False) -> dict:
     """La ACADEMIA confirma (la cuota queda pagada, `operacionId` = el N.º de
     operación de Yape) o rechaza (vuelve a pendiente con el motivo)."""
     from web import datos
@@ -540,14 +620,20 @@ def resolver_pago(academia_id: str, alumno_id: str, cuota_ids: list[str], email:
             if not isinstance(c, dict) or (ids and str(c.get("id") or "") not in ids):
                 continue
             rep = c.get("reporte") or {}
-            if rep.get("estado") != "por_confirmar" or c.get("pagada"):
+            if rep.get("estado") not in ("por_confirmar", "esperando_pago") or c.get("pagada"):
+                continue
+            if intencion and rep.get("intencion") != intencion:
                 continue
             if aceptar:
                 c["pagada"] = True
                 c["fechaPago"] = ahora.astimezone(timezone(timedelta(hours=-5))).replace(tzinfo=None).isoformat()
-                op = rep.get("operacion") or ""
-                c["operacionId"] = f"yape:{op}" if op else f"yape-cod:{rep.get('codigo') or ''}"
-                c["medioPago"] = "yape_directo"
+                if rep.get("medio") == "qr":
+                    c["operacionId"] = f"qr:{rep.get('intencion') or ''}"
+                    c["medioPago"] = "qr_directo"
+                else:
+                    op = rep.get("operacion") or ""
+                    c["operacionId"] = f"yape:{op}" if op else f"yape-cod:{rep.get('codigo') or ''}"
+                    c["medioPago"] = "yape_directo"
                 rep["estado"] = "confirmado"
             else:
                 rep["estado"] = "rechazado"
@@ -555,9 +641,9 @@ def resolver_pago(academia_id: str, alumno_id: str, cuota_ids: list[str], email:
             rep["resuelto"] = ahora.isoformat()
             rep["resuelto_por"] = email
             if auto:
-                # Fase 2: lo confirmó la notificación de Yape del celular de
-                # la academia (`yape_auto.py`), no un toque del dueño.
-                rep["auto"] = "yape_notificacion"
+                # Fase 2: lo confirmó la notificación de la app de cobros del
+                # celular de la academia (`yape_auto.py`), no un toque del dueño.
+                rep["auto"] = "qr_notificacion" if rep.get("medio") == "qr" else "yape_notificacion"
             c["reporte"] = rep
             hechas.append(dict(c))
         return (hechas, data) if hechas else None
@@ -568,9 +654,14 @@ def resolver_pago(academia_id: str, alumno_id: str, cuota_ids: list[str], email:
     hechas, data = res
     sim = _sim_de(a)
     total = sum(float(c.get("monto") or 0) for c in hechas)
-    destinos = {str(data.get("email") or "").strip().lower(), str(data.get("emailAlumno") or "").strip().lower()} - {""}
-    nombre_a = a.get("nombre") or "la academia"
-    if aceptar and auto:
+    es_qr = any((c.get("reporte") or {}).get("medio") == "qr" for c in hechas)
+    for iid in {str((c.get("reporte") or {}).get("intencion") or "") for c in hechas} - {""}:
+        _cerrar_intencion(iid, "confirmado" if aceptar else "rechazado", ahora)
+    if silencioso:
+        # Una intención con varias personas avisa una sola vez (confirmar_qr).
+        return {"ok": True, "cuotas": [c["id"] for c in hechas], "aceptado": bool(aceptar), "total": total,
+                "data": data, "hechas": hechas}
+    if aceptar and auto and not es_qr:
         try:
             from pagos.router import _aviso_push_usuario
             _aviso_push_usuario(email, "Pago confirmado solo ✅",
@@ -579,12 +670,31 @@ def resolver_pago(academia_id: str, alumno_id: str, cuota_ids: list[str], email:
                                 tipo="academia")
         except Exception:  # noqa: BLE001
             pass
+    _avisar_resultado(a, data, hechas, aceptar, motivo, alumno_id)
+    return {"ok": True, "cuotas": [c["id"] for c in hechas], "aceptado": bool(aceptar), "total": total}
+
+
+def _avisar_resultado(a: dict, data: dict, hechas: list[dict], aceptar: bool, motivo: str, alumno_id: str) -> None:
+    """Push + recibo por correo a quien pagó y al alumno con correo propio."""
+    from web import datos  # noqa: F401
+    sim = _sim_de(a)
+    total = sum(float(c.get("monto") or 0) for c in hechas)
+    es_qr = any((c.get("reporte") or {}).get("medio") == "qr" for c in hechas)
+    destinos = {str(data.get("email") or "").strip().lower(), str(data.get("emailAlumno") or "").strip().lower()} - {""}
+    nombre_a = a.get("nombre") or "la academia"
+    # En QR se pagó el MONTO ÚNICO (cuota + centavos de identificación).
+    pagado = round(sum(float((c.get("reporte") or {}).get("pagado") or 0) for c in hechas), 2) if es_qr else 0.0
+    if es_qr and pagado <= 0:
+        intenciones = {str((c.get("reporte") or {}).get("intencion") or "") for c in hechas} - {""}
+        pagado = round(sum((stores.qr_intenciones.get(i) or {}).get("monto_c", 0) for i in intenciones) / 100.0, 2)
+    extra = round(pagado - total, 2) if es_qr and pagado > total else 0.0
     if aceptar:
         titulo, cuerpo = ("Pago confirmado ✅",
                           f"{nombre_a} confirmó tu pago de {sim} {total:.2f} ({', '.join(str(c.get('concepto') or '') for c in hechas)[:120]}).")
     else:
         titulo, cuerpo = ("Pago no confirmado",
-                          f"{nombre_a} no encontró tu yapeo de {sim} {total:.2f}: {motivo or 'revisa el código de seguridad'}. "
+                          f"{nombre_a} no encontró tu {'pago' if es_qr else 'yapeo'} de {sim} {total:.2f}: "
+                          f"{motivo or ('revisa el monto que pagaste' if es_qr else 'revisa el código de seguridad')}. "
                           f"Vuelve a reportarlo o escríbele a la academia.")
     for d in destinos:
         try:
@@ -599,15 +709,15 @@ def resolver_pago(academia_id: str, alumno_id: str, cuota_ids: list[str], email:
                     "para": d, "clave": f"pago_directo:{alumno_id}:{','.join(c['id'] for c in hechas)}:{d}",
                     "titulo": f"Recibo de pago · {nombre_a}", "intro": cuerpo,
                     "datos": [["Academia", nombre_a], ["Alumno", str(data.get("nombre") or "")],
-                              ["Medio", "Yape directo a la academia"],
-                              ["N.º de operación", ", ".join(sorted({str((c.get('reporte') or {}).get('operacion') or (c.get('reporte') or {}).get('codigo') or '') for c in hechas}))]],
-                    "lineas": [[str(c.get("concepto") or "Cuota"), f"{sim} {float(c.get('monto') or 0):.2f}"] for c in hechas],
-                    "total": ["Total pagado", f"{sim} {total:.2f}"],
+                              ["Medio", ("QR directo a la academia" if es_qr else "Yape directo a la academia")],
+                              ["N.º de operación", ", ".join(sorted({str((c.get('reporte') or {}).get('intencion') or (c.get('reporte') or {}).get('operacion') or (c.get('reporte') or {}).get('codigo') or '') for c in hechas}))]],
+                    "lineas": [[str(c.get("concepto") or "Cuota"), f"{sim} {float(c.get('monto') or 0):.2f}"] for c in hechas]
+                              + ([["Centavos de identificación del pago", f"{sim} {extra:.2f}"]] if extra > 0 else []),
+                    "total": ["Total pagado", f"{sim} {(total + extra):.2f}"],
                     "boton": ["Ver mis clases", "/mis-clases"], "etiqueta": "Recibo",
                     "nota": f"Pagaste directo a {nombre_a}. Pichangol solo registra el pago y te lo recuerda."})
             except Exception:  # noqa: BLE001
                 pass
-    return {"ok": True, "cuotas": [c["id"] for c in hechas], "aceptado": bool(aceptar), "total": total}
 
 
 def por_confirmar(academias: list[dict]) -> list[dict]:
@@ -626,16 +736,287 @@ def por_confirmar(academias: list[dict]) -> list[dict]:
             rep = (c or {}).get("reporte") or {}
             if not isinstance(c, dict) or c.get("pagada") or rep.get("estado") != "por_confirmar":
                 continue
-            k = f"{rep.get('codigo')}|{rep.get('operacion')}|{str(rep.get('fecha') or '')[:16]}"
+            k = (f"qr|{rep.get('intencion')}" if rep.get("medio") == "qr"
+                 else f"{rep.get('codigo')}|{rep.get('operacion')}|{str(rep.get('fecha') or '')[:16]}")
             g = grupo.setdefault(k, {"academia_id": a["id"], "academia": a.get("nombre") or "", "alumno_id": m.get("id"),
                                      "alumno": m.get("nombre") or "", "pagador": rep.get("por") or m.get("email") or "",
                                      "codigo": rep.get("codigo") or "", "operacion": rep.get("operacion") or "",
-                                     "fecha": rep.get("fecha") or "", "simbolo": _sim_de(a), "cuotas": [], "total": 0.0})
+                                     "fecha": rep.get("fecha") or "", "simbolo": _sim_de(a), "cuotas": [], "total": 0.0,
+                                     "medio": rep.get("medio") or "yape", "intencion": rep.get("intencion") or "",
+                                     "monto_unico": rep.get("pagado") or None})
             g["cuotas"].append({"id": c.get("id"), "concepto": c.get("concepto") or "", "monto": float(c.get("monto") or 0)})
             g["total"] = round(g["total"] + float(c.get("monto") or 0), 2)
         out.extend(grupo.values())
     out.sort(key=lambda x: x["fecha"], reverse=True)
     return out
+
+
+# ── Pago por QR con MONTO ÚNICO (Ecuador y Bolivia) ─────────────────────────
+
+QR_VIDA_HORAS = 48        # una intención sin pagar vence y libera sus centavos
+QR_CENTIMOS_MAX = 49      # centavos de identificación: 0.01 … 0.49
+QR_VIVAS = ("esperando", "reportado")
+
+
+def _cfg_int(clave: str, defecto: int, lo: int, hi: int) -> int:
+    try:
+        return max(lo, min(hi, int(float(stores.config.get(clave) or defecto))))
+    except (TypeError, ValueError):
+        return defecto
+
+
+def qr_vida_horas() -> int:
+    return _cfg_int("qr_vida_horas", QR_VIDA_HORAS, 1, 168)
+
+
+def qr_centimos_max() -> int:
+    return _cfg_int("qr_centimos_max", QR_CENTIMOS_MAX, 5, 99)
+
+
+def _viva(i: dict, ahora: datetime) -> bool:
+    if i.get("estado") not in QR_VIVAS:
+        return False
+    if i.get("estado") == "esperando":
+        v = _de_iso(i.get("vence"))
+        return bool(v and v > ahora)
+    return True  # "Ya pagué": vive hasta que la academia o la notificación lo resuelvan
+
+
+def _cerrar_intencion(iid: str, estado_nuevo: str, ahora: datetime) -> None:
+    with _LOCK:
+        i = stores.qr_intenciones.get(iid)
+        if i and i.get("estado") in QR_VIVAS:
+            i["estado"] = estado_nuevo
+            i["cerrada"] = ahora.isoformat()
+
+
+def _vista_intencion(i: dict, a: dict | None = None) -> dict:
+    """Lo que ve el alumno (app y web): QR, app, titular y el monto EXACTO."""
+    sim = SIMBOLO.get(i.get("moneda") or "PEN", "S/")
+    monto = i["monto_c"] / 100.0
+    extra = i.get("extra_c", 0) / 100.0
+    return {"id": i["id"], "estado": i.get("estado"), "academia_id": i.get("academia_id"),
+            "academia": i.get("academia") or "", "simbolo": sim, "moneda": i.get("moneda"),
+            "monto": monto, "monto_txt": f"{sim} {monto:.2f}", "base": i.get("base_c", 0) / 100.0,
+            "extra": extra, "extra_txt": f"{sim} {extra:.2f}", "qr_url": i.get("qr_url") or "",
+            "app_nombre": i.get("app_nombre") or "", "titular": i.get("titular") or "",
+            "vence": i.get("vence"), "creada": i.get("creada"),
+            "items": [{"alumno_id": x["alumno_id"], "cuotas": list(x["cuotas"])} for x in i.get("items") or []]}
+
+
+def vencer_qr(ahora: datetime | None = None) -> int:
+    """Intenciones "esperando" pasadas su vida: vencen y sus cuotas vuelven a
+    pendientes (sus centavos quedan libres). Las "Ya pagué" no vencen: las
+    resuelve la academia."""
+    from web import datos
+    ahora = ahora or _ahora()
+    vencidas = []
+    with _LOCK:
+        for i in stores.qr_intenciones.values():
+            v = _de_iso(i.get("vence"))
+            if i.get("estado") == "esperando" and v and v <= ahora:
+                i["estado"] = "vencido"
+                i["cerrada"] = ahora.isoformat()
+                vencidas.append(dict(i))
+        # Poda: se guardan 30 días de historia.
+        corte = ahora - timedelta(days=30)
+        for k in [k for k, i in stores.qr_intenciones.items()
+                  if i.get("estado") not in QR_VIVAS and (_de_iso(i.get("cerrada") or i.get("creada")) or ahora) < corte]:
+            stores.qr_intenciones.pop(k, None)
+    for i in vencidas:
+        for x in i.get("items") or []:
+            def fn(data: dict, iid=i["id"]):
+                cambio = False
+                for c in data.get("cuotas") or []:
+                    rep = (c or {}).get("reporte") or {}
+                    if isinstance(c, dict) and not c.get("pagada") and rep.get("intencion") == iid \
+                            and rep.get("estado") == "esperando_pago":
+                        c.pop("reporte", None)
+                        cambio = True
+                return True if cambio else None
+            try:
+                datos.mutar_matricula(x["alumno_id"], fn)
+            except Exception:  # noqa: BLE001
+                pass
+    return len(vencidas)
+
+
+def iniciar_pago_qr(email: str, items: list[dict], ahora: datetime | None = None) -> dict:
+    """El alumno (o quien paga) elige qué cuotas paga por QR. Crea (o devuelve,
+    si ya existe para lo mismo) una intención con MONTO ÚNICO entre las vivas
+    del dueño en esa moneda. `items` = [{alumno_id, cuota_ids}] de la MISMA
+    academia (pago familiar en un solo QR)."""
+    from web import datos
+    ahora = ahora or _ahora()
+    email = (email or "").strip().lower()
+    items = [x for x in (items or []) if isinstance(x, dict) and str(x.get("alumno_id") or "").strip()][:8]
+    if not items:
+        return {"ok": False, "error": "cuotas", "mensaje": "Elige qué cuota vas a pagar."}
+    vencer_qr(ahora)
+    a, pedidos = None, []
+    for x in items:
+        m = datos.matricula(str(x["alumno_id"]))
+        if not m or not _es_del_alumno(m, email):
+            return {"ok": False, "error": "no_encontrado", "mensaje": "No encontramos esa matrícula en tu cuenta."}
+        aid = str(m.get("academiaId") or "")
+        if a is None:
+            a = datos.academia(aid)
+            if not a:
+                return {"ok": False, "error": "academia", "mensaje": "La academia ya no está disponible."}
+            a.setdefault("id", aid)
+        elif str(a.get("id")) != aid:
+            return {"ok": False, "error": "academias", "mensaje": "Paga una academia a la vez: cada una tiene su propio QR."}
+        ids = {str(c) for c in (x.get("cuota_ids") or []) if str(c).strip()}
+        cuotas = [c for c in m.get("cuotas") or [] if isinstance(c, dict) and str(c.get("id")) in ids and not c.get("pagada")]
+        if ids and cuotas:
+            pedidos.append((m, cuotas))
+    if not pedidos:
+        return {"ok": False, "error": "nada", "mensaje": "Esas cuotas ya están pagadas."}
+    cd = cobro_directo(a)
+    if not cd or cd.get("tipo") != "qr":
+        return {"ok": False, "error": "sin_qr", "mensaje": "Esta academia aún no registró su QR de cobro: coordina el pago con ella."}
+    dueno = str(a.get("dueno") or "").strip().lower()
+    moneda = moneda_de(a)
+    clave = sorted(f"{m['id']}:{c['id']}" for m, cs in pedidos for c in cs)
+    with _LOCK:
+        # Lo MISMO ya tiene una intención viva → se devuelve (doble clic, otra pestaña).
+        for i in stores.qr_intenciones.values():
+            if _viva(i, ahora) and i.get("clave") == clave and i.get("por") == email:
+                return {"ok": True, "intencion": _vista_intencion(i), "reusada": True}
+        # Una cuota en otra intención "esperando" → esa se reemplaza (el alumno cambió la selección).
+        mias = {k for k in clave}
+        for i in stores.qr_intenciones.values():
+            if i.get("estado") == "esperando" and mias & set(i.get("clave") or []):
+                i["estado"] = "reemplazado"
+                i["cerrada"] = ahora.isoformat()
+        en_uso = {i["monto_c"] for i in stores.qr_intenciones.values()
+                  if i.get("dueno") == dueno and i.get("moneda") == moneda and _viva(i, ahora)}
+        base_c = int(round(sum(float(c.get("monto") or 0) for _m, cs in pedidos for c in cs) * 100))
+        extra_c = next((x for x in range(1, qr_centimos_max() + 1) if base_c + x not in en_uso), None)
+        if extra_c is None:
+            return {"ok": False, "error": "ocupado", "mensaje": "La academia tiene muchos pagos en curso: inténtalo en unos minutos."}
+        iid = "pq_" + format(int(ahora.timestamp() * 1000), "x") + secrets.token_hex(2)
+        i = {"id": iid, "dueno": dueno, "academia_id": a["id"], "academia": a.get("nombre") or "", "moneda": moneda,
+             "items": [{"alumno_id": m["id"], "cuotas": [c["id"] for c in cs]} for m, cs in pedidos],
+             "clave": clave, "base_c": base_c, "extra_c": extra_c, "monto_c": base_c + extra_c, "por": email,
+             "creada": ahora.isoformat(), "vence": (ahora + timedelta(hours=qr_vida_horas())).isoformat(),
+             "estado": "esperando", "qr_url": cd["qr_url"], "app_nombre": cd["app_nombre"], "titular": cd["titular"]}
+        stores.qr_intenciones[iid] = i
+    pagado = (base_c + extra_c) / 100.0
+    for m, cs in pedidos:
+        ids = {c["id"] for c in cs}
+
+        def fn(data: dict, ids=ids):
+            hechas = []
+            for c in data.get("cuotas") or []:
+                if isinstance(c, dict) and str(c.get("id")) in ids and not c.get("pagada"):
+                    c["reporte"] = {"medio": "qr", "estado": "esperando_pago", "intencion": iid,
+                                    "monto": float(c.get("monto") or 0), "pagado": pagado, "fecha": ahora.isoformat(),
+                                    "por": email, "vence": i["vence"]}
+                    hechas.append(c["id"])
+            return hechas or None
+        datos.mutar_matricula(m["id"], fn)
+    print(f"[pago-qr] {iid} {dueno} {moneda} {base_c / 100:.2f} → {pagado:.2f}", flush=True)
+    return {"ok": True, "intencion": _vista_intencion(i)}
+
+
+def _mi_intencion(iid: str, email: str) -> dict | None:
+    i = stores.qr_intenciones.get(str(iid or ""))
+    if not i:
+        return None
+    email = (email or "").strip().lower()
+    return i if email and email in (i.get("por"), i.get("dueno")) else None
+
+
+def estado_qr(iid: str, email: str) -> dict:
+    i = _mi_intencion(iid, email)
+    if not i:
+        return {"ok": False, "error": "no_encontrado", "mensaje": "Ese pago ya no existe."}
+    if i.get("estado") == "esperando":
+        v = _de_iso(i.get("vence"))
+        if v and v <= _ahora():
+            vencer_qr()
+    return {"ok": True, "intencion": _vista_intencion(i)}
+
+
+def marcar_pagado_qr(iid: str, email: str, ahora: datetime | None = None) -> dict:
+    """"Ya pagué": la intención queda reportada y las cuotas "por confirmar"
+    (la academia la ve en su lista y puede confirmar a mano si su celular no
+    está vinculado). Si la notificación ya llegó, se concilia al instante."""
+    from web import datos
+    ahora = ahora or _ahora()
+    with _LOCK:
+        i = _mi_intencion(iid, email)
+        if not i or i.get("por") != (email or "").strip().lower():
+            return {"ok": False, "error": "no_encontrado", "mensaje": "Ese pago ya no existe."}
+        if i.get("estado") not in QR_VIVAS:
+            return {"ok": True, "intencion": _vista_intencion(i)}
+        i["estado"] = "reportado"
+        i["reportada"] = ahora.isoformat()
+    for x in i.get("items") or []:
+        def fn(data: dict):
+            n = 0
+            for c in data.get("cuotas") or []:
+                rep = (c or {}).get("reporte") or {}
+                if isinstance(c, dict) and rep.get("intencion") == iid and rep.get("estado") == "esperando_pago":
+                    rep["estado"] = "por_confirmar"
+                    rep["reportado"] = ahora.isoformat()
+                    n += 1
+            return n or None
+        datos.mutar_matricula(x["alumno_id"], fn)
+    sim = SIMBOLO.get(i.get("moneda") or "PEN", "S/")
+    try:
+        from pagos.router import _aviso_push_usuario
+        _aviso_push_usuario(i["dueno"], "Pago por confirmar 💜",
+                            f"Un alumno dice que te pagó {sim} {i['monto_c'] / 100:.2f} por QR. "
+                            f"Si tu celular está vinculado se confirma solo; si no, revísalo en tu app de cobros.",
+                            tipo="academia")
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        import yape_auto
+        yape_auto.conciliar_en_segundo_plano(i["dueno"])
+    except Exception:  # noqa: BLE001
+        pass
+    return {"ok": True, "intencion": _vista_intencion(i)}
+
+
+def confirmar_qr(iid: str, ahora: datetime | None = None, *, auto: bool = True) -> dict:
+    """La notificación de la app de cobros calzó con esta intención: todas sus
+    cuotas quedan pagadas (con el correo del dueño, como si confirmara él)."""
+    from web import datos
+    ahora = ahora or _ahora()
+    i = stores.qr_intenciones.get(iid)
+    if not i or i.get("estado") not in QR_VIVAS:
+        return {"ok": False, "error": "no_viva"}
+    a = datos.academia(i["academia_id"])
+    if not a:
+        return {"ok": False, "error": "academia"}
+    a.setdefault("id", i["academia_id"])
+    total, hechas_todas = 0.0, []
+    for x in i.get("items") or []:
+        r = resolver_pago(i["academia_id"], x["alumno_id"], list(x["cuotas"]), i["dueno"], True,
+                          ahora=ahora, auto=auto, intencion=iid, silencioso=True)
+        if r.get("ok"):
+            total += float(r.get("total") or 0)
+            hechas_todas.append((x["alumno_id"], r["data"], r["hechas"]))
+    if not hechas_todas:
+        return {"ok": False, "error": "nada"}
+    _cerrar_intencion(iid, "confirmado", ahora)
+    sim = SIMBOLO.get(i.get("moneda") or "PEN", "S/")
+    nombres = ", ".join(str(d.get("nombre") or "") for _al, d, _h in hechas_todas)[:80]
+    if auto:
+        try:
+            from pagos.router import _aviso_push_usuario
+            _aviso_push_usuario(i["dueno"], "Pago confirmado solo ✅",
+                                f"Recibiste {sim} {i['monto_c'] / 100:.2f} por QR de {nombres or 'un alumno'}: "
+                                f"lo marcamos como pagado.", tipo="academia")
+        except Exception:  # noqa: BLE001
+            pass
+    for al, data, hechas in hechas_todas:
+        _avisar_resultado(a, data, hechas, True, "", al)
+    print(f"[pago-qr] {iid} confirmado {'solo' if auto else 'a mano'} {sim} {i['monto_c'] / 100:.2f}", flush=True)
+    return {"ok": True, "total": total}
 
 
 # ── Recordatorios a los alumnos (beneficio del plan) ─────────────────────────
@@ -693,8 +1074,13 @@ def recordatorios_alumnos(ahora: datetime | None = None, academias: list[dict] |
                 continue
             monto = float(c.get("monto") or 0)
             concepto = str(c.get("concepto") or "tu mensualidad")
-            como = (f" Yapea a {cd['titular']} ({cd['yape'][:3]} {cd['yape'][3:6]} {cd['yape'][6:]}) y reporta el código de seguridad en Pichangol."
-                    if cd else " Coordina el pago con la academia.")
+            if cd and cd.get("tipo") == "qr":
+                como = " Págala con el QR de la academia desde Pichangol (Mis clases): se confirma sola."
+            elif cd:
+                como = (f" Yapea a {cd['titular']} ({cd['yape'][:3]} {cd['yape'][3:6]} {cd['yape'][6:]}) "
+                        f"y reporta el código de seguridad en Pichangol.")
+            else:
+                como = " Coordina el pago con la academia."
             if etapa == "antes":
                 titulo = f"Tu cuota de {a.get('nombre')} vence en 3 días"
                 cuerpo = f"{m.get('nombre')}: {concepto} · {sim} {monto:.2f} vence el {d.day}/{d.month}.{como}"
@@ -714,7 +1100,9 @@ def recordatorios_alumnos(ahora: datetime | None = None, academias: list[dict] |
                     import correos
                     datos_c = [["Academia", str(a.get("nombre") or "")], ["Alumno", str(m.get("nombre") or "")],
                                ["Vence", f"{d.day}/{d.month}/{d.year}"]]
-                    if cd:
+                    if cd and cd.get("tipo") == "qr":
+                        datos_c.append(["Paga con", f"QR de {cd['app_nombre']} · {cd['titular']}"])
+                    elif cd:
                         datos_c.append(["Yape de la academia", f"{cd['yape']} · {cd['titular']}"])
                     correos.encolar("aviso", datos={
                         "para": dest, "clave": f"recordatorio:{k}:{etapa}:{dest}", "titulo": titulo, "intro": cuerpo,
@@ -821,3 +1209,33 @@ def get_pendientes(email: str, x_user_token: str | None = Header(default=None)) 
     for a in acads:
         a.setdefault("dueno", email.strip().lower())
     return {"pagos": por_confirmar(acads)}
+
+
+class PagoQrReq(BaseModel):
+    email: str
+    items: list[dict] = []
+    alumno_id: str = ""
+    cuota_ids: list[str] = []
+
+
+@router.post("/academias/pago-qr/iniciar", dependencies=_deps())
+def post_qr_iniciar(req: PagoQrReq, x_user_token: str | None = Header(default=None)) -> dict:
+    _req_usuario(req.email, x_user_token)
+    items = req.items or ([{"alumno_id": req.alumno_id, "cuota_ids": req.cuota_ids}] if req.alumno_id else [])
+    return iniciar_pago_qr(req.email, items)
+
+
+class PagoQrEmailReq(BaseModel):
+    email: str
+
+
+@router.post("/academias/pago-qr/{iid}/pagado", dependencies=_deps())
+def post_qr_pagado(iid: str, req: PagoQrEmailReq, x_user_token: str | None = Header(default=None)) -> dict:
+    _req_usuario(req.email, x_user_token)
+    return marcar_pagado_qr(iid, req.email)
+
+
+@router.get("/academias/pago-qr/{iid}", dependencies=_deps())
+def get_qr(iid: str, email: str, x_user_token: str | None = Header(default=None)) -> dict:
+    _req_usuario(email, x_user_token)
+    return estado_qr(iid, email)

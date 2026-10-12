@@ -549,7 +549,7 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
     if "cobroDirecto" in b:
         # PLAN ACADEMIA: el Yape donde los alumnos le pagan directo a la academia.
         try:
-            cd = _ap.validar_cobro_directo(b.get("cobroDirecto") if isinstance(b.get("cobroDirecto"), dict) else {})
+            cd = _ap.validar_cobro_directo(b.get("cobroDirecto") if isinstance(b.get("cobroDirecto"), dict) else {}, iso)
         except ValueError as ex:
             return None, str(ex), "cobro"
         if cd:

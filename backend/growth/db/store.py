@@ -227,6 +227,11 @@ CONFIG_DEFAULT: dict[str, str] = {
     "yape_regex_codigo": r"c[oó]d(?:igo)?\.?\s*(?:de\s+)?seguridad\D{0,15}(\d{3})\b",
     "yape_regex_nombre": r"(?:yape!?\s*)?([A-ZÁÉÍÓÚÑa-záéíóúñ][^\n]{1,60}?)\s+te\s+(?:envi[oó]|yape[oó])",
     "yape_ventana_horas": "48",
+    # Pago por QR (Ecuador/Bolivia): monto en la notificación del banco/billetera.
+    "qr_regex_monto": r"(?:US\$|USD|\$|Bs\.?|BOB)\s*([\d][\d.,]*)",
+    "qr_regex_egreso": r"\b(?:pagaste|enviaste|transferiste|retiraste|retiro|d[eé]bito|debitad[oa]|compra|consumo|cargo)\b",
+    "qr_vida_horas": "48",
+    "qr_centimos_max": "49",
     # Tasa efectiva de la PASARELA/BANCO (Culqi) sobre el BRUTO de cada cobro
     # digital: es el COSTO real que paga Pichangol al procesar la tarjeta. Se
     # resta de la comisión que PCG le cobra a la academia para saber el MARGEN
@@ -773,6 +778,8 @@ class Stores:
         # leídas (7 días).
         self.yape_dispositivos: dict[str, dict] = {}
         self.yape_notificaciones: list[dict] = []
+        # Pagos por QR con monto único (academia_plan.iniciar_pago_qr).
+        self.qr_intenciones: dict[str, dict] = {}
         # JUEGA YA (`juego.py`): preferencias de juego por correo (deportes,
         # radio, franjas, días, avisos, disponible, ubicación aproximada),
         # partidos ya avisados {partido_id: {t, n}} y avisos por persona y día.
@@ -1312,6 +1319,7 @@ class Stores:
             "recordatorios_cuotas": {k: list(v) for k, v in self.recordatorios_cuotas.items()},
             "yape_dispositivos": {k: dict(v) for k, v in self.yape_dispositivos.items()},
             "yape_notificaciones": [dict(n) for n in self.yape_notificaciones],
+            "qr_intenciones": {k: dict(v) for k, v in self.qr_intenciones.items()},
             "juego_prefs": {k: dict(v) for k, v in self.juego_prefs.items()},
             "juego_avisos": {k: dict(v) for k, v in self.juego_avisos.items()},
             "juego_avisos_dia": {k: dict(v) for k, v in self.juego_avisos_dia.items()},
@@ -1460,6 +1468,8 @@ class Stores:
         self.yape_dispositivos = {str(k): dict(v) for k, v in (data.get("yape_dispositivos") or {}).items()
                                   if isinstance(v, dict)}
         self.yape_notificaciones = [dict(n) for n in (data.get("yape_notificaciones") or []) if isinstance(n, dict)]
+        self.qr_intenciones = {str(k): dict(v) for k, v in (data.get("qr_intenciones") or {}).items()
+                               if isinstance(v, dict)}
         for _k in ("juego_prefs", "juego_avisos", "juego_avisos_dia"):
             setattr(self, _k, {str(k): dict(v) for k, v in (data.get(_k) or {}).items() if isinstance(v, dict)})
         self.publicaciones_redes = [dict(r) for r in (data.get("publicaciones_redes") or [])]
