@@ -177,7 +177,7 @@ class _PlanAcademiaScreenState extends State<PlanAcademiaScreen> {
                     titulo: 'Panel de tu academia',
                     texto:
                         'Alumnos, asistencia, evaluaciones, ranking, reportes y cobros en un solo lugar.'),
-                const _Beneficio(
+                _Beneficio(
                     icono: Icons.payments_outlined,
                     titulo: 'Cobras directo, sin comisión',
                     texto:
