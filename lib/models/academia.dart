@@ -951,33 +951,122 @@ class Alumno {
       );
 }
 
-/// Yape de la academia para el PAGO DIRECTO de sus alumnos (Plan Academia).
-/// Solo Perú (Yape): celular de 9 dígitos que empieza con 9 + titular.
+/// Cobro DIRECTO de la academia (Plan Academia), según el país de su sede
+/// (espejo de `academia_plan.cobro_directo`):
+/// · Perú → `tipo: yape`: celular de 9 dígitos que empieza con 9 + titular.
+/// · Ecuador / Bolivia → `tipo: qr`: imagen del QR de cobro (subida al Storage
+///   de Pichangol) + app o banco donde recibe ([app], de `QrApps`) + titular.
+///   El alumno paga un MONTO ÚNICO y la notificación del celular de la academia
+///   lo confirma sola.
 class CobroDirecto {
+  final String tipo; // 'yape' | 'qr'
   final String yape;
   final String titular;
-  const CobroDirecto({required this.yape, this.titular = ''});
+  final String qrUrl;
+  final String app;
+  final String appNombre;
+  const CobroDirecto({
+    this.tipo = 'yape',
+    this.yape = '',
+    this.titular = '',
+    this.qrUrl = '',
+    this.app = '',
+    this.appNombre = '',
+  });
+
+  const CobroDirecto.qr({
+    required this.qrUrl,
+    required this.app,
+    this.titular = '',
+    this.appNombre = '',
+  })  : tipo = 'qr',
+        yape = '';
 
   static final _reYape = RegExp(r'^9\d{8}$');
 
-  /// ¿Número válido? (misma regla que `academia_plan.cobro_directo`).
-  bool get valido => _reYape.hasMatch(yape);
+  bool get esQr => tipo == 'qr';
+
+  /// ¿Datos válidos? (misma regla que `academia_plan.cobro_directo`).
+  bool get valido => esQr
+      ? qrUrl.startsWith('https://') &&
+          qrUrl.contains('/storage/v1/object/public/') &&
+          app.isNotEmpty &&
+          titular.trim().length >= 3
+      : _reYape.hasMatch(yape);
 
   /// "987 654 321" para leerlo y dictarlo fácil.
   String get yapeBonito => yape.length == 9
       ? '${yape.substring(0, 3)} ${yape.substring(3, 6)} ${yape.substring(6)}'
       : yape;
 
-  Map<String, dynamic> toJson() => {'yape': yape, 'titular': titular};
+  /// Nombre de la app / banco del QR (del backend o del catálogo).
+  String get appVisible => appNombre.isNotEmpty ? appNombre : QrApps.nombre(app);
 
-  /// Lee el JSON (de la academia o del backend). null si no hay número válido.
+  /// Texto corto para listas: "987 654 321 · Ace SAC" / "QR DeUna! · Ace".
+  String get resumen => esQr
+      ? 'QR $appVisible${titular.isNotEmpty ? ' · $titular' : ''}'
+      : '$yapeBonito${titular.isNotEmpty ? ' · $titular' : ''}';
+
+  Map<String, dynamic> toJson() => esQr
+      ? {'tipo': 'qr', 'qr_url': qrUrl, 'app': app, 'titular': titular}
+      : {'yape': yape, 'titular': titular};
+
+  /// Lee el JSON (de la academia o del backend). null si no es válido.
   static CobroDirecto? deJson(dynamic j) {
     if (j is! Map) return null;
+    final titular = (j['titular'] ?? '').toString().trim();
+    if ((j['tipo'] ?? '').toString() == 'qr' || (j['qr_url'] ?? '').toString().isNotEmpty) {
+      final c = CobroDirecto.qr(
+          qrUrl: (j['qr_url'] ?? '').toString().trim(),
+          app: (j['app'] ?? '').toString(),
+          titular: titular,
+          appNombre: (j['app_nombre'] ?? '').toString());
+      return c.valido ? c : null;
+    }
     final yape = (j['yape'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
     if (yape.isEmpty) return null;
-    final c = CobroDirecto(
-        yape: yape, titular: (j['titular'] ?? '').toString().trim());
+    final c = CobroDirecto(yape: yape, titular: titular);
     return c.valido ? c : null;
+  }
+}
+
+/// Apps / bancos donde una academia recibe pagos por QR (selección, sin texto
+/// libre). ESPEJO de `academia_plan.QR_APPS`.
+class QrApps {
+  QrApps._();
+  static const porPais = <String, List<(String, String)>>{
+    'EC': [
+      ('deuna', 'DeUna!'),
+      ('pichincha', 'Banco Pichincha'),
+      ('guayaquil', 'Banco Guayaquil'),
+      ('pacifico', 'Banco del Pacífico'),
+      ('produbanco', 'Produbanco'),
+      ('cooperativa', 'Cooperativa'),
+      ('otro', 'Otro banco'),
+    ],
+    'BO': [
+      ('simple', 'QR Simple (cualquier banco)'),
+      ('bnb', 'BNB'),
+      ('bmsc', 'Banco Mercantil Santa Cruz'),
+      ('bcp', 'BCP Bolivia'),
+      ('union', 'Banco Unión'),
+      ('ganadero', 'Banco Ganadero'),
+      ('bisa', 'Banco BISA'),
+      ('fie', 'Banco FIE'),
+      ('otro', 'Otro banco'),
+    ],
+  };
+
+  /// Perú cobra por Yape; Ecuador y Bolivia por QR.
+  static bool usaQr(String iso) => iso.toUpperCase() != 'PE';
+
+  static String nombre(String app) {
+    for (final l in porPais.values) {
+      for (final a in l) {
+        if (a.$1 == app) return a.$2;
+      }
+    }
+    return app;
   }
 }
 
@@ -993,6 +1082,9 @@ class ReportePago {
   final String por; // correo de quien reportó
   final String estado;
   final String motivo;
+  /// Claves que pone el backend y el app no edita (`medio`, `intencion`,
+  /// `pagado`, `vence`, `auto`…): viajan intactas al re-guardar la cuota.
+  final Map<String, dynamic> extra;
   const ReportePago({
     required this.codigo,
     this.operacion = '',
@@ -1001,7 +1093,16 @@ class ReportePago {
     this.por = '',
     this.estado = 'por_confirmar',
     this.motivo = '',
+    this.extra = const {},
   });
+
+  /// 'yape' | 'qr' (pago por QR con monto único, Ecuador / Bolivia).
+  String get medio => (extra['medio'] ?? 'yape').toString();
+  bool get esQr => medio == 'qr';
+  /// Id de la intención de pago por QR (`pq_…`).
+  String get intencion => (extra['intencion'] ?? '').toString();
+  /// QR iniciado: el alumno tiene un monto único y aún no avisa que pagó.
+  bool get esperandoPago => estado == 'esperando_pago';
 
   bool get porConfirmar => estado == 'por_confirmar';
   bool get rechazado => estado == 'rechazado';
@@ -1011,6 +1112,7 @@ class ReportePago {
   String get clave => '$estado|$codigo|$operacion|$fecha|$motivo';
 
   Map<String, dynamic> toJson() => {
+        ...extra,
         'codigo': codigo,
         'operacion': operacion,
         'monto': monto,
@@ -1019,6 +1121,8 @@ class ReportePago {
         'estado': estado,
         if (motivo.isNotEmpty) 'motivo': motivo,
       };
+
+  static const _propias = {'codigo', 'operacion', 'monto', 'fecha', 'por', 'estado', 'motivo'};
 
   static ReportePago? deJson(dynamic j) {
     if (j is! Map) return null;
@@ -1034,6 +1138,10 @@ class ReportePago {
       por: (j['por'] ?? '').toString(),
       estado: estado.isEmpty ? 'por_confirmar' : estado,
       motivo: (j['motivo'] ?? '').toString(),
+      extra: {
+        for (final e in j.entries)
+          if (!_propias.contains(e.key.toString())) e.key.toString(): e.value,
+      },
     );
   }
 }
@@ -1087,7 +1195,10 @@ class Cuota {
   });
 
   /// ¿Pagada directo a la academia por Yape (Plan Academia)?
-  bool get pagadaDirecto => medioPago == 'yape_directo';
+  bool get pagadaDirecto => medioPago == 'yape_directo' || medioPago == 'qr_directo';
+
+  /// ¿Tiene un pago por QR iniciado (monto único) que aún no se confirma?
+  bool get qrEnCurso => !pagada && (reporte?.esperandoPago ?? false);
 
   /// ¿Reportada por el alumno y esperando que la academia confirme?
   bool get porConfirmar => !pagada && (reporte?.porConfirmar ?? false);

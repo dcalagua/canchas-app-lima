@@ -53,15 +53,51 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       text: widget.academia?.cobroDirecto?.titular ?? '');
   String? _errYape;
   String? _errYapeTitular;
+  // COBRO DIRECTO por QR (Ecuador / Bolivia): imagen del QR + app o banco.
+  late String _qrUrl = (widget.academia?.cobroDirecto?.esQr ?? false)
+      ? widget.academia!.cobroDirecto!.qrUrl
+      : '';
+  Uint8List? _qrNuevo;
+  late String _qrApp = (widget.academia?.cobroDirecto?.esQr ?? false)
+      ? widget.academia!.cobroDirecto!.app
+      : '';
 
-  /// ¿Se muestra la sección "Cobro directo por Yape"? Solo con academias por
-  /// suscripción y sede en Perú (Yape es peruano).
-  bool get _conCobroDirecto =>
-      appState.academiasPorSuscripcion && _paisAcademia.iso == 'PE';
+  /// ¿Se muestra la sección "Cobro directo"? Con academias por suscripción:
+  /// Yape en Perú, QR en Ecuador y Bolivia (según la sede).
+  bool get _conCobroDirecto => appState.academiasPorSuscripcion;
+
+  bool get _usaQr => QrApps.usaQr(_paisAcademia.iso);
+
+  Future<void> _elegirQr() async {
+    final f = await ImagePicker()
+        .pickImage(source: ImageSource.gallery, maxWidth: 1400);
+    if (f == null) return;
+    final bytes = await f.readAsBytes();
+    if (!mounted) return;
+    setState(() => _qrNuevo = bytes);
+  }
+
+  /// Valida el QR (misma regla que `academia_plan.validar_cobro_directo`).
+  String? _validarQr() {
+    final t = _yapeTitular.text.trim();
+    final hayQr = _qrNuevo != null || _qrUrl.isNotEmpty;
+    if (!hayQr && _qrApp.isEmpty && t.isEmpty) return null;
+    if (!hayQr) return 'Sube la imagen de tu código QR de cobro.';
+    final apps = QrApps.porPais[_paisAcademia.iso] ?? const [];
+    if (!apps.any((a) => a.$1 == _qrApp)) {
+      return 'Elige la app o banco donde recibes los pagos.';
+    }
+    if (t.length < 3) {
+      setState(() => _errYapeTitular = 'Escribe el nombre del titular.');
+      return 'Escribe el nombre del titular como sale al escanear tu QR.';
+    }
+    return null;
+  }
 
   /// Valida el Yape (misma regla que el backend). Devuelve el error o null.
   String? _validarYape() {
     if (!_conCobroDirecto) return null;
+    if (_usaQr) return _validarQr();
     final y = _yape.text.replaceAll(RegExp(r'[^0-9]'), '');
     final t = _yapeTitular.text.trim();
     if (y.isEmpty && t.isEmpty) return null;
@@ -878,6 +914,11 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   /// Yape escrito en el editor (ya validado). null = no tocar / vacío.
   CobroDirecto? _cobroDirectoNuevo() {
     if (!_conCobroDirecto) return null;
+    if (_usaQr) {
+      if (_qrUrl.isEmpty || _qrApp.isEmpty) return null;
+      return CobroDirecto.qr(
+          qrUrl: _qrUrl, app: _qrApp, titular: _yapeTitular.text.trim());
+    }
     final y = _yape.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (y.isEmpty) return null;
     return CobroDirecto(yape: y, titular: _yapeTitular.text.trim());
@@ -886,7 +927,109 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   /// El dueño borró su Yape en el editor → se quita de la academia.
   bool _limpiarCobroDirecto() =>
       _conCobroDirecto &&
-      _yape.text.replaceAll(RegExp(r'[^0-9]'), '').isEmpty;
+      (_usaQr
+          ? (_qrUrl.isEmpty || _qrApp.isEmpty)
+          : _yape.text.replaceAll(RegExp(r'[^0-9]'), '').isEmpty);
+
+  /// Editor del cobro por QR (Ecuador / Bolivia): imagen + app + titular.
+  Widget _seccionQr() {
+    final apps = QrApps.porPais[_paisAcademia.iso] ?? const [];
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+        boxShadow: const [
+          BoxShadow(
+              color: Color(0x0F000000), blurRadius: 10, offset: Offset(0, 3)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              IconoVivo(Icons.qr_code_2),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text('Cobro directo con tu QR',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Text(
+              'Sube el QR donde recibes pagos. Tus alumnos lo escanean y pagan '
+              'un monto único (su cuota + unos centavos); con la confirmación '
+              'automática activada, tu celular reconoce el pago y la cuota '
+              'queda pagada sola. Pichangol no toca tu plata.',
+              style: TextStyle(color: textoTenue, fontSize: 12.5)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 96,
+                  height: 96,
+                  color: limaSuave,
+                  child: _qrNuevo != null
+                      ? Image.memory(_qrNuevo!, fit: BoxFit.contain)
+                      : (_qrUrl.isNotEmpty
+                          ? Image.network(_qrUrl, fit: BoxFit.contain)
+                          : const Icon(Icons.qr_code_2, size: 44, color: bosque)),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _elegirQr,
+                  icon: const Icon(Icons.photo_library_outlined, size: 18),
+                  label: Text(_qrNuevo != null || _qrUrl.isNotEmpty
+                      ? 'Cambiar QR'
+                      : 'Subir mi QR'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Text('¿Dónde recibes los pagos?',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final a in apps)
+                ChoiceChip(
+                  label: Text(a.$2),
+                  selected: _qrApp == a.$1,
+                  onSelected: (_) => setState(() => _qrApp = a.$1),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _yapeTitular,
+            textCapitalization: TextCapitalization.words,
+            maxLength: 60,
+            onChanged: (_) {
+              if (_errYapeTitular != null) {
+                setState(() => _errYapeTitular = null);
+              }
+            },
+            decoration: InputDecoration(
+                labelText: 'Nombre del titular (como sale al escanear)',
+                counterText: '',
+                prefixIcon: const IconoVivo(Icons.person_outline),
+                errorText: _errYapeTitular),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _guardar() async {
     if (!_validar()) return;
@@ -907,6 +1050,19 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
         } else {
           warnLogo =
               'No se pudo subir el logo (${CanchasRepo.ultimoErrorFoto ?? 'sin red'}). Guardo el resto.';
+        }
+      }
+
+      // QR de cobro (Ecuador / Bolivia): se sube a la carpeta de la academia.
+      if (_usaQr && _qrNuevo != null) {
+        final url = await CanchasRepo.subirFoto('academia_$_id', _qrNuevo!,
+            sufijo: 'qr_cobro_${DateTime.now().millisecondsSinceEpoch}');
+        if (url != null) {
+          _qrUrl = url;
+          _qrNuevo = null;
+        } else {
+          warnLogo =
+              'No se pudo subir tu QR (${CanchasRepo.ultimoErrorFoto ?? 'sin red'}). Vuelve a intentarlo.';
         }
       }
 
@@ -1221,7 +1377,11 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 prefixText: '+${_paisAcademia.codigoTel} ',
                 errorText: _errWhatsapp),
           ),
-          if (_conCobroDirecto) ...[
+          if (_conCobroDirecto && _usaQr) ...[
+            const SizedBox(height: 20),
+            _seccionQr(),
+          ],
+          if (_conCobroDirecto && !_usaQr) ...[
             const SizedBox(height: 20),
             Container(
               padding: const EdgeInsets.all(14),

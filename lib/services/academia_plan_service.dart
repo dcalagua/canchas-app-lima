@@ -90,6 +90,11 @@ class PagoPorConfirmar {
   final String simbolo;
   final List<({String id, String concepto, double monto})> cuotas;
   final double total;
+  /// 'yape' | 'qr'. En QR no hay código: se compara el MONTO ÚNICO.
+  final String medio;
+  final double? montoUnico;
+
+  bool get esQr => medio == 'qr';
 
   const PagoPorConfirmar({
     required this.academiaId,
@@ -103,6 +108,8 @@ class PagoPorConfirmar {
     required this.simbolo,
     required this.cuotas,
     required this.total,
+    this.medio = 'yape',
+    this.montoUnico,
   });
 
   factory PagoPorConfirmar.deJson(Map<String, dynamic> j) {
@@ -132,6 +139,58 @@ class PagoPorConfirmar {
       simbolo: (j['simbolo'] ?? 'S/').toString(),
       cuotas: cs,
       total: n(j['total']),
+      medio: (j['medio'] ?? 'yape').toString(),
+      montoUnico: j['monto_unico'] == null ? null : n(j['monto_unico']),
+    );
+  }
+}
+
+/// Pago por QR con MONTO ÚNICO (Ecuador / Bolivia): lo que devuelve
+/// `/academias/pago-qr/*`. estado: `esperando` · `reportado` (el alumno tocó
+/// "Ya pagué") · `confirmado` · `vencido` · `reemplazado` · `rechazado`.
+class PagoQr {
+  final String id;
+  final String estado;
+  final String academia;
+  final String simbolo;
+  final double monto;
+  final String montoTxt;
+  final String extraTxt;
+  final String qrUrl;
+  final String appNombre;
+  final String titular;
+  final String vence;
+  const PagoQr({
+    required this.id,
+    required this.estado,
+    required this.academia,
+    required this.simbolo,
+    required this.monto,
+    required this.montoTxt,
+    required this.extraTxt,
+    required this.qrUrl,
+    required this.appNombre,
+    required this.titular,
+    required this.vence,
+  });
+
+  bool get vivo => estado == 'esperando' || estado == 'reportado';
+  bool get confirmado => estado == 'confirmado';
+
+  factory PagoQr.deJson(Map j) {
+    final m = j['monto'];
+    return PagoQr(
+      id: (j['id'] ?? '').toString(),
+      estado: (j['estado'] ?? '').toString(),
+      academia: (j['academia'] ?? '').toString(),
+      simbolo: (j['simbolo'] ?? '').toString(),
+      monto: m is num ? m.toDouble() : double.tryParse('${m ?? ''}') ?? 0,
+      montoTxt: (j['monto_txt'] ?? '').toString(),
+      extraTxt: (j['extra_txt'] ?? '').toString(),
+      qrUrl: (j['qr_url'] ?? '').toString(),
+      appNombre: (j['app_nombre'] ?? '').toString(),
+      titular: (j['titular'] ?? '').toString(),
+      vence: (j['vence'] ?? '').toString(),
     );
   }
 }
@@ -422,6 +481,55 @@ class AcademiaPlanService {
         'aceptar': aceptar,
         'motivo': motivo,
       });
+
+  /// Pago por QR: pide (o reusa) un MONTO ÚNICO para [cuotaIds] de
+  /// [alumnoId]. (PagoQr, null) o (null, mensaje).
+  static Future<(PagoQr?, String?)> iniciarQr({
+    required String alumnoId,
+    required String email,
+    required List<String> cuotaIds,
+  }) async {
+    final r = await _post('/academias/pago-qr/iniciar', {
+      'email': email.trim().toLowerCase(),
+      'alumno_id': alumnoId,
+      'cuota_ids': cuotaIds,
+    });
+    if (r['ok'] == true && r['intencion'] is Map) {
+      return (PagoQr.deJson(r['intencion'] as Map), null);
+    }
+    return (null, (r['mensaje'] ?? 'No se pudo preparar el pago. Reintenta.').toString());
+  }
+
+  /// "Ya pagué": la academia lo ve por confirmar (y se concilia al instante
+  /// si la notificación de su app de cobros ya llegó).
+  static Future<(PagoQr?, String?)> marcarPagadoQr(String id, String email) async {
+    final r = await _post('/academias/pago-qr/${Uri.encodeComponent(id)}/pagado',
+        {'email': email.trim().toLowerCase()});
+    if (r['ok'] == true && r['intencion'] is Map) {
+      return (PagoQr.deJson(r['intencion'] as Map), null);
+    }
+    return (null, (r['mensaje'] ?? 'No se pudo avisar tu pago. Reintenta.').toString());
+  }
+
+  /// Estado actual del pago por QR (sondeo mientras la hoja está abierta).
+  static Future<PagoQr?> estadoQr(String id, String email) async {
+    final e = email.trim().toLowerCase();
+    if (!PagosService.disponible || e.isEmpty) return null;
+    try {
+      final r = await http
+          .get(
+              Uri.parse('${PagosService.baseUrl}/academias/pago-qr/'
+                  '${Uri.encodeComponent(id)}?email=${Uri.encodeQueryComponent(e)}'),
+              headers: await PagosService.headersUsuario())
+          .timeout(const Duration(seconds: 12));
+      if (r.statusCode != 200) return null;
+      final j = jsonDecode(r.body);
+      if (j is Map && j['intencion'] is Map) return PagoQr.deJson(j['intencion'] as Map);
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
 
   /// Pagos reportados por los alumnos de las academias de [email] (dueño).
   /// null = no se pudo consultar (sin red).

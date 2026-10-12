@@ -197,13 +197,18 @@ def privacidad() -> str:
       cuando dejas de necesitarla o cuando borras tus datos.</li>
       <li><b>Notificaciones:</b> un identificador del dispositivo para enviarte
       avisos (reserva confirmada, pedido listo). No identifica a la persona.</li>
-      <li><b>Pagos de Yape de tu academia (opcional, sólo academias con
+      <li><b>Pagos de Yape o QR de tu academia (opcional, sólo academias con
       Android):</b> si activas "Confirmar mis pagos automáticamente", Pichangol
       lee en ese celular <b>únicamente las notificaciones de la app Yape</b>
       (monto, nombre de quien te yapeó y código de seguridad) para confirmar los
-      pagos que tus alumnos reportan. No leemos chats ni notificaciones de otras
-      apps; puedes apagarlo cuando quieras desde la app o quitando el permiso
-      "Acceso a notificaciones" en Ajustes.</li>
+      pagos que tus alumnos reportan. En Ecuador y Bolivia, donde tus alumnos
+      te pagan con tu <b>código QR</b>, leemos además las notificaciones de las
+      apps de cobro que <b>tú eliges</b> (tu banco o billetera) para reconocer el
+      monto único de cada pago; para que elijas, el app lista los nombres de
+      las apps instaladas en ese celular, sin enviarlos a ningún lado. No
+      leemos chats ni notificaciones de otras apps; puedes apagarlo cuando
+      quieras desde la app o quitando el permiso "Acceso a notificaciones" en
+      Ajustes.</li>
       <li><b>Juega ya (opcional):</b> si activas "Avísame partidos cerca" o
       "Aparecer como disponible", guardamos tus deportes, horarios y una
       <b>ubicación aproximada</b> (redondeada a unos 100 m) para avisarte de
@@ -256,7 +261,7 @@ def privacidad() -> str:
       <li>Mientras tu cuenta esté activa.</li>
       <li>Los <b>estados</b> duran 24 horas y su foto o video se borra solo.</li>
       <li>Los <b>videos del entrenador</b> se borran apenas se genera el informe.</li>
-      <li>Las <b>notificaciones de Yape</b> leídas para confirmar pagos se borran
+      <li>Las <b>notificaciones de Yape o de tu app de cobros</b> leídas para confirmar pagos se borran
       a los 7 días; lo que queda es la cuota marcada como pagada.</li>
       <li>Al eliminar una cancha, un producto o una publicación, sus imágenes se
       borran del almacenamiento.</li>

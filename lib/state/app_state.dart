@@ -3845,14 +3845,18 @@ class AppState extends ChangeNotifier {
           fecha: rep?.fecha ?? '',
           por: rep?.por ?? '',
           estado: aceptar ? 'confirmado' : 'rechazado',
-          motivo: aceptar ? '' : motivo);
+          motivo: aceptar ? '' : motivo,
+          extra: rep?.extra ?? const {});
       if (aceptar) {
         final op = rep?.operacion ?? '';
+        final qr = rep?.esQr ?? false;
         cuotas[i] = cuotas[i].copyWith(
             pagada: true,
             fechaPago: ahora,
-            medioPago: 'yape_directo',
-            operacionId: op.isNotEmpty ? 'yape:$op' : null,
+            medioPago: qr ? 'qr_directo' : 'yape_directo',
+            operacionId: qr
+                ? 'qr:${rep?.intencion ?? ''}'
+                : (op.isNotEmpty ? 'yape:$op' : null),
             reporte: nuevo);
       } else {
         cuotas[i] = cuotas[i].copyWith(reporte: nuevo);

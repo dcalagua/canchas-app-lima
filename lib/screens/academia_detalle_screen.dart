@@ -1054,16 +1054,18 @@ Future<bool> _matricularSinCobro(BuildContext context, Academia academia,
     if (pend.isNotEmpty) hoyPorPagar.add(pend.first);
   }
   final aPagar = hoyPorPagar.fold<double>(0, (s, c) => s + c.monto);
-  final tieneYape = academia.cobroDirecto != null ||
-      (est?.cobroDirecto != null);
+  final cdir = academia.cobroDirecto ?? est?.cobroDirecto;
+  final tieneYape = cdir != null;
+  final esQr = cdir?.esQr ?? false;
+  final medio = esQr ? 'con su QR' : 'por Yape';
   final mensaje = varios
       ? 'Ya están inscritos en ${academia.nombre}: '
           '${items.map((d) => d.nombre).join(', ')}. '
           'Págale a la academia $mon ${aPagar.toStringAsFixed(2)} '
-          '${tieneYape ? 'por Yape desde «Mis clases y pagos» (cada persona por separado).' : 'como te indique la academia.'}'
+          '${tieneYape ? '$medio desde «Mis clases y pagos» (cada persona por separado).' : 'como te indique la academia.'}'
       : 'Ya estás inscrito en ${academia.nombre} (${items.first.plan.nombre}). '
           'Págale $mon ${aPagar.toStringAsFixed(2)} directo a la academia'
-          '${tieneYape ? ' por Yape y avísale con el código de seguridad.' : '.'}';
+          '${tieneYape ? (esQr ? ' con su QR: se confirma solo.' : ' por Yape y avísale con el código de seguridad.') : '.'}';
   final pagarAhora = await showDialog<bool>(
     context: context,
     builder: (ctx) => DialogoPichangol(
@@ -1086,7 +1088,7 @@ Future<bool> _matricularSinCobro(BuildContext context, Academia academia,
                   const EdgeInsets.symmetric(horizontal: 20, vertical: 12)),
           onPressed: () => Navigator.of(ctx).pop(true),
           child: Text(
-              !varios && tieneYape ? 'Pagar ahora con Yape' : 'Listo',
+              !varios && tieneYape ? (esQr ? 'Pagar ahora con QR' : 'Pagar ahora con Yape') : 'Listo',
               style: const TextStyle(fontWeight: FontWeight.w800)),
         ),
       ],

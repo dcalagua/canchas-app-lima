@@ -3995,6 +3995,45 @@ antes del corte.
   pago por S/ 50. El cód. de seguridad es: 427"; con la primera notificación
   real, revisar en la torre si se leyó (columna Resultado) y ajustar. iPhone:
   sigue manual. Test `tests/test_yape_auto.py`.
+  **PAGO POR QR CON MONTO ÚNICO (Ecuador / Bolivia, 11-oct-2026, pedido del
+  director: "el usuario escanea el código, paga y el sistema lo registra
+  automáticamente"):** `cobroDirecto` depende del país de la sede
+  (`academia_plan.medio_cobro_de_pais`): PE = Yape; EC/BO = `{tipo: qr, qr_url,
+  app, titular}` (imagen subida a NUESTRO Storage `canchas/academia_<id>/
+  qr_cobro_<ms>.jpg`, `_qr_url_valida`; app por SELECCIÓN de `QR_APPS` =
+  espejo Dart `QrApps`). El alumno toca "Pagar con QR" → `iniciar_pago_qr`
+  crea una INTENCIÓN (`stores.qr_intenciones`, snapshot, id `pq_…`) con monto
+  = cuotas + 1..`qr_centimos_max` (49) centavos ÚNICOS entre las vivas del
+  mismo dueño y moneda; doble clic/otra pestaña reusa (`clave`), cambiar la
+  selección reemplaza; cuotas con `reporte {medio: qr, estado:
+  esperando_pago, intencion, pagado}`; vence a `qr_vida_horas` (48, `vencer_qr`
+  en el cron) y libera. "Ya pagué" (`marcar_pagado_qr`) → `reportado`, cuotas
+  "por confirmar" (la academia confirma a mano si no tiene el celular
+  vinculado; tarjeta con "Monto exacto por QR"). **Automático:** el dueño
+  elige de sus apps instaladas dónde cobra (`POST /academias/yape/apps`,
+  `stores.yape_dispositivos[email].paquetes`, máx. 6, nunca mensajería; native
+  `apps` = apps con ícono del lanzador, `<queries>` MAIN/LAUNCHER en
+  `configure_platforms.py`) y el `YapeListener` las escucha junto a Yape; el
+  backend lee monto/moneda con `qr_regex_monto` (`monto_flexible`: 1.234,56 /
+  1,234.56) e ignora salidas de plata (`qr_regex_egreso`: pagaste, enviaste…),
+  ambas editables en la torre; `conciliar_qr` confirma la intención viva de
+  ESE dueño cuyo monto calza EXACTO, misma moneda si la notificación la dice,
+  llegada ≥ creada − 5 min, dentro de la ventana y única en ambos sentidos
+  (ambigua → manual) → `confirmar_qr` (todas las cuotas, también familia en un
+  QR; `medioPago=qr_directo`, `operacionId=qr:<pq_id>`, recibo con
+  "Centavos de identificación"). Endpoints APK `POST /academias/pago-qr/
+  iniciar`, `POST …/{id}/pagado`, `GET …/{id}?email=`; web `/web/academia/
+  pago-qr/*` + bloque QR en Mis clases y comprobante (QR, monto grande,
+  Guardar QR, Copiar monto, Ya pagué, sondeo 5 s, reabre el pago en curso con
+  `data-pq-viva`). Editor web/APK: sección "Cobro directo" según el país del
+  punto. APK: `CobroDirecto.qr`, `ReportePago.extra` (conserva `medio/
+  intencion/pagado` al re-guardar la cuota), `_HojaPagoQr` (Compartir QR para
+  abrirlo desde la app del banco), `TarjetaYapeAuto(qr: true)` con "Apps de
+  cobro". Academias de EC/BO siguen OCULTAS (`acad_paises`); esto queda listo
+  para cuando se abran. **Calibrar con notificaciones reales** de DeUna!/bancos
+  (torre → Cobros → Plan Academia → Cobros automáticos → probador). Tests
+  `tests/test_pago_qr.py`, `test_pago_por_qr_con_monto_unico_en_la_web`;
+  Playwright `$SP/pw_qr.js`.
 - **PAGOS PERDÍAN DATOS AL REINICIAR (bug de plata hallado el 2-oct-2026):**
   `pg.cargar_normalizado` REEMPLAZABA los pagos/reclamos del snapshot por las
   filas de `growth_pagos`/`growth_reclamos` (solo 10/21 columnas) → tras cada

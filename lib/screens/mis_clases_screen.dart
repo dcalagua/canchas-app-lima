@@ -773,6 +773,7 @@ class _PagoDirectoCuotasState extends State<_PagoDirectoCuotas> {
   @override
   Widget build(BuildContext context) {
     final conYape = widget.academia.cobroDirecto != null;
+    final esQr = widget.academia.cobroDirecto?.esQr ?? false;
     final hayPagables = _pagables.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -782,9 +783,11 @@ class _PagoDirectoCuotasState extends State<_PagoDirectoCuotas> {
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
         const SizedBox(height: 2),
         Text(
-            conYape
-                ? 'Le pagas directo a ${widget.academia.nombre} por Yape. Marca qué pagas.'
-                : 'Le pagas directo a ${widget.academia.nombre}.',
+            esQr
+                ? 'Le pagas directo a ${widget.academia.nombre} con su QR. Marca qué pagas.'
+                : conYape
+                    ? 'Le pagas directo a ${widget.academia.nombre} por Yape. Marca qué pagas.'
+                    : 'Le pagas directo a ${widget.academia.nombre}.',
             style: const TextStyle(color: textoTenue, fontSize: 12)),
         for (final c in widget.cuotas) _filaCuota(c),
         if (hayPagables) ...[
@@ -799,9 +802,11 @@ class _PagoDirectoCuotasState extends State<_PagoDirectoCuotas> {
               onPressed: (_sel.isEmpty || _abriendo) ? null : _pagar,
               icon: const Icon(Icons.qr_code_2, size: 18),
               label: Text(
-                  conYape
-                      ? 'Pagar a la academia (Yape) · ${widget.moneda} ${_totalSel.toStringAsFixed(2)}'
-                      : 'Cómo pagar a la academia',
+                  esQr
+                      ? 'Pagar con QR · ${widget.moneda} ${_totalSel.toStringAsFixed(2)}'
+                      : conYape
+                          ? 'Pagar a la academia (Yape) · ${widget.moneda} ${_totalSel.toStringAsFixed(2)}'
+                          : 'Cómo pagar a la academia',
                   style: const TextStyle(fontWeight: FontWeight.w800)),
             ),
           ),
@@ -817,7 +822,11 @@ class _PagoDirectoCuotasState extends State<_PagoDirectoCuotas> {
     final seleccionable = !porConfirmar;
     final String sub;
     if (porConfirmar) {
-      sub = '⏳ Por confirmar · la academia revisa tu Yape';
+      sub = (rep?.esQr ?? false)
+          ? '⏳ Esperando que tu pago llegue a la academia'
+          : '⏳ Por confirmar · la academia revisa tu Yape';
+    } else if (c.qrEnCurso) {
+      sub = '📷 Pago con QR en curso · tócalo para retomarlo';
     } else if (rechazado) {
       final m = rep?.motivo ?? '';
       sub = 'Rechazado${m.isNotEmpty ? ': $m' : ''} · Reportar de nuevo';
