@@ -308,7 +308,7 @@ def test_pago_por_qr_con_monto_unico_en_la_web(db, monkeypatch):
     # Editor del dueño: sección QR (no Yape) con las apps de Ecuador.
     _entrar_como(cli, monkeypatch, DUENO, "Profe")
     ed = cli.get("/anfitrion/academia/ac_1/editar").text
-    assert "Cobro directo a tu academia" in ed and "id='cdQrBox'>" in ed and "id='cdYapeBox' hidden" in ed
+    assert "Cobro directo a tu academia" in ed and "id='cdAppsBox'>" in ed and "id='cdYapeBox' hidden" in ed
     assert "data-g='cdApp_EC' data-v='deuna'" in ed and "Ace Quito" in ed
     _entrar_como(cli, monkeypatch, PAPA, "Papá Pérez")
     r = cli.post("/web/matricular-directo", json={"academia_id": "ac_1", "personas": [
@@ -338,3 +338,24 @@ def test_pago_por_qr_con_monto_unico_en_la_web(db, monkeypatch):
     assert c["pagada"] and c["medioPago"] == "qr_directo" and c["operacionId"] == f"qr:{iid}"
     _entrar_como(cli, monkeypatch, PAPA, "Papá Pérez")
     assert cli.get(f"/web/academia/pago-qr/{iid}").json()["intencion"]["estado"] == "confirmado"
+
+
+def test_peru_yape_con_qr_opcional(db, monkeypatch):
+    """Perú: además del número de Yape, el dueño sube su QR de Yape y el
+    alumno lo ve en «Paga a la academia» para escanearlo."""
+    monkeypatch.setattr(config, "SUPABASE_URL", "https://x.supabase.co")
+    qr = "https://x.supabase.co/storage/v1/object/public/canchas/academia_ac_1/qr_cobro_9.jpg"
+    assert ap.validar_cobro_directo({"yape": "987654321", "titular": "Ace SAC", "qr_url": qr}, "PE")["qr_url"] == qr
+    with pytest.raises(ValueError):
+        ap.validar_cobro_directo({"yape": "987654321", "titular": "Ace SAC", "qr_url": "https://evil.com/q.png"}, "PE")
+    db.academias["ac_1"]["cobroDirecto"] = {"yape": "987654321", "titular": "Ace SAC", "qr_url": qr}
+    assert ap.cobro_directo(db.academia("ac_1"))["qr_url"] == qr
+    cli = TestClient(app, base_url="https://testserver")
+    _entrar_como(cli, monkeypatch, DUENO, "Profe")
+    ed = cli.get("/anfitrion/academia/ac_1/editar").text
+    assert "opcional · el de tu Yape" in ed and qr in ed and "id='cdAppsBox' hidden" in ed
+    _entrar_como(cli, monkeypatch, PAPA, "Papá Pérez")
+    r = cli.post("/web/matricular-directo", json={"academia_id": "ac_1", "personas": [
+        {"plan_id": "pl_clase", "nombre": "Papá Pérez", "celular": "999888777", "quien": "yo"}]}).json()
+    comp = cli.get(r["url"]).text
+    assert "O escanea su QR" in comp and qr in comp and "987 654 321" in comp and "pd-cod" in comp

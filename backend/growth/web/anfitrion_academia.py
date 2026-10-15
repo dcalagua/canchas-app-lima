@@ -57,9 +57,10 @@ def _apw():
 
 def _seccion_cobro(cd: dict, iso: str) -> str:
     """Editor → "💜 Cobro directo" (Plan Academia) según el país de la sede:
-    Perú = Yape (número + titular); Ecuador / Bolivia = imagen del QR de cobro
-    + app o banco (selección) + titular. Ambos bloques viajan en la página y el
-    JS muestra el del país del punto en el mapa (si el dueño mueve la sede)."""
+    Perú = número de Yape + su QR (opcional, para que el alumno lo escanee);
+    Ecuador / Bolivia = imagen del QR de cobro (obligatoria) + app o banco
+    (selección). El titular y la subida del QR son comunes; el JS muestra lo
+    del país del punto en el mapa (si el dueño mueve la sede)."""
     yape = re.sub(r"\D", "", str(cd.get("yape") or ""))
     qr_url = str(cd.get("qr_url") or "")
     app = str(cd.get("app") or "")
@@ -72,24 +73,26 @@ def _seccion_cobro(cd: dict, iso: str) -> str:
     img_qr = f"<img src='{e(qr_url)}' alt='Tu QR de cobro'>" if qr_url else "<span>▦</span>"
     return ("<section class='panel edit-sec' id='sec-cobro'><h2>💜 Cobro directo a tu academia</h2>"
             f"<div id='cdYapeBox'{' hidden' if es_qr else ''}>"
-            "<p class='sub'>Tus alumnos te pagan directo a tu Yape y reportan en Pichangol el código de seguridad de su comprobante; "
-            "tú lo comparas con la notificación de tu Yape y confirmas con un toque. <b>Pichangol no toca tu plata ni cobra comisión.</b></p>"
+            "<p class='sub'>Tus alumnos te pagan directo a tu Yape (escaneando tu QR o con tu número) y reportan en Pichangol el "
+            "código de seguridad de su comprobante; tú lo comparas con la notificación de tu Yape y confirmas con un toque. "
+            "<b>Pichangol no toca tu plata ni cobra comisión.</b></p>"
             "<div class='row'><div><label for='cdYape'>Número de Yape <span class='req'>celular de 9 dígitos</span></label>"
-            f"<div class='inp-moneda' style='max-width:260px'><span>+51</span><input id='cdYape' inputmode='numeric' maxlength='11' value='{e(yape)}' placeholder='987 654 321'></div></div>"
-            "<div><label for='cdTitular'>Nombre del titular <span class='req'>como sale en tu Yape</span></label>"
-            f"<input id='cdTitular' maxlength='60' value='{e(str(cd.get('titular') or '') if not es_qr else '')}' placeholder='Ej. Academia Ace SAC'></div></div></div>"
-            f"<div id='cdQrBox'{'' if es_qr else ' hidden'}>"
+            f"<div class='inp-moneda' style='max-width:260px'><span>+51</span><input id='cdYape' inputmode='numeric' maxlength='11' value='{e(yape)}' placeholder='987 654 321'></div></div></div></div>"
+            f"<div id='cdQrTexto'{'' if es_qr else ' hidden'}>"
             "<p class='sub'>Sube el <b>código QR</b> donde recibes pagos (DeUna!, tu banco o QR Simple). Tus alumnos lo escanean y pagan un "
             "<b>monto único</b> (su cuota + unos centavos); si activas la confirmación automática en la app, tu celular reconoce el pago "
-            "y la cuota queda pagada sola. <b>Pichangol no toca tu plata ni cobra comisión.</b></p>"
-            "<div style='display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:10px'>"
+            "y la cuota queda pagada sola. <b>Pichangol no toca tu plata ni cobra comisión.</b></p></div>"
+            "<label style='margin-top:14px;display:block'>Tu código QR de cobro "
+            f"<span class='req' id='cdQrReq'>{'obligatorio' if es_qr else 'opcional · el de tu Yape'}</span></label>"
+            "<div style='display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:8px'>"
             f"<div class='logo-pick' id='cdQrImg' style='border-radius:14px'>{img_qr}</div>"
             f"<div><label class='btn sec' for='inQr' style='margin:0'>📷 {'Cambiar QR' if qr_url else 'Subir mi QR'}</label><input type='file' id='inQr' accept='image/*' hidden{'' if almacen.disponible() else ' disabled'}>"
-            "<div class='sub' id='qrMsg' style='margin:6px 0 0;font-size:12.5px'>Una captura nítida del QR de tu app de cobros.</div></div></div>"
-            "<label style='margin-top:14px;display:block'>¿Dónde recibes los pagos?</label>"
-            + apps +
-            "<div style='margin-top:12px'><label for='cdTitularQr'>Nombre del titular <span class='req'>como sale al escanear tu QR</span></label>"
-            f"<input id='cdTitularQr' maxlength='60' value='{e(str(cd.get('titular') or '') if es_qr else '')}' placeholder='Ej. Academia Ace Quito'></div></div>"
+            + (" <button type='button' class='btn sec' id='btnQuitarQr' style='margin:0 0 0 6px'>✕ Quitar</button>" if qr_url else "")
+            + "<div class='sub' id='qrMsg' style='margin:6px 0 0;font-size:12.5px'>Una captura nítida de tu QR (en Yape: Mi QR → Descargar).</div></div></div>"
+            f"<div id='cdAppsBox'{'' if es_qr else ' hidden'}><label style='margin-top:14px;display:block'>¿Dónde recibes los pagos?</label>"
+            + apps + "</div>"
+            "<div style='margin-top:12px;max-width:520px'><label for='cdTitular'>Nombre del titular <span class='req'>como sale al pagarte</span></label>"
+            f"<input id='cdTitular' maxlength='60' value='{e(str(cd.get('titular') or ''))}' placeholder='Ej. Academia Ace SAC'></div>"
             "<p class='sub' style='font-size:12.5px;margin-top:10px'>Déjalo vacío si prefieres coordinar el pago por WhatsApp.</p></section>")
 
 
@@ -417,11 +420,13 @@ $('inFotos').addEventListener('change',async function(){var files=Array.prototyp
     try{var j=await subir(files[i],'foto',1600);if(j.ok){fotos.push(j.url);pintarFotos();msg.textContent=''}else msg.textContent=j.error||'No se pudo subir.'}catch(e){msg.textContent='No se pudo subir la foto.'}subiendo--}});
 // ── cobro directo: Yape (PE) o QR (EC/BO) ──
 var qrCobro=CFG.qr||'';
-function pintarCobro(){if(!$('cdYapeBox'))return;var qr=iso!=='PE';$('cdYapeBox').hidden=qr;$('cdQrBox').hidden=!qr;
+function pintarCobro(){if(!$('cdYapeBox'))return;var qr=iso!=='PE';$('cdYapeBox').hidden=qr;$('cdQrTexto').hidden=!qr;$('cdAppsBox').hidden=!qr;
+  $('cdQrReq').textContent=qr?'obligatorio':'opcional · el de tu Yape';
   document.querySelectorAll('.cd-apps').forEach(function(c){c.hidden=c.dataset.pais!==iso})}
 if($('inQr'))$('inQr').addEventListener('change',async function(){var f=this.files&&this.files[0];this.value='';if(!f)return;subiendo++;$('qrMsg').textContent='Subiendo tu QR…';
   try{var j=await subir(f,'qr',1400);if(j.ok){qrCobro=j.url;$('cdQrImg').innerHTML="<img src='"+esc(qrCobro)+"' alt='Tu QR de cobro'>";$('qrMsg').textContent='Listo. Revisa que se vea nítido.'}else $('qrMsg').textContent=j.error||'No se pudo subir.'}
   catch(e){$('qrMsg').textContent='No se pudo subir el QR.'}subiendo--});
+document.addEventListener('click',function(ev){if(!ev.target.closest('#btnQuitarQr'))return;qrCobro='';$('cdQrImg').innerHTML='<span>▦</span>';ev.target.closest('#btnQuitarQr').remove();$('qrMsg').textContent='Se quitará al guardar.'});
 // ── planes ──
 function chips(g,ops,val,fmt){return "<div class='chips' style='margin-top:6px'>"+ops.map(function(o){var k=typeof o==='object'?o[0]:o,t=typeof o==='object'?o[1]:(fmt?fmt(o):o);return "<button type='button' class='chip"+(String(k)===String(val)?' sel':'')+"' data-g='"+g+"' data-v='"+esc(k)+"'>"+esc(t)+"</button>"}).join('')+"</div>"}
 // PROGRAMAS DEL TARIFARIO = el MISMO editor del app (`_EditorPrograma`): un
@@ -470,8 +475,8 @@ $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('ms
   var body={id:CFG.id,nombre:$('nombre').value,deporte:sel('deporte'),descripcion:$('desc').value,sedeClub:$('sede').value,lat:lat,lng:lng,zona:$('g3').value,whatsapp:$('wa').value,
     logoUrl:logo,fotos:fotos,redes:redes,planes:planes,recargoInvitado:parseFloat($('recargo').value)||0,descuentoHermano2:+sel('descuentoHermano2'),descuentoHermano3:+sel('descuentoHermano3'),descuentoFamiliar:sel('descuentoFamiliar')!=='0',
     descuentoPrepago:+sel('descuentoPrepago'),mesesMinPrepago:+sel('mesesMinPrepago'),retribucionClubPct:parseFloat($('retri').value)||0};
-  if($('cdYape')){if(iso==='PE')body.cobroDirecto={yape:$('cdYape').value,titular:$('cdTitular').value};
-    else{var ap=document.querySelector(".cd-apps[data-pais='"+iso+"'] .chip.sel");body.cobroDirecto={qr_url:qrCobro,app:ap?ap.dataset.v:'',titular:$('cdTitularQr').value}}}
+  if($('cdYape')){if(iso==='PE')body.cobroDirecto={yape:$('cdYape').value,titular:$('cdTitular').value,qr_url:qrCobro};
+    else{var ap=document.querySelector(".cd-apps[data-pais='"+iso+"'] .chip.sel");body.cobroDirecto={qr_url:qrCobro,app:ap?ap.dataset.v:'',titular:$('cdTitular').value}}}
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Guardando…';
   try{var r=await fetch('/anfitrion/academia/guardar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){location.href='/anfitrion/academia?guardado=1';return}msg.classList.add('err');msg.textContent=j.error||'No se pudo guardar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth'})}}

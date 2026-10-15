@@ -54,9 +54,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
   String? _errYape;
   String? _errYapeTitular;
   // COBRO DIRECTO por QR (Ecuador / Bolivia): imagen del QR + app o banco.
-  late String _qrUrl = (widget.academia?.cobroDirecto?.esQr ?? false)
-      ? widget.academia!.cobroDirecto!.qrUrl
-      : '';
+  late String _qrUrl = widget.academia?.cobroDirecto?.qrUrl ?? '';
   Uint8List? _qrNuevo;
   late String _qrApp = (widget.academia?.cobroDirecto?.esQr ?? false)
       ? widget.academia!.cobroDirecto!.app
@@ -919,6 +917,12 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       return CobroDirecto.qr(
           qrUrl: _qrUrl, app: _qrApp, titular: _yapeTitular.text.trim());
     }
+    // Perú: el QR de Yape es opcional y viaja junto al número.
+    final yQr = _yape.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (yQr.isNotEmpty) {
+      return CobroDirecto(
+          yape: yQr, titular: _yapeTitular.text.trim(), qrUrl: _qrUrl);
+    }
     final y = _yape.text.replaceAll(RegExp(r'[^0-9]'), '');
     if (y.isEmpty) return null;
     return CobroDirecto(yape: y, titular: _yapeTitular.text.trim());
@@ -930,6 +934,51 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       (_usaQr
           ? (_qrUrl.isEmpty || _qrApp.isEmpty)
           : _yape.text.replaceAll(RegExp(r'[^0-9]'), '').isEmpty);
+
+  /// Imagen del QR de cobro + subir / cambiar / quitar (Perú opcional,
+  /// Ecuador y Bolivia obligatorio).
+  Widget _filaQr() {
+    final hay = _qrNuevo != null || _qrUrl.isNotEmpty;
+    return Row(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            width: 96,
+            height: 96,
+            color: limaSuave,
+            child: _qrNuevo != null
+                ? Image.memory(_qrNuevo!, fit: BoxFit.contain)
+                : (_qrUrl.isNotEmpty
+                    ? Image.network(_qrUrl, fit: BoxFit.contain)
+                    : const Icon(Icons.qr_code_2, size: 44, color: bosque)),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _elegirQr,
+                icon: const Icon(Icons.photo_library_outlined, size: 18),
+                label: Text(hay ? 'Cambiar QR' : 'Subir mi QR'),
+              ),
+              if (hay)
+                TextButton(
+                  onPressed: () => setState(() {
+                    _qrNuevo = null;
+                    _qrUrl = '';
+                  }),
+                  style: TextButton.styleFrom(foregroundColor: clayOscuro),
+                  child: const Text('Quitar QR'),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
   /// Editor del cobro por QR (Ecuador / Bolivia): imagen + app + titular.
   Widget _seccionQr() {
@@ -967,33 +1016,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
               'queda pagada sola. Pichangol no toca tu plata.',
               style: TextStyle(color: textoTenue, fontSize: 12.5)),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: 96,
-                  height: 96,
-                  color: limaSuave,
-                  child: _qrNuevo != null
-                      ? Image.memory(_qrNuevo!, fit: BoxFit.contain)
-                      : (_qrUrl.isNotEmpty
-                          ? Image.network(_qrUrl, fit: BoxFit.contain)
-                          : const Icon(Icons.qr_code_2, size: 44, color: bosque)),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _elegirQr,
-                  icon: const Icon(Icons.photo_library_outlined, size: 18),
-                  label: Text(_qrNuevo != null || _qrUrl.isNotEmpty
-                      ? 'Cambiar QR'
-                      : 'Subir mi QR'),
-                ),
-              ),
-            ],
-          ),
+          _filaQr(),
           const SizedBox(height: 14),
           const Text('¿Dónde recibes los pagos?',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
@@ -1054,7 +1077,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
       }
 
       // QR de cobro (Ecuador / Bolivia): se sube a la carpeta de la academia.
-      if (_usaQr && _qrNuevo != null) {
+      if (_qrNuevo != null) {
         final url = await CanchasRepo.subirFoto('academia_$_id', _qrNuevo!,
             sufijo: 'qr_cobro_${DateTime.now().millisecondsSinceEpoch}');
         if (url != null) {
@@ -1448,6 +1471,14 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                         prefixIcon: const IconoVivo(Icons.person_outline),
                         errorText: _errYapeTitular),
                   ),
+                  const SizedBox(height: 12),
+                  const Text('Tu QR de Yape (opcional)',
+                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  const Text(
+                      'Tus alumnos lo escanean en vez de tipear tu número. En Yape: Mi QR → Descargar.',
+                      style: TextStyle(color: textoTenue, fontSize: 12)),
+                  const SizedBox(height: 8),
+                  _filaQr(),
                 ],
               ),
             ),

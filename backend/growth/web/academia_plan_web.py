@@ -112,6 +112,10 @@ label.pd-f{cursor:pointer}label.pd-f:hover{background:#F7F7F7}
 .pd-yape .tx{flex:1 1 160px;min-width:0}.pd-yape .num{font-size:22px;font-weight:900;letter-spacing:.5px;color:#4A1257}
 .pd-yape .pd-tit{font-size:13px;color:#5b3a63;overflow-wrap:anywhere}
 .pd-yape .btn{flex:none}
+.pd-qr{display:flex;gap:14px;align-items:center;margin-top:12px;padding:12px;border:1px solid var(--trazo);border-radius:16px;flex-wrap:wrap}
+.pd-qr img{width:150px;height:150px;object-fit:contain;border-radius:12px;background:#fff;flex:none}
+.pd-qr .tx{flex:1 1 160px;min-width:0;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.pd-qr .tx small{color:var(--tenue);font-size:12.5px}
 .pd-total{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-top:12px;font-weight:800}
 .pd-total b{font-size:20px;color:#4A1257}
 .pd-pasos{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;margin-top:14px}
@@ -332,8 +336,12 @@ def bloque_pago_directo(a: dict, items: list[tuple[dict, list[dict]]], *, titulo
           "<div class='pd-yape'><div class='logo'>yape</div><div class='tx'><div class='sub' style='margin:0;font-size:12px'>Yape de la academia</div>"
           f"<div class='num'>{e(num)}</div><div class='pd-tit'>A nombre de <b>{e(cd['titular'])}</b></div></div>"
           f"<button type='button' class='btn sec' data-pd-copiar='{e(cd['yape'])}'>⧉ Copiar número</button></div>"
-          "<div class='pd-pasos'><ol>"
-          f"<li>Abre tu Yape y yapea el <b>monto exacto</b> a <b>{e(num)}</b> ({e(cd['titular'])}).</li>"
+          + ((f"<div class='pd-qr'><img src='{e(cd['qr_url'])}' alt='QR de Yape de la academia' loading='lazy'>"
+              "<div class='tx'><b>O escanea su QR</b><small>Desde otro celular, o guárdalo y en Yape elige «Escanear» → galería.</small>"
+              f"<a class='btn sec' href='{e(cd['qr_url'])}' target='_blank' rel='noopener' download>⬇️ Guardar QR</a></div></div>")
+             if cd.get("qr_url") else "")
+          + "<div class='pd-pasos'><ol>"
+          f"<li>Abre tu Yape y yapea el <b>monto exacto</b> a <b>{e(num)}</b> ({e(cd['titular'])}){' o escanea su QR' if cd.get('qr_url') else ''}.</li>"
           "<li>En tu comprobante de Yape copia el <b>código de seguridad</b> de 3 dígitos.</li>"
           "<li>Escríbelo aquí abajo y toca «Ya yapeé». La academia lo compara con su Yape y confirma tu pago.</li></ol>"
           f"<div class='pd-mock' aria-hidden='true'><div class='t'>¡Yapeaste!</div><div class='mo'>{e(sim)} 250</div><div>{e(cd['titular'][:18])}</div>"

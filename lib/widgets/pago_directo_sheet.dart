@@ -390,6 +390,40 @@ class _HojaPagoDirectoState extends State<_HojaPagoDirecto> {
                 ],
               ),
             ),
+            if (cd.tieneQr) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: trazo),
+                ),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: CachedNetworkImage(
+                        imageUrl: cd.qrUrl,
+                        width: 120,
+                        height: 120,
+                        fit: BoxFit.contain,
+                        errorWidget: (_, __, ___) => const SizedBox(
+                            width: 120,
+                            height: 120,
+                            child: Icon(Icons.qr_code_2, size: 48)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                          'O escanea su QR de Yape desde otro celular, o '
+                          'haz captura y en Yape elige «Escanear» → galería.',
+                          style: TextStyle(fontSize: 12.5, height: 1.3)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             const Text('Cómo pagar',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),

@@ -4034,6 +4034,16 @@ antes del corte.
   (torre → Cobros → Plan Academia → Cobros automáticos → probador). Tests
   `tests/test_pago_qr.py`, `test_pago_por_qr_con_monto_unico_en_la_web`;
   Playwright `$SP/pw_qr.js`.
+  **PERÚ: QR DE YAPE OPCIONAL (pedido del director, 15-oct-2026, captura de
+  "Cobro directo por Yape": "aquí quiero que el dueño suba su QR para que los
+  alumnos escaneen y paguen"):** `cobroDirecto` de PE acepta `qr_url`
+  opcional junto al número (`validar_cobro_directo`/`cobro_directo`, misma
+  regla `_qr_url_valida`); el flujo sigue siendo Yape + código de seguridad
+  (no monto único). Editor web (sección única "Cobro directo a tu academia":
+  número solo en PE, QR común "opcional · el de tu Yape" con ✕ Quitar, apps
+  solo EC/BO, un solo titular `#cdTitular`) y APK (`_filaQr`); "Paga a la
+  academia" muestra "O escanea su QR" + Guardar QR (web `.pd-qr`, APK hoja
+  Yape). Test `test_peru_yape_con_qr_opcional`.
 - **PAGOS PERDÍAN DATOS AL REINICIAR (bug de plata hallado el 2-oct-2026):**
   `pg.cargar_normalizado` REEMPLAZABA los pagos/reclamos del snapshot por las
   filas de `growth_pagos`/`growth_reclamos` (solo 10/21 columnas) → tras cada

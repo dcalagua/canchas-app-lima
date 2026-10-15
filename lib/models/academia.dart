@@ -1007,15 +1007,23 @@ class CobroDirecto {
       ? 'QR $appVisible${titular.isNotEmpty ? ' · $titular' : ''}'
       : '$yapeBonito${titular.isNotEmpty ? ' · $titular' : ''}';
 
+  /// En Perú el QR de Yape es OPCIONAL (el alumno lo escanea en vez de
+  /// tipear el número).
+  bool get tieneQr =>
+      qrUrl.startsWith('https://') && qrUrl.contains('/storage/v1/object/public/');
+
   Map<String, dynamic> toJson() => esQr
       ? {'tipo': 'qr', 'qr_url': qrUrl, 'app': app, 'titular': titular}
-      : {'yape': yape, 'titular': titular};
+      : {'yape': yape, 'titular': titular, if (tieneQr) 'qr_url': qrUrl};
 
   /// Lee el JSON (de la academia o del backend). null si no es válido.
   static CobroDirecto? deJson(dynamic j) {
     if (j is! Map) return null;
     final titular = (j['titular'] ?? '').toString().trim();
-    if ((j['tipo'] ?? '').toString() == 'qr' || (j['qr_url'] ?? '').toString().isNotEmpty) {
+    final soloYape = (j['yape'] ?? '').toString().trim().isNotEmpty &&
+        (j['tipo'] ?? '').toString() != 'qr';
+    if (!soloYape &&
+        ((j['tipo'] ?? '').toString() == 'qr' || (j['qr_url'] ?? '').toString().isNotEmpty)) {
       final c = CobroDirecto.qr(
           qrUrl: (j['qr_url'] ?? '').toString().trim(),
           app: (j['app'] ?? '').toString(),
@@ -1025,7 +1033,10 @@ class CobroDirecto {
     }
     final yape = (j['yape'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), '');
     if (yape.isEmpty) return null;
-    final c = CobroDirecto(yape: yape, titular: titular);
+    final c = CobroDirecto(
+        yape: yape,
+        titular: titular,
+        qrUrl: (j['qr_url'] ?? '').toString().trim());
     return c.valido ? c : null;
   }
 }

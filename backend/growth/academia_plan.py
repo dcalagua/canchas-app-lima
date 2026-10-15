@@ -488,7 +488,11 @@ def cobro_directo(a: dict | None) -> dict | None:
         yape = re.sub(r"\D", "", str(cd.get("yape") or ""))
         if not re.fullmatch(r"9\d{8}", yape):
             return None
-        return {"tipo": "yape", "yape": yape, "titular": titular}
+        out = {"tipo": "yape", "yape": yape, "titular": titular}
+        # QR de Yape/Plin OPCIONAL: el alumno lo escanea en vez de tipear el número.
+        if _qr_url_valida(cd.get("qr_url")):
+            out["qr_url"] = str(cd["qr_url"]).strip()
+        return out
     app = str(cd.get("app") or "")
     if not _qr_url_valida(cd.get("qr_url")) or not _app_nombre(pais, app) or len(titular) < 3:
         return None
@@ -510,7 +514,10 @@ def validar_cobro_directo(cd: dict | None, pais: str = "PE") -> dict:
             raise ValueError("El Yape debe ser un celular peruano de 9 dígitos que empiece con 9.")
         if len(titular) < 3:
             raise ValueError("Escribe el nombre que sale en tu Yape (así lo reconocen tus alumnos).")
-        return {"yape": yape, "titular": titular}
+        qr_url = str(cd.get("qr_url") or "").strip()
+        if qr_url and not _qr_url_valida(qr_url):
+            raise ValueError("Vuelve a subir la imagen de tu QR de Yape.")
+        return {"yape": yape, "titular": titular, **({"qr_url": qr_url} if qr_url else {})}
     qr_url = str(cd.get("qr_url") or "").strip()
     app = str(cd.get("app") or "")
     if not qr_url and not app and not titular:
