@@ -1,0 +1,342 @@
+{
+ "tenis": {
+  "id": "plantilla_tenis",
+  "deporte": "tenis",
+  "nombre": "Plan de tenis · Iniciación",
+  "nivel": "Iniciación e intermedio",
+  "habilidades": [
+   "Derecha (drive)",
+   "Revés",
+   "Saque",
+   "Volea",
+   "Globo y smash",
+   "Desplazamiento y postura",
+   "Táctica de juego",
+   "Actitud y competencia"
+  ],
+  "sesiones": [
+   {
+    "numero": 1,
+    "titulo": "Familiarización con la raqueta"
+   },
+   {
+    "numero": 2,
+    "titulo": "Derecha: primeros golpes"
+   },
+   {
+    "numero": 3,
+    "titulo": "Revés a dos manos"
+   },
+   {
+    "numero": 4,
+    "titulo": "Consistencia de fondo"
+   },
+   {
+    "numero": 5,
+    "titulo": "La volea"
+   },
+   {
+    "numero": 6,
+    "titulo": "El saque (parte 1)"
+   },
+   {
+    "numero": 7,
+    "titulo": "Evaluación intermedia"
+   },
+   {
+    "numero": 8,
+    "titulo": "Desplazamiento y equilibrio"
+   },
+   {
+    "numero": 9,
+    "titulo": "Globo y smash"
+   },
+   {
+    "numero": 10,
+    "titulo": "Saque (parte 2) y devolución"
+   },
+   {
+    "numero": 11,
+    "titulo": "Táctica: puntos y patrones"
+   },
+   {
+    "numero": 12,
+    "titulo": "Mini-torneo y evaluación final"
+   }
+  ]
+ },
+ "padel": {
+  "id": "plantilla_padel",
+  "deporte": "padel",
+  "nombre": "Plan de pádel · Iniciación",
+  "nivel": "Iniciación e intermedio",
+  "habilidades": [
+   "Derecha y revés de fondo",
+   "Volea",
+   "Bandeja",
+   "Saque y resto",
+   "Salida de pared (fondo)",
+   "Globo",
+   "Posición y juego en pareja",
+   "Actitud y competencia"
+  ],
+  "sesiones": [
+   {
+    "numero": 1,
+    "titulo": "La pala y la posición"
+   },
+   {
+    "numero": 2,
+    "titulo": "Golpes de fondo"
+   },
+   {
+    "numero": 3,
+    "titulo": "La volea"
+   },
+   {
+    "numero": 4,
+    "titulo": "Saque y resto"
+   },
+   {
+    "numero": 5,
+    "titulo": "Uso de la pared (defensa)"
+   },
+   {
+    "numero": 6,
+    "titulo": "El globo"
+   },
+   {
+    "numero": 7,
+    "titulo": "Evaluación intermedia"
+   },
+   {
+    "numero": 8,
+    "titulo": "La bandeja"
+   },
+   {
+    "numero": 9,
+    "titulo": "Juego en pareja"
+   },
+   {
+    "numero": 10,
+    "titulo": "Mini-torneo y evaluación final"
+   }
+  ]
+ },
+ "futbol": {
+  "id": "plantilla_futbol",
+  "deporte": "futbol",
+  "nombre": "Plan de fútbol · Iniciación",
+  "nivel": "Iniciación e intermedio",
+  "habilidades": [
+   "Control y recepción",
+   "Pase y precisión",
+   "Conducción y regate",
+   "Tiro a puerta",
+   "Juego aéreo (cabeceo)",
+   "Defensa y marca",
+   "Táctica y posición",
+   "Actitud y trabajo en equipo"
+  ],
+  "sesiones": [
+   {
+    "numero": 1,
+    "titulo": "Familiarización con el balón"
+   },
+   {
+    "numero": 2,
+    "titulo": "Control y recepción"
+   },
+   {
+    "numero": 3,
+    "titulo": "El pase"
+   },
+   {
+    "numero": 4,
+    "titulo": "Conducción y regate"
+   },
+   {
+    "numero": 5,
+    "titulo": "Tiro a puerta"
+   },
+   {
+    "numero": 6,
+    "titulo": "Evaluación intermedia"
+   },
+   {
+    "numero": 7,
+    "titulo": "Juego aéreo y defensa"
+   },
+   {
+    "numero": 8,
+    "titulo": "Táctica: posición y espacios"
+   },
+   {
+    "numero": 9,
+    "titulo": "Situaciones de juego"
+   },
+   {
+    "numero": 10,
+    "titulo": "Partido y evaluación final"
+   }
+  ]
+ },
+ "natacion": {
+  "id": "plantilla_natacion",
+  "deporte": "natacion",
+  "nombre": "Plan de natación · Iniciación",
+  "nivel": "Iniciación e intermedio",
+  "habilidades": [
+   "Flotación y respiración",
+   "Crol (libre)",
+   "Espalda",
+   "Pecho (braza)",
+   "Mariposa",
+   "Salidas y viradas",
+   "Resistencia",
+   "Técnica y coordinación"
+  ],
+  "sesiones": [
+   {
+    "numero": 1,
+    "titulo": "Adaptación al medio"
+   },
+   {
+    "numero": 2,
+    "titulo": "Respiración y patada"
+   },
+   {
+    "numero": 3,
+    "titulo": "Crol: brazada"
+   },
+   {
+    "numero": 4,
+    "titulo": "Espalda"
+   },
+   {
+    "numero": 5,
+    "titulo": "Evaluación intermedia"
+   },
+   {
+    "numero": 6,
+    "titulo": "Pecho (braza)"
+   },
+   {
+    "numero": 7,
+    "titulo": "Introducción a mariposa"
+   },
+   {
+    "numero": 8,
+    "titulo": "Salidas y viradas"
+   },
+   {
+    "numero": 9,
+    "titulo": "Resistencia"
+   },
+   {
+    "numero": 10,
+    "titulo": "Prueba final y evaluación"
+   }
+  ]
+ },
+ "voley": {
+  "id": "plantilla_voley",
+  "deporte": "voley",
+  "nombre": "Plan de vóley · Iniciación",
+  "nivel": "Iniciación e intermedio",
+  "habilidades": [
+   "Antebrazo (recepción)",
+   "Voleo (colocación)",
+   "Saque",
+   "Remate",
+   "Bloqueo",
+   "Desplazamientos y defensa",
+   "Táctica y rotación",
+   "Actitud y trabajo en equipo"
+  ],
+  "sesiones": [
+   {
+    "numero": 1,
+    "titulo": "Postura y desplazamientos"
+   },
+   {
+    "numero": 2,
+    "titulo": "Antebrazo (recepción)"
+   },
+   {
+    "numero": 3,
+    "titulo": "Voleo (colocación)"
+   },
+   {
+    "numero": 4,
+    "titulo": "El saque"
+   },
+   {
+    "numero": 5,
+    "titulo": "Evaluación intermedia"
+   },
+   {
+    "numero": 6,
+    "titulo": "El remate"
+   },
+   {
+    "numero": 7,
+    "titulo": "Bloqueo y defensa"
+   },
+   {
+    "numero": 8,
+    "titulo": "Táctica: los 3 toques y rotación"
+   }
+  ]
+ },
+ "basquet": {
+  "id": "plantilla_basquet",
+  "deporte": "basquet",
+  "nombre": "Plan de básquet · Iniciación",
+  "nivel": "Iniciación e intermedio",
+  "habilidades": [
+   "Bote y manejo",
+   "Pase y recepción",
+   "Entrada a canasta (bandeja)",
+   "Tiro (media y libre)",
+   "Defensa individual",
+   "Rebote",
+   "Táctica y espacios",
+   "Actitud y trabajo en equipo"
+  ],
+  "sesiones": [
+   {
+    "numero": 1,
+    "titulo": "Manejo de balón"
+   },
+   {
+    "numero": 2,
+    "titulo": "El pase"
+   },
+   {
+    "numero": 3,
+    "titulo": "Entrada a canasta"
+   },
+   {
+    "numero": 4,
+    "titulo": "El tiro"
+   },
+   {
+    "numero": 5,
+    "titulo": "Evaluación intermedia"
+   },
+   {
+    "numero": 6,
+    "titulo": "Defensa y rebote"
+   },
+   {
+    "numero": 7,
+    "titulo": "Táctica: espacios y superioridades"
+   },
+   {
+    "numero": 8,
+    "titulo": "Partido y evaluación final"
+   }
+  ]
+ }
+}

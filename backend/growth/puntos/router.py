@@ -3,12 +3,26 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends, Header, HTTPException
 
-from models import AcreditarRequest, CanjearRequest, PrimeraReservaRequest
+import config
+from models import (AcreditarRequest, AcreditarReservaRequest, CanjearRequest,
+                    PrimeraReservaRequest)
 from puntos import service
 
 router = APIRouter(prefix="/puntos", tags=["puntos"])
+
+
+def _require_app(x_app_key: str | None = Header(default=None)) -> None:
+    """Solo el APK oficial acredita/canjea puntos de fidelidad (son plata).
+    Mismo esquema fail-open de pagos: sin APP_API_KEY configurada no se exige
+    (rollout gradual)."""
+    esperado = (config.APP_API_KEY or "").strip()
+    if esperado and (x_app_key or "").strip() != esperado:
+        raise HTTPException(status_code=403, detail="app_key_invalida")
+
+
+_APP = [Depends(_require_app)]
 
 
 @router.get("/saldo/{usuario_id}")
@@ -28,7 +42,16 @@ def post_acreditar(req: AcreditarRequest,
                              req.ref_id, idem_key=idempotency_key)
 
 
-@router.post("/canjear")
+@router.post("/acreditar-reserva", dependencies=_APP)
+def post_acreditar_reserva(req: AcreditarReservaRequest) -> dict:
+    """FIDELIDAD: puntos por una reserva efectivamente PAGADA (online al
+    pagar; efectivo cuando el dueño la marca pagada). Idempotente por
+    reserva_id — reintentos del APK no duplican puntos."""
+    return service.acreditar_reserva(
+        req.usuario_id, req.monto, req.moneda, req.reserva_id)
+
+
+@router.post("/canjear", dependencies=_APP)
 def post_canjear(req: CanjearRequest,
                  idempotency_key: str | None = Header(default=None)) -> dict:
     return service.canjear(req.usuario_id, req.puntos_usados, req.tipo_premio,

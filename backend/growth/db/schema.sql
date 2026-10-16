@@ -141,3 +141,67 @@ create table if not exists inscripciones_convocatoria (
   creado_en       timestamptz not null default now(),
   unique (convocatoria_id, socio_id)
 );
+
+-- =========================================================================
+-- F. NORMALIZACIÓN (fase 1): plata + impacto + reclamos en tablas propias
+--    Antes vivían solo dentro del snapshot JSON (growth_state). Ahora tienen
+--    tabla propia para poder consultar/auditar en SQL y no depender del blob.
+--    El backend las escribe junto al snapshot y, al cargar, ganan si tienen
+--    datos (ver db/pg.py). `if not exists` = seguro de correr varias veces.
+-- =========================================================================
+
+-- Saldo prepago por dueño (en céntimos de la moneda local).
+create table if not exists growth_saldos (
+  dueno_id       text primary key,
+  saldo_centimos bigint not null default 0,
+  updated_at     timestamptz not null default now()
+);
+
+-- Libro de pagos de pasarela (recargas + comisiones). Es plata: autoritativo.
+create table if not exists growth_pagos (
+  id              bigint primary key,
+  tipo            text not null,               -- recarga | fee_reserva
+  monto_centimos  bigint not null,
+  moneda          text not null default 'PEN',
+  estado          text not null,               -- aprobado | rechazado
+  dueno_id        text,
+  culqi_charge_id text,
+  email           text,
+  concepto        text,
+  creado_en       timestamptz not null
+);
+create index if not exists idx_growth_pagos_dueno on growth_pagos (dueno_id);
+
+-- Impresiones de destacados (métrica de impacto del boost) por id y día.
+create table if not exists growth_vistas (
+  id   text not null,                          -- dueno_id (canchas) | academia_id
+  dia  date not null,
+  n    integer not null default 0,
+  primary key (id, dia)
+);
+
+-- Reclamos de propiedad (modelo concierge). Estado que evoluciona con el triage.
+create table if not exists growth_reclamos (
+  id               bigint primary key,
+  cancha_id        text not null,
+  solicitante_id   text not null,
+  nombre_local     text not null,
+  codigo           text not null,
+  estado           text not null,
+  telefono_contacto text,
+  dni              text,
+  nombre_titular   text,
+  ruc              text,
+  razon_social     text,
+  relacion         text,
+  lat              double precision,
+  lng              double precision,
+  solicitante_lat  double precision,
+  solicitante_lng  double precision,
+  creado_en        timestamptz not null,
+  decidido_en      timestamptz,
+  validado_en      timestamptz,
+  validador        text,
+  nota             text
+);
+create index if not exists idx_growth_reclamos_cancha on growth_reclamos (cancha_id);

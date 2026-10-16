@@ -2,52 +2,26 @@ import 'package:flutter/material.dart';
 
 import '../theme.dart';
 
-/// Rojo del pin de ubicación (identidad: la 'o' de Pichangol es un pin de mapa).
-const Color rojoPin = Color(0xFFE5372B);
-
-/// La 'o' de la marca convertida en PIN DE UBICACIÓN (pin rojo con punto blanco
-/// en la cabeza, como un marcador de Google Maps). Sustituye a la vieja pelota.
-class PinUbicacion extends StatelessWidget {
+/// La 'o' de la marca convertida en PELOTA (identidad "pichang·o·l": la 'o' es
+/// un balón). Verde WhatsApp por defecto, para hablar el idioma de la app.
+class PelotaMarca extends StatelessWidget {
   final double size;
-  final Color color;   // color del pin
-  final Color punto;   // punto interior (cabeza del pin)
-  const PinUbicacion(
-      {super.key, required this.size, this.color = rojoPin, this.punto = Colors.white});
+  final Color color;
+  const PelotaMarca({super.key, required this.size, this.color = lima});
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Icon(Icons.location_on, size: size, color: color),
-          // Punto en la cabeza del pin (queda en el tercio superior del ícono).
-          Positioned(
-            top: size * 0.20,
-            child: Container(
-              width: size * 0.26,
-              height: size * 0.26,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: punto),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget build(BuildContext context) =>
+      Icon(Icons.sports_soccer, size: size, color: color);
 }
 
-/// Wordmark de marca: **Pichang[o]l** (P mayúscula) con la 'o' convertida en un
-/// pin de ubicación rojo.
+/// Wordmark de marca: **Pichang[o]l** (P mayúscula) con la 'o' convertida en una
+/// PELOTA. Opción A (monocromo verde): letras charcoal + pelota verde WhatsApp.
 class PichangolWordmark extends StatelessWidget {
   final double fontSize;
-  final Color color;   // color de las letras
-  final Color pin;     // color del pin de la 'o'
-  final Color punto;   // punto interior del pin
+  final Color color;    // color de las letras
+  final Color pelota;   // color de la pelota (la 'o')
   const PichangolWordmark(
-      {super.key, this.fontSize = 26, this.color = bosque,
-      this.pin = rojoPin, this.punto = Colors.white});
+      {super.key, this.fontSize = 26, this.color = bosque, this.pelota = lima});
 
   @override
   Widget build(BuildContext context) {
@@ -61,13 +35,9 @@ class PichangolWordmark extends StatelessWidget {
       children: [
         Text('Pichang', style: style),
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: fontSize * 0.02),
-          // El pin va un poco más grande que la letra para leerse como marcador,
-          // y baja un pelín para asentar la 'o' en la línea del texto.
-          child: Transform.translate(
-            offset: Offset(0, fontSize * 0.08),
-            child: PinUbicacion(size: fontSize * 0.98, color: pin, punto: punto),
-          ),
+          // La pelota ocupa el lugar de la 'o', al mismo alto que las letras.
+          padding: EdgeInsets.symmetric(horizontal: fontSize * 0.03),
+          child: PelotaMarca(size: fontSize * 0.92, color: pelota),
         ),
         Text('l', style: style),
       ],
@@ -75,8 +45,9 @@ class PichangolWordmark extends StatelessWidget {
   }
 }
 
-/// Logo cuadrado (login / app icon): cuadrado bosque con el pin de ubicación
-/// rojo en el centro.
+/// Logo cuadrado (login / cabeceras): el PIN oficial de la marca (logo nuevo,
+/// assets/brand/logo_pin.png) en tarjeta blanca redondeada con borde suave.
+/// Fallback: si el asset faltara, vuelve al pin clásico dibujado.
 class LogoCuadrado extends StatelessWidget {
   final double size;
   const LogoCuadrado({super.key, this.size = 60});
@@ -86,12 +57,22 @@ class LogoCuadrado extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      alignment: Alignment.center,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: bosque,
-        borderRadius: BorderRadius.circular(size * 0.30),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(size * 0.24),
+        border: Border.all(color: const Color(0xFFE4E4E4)),
       ),
-      child: PinUbicacion(size: size * 0.58, color: rojoPin, punto: Colors.white),
+      child: Image.asset(
+        'assets/brand/logo_pin.png',
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          alignment: Alignment.center,
+          color: lima,
+          child:
+              Icon(Icons.location_on, size: size * 0.56, color: Colors.white),
+        ),
+      ),
     );
   }
 }

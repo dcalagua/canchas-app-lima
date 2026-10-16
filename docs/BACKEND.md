@@ -135,17 +135,36 @@ se **reclaman** automáticamente con el correo del usuario logueado.
 Para que el dueño suba una **foto de portada** al registrar/editar su cancha:
 1. En Supabase → **Storage** → **New bucket** → nombre **`canchas`** → marcar
    **Public bucket** → crear.
-2. (Opcional, recomendado) políticas: lectura pública e inserción/actualización
-   para el rol `anon` mientras no haya auth de dueño:
+2. **Políticas de Storage (obligatorio para subir).** El APK sube con la
+   **anon key**, así que la política de INSERT DEBE ser para el rol `anon`
+   (si la creas para `authenticated` la subida falla con "falta la política de
+   subida"). SQL idempotente (SQL Editor → debe decir *Success*):
    ```sql
-   -- Subir/actualizar fotos (piloto sin auth de dueño)
-   create policy "canchas_upload" on storage.objects
-     for insert to anon with check (bucket_id = 'canchas');
-   create policy "canchas_update" on storage.objects
-     for update to anon using (bucket_id = 'canchas');
+   drop policy if exists "canchas_read"   on storage.objects;
+   drop policy if exists "canchas_upload" on storage.objects;
+   drop policy if exists "canchas_update" on storage.objects;
+
+   create policy "canchas_read"
+     on storage.objects for select
+     to anon, authenticated
+     using (bucket_id = 'canchas');
+
+   create policy "canchas_upload"
+     on storage.objects for insert
+     to anon, authenticated
+     with check (bucket_id = 'canchas');
+
+   create policy "canchas_update"
+     on storage.objects for update
+     to anon, authenticated
+     using (bucket_id = 'canchas')
+     with check (bucket_id = 'canchas');
    ```
-   La lectura ya es pública por ser *public bucket*. Si no creas el bucket, la
+   La lectura ya es pública por ser *public bucket*; la policy `canchas_read`
+   es un respaldo por si el bucket no quedó público. Si no creas el bucket, la
    app no falla: la cancha simplemente queda sin foto.
+   El editor de cancha diagnostica el fallo exacto (falta bucket / falta
+   política / sin conexión) y muestra a qué proyecto Supabase apunta el APK.
 
 > Si no corres esto, la app sigue funcionando: las canchas nuevas se ven en tu
 > celular, pero el alta a Supabase podría fallar en silencio hasta que existan

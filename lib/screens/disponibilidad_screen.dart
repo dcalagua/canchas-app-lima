@@ -4,6 +4,7 @@ import '../data/sample_data.dart';
 import '../models/models.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/icono_vivo.dart';
 
 class DisponibilidadScreen extends StatelessWidget {
   const DisponibilidadScreen({super.key});
@@ -110,7 +111,7 @@ class _FilaDisponibilidad extends StatelessWidget {
             ),
           ),
           if (ocupada)
-            const Icon(Icons.lock, color: verdeCancha)
+            const IconoVivo(Icons.lock, color: verdeCancha)
           else
             Switch(
               value: bloque.disponible,

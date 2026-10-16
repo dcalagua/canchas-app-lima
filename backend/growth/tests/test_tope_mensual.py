@@ -27,7 +27,8 @@ def _dar_puntos_liberados(usuario: str, pts: int):
 
 def test_tope_bloquea_pichangol_y_permite_dueno():
     stores.config["tope_mensual_premios_pichangol_soles"] = "5"   # S/ 5
-    stores.config["equivalencia_puntos_por_sol"] = "100"          # 100 pts = S/1
+    # Regla de valor vigente (fidelidad): aquí 100 pts = S/ 1 para el cálculo.
+    stores.config["fidelidad_valor_100_puntos"] = "1"
     _dar_puntos_liberados("u1", 2000)  # S/ 20 disponibles
 
     r1 = puntos.canjear("u1", 500, "descuento", "pichangol")  # S/5 (llega al tope)

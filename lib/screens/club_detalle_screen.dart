@@ -1,17 +1,45 @@
-import 'dart:math' as math;
-
+import 'dart:async';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
 import '../data/reservas_repo.dart';
 import '../models/club.dart';
+import '../models/fotos_propias.dart';
 import '../models/models.dart';
+import '../models/resena.dart';
+import '../services/avisos_service.dart';
+import '../services/pagos_service.dart';
+import '../services/places_service.dart';
 import '../services/propiedad_service.dart';
+import '../services/whatsapp_link.dart';
+import '../config/pais.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/ancho_lectura.dart';
+import '../widgets/chat_burbuja.dart';
+import '../models/bono.dart';
+import '../widgets/cargando_pichangol.dart';
 import '../widgets/court_lines.dart';
+import '../widgets/candado_pro.dart';
+import '../widgets/dialogo_pichangol.dart';
+import '../widgets/ubicacion_reclamo.dart';
+import '../models/cargo_servicio.dart';
+import '../models/boleador.dart';
+import '../models/fidelidad.dart';
+import '../widgets/cargo_servicio_info.dart';
+import '../widgets/atribucion_osm.dart';
 import '../widgets/marca.dart';
+import 'bonos_dueno_screen.dart';
+import 'pedir_bodega_screen.dart';
+import 'chat_screen.dart';
+import 'editar_cancha_screen.dart';
+import '../utils/moneda.dart';
+import '../utils/ubicacion_share.dart';
 import 'login_google_sheet.dart';
+import '../widgets/icono_vivo.dart';
+import '../widgets/pago_tarjeta_sheet.dart';
 import 'registrar_cancha_screen.dart';
+import 'reservas_dueno_screen.dart';
 
 /// Ficha de CLUB (rediseño): un local con varias canchas. Selector "Elige
 /// cancha" + horarios de la cancha elegida + reserva con seña.
@@ -27,8 +55,29 @@ class ClubDetalleScreen extends StatefulWidget {
 
 class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   late Cancha _cancha = widget.canchaInicial ?? widget.club.canchas.first;
+  // Deporte elegido para reservar (solo si la cancha es multideporte). null =
+  // usa el principal de la cancha.
+  Deporte? _deporteSel;
+  Deporte get _deporteEfectivo => _deporteSel ?? _cancha.deporte;
   String _dia = 'Hoy';
-  String? _hora;
+
+  // TARJETA DE FIDELIDAD del local (sep-2026): progreso del jugador y premio
+  // disponible, lo decide el backend. Null = sin sesión / sin red / no activa.
+  EstadoFidelidad? _fid;
+  FidelidadConfig get _fidCfg => FidelidadConfig.de(_cancha.fidelidad);
+
+  Future<void> _cargarFidelidad() async {
+    final email = appState.usuario?.email ?? '';
+    if (!_fidCfg.activa || email.isEmpty || !_cancha.registrada) return;
+    final e = await Fidelidad.estado(email, _cancha.id);
+    if (mounted && e != null) setState(() => _fid = e);
+  }
+  // Horas SELECCIONADAS (bloque contiguo). El jugador puede reservar 1 o varias
+  // horas seguidas; el bloque siempre queda ordenado (inicio = primera, fin =
+  // última + duración), así nunca hay un rango invertido (fin antes del inicio).
+  final List<String> _slots = [];
+  bool _reclamoRechazado = false; // MI reclamo de esta cancha fue rechazado
+  bool _reclamablePorRechazo = false; // reclamo AJENO rechazado → libre para reclamar
 
   /// Horas reservables reales de la cancha elegida (apertura→cierre, paso = duración).
   /// Para "Hoy" se omiten las horas que ya pasaron.
@@ -53,20 +102,260 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   @override
   void initState() {
     super.initState();
+    // Refresca el snapshot con la versión MÁS FRESCA (por si el dueño acaba de
+    // editar duración de slot / precio / horario): el jugador debe ver el
+    // cambio al instante, no el snapshot con el que se abrió la ficha.
+    _cancha = appState.canchaVigente(_cancha);
+    _cargarFidelidad();
+    // ¿El cargo por servicio está encendido en la torre? Se relee al abrir la
+    // ficha (no solo al arrancar la app) para que el resumen de pago muestre
+    // la línea apenas el operador lo active, igual que la web.
+    appState.cargarCargoServicio();
     // Al abrir la ficha, sincroniza el estado REAL de la cancha con el backend:
     // - pendiente → puede pasar a verificada (quita el cartel "pendiente").
     // - verificada → puede DEGRADARSE si el admin la rechazó/revocó (quita los
     //   horarios). Antes solo se sincronizaba si estaba pendiente, así que una
     //   cancha rechazada seguía mostrándose reservable.
-    if (_cancha.registrada) _sincronizarFicha();
+    if (_cancha.registrada) {
+      _sincronizarFicha();
+      _evaluarReclamoRechazado();
+    }
+    // Baja de Supabase la versión FRESCA de las canchas y re-aplica la vigente:
+    // así, en OTRO equipo (el jugador), la duración/precio/horario que el dueño
+    // editó se ven al abrir la ficha, sin depender de un pull-to-refresh manual
+    // ni de reiniciar la app.
+    _refrescarCanchasYFicha();
     // Refresca las reservas de la nube para que la grilla no muestre libre un
     // horario que otro dispositivo ya tomó (integridad la garantiza el UNIQUE,
     // esto es solo para que se vea al día).
     appState.cargarReservasRemotas();
+    // Horarios bloqueados por el dueño (no reservables).
+    appState.cargarBloqueos();
+    // Lista de espera del local (para marcar los slots con cola y ofrecer
+    // anotarse en una hora tomada).
+    appState.cargarEspera(widget.club.canchas.map((c) => c.id).toList());
+    // Bonos del local (ofertas) + saldo de bono del jugador (para el canje).
+    appState.cargarBonosClub(_cancha.club);
+    appState.cargarMisBonos();
+  }
+
+  /// ¿El slot [h] ya pasó? (para "Hoy", una hora anterior a ahora).
+  bool _esPasado(String h) {
+    final fp = _fechaSlot(h).split('-');
+    final hp = h.split(':');
+    if (fp.length < 3 || hp.length < 2) return false;
+    final y = int.tryParse(fp[0]),
+        mo = int.tryParse(fp[1]),
+        d = int.tryParse(fp[2]),
+        hh = int.tryParse(hp[0]),
+        mi = int.tryParse(hp[1]);
+    if (y == null || mo == null || d == null || hh == null || mi == null) {
+      return false;
+    }
+    return DateTime(y, mo, d, hh, mi).isBefore(DateTime.now());
+  }
+
+  /// El jugador tocó una hora TOMADA: ofrecer lista de espera (anotarse / salir).
+  Future<void> _ofrecerEspera(String h) async {
+    if (_soyDueno) return;
+    if (!appState.logueado) {
+      await avisarPichangol(context,
+          titulo: 'Inicia sesión',
+          mensaje: 'Entra con tu cuenta para anotarte en la lista de espera '
+              'de una hora tomada.');
+      return;
+    }
+    final fecha = _fechaSlot(h);
+    if (appState.estoyEnEspera(_cancha.id, fecha, h)) {
+      final salir = await confirmarPichangol(context,
+          titulo: 'Ya estás en la lista de espera',
+          mensaje: 'Te avisaremos si las $h se liberan. ¿Quieres salir de la '
+              'lista de espera?',
+          textoConfirmar: 'Salir',
+          destructivo: true,
+          icono: Icons.hourglass_bottom);
+      if (salir == true) {
+        await appState.salirDeEspera(_cancha.id, fecha, h);
+        if (mounted) {
+          setState(() {});
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Saliste de la lista de espera.')));
+        }
+      }
+      return;
+    }
+    final ok = await confirmarPichangol(context,
+        titulo: 'Esa hora está tomada',
+        mensaje: 'Las $h ya están reservadas. ¿Te anotamos en la lista de '
+            'espera? Si se libera, el dueño te contacta.',
+        textoConfirmar: 'Avísame',
+        icono: Icons.notifications_active_outlined);
+    if (ok == true) {
+      await appState.unirmeAEspera(_cancha.id, fecha, h);
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            backgroundColor: lima,
+            content: Text('Te anotamos para las $h. Te avisaremos si se '
+                'libera.')));
+      }
+    }
+  }
+
+  /// Horas del día visible que el jugador ESPERABA y ahora están LIBRES
+  /// (device-first: al reabrir la ficha ve que se liberó sin depender de push).
+  List<String> _horasLiberadas() {
+    if (!appState.logueado || _soyDueno) return const [];
+    final out = <String>[];
+    for (final h in _horas) {
+      if (_ocupada(h) || _esPasado(h)) continue;
+      if (appState.estoyEnEspera(_cancha.id, _fechaSlot(h), h)) out.add(h);
+    }
+    return out;
+  }
+
+  /// El DUEÑO tocó una hora reservada: ve la lista de espera y contacta a quien
+  /// espera (para ofrecerle la hora si se libera). Si no hay cola, ofrece
+  /// bloquear/gestionar como antes.
+  void _verEsperaDueno(String h) {
+    final fecha = _fechaSlot(h);
+    final cola = appState.esperaSlot(_cancha.id, fecha, h);
+    if (cola.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Las $h están reservadas. Nadie en lista de espera '
+              'todavía.')));
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
+      builder: (ctx) {
+        final t = Theme.of(ctx).textTheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const IconoVivo(Icons.hourglass_top, color: lima),
+                    const SizedBox(width: 8),
+                    Text('Lista de espera · $h',
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800)),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text('Si esta hora se libera, contáctalos por orden de llegada.',
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(ctx))),
+                const SizedBox(height: 12),
+                for (var i = 0; i < cola.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundColor: lima.withOpacity(0.15),
+                          child: Text('${i + 1}',
+                              style: const TextStyle(
+                                  color: lima, fontWeight: FontWeight.w800)),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                              cola[i].nombre.isEmpty
+                                  ? cola[i].usuario
+                                  : cola[i].nombre,
+                              style: t.bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                        ),
+                        if (cola[i].telefono.isNotEmpty)
+                          IconButton(
+                            tooltip: 'WhatsApp',
+                            icon: const Icon(Icons.chat, color: lima),
+                            onPressed: () => WhatsAppLink.abrir(
+                                cola[i].telefono,
+                                'Hola ${cola[i].nombre} 👋 Se liberó la hora de '
+                                'las $h en ${widget.club.nombre}. ¿La tomas?'),
+                          )
+                        else
+                          IconButton(
+                            tooltip: 'Chatear',
+                            icon: Icon(Icons.chat_bubble_outline,
+                                color: Theme.of(ctx).colorScheme.primary),
+                            onPressed: () {
+                              Navigator.of(ctx).pop();
+                              _chatearConEspera(cola[i].usuario,
+                                  cola[i].nombre.isEmpty
+                                      ? cola[i].usuario
+                                      : cola[i].nombre);
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// Chat del dueño con un jugador en lista de espera.
+  void _chatearConEspera(String email, String nombre) {
+    final owner = appState.usuario?.email ?? '';
+    if (owner.isEmpty || email.isEmpty) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        academiaId: '',
+        cuentaEmail: email,
+        titulo: nombre,
+        soyProfe: true,
+        tipo: 'cancha',
+        refId: owner,
+      ),
+    ));
+  }
+
+  /// Baja las canchas de Supabase y, si la cancha mostrada cambió (p. ej. la
+  /// duración del turno la editó el dueño desde otro equipo), refresca `_cancha`.
+  Future<void> _refrescarCanchasYFicha() async {
+    await appState.cargarCanchasRemotas();
+    if (!mounted) return;
+    final vig = appState.canchaVigente(_cancha);
+    if (vig.id == _cancha.id && !identical(vig, _cancha)) {
+      setState(() => _cancha = vig);
+    }
+  }
+
+  /// Si el (último) reclamo de esta cancha fue RECHAZADO y NO es mío, la cancha
+  /// vuelve a estar LIBRE: se muestra como reclamable (el dueño real, u otro,
+  /// puede reclamarla). El que fue rechazado ve su propio panel "no aprobada".
+  Future<void> _evaluarReclamoRechazado() async {
+    if (!PropiedadService.disponible) return;
+    if (!_cancha.registrada || _cancha.verificada) return;
+    final est = await PropiedadService.estado(_cancha.id,
+        solicitante: appState.usuario?.email);
+    if (!mounted || est == null) return;
+    if (est['estado'] == 'rechazada' && est['es_mio'] != true) {
+      setState(() => _reclamablePorRechazo = true);
+    }
   }
 
   /// Sincroniza la cancha mostrada (sea mía o no) y refleja el cambio en vivo.
   Future<void> _sincronizarFicha() async {
+    // Primero, la versión local más fresca (duración/precio/horario editados).
+    final vig = appState.canchaVigente(_cancha);
+    if (mounted && vig.id == _cancha.id && !identical(vig, _cancha)) {
+      setState(() => _cancha = vig);
+    }
+    // Luego, el estado real del backend (verificada/rechazada).
     final act = await appState.sincronizarCanchaMostrada(_cancha);
     if (!mounted || act == null) return;
     setState(() => _cancha = act);
@@ -94,73 +383,601 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   /// revirtió (creada == null), re-resolvemos por proximidad pero SOLO a una
   /// cancha MÍA (nunca a una verificada ajena).
   Future<void> _refrescarDescubierta(Cancha? creada) async {
-    await appState.sincronizarPropiedades();
-    if (!mounted) return;
-    Cancha? destino;
+    // Tras reclamar, MOSTRAR SIEMPRE la cancha recién creada (pendiente de
+    // verificación). NO re-resolvemos por proximidad/dedup: una cancha
+    // "verificada" cacheada localmente (de pruebas viejas, sin registro en el
+    // backend) podía secuestrar la ficha y mostrar la página de reserva.
     if (creada != null) {
-      for (final c in appState.todasLasCanchas()) {
-        if (c.id == creada.id) {
-          destino = c;
-          break;
-        }
-      }
-      destino ??= creada; // si el dedup la ocultó, muestro la creada (pendiente).
-    } else {
-      final email = appState.usuario?.email ?? '';
-      double mejorD = double.infinity;
-      for (final c in appState.todasLasCanchas()) {
-        if (!c.registrada || c.dueno != email) continue;
-        final d = _metros(c.ubicacion.latitude, c.ubicacion.longitude,
-            _cancha.ubicacion.latitude, _cancha.ubicacion.longitude);
-        if (d <= 80 && d < mejorD) {
-          mejorD = d;
-          destino = c;
-        }
-      }
+      if (creada.id != _cancha.id) setState(() => _cancha = creada);
+      return;
     }
-    if (destino != null && destino.id != _cancha.id) {
-      setState(() => _cancha = destino!);
-    }
+    // Reclamo revertido (creada == null): solo re-sincroniza el estado por si
+    // otro usuario reclamó el lugar; el panel de descubierta se re-consulta solo.
+    await appState.sincronizarPropiedades();
   }
 
-  static double _metros(
-      double lat1, double lng1, double lat2, double lng2) {
-    const r = 6371000.0;
-    final dLat = (lat2 - lat1) * math.pi / 180;
-    final dLng = (lng2 - lng1) * math.pi / 180;
-    final la1 = lat1 * math.pi / 180;
-    final la2 = lat2 * math.pi / 180;
-    final h = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(la1) * math.cos(la2) * math.sin(dLng / 2) * math.sin(dLng / 2);
-    return 2 * r * math.asin(math.sqrt(h));
+  /// ¿El usuario logueado es el DUEÑO de esta cancha? (para mostrarle el panel
+  /// de administración en vez de la vista pública de "Reservar").
+  bool get _soyDueno {
+    final email = appState.usuario?.email ?? '';
+    return email.isNotEmpty && _cancha.dueno == email;
   }
 
-  Color get _color => colorDeporte(_cancha.deporte);
+  /// Chat interno con el DUEÑO del local (dudas de horarios/precios antes de
+  /// reservar). Exige cuenta; si no hay sesión, pide login con el portón único.
+  Future<void> _chatearConDueno() async {
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'escribirle al dueño')) {
+      return;
+    }
+    if (!mounted) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ChatScreen(
+        academiaId: '',
+        cuentaEmail: appState.usuario!.email,
+        titulo: _cancha.club.isNotEmpty ? _cancha.club : _cancha.nombre,
+        soyProfe: false,
+        tipo: 'cancha',
+        refId: _cancha.dueno,
+      ),
+    ));
+  }
 
-  bool _ocupada(String hora) => appState.reservas.any((r) =>
-      r.canchaId == _cancha.id && r.fecha == _fechaIso && r.horaInicio == hora);
+  /// Abre la edición de la cancha (precio, horarios, deporte…) y, al volver,
+  /// re-resuelve la cancha mostrada para reflejar los cambios al instante.
+  Future<void> _editar() async {
+    final nav = Navigator.of(context);
+    await nav.push(MaterialPageRoute(
+        builder: (_) => EditarCanchaScreen(cancha: _cancha)));
+    if (!mounted) return;
+    Cancha? act;
+    for (final x in appState.todasLasCanchas()) {
+      if (x.id == _cancha.id) {
+        act = x;
+        break;
+      }
+    }
+    if (act != null) setState(() => _cancha = act!);
+  }
 
-  bool _esValle(String hora) => hora.compareTo('12:00') < 0;
+  /// Abre el panel de reservas/cobros del dueño.
+  void _verReservas() {
+    Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const ReservasDuenoScreen()));
+  }
+
+  void _verBonos() {
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => BonosDuenoScreen(
+            club: _cancha.club, moneda: _cancha.monedaSimbolo)));
+  }
+
+  // Fecha REAL del slot: los de madrugada (horario que cruza medianoche) caen en
+  // el día siguiente. Ocupación, bloqueo y precio se comparan contra esta fecha.
+  String _fechaSlot(String hora) => _cancha.fechaRealSlot(_fechaIso, hora);
+
+  bool _reservado(String hora) => appState.reservas.any((r) =>
+      r.canchaId == _cancha.id &&
+      r.fecha == _fechaSlot(hora) &&
+      r.horaInicio == hora);
+
+  bool _bloqueado(String hora) =>
+      appState.estaBloqueado(_cancha.id, _fechaSlot(hora), hora);
+
+  // Un slot NO se puede reservar si está reservado o bloqueado por el dueño.
+  bool _ocupada(String hora) => _reservado(hora) || _bloqueado(hora);
+
+  // Ventana de hora feliz de ESTA cancha (configurable por el dueño).
+  bool _esValle(String hora) => _cancha.esValle(hora);
+
+  /// Descuento efectivo del slot para mostrar: el puntual del dueño si lo tiene,
+  /// si no la hora feliz de la ventana valle de la cancha.
+  int _descEfectivo(String hora) {
+    final slot = appState.descuentoSlotPct(_cancha.id, _fechaSlot(hora), hora);
+    if (slot > 0) return slot;
+    return _esValle(hora) ? _cancha.descuentoValle : 0;
+  }
+
+  /// Selección de un BLOQUE CONTIGUO de horas (para reservar más de una hora).
+  /// Tap: si no hay nada, elige esa hora; si tocas un extremo del bloque lo
+  /// achica; si tocas otra hora y TODAS las del rango entre el bloque y ella
+  /// están libres, rellena el bloque (18:00 → 20:00 = 2 h); si hay una hora
+  /// ocupada en medio, empieza un bloque nuevo en la hora tocada.
+  void _tapSlot(String h) {
+    // Slot TOMADO (reservado, no bloqueado por el dueño) y a futuro → ofrecer
+    // lista de espera (waitlist): si se libera, el dueño te contacta.
+    if (_reservado(h) && !_esPasado(h)) {
+      _ofrecerEspera(h);
+      return;
+    }
+    if (_ocupada(h)) return;
+    final todas = _horas;
+    setState(() {
+      if (_slots.isEmpty) {
+        _slots.add(h);
+        return;
+      }
+      if (_slots.contains(h)) {
+        // Tocar un extremo lo quita; una hora interna reinicia a esa sola.
+        if (h == _slotsOrd.first || h == _slotsOrd.last) {
+          _slots.remove(h);
+        } else {
+          _slots
+            ..clear()
+            ..add(h);
+        }
+        return;
+      }
+      final iH = todas.indexOf(h);
+      final iFirst = todas.indexOf(_slotsOrd.first);
+      final iLast = todas.indexOf(_slotsOrd.last);
+      if (iH < 0 || iFirst < 0 || iLast < 0) {
+        _slots
+          ..clear()
+          ..add(h);
+        return;
+      }
+      final lo = iH < iFirst ? iH : iFirst;
+      final hi = iH > iLast ? iH : iLast;
+      final rango = [for (var i = lo; i <= hi; i++) todas[i]];
+      // El bloque solo se forma si TODAS las horas del rango están libres.
+      if (rango.every((s) => !_ocupada(s))) {
+        _slots
+          ..clear()
+          ..addAll(rango);
+      } else {
+        _slots
+          ..clear()
+          ..add(h);
+      }
+    });
+  }
+
+  /// Horas del bloque, ordenadas.
+  List<String> get _slotsOrd {
+    final l = [..._slots];
+    l.sort();
+    return l;
+  }
+
+  /// Total base (sin extras) del bloque: suma del precio efectivo de cada hora
+  /// (respeta valle/descuento por hora, así 2 h no es un simple ×2).
+  double get _totalBloque => _slots.fold(
+      0.0, (a, h) => a + appState.precioSlotEfectivo(_cancha, _fechaSlot(h), h));
+
+  /// El dueño bloquea/desbloquea un horario (los reservados no se tocan).
+  Future<void> _alternarBloqueo(String hora) async {
+    // Función PRO (regla del director): bloquear/reabrir horas exige la
+    // suscripción; sin ella, CTA "Hazte Pro".
+    if (!await exigirPro(context, funcion: 'El bloqueo de horas')) return;
+    if (!mounted) return;
+    if (_reservado(hora)) return; // no bloquear un slot ya reservado
+    // El set se actualiza de forma síncrona dentro de alternarBloqueo; el
+    // setState refleja el cambio al instante y la red va por detrás.
+    final f = appState.alternarBloqueo(_cancha.id, _fechaSlot(hora), hora);
+    if (mounted) setState(() {});
+    await f;
+  }
+
+  /// Hoja "Resumen de tu reserva" (estilo Airbnb) antes de pagar. Devuelve el
+  /// método elegido: 'online' (Yape/Tarjeta) o 'cancha' (efectivo), o null si se
+  /// cancela. El efectivo SOLO se ofrece si el dueño tiene saldo (destacado): así
+  /// PCG cobra su comisión de ese saldo; sin saldo, solo online (comisión al pagar).
+  Future<ResumenResultado?> _mostrarResumen(List<String> slots, num total) async {
+    final ord = [...slots]..sort();
+    return showModalBottomSheet<ResumenResultado>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _ResumenReserva(
+        cancha: _cancha,
+        dia: _dia,
+        fechaIso: _fechaIso,
+        hora: ord.first,
+        horaFin: _cancha.horaFinDe(ord.last),
+        nSlots: ord.length,
+        deporte: _deporteEfectivo,
+        nombreCliente: appState.usuario?.nombre ?? '',
+        total: total,
+        permiteEfectivo: appState.esDestacada(_cancha),
+        saldoBono: appState.miSaldoBono(_cancha.club),
+        fidelidad: _fid,
+        preciosSlots: [
+          for (final h in ord)
+            appState.precioSlotEfectivo(_cancha, _fechaSlot(h), h)
+        ],
+      ),
+    );
+  }
 
   Future<void> _reservar() async {
-    final hora = _hora;
-    if (hora == null) return;
+    if (_slots.isEmpty) return;
     if (!_cancha.reservable) return; // no se reserva si está pendiente/descubierta
-    if (!appState.logueado) {
-      final ok = await LoginGoogleSheet.mostrar(context);
-      if (!ok || !mounted) return;
+    if (!await LoginGoogleSheet.mostrar(context, motivo: 'reservar tu cancha')) {
+      return;
     }
+    if (!mounted) return;
+    final slots = _slotsOrd; // bloque contiguo ordenado (1 o varias horas)
+    // Total del bloque = SUMA del precio efectivo de cada hora (respeta valle/
+    // descuento por hora, así 2 h no es un simple ×2). La comisión de Pichangol
+    // es 100% del lado del dueño; nunca se le suma al jugador.
+    final base = _totalBloque;
+    // Resumen estilo Airbnb ANTES de pagar. Devuelve método + servicios extra.
+    final r = await _mostrarResumen(slots, base);
+    if (r == null || !mounted) return;
+    final metodo = r.metodo; // 'online' | 'sena' | 'cancha' | 'bono'
+    final extras = r.extras;
+    // TUS DATOS confirmados en el resumen. Si la cuenta aún no tenía celular,
+    // queda en su perfil (como hace la web al reservar).
+    final nombreCliente = r.nombre;
+    final celularCliente = r.celular;
+    if (appState.miCelular.trim().isEmpty && celularCliente.isNotEmpty) {
+      unawaited(appState.actualizarMiNombre(
+          appState.usuario?.nombre ?? nombreCliente,
+          celular: celularCliente));
+    }
+    // BONO: canje de horas prepagadas. Valida el saldo antes de reservar (no
+    // cobra nada; el pago fue al comprar el pack).
+    // BONO + SERVICIOS EXTRA (igual que la web, `/web/asegurar`): el bono
+    // cubre los turnos; los extras elegidos se COBRAN EN LÍNEA (más el cargo
+    // por servicio si está activo) y se liquidan al dueño. Con boleador no va
+    // el bono, y sin pago en línea no se pueden llevar extras con el bono.
+    final extrasBono = metodo == 'bono'
+        ? extras.fold(0.0, (a, s) => a + s.precio)
+        : 0.0;
+    if (metodo == 'bono') {
+      if (appState.miSaldoBono(_cancha.club) < slots.length) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('No te alcanza el saldo de bono para esas horas.')));
+        return;
+      }
+      if (extras.any((x) => x.esBoleador)) {
+        await avisarPichangol(context,
+            titulo: 'Bono sin boleador',
+            mensaje: 'Con tu bono no se puede contratar boleador: quítalo o '
+                'reserva sin el bono.',
+            icono: Icons.confirmation_number_outlined);
+        return;
+      }
+      if (extrasBono > 0 && !appState.pagoOnlineDisponible) {
+        await avisarPichangol(context,
+            titulo: 'Los extras se pagan en línea',
+            mensaje: 'Con tu bono los turnos ya están pagados, pero los '
+                'servicios extra se pagan en línea y ahora el pago en línea no '
+                'está disponible. Quita los servicios extra para usar tu bono.',
+            icono: Icons.confirmation_number_outlined);
+        return;
+      }
+    }
+    // PREMIO DE FIDELIDAD del local: descuento por turno (hora gratis = el
+    // más barato a 0; descuento = % por turno), espejo del backend.
+    final usaFid = r.usarFidelidad && _fid != null && _fid!.disponible;
+    final descPorHora = <String, int>{};
+    var descFid = 0;
+    if (usaFid) {
+      final precios = [
+        for (final h in slots)
+          appState.precioSlotEfectivo(_cancha, _fechaSlot(h), h)
+      ];
+      final (tot, por) = _fid!.config.descuentoPara(precios);
+      descFid = tot;
+      for (var i = 0; i < slots.length; i++) {
+        if (por[i] > 0) descPorHora[slots[i]] = por[i];
+      }
+    }
+    // El jugador paga las horas (menos el premio) + los servicios extra que
+    // eligió (una sola vez).
+    final total = base - descFid + extras.fold(0.0, (a, s) => a + s.precio);
+    // CANJE DE PUNTOS (solo pago ONLINE, en soles): 100 pts = S/3 de descuento.
+    // El dueño recibe su bruto completo (la liquidación va con el precio real);
+    // el descuento lo absorbe Pichangol de su comisión.
+    final canjea = metodo == 'online' &&
+        r.usarPuntos &&
+        appState.misPuntosDisponibles >= 100 &&
+        _cancha.monedaSimbolo == 'S/' &&
+        total > 3.0;
+    final descuentoPuntos = canjea ? 3.0 : 0.0;
+    // Seña anti no-show: % del TOTAL de las horas (sin extras).
+    final esSena = metodo == 'sena';
+    final senaMonto =
+        _cancha.senaPct > 0 ? (base * _cancha.senaPct / 100).round() : 0;
+    final mon = _cancha.monedaSimbolo;
+    // Etiqueta del bloque para conceptos/mensajes ('18:00–20:00' o '18:00').
+    final etiqueta = slots.length > 1
+        ? '${slots.first}–${_cancha.horaFinDe(slots.last)}'
+        : slots.first;
+    final pagoOnline = metodo == 'online';
+    // Bono con servicios extra: los extras se cobran en línea (como la web).
+    final pagoBono = metodo == 'bono' && extrasBono > 0;
     final messenger = ScaffoldMessenger.of(context);
     final nav = Navigator.of(context);
-    // Piloto: pago en cancha (efectivo), sin seña con tarjeta.
-    final res =
-        await appState.agregarReservaJugador(_cancha, _fechaIso, _dia, hora);
+    // ── FASE 1 (solo si hay COBRO por adelantado): ASEGURA el horario ANTES de
+    // cobrar. El UNIQUE de Supabase decide al ganador AQUÍ: si 3 jugadores van
+    // por la misma hora a la vez, 2 ven "ocupado" SIN haber puesto su tarjeta
+    // (antes se les cobraba y recién después se enteraban). Si el pago luego
+    // falla o se cancela, el bloque se LIBERA al instante.
+    List<Reserva>? aseguradas;
+    if (pagoOnline || esSena || pagoBono) {
+      final (resHold, tomadas) = await appState.asegurarBloqueJugador(
+          _cancha, _fechaIso, _dia, slots,
+          deporte: _deporteEfectivo,
+          nombreCliente: nombreCliente,
+          telefono: celularCliente);
+      if (!mounted) return;
+      if (resHold == ResultadoReserva.ocupado) {
+        setState(() => _slots.clear()); // libera selección; la grilla refresca
+        messenger.showSnackBar(const SnackBar(
+          backgroundColor: Colors.redAccent,
+          content: Text(
+              '⛔ Esa hora ya está ocupada: otro jugador la acaba de reservar. '
+              'Elige otro horario, por favor. No se te cobró nada.'),
+        ));
+        return;
+      }
+      if (resHold != ResultadoReserva.ok) {
+        // Sin señal no se puede garantizar el slot NI cobrar online.
+        messenger.showSnackBar(const SnackBar(
+          backgroundColor: Color(0xFFB4471F),
+          content: Text(
+              '⚠️ Sin conexión: para pagar online necesitas señal. Puedes '
+              'elegir "Pagar en la cancha" mientras tanto.'),
+        ));
+        return;
+      }
+      aseguradas = tomadas;
+    }
+    // N.º de operación del cargo (chr_ de Culqi): viaja con la liquidación
+    // para que la torre lea la comisión REAL de la pasarela.
+    var operacion = '';
+    // CARGO POR SERVICIO (fase 3): la cotización del resumen debe calzar con
+    // lo que se cobra; si cambió la base (o no llegó), se vuelve a cotizar
+    // ANTES de cobrar. Con la línea apagada es 0 y no cambia nada.
+    CotizacionCargo? cargo = r.cargo;
+    // MODELO 2 en soles: el cargo DEPENDE DEL MEDIO (Yape más barato que
+    // tarjeta). Se cotizan ambos (en paralelo, con caché) y la hoja de pago
+    // muestra y cobra el del medio que el jugador elige; tras pagar se usa la
+    // cotización del medio realmente cobrado. Null = un solo cargo (modelo 1,
+    // USD/BOB o línea apagada): todo como antes.
+    Map<String, CotizacionCargo>? cargosMedio;
+    var baseCobro = 0.0;
+    if (pagoOnline || esSena || pagoBono) {
+      baseCobro = pagoOnline
+          ? total - descuentoPuntos
+          : esSena
+              ? senaMonto.toDouble()
+              : extrasBono;
+      final baseC = (baseCobro * 100).round();
+      if (CargoServicio.activo('reservas') &&
+          CargoServicio.dependeDelMedio('reservas', mon) &&
+          baseC > 0) {
+        cargosMedio = await CargoServicio.cotizarPorMedio(
+            linea: 'reservas',
+            moneda: mon,
+            baseCentimos: baseC,
+            deporte: _deporteEfectivo.name);
+        if (!mounted) return;
+        // Mientras no se elija, el de referencia es tarjeta (el mayor).
+        cargo = cargosMedio['tarjeta'];
+      } else if (CargoServicio.activo('reservas') &&
+          (cargo == null || cargo.baseCentimos != baseC)) {
+        cargo = await CargoServicio.cotizar(
+            linea: 'reservas',
+            moneda: mon,
+            baseCentimos: baseC,
+            deporte: _deporteEfectivo.name);
+        if (!mounted) return;
+      }
+    }
+    final cargoSoles = (cargo?.hayCargo ?? false) ? cargo!.cargo : 0.0;
+    // "Resumen de tu pago" en la hoja de pago (igual que la web): turnos,
+    // premio, servicios extra/boleador, puntos y el cargo por servicio ⓘ.
+    final lineasPago = <LineaPago>[];
+    if (esSena) {
+      lineasPago.add(LineaPago(
+          'Seña ${_cancha.senaPct.round()} % · ${_cancha.nombre} · $etiqueta',
+          senaMonto.toDouble()));
+    } else {
+      for (final h in slots) {
+        lineasPago.add(LineaPago(
+            '${_cancha.nombre} · $h–${_cancha.horaFinDe(h)}',
+            appState.precioSlotEfectivo(_cancha, _fechaSlot(h), h).toDouble()));
+      }
+      if (descFid > 0) {
+        lineasPago.add(LineaPago('🎁 Premio de fidelidad', -descFid.toDouble()));
+      }
+      if (pagoBono) {
+        lineasPago.add(LineaPago(
+            '🎟️ Pagado con tu bono · ${slots.length} ${slots.length == 1 ? 'hora' : 'horas'}',
+            -base.toDouble()));
+      }
+      for (final x in extras) {
+        lineasPago.add(LineaPago(
+            '${x.emoji.isNotEmpty ? '${x.emoji} ' : ''}${x.nombre}'
+            '${x.cantidad > 1 ? ' × ${x.cantidad}' : ''}',
+            x.precio));
+      }
+      if (descuentoPuntos > 0) {
+        lineasPago.add(LineaPago('⭐ Canje de puntos', -descuentoPuntos));
+      }
+    }
+    final notaPago = esSena
+        ? 'El resto ($mon ${(total - senaMonto).toStringAsFixed(2)}) lo pagas en la cancha.'
+        : pagoBono
+            ? 'Tus turnos van con tu bono (te quedan ${appState.miSaldoBono(_cancha.club) - slots.length} h); pagas solo los servicios extra.'
+            : '';
+    final detallePago =
+        DetallePago(lineas: lineasPago, cargo: cargo, nota: notaPago);
+    // Monto + resumen POR MEDIO para la hoja de pago (solo si el cargo depende
+    // del medio). La base ([baseCobro]) es la misma; cambia solo el cargo.
+    final cm = cargosMedio;
+    final Map<String, OpcionPago>? porMedio = cm == null
+        ? null
+        : {
+            for (final e in cm.entries)
+              e.key: OpcionPago(
+                  monto: baseCobro + (e.value.hayCargo ? e.value.cargo : 0.0),
+                  detalle: DetallePago(
+                      lineas: lineasPago, cargo: e.value, nota: notaPago)),
+          };
+    // FIDELIDAD: con el bloque asegurado, el servidor APARTA el premio para
+    // esta reserva antes de cobrar (si otro equipo lo usó un segundo antes,
+    // se libera el horario y se avisa; nunca se cobra de menos sin premio).
+    var refFid = '';
+    if (usaFid && aseguradas != null && aseguradas.isNotEmpty) {
+      refFid = aseguradas.first.grupoReservaId.isNotEmpty
+          ? aseguradas.first.grupoReservaId
+          : aseguradas.first.id;
+      final ok = await Fidelidad.reservarCanje(
+          email: appState.usuario?.email ?? '',
+          canchaId: _cancha.id,
+          reservaRef: refFid,
+          reservaIds: [for (final x in aseguradas) x.id],
+          descuento: descFid);
+      if (!mounted) return;
+      if (!ok) {
+        await appState.liberarBloqueAsegurado(aseguradas);
+        setState(() => _fid = null);
+        _cargarFidelidad();
+        messenger.showSnackBar(const SnackBar(
+          backgroundColor: Color(0xFFB4471F),
+          content: Text(
+              'Tu premio de fidelidad ya no está disponible. Revisa el total y '
+              'vuelve a intentar. No se te cobró nada.'),
+        ));
+        return;
+      }
+    }
+    // Reserva GRATIS (hora gratis sin extras): no hay pasarela ni cargo.
+    final gratis =
+        pagoOnline && descFid > 0 && total - descuentoPuntos + cargoSoles <= 0;
+    if (metodo == 'online' && gratis) {
+      // Nada que cobrar: la reserva nace pagada con el premio.
+    } else if (metodo == 'online') {
+      // Pago con tarjeta/Yape (Culqi/Libélula). Si cancela o falla, se libera
+      // el horario asegurado y no se reserva.
+      final pagado = await PagoTarjeta.cobrar(
+        context,
+        monto: total - descuentoPuntos + cargoSoles,
+        concepto: 'Reserva · ${_cancha.nombre} · $_dia $etiqueta'
+            '${canjea ? ' (−S/3 puntos)' : ''}'
+            '${cargoSoles > 0 ? ' + cargo por servicio' : ''}',
+        email: appState.usuario?.email ?? '',
+        moneda: mon,
+        onOperacion: (o) => operacion = o,
+        detalle: detallePago,
+        porMedio: porMedio,
+      );
+      if (!pagado) {
+        await appState.liberarBloqueAsegurado(aseguradas!);
+        if (refFid.isNotEmpty) unawaited(Fidelidad.revertir(refFid));
+        if (PagoTarjeta.ultimoError.isNotEmpty) {
+          appState.avisarPagoRechazado(
+              cancha: _cancha,
+              fecha: _cancha.fechaRealSlot(_fechaIso, slots.first),
+              horas: etiqueta,
+              motivo: PagoTarjeta.ultimoError);
+        }
+        return;
+      }
+    } else if (pagoBono) {
+      // Bono: los turnos ya están pagados; se cobran SOLO los servicios extra
+      // (+ cargo por servicio). Si falla, se libera el horario y el bono queda
+      // intacto (las horas se descuentan recién con la reserva confirmada).
+      final pagado = await PagoTarjeta.cobrar(
+        context,
+        monto: extrasBono + cargoSoles,
+        concepto: 'Servicios extra · ${_cancha.nombre} · $_dia $etiqueta (bono)'
+            '${cargoSoles > 0 ? ' + cargo por servicio' : ''}',
+        email: appState.usuario?.email ?? '',
+        moneda: mon,
+        onOperacion: (o) => operacion = o,
+        detalle: detallePago,
+        porMedio: porMedio,
+      );
+      if (!pagado) {
+        await appState.liberarBloqueAsegurado(aseguradas!);
+        if (PagoTarjeta.ultimoError.isNotEmpty) {
+          appState.avisarPagoRechazado(
+              cancha: _cancha,
+              fecha: _cancha.fechaRealSlot(_fechaIso, slots.first),
+              horas: etiqueta,
+              motivo: PagoTarjeta.ultimoError);
+        }
+        return;
+      }
+    } else if (esSena) {
+      // El jugador ADELANTA la seña (del total). El resto lo paga en la cancha.
+      final pagado = await PagoTarjeta.cobrar(
+        context,
+        monto: senaMonto + cargoSoles,
+        concepto: 'Seña · ${_cancha.nombre} · $_dia $etiqueta'
+            '${cargoSoles > 0 ? ' + cargo por servicio' : ''}',
+        email: appState.usuario?.email ?? '',
+        moneda: mon,
+        onOperacion: (o) => operacion = o,
+        detalle: detallePago,
+        porMedio: porMedio,
+      );
+      if (!pagado) {
+        await appState.liberarBloqueAsegurado(aseguradas!);
+        if (PagoTarjeta.ultimoError.isNotEmpty) {
+          appState.avisarPagoRechazado(
+              cancha: _cancha,
+              fecha: _cancha.fechaRealSlot(_fechaIso, slots.first),
+              horas: etiqueta,
+              motivo: PagoTarjeta.ultimoError);
+        }
+        return;
+      }
+    }
+    // Medio con el que COBRÓ la pasarela (yape|tarjeta): decide qué
+    // cotización del cargo se pagó de verdad (modelo 2) y viaja a la
+    // liquidación como `medio_pago` (también en seña y bono+extras).
+    final cobroPasarela = (pagoOnline && !gratis) || esSena || pagoBono;
+    final medioCobro = !cobroPasarela
+        ? ''
+        : PagoTarjeta.ultimoMedioCobro.isNotEmpty
+            ? PagoTarjeta.ultimoMedioCobro
+            : (PagoTarjeta.ultimoMetodo == 'yape' ? 'yape' : 'tarjeta');
+    if (cm != null && medioCobro.isNotEmpty) {
+      cargo = cm[medioCobro] ?? cargo;
+    }
+    // 'cancha' → sin pasarela: se reserva y el dueño cobra en efectivo.
+    // Crea una Reserva por hora (mismo grupo). Con bloque asegurado, CONFIRMA
+    // esas mismas filas (estampa pago/medio/seña); sin asegurar (efectivo/bono)
+    // verifica que TODAS estén libres como siempre.
+    final res = await appState.agregarReservasJugadorMulti(
+        _cancha, _fechaIso, _dia, slots,
+        deporte: _deporteEfectivo, extras: extras,
+        cobro: metodo == 'cancha' ? 'efectivo' : metodo,
+        operacionId: operacion,
+        // Con bono la fila queda con medio 'bono'; si se pagaron extras en
+        // línea, este medio (yape/tarjeta) va a la liquidación de los extras.
+        medioPago: esSena
+            ? 'sena'
+            : gratis
+                ? 'fidelidad'
+                : (pagoOnline || pagoBono)
+                    ? (PagoTarjeta.ultimoMetodo.isNotEmpty
+                        ? PagoTarjeta.ultimoMetodo
+                        : 'online')
+                    : (metodo == 'bono' ? 'bono' : 'efectivo'),
+        conSena: esSena,
+        aseguradas: aseguradas,
+        cargo: (pagoOnline || esSena || pagoBono) ? cargo : null,
+        extrasEnLinea: pagoBono,
+        medioPasarela: medioCobro,
+        descuentos: descPorHora,
+        nombreCliente: nombreCliente,
+        telefono: celularCliente);
     if (!mounted) return;
     if (res == ResultadoReserva.ocupado) {
-      setState(() => _hora = null); // libera selección; la grilla se refresca
+      if (refFid.isNotEmpty) unawaited(Fidelidad.revertir(refFid));
+      setState(() => _slots.clear()); // libera selección; la grilla se refresca
       messenger.showSnackBar(const SnackBar(
         backgroundColor: Colors.redAccent,
-        content: Text('Ese horario acaba de tomarse. Elige otro, por favor.'),
+        content:
+            Text('Alguna de esas horas acaba de tomarse. Elige otras, por favor.'),
       ));
       return;
     }
@@ -168,147 +985,388 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     // Solo es "confirmada" si llegó a Supabase (fuente de verdad anti-doble
     // reserva). Con sinConexion/error se guarda local pero NO está garantizada.
     final confirmada = res == ResultadoReserva.ok;
+    // FIDELIDAD: premio apartado → queda USADO; sin bloque asegurado
+    // (efectivo) se usa directo sobre la reserva recién creada. Luego se
+    // refresca la tarjeta (ciclo nuevo).
+    if (usaFid && descFid > 0) {
+      if (refFid.isNotEmpty) {
+        unawaited(Fidelidad.confirmar(refFid).then((_) => _cargarFidelidad()));
+      } else if (confirmada) {
+        final fh0 = _cancha.fechaRealSlot(_fechaIso, slots.first);
+        Reserva? creada;
+        for (final x in appState.reservas) {
+          if (x.canchaId == _cancha.id && x.horaInicio == slots.first && x.fecha == fh0) {
+            creada = x;
+            break;
+          }
+        }
+        if (creada != null) {
+          final ref = creada.grupoReservaId.isNotEmpty ? creada.grupoReservaId : creada.id;
+          final ids = creada.grupoReservaId.isNotEmpty
+              ? [for (final x in appState.reservas) if (x.grupoReservaId == creada.grupoReservaId) x.id]
+              : [creada.id];
+          unawaited(Fidelidad.reservarCanje(
+                  email: appState.usuario?.email ?? '',
+                  canchaId: _cancha.id,
+                  reservaRef: ref,
+                  reservaIds: ids,
+                  descuento: descFid,
+                  confirmar: true)
+              .then((_) => _cargarFidelidad()));
+        }
+      }
+    }
+    // BOLEADOR: el cliente ya pagó su parte → se registra la solicitud (el
+    // backend le avisa por push y él acepta). Si no llega, queda en el outbox
+    // y se reintenta: nunca se pierde un boleo pagado.
+    final bol = r.boleador;
+    if (bol != null && pagoOnline && aseguradas != null) {
+      var bolSoles = 0.0;
+      for (final x in extras) {
+        if (x.esBoleador) bolSoles += x.precio;
+      }
+      final cobrado = total - descuentoPuntos;
+      final cargoBol = (cargo != null && cargo.hayCargo && cobrado > 0)
+          ? (cargo.cargoCentimos * bolSoles / cobrado).round()
+          : 0;
+      unawaited(Boleadores.solicitar({
+        'slug': bol.slug,
+        'cliente_email': appState.usuario?.email ?? '',
+        'cliente_nombre': appState.usuario?.nombre ?? '',
+        'reserva_ids': [for (final x in aseguradas) x.id],
+        'reserva_ref': aseguradas.first.grupoReservaId.isNotEmpty
+            ? aseguradas.first.grupoReservaId
+            : aseguradas.first.id,
+        'cancha_id': _cancha.id,
+        'fecha': _cancha.fechaRealSlot(_fechaIso, slots.first),
+        'hora_inicio': slots.first,
+        'hora_fin': _cancha.horaFinDe(slots.last),
+        'turnos': slots.length,
+        'charge_id': operacion,
+        'cargo_centimos': cargoBol,
+        'medio': PagoTarjeta.ultimoMetodo.isNotEmpty
+            ? PagoTarjeta.ultimoMetodo
+            : medioCobro,
+      }).then((_) {
+        final email = appState.usuario?.email ?? '';
+        if (email.isNotEmpty) Boleadores.refrescarSolicitudes(email);
+      }));
+    }
+    if (confirmada) {
+      // Ya reservaste: sal de la lista de espera de esas horas (si estabas).
+      for (final h in _slotsOrd) {
+        if (appState.estoyEnEspera(_cancha.id, _fechaSlot(h), h)) {
+          appState.salirDeEspera(_cancha.id, _fechaSlot(h), h);
+        }
+      }
+      // Canje de bono: descuenta las horas usadas (recién al confirmar el slot).
+      if (metodo == 'bono') {
+        appState.usarBonoHoras(_cancha.club, slots.length);
+      }
+      // Canje de PUNTOS: se registra recién con la reserva confirmada y el
+      // pago hecho (100 pts consumidos, S/3 aplicados).
+      if (canjea) {
+        appState.canjearPuntos(
+            puntos: 100,
+            soles: 3.0,
+            // Fecha REAL del primer turno (madrugada = día siguiente), el
+            // mismo formato que la web: así una cancelación encuentra el
+            // canje y devuelve los puntos.
+            referencia:
+                '${_cancha.id}_${_cancha.fechaRealSlot(_fechaIso, slots.first)}_${slots.first}');
+      }
+    }
     messenger.showSnackBar(
       SnackBar(
         backgroundColor: confirmada ? pino : const Color(0xFFB4471F),
-        duration: const Duration(seconds: 5),
+        duration: Duration(seconds: confirmada ? 5 : 9),
         content: Text(
-            confirmada
-                ? '✅ Reserva confirmada en ${_cancha.nombre} · $_dia $hora'
-                : '⚠️ Guardamos tu reserva, pero no pudimos confirmarla con el '
-                    'servidor. Otra persona podría tomar el mismo horario; '
-                    'reconéctate para asegurarla.',
+            res == ResultadoReserva.error
+                ? '⚠️ No se pudo registrar en el servidor. Queda pendiente y se '
+                    'reintenta. Detalle: ${ReservasRepo.ultimoError}'
+                : confirmada
+                ? (metodo == 'bono'
+                    ? '✅ Reserva confirmada con tu bono en ${_cancha.nombre} · $_dia $etiqueta · te quedan ${appState.miSaldoBono(_cancha.club)} h${pagoBono ? ' · extras pagados ($mon ${extrasBono.toStringAsFixed(2)})' : ''}'
+                    : esSena
+                    ? '✅ Seña pagada · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta · paga $mon ${(total - senaMonto).toStringAsFixed(2)} en la cancha'
+                    : gratis
+                        ? '🎁 ¡Reserva gratis con tu premio de fidelidad! ${_cancha.nombre} · $_dia $etiqueta'
+                    : pagoOnline
+                        ? '✅ Pago OK · Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta${bol != null ? ' · ${bol.nombre} confirma tu boleo en breve' : ''}${descFid > 0 ? ' · premio de fidelidad aplicado 🎁' : ''}'
+                        : '✅ Reserva confirmada en ${_cancha.nombre} · $_dia $etiqueta · pagas en la cancha')
+                : '⚠️ Sin señal: guardamos tu reserva como PENDIENTE y la '
+                    'confirmaremos sola al recuperar conexión. Si para entonces '
+                    'otra persona tomó el horario, te avisaremos.',
             style: const TextStyle(color: Colors.white)),
       ),
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+
+  // ── Bloques de la ficha (compartidos por el layout de teléfono y el de
+  // tablet a 2 columnas). Devuelven los widgets TAL CUAL iban en la columna
+  // original; solo cambia cómo se componen en build(). ──
+
+  /// Foto de la cancha (card redondeada con carrusel + contador).
+  Widget _wHero({required double alto}) => ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: SizedBox(height: alto, child: _HeroGaleria(cancha: _cancha)),
+      );
+
+  /// "Elige la cancha": chips por cancha del local (si hay más de una).
+  List<Widget> _wSelectorCancha(bool descubierta, bool pendiente) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     final c = widget.club;
-    final descubierta = !_cancha.registrada;
-    final pendiente = _cancha.pendienteVerificacion;
-    return Scaffold(
-      backgroundColor: papel,
-      body: RefreshIndicator(
-        onRefresh: _pullRefresh,
-        child: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            expandedHeight: 280,
-            pinned: true,
-            backgroundColor: _color,
-            foregroundColor: Colors.white,
-            flexibleSpace: FlexibleSpaceBar(
-              background: _HeroGaleria(cancha: _cancha),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(22, 18, 22, 120),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
+    return [
+                  // Elige la cancha/deporte: la foto y la info de arriba cambian
+                  // según la cancha elegida (cada una tiene sus fotos y precio).
+                  if (!descubierta && !pendiente && c.canchas.length > 1) ...[
+                    Text('Elige la cancha',
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 44,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: c.canchas.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (_, i) {
+                          final cc = c.canchas[i];
+                          final sel = cc.id == _cancha.id;
+                          return GestureDetector(
+                            onTap: () => setState(() {
+                              // Versión vigente (el club es un snapshot de la
+                              // navegación; podría traer duración/precio viejos).
+                              _cancha = appState.canchaVigente(cc);
+                              _slots.clear();
+                              _deporteSel = null; // se ajusta a la nueva cancha
+                            }),
+                            child: Container(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 14),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: sel ? limaSuave : cs.surface,
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                    color:
+                                        sel ? pino : const Color(0xFFE3DECF),
+                                    width: 1.5),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(iconoDeporte(cc.deporte),
+                                      size: 16,
+                                      color: colorDeporte(cc.deporte)),
+                                  const SizedBox(width: 7),
+                                  Text(cc.nombre,
+                                      style: t.bodyMedium?.copyWith(
+                                          fontWeight: sel
+                                              ? FontWeight.w700
+                                              : FontWeight.w600,
+                                          color: sel ? tinta : cs.onSurface)),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+    ];
+  }
+
+  /// Cancha multideporte: elegir qué se va a jugar.
+  List<Widget> _wDeporte(bool descubierta, bool pendiente) {
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return [
+                  // Cancha multideporte (loza multiuso): elegir qué se va a jugar.
+                  // No afecta la disponibilidad (agenda compartida), solo registra
+                  // el deporte de la reserva.
+                  if (!descubierta && !pendiente && _cancha.esMultideporte) ...[
+                    Text('¿Qué vas a jugar?',
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final d in _cancha.deportesJugables)
+                          ChoiceChip(
+                            label: Text('${emojiDeporte(d)}  ${d.etiqueta}'),
+                            selected: _deporteEfectivo == d,
+                            selectedColor: colorDeporte(d),
+                            labelStyle: TextStyle(
+                                color: _deporteEfectivo == d
+                                    ? Colors.white
+                                    : cs.onSurface,
+                                fontWeight: FontWeight.w600),
+                            onSelected: (_) =>
+                                setState(() => _deporteSel = d),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+    ];
+  }
+
+  /// Fila de badges (fundador / en Google / pendiente / digitalizada / sello).
+  Widget _wBadges(bool descubierta, bool pendiente) {
+    final c = widget.club;
+    return Row(
+      children: [
                       if (c.clubFundador)
                         const _Badge('CLUB FUNDADOR', bg: pino, fg: lima),
                       if (c.clubFundador) const SizedBox(width: 6),
                       if (descubierta)
-                        const _Badge('◎ EN GOOGLE',
-                            bg: Color(0xFF3A352E), fg: Colors.white)
+                        _Badge(_cancha.esOsm ? '◎ EN EL MAPA' : '◎ EN GOOGLE',
+                            bg: const Color(0xFF3A352E), fg: Colors.white)
+                      else if (_reclamoRechazado)
+                        const _Badge('⛔ SOLICITUD RECHAZADA',
+                            bg: Color(0xFFFBE7E7), fg: Color(0xFF8A1A17))
                       else if (pendiente)
                         const _Badge('⏳ PENDIENTE DE VERIFICACIÓN',
                             bg: Color(0xFFFBEAD2), fg: clayOscuro)
                       else
-                        const _Badge('DIGITALIZADA',
+                        const _Badge('📋 DIGITALIZADA',
                             bg: Color(0xFFF0ECE2), fg: Color(0xFF5C574E)),
-                      if (_cancha.verificada) ...[
+                      if (!descubierta && _cancha.verificada) ...[
                         const SizedBox(width: 6),
                         const SelloVerificada(),
                       ],
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(c.nombre, style: t.headlineSmall),
-                  const SizedBox(height: 3),
-                  Text(
-                    c.direccion ??
-                        '${c.barrio} · ${c.canchas.length} ${c.canchas.length == 1 ? 'cancha' : 'canchas'} · ${c.deportes.map((d) => d.etiqueta).join(' · ')}',
-                    style: t.bodyMedium?.copyWith(color: textoTenue),
-                  ),
-                  const SizedBox(height: 20),
+      ],
+    );
+  }
 
+  /// Panel según el modo: descubierta / pendiente / dueño / reserva pública.
+  List<Widget> _wPanel(bool descubierta, bool pendiente) {
+    final t = Theme.of(context).textTheme;
+    return [
                   if (descubierta)
                     _PanelDescubierta(
                         cancha: _cancha, onReclamada: _refrescarDescubierta)
                   else if (pendiente)
                     _PanelPendiente(
-                        cancha: _cancha, onActualizar: _refrescarPropiedad)
-                  else ...[
-                    // Selector "Elige cancha"
-                    if (c.canchas.length > 1) ...[
-                      Text('Elige cancha',
-                          style: t.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 11),
+                        cancha: _cancha,
+                        onActualizar: _refrescarPropiedad,
+                        onRechazado: (v) {
+                          if (mounted) setState(() => _reclamoRechazado = v);
+                        })
+                  else if (_soyDueno) ...[
+                    _PanelDueno(
+                        cancha: _cancha,
+                        onEditar: _editar,
+                        onVerReservas: _verReservas,
+                        onBonos: _verBonos),
+                    const SizedBox(height: 22),
+                    Text('Bloquear horarios',
+                        style: t.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 4),
+                    Text(
+                        'Cierra horas que no quieras alquilar (mantenimiento, o '
+                        'walk-in que tomó la cancha). Los jugadores no podrán '
+                        'reservarlas. Toca para bloquear/reabrir.',
+                        style: t.bodySmall
+                            ?.copyWith(color: textoTenueDe(context))),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        _DiaChip('Hoy', _dia == 'Hoy',
+                            () => setState(() => _dia = 'Hoy')),
+                        const SizedBox(width: 10),
+                        _DiaChip('Mañana', _dia == 'Mañana',
+                            () => setState(() => _dia = 'Mañana')),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    if (_horas.isEmpty)
+                      Text(
+                          _dia == 'Hoy'
+                              ? 'No quedan horas para hoy. Elige "Mañana".'
+                              : 'Sin horas configuradas.',
+                          style: t.bodyMedium
+                              ?.copyWith(color: textoTenueDe(context)))
+                    else
+                      Wrap(
+                        spacing: 9,
+                        runSpacing: 9,
+                        children: [
+                          for (final h in _horas)
+                            _SlotChip(
+                              hora: h,
+                              // Reservado = ocupada (no se toca); bloqueado =
+                              // chip con candado (tap para reabrir); libre = tap
+                              // para bloquear.
+                              ocupada: _reservado(h),
+                              bloqueada: _bloqueado(h),
+                              valle: _esValle(h),
+                              descuento: _descEfectivo(h),
+                              seleccionada: false,
+                              nEspera: appState.nEnEspera(
+                                  _cancha.id, _fechaSlot(h), h),
+                              onTap: () => _reservado(h)
+                                  ? _verEsperaDueno(h)
+                                  : _alternarBloqueo(h),
+                            ),
+                        ],
+                      ),
+                  ] else ...[
+                    // Fila de datos clave (estilo Airbnb): deporte · horario ·
+                    // duración · precio, con íconos.
+                    _FilaDatos(cancha: _cancha),
+                    const SizedBox(height: 18),
+                    // Strip de confianza (handoff): garantías reales del producto.
+                    const _StripConfianza(),
+                    const SizedBox(height: 20),
+                    // Servicios (amenities) que el dueño marcó para esta cancha.
+                    if (_cancha.amenidades.isNotEmpty) ...[
+                      _FilaAmenities(claves: _cancha.amenidades),
+                      const SizedBox(height: 20),
+                    ],
+                    // BODEGA del local: pedir a tu cancha (Fase 2 de Mi
+                    // bodega). Solo locales verificados con dueño; la
+                    // pantalla valida si el dueño aceptó pedidos.
+                    if (_cancha.verificada &&
+                        _cancha.dueno.isNotEmpty &&
+                        _cancha.dueno.toLowerCase() !=
+                            (appState.usuario?.email ?? '')
+                                .toLowerCase()) ...[
                       SizedBox(
-                        height: 44,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: c.canchas.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 8),
-                          itemBuilder: (_, i) {
-                            final cc = c.canchas[i];
-                            final sel = cc.id == _cancha.id;
-                            return GestureDetector(
-                              onTap: () => setState(() {
-                                _cancha = cc;
-                                _hora = null;
-                              }),
-                              child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 14),
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: sel
-                                      ? const Color(0xFFEAF6C2)
-                                      : Colors.white,
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(
-                                      color: sel
-                                          ? pino
-                                          : const Color(0xFFE3DECF),
-                                      width: 1.5),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 9,
-                                      height: 9,
-                                      decoration: BoxDecoration(
-                                          color: colorDeporte(cc.deporte),
-                                          borderRadius:
-                                              BorderRadius.circular(2)),
-                                    ),
-                                    const SizedBox(width: 7),
-                                    Text(cc.nombre,
-                                        style: t.bodyMedium?.copyWith(
-                                            fontWeight: sel
-                                                ? FontWeight.w700
-                                                : FontWeight.w600,
-                                            color: tinta)),
-                                  ],
-                                ),
-                              ),
-                            );
-                          },
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                  builder: (_) => PedirBodegaScreen(
+                                        duenoEmail: _cancha.dueno,
+                                        nombreLocal: widget.club.nombre,
+                                        ubicacionLocal: _cancha.ubicacion,
+                                      ))),
+                          icon: const Text('🍺',
+                              style: TextStyle(fontSize: 16)),
+                          label: const Text(
+                              'Bodega del local · pide a tu cancha'),
                         ),
                       ),
                       const SizedBox(height: 20),
                     ],
-
+                    // TARJETA DE FIDELIDAD del local: cada N reservas, un
+                    // premio. Progreso real del jugador (backend) o la promo.
+                    if (_fidCfg.activa && _cancha.reservable) ...[
+                      _TarjetaFidelidad(
+                        cfg: _fidCfg,
+                        estado: _fid,
+                        local: widget.club.nombre,
+                        conSesion: appState.usuario != null,
+                      ),
+                      const SizedBox(height: 20),
+                    ],
                     // Día
                     Text('Elige el día',
                         style: t.titleMedium
@@ -317,10 +1375,10 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     Row(
                       children: [
                         _DiaChip('Hoy', _dia == 'Hoy',
-                            () => setState(() { _dia = 'Hoy'; _hora = null; })),
+                            () => setState(() { _dia = 'Hoy'; _slots.clear(); })),
                         const SizedBox(width: 10),
                         _DiaChip('Mañana', _dia == 'Mañana',
-                            () => setState(() { _dia = 'Mañana'; _hora = null; })),
+                            () => setState(() { _dia = 'Mañana'; _slots.clear(); })),
                       ],
                     ),
                     const SizedBox(height: 20),
@@ -331,16 +1389,43 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                             ?.copyWith(fontWeight: FontWeight.w700)),
                     const SizedBox(height: 4),
                     Text('Las mañanas (valle) suelen estar más libres.',
-                        style: t.bodySmall?.copyWith(color: textoTenue)),
+                        style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
                     const SizedBox(height: 12),
+                    // Banner device-first: una hora que esperabas se liberó.
+                    if (_horasLiberadas().isNotEmpty) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: limaSuave,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: lima),
+                        ),
+                        child: Row(
+                          children: [
+                            const IconoVivo(Icons.celebration, color: lima),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                  '¡Se liberó ${_horasLiberadas().join(', ')} que '
+                                  'esperabas! Tócala abajo para reservar.',
+                                  style: t.bodySmall?.copyWith(
+                                      color: bosque,
+                                      fontWeight: FontWeight.w700,
+                                      height: 1.3)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
                     if (_horas.isEmpty)
                       Text(
                         _dia == 'Hoy'
                             ? 'No quedan horarios para hoy. Elige "Mañana".'
                             : 'Sin horarios disponibles.',
-                        style: t.bodyMedium?.copyWith(color: textoTenue),
+                        style: t.bodyMedium?.copyWith(color: textoTenueDe(context)),
                       )
-                    else
+                    else ...[
                       Wrap(
                         spacing: 9,
                         runSpacing: 9,
@@ -350,46 +1435,508 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                               hora: h,
                               ocupada: _ocupada(h),
                               valle: _esValle(h),
-                              seleccionada: _hora == h,
-                              onTap: () => setState(() => _hora = h),
+                              descuento: _descEfectivo(h),
+                              seleccionada: _slots.contains(h),
+                              enEspera: _reservado(h) &&
+                                  appState.estoyEnEspera(
+                                      _cancha.id, _fechaSlot(h), h),
+                              onTap: () => _tapSlot(h),
                             ),
                         ],
                       ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          IconoVivo(Icons.touch_app_outlined,
+                              size: 15, color: textoTenueDe(context)),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                                'Toca varias horas seguidas para reservar más '
+                                'tiempo (ej. 18:00–20:00 = 2 h).',
+                                style: t.bodySmall
+                                    ?.copyWith(color: textoTenueDe(context))),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
-                ],
+    ];
+  }
+
+  /// Bonos + reseñas del local.
+  List<Widget> _wExtras(bool descubierta, bool pendiente) => [
+                  // Reseñas del local: reputación real (visible para dueño y
+                  // jugadores en canchas ya registradas).
+                  if (!descubierta && !pendiente && !_soyDueno) ...[
+                    const SizedBox(height: 26),
+                    _SeccionBonos(cancha: _cancha),
+                  ],
+                  if (!descubierta && !pendiente) ...[
+                    const SizedBox(height: 26),
+                    _SeccionResenas(
+                      club: widget.club,
+                      canchaDestino: _cancha,
+                      puedeResenar: appState.logueado && !_soyDueno,
+                    ),
+                  ],
+      ];
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final c = widget.club;
+    // Una cancha con reclamo AJENO rechazado se trata como DESCUBIERTA (libre
+    // para reclamar), no como pendiente.
+    final descubierta = !_cancha.registrada || _reclamablePorRechazo;
+    final pendiente = _cancha.registrada &&
+        !_cancha.verificada &&
+        !_reclamablePorRechazo;
+    return Scaffold(
+      // Globo de chat con el dueño (solo si hay dueño y no soy yo): siempre a la
+      // mano, sin scroll. Es nuestra "burbuja" (chat interno Pichangol).
+      floatingActionButton: (_cancha.dueno.isNotEmpty && !_soyDueno)
+          ? ChatBurbuja(logoUrl: _cancha.fotoUrl, onTap: _chatearConDueno)
+          : null,
+      body: RefreshIndicator(
+        onRefresh: _pullRefresh,
+        child: CustomScrollView(
+        slivers: [
+          // Cabecera FIJA en degradado sage (no se mueve al hacer scroll),
+          // igual al estilo del panel "Mis canchas". La foto va en una card
+          // dentro del contenido.
+          SliverAppBar(
+            pinned: true,
+            toolbarHeight: 86,
+            automaticallyImplyLeading: false,
+            backgroundColor: sage,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            flexibleSpace: const DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [lima, teal], // verde WhatsApp
+                ),
+                borderRadius: BorderRadius.vertical(bottom: Radius.circular(22)),
+              ),
+            ),
+            leadingWidth: 52,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+            titleSpacing: 0,
+            title: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(c.nombre,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.titleLarge?.copyWith(
+                        color: Colors.white, fontWeight: FontWeight.w700)),
+                Text(
+                  c.direccion ??
+                      [
+                        if (c.barrio.isNotEmpty) c.barrio,
+                        '${c.canchas.length} ${c.canchas.length == 1 ? 'cancha' : 'canchas'}',
+                        c.deportes.map((d) => d.etiqueta).join(' · '),
+                      ].join(' · '),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: t.bodySmall?.copyWith(color: Colors.white70),
+                ),
+              ],
+            ),
+            actions: [
+              IconButton(
+                  tooltip: 'Compartir ubicación',
+                  icon: const Icon(Icons.ios_share, color: Colors.white),
+                  onPressed: () => UbicacionShare.menu(context,
+                      punto: _cancha.ubicacion,
+                      titulo: c.nombre)),
+              IconButton(
+                  tooltip: 'Guardar en favoritos',
+                  icon: Icon(
+                      appState.esFavorito(widget.club.id)
+                          ? Icons.favorite
+                          : Icons.favorite_border,
+                      color: appState.esFavorito(widget.club.id)
+                          ? const Color(0xFFE0245E)
+                          : Colors.white),
+                  onPressed: () => setState(
+                      () => appState.alternarFavorito(widget.club.id))),
+              const SizedBox(width: 6),
+            ],
+          ),
+          SliverToBoxAdapter(
+            child: AnchoLectura(
+              // En tablet las 2 columnas necesitan más aire que la lectura.
+              max: 1150,
+              child: Padding(
+                // El "labio" redondeado que monta sobre la foto lo dibuja el
+                // hero (ver _HeroGaleria); aquí el contenido sigue seamless
+                // sobre papel.
+                padding: const EdgeInsets.fromLTRB(22, 14, 22, 110),
+                // TABLET (≥900 dp): ficha a 2 COLUMNAS estilo Airbnb — foto,
+                // badges, bonos y reseñas a la IZQUIERDA; selección de cancha,
+                // día y horarios (o el panel del modo) a la DERECHA. En
+                // teléfono, la columna única de siempre (mismos bloques).
+                child: MediaQuery.sizeOf(context).width >= 900
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            flex: 11,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _wHero(alto: 340),
+                                const SizedBox(height: 16),
+                                _wBadges(descubierta, pendiente),
+                                ..._wExtras(descubierta, pendiente),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 28),
+                          Expanded(
+                            flex: 9,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ..._wSelectorCancha(descubierta, pendiente),
+                                ..._wDeporte(descubierta, pendiente),
+                                ..._wPanel(descubierta, pendiente),
+                              ],
+                            ),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _wHero(alto: 200),
+                          const SizedBox(height: 16),
+                          ..._wSelectorCancha(descubierta, pendiente),
+                          ..._wDeporte(descubierta, pendiente),
+                          _wBadges(descubierta, pendiente),
+                          const SizedBox(height: 16),
+                          ..._wPanel(descubierta, pendiente),
+                          ..._wExtras(descubierta, pendiente),
+                        ],
+                      ),
               ),
             ),
           ),
         ],
         ),
       ),
-      bottomNavigationBar: (descubierta || pendiente)
+      bottomNavigationBar: (descubierta || pendiente || _soyDueno)
           ? null
           : _ReservarBar(
-              precio: _cancha.precioHora,
-              hora: _hora,
-              onReservar: _hora == null ? null : _reservar,
+              // Sin selección: precio base /hora. Con bloque: TOTAL de las horas.
+              monto: _slots.isEmpty ? _cancha.precioVisible : _totalBloque,
+              sufijo: _slots.isEmpty
+                  ? (_cancha.cobraPorTurno ? ' /turno' : ' /hora')
+                  : '',
+              moneda: _cancha.monedaSimbolo,
+              detalle: _slots.isEmpty
+                  ? 'Elige una hora'
+                  : '${_slots.length} h · ${_slotsOrd.first}–${_cancha.horaFinDe(_slotsOrd.last)}',
+              onReservar: _slots.isEmpty ? null : _reservar,
             ),
+    );
+  }
+}
+
+/// Panel que ve el DUEÑO al abrir la ficha de SU cancha (ya verificada): en vez
+/// de la vista pública de "Reservar", administra su cancha desde aquí (editar
+/// precio/horarios y ver sus reservas/cobros).
+class _PanelDueno extends StatelessWidget {
+  const _PanelDueno(
+      {required this.cancha,
+      required this.onEditar,
+      required this.onVerReservas,
+      required this.onBonos});
+  final Cancha cancha;
+  final VoidCallback onEditar;
+  final VoidCallback onVerReservas;
+  final VoidCallback onBonos;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: trazo),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 34,
+                height: 34,
+                decoration: BoxDecoration(
+                    color: limaSuave,
+                    borderRadius: BorderRadius.circular(10)),
+                child: const IconoVivo(Icons.verified_user, size: 19, color: pino),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Text('Administras esta cancha',
+                    style: t.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w700, color: cs.onSurface)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Eres el dueño registrado. Los jugadores la ven y reservan; tú '
+            'ajustas aquí el precio y los horarios.',
+            style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
+          ),
+          const SizedBox(height: 16),
+          // Resumen de precio y horario.
+          Row(
+            children: [
+              Expanded(
+                child: _DatoDueno(
+                    etiqueta: cancha.cobraPorTurno
+                        ? 'Precio por turno'
+                        : 'Precio por hora',
+                    valor: '${cancha.monedaSimbolo}${cancha.precioVisible.toStringAsFixed(2)}'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _DatoDueno(
+                    etiqueta: 'Atención',
+                    valor:
+                        '${cancha.horaApertura}–${cancha.horaCierre}'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _DatoDueno(
+              etiqueta: 'Duración por reserva',
+              valor: '${cancha.duracionSlotMin} min'),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onEditar,
+              style: FilledButton.styleFrom(
+                backgroundColor: lima,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.edit, size: 19),
+              label: const Text('Editar precio y horarios',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: onVerReservas,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: lima,
+                side: const BorderSide(color: lima, width: 1.5),
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.receipt_long, size: 19),
+              label: const Text('Ver reservas y cobros',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: onBonos,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: teal,
+                side: const BorderSide(color: teal, width: 1.5),
+                padding: const EdgeInsets.symmetric(vertical: 15),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+              icon: const Icon(Icons.confirmation_number_outlined, size: 19),
+              label: const Text('Bonos de horas (packs)',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DatoDueno extends StatelessWidget {
+  const _DatoDueno({required this.etiqueta, required this.valor});
+  final String etiqueta;
+  final String valor;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+      decoration: BoxDecoration(
+        color: papel,
+        borderRadius: BorderRadius.circular(11),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(etiqueta, style: t.bodySmall?.copyWith(color: textoTenue)),
+          const SizedBox(height: 3),
+          Text(valor,
+              style: t.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700, color: tinta)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Strip de confianza del handoff: tres garantías reales del producto en
+/// tarjetitas lima suave (Verificada · Pago seguro · Soporte).
+class _StripConfianza extends StatelessWidget {
+  const _StripConfianza();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        Expanded(child: _Garantia(titulo: '✓ Verificada', sub: 'por Pichangol')),
+        SizedBox(width: 10),
+        Expanded(child: _Garantia(titulo: 'Pago seguro', sub: 'seña protegida')),
+        SizedBox(width: 10),
+        Expanded(child: _Garantia(titulo: 'Soporte', sub: 'todos los días')),
+      ],
+    );
+  }
+}
+
+class _Garantia extends StatelessWidget {
+  const _Garantia({required this.titulo, required this.sub});
+  final String titulo;
+  final String sub;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: limaSuave,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        children: [
+          Text(titulo,
+              textAlign: TextAlign.center,
+              style: t.bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w700, color: bosque)),
+          const SizedBox(height: 2),
+          Text(sub,
+              textAlign: TextAlign.center,
+              style: t.bodySmall?.copyWith(color: verde, fontSize: 11)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Fila de servicios (amenities) de la cancha: ícono + etiqueta por cada uno
+/// que el dueño marcó. Solo se muestra si hay al menos uno.
+class _FilaAmenities extends StatelessWidget {
+  const _FilaAmenities({required this.claves});
+  final List<String> claves;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final items = [
+      for (final k in claves)
+        if (amenidadPorClave(k) != null) amenidadPorClave(k)!,
+    ];
+    if (items.isEmpty) return const SizedBox.shrink();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Servicios',
+            style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 11),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final a in items)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: cs.surface,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: trazo),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconoVivo(a.icono, size: 17, color: cs.primary),
+                    const SizedBox(width: 7),
+                    Text(a.etiqueta,
+                        style: t.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600, color: cs.onSurface)),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }
 
 class _ReservarBar extends StatelessWidget {
   const _ReservarBar(
-      {required this.precio, required this.hora, required this.onReservar});
-  final double precio;
-  final String? hora;
+      {required this.monto,
+      required this.moneda,
+      required this.sufijo,
+      required this.detalle,
+      required this.onReservar});
+  final double monto; // /hora cuando no hay selección; total del bloque si hay
+  final String moneda;
+  final String sufijo; // ' /hora' o '' (total)
+  final String detalle; // 'Elige una hora' o '2 h · 18:00–20:00'
   final VoidCallback? onReservar;
 
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: EdgeInsets.fromLTRB(
           22, 12, 22, 16 + MediaQuery.of(context).padding.bottom),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(top: BorderSide(color: trazo)),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        border: const Border(top: BorderSide(color: trazo)),
       ),
       child: Row(
         children: [
@@ -400,32 +1947,1249 @@ class _ReservarBar extends StatelessWidget {
               children: [
                 RichText(
                   text: TextSpan(
-                    style: t.bodySmall?.copyWith(color: textoTenue),
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                     children: [
                       TextSpan(
-                        text: 'S/${precio.toStringAsFixed(2)}',
+                        text: '$moneda${monto.toStringAsFixed(2)}',
                         style: t.titleLarge?.copyWith(
-                            color: tinta, fontWeight: FontWeight.w700),
+                            color: cs.onSurface, fontWeight: FontWeight.w700),
                       ),
-                      const TextSpan(text: ' /hora'),
+                      TextSpan(text: sufijo),
                     ],
                   ),
                 ),
-                Text(hora == null ? 'Elige una hora' : 'Hora $hora',
-                    style: t.bodySmall?.copyWith(color: textoTenue)),
+                Text(detalle,
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
               ],
             ),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
-              backgroundColor: pino,
-              foregroundColor: lima,
+              backgroundColor: lima,
+              foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 16),
             ),
             onPressed: onReservar,
             child: const Text('Reservar'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Resultado del resumen: método de pago elegido + servicios extra marcados.
+typedef ResumenResultado = ({
+  String metodo,
+  List<ServicioExtra> extras,
+  bool usarPuntos,
+  // Cargo por servicio cotizado para el método elegido (null si no aplica:
+  // pago en la cancha, bono o línea apagada).
+  CotizacionCargo? cargo,
+  // BOLEADOR elegido (módulo Boleadores, solo pago en línea); su línea ya va
+  // dentro de `extras` (clave `boleador`).
+  BoleadorPublico? boleador,
+  // ¿Usa su premio de FIDELIDAD del local en esta reserva?
+  bool usarFidelidad,
+  // TUS DATOS (obligatorios, como en la web): nombre y celular confirmados.
+  String nombre,
+  String celular,
+});
+
+/// Ícono para un servicio extra según su clave.
+IconData iconoServicio(String clave) => switch (clave) {
+      'arbitro' => Icons.sports,
+      'pelotero' => Icons.sports_handball,
+      'pelota' => Icons.sports_soccer,
+      'pecheras' => Icons.checkroom,
+      'hidratacion' => Icons.local_drink_outlined,
+      'parrilla' => Icons.outdoor_grill,
+      _ => Icons.add_circle_outline,
+    };
+
+/// Hoja "Resumen de tu reserva" (estilo Airbnb): detalle + servicios extra
+/// opcionales (árbitro/pelotero…) que suman al total, y un ÚNICO total (sin
+/// desglosar comisiones). Devuelve [ResumenResultado] al elegir método de pago.
+class _ResumenReserva extends StatefulWidget {
+  const _ResumenReserva({
+    required this.cancha,
+    required this.dia,
+    required this.fechaIso,
+    required this.hora,
+    required this.horaFin,
+    required this.nSlots,
+    required this.deporte,
+    required this.nombreCliente,
+    required this.total,
+    required this.permiteEfectivo,
+    this.saldoBono = 0,
+    this.fidelidad,
+    this.preciosSlots = const [],
+  });
+
+  final Cancha cancha;
+  final String dia;
+  final String fechaIso; // día base (ISO) del bloque, para pedir boleadores
+  final String hora;
+  final String horaFin;
+  final int nSlots; // cuántas horas seguidas (1 = una hora)
+  final Deporte deporte;
+  final String nombreCliente;
+  final num total; // precio base del bloque (suma de las horas, sin extras)
+  final bool permiteEfectivo; // efectivo solo si el dueño tiene saldo
+  final int saldoBono; // horas de bono prepagado del jugador en este local
+  // Tarjeta de FIDELIDAD del local: progreso/premio del jugador (backend) y
+  // el precio de cada turno del bloque (para calcular el descuento).
+  final EstadoFidelidad? fidelidad;
+  final List<int> preciosSlots;
+
+  @override
+  State<_ResumenReserva> createState() => _ResumenReservaState();
+}
+
+class _ResumenReservaState extends State<_ResumenReserva> {
+  final Set<String> _sel = {}; // claves de servicios extra elegidos
+  // Cantidad de PERSONAS por servicio "por persona" (piscina, entrada general).
+  final Map<String, int> _cant = {};
+
+  Cancha get cancha => widget.cancha;
+
+  String get _duracion {
+    // Duración TOTAL del bloque = nº de horas × duración del slot.
+    final unit = cancha.duracionSlotMin <= 0 ? 60 : cancha.duracionSlotMin;
+    final min = unit * (widget.nSlots <= 0 ? 1 : widget.nSlots);
+    final h = min ~/ 60;
+    final m = min % 60;
+    if (h == 0) return '$m min';
+    return m == 0 ? '$h h' : '$h h $m min';
+  }
+
+  // BOLEADORES (módulo sep-2026): jugadores de la Liga que pelotean contigo en
+  // este local. Se ofrecen solo en tenis/pádel, si el local lo permite y si
+  // hay pago en línea (el boleador se paga junto con la cancha; el backend
+  // le avisa y él confirma). Lista del backend para ESTA fecha/franja.
+  List<BoleadorPublico>? _boleadores; // null = aún no cargó
+  BoleadorPublico? _bol; // el elegido
+  bool _bolCargando = false;
+  // ¿El LOCAL ofrece boleadores para este deporte? Si sí, la sección se
+  // muestra SIEMPRE (como la web): con la lista, con "nadie disponible" o
+  // explicando que se contrata con pago en línea.
+  bool get _bolLocal =>
+      cancha.permiteBoleadores &&
+      cancha.registrada &&
+      cancha.dueno.isNotEmpty &&
+      (widget.deporte == Deporte.tenis || widget.deporte == Deporte.padel);
+  bool get _bolAplica => _bolLocal && !_soloEfectivo;
+  String get _nombreBol => _paisCancha.nombreBoleador;
+
+  Future<void> _cargarBoleadores() async {
+    if (!_bolAplica || _bolCargando) return;
+    // Desde initState no se llama setState (aún no hubo build); en un
+    // refresco posterior sí, para mostrar "Buscando…".
+    _bolCargando = true;
+    if (_boleadores != null) setState(() {});
+    final lista = await PagosService.boleadoresDisponibles(
+        canchaId: cancha.id,
+        fecha: widget.fechaIso,
+        hora: widget.hora,
+        turnos: widget.nSlots <= 0 ? 1 : widget.nSlots,
+        deporte: widget.deporte.name);
+    if (!mounted) return;
+    setState(() {
+      _bolCargando = false;
+      _boleadores = lista?.map(BoleadorPublico.fromJson).toList() ?? const [];
+    });
+  }
+
+  /// Líneas elegidas con su TOTAL: por persona × cantidad, por turno × horas
+  /// del bloque, por reserva una vez (`ServicioExtra.linea`). El boleador va
+  /// como una línea más (clave `boleador`, por turno), igual que en la web.
+  List<ServicioExtra> get _elegidos => [
+        for (final s in cancha.serviciosExtra)
+          if (_sel.contains(s.clave))
+            s.linea(
+                personas: _cant[s.clave] ?? 1,
+                turnos: widget.nSlots <= 0 ? 1 : widget.nSlots),
+        if (_bol != null) _bol!.linea(widget.nSlots <= 0 ? 1 : widget.nSlots),
+      ];
+
+  // PREMIO DE FIDELIDAD (sep-2026): con premio disponible, "Usar mi premio"
+  // descuenta el precio de la cancha (hora gratis = el turno más barato;
+  // descuento = % por turno). No aplica con seña (el adelanto se calcula
+  // sobre el precio de lista). El servidor lo aparta y confirma al reservar.
+  bool _usarFid = true;
+  bool get _fidDisponible =>
+      widget.fidelidad != null && widget.fidelidad!.disponible && !_exigeSena;
+  int get _descFid => _fidDisponible && _usarFid
+      ? widget.fidelidad!.config.descuentoPara(widget.preciosSlots).$1
+      : 0;
+
+  double get _totalFinal =>
+      widget.total - _descFid + _elegidos.fold(0.0, (a, s) => a + s.precio);
+
+  /// Servicios extra elegidos (sin boleador): con bono es lo único que se
+  /// paga, en línea, como en la web.
+  double get _extrasBono => _elegidos
+      .where((s) => !s.esBoleador)
+      .fold(0.0, (a, s) => a + s.precio);
+
+  /// Con el premio la reserva puede quedar en 0 (hora gratis sin extras):
+  /// entonces no hay pasarela ni cargo, se confirma directo.
+  bool get _gratis =>
+      _descFid > 0 && (_usarPuntos ? _totalFinal - 3.0 : _totalFinal) <= 0;
+
+  /// ¿Esta cancha exige seña por adelantado (anti no-show)?
+  bool get _exigeSena => cancha.exigeSena;
+
+  /// ¿El ambiente NO puede cobrar online? Entonces el checkout ofrece sólo
+  /// "pagar en la cancha" (lo decide el backend por sus llaves de Culqi).
+  bool get _soloEfectivo => !appState.pagoOnlineDisponible;
+
+  /// País donde ESTÁ la cancha: decide moneda y pasarela del cobro.
+  PaisConfig get _paisCancha => paisDeCoordenadas(
+      widget.cancha.ubicacion.latitude, widget.cancha.ubicacion.longitude);
+
+  /// Monto de la seña: % del precio de la cancha (no incluye servicios extra).
+  int get _senaMonto => (widget.total * cancha.senaPct / 100).round();
+
+  /// Lo que el jugador paga en la cancha si adelanta la seña (total − seña).
+  double get _restoEnCancha => _totalFinal - _senaMonto;
+
+  // CANJE DE PUNTOS (economía aprobada): 100 pts = S/3 de descuento pagando
+  // ONLINE, un canje por reserva. Solo se ofrece en soles y si alcanza.
+  bool _usarPuntos = false;
+  bool get _puedeCanjear =>
+      appState.misPuntosDisponibles >= 100 &&
+      cancha.monedaSimbolo == 'S/' &&
+      _totalFinal > 3.0 &&
+      _descFid <= 0; // un solo premio por reserva
+
+  // CARGO POR SERVICIO Pichangol (fase 3): cotizado por el backend sobre lo
+  // que se paga EN LÍNEA (total con extras y puntos, o la seña). Se pinta al
+  // instante con la regla local/caché y se corrige cuando responde el servidor.
+  CotizacionCargo? _cot; // pago de todo en línea
+  CotizacionCargo? _cotSena; // solo la seña
+  bool get _cargoAplica =>
+      CargoServicio.activo('reservas') && !_soloEfectivo;
+  int get _baseOnlineCentimos =>
+      ((_usarPuntos ? _totalFinal - 3.0 : _totalFinal) * 100).round();
+  double get _cargoOnline => (_cot?.hayCargo ?? false) ? _cot!.cargo : 0.0;
+  double get _cargoSena =>
+      (_cotSena?.hayCargo ?? false) ? _cotSena!.cargo : 0.0;
+
+  // TUS DATOS: nombre y celular OBLIGATORIOS, igual que en la web. Vienen
+  // prellenados (nombre de la cuenta y celular del perfil) y se pueden editar.
+  late final TextEditingController _nombreCtrl =
+      TextEditingController(text: widget.nombreCliente.trim());
+  late final TextEditingController _celCtrl =
+      TextEditingController(text: appState.miCelular.trim());
+  String? _errDatos;
+
+  /// Misma regla que la web (`validar` de la ficha y `/web/asegurar`):
+  /// nombre ≥ 3 letras, celular ≥ 8 dígitos. null = OK.
+  String? _validarDatos() {
+    if (_nombreCtrl.text.trim().length < 3) return 'Escribe tu nombre.';
+    if (_celCtrl.text.replaceAll(RegExp(r'\D'), '').length < 8) {
+      return 'Escribe un celular válido.';
+    }
+    return null;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _refrescarCargo();
+    _cargarBoleadores();
+  }
+
+  @override
+  void dispose() {
+    _nombreCtrl.dispose();
+    _celCtrl.dispose();
+    super.dispose();
+  }
+
+  void _refrescarCargo() {
+    if (!_cargoAplica) {
+      _cot = null;
+      _cotSena = null;
+      return;
+    }
+    final mon = cancha.monedaSimbolo;
+    final dep = widget.deporte.name;
+    final base = _baseOnlineCentimos;
+    // MODELO 2 en soles: el cargo depende del medio; el resumen muestra el de
+    // YAPE (preseleccionado en la hoja de pago, el más barato). La hoja
+    // recalcula si el jugador cambia a tarjeta.
+    final medio =
+        CargoServicio.dependeDelMedio('reservas', mon) ? 'yape' : '';
+    _cot = CargoServicio.inmediata(
+        linea: 'reservas',
+        moneda: mon,
+        baseCentimos: base,
+        deporte: dep,
+        medio: medio);
+    CargoServicio.cotizar(
+            linea: 'reservas',
+            moneda: mon,
+            baseCentimos: base,
+            deporte: dep,
+            medio: medio)
+        .then((c) {
+      if (mounted && _baseOnlineCentimos == base) setState(() => _cot = c);
+    });
+    if (_exigeSena) {
+      final bs = _senaMonto * 100;
+      _cotSena = CargoServicio.inmediata(
+          linea: 'reservas',
+          moneda: mon,
+          baseCentimos: bs,
+          deporte: dep,
+          medio: medio);
+      CargoServicio.cotizar(
+              linea: 'reservas',
+              moneda: mon,
+              baseCentimos: bs,
+              deporte: dep,
+              medio: medio)
+          .then((c) {
+        if (mounted && _senaMonto * 100 == bs) setState(() => _cotSena = c);
+      });
+    }
+  }
+
+  void _cerrar(String metodo) {
+    final err = _validarDatos();
+    if (err != null) {
+      setState(() => _errDatos = err);
+      return;
+    }
+    Navigator.of(context).pop((
+        metodo: metodo,
+        extras: _elegidos,
+        usarPuntos: _usarPuntos,
+        cargo: metodo == 'online'
+            ? _cot
+            : metodo == 'sena'
+                ? _cotSena
+                : null,
+        boleador: metodo == 'online' ? _bol : null,
+        usarFidelidad: _descFid > 0 && metodo != 'sena' && metodo != 'bono',
+        nombre: _nombreCtrl.text.trim(),
+        celular: _celCtrl.text.trim(),
+      ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    final dir = (cancha.direccion ?? '').trim();
+    final mon = cancha.monedaSimbolo;
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(
+          20, 12, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: Container(
+                width: 44,
+                height: 5,
+                decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('Resumen de tu reserva',
+                style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 14),
+            _fila(context, iconoDeporte(widget.deporte),
+                colorDeporte(widget.deporte),
+                '${cancha.nombre} · ${widget.deporte.etiqueta}'),
+            _fila(context, Icons.event, cs.primary,
+                '${widget.dia} · ${widget.hora}–${widget.horaFin}  ($_duracion)'),
+            if (dir.isNotEmpty)
+              _fila(context, Icons.place_outlined, cs.primary, dir),
+            // TUS DATOS (obligatorios, como en la web): prellenados con la
+            // cuenta; el dueño los ve en su agenda para contactarte.
+            const SizedBox(height: 10),
+            Text('Tus datos',
+                style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _nombreCtrl,
+              textCapitalization: TextCapitalization.words,
+              maxLength: 80,
+              onChanged: (_) {
+                if (_errDatos != null) setState(() => _errDatos = null);
+              },
+              decoration: const InputDecoration(
+                  labelText: 'Nombre y apellido',
+                  hintText: 'Como en tu documento',
+                  counterText: '',
+                  prefixIcon: Padding(
+                      padding: EdgeInsets.all(12),
+                      child: IconoVivo(Icons.person_outline, size: 22))),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: _celCtrl,
+              keyboardType: TextInputType.phone,
+              maxLength: 20,
+              onChanged: (_) {
+                if (_errDatos != null) setState(() => _errDatos = null);
+              },
+              decoration: InputDecoration(
+                  labelText: 'Celular',
+                  hintText: '${_paisCancha.telLongitud} dígitos',
+                  counterText: '',
+                  prefixIcon: const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: IconoVivo(Icons.phone_iphone, size: 22))),
+            ),
+            if (_errDatos != null) ...[
+              const SizedBox(height: 6),
+              Text(_errDatos!,
+                  style: const TextStyle(
+                      color: Colors.redAccent, fontWeight: FontWeight.w700)),
+            ],
+            // Servicios extra (si la cancha ofrece): opcionales, suman al total.
+            if (cancha.serviciosExtra.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text('¿Agregar servicios?',
+                  style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+              const SizedBox(height: 6),
+              for (final s in cancha.serviciosExtra)
+                _FilaServicio(
+                  servicio: s,
+                  moneda: mon,
+                  marcado: _sel.contains(s.clave),
+                  cantidad: _cant[s.clave] ?? 1,
+                  turnos: widget.nSlots <= 0 ? 1 : widget.nSlots,
+                  onCantidad: (n) => setState(() {
+                    _cant[s.clave] = n;
+                    _refrescarCargo();
+                  }),
+                  onTap: () => setState(() {
+                    _sel.contains(s.clave)
+                        ? _sel.remove(s.clave)
+                        : _sel.add(s.clave);
+                    _refrescarCargo();
+                  }),
+                ),
+            ],
+            // BOLEADOR (tenis/pádel): tarjetas por categoría y precio por
+            // turno, como en la ficha web. Solo con pago en línea.
+            if (_bolLocal) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('🎾 ¿Quieres un ${_nombreBol.toLowerCase()}?',
+                        style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+                  ),
+                  Text('opcional', style: t.bodySmall?.copyWith(color: textoTenue)),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                  'Jugadores de la Liga Pichangol que pelotean contigo en este '
+                  'local. Eliges por categoría y precio por turno; el '
+                  '${_nombreBol.toLowerCase()} confirma y, si no puede, te '
+                  'devolvemos su parte.',
+                  style: t.bodySmall?.copyWith(color: textoTenue, height: 1.3)),
+              const SizedBox(height: 8),
+              if (_soloEfectivo)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(
+                      'Se contrata junto con el pago en línea de la cancha, '
+                      'que aún no está disponible aquí.',
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                )
+              else if (_bolCargando && _boleadores == null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text('Buscando ${_nombreBol.toLowerCase()}es disponibles…',
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                )
+              else if ((_boleadores ?? const []).isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Text(
+                      'Por ahora ningún ${_nombreBol.toLowerCase()} atiende este '
+                      'turno en este local. Prueba otro horario.',
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                )
+              else
+                for (final b in _boleadores!)
+                  _TarjetaBoleador(
+                    b: b,
+                    turnos: widget.nSlots <= 0 ? 1 : widget.nSlots,
+                    seleccionado: _bol?.slug == b.slug,
+                    onTap: () => setState(() {
+                      _bol = _bol?.slug == b.slug ? null : b;
+                      _refrescarCargo();
+                    }),
+                  ),
+              if (_bol != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                      'Se paga en línea junto con la cancha. Si ${_bol!.nombre} '
+                      'no puede, te devolvemos ${mon} ${_bol!.linea(widget.nSlots <= 0 ? 1 : widget.nSlots).precio.toStringAsFixed(2)}.',
+                      style: t.bodySmall?.copyWith(color: textoTenue, height: 1.3)),
+                ),
+            ],
+            // PREMIO DE FIDELIDAD del local: interruptor "Usar mi premio".
+            if (_fidDisponible) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: limaSuave,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: lima.withOpacity(0.35)),
+                ),
+                child: Row(
+                  children: [
+                    const Text('🎁', style: TextStyle(fontSize: 18)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '¡Tienes ${widget.fidelidad!.nombrePremio} en '
+                        '${widget.fidelidad!.local.isNotEmpty ? widget.fidelidad!.local : 'este local'}! '
+                        'Usar mi premio en esta reserva.',
+                        style: t.bodySmall?.copyWith(
+                            color: bosque,
+                            fontWeight: FontWeight.w700,
+                            height: 1.25),
+                      ),
+                    ),
+                    Switch(
+                      value: _usarFid,
+                      activeColor: pino,
+                      onChanged: (v) => setState(() {
+                        _usarFid = v;
+                        _refrescarCargo();
+                      }),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Divider(color: trazo),
+            const SizedBox(height: 4),
+            if (_descFid > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                          '🎁 ${widget.fidelidad!.premioCorto} · fidelidad',
+                          style: t.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600, color: pino)),
+                    ),
+                    Text('−$mon ${_descFid.toStringAsFixed(2)}',
+                        style: t.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w700, color: pino)),
+                  ],
+                ),
+              ),
+            // Cargo por servicio Pichangol (solo pagando en línea): línea
+            // aparte con ⓘ, como en la web. Con la línea apagada no aparece.
+            if (_cargoAplica && (_cot?.hayCargo ?? false)) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('Reserva${_elegidos.isNotEmpty ? ' + servicios' : ''}',
+                        style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
+                  ),
+                  Text(
+                      '$mon ${(_usarPuntos ? _totalFinal - 3.0 : _totalFinal).toStringAsFixed(2)}',
+                      style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w700)),
+                ],
+              ),
+              FilaCargoServicio(
+                  cot: _cot,
+                  simbolo: mon,
+                  nota: (!_exigeSena && widget.permiteEfectivo)
+                      ? 'Solo si pagas en línea; en la cancha pagas el precio.'
+                      : null),
+            ],
+            Row(
+              children: [
+                Expanded(
+                  child: Text('Total a pagar',
+                      style:
+                          t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
+                ),
+                Text(
+                    '$mon ${((_usarPuntos ? _totalFinal - 3.0 : _totalFinal) + (_cargoAplica ? _cargoOnline : 0)).toStringAsFixed(2)}',
+                    style: t.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w800, color: cs.primary)),
+              ],
+            ),
+            // Canje de PUNTOS Pichangol: 100 pts = S/3, solo pagando online.
+            if (_puedeCanjear) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                decoration: BoxDecoration(
+                  color: limaSuave,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    const IconoVivo(Icons.stars, size: 18, color: bosque),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Usar 100 puntos: −S/ 3.00 (tienes '
+                        '${appState.misPuntosDisponibles}). Válido pagando '
+                        'online.',
+                        style: t.bodySmall?.copyWith(
+                            color: bosque,
+                            fontWeight: FontWeight.w700,
+                            height: 1.25),
+                      ),
+                    ),
+                    Switch(
+                      value: _usarPuntos,
+                      activeColor: pino,
+                      onChanged: (v) => setState(() {
+                        _usarPuntos = v;
+                        _refrescarCargo();
+                      }),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            // Con SEÑA: desglose claro de cuánto adelanta hoy y cuánto en la
+            // cancha, con el aviso de que la seña no se devuelve.
+            if (_exigeSena) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: lima.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: lima.withOpacity(0.25)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        IconoVivo(Icons.shield_outlined, size: 18, color: pino),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                              'Seña ahora (asegura tu hora)',
+                              style: t.bodyMedium
+                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                        ),
+                        Text('$mon ${_senaMonto.toDouble().toStringAsFixed(2)}',
+                            style: t.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w800, color: pino)),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        const SizedBox(width: 26),
+                        Expanded(
+                          child: Text('Resto en la cancha',
+                              style: t.bodyMedium
+                                  ?.copyWith(color: textoTenue)),
+                        ),
+                        Text('$mon ${_restoEnCancha.toStringAsFixed(2)}',
+                            style: t.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: textoTenue)),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline,
+                            size: 14, color: textoTenue),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                              'La seña no es reembolsable: si no llegas, se '
+                              'queda a favor de la cancha.',
+                              style: t.bodySmall?.copyWith(
+                                  color: textoTenue, height: 1.3)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconoVivo(Icons.lock_outline, size: 15, color: textoTenue),
+                const SizedBox(width: 6),
+                // La pasarela y la moneda las decide el PAÍS DE LA CANCHA
+                // (sus coordenadas), no el GPS del jugador: una cancha de
+                // Guayaquil se paga en $ por PayPhone aunque reserves desde
+                // Lima. Se dice explícito para que nadie se sorprenda.
+                Flexible(
+                  child: Text(
+                      _soloEfectivo
+                          ? 'Reserva confirmada al instante · pagas en el local'
+                          : 'Pagas en ${_paisCancha.moneda} · ${_paisCancha.pasarelaNombre}',
+                      textAlign: TextAlign.center,
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                ),
+              ],
+            ),
+            if (_errDatos != null) ...[
+              const SizedBox(height: 10),
+              Text('⚠️ $_errDatos Revisa "Tus datos" arriba.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: Colors.redAccent, fontWeight: FontWeight.w700)),
+            ],
+            const SizedBox(height: 16),
+            // Bono prepagado: si el jugador tiene horas para este local, la
+            // opción MÁS conveniente (no paga de nuevo). Descuenta sus horas.
+            // Igual que la web: el bono cubre los TURNOS; los servicios extra
+            // elegidos se pagan EN LÍNEA (y se liquidan al dueño). Con
+            // boleador no va el bono (camino distinto), y sin pago en línea
+            // solo se puede usar el bono sin extras.
+            if (widget.saldoBono >= widget.nSlots) ...[
+              if (_bol != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                      '🎟️ Tienes ${widget.saldoBono} h de bono: para usarlo quita '
+                      'el ${_nombreBol.toLowerCase()} (se paga en línea).',
+                      textAlign: TextAlign.center,
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                )
+              else if (_extrasBono > 0 && _soloEfectivo)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                      '🎟️ Con tu bono los servicios extra se pagan en línea y '
+                      'ahora no está disponible: quítalos para usar tu bono.',
+                      textAlign: TextAlign.center,
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                )
+              else ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: teal,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 15)),
+                    onPressed: () => _cerrar('bono'),
+                    icon: const Icon(Icons.confirmation_number, size: 18),
+                    label: Text(
+                        _extrasBono > 0
+                            ? 'Usar mi bono (${widget.nSlots} h) y pagar $mon ${_extrasBono.toStringAsFixed(2)} de extras'
+                            : 'Usar mi bono (${widget.nSlots} h · te quedan ${widget.saldoBono})',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 14)),
+                  ),
+                ),
+                if (_extrasBono > 0) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                      'Tus turnos van con el bono (te quedan ${widget.saldoBono - widget.nSlots} h); '
+                      'los servicios extra se pagan en línea'
+                      '${_cargoAplica ? ' + cargo por servicio' : ''}.',
+                      textAlign: TextAlign.center,
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                ],
+                const SizedBox(height: 10),
+              ],
+            ],
+            // SIN PAGO ONLINE (el ambiente no tiene cobro real configurado):
+            // el único camino honesto es reservar y pagar en la cancha. Nunca
+            // se le muestra al jugador una pantalla de pago que no se puede
+            // completar, ni se simula un cobro que no ocurrió.
+            if (_soloEfectivo) ...[
+              if (widget.permiteEfectivo)
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: lima,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 15)),
+                    onPressed: () => _cerrar('cancha'),
+                    icon: const Icon(Icons.payments_outlined, size: 18),
+                    label: const Text('Reservar y pagar en la cancha',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 15)),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: estadoWarnBg,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Text(
+                      'Esta cancha todavía no acepta reservas por la app. '
+                      'Escríbele al local para coordinar tu hora.',
+                      style: TextStyle(fontSize: 13.5, height: 1.3)),
+                ),
+            ] else ...[
+            // Botón principal: con seña, pagar la seña; sin seña, pagar todo.
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                    backgroundColor: lima,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 15)),
+                onPressed: () =>
+                    _cerrar(_exigeSena && _bol == null ? 'sena' : 'online'),
+                icon: Icon(_gratis ? Icons.card_giftcard : Icons.lock, size: 18),
+                label: Text(
+                    _gratis
+                        ? 'Reservar gratis con mi premio 🎁'
+                        : _exigeSena && _bol == null
+                            ? 'Pagar seña $mon ${(_senaMonto + (_cargoAplica ? _cargoSena : 0)).toStringAsFixed(2)} y reservar'
+                            : 'Pagar ahora (Yape / Tarjeta)',
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w800, fontSize: 15)),
+              ),
+            ),
+            // Con boleador NO hay seña ni efectivo: el boleador se paga en
+            // línea y todo va en un solo cobro (si él no puede, se devuelve
+            // su parte). Se explica en vez de esconderlo en silencio.
+            if (_bol != null && (_exigeSena || widget.permiteEfectivo)) ...[
+              const SizedBox(height: 8),
+              Text(
+                  'Con ${_nombreBol.toLowerCase()} la reserva se paga completa en '
+                  'línea (quítalo si prefieres ${_exigeSena ? 'solo la seña' : 'pagar en la cancha'}).',
+                  textAlign: TextAlign.center,
+                  style: t.bodySmall?.copyWith(color: textoTenue)),
+            ],
+            // Con seña, ofrecemos también pagar TODO ahora (sin ir a la cancha).
+            if (_exigeSena && _bol == null) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: lima,
+                      side: BorderSide(color: lima.withOpacity(0.6)),
+                      padding: const EdgeInsets.symmetric(vertical: 14)),
+                  onPressed: () => _cerrar('online'),
+                  icon: const Icon(Icons.credit_card, size: 18),
+                  label: Text(
+                      'Pagar todo ahora ($mon ${((_usarPuntos ? _totalFinal - 3.0 : _totalFinal) + (_cargoAplica ? _cargoOnline : 0)).toStringAsFixed(2)})',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 14)),
+                ),
+              ),
+            ],
+            // Efectivo puro (sin adelanto) solo si NO hay seña y el dueño tiene
+            // saldo (así PCG cobra su comisión de ese saldo).
+            if (!_exigeSena && widget.permiteEfectivo && _bol == null && !_gratis) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                      foregroundColor: lima,
+                      side: BorderSide(color: lima.withOpacity(0.6)),
+                      padding: const EdgeInsets.symmetric(vertical: 14)),
+                  onPressed: () => _cerrar('cancha'),
+                  icon: const Icon(Icons.payments_outlined, size: 18),
+                  label: const Text('Pagar en la cancha (efectivo)',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                ),
+              ),
+            ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _fila(BuildContext context, IconData icono, Color color, String texto) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          IconoVivo(icono, size: 20, color: color),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(texto,
+                style: const TextStyle(fontSize: 14.5, height: 1.3)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tarjeta de FIDELIDAD del local en la ficha: sellos (reservas pagadas),
+/// cuántas faltan y el premio; con premio disponible lo anuncia. Sin sesión
+/// solo explica la promo.
+class _TarjetaFidelidad extends StatelessWidget {
+  const _TarjetaFidelidad(
+      {required this.cfg,
+      required this.estado,
+      required this.local,
+      required this.conSesion});
+  final FidelidadConfig cfg;
+  final EstadoFidelidad? estado;
+  final String local;
+  final bool conSesion;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final e = estado;
+    final meta = e?.meta ?? cfg.meta;
+    final conteo = e?.conteo ?? 0;
+    final disponible = e?.disponible ?? false;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1FAF5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: lima.withOpacity(0.45)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('🎁', style: TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Tarjeta de fidelidad de $local',
+                    style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (var i = 0; i < meta; i++)
+                Container(
+                  width: 26,
+                  height: 26,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: i < conteo ? lima : Colors.white,
+                    border: Border.all(
+                        color: i < conteo ? lima : const Color(0xFFCFE8DA),
+                        width: 2),
+                  ),
+                  child: i < conteo
+                      ? const Icon(Icons.check, size: 15, color: Colors.white)
+                      : null,
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            !conSesion || e == null
+                ? 'Cada $meta reservas pagadas, ${cfg.nombrePremio}. '
+                    '${conSesion ? 'Cargando tu progreso…' : 'Inicia sesión para ver tu progreso.'}'
+                : disponible
+                    ? '¡Tienes ${e.nombrePremio}! Se aplica al reservar.'
+                    : '$conteo de $meta reservas · te falta${e.faltan == 1 ? '' : 'n'} '
+                        '${e.faltan} para ${e.nombrePremio}.',
+            style: t.bodySmall?.copyWith(
+                color: disponible ? bosque : textoTenue,
+                fontWeight: disponible ? FontWeight.w700 : FontWeight.w500,
+                height: 1.3),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Tarjeta de un BOLEADOR disponible en el resumen (nombre, categoría de la
+/// Liga, etiquetas, precio por turno y total por el bloque). Tocar = elegir.
+class _TarjetaBoleador extends StatelessWidget {
+  const _TarjetaBoleador(
+      {required this.b,
+      required this.turnos,
+      required this.seleccionado,
+      required this.onTap});
+  final BoleadorPublico b;
+  final int turnos;
+  final bool seleccionado;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final total = b.tarifa * turnos;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: seleccionado ? limaSuave : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: seleccionado ? pino : trazo, width: seleccionado ? 1.6 : 1),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              radius: 20,
+              backgroundColor: limaSuave,
+              backgroundImage:
+                  b.foto.isNotEmpty ? CachedNetworkImageProvider(b.foto) : null,
+              child: b.foto.isEmpty
+                  ? Text(b.inicial,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, color: bosque))
+                  : null,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(b.nombre,
+                            overflow: TextOverflow.ellipsis,
+                            style: t.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w800)),
+                      ),
+                      if (b.categoria.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                              color: limaSuave,
+                              borderRadius: BorderRadius.circular(999)),
+                          child: Text(b.categoria,
+                              style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: lima)),
+                        ),
+                      ],
+                    ],
+                  ),
+                  Text(b.detalle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.bodySmall?.copyWith(color: textoTenue)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('${b.simbolo} ${total.toStringAsFixed(2)}',
+                    style: t.bodyMedium?.copyWith(fontWeight: FontWeight.w800)),
+                Text(
+                    turnos > 1
+                        ? '${b.simbolo} ${b.tarifa.toStringAsFixed(2)} × $turnos'
+                        : 'por turno',
+                    style: t.bodySmall?.copyWith(color: textoTenue, fontSize: 11)),
+              ],
+            ),
+            const SizedBox(width: 6),
+            Icon(seleccionado ? Icons.check_circle : Icons.radio_button_unchecked,
+                color: seleccionado ? pino : trazo),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Fila seleccionable de un servicio extra en el resumen de reserva. Muestra
+/// el emoji del catálogo (o el ícono legado), el tipo de cobro y, si es "por
+/// persona" y está marcado, un contador de personas (− n +).
+class _FilaServicio extends StatelessWidget {
+  const _FilaServicio({
+    required this.servicio,
+    required this.moneda,
+    required this.marcado,
+    required this.onTap,
+    this.cantidad = 1,
+    this.turnos = 1,
+    this.onCantidad,
+  });
+  final ServicioExtra servicio;
+  final String moneda;
+  final bool marcado;
+  final VoidCallback onTap;
+  final int cantidad;
+  final int turnos;
+  final ValueChanged<int>? onCantidad;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final emoji = servicio.emojiVisible;
+    final sufijo = servicio.porPersona
+        ? ' c/u'
+        : (servicio.porTurno ? ' por turno' : '');
+    final total = servicio.linea(personas: cantidad, turnos: turnos).precio;
+    return Column(
+      children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                if (emoji.isNotEmpty)
+                  SizedBox(
+                      width: 24,
+                      child: Text(emoji,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 17)))
+                else
+                  Icon(iconoServicio(servicio.clave),
+                      size: 20, color: marcado ? cs.primary : textoTenue),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(servicio.nombre,
+                          style: TextStyle(
+                              fontSize: 14.5,
+                              fontWeight:
+                                  marcado ? FontWeight.w700 : FontWeight.w500)),
+                      if (servicio.porPersona || servicio.porTurno)
+                        Text(servicio.etiquetaTipo,
+                            style: TextStyle(color: textoTenue, fontSize: 11.5)),
+                    ],
+                  ),
+                ),
+                Text('+$moneda ${servicio.precio.toStringAsFixed(2)}$sufijo',
+                    style: TextStyle(
+                        color: cs.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5)),
+                const SizedBox(width: 10),
+                Icon(
+                    marcado
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
+                    color: marcado ? cs.primary : trazo,
+                    size: 22),
+              ],
+            ),
+          ),
+        ),
+        if (marcado && servicio.porPersona && onCantidad != null)
+          Padding(
+            padding: const EdgeInsets.only(left: 36, bottom: 6),
+            child: Row(
+              children: [
+                Text('¿Cuántas personas?',
+                    style: TextStyle(color: textoTenue, fontSize: 13)),
+                const Spacer(),
+                _BotonCantidad(
+                    icono: Icons.remove,
+                    onTap: cantidad > 1
+                        ? () => onCantidad!(cantidad - 1)
+                        : null),
+                SizedBox(
+                    width: 32,
+                    child: Text('$cantidad',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontWeight: FontWeight.w800))),
+                _BotonCantidad(
+                    icono: Icons.add,
+                    onTap: cantidad < 50
+                        ? () => onCantidad!(cantidad + 1)
+                        : null),
+                const SizedBox(width: 10),
+                Text('= $moneda ${total.toStringAsFixed(2)}',
+                    style: TextStyle(
+                        color: cs.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13)),
+              ],
+            ),
+          ),
+        if (marcado && servicio.porTurno && turnos > 1)
+          Padding(
+            padding: const EdgeInsets.only(left: 36, bottom: 6),
+            child: Row(
+              children: [
+                Text('× $turnos turnos',
+                    style: TextStyle(color: textoTenue, fontSize: 13)),
+                const Spacer(),
+                Text('= $moneda ${total.toStringAsFixed(2)}',
+                    style: TextStyle(
+                        color: cs.primary,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13)),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// Botón redondo − / + del contador de personas (estilo Airbnb).
+class _BotonCantidad extends StatelessWidget {
+  const _BotonCantidad({required this.icono, required this.onTap});
+  final IconData icono;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final activo = onTap != null;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(color: activo ? cs.onSurface : trazo),
+        ),
+        child: Icon(icono,
+            size: 18, color: activo ? cs.onSurface : trazo),
       ),
     );
   }
@@ -439,18 +3203,21 @@ class _DiaChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
         decoration: BoxDecoration(
-          color: activo ? pino : Colors.white,
+          // Seleccionado = verde WhatsApp + texto blanco (nunca negro).
+          color: activo ? lima : cs.surface,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: activo ? pino : trazo),
+          border: Border.all(color: activo ? lima : trazo),
         ),
         child: Text(texto,
             style: TextStyle(
-                color: activo ? lima : tinta, fontWeight: FontWeight.w700)),
+                color: activo ? Colors.white : cs.onSurface,
+                fontWeight: FontWeight.w700)),
       ),
     );
   }
@@ -463,39 +3230,97 @@ class _SlotChip extends StatelessWidget {
     required this.valle,
     required this.seleccionada,
     required this.onTap,
+    this.bloqueada = false,
+    this.descuento = 0,
+    this.enEspera = false,
+    this.nEspera = 0,
   });
   final String hora;
   final bool ocupada;
   final bool valle;
   final bool seleccionada;
   final VoidCallback onTap;
+  final bool bloqueada; // slot cerrado por el dueño (tappable para reabrir)
+  final int descuento; // "hora feliz": % de descuento si valle (0 = ninguno)
+  final bool enEspera; // el jugador está en la lista de espera de este slot
+  final int nEspera; // cuántos esperan (vista del dueño); 0 = no mostrar
 
   @override
   Widget build(BuildContext context) {
-    if (ocupada) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF0ECE2),
-          borderRadius: BorderRadius.circular(14),
+    final cs = Theme.of(context).colorScheme;
+    // Slot BLOQUEADO (vista del dueño): candado + tappable para desbloquear.
+    if (bloqueada) {
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: bosque,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const IconoVivo(Icons.lock, size: 14, color: Colors.white),
+              const SizedBox(width: 5),
+              Text(hora,
+                  style: const TextStyle(
+                      color: Colors.white, fontWeight: FontWeight.w700)),
+            ],
+          ),
         ),
-        child: Text(hora,
-            style: const TextStyle(
-                color: Color(0xFFB5AFA3),
-                decoration: TextDecoration.lineThrough)),
       );
     }
+    if (ocupada) {
+      // Tomado: tappable → lista de espera (jugador) o ver quién espera (dueño).
+      return GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: enEspera ? limaSuave : const Color(0xFFF0ECE2),
+            borderRadius: BorderRadius.circular(14),
+            border: enEspera ? Border.all(color: lima) : null,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(hora,
+                  style: TextStyle(
+                      color: enEspera ? lima : const Color(0xFFB5AFA3),
+                      fontWeight: enEspera ? FontWeight.w700 : FontWeight.w400,
+                      decoration:
+                          enEspera ? null : TextDecoration.lineThrough)),
+              if (enEspera) ...[
+                const SizedBox(width: 5),
+                const IconoVivo(Icons.hourglass_top, size: 13, color: lima),
+              ] else if (nEspera > 0) ...[
+                const SizedBox(width: 5),
+                IconoVivo(Icons.hourglass_top, size: 12, color: textoTenueDe(context)),
+                Text('$nEspera',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: textoTenueDe(context))),
+              ],
+            ],
+          ),
+        ),
+      );
+    }
+    // Slot seleccionado = verde WhatsApp (marca), nunca negro. Es la selección
+    // más visible al reservar; congruente con el resto de la app.
     final Color borde = seleccionada
-        ? tinta
+        ? lima
         : valle
             ? clay
             : trazo;
-    final Color fondo = seleccionada ? tinta : Colors.white;
+    final Color fondo = seleccionada ? lima : cs.surface;
     final Color texto = seleccionada
         ? Colors.white
         : valle
             ? clayOscuro
-            : tinta;
+            : cs.onSurface;
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -510,7 +3335,20 @@ class _SlotChip extends StatelessWidget {
           children: [
             Text(hora,
                 style: TextStyle(color: texto, fontWeight: FontWeight.w700)),
-            if (valle && !seleccionada) ...[
+            // Con descuento (hora feliz de mañana o descuento puntual del dueño)
+            // se muestra "🔥 -N%" en cualquier hora; si no, "valle" en las valle.
+            if (!seleccionada && descuento > 0) ...[
+              const SizedBox(width: 5),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                decoration: BoxDecoration(
+                    color: lima.withOpacity(0.14),
+                    borderRadius: BorderRadius.circular(999)),
+                child: Text('🔥 -$descuento%',
+                    style: const TextStyle(
+                        color: lima, fontSize: 10, fontWeight: FontWeight.w800)),
+              ),
+            ] else if (valle && !seleccionada) ...[
               const SizedBox(width: 5),
               const Text('valle',
                   style: TextStyle(
@@ -583,10 +3421,11 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
   Future<void> _reclamar() async {
     // Pedimos login ANTES de abrir el formulario: así el reclamo nace con dueño
     // definido y el usuario no cae en otra pantalla tras loguearse a mitad.
-    if (!appState.logueado) {
-      final ok = await LoginGoogleSheet.mostrar(context);
-      if (!ok || !mounted) return;
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'reclamar esta cancha')) {
+      return;
     }
+    if (!mounted) return;
     final creada = await Navigator.of(context).push<Cancha?>(
       MaterialPageRoute(builder: (_) => RegistrarCanchaScreen(base: cancha)),
     );
@@ -602,10 +3441,11 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: cs.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: trazo),
       ),
@@ -624,7 +3464,8 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
       children: [
         Row(
           children: [
-            Icon(activa ? Icons.verified : Icons.hourglass_top, color: pino),
+            Icon(activa ? Icons.verified : Icons.hourglass_top,
+                color: Theme.of(context).colorScheme.primary),
             const SizedBox(width: 8),
             Expanded(
               child: Text(activa ? 'Ya es tuya' : 'Tu reclamo está en revisión',
@@ -650,7 +3491,7 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
         children: [
           Row(
             children: [
-              const Icon(Icons.lock_clock, color: clayOscuro),
+              const IconoVivo(Icons.lock_clock, color: clayOscuro),
               const SizedBox(width: 8),
               Expanded(
                 child: Text('Cancha ya reclamada',
@@ -674,15 +3515,23 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
         children: [
           Row(
             children: [
-              const Icon(Icons.travel_explore, color: pino),
+              IconoVivo(Icons.travel_explore,
+                  color: Theme.of(context).colorScheme.primary),
               const SizedBox(width: 8),
               Expanded(
-                child: Text('Encontramos esta cancha en Google Maps',
+                child: Text(
+                    cancha.esOsm
+                        ? 'Encontramos esta cancha en el mapa'
+                        : 'Encontramos esta cancha en Google Maps',
                     style:
                         t.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
               ),
             ],
           ),
+          if (cancha.esOsm) ...[
+            const SizedBox(height: 4),
+            const AtribucionOsm(),
+          ],
           const SizedBox(height: 10),
           Text(
             'Todavía no está activa en Pichangol, así que aún no se puede '
@@ -699,7 +3548,7 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.add_location_alt),
+                  : const IconoVivo(Icons.add_location_alt),
               label: Text(_cargando
                   ? 'Verificando disponibilidad…'
                   : 'Reclamar / registrar esta cancha'),
@@ -712,9 +3561,12 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
 /// Panel cuando la cancha está reclamada/registrada pero aún sin verificar la
 /// propiedad: no se puede reservar online hasta validar al dueño (anti-fraude).
 class _PanelPendiente extends StatefulWidget {
-  const _PanelPendiente({required this.cancha, this.onActualizar});
+  const _PanelPendiente(
+      {required this.cancha, this.onActualizar, this.onRechazado});
   final Cancha cancha;
   final Future<void> Function()? onActualizar;
+  // Notifica al padre si el reclamo está rechazado (para el badge de la ficha).
+  final void Function(bool rechazado)? onRechazado;
 
   @override
   State<_PanelPendiente> createState() => _PanelPendienteState();
@@ -723,9 +3575,50 @@ class _PanelPendiente extends StatefulWidget {
 class _PanelPendienteState extends State<_PanelPendiente> {
   bool _consultando = false;
   bool _reenviando = false;
+  bool _rechazada = false; // el admin no aprobó la solicitud de este usuario
+  bool _esMio = false; // ¿el que mira la ficha es quien reclamó / el dueño?
   String? _diag;
 
+  /// Es "mío" si mi correo coincide con el dueño local de la cancha (fiable sin
+  /// backend). Se confirma con es_mio del servidor en la consulta inicial.
+  bool get _duenoLocal {
+    final email = appState.usuario?.email ?? '';
+    return email.isNotEmpty && widget.cancha.dueno == email;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _esMio = _duenoLocal;
+    _consultarInicial();
+  }
+
+  /// Al abrir la ficha pendiente, consulta el backend: si el reclamo fue
+  /// RECHAZADO, mostramos el panel de "Solicitud no aprobada" (solo lo ve quien
+  /// reclamó; para el resto la cancha queda libre para reclamar).
+  Future<void> _consultarInicial() async {
+    if (!PropiedadService.disponible) return;
+    final est = await PropiedadService.estado(widget.cancha.id,
+        solicitante: appState.usuario?.email);
+    if (!mounted || est == null) return;
+    final mio = est['es_mio'] == true;
+    setState(() => _esMio = _esMio || mio);
+    // El estado "rechazada" SOLO lo ve quien reclamó (es_mio). Un usuario sin
+    // sesión o con otra cuenta ve la ficha pendiente normal, no el rechazo.
+    if (est['estado'] == 'rechazada' && mio) {
+      setState(() => _rechazada = true);
+      widget.onRechazado?.call(true);
+    }
+  }
+
   Future<void> _reenviar() async {
+    // Reclamar exige identificarse: la solicitud debe viajar SIEMPRE con la
+    // cuenta (correo + nombre) del que reclama, no anónima.
+    if (!await LoginGoogleSheet.mostrar(context,
+        motivo: 'reclamar esta cancha')) {
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       _reenviando = true;
       _diag = null;
@@ -739,22 +3632,47 @@ class _PanelPendienteState extends State<_PanelPendiente> {
       });
       return;
     }
+    // UBICACIÓN OBLIGATORIA al reclamar (decisión del director, oct-2026):
+    // el celular debe estar EN el local (GPS a ≤ N m del punto de la cancha)
+    // antes de enviar. Si no hay GPS o está lejos, se avisa y no se envía.
+    final ubic = await exigirUbicacionReclamo(context, punto: c.ubicacion);
+    if (!mounted) return;
+    if (!ubic.ok) {
+      setState(() => _reenviando = false);
+      return;
+    }
+    final desdeAqui = ubic.gps;
     final res = await PropiedadService.crearReclamo(
       canchaId: c.id,
       solicitanteId: email,
+      solicitanteNombre: appState.usuario?.nombre ?? '',
       nombreLocal: c.nombre,
       ubicacion: c.ubicacion,
+      solicitanteUbicacion: desdeAqui,
     );
     if (!mounted) return;
+    // Rechazo con motivo (ubicación o fotos): se explica en un diálogo, no
+    // con el aviso genérico de "no se pudo enviar".
+    final rechazo = PropiedadService.motivoRechazo(res);
+    if (rechazo != null) {
+      setState(() => _reenviando = false);
+      await avisarPichangol(context,
+          titulo: rechazo.titulo,
+          icono: Icons.info_outline,
+          mensaje: rechazo.mensaje);
+      return;
+    }
+    final ok = res != null && res['ok'] == true;
+    if (ok) widget.onRechazado?.call(false); // el badge vuelve a "pendiente"
     setState(() {
       _reenviando = false;
-      _diag = (res != null && res['ok'] == true)
-          ? '✅ Solicitud reenviada al servidor.\n'
-              'Código: ${res['codigo'] ?? '—'}\n'
-              'El equipo la aprueba desde la torre de control web (o por '
-              'WhatsApp); luego vuelve aquí y toca "Verificar estado ahora".'
-          : '⚠️ No se pudo crear el reclamo en el servidor. Reintenta en un momento '
-              '(el backend puede estar reiniciándose).';
+      // Si prosperó, la solicitud vuelve a estar EN REVISIÓN: salimos del estado
+      // "rechazada" y mostramos de nuevo el panel pendiente.
+      if (ok) _rechazada = false;
+      _diag = ok
+          ? '✅ Solicitud enviada. Está en revisión; te avisamos cuando se '
+              'apruebe.'
+          : '⚠️ No se pudo enviar la solicitud. Reintenta en un momento.';
     });
   }
 
@@ -771,28 +3689,39 @@ class _PanelPendienteState extends State<_PanelPendiente> {
       });
       return;
     }
-    final est = await PropiedadService.estado(widget.cancha.id);
+    final est = await PropiedadService.estado(widget.cancha.id,
+        solicitante: appState.usuario?.email);
     if (!mounted) return;
     String msg;
     if (est == null) {
-      msg = '⚠️ No se pudo consultar al servidor (sin respuesta). '
-          'ID consultado: ${widget.cancha.id}';
+      msg = '⚠️ No se pudo consultar al servidor. Reintenta en un momento.';
     } else if (est['existe'] != true) {
-      msg = '❌ El servidor NO tiene un reclamo para esta cancha.\n'
-          'ID consultado: ${widget.cancha.id}\n'
-          'Esto significa que el reclamo no se creó en el backend.';
+      msg = '⏳ Tu solicitud sigue en revisión. Te avisamos cuando se apruebe.';
     } else {
       final estado = est['estado'] ?? '—';
       final verif = est['verificada'] == true;
-      msg = 'Servidor → estado: "$estado", verificada: $verif\n'
-          'ID: ${widget.cancha.id}\n'
-          '${verif ? '✅ Aprobada: actualizando…' : '⏳ Aún no activada por el admin (aprueba en Reclamos admin o el panel web).'}';
-      if (verif) await widget.onActualizar?.call();
+      // El rechazo solo se muestra al que reclamó (es_mio).
+      if (estado == 'rechazada' && est['es_mio'] == true) {
+        _rechazada = true;
+        widget.onRechazado?.call(true);
+        msg = '';
+      } else if (verif && est['es_mio'] == true) {
+        // SEGURIDAD: solo se anuncia la aprobación si el reclamo aprobado es
+        // DEL que pregunta — la aprobación de un tercero sobre el mismo lugar
+        // no activa la copia de otro reclamante.
+        msg = '✅ ¡Aprobada! Habilitando tus reservas…';
+        await widget.onActualizar?.call();
+      } else if (verif || estado == 'reclamada_por_otro') {
+        msg = '⚠️ Este local ya tiene un dueño aprobado con otra cuenta. Si el '
+            'local es tuyo, escríbenos para revisarlo.';
+      } else {
+        msg = '⏳ Tu solicitud sigue en revisión. Te avisamos cuando se apruebe.';
+      }
     }
     if (!mounted) return;
     setState(() {
       _consultando = false;
-      _diag = msg;
+      _diag = msg.isEmpty ? null : msg;
     });
   }
 
@@ -802,16 +3731,129 @@ class _PanelPendienteState extends State<_PanelPendiente> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFDF6EC),
+        color: _rechazada ? const Color(0xFFFBE7E7) : const Color(0xFFFDF6EC),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE9D9C2)),
+        border: Border.all(
+            color: _rechazada
+                ? const Color(0xFFE9C2C2)
+                : const Color(0xFFE9D9C2)),
       ),
-      child: Column(
+      child: _rechazada ? _panelRechazada(t) : _panelPendiente(t),
+    );
+  }
+
+  Widget _diagBox(TextTheme t) => (_diag == null)
+      ? const SizedBox.shrink()
+      : Padding(
+          padding: const EdgeInsets.only(top: 10),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3EFE7),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(_diag!,
+                style: t.bodySmall?.copyWith(color: tinta, height: 1.4)),
+          ),
+        );
+
+  Widget _panelRechazada(TextTheme t) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Icon(Icons.verified_user_outlined, color: clayOscuro),
+              const Icon(Icons.cancel_outlined, color: Color(0xFFB4231F)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Solicitud no aprobada',
+                    style: t.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF8A1A17))),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'No pudimos confirmar que seas el dueño de esta cancha, así que tu '
+            'solicitud no fue aprobada. Si crees que es un error, vuelve a '
+            'enviarla con tus datos correctos o escríbenos para resolverlo.',
+            style: t.bodyMedium?.copyWith(color: textoTenue, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              style: FilledButton.styleFrom(
+                  backgroundColor: lima, foregroundColor: Colors.white),
+              onPressed: _reenviando ? null : _reenviar,
+              icon: _reenviando
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.refresh, size: 18),
+              label: Text(_reenviando ? 'Enviando…' : 'Volver a solicitar'),
+            ),
+          ),
+          _diagBox(t),
+        ],
+      );
+
+  /// FOTOS PROPIAS obligatorias para aprobar el reclamo (decisión del
+  /// director, 2-oct-2026): si faltan, aviso ámbar con acceso a subirlas.
+  Widget _avisoFotos(TextTheme t) {
+    final min = appState.reclamoFotosMin;
+    if (min <= 0) return const SizedBox.shrink();
+    final c = widget.cancha;
+    final tiene =
+        FotosPropias.propias([c.fotoUrl, ...c.fotos], c.id).length;
+    final falta = min - tiene;
+    if (falta <= 0) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(top: 14),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF6E0),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('📷 ${FotosPropias.textoFaltan(falta)}',
+              style: t.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF8A5A00))),
+          const SizedBox(height: 4),
+          Text(FotosPropias.porQue,
+              style: t.bodySmall?.copyWith(color: textoTenue, height: 1.35)),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => EditarCanchaScreen(cancha: c)));
+              await widget.onActualizar?.call();
+              if (mounted) setState(() {});
+            },
+            icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+            label: const Text('Subir fotos'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _panelPendiente(TextTheme t) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: clayOscuro.withOpacity(0.14),
+                child: const Text('⏳', style: TextStyle(fontSize: 16)),
+              ),
               const SizedBox(width: 8),
               Expanded(
                 child: Text('Cancha pendiente de verificación',
@@ -822,64 +3864,56 @@ class _PanelPendienteState extends State<_PanelPendiente> {
           ),
           const SizedBox(height: 10),
           Text(
-            'Alguien la registró como suya y estamos validando que sea el dueño '
-            'real. Por seguridad, las reservas online se habilitan recién cuando '
-            'se confirme la propiedad.',
+            _esMio
+                ? 'Tu solicitud está en revisión. Por seguridad, las reservas '
+                    'online se habilitan recién cuando confirmemos la propiedad.'
+                : 'Esta cancha aún no está activa en Pichangol; todavía no se '
+                    'puede reservar online.',
             style: t.bodyMedium?.copyWith(color: textoTenue, height: 1.4),
           ),
-          const SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: _consultando ? null : _verificarAhora,
-              icon: _consultando
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.sync, size: 18),
-              label: Text(_consultando
-                  ? 'Consultando al servidor…'
-                  : 'Verificar estado ahora'),
-            ),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              style: FilledButton.styleFrom(
-                  backgroundColor: bosque, foregroundColor: lima),
-              onPressed: _reenviando ? null : _reenviar,
-              icon: _reenviando
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: lima))
-                  : const Icon(Icons.send, size: 18),
-              label: Text(_reenviando
-                  ? 'Reenviando…'
-                  : 'Reenviar solicitud de verificación'),
-            ),
-          ),
-          if (_diag != null) ...[
-            const SizedBox(height: 10),
-            Container(
+          // Los controles del reclamo SOLO los ve quien reclamó (dueño). Un
+          // usuario sin sesión o ajeno no ve "Verificar"/"Reenviar".
+          if (_esMio) ...[
+            _avisoFotos(t),
+            const SizedBox(height: 14),
+            SizedBox(
               width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF3EFE7),
-                borderRadius: BorderRadius.circular(10),
+              child: OutlinedButton.icon(
+                onPressed: _consultando ? null : _verificarAhora,
+                icon: _consultando
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.sync, size: 18),
+                label: Text(_consultando
+                    ? 'Consultando al servidor…'
+                    : 'Verificar estado ahora'),
               ),
-              child: Text(_diag!,
-                  style: t.bodySmall?.copyWith(
-                      color: tinta, height: 1.4, fontFamily: 'monospace')),
             ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                    backgroundColor: lima, foregroundColor: Colors.white),
+                onPressed: _reenviando ? null : _reenviar,
+                icon: _reenviando
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.send, size: 18),
+                label: Text(_reenviando
+                    ? 'Reenviando…'
+                    : 'Reenviar solicitud de verificación'),
+              ),
+            ),
+            _diagBox(t),
           ],
         ],
-      ),
-    );
-  }
+      );
 }
 
 /// Hero con galería de fotos deslizable (puntos indicadores). Si no hay fotos,
@@ -896,9 +3930,31 @@ class _HeroGaleriaState extends State<_HeroGaleria> {
   final _ctrl = PageController();
   int _pagina = 0;
 
+  /// Fotos de Google bajadas EN VIVO al abrir la ficha (solo canchas
+  /// descubiertas sin fotos propias; máx 3, con caché de sesión). La lista de
+  /// Explorar sigue siempre con placeholder — esto es solo para la ficha.
+  List<String> _fotosVivo = const [];
+
   List<String> get _fotos => widget.cancha.fotos.isNotEmpty
       ? widget.cancha.fotos
-      : (widget.cancha.fotoUrl != null ? [widget.cancha.fotoUrl!] : []);
+      : (widget.cancha.fotoUrl != null
+          ? [widget.cancha.fotoUrl!]
+          : _fotosVivo);
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarFotosVivo();
+  }
+
+  Future<void> _cargarFotosVivo() async {
+    final c = widget.cancha;
+    // Solo descubiertas/cosechadas: las reclamadas lucen las fotos del dueño.
+    if (c.registrada || c.fotos.isNotEmpty || c.fotoUrl != null) return;
+    final urls = await PlacesService.fotosFicha(c.id,
+        nombre: c.club.isNotEmpty ? c.club : c.nombre, ubicacion: c.ubicacion);
+    if (mounted && urls.isNotEmpty) setState(() => _fotosVivo = urls);
+  }
 
   @override
   void dispose() {
@@ -931,7 +3987,7 @@ class _HeroGaleriaState extends State<_HeroGaleria> {
             ),
             if (fotos.length > 1)
               Positioned(
-                bottom: 14,
+                bottom: 12,
                 left: 0,
                 right: 0,
                 child: Row(
@@ -954,8 +4010,70 @@ class _HeroGaleriaState extends State<_HeroGaleria> {
                 ),
               ),
           ],
+          // Contador de fotos "1 / N" (sobre la foto, abajo a la derecha).
+          if (fotos.length > 1)
+            Positioned(
+              bottom: 12,
+              right: 12,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.55),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text('${_pagina + 1} / ${fotos.length}',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700)),
+              ),
+            ),
         ],
       ),
+    );
+  }
+}
+
+/// Fila de datos clave de la cancha (deporte · horario · duración · precio),
+/// con íconos, al estilo de la ficha de Airbnb.
+class _FilaDatos extends StatelessWidget {
+  const _FilaDatos({required this.cancha});
+  final Cancha cancha;
+
+  String get _dur {
+    final m = cancha.duracionSlotMin;
+    if (m % 60 == 0) return '${m ~/ 60} h';
+    if (m == 90) return '1 h 30';
+    return '$m min';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    Widget dato(IconData ic, String txt) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(ic, size: 18, color: cs.primary),
+            const SizedBox(width: 6),
+            Text(txt,
+                style: t.bodyMedium
+                    ?.copyWith(color: cs.onSurface, fontWeight: FontWeight.w600)),
+          ],
+        );
+    return Wrap(
+      spacing: 16,
+      runSpacing: 10,
+      children: [
+        dato(iconoDeporte(cancha.deporte), cancha.deporte.etiqueta),
+        if (cancha.superficie.isNotEmpty)
+          dato(iconoSuperficie(cancha.superficie), cancha.superficie),
+        dato(Icons.schedule, '${cancha.horaApertura}–${cancha.horaCierre}'),
+        dato(Icons.timer_outlined, _dur),
+        dato(Icons.payments_outlined,
+            '${cancha.monedaSimbolo}${montoTxt(cancha.precioVisible)} ${cancha.cobraPorTurno ? '/turno' : '/h'}'),
+      ],
     );
   }
 }
@@ -975,6 +4093,448 @@ class _Badge extends StatelessWidget {
       child: Text(texto,
           style: TextStyle(
               color: fg, fontSize: 11, fontWeight: FontWeight.w700, height: 1)),
+    );
+  }
+}
+
+/// BONOS de horas prepagadas del local (vista del jugador): muestra su saldo si
+/// tiene, y los packs disponibles para comprar (paga con Culqi → horas que
+/// descuenta al reservar en este local).
+class _SeccionBonos extends StatefulWidget {
+  const _SeccionBonos({required this.cancha});
+  final Cancha cancha;
+
+  @override
+  State<_SeccionBonos> createState() => _SeccionBonosState();
+}
+
+class _SeccionBonosState extends State<_SeccionBonos> {
+  bool _comprando = false;
+
+  String get _club => widget.cancha.club;
+
+  Future<void> _comprar(BonoOferta o) async {
+    if (!await LoginGoogleSheet.mostrar(context, motivo: 'comprar tu bono')) {
+      return;
+    }
+    if (!mounted) return;
+    final u = appState.usuario;
+    if (u == null) return;
+    setState(() => _comprando = true);
+    var operacion = '';
+    final pagado = await PagoTarjeta.cobrar(
+      context,
+      // El sheet recibe el monto EN LA MONEDA LOCAL (S//Bs/$), lo pasa a
+      // céntimos y lo muestra tal cual. NO multiplicar por 100 aquí.
+      monto: o.precio,
+      concepto: 'Bono ${o.horas}h · $_club',
+      email: u.email,
+      moneda: widget.cancha.monedaSimbolo,
+      onOperacion: (op) => operacion = op,
+    );
+    if (!mounted) {
+      _comprando = false;
+      return;
+    }
+    if (!pagado) {
+      setState(() => _comprando = false);
+      return;
+    }
+    final ventaId = operacion.isNotEmpty
+        ? operacion
+        : '${o.id}_${u.email}_${DateTime.now().millisecondsSinceEpoch}';
+    await conPreload(context, () async {
+      // 1) Crédito del jugador. 2) Contabilidad de venta (por recibir del dueño
+      //    − comisión), idempotente por ventaId. 3) Push al dueño.
+      await appState.comprarBono(o, ventaId);
+      await PagosService.venta(
+        vendedorId: o.dueno,
+        montoSoles: o.precio,
+        ventaId: ventaId,
+        concepto: 'Bono ${o.horas}h · $_club',
+        moneda: widget.cancha.monedaSimbolo,
+        compradorEmail: u.email.toLowerCase(),
+        compradorNombre: u.nombre,
+      );
+      AvisosService.enviar(
+        email: o.dueno,
+        titulo: '¡Vendiste un bono! 🎟️',
+        cuerpo: '${u.nombre} compró tu pack de ${o.horas} horas en $_club.',
+        tipo: 'bono',
+      );
+    }, texto: 'Confirmando tu bono…');
+    if (!mounted) return;
+    setState(() => _comprando = false);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        backgroundColor: lima,
+        content: Text('¡Bono activado! Tienes ${appState.miSaldoBono(_club)} '
+            'horas en $_club.')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: appState,
+      builder: (context, _) {
+        final t = Theme.of(context).textTheme;
+        final ofertas = appState.bonosDeClub(_club);
+        final saldo = appState.miSaldoBono(_club);
+        if (ofertas.isEmpty && saldo == 0) return const SizedBox.shrink();
+        final mon = widget.cancha.monedaSimbolo;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const IconoVivo(Icons.confirmation_number_outlined, color: teal),
+                const SizedBox(width: 8),
+                Text('Bonos de horas',
+                    style:
+                        t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Text(
+                'Paga por adelantado y ahorra: cada bono te da horas para '
+                'reservar aquí.',
+                style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
+            if (saldo > 0) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: teal.withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: teal, size: 20),
+                    const SizedBox(width: 8),
+                    Text('Tienes $saldo ${saldo == 1 ? 'hora' : 'horas'} de bono',
+                        style: t.bodyMedium?.copyWith(
+                            color: teal, fontWeight: FontWeight.w800)),
+                  ],
+                ),
+              ),
+            ],
+            for (final o in ofertas) ...[
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: trazo),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                          color: lima.withOpacity(0.14),
+                          borderRadius: BorderRadius.circular(12)),
+                      child: Text('${o.horas}h',
+                          style: const TextStyle(
+                              color: lima,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(o.nombre.isEmpty ? '${o.horas} horas' : o.nombre,
+                              style: t.bodyLarge
+                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                          Text('$mon ${montoTxt(o.precioHora)}/hora',
+                              style: t.bodySmall
+                                  ?.copyWith(color: textoTenueDe(context))),
+                        ],
+                      ),
+                    ),
+                    FilledButton(
+                      style: FilledButton.styleFrom(backgroundColor: lima),
+                      onPressed: _comprando ? null : () => _comprar(o),
+                      child: Text('$mon ${montoTxt(o.precio)}',
+                          style: const TextStyle(fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// RESEÑAS del local (⭐ real). Muestra el promedio + cantidad, la lista de
+/// reseñas y —para jugadores logueados que no son el dueño— una tarjeta para
+/// calificar (estrellas + comentario). Reemplaza el rating "presentacional".
+class _SeccionResenas extends StatefulWidget {
+  const _SeccionResenas({
+    required this.club,
+    required this.canchaDestino,
+    required this.puedeResenar,
+  });
+  final Club club;
+  final Cancha canchaDestino; // a qué cancha se atribuye la reseña del usuario
+  final bool puedeResenar;
+
+  @override
+  State<_SeccionResenas> createState() => _SeccionResenasState();
+}
+
+class _SeccionResenasState extends State<_SeccionResenas> {
+  final _comentario = TextEditingController();
+  int _estrellas = 0;
+  bool _enviando = false;
+  bool _editor = false; // muestra el formulario para calificar
+
+  List<String> get _canchaIds => widget.club.canchas.map((c) => c.id).toList();
+
+  @override
+  void initState() {
+    super.initState();
+    appState.cargarResenas(_canchaIds);
+  }
+
+  @override
+  void dispose() {
+    _comentario.dispose();
+    super.dispose();
+  }
+
+  /// ¿Este correo tiene alguna reserva en el local? → sello "reservó aquí".
+  bool _reservoAqui(String email) {
+    final e = email.trim().toLowerCase();
+    final ids = _canchaIds.toSet();
+    return appState.reservas.any((r) =>
+        ids.contains(r.canchaId) && r.usuario.trim().toLowerCase() == e);
+  }
+
+  Future<void> _guardar() async {
+    if (_estrellas < 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Elige cuántas estrellas.')));
+      return;
+    }
+    setState(() => _enviando = true);
+    final ok = await appState.enviarResena(
+        widget.canchaDestino.id, _estrellas, _comentario.text);
+    if (!mounted) return;
+    setState(() {
+      _enviando = false;
+      if (ok) _editor = false;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok ? '¡Gracias por tu reseña!' : 'No se pudo guardar.'),
+      backgroundColor: ok ? lima : null,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: appState,
+      builder: (context, _) {
+        final t = Theme.of(context).textTheme;
+        final resumen = appState.resumenResenas(_canchaIds);
+        final lista = appState.resenasDe(_canchaIds);
+        final mia = appState.miResena(_canchaIds);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text('Reseñas',
+                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+                const Spacer(),
+                if (resumen.hay) ...[
+                  const Icon(Icons.star, size: 18, color: amarillo),
+                  const SizedBox(width: 4),
+                  Text(resumen.promedio.toStringAsFixed(1),
+                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                  const SizedBox(width: 4),
+                  Text('(${resumen.cantidad})',
+                      style: TextStyle(color: textoTenueDe(context))),
+                ],
+              ],
+            ),
+            const SizedBox(height: 4),
+            if (!resumen.hay)
+              Text(
+                widget.puedeResenar
+                    ? 'Aún no hay reseñas. ¡Sé el primero en calificar!'
+                    : 'Aún no hay reseñas de este local.',
+                style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
+              ),
+
+            // Tarjeta para calificar (jugador logueado, no dueño).
+            if (widget.puedeResenar) ...[
+              const SizedBox(height: 12),
+              if (!_editor)
+                OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _editor = true;
+                      _estrellas = mia?.estrellas ?? 0;
+                      _comentario.text = mia?.comentario ?? '';
+                    });
+                  },
+                  icon: Icon(mia == null ? Icons.rate_review_outlined : Icons.edit,
+                      size: 18),
+                  label: Text(mia == null ? 'Calificar mi experiencia' : 'Editar mi reseña'),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFEEEAE0)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Tu reseña de ${widget.club.nombre}',
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          for (var i = 1; i <= 5; i++)
+                            IconButton(
+                              padding: const EdgeInsets.symmetric(horizontal: 2),
+                              constraints: const BoxConstraints(),
+                              onPressed: () => setState(() => _estrellas = i),
+                              icon: Icon(
+                                i <= _estrellas ? Icons.star : Icons.star_border,
+                                color: amarillo,
+                                size: 32,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: _comentario,
+                        maxLines: 3,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          hintText: '¿Cómo estuvo la cancha? (opcional)',
+                          isDense: true,
+                          border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: trazo)),
+                          enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: trazo)),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: _enviando
+                                ? null
+                                : () => setState(() => _editor = false),
+                            child: const Text('Cancelar'),
+                          ),
+                          const SizedBox(width: 6),
+                          FilledButton(
+                            style: FilledButton.styleFrom(backgroundColor: lima),
+                            onPressed: _enviando ? null : _guardar,
+                            child: Text(_enviando ? 'Guardando…' : 'Publicar'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+
+            // Lista de reseñas.
+            for (final r in lista) ...[
+              const SizedBox(height: 14),
+              _ResenaCard(resena: r, reservoAqui: _reservoAqui(r.autorEmail)),
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ResenaCard extends StatelessWidget {
+  const _ResenaCard({required this.resena, required this.reservoAqui});
+  final Resena resena;
+  final bool reservoAqui;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final nombre = resena.autorNombre.trim().isNotEmpty
+        ? resena.autorNombre.trim()
+        : resena.autorEmail.split('@').first;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CircleAvatar(
+          radius: 18,
+          backgroundColor: teal,
+          child: Text(nombre.isEmpty ? '?' : nombre[0].toUpperCase(),
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.w800)),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(nombre,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w700)),
+                  ),
+                  if (reservoAqui) ...[
+                    const SizedBox(width: 6),
+                    Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                          color: lima.withOpacity(0.14),
+                          borderRadius: BorderRadius.circular(999)),
+                      child: const Text('✓ reservó aquí',
+                          style: TextStyle(
+                              color: lima,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  for (var i = 1; i <= 5; i++)
+                    Icon(i <= resena.estrellas ? Icons.star : Icons.star_border,
+                        size: 14, color: amarillo),
+                ],
+              ),
+              if (resena.comentario.trim().isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(resena.comentario.trim(), style: t.bodyMedium),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

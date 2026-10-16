@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import time
 import urllib.parse
@@ -9,8 +10,10 @@ from collections import defaultdict, deque
 from xml.sax.saxutils import escape as _xml_esc
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from pydantic import BaseModel
 
 import config
+from db.store import stores
 from models import (
     AprobarManualRequest,
     OtpConfirmarRequest,
@@ -19,7 +22,8 @@ from models import (
     TriageRequest,
     ValidarReclamoRequest,
 )
-from propiedad import identidad, reclamos, service, twilio_adapter, whatsapp_adapter
+from propiedad import (admin_auth, identidad, reclamos, service,
+                       twilio_adapter, whatsapp_adapter)
 
 router = APIRouter(prefix="/propiedad", tags=["propiedad"])
 
@@ -31,7 +35,7 @@ def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
     La app del dueño NO usa estos endpoints; usa /reclamo, /estado, /otp, etc."""
     if not config.ADMIN_PANEL_TOKEN:
         raise HTTPException(status_code=503, detail="admin_no_configurado")
-    if x_admin_token != config.ADMIN_PANEL_TOKEN:
+    if not admin_auth.token_admin_valido(x_admin_token):
         raise HTTPException(status_code=401, detail="token_invalido")
 
 
@@ -90,6 +94,55 @@ def get_dni(dni: str) -> dict:
     return identidad.consultar_dni(dni)
 
 
+@router.get("/cedula/{cedula}", dependencies=_APP)
+def get_cedula(cedula: str) -> dict:
+    """Consulta la cédula ecuatoriana (CipherByte). Espejo de /dni para EC."""
+    return identidad.consultar_cedula(cedula)
+
+
+# Pimienta fija para el hash del DNI: no guardamos el número (Ley 29733), solo su
+# hash, y así podemos comprobar unicidad sin exponer el dato.
+_DNI_PEPPER = "pichangol-dni-v1"
+
+
+def _dni_hash(dni: str) -> str:
+    return hashlib.sha256((dni.strip() + "|" + _DNI_PEPPER).encode()).hexdigest()
+
+
+class VerificarDniReq(BaseModel):
+    dni: str
+    email: str
+    pais: str = "PE"  # 'PE' → DNI (Factiliza); 'EC' → cédula (CipherByte)
+
+
+@router.post("/verificar-dni", dependencies=_APP)
+def post_verificar_dni(req: VerificarDniReq) -> dict:
+    """Verifica identidad por documento con la regla ANTI-FRAUDE
+    **1 documento = 1 cuenta**. Valida contra el registro oficial del país
+    (Perú: DNI/RENIEC vía Factiliza; Ecuador: cédula vía CipherByte) y liga el
+    documento (solo su HASH) al correo. Si ese documento ya está verificado en
+    OTRA cuenta, rechaza (`dni_en_uso`)."""
+    email = req.email.strip().lower()
+    if not email:
+        return {"ok": False, "error": "correo_requerido"}
+    pais = (req.pais or "PE").strip().upper()
+    # Registro oficial según el país. Default Perú (compat. con clientes viejos).
+    if pais == "EC":
+        data = identidad.consultar_cedula(req.dni)
+    else:
+        data = identidad.consultar_dni(req.dni)
+    if not data.get("ok"):
+        return data  # {ok: False, error: ...} (documento inválido / no encontrado)
+    # Hash del NÚMERO (no guardamos el dato): DNI (8) y cédula (10) no colisionan;
+    # la regla "1 documento = 1 cuenta" vale entre países.
+    h = _dni_hash(req.dni)
+    dueno = stores.dni_verificados.get(h)
+    if dueno and dueno != email:
+        return {"ok": False, "error": "dni_en_uso"}
+    stores.dni_verificados[h] = email  # liga (o confirma) el documento a la cuenta
+    return data  # ok + nombre_completo + fecha_nacimiento
+
+
 @router.get("/ruc/{ruc}", dependencies=_APP)
 def get_ruc(ruc: str) -> dict:
     return identidad.consultar_ruc(ruc)
@@ -102,12 +155,30 @@ def post_reclamo(req: ReclamoRequest) -> dict:
     return reclamos.crear_reclamo(
         req.cancha_id, req.solicitante_id, req.nombre_local,
         req.telefono_contacto, req.dni, req.ruc, req.relacion,
-        req.lat, req.lng, req.solicitante_lat, req.solicitante_lng)
+        req.lat, req.lng, req.solicitante_lat, req.solicitante_lng,
+        solicitante_nombre=req.solicitante_nombre,
+        foto_evidencia_url=req.foto_evidencia_url,
+        nota_reclamante=req.nota_reclamante)
 
 
 @router.get("/reclamo/{cancha_id}", dependencies=_APP)
 def get_reclamo(cancha_id: str, solicitante: str = "") -> dict:
     return reclamos.estado(cancha_id, solicitante or None)
+
+
+class BorrarMisReclamosRequest(BaseModel):
+    solicitante: str
+
+
+@router.post("/reclamos/borrar-mios", dependencies=_APP)
+def post_borrar_mis_reclamos(req: BorrarMisReclamosRequest) -> dict:
+    """El DUEÑO borra SUS propios reclamos (los que él inició) desde la app, al
+    'dejar en virgen'. Así sus canchas reclamadas también desaparecen de la torre
+    de control y puede volver a reclamarlas de cero. Solo toca los del correo que
+    manda; NO borra reclamos de otros usuarios (por eso no necesita token admin).
+    El middleware persiste el snapshot tras el POST."""
+    n = stores.borrar_reclamos_de(req.solicitante)
+    return {"ok": True, "borrados": n}
 
 
 @router.get("/lugar-reclamado", dependencies=_APP)
@@ -152,6 +223,14 @@ def post_activar(reclamo_id: int) -> dict:
     return reclamos.activar_admin(reclamo_id)
 
 
+@router.post("/reclamo/{reclamo_id}/liberar", dependencies=_ADMIN)
+def post_liberar_lugar(reclamo_id: int, req: TriageRequest) -> dict:
+    """LIBERA el lugar: rechaza este reclamo y todos los NO terminales del mismo
+    lugar, y revoca la cancha. Deja la ficha reclamable de nuevo (resuelve lugares
+    atascados en 'revisión')."""
+    return reclamos.liberar_lugar(reclamo_id, req.revisor)
+
+
 @router.get("/reclamos", dependencies=_ADMIN)
 def get_reclamos(estado: str | None = None) -> list[dict]:
     """ADMIN: lista completa (incluye datos personales del reclamante). Protegido
@@ -192,10 +271,22 @@ def post_solicitar(req: OtpSolicitarRequest) -> dict:
 
 @router.post("/otp/confirmar", dependencies=_APP)
 def post_confirmar(req: OtpConfirmarRequest) -> dict:
-    """Valida el código. Si coincide (y el número prueba propiedad), marca la
-    cancha como verificada por su dueño."""
-    return service.confirmar(
-        req.cancha_id, req.codigo, req.solicitante_id, req.telefono_publico)
+    """Valida el código del WhatsApp del local. Ya NO activa la cancha (1-oct-
+    2026, igual que la web): queda como EVIDENCIA en el reclamo abierto y avisa
+    al admin para que apruebe. Responde `estado: pendiente_revision` aunque el
+    código sea correcto, así un APK viejo (que activaba en local con
+    `confirmada`) muestra "lo revisará nuestro equipo" y no se auto-verifica."""
+    otp = stores.otps.get(req.cancha_id)
+    tel = otp.telefono if otp else ""
+    res = service.confirmar(
+        req.cancha_id, req.codigo, req.solicitante_id, req.telefono_publico, activar=False)
+    if not res.get("ok"):
+        return res
+    r = reclamos.registrar_evidencia_otp(
+        req.cancha_id, req.solicitante_id, res.get("telefono_enmascarado") or "", tel, origen="app")
+    return {"ok": True, "estado": "pendiente_revision", "verificada": False,
+            "codigo_confirmado": True, "en_reclamo": r is not None,
+            "confirmacion_id": res.get("confirmacion_id")}
 
 
 @router.post("/aprobar-manual", dependencies=_ADMIN)
@@ -282,6 +373,14 @@ async def webhook_whatsapp(request: Request) -> Response:
                     f"No se pudo aprobar: el reclamante estuvo a "
                     f'{r.get("distancia_m", "?")} m de la cancha (máx '
                     f'{r.get("max_m", "?")} m).')
+            if err == "faltan_fotos_propias":
+                return _twiml(
+                    f"No se pudo aprobar: el local tiene {r.get('fotos_propias', 0)} "
+                    f"foto(s) propia(s) y se exigen {r.get('minimo', '?')}. Pídele "
+                    f"al dueño que las suba en Editar cancha.")
+            if err == "fotos_no_verificables":
+                return _twiml("No se pudo aprobar: no pudimos revisar las fotos "
+                              "del local. Inténtalo en unos minutos.")
             return _twiml(f"No se pudo aprobar el reclamo {codigo}.")
         nombre = _xml_esc(r.get("nombre_local", ""))
         if r.get("ya"):
