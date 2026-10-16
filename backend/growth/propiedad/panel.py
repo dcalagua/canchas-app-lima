@@ -480,7 +480,8 @@ def get_academias_plan_admin(x_admin_token: str | None = Header(default=None)) -
                       "estado": e["estado"], "vence": e.get("vence"), "vence_txt": e.get("vence_txt", ""),
                       "dias": e.get("dias_restantes"), "precio": e["precio"], "simbolo": e["simbolo"],
                       "pagado": bool(r.get("pagado")), "auto_renovar": bool(r.get("auto_renovar", True)),
-                      "yape": bool(ap.cobro_directo(a))})
+                      "yape": bool(ap.cobro_directo(a)),
+                      "cobro": ((ap.cobro_directo(a) or {}).get("tipo") or "")})
     orden = {"vencida": 0, "prueba": 1, "activa": 2, "libre": 3}
     filas.sort(key=lambda x: (orden.get(x["estado"], 9), x["vence"] or ""))
     kpis = {k: sum(1 for f in filas if f["estado"] == k) for k in ("prueba", "activa", "vencida")}
@@ -526,6 +527,8 @@ class YapeAutoConfigRequest(BaseModel):
     regex_monto: str | None = None
     regex_codigo: str | None = None
     regex_nombre: str | None = None
+    qr_regex_monto: str | None = None
+    qr_regex_egreso: str | None = None
     ventana_horas: int | None = None
 
 
@@ -555,7 +558,7 @@ def set_yape_auto_admin(req: YapeAutoConfigRequest, x_admin_token: str | None = 
 def probar_yape_auto_admin(req: YapeAutoProbarRequest, x_admin_token: str | None = Header(default=None)) -> dict:
     _check(x_admin_token)
     import yape_auto
-    return yape_auto.leer(req.titulo, req.texto)
+    return {**yape_auto.leer(req.titulo, req.texto), "qr": yape_auto.leer_qr(req.titulo, req.texto)}
 
 
 # ── FOTOS PROPIAS DE LOS LOCALES YA VERIFICADOS (campaña, 2-oct-2026) ─────────
@@ -5122,7 +5125,7 @@ async function cargarPlanAcademia(){
         <td><b>${esc(a.nombre)}</b><br><small style="color:#667">${esc(a.dueno)}</small></td>
         <td>${pill(a.estado)}${a.pagado?' <small style="color:#667">pagó</small>':''}</td>
         <td>${esc(a.vence_txt||'—')}${a.dias!=null&&a.estado!=='vencida'?'<br><small style="color:#667">'+a.dias+' días</small>':''}</td>
-        <td>${a.yape?'✓ Yape':'<small style="color:#B54708">sin Yape</small>'}</td>
+        <td>${a.cobro==='qr'?'✓ QR':(a.yape?'✓ Yape':'<small style="color:#B54708">sin cobro directo</small>')}</td>
         <td><button class="btn-sec" onclick="cortesiaPlanAcademia('${esc(a.id)}')">+30 días</button></td></tr>`).join('');
     box.innerHTML = `
       <div class="card" style="margin-bottom:12px;background:#F4FBF7">
@@ -5169,23 +5172,24 @@ async function cargarYapeAuto(){
     if(!r.ok){ box.innerHTML='<div class="card">No se pudo cargar Yape automático.</div>'; return; }
     const j = await r.json(); const c = j.config, k = j.kpis;
     const campo = (id, v, w) => `<input id="${id}" value="${esc(v)}" style="width:${w||'100%'};padding:8px;border-radius:10px;border:1px solid var(--border);font-family:monospace;font-size:12px">`;
-    const notas = {sin_datos:'<span class="liq-tag" style="background:#FFF4E5;color:#B54708">no se leyó</span>', ambigua:'<span class="liq-tag" style="background:#FFF4E5;color:#B54708">ambigua</span>'};
+    const notas = {sin_datos:'<span class="liq-tag" style="background:#FFF4E5;color:#B54708">no se leyó</span>', ambigua:'<span class="liq-tag" style="background:#FFF4E5;color:#B54708">ambigua</span>', egreso:'<span class="liq-tag">salida de plata · se ignora</span>'};
     const filas = (j.notificaciones||[]).map(n=>`<tr>
         <td><small>${esc((n.recibida||'').slice(0,16).replace('T',' '))}</small><br><small style="color:#667">${esc(n.email)}</small></td>
         <td style="max-width:340px"><small>${esc(n.titulo)} · ${esc(n.texto)}</small></td>
-        <td>${n.monto!=null?'S/ '+Number(n.monto).toFixed(2):'—'}</td><td>${esc(n.codigo||'—')}</td>
-        <td>${n.usada?'<span class="liq-tag ok">✓ confirmó '+esc(n.usada.alumno||'')+'</span>':(notas[n.nota]||'<small style="color:#667">esperando reporte</small>')}</td></tr>`).join('');
-    const disp = (j.dispositivos||[]).map(d=>`<li>${esc(d.email)} · ${esc(d.modelo||'Android')} · ${d.recibidas||0} leídas${d.ultimo?' · última '+esc(d.ultimo.slice(0,16).replace('T',' ')):''}</li>`).join('');
+        <td>${n.monto!=null?({USD:'$ ',BOB:'Bs '}[n.moneda]||'S/ ')+Number(n.monto).toFixed(2):'—'}</td><td>${n.tipo==='qr'?'<small>QR</small>':esc(n.codigo||'—')}</td>
+        <td>${n.usada?'<span class="liq-tag ok">✓ confirmó '+esc(n.usada.alumno||'')+'</span>':(notas[n.nota]||'<small style="color:#667">'+(n.tipo==='qr'?'sin pago en curso con ese monto':'esperando reporte')+'</small>')}</td></tr>`).join('');
+    const disp = (j.dispositivos||[]).map(d=>`<li>${esc(d.email)} · ${esc(d.modelo||'Android')} · ${d.recibidas||0} leídas${(d.apps||[]).length?' · apps de cobro: '+esc(d.apps.join(', ')):''}${d.ultimo?' · última '+esc(d.ultimo.slice(0,16).replace('T',' ')):''}</li>`).join('');
     box.innerHTML = `
       <div class="card" style="margin-bottom:12px;background:#F7F3FF">
-        <div style="font-weight:800;font-size:15px;margin-bottom:4px">📲 Yape automático · fase 2</div>
-        <div style="color:#667;font-size:12.5px">El celular Android de la academia lee la notificación de su Yape y Pichangol confirma solo el pago reportado cuyo <b>código de seguridad y monto</b> coinciden (una sola coincidencia, dentro de la ventana). Lo ambiguo o no leído queda para que la academia confirme a mano. Si Yape cambia el texto de su notificación, ajusta aquí las expresiones (no hace falta publicar un APK).</div>
+        <div style="font-weight:800;font-size:15px;margin-bottom:4px">📲 Cobros automáticos · Yape (Perú) y QR (Ecuador / Bolivia)</div>
+        <div style="color:#667;font-size:12.5px">El celular Android de la academia lee la notificación de su Yape y Pichangol confirma solo el pago reportado cuyo <b>código de seguridad y monto</b> coinciden (una sola coincidencia, dentro de la ventana). Lo ambiguo o no leído queda para que la academia confirme a mano. En Ecuador y Bolivia el alumno paga el QR de la academia con un <b>monto único</b> (su cuota + 1 a 49 centavos) y la notificación de la app de cobros que eligió la academia (DeUna!, su banco…) lo confirma sola si el monto calza con un solo pago en curso. Las notificaciones de salida de plata (“pagaste”, “enviaste”) se ignoran. Si una app cambia su texto, ajusta aquí las expresiones (no hace falta publicar un APK).</div>
       </div>
       <div class="kpi-row" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
         <div class="card" style="flex:1;min-width:120px"><small>Celulares vinculados</small><div style="font-size:22px;font-weight:800">${k.dispositivos}</div></div>
         <div class="card" style="flex:1;min-width:120px"><small>Notificaciones (7 días)</small><div style="font-size:22px;font-weight:800">${k.recibidas}</div></div>
         <div class="card" style="flex:1;min-width:120px"><small>Leídas bien</small><div style="font-size:22px;font-weight:800">${k.leidas}</div></div>
         <div class="card" style="flex:1;min-width:120px"><small>Confirmadas solas</small><div style="font-size:22px;font-weight:800">${k.confirmadas}</div></div>
+        <div class="card" style="flex:1;min-width:120px"><small>QR leídas · pagos QR en curso</small><div style="font-size:22px;font-weight:800">${k.qr||0} · ${k.intenciones_vivas||0}</div></div>
         <div class="card" style="flex:1;min-width:120px"><small>No leídas / ambiguas</small><div style="font-size:22px;font-weight:800">${k.sin_datos} / ${k.ambiguas}</div></div>
       </div>
       <div class="card" style="margin-bottom:12px;display:grid;gap:10px">
@@ -5194,6 +5198,8 @@ async function cargarYapeAuto(){
         <label style="font-size:12px">Expresión del MONTO<br>${campo('ya_monto', c.regex_monto)}</label>
         <label style="font-size:12px">Expresión del CÓDIGO de seguridad (3 dígitos)<br>${campo('ya_codigo', c.regex_codigo)}</label>
         <label style="font-size:12px">Expresión del NOMBRE de quien yapeó<br>${campo('ya_nombre', c.regex_nombre)}</label>
+        <label style="font-size:12px">QR · expresión del MONTO (Ecuador $ / Bolivia Bs)<br>${campo('ya_qr_monto', c.qr_regex_monto)}</label>
+        <label style="font-size:12px">QR · expresión de SALIDA de plata (se ignora)<br>${campo('ya_qr_egreso', c.qr_regex_egreso)}</label>
         <label style="font-size:12px">Ventana entre el reporte y el yapeo (horas)<br><input id="ya_ventana" type="number" min="1" max="168" value="${c.ventana_horas}" style="width:90px;padding:8px;border-radius:10px;border:1px solid var(--border)"></label>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button class="btn-ap" onclick="guardarYapeAuto()">Guardar</button>
           <span id="ya_msg" style="font-size:12.5px;color:#667"></span></div>
@@ -5212,7 +5218,7 @@ async function cargarYapeAuto(){
 async function guardarYapeAuto(){
   const v = id => document.getElementById(id).value;
   const body = {activo: document.getElementById('ya_activo').checked, paquetes: v('ya_paquetes'),
-    regex_monto: v('ya_monto'), regex_codigo: v('ya_codigo'), regex_nombre: v('ya_nombre'), ventana_horas: parseInt(v('ya_ventana')||'48',10)};
+    regex_monto: v('ya_monto'), regex_codigo: v('ya_codigo'), regex_nombre: v('ya_nombre'), qr_regex_monto: v('ya_qr_monto'), qr_regex_egreso: v('ya_qr_egreso'), ventana_horas: parseInt(v('ya_ventana')||'48',10)};
   const msg = document.getElementById('ya_msg');
   const r = await fetch('/admin/api/yape-auto/config',{method:'POST', headers:{...headers(),'Content-Type':'application/json'}, body: JSON.stringify(body)});
   const j = await r.json().catch(()=>({}));
@@ -5224,7 +5230,9 @@ async function probarYapeAuto(){
   const r = await fetch('/admin/api/yape-auto/probar',{method:'POST', headers:{...headers(),'Content-Type':'application/json'}, body: JSON.stringify({texto: document.getElementById('ya_prueba').value})});
   const j = await r.json().catch(()=>({}));
   const ok = j.monto!=null && j.codigo;
-  res.innerHTML = `${ok?'✅':'⚠️'} Monto: <b>${j.monto!=null?Number(j.monto).toFixed(2):'—'}</b> · Código: <b>${esc(j.codigo||'—')}</b> · Nombre: <b>${esc(j.nombre||'—')}</b>`;
+  const q = j.qr || {};
+  res.innerHTML = `${ok?'✅':'⚠️'} Yape · Monto: <b>${j.monto!=null?Number(j.monto).toFixed(2):'—'}</b> · Código: <b>${esc(j.codigo||'—')}</b> · Nombre: <b>${esc(j.nombre||'—')}</b><br>`
+    + `${q.monto!=null&&!q.egreso?'✅':'⚠️'} QR · Monto: <b>${q.monto!=null?Number(q.monto).toFixed(2):'—'}</b> ${esc(q.moneda||'')}${q.egreso?' · <b>salida de plata (se ignora)</b>':''}`;
 }
 async function guardarPlanAcademia(){
   const v = id => document.getElementById(id).value;

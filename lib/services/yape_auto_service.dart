@@ -10,7 +10,9 @@ import 'pagos_service.dart';
 /// de la academia lee la notificación de su Yape (servicio nativo
 /// `YapeListener`, MethodChannel `pichangol/yape_auto`) y el backend confirma
 /// solo el pago que el alumno reportó con el mismo código de seguridad y monto
-/// (`yape_auto.py`). Solo Android: en iPhone la academia confirma a mano.
+/// (`yape_auto.py`). En Ecuador / Bolivia escucha además las apps de cobro que
+/// el dueño eligió (QR con monto único). Solo Android: en iPhone la academia
+/// confirma a mano.
 class YapeAutoService {
   static const _canal = MethodChannel('pichangol/yape_auto');
   static const _appKey = String.fromEnvironment('APP_API_KEY');
@@ -149,6 +151,42 @@ class YapeAutoService {
     } catch (_) {}
     await _post(
         '/academias/yape/desvincular', {'email': email.trim().toLowerCase()});
+  }
+
+  /// Apps instaladas con ícono (paquete, nombre) para elegir dónde recibe la
+  /// academia sus cobros por QR. Vacío si el APK es anterior o falla.
+  static Future<List<(String, String)>> appsInstaladas() async {
+    if (!soportado) return const [];
+    try {
+      final l = await _canal.invokeMethod<List>('apps');
+      return [
+        for (final x in l ?? const [])
+          if (x is Map && (x['paquete'] ?? '').toString().isNotEmpty)
+            ((x['paquete']).toString(), (x['nombre'] ?? x['paquete']).toString()),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Guarda en el backend las apps de cobro elegidas (QR) y le pasa al
+  /// servicio nativo la lista completa (Yape + esas apps).
+  static Future<Map<String, dynamic>> elegirApps(
+      String email, List<String> paquetes) async {
+    final e = email.trim().toLowerCase();
+    final r = await _post('/academias/yape/apps', {'email': e, 'paquetes': paquetes});
+    if (r['ok'] != true) return r;
+    try {
+      await _canal.invokeMethod('configurar', {
+        'url': PagosService.baseUrl,
+        'appKey': _appKey,
+        'email': e,
+        'token': '',
+        'paquetes': _paquetes(r['paquetes']),
+        'activo': true,
+      });
+    } catch (_) {}
+    return r;
   }
 
   /// Al abrir la pantalla: si el servicio está encendido, actualiza los

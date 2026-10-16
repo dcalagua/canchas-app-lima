@@ -1,5 +1,12 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../models/academia.dart';
 import '../screens/chat_screen.dart';
@@ -106,6 +113,24 @@ class PagoDirectoSheet {
       return false;
     }
     final CobroDirecto cobro = cd;
+    if (cobro.esQr) {
+      // Ecuador / Bolivia: QR de la academia con MONTO ÚNICO; se confirma solo.
+      final okQr = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+        builder: (_) => _HojaPagoQr(
+            academia: academia, alumno: alumno, cuotas: lista, cobro: cobro),
+      );
+      if (okQr == true && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('¡Pago recibido! Tu cuota quedó pagada.')));
+      }
+      appState.cargarMatriculasRemotas();
+      return okQr == true;
+    }
     final ok = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -365,6 +390,40 @@ class _HojaPagoDirectoState extends State<_HojaPagoDirecto> {
                 ],
               ),
             ),
+            if (cd.tieneQr) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: trazo),
+                ),
+                child: Row(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: CachedNetworkImage(
+                        imageUrl: cd.qrUrl,
+                        width: 120,
+                        height: 120,
+                        fit: BoxFit.contain,
+                        errorWidget: (_, __, ___) => const SizedBox(
+                            width: 120,
+                            height: 120,
+                            child: Icon(Icons.qr_code_2, size: 48)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                          'O escanea su QR de Yape desde otro celular, o '
+                          'haz captura y en Yape elige «Escanear» → galería.',
+                          style: TextStyle(fontSize: 12.5, height: 1.3)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             const Text('Cómo pagar',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
@@ -545,6 +604,406 @@ class ComprobanteYapeMini extends StatelessWidget {
                   color: lima, fontWeight: FontWeight.w800, fontSize: 12)),
           raya(120),
         ],
+      ),
+    );
+  }
+}
+
+
+/// PAGO POR QR (Ecuador / Bolivia): el alumno recibe un MONTO ÚNICO (su cuota
+/// + unos centavos de identificación), escanea el QR de la academia y paga.
+/// El celular de la academia lee la notificación de su app de cobros y la
+/// cuota queda pagada sola; mientras tanto la hoja sondea el estado.
+class _HojaPagoQr extends StatefulWidget {
+  const _HojaPagoQr({
+    required this.academia,
+    required this.alumno,
+    required this.cuotas,
+    required this.cobro,
+  });
+  final Academia academia;
+  final Alumno alumno;
+  final List<Cuota> cuotas;
+  final CobroDirecto cobro;
+
+  @override
+  State<_HojaPagoQr> createState() => _HojaPagoQrState();
+}
+
+class _HojaPagoQrState extends State<_HojaPagoQr> {
+  PagoQr? _pago;
+  String? _error;
+  bool _cargando = true;
+  bool _avisando = false;
+  bool _compartiendo = false;
+  Timer? _sondeo;
+
+  String get _email => appState.usuario?.email ?? '';
+
+  @override
+  void initState() {
+    super.initState();
+    _iniciar();
+  }
+
+  @override
+  void dispose() {
+    _sondeo?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _iniciar() async {
+    if (_email.isEmpty) {
+      setState(() {
+        _cargando = false;
+        _error = 'Inicia sesión para pagar.';
+      });
+      return;
+    }
+    setState(() {
+      _cargando = true;
+      _error = null;
+    });
+    final (p, err) = await AcademiaPlanService.iniciarQr(
+        alumnoId: widget.alumno.id,
+        email: _email,
+        cuotaIds: widget.cuotas.map((c) => c.id).toList());
+    if (!mounted) return;
+    setState(() {
+      _cargando = false;
+      _pago = p;
+      _error = err;
+    });
+    if (p != null) _vigilar();
+  }
+
+  void _vigilar() {
+    _sondeo?.cancel();
+    _sondeo = Timer.periodic(const Duration(seconds: 5), (_) async {
+      final p = _pago;
+      if (p == null || !mounted) return;
+      final n = await AcademiaPlanService.estadoQr(p.id, _email);
+      if (!mounted || n == null) return;
+      if (n.confirmado) {
+        _sondeo?.cancel();
+        Navigator.of(context).pop(true);
+        return;
+      }
+      if (!n.vivo) {
+        _sondeo?.cancel();
+        setState(() {
+          _pago = null;
+          _error = n.estado == 'rechazado'
+              ? 'La academia no encontró tu pago. Revisa el monto o escríbele.'
+              : 'Este QR ya no está vigente. Genera un monto nuevo.';
+        });
+        return;
+      }
+      if (n.estado != p.estado) setState(() => _pago = n);
+    });
+  }
+
+  Future<void> _yaPague() async {
+    final p = _pago;
+    if (p == null || _avisando) return;
+    final ok = await confirmarPichangol(context,
+        titulo: '¿Ya pagaste?',
+        mensaje: 'Le avisamos a ${widget.academia.nombre}. Si su celular está '
+            'vinculado, tu pago se confirma solo apenas llegue; si no, la '
+            'academia lo revisa.',
+        textoConfirmar: 'Sí, ya pagué',
+        icono: Icons.check_circle_outline);
+    if (!ok || !mounted) return;
+    setState(() => _avisando = true);
+    final (n, err) = await AcademiaPlanService.marcarPagadoQr(p.id, _email);
+    if (!mounted) return;
+    setState(() => _avisando = false);
+    if (n == null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(err ?? 'No se pudo avisar.')));
+      return;
+    }
+    if (n.confirmado) {
+      Navigator.of(context).pop(true);
+      return;
+    }
+    setState(() => _pago = n);
+  }
+
+  Future<void> _copiarMonto() async {
+    final p = _pago;
+    if (p == null) return;
+    await Clipboard.setData(ClipboardData(text: p.monto.toStringAsFixed(2)));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Monto copiado: ${p.montoTxt}')));
+  }
+
+  /// Guarda/comparte la imagen del QR para abrirla desde la app del banco
+  /// (no se puede escanear la pantalla del mismo celular).
+  Future<void> _compartirQr() async {
+    final p = _pago;
+    if (p == null || _compartiendo) return;
+    setState(() => _compartiendo = true);
+    try {
+      final resp = await http.get(Uri.parse(p.qrUrl)).timeout(const Duration(seconds: 15));
+      if (resp.statusCode == 200) {
+        final dir = await getTemporaryDirectory();
+        final ruta = '${dir.path}/qr_${widget.academia.id}.jpg';
+        await File(ruta).writeAsBytes(resp.bodyBytes);
+        await Share.shareXFiles([XFile(ruta, mimeType: 'image/jpeg')],
+            text: 'QR de ${widget.academia.nombre} · paga exactamente ${p.montoTxt}');
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No se pudo descargar el QR.')));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No se pudo compartir el QR.')));
+      }
+    }
+    if (mounted) setState(() => _compartiendo = false);
+  }
+
+  Widget _paso(String n, String texto) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration:
+                  const BoxDecoration(color: limaSuave, shape: BoxShape.circle),
+              child: Text(n,
+                  style: const TextStyle(
+                      color: bosque, fontWeight: FontWeight.w800, fontSize: 12)),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+                child: Text(texto,
+                    style: const TextStyle(fontSize: 13.5, height: 1.3))),
+          ],
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final p = _pago;
+    final mon = widget.academia.monedaSimbolo;
+    final base = widget.cuotas.fold<double>(0, (s, c) => s + c.monto);
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          20, 18, 20, 20 + MediaQuery.of(context).viewInsets.bottom),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                    color: trazo, borderRadius: BorderRadius.circular(999)),
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                LogoAcademia(logoUrl: widget.academia.logoUrl, size: 40),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Paga con QR',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 18)),
+                      Text(
+                          '${widget.academia.nombre} · ${widget.cobro.appVisible}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style:
+                              const TextStyle(color: textoTenue, fontSize: 13)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            for (final c in widget.cuotas)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(c.concepto,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13)),
+                    ),
+                    Text('$mon ${c.monto.toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 13)),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 10),
+            if (_cargando)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 40),
+                child: Center(child: CircularProgressIndicator(color: lima)),
+              )
+            else if (p == null) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                    color: estadoWarnBg,
+                    borderRadius: BorderRadius.circular(14)),
+                child: Text(_error ?? 'No se pudo preparar el pago.',
+                    style: const TextStyle(
+                        color: estadoWarnFg, fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  style: FilledButton.styleFrom(
+                      backgroundColor: lima,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14)),
+                  onPressed: _iniciar,
+                  child: Text('Generar QR · $mon ${base.toStringAsFixed(2)}',
+                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ),
+            ] else ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: lima, width: 2),
+                ),
+                child: Column(
+                  children: [
+                    Text('Escanea y paga a ${p.titular}',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w800, fontSize: 14.5)),
+                    const SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(14),
+                      child: CachedNetworkImage(
+                        imageUrl: p.qrUrl,
+                        width: 240,
+                        height: 240,
+                        fit: BoxFit.contain,
+                        placeholder: (_, __) => const SizedBox(
+                            width: 240,
+                            height: 240,
+                            child: Center(
+                                child: CircularProgressIndicator(color: lima))),
+                        errorWidget: (_, __, ___) => const SizedBox(
+                            width: 240,
+                            height: 240,
+                            child: Center(
+                                child: Text('No se pudo cargar el QR'))),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(p.montoTxt,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 32,
+                            color: bosque)),
+                    const SizedBox(height: 2),
+                    Text(
+                        'Paga EXACTAMENTE este monto: incluye ${p.extraTxt} '
+                        'de identificación para que tu pago se confirme solo.',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            color: textoTenue, fontSize: 12.5, height: 1.3)),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              _paso('1',
+                  'Toca «Compartir QR» y ábrelo desde ${p.appNombre.isNotEmpty ? p.appNombre : 'tu app del banco'} (o escanéalo desde otro celular).'),
+              _paso('2', 'Escribe el monto ${p.montoTxt} tal cual, con los centavos.'),
+              _paso('3',
+                  'Paga. Apenas le llegue a la academia, tu cuota queda pagada sola.'),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _compartiendo ? null : _compartirQr,
+                      icon: const Icon(Icons.ios_share, size: 18),
+                      label: const Text('Compartir QR'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _copiarMonto,
+                      icon: const Icon(Icons.copy_rounded, size: 18),
+                      label: const Text('Copiar monto'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (p.estado == 'esperando')
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    style: FilledButton.styleFrom(
+                        backgroundColor: lima,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 14)),
+                    onPressed: _avisando ? null : _yaPague,
+                    child: _avisando
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2.4, color: Colors.white))
+                        : const Text('Ya pagué',
+                            style: TextStyle(fontWeight: FontWeight.w800)),
+                  ),
+                ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: lima)),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                        p.estado == 'reportado'
+                            ? 'Esperando que el pago llegue a la academia…'
+                            : 'Esperando tu pago… se confirma solo cuando llegue.',
+                        style: const TextStyle(
+                            fontSize: 12.5, color: textoTenue)),
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: 10),
+            const Text(
+                'Le pagas directo a la academia. Pichangol no toca tu plata ni '
+                'cobra comisión: solo reconoce tu pago y te lo recuerda.',
+                style: TextStyle(color: textoTenue, fontSize: 12)),
+          ],
+        ),
       ),
     );
   }

@@ -66,7 +66,7 @@ class _CobrosScreenState extends State<CobrosScreen> {
   Future<void> _resolver(PagoPorConfirmar p, bool aceptar) async {
     String motivo = '';
     if (!aceptar) {
-      final m = await _elegirMotivo();
+      final m = await _elegirMotivo(qr: p.esQr);
       if (m == null || !mounted) return;
       motivo = m;
     }
@@ -102,12 +102,11 @@ class _CobrosScreenState extends State<CobrosScreen> {
   }
 
   /// "No lo encontré": motivo por SELECCIÓN (sin texto libre).
-  Future<String?> _elegirMotivo() {
-    const motivos = [
-      'No llegó ese yapeo',
-      'El código no coincide',
-      'El monto no coincide',
-    ];
+  Future<String?> _elegirMotivo({bool qr = false}) {
+    // Mismas listas que la web (`MOTIVOS_RECHAZO[_QR]`): el backend las valida.
+    final motivos = qr
+        ? const ['No llegó ese pago', 'El monto no coincide']
+        : const ['No llegó ese yapeo', 'El código no coincide', 'El monto no coincide'];
     String? sel;
     return showModalBottomSheet<String>(
       context: context,
@@ -230,7 +229,26 @@ class _CobrosScreenState extends State<CobrosScreen> {
             decoration: BoxDecoration(
                 color: const Color(0xFFF5EEF8),
                 borderRadius: BorderRadius.circular(12)),
-            child: Column(
+            child: p.esQr
+                ? Column(
+                    children: [
+                      const Text('Monto exacto por QR',
+                          style: TextStyle(
+                              color: Color(0xFF742284),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12)),
+                      Text(
+                          '${p.simbolo} ${(p.montoUnico ?? p.total).toStringAsFixed(2)}',
+                          style: const TextStyle(
+                              color: Color(0xFF742284),
+                              fontWeight: FontWeight.w900,
+                              fontSize: 30)),
+                      const Text(
+                          'Búscalo con los centavos en tu app de cobros',
+                          style: TextStyle(color: textoTenue, fontSize: 11.5)),
+                    ],
+                  )
+                : Column(
               children: [
                 const Text('Código de seguridad',
                     style: TextStyle(

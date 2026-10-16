@@ -177,11 +177,13 @@ class _PlanAcademiaScreenState extends State<PlanAcademiaScreen> {
                     titulo: 'Panel de tu academia',
                     texto:
                         'Alumnos, asistencia, evaluaciones, ranking, reportes y cobros en un solo lugar.'),
-                const _Beneficio(
+                _Beneficio(
                     icono: Icons.payments_outlined,
                     titulo: 'Cobras directo, sin comisión',
                     texto:
-                        'Tus alumnos te yapean a ti. Confirmas cada pago con el código de seguridad de su Yape, o deja que tu celular Android lo confirme solo.'),
+                        _usaQr
+                            ? 'Tus alumnos te pagan a ti con tu QR y un monto único. Tu celular Android reconoce el pago y la cuota queda pagada sola.'
+                            : 'Tus alumnos te yapean a ti. Confirmas cada pago con el código de seguridad de su Yape, o deja que tu celular Android lo confirme solo.'),
                 const SizedBox(height: 14),
                 _tarjetaYape(est),
                 // Fase 2: confirmación automática leyendo la notificación de
@@ -191,7 +193,7 @@ class _PlanAcademiaScreenState extends State<PlanAcademiaScreen> {
                     est.beneficios &&
                     !est.libre) ...[
                   const SizedBox(height: 14),
-                  const TarjetaYapeAuto(),
+                  TarjetaYapeAuto(qr: _usaQr),
                 ],
                 if (est != null && !est.libre) ...[
                   const SizedBox(height: 14),
@@ -371,6 +373,9 @@ class _PlanAcademiaScreenState extends State<PlanAcademiaScreen> {
     );
   }
 
+  /// Ecuador / Bolivia cobran por QR (Perú por Yape), según la sede.
+  bool get _usaQr => QrApps.usaQr(_ac.pais.iso);
+
   Widget _tarjetaYape(PlanAcademiaEstado? est) {
     final cd = _ac.cobroDirecto ?? est?.cobroDirecto;
     return InkWell(
@@ -392,13 +397,16 @@ class _PlanAcademiaScreenState extends State<PlanAcademiaScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(cd == null ? 'Registra tu Yape' : 'Cobras en tu Yape',
+                  Text(
+                      cd == null
+                          ? (_usaQr ? 'Sube tu QR de cobro' : 'Registra tu Yape')
+                          : (cd.esQr ? 'Cobras con tu QR' : 'Cobras en tu Yape'),
                       style: const TextStyle(
                           fontWeight: FontWeight.w800, fontSize: 14.5)),
                   Text(
                       cd == null
                           ? 'Así tus alumnos te pagan directo. Agrégalo en Editar academia.'
-                          : '${cd.yapeBonito}${cd.titular.isNotEmpty ? ' · ${cd.titular}' : ''}',
+                          : cd.resumen,
                       style:
                           const TextStyle(color: textoTenue, fontSize: 12.5)),
                 ],

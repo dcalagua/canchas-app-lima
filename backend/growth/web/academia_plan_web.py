@@ -43,12 +43,13 @@ router = APIRouter(tags=["web-academia-plan"])
 
 # Motivos de rechazo por SELECCIÓN (regla del app: nada de texto libre).
 MOTIVOS_RECHAZO = ["No llegó ese yapeo", "El código no coincide", "El monto no coincide"]
+MOTIVOS_RECHAZO_QR = ["No llegó ese pago", "El monto no coincide"]
 
 BENEFICIOS = [
     ("🔔", "Recordatorios automáticos a tus alumnos", "Push y correo antes de que venza cada cuota, el día y al vencer."),
     ("📝", "Matrícula en línea", "Desde tu ficha en Pichangol y la app, con descuentos familiares y por adelantar."),
     ("📊", "Panel de gestión", "Alumnos, cobros, asistencia, evaluaciones, ranking, reportes, chats y sedes."),
-    ("💜", "Tus alumnos te pagan directo por Yape", "0 % de comisión: confirmas cada pago con el código de seguridad de Yape, o tu celular Android lo confirma solo (actívalo en la app → Plan Academia)."),
+    ("💜", "Tus alumnos te pagan directo", "0 % de comisión. En Perú por Yape (confirmas con el código de seguridad); en Ecuador y Bolivia con tu QR de cobro y un monto único. Tu celular Android lo confirma solo (actívalo en la app → Plan Academia)."),
 ]
 
 
@@ -67,11 +68,11 @@ def yape_bonito(numero: str) -> str:
 
 
 def estado_cuota(c: dict) -> str:
-    """pagada | por_confirmar | rechazado | pendiente."""
+    """pagada | por_confirmar | rechazado | esperando_pago (QR iniciado) | pendiente."""
     if c.get("pagada"):
         return "pagada"
     est = str((c.get("reporte") or {}).get("estado") or "")
-    return est if est in ("por_confirmar", "rechazado") else "pendiente"
+    return est if est in ("por_confirmar", "rechazado", "esperando_pago") else "pendiente"
 
 
 def pill_cuota(c: dict) -> str:
@@ -79,7 +80,11 @@ def pill_cuota(c: dict) -> str:
     if est == "pagada":
         return "<span class='pill ok'>✅ Pagado</span>"
     if est == "por_confirmar":
+        if (c.get("reporte") or {}).get("medio") == "qr":
+            return "<span class='pill warn'>⏳ Esperando que llegue tu pago a la academia</span>"
         return "<span class='pill warn'>⏳ Por confirmar por la academia</span>"
+    if est == "esperando_pago":
+        return "<span class='pill warn'>📷 Pago con QR en curso</span>"
     if est == "rechazado":
         motivo = str((c.get("reporte") or {}).get("motivo") or "La academia no encontró ese yapeo")
         return f"<span class='pill bad'>Rechazado: {e(motivo)} · vuelve a reportar</span>"
@@ -87,7 +92,7 @@ def pill_cuota(c: dict) -> str:
 
 
 def seleccionable(c: dict) -> bool:
-    return estado_cuota(c) in ("pendiente", "rechazado")
+    return estado_cuota(c) in ("pendiente", "rechazado", "esperando_pago")
 
 
 # ── Caja "Paga a la academia" (lado alumno) ───────────────────────────────────
@@ -107,6 +112,10 @@ label.pd-f{cursor:pointer}label.pd-f:hover{background:#F7F7F7}
 .pd-yape .tx{flex:1 1 160px;min-width:0}.pd-yape .num{font-size:22px;font-weight:900;letter-spacing:.5px;color:#4A1257}
 .pd-yape .pd-tit{font-size:13px;color:#5b3a63;overflow-wrap:anywhere}
 .pd-yape .btn{flex:none}
+.pd-qr{display:flex;gap:14px;align-items:center;margin-top:12px;padding:12px;border:1px solid var(--trazo);border-radius:16px;flex-wrap:wrap}
+.pd-qr img{width:150px;height:150px;object-fit:contain;border-radius:12px;background:#fff;flex:none}
+.pd-qr .tx{flex:1 1 160px;min-width:0;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.pd-qr .tx small{color:var(--tenue);font-size:12.5px}
 .pd-total{display:flex;justify-content:space-between;gap:10px;align-items:baseline;margin-top:12px;font-weight:800}
 .pd-total b{font-size:20px;color:#4A1257}
 .pd-pasos{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;margin-top:14px}
@@ -123,6 +132,20 @@ label.pd-f{cursor:pointer}label.pd-f:hover{background:#F7F7F7}
 .pd-cod{font-size:22px;letter-spacing:8px;text-align:center;font-weight:800}
 .pd-enviar{width:100%;margin-top:12px;background:#742284}
 .pd-nota{color:var(--tenue);font-size:12px;margin-top:8px}
+.pq-app{display:flex;gap:12px;align-items:center;background:#EEF6F1;border-radius:16px;padding:12px 14px;margin-top:12px}
+.pq-app .logo{width:46px;height:46px;border-radius:12px;background:#0B8A3E;color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;flex:none}
+.pq-app .tx{min-width:0;flex:1}.pq-app b{display:block;overflow-wrap:anywhere}.pq-app small{color:var(--tenue);font-size:12.5px}
+.pq-iniciar{width:100%;margin-top:12px}
+.pq-panel{margin-top:14px;border:2px solid #0B8A3E;border-radius:18px;padding:16px;text-align:center;background:#fff}
+.pq-panel img{width:100%;max-width:260px;aspect-ratio:1;object-fit:contain;border-radius:14px;border:1px solid var(--trazo);background:#fff}
+.pq-monto{font-size:34px;font-weight:900;color:#0A1B3D;margin:8px 0 0;letter-spacing:.3px}
+.pq-extra{font-size:12.5px;color:#5b6575;margin:2px 0 8px}
+.pq-extra b{color:#B54708}
+.pq-pasos{text-align:left;margin:10px auto 0;max-width:420px;padding-left:20px;font-size:14px;line-height:1.55}
+.pq-acc{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:12px}.pq-acc .btn{flex:1 1 150px}
+.pq-est{display:flex;gap:8px;align-items:center;justify-content:center;font-size:13px;color:#344054;margin-top:12px}
+.pq-est .sp{width:14px;height:14px;border-radius:50%;border:2px solid #CFE7D8;border-top-color:#0B8A3E;animation:pqg 1s linear infinite;flex:none}
+@keyframes pqg{to{transform:rotate(360deg)}}
 @media(max-width:560px){.pd-pasos{grid-template-columns:minmax(0,1fr)}.pd-mock{margin:0 auto}.pd-form{grid-template-columns:minmax(0,1fr)}}
 """
 
@@ -136,12 +159,82 @@ JS_PD = r"""
     box.querySelectorAll('input[data-pdc]:checked').forEach(function(x){ t += parseFloat(x.dataset.m) || 0; n++; });
     var el = box.querySelector('[data-pd-total]'); if(el) el.textContent = fmt(box.dataset.mon, t);
     var b = box.querySelector('.pd-enviar'); if(b){ b.disabled = !n; }
+    var q = box.querySelector('.pq-iniciar'); if(q){ q.disabled = !n; }
     return {t: t, n: n};
   }
   document.querySelectorAll('.pd-box').forEach(total);
+  // ── Pago por QR con monto único (Ecuador / Bolivia) ──
+  var sondeos = {};
+  function pintarQr(box, i){
+    var p = box.querySelector('.pq-panel'); if(!p) return;
+    p.hidden = false; box.dataset.pqViva = i.id;
+    var esp = i.estado === 'esperando', rep = i.estado === 'reportado';
+    p.innerHTML = '<div style="font-weight:800;font-size:15px">Escanea y paga a ' + esc(i.titular) + '</div>' +
+      '<img src="' + esc(i.qr_url) + '" alt="Código QR de cobro de la academia">' +
+      '<div class="pq-monto">' + esc(i.monto_txt) + '</div>' +
+      '<div class="pq-extra">Paga <b>exactamente</b> este monto: incluye ' + esc(i.extra_txt) + ' de identificación para que tu pago se confirme solo.</div>' +
+      '<ol class="pq-pasos"><li>Abre ' + esc(i.app_nombre || 'tu app del banco') + ' (o tu banco) y escanea el QR. En el celular: guarda la imagen y elígela desde tu galería.</li>' +
+      '<li>Escribe el monto <b>' + esc(i.monto_txt) + '</b> tal cual, con los centavos.</li>' +
+      '<li>Paga. Apenas le llegue a la academia, tu cuota queda pagada sola.</li></ol>' +
+      '<div class="pq-acc"><a class="btn sec" href="' + esc(i.qr_url) + '" target="_blank" rel="noopener" download>⬇️ Guardar QR</a>' +
+      '<button type="button" class="btn sec" data-pq-copiar="' + esc(String(i.monto.toFixed ? i.monto.toFixed(2) : i.monto)) + '">⧉ Copiar monto</button>' +
+      (esp ? '<button type="button" class="btn pq-pague">✅ Ya pagué</button>' : '') + '</div>' +
+      '<div class="pq-est"><span class="sp"></span><span>' + (rep ? 'Esperando que el pago llegue a la academia… Si su celular no lo confirma, la academia lo revisa a mano.' : 'Esperando tu pago… se confirma solo cuando llegue.') + '</span></div>';
+    vigilar(box, i.id);
+  }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function vigilar(box, id){
+    if(sondeos[id]) return;
+    sondeos[id] = setInterval(function(){
+      if(document.hidden) return;
+      fetch('/web/academia/pago-qr/' + encodeURIComponent(id), {cache: 'no-store'})
+        .then(function(r){ return r.json(); }).then(function(j){
+          var i = j && j.intencion; if(!i) return;
+          if(i.estado === 'confirmado'){ clearInterval(sondeos[id]); try{ sessionStorage.setItem('pcg_aviso_pd', '¡Pago recibido! La academia ya tiene tu pago de ' + i.monto_txt + ' y tu cuota quedó pagada.'); }catch(e){} pcgRecargar('¡Pago confirmado!'); return; }
+          if(i.estado === 'vencido' || i.estado === 'reemplazado' || i.estado === 'rechazado'){ clearInterval(sondeos[id]);
+            pcgAvisar({titulo: i.estado === 'rechazado' ? 'La academia no encontró tu pago' : 'Este QR ya no está vigente', mensaje: 'Vuelve a tocar «Pagar con QR» para generar un monto nuevo.', icono: '⏳'}).then(function(){ pcgRecargar('Actualizando…'); }); }
+        }).catch(function(){});
+    }, 5000);
+  }
+  document.querySelectorAll('.pd-box[data-pq-viva]').forEach(function(box){
+    fetch('/web/academia/pago-qr/' + encodeURIComponent(box.dataset.pqViva), {cache: 'no-store'})
+      .then(function(r){ return r.json(); }).then(function(j){ if(j && j.ok && j.intencion && (j.intencion.estado === 'esperando' || j.intencion.estado === 'reportado')) pintarQr(box, j.intencion); })
+      .catch(function(){});
+  });
   document.addEventListener('change', function(ev){ var x = ev.target; if(x && x.dataset && x.dataset.pdc !== undefined){ total(x.closest('.pd-box')); } });
   document.addEventListener('input', function(ev){ var x = ev.target; if(x && x.classList && x.classList.contains('pd-cod')){ x.value = x.value.replace(/\D/g, '').slice(0, 3); } });
   document.addEventListener('click', function(ev){
+    var cm = ev.target.closest && ev.target.closest('[data-pq-copiar]');
+    if(cm){ var mo = cm.dataset.pqCopiar; var okm = function(){ if(window.pcgToast) pcgToast('Monto copiado: ' + mo); };
+      try{ navigator.clipboard.writeText(mo).then(okm, okm); }catch(e){ okm(); } return; }
+    var qi = ev.target.closest && ev.target.closest('.pq-iniciar');
+    if(qi){ var bq = qi.closest('.pd-box'), sq = total(bq);
+      if(!sq.n){ pcgAvisar({titulo: 'Elige qué vas a pagar', mensaje: 'Marca la cuota o cuotas que vas a pagar.', icono: '☝️'}); return; }
+      var porq = {};
+      bq.querySelectorAll('input[data-pdc]:checked').forEach(function(x){ (porq[x.dataset.al] = porq[x.dataset.al] || []).push(x.dataset.cu); });
+      pcgCargando('Preparando tu QR…');
+      fetch('/web/academia/pago-qr/iniciar', {method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({items: Object.keys(porq).map(function(k){ return {alumno_id: k, cuota_ids: porq[k]}; })})})
+        .then(function(r){ return r.json().catch(function(){ return {ok: false}; }); })
+        .then(function(j){ pcgCargando(false);
+          if(!j.ok){ pcgAvisar({titulo: 'No se pudo preparar el pago', mensaje: j.mensaje || 'Inténtalo de nuevo.', icono: '⚠️'}); return; }
+          pintarQr(bq, j.intencion); var pn = bq.querySelector('.pq-panel'); if(pn && pn.scrollIntoView) pn.scrollIntoView({behavior: 'smooth', block: 'center'});
+        }).catch(function(){ pcgCargando(false); pcgAvisar({titulo: 'Sin conexión', mensaje: 'Inténtalo de nuevo.'}); });
+      return; }
+    var pg = ev.target.closest && ev.target.closest('.pq-pague');
+    if(pg){ var bp = pg.closest('.pd-box'), iid = bp.dataset.pqViva;
+      pcgConfirmar({titulo: '¿Ya pagaste?', icono: '✅', confirmar: 'Sí, ya pagué', cancelar: 'Aún no',
+                    mensaje: 'Le avisamos a ' + bp.dataset.acad + '. Si su celular está vinculado, tu pago se confirma solo apenas llegue; si no, la academia lo revisa.'})
+        .then(function(ok){ if(!ok) return; pcgCargando('Avisando a la academia…');
+          fetch('/web/academia/pago-qr/' + encodeURIComponent(iid) + '/pagado', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}'})
+            .then(function(r){ return r.json().catch(function(){ return {ok: false}; }); })
+            .then(function(j){ pcgCargando(false);
+              if(j.ok && j.intencion){ if(j.intencion.estado === 'confirmado'){ try{ sessionStorage.setItem('pcg_aviso_pd', '¡Pago recibido! Tu cuota quedó pagada.'); }catch(e){} pcgRecargar('¡Pago confirmado!'); return; }
+                pintarQr(bp, j.intencion); return; }
+              pcgAvisar({titulo: 'No se pudo avisar', mensaje: j.mensaje || 'Inténtalo de nuevo.', icono: '⚠️'});
+            }).catch(function(){ pcgCargando(false); pcgAvisar({titulo: 'Sin conexión', mensaje: 'Inténtalo de nuevo.'}); });
+        });
+      return; }
     var c = ev.target.closest && ev.target.closest('[data-pd-copiar]');
     if(c){ var num = c.dataset.pdCopiar;
       var ok = function(){ if(window.pcgToast) pcgToast('Número copiado: ' + num); };
@@ -233,13 +326,22 @@ def bloque_pago_directo(a: dict, items: list[tuple[dict, list[dict]]], *, titulo
                 "<div class='acciones' style='margin-top:10px'>"
                 + (f"<a class='btn' href='{e(wa)}' target='_blank' rel='noopener'>💬 WhatsApp de la academia</a>" if wa else "")
                 + f"<a class='btn sec' href='/mensajes/nuevo?academia={e(up.quote(str(a.get('id') or '')))}'>✉️ Escribir al profe</a></div></div>")
+    if cd.get("tipo") == "qr":
+        viva = _intencion_viva(items)
+        if viva:
+            h = h.replace("<div class='pd-box' ", f"<div class='pd-box' data-pq-viva='{e(viva)}' ", 1)
+        return h + _bloque_qr(cd, sim) + "</div>"
     num = yape_bonito(cd["yape"])
     h += (f"<div class='pd-total'><span>Yapea</span><b data-pd-total>{e(sim)} 0.00</b></div>"
           "<div class='pd-yape'><div class='logo'>yape</div><div class='tx'><div class='sub' style='margin:0;font-size:12px'>Yape de la academia</div>"
           f"<div class='num'>{e(num)}</div><div class='pd-tit'>A nombre de <b>{e(cd['titular'])}</b></div></div>"
           f"<button type='button' class='btn sec' data-pd-copiar='{e(cd['yape'])}'>⧉ Copiar número</button></div>"
-          "<div class='pd-pasos'><ol>"
-          f"<li>Abre tu Yape y yapea el <b>monto exacto</b> a <b>{e(num)}</b> ({e(cd['titular'])}).</li>"
+          + ((f"<div class='pd-qr'><img src='{e(cd['qr_url'])}' alt='QR de Yape de la academia' loading='lazy'>"
+              "<div class='tx'><b>O escanea su QR</b><small>Desde otro celular, o guárdalo y en Yape elige «Escanear» → galería.</small>"
+              f"<a class='btn sec' href='{e(cd['qr_url'])}' target='_blank' rel='noopener' download>⬇️ Guardar QR</a></div></div>")
+             if cd.get("qr_url") else "")
+          + "<div class='pd-pasos'><ol>"
+          f"<li>Abre tu Yape y yapea el <b>monto exacto</b> a <b>{e(num)}</b> ({e(cd['titular'])}){' o escanea su QR' if cd.get('qr_url') else ''}.</li>"
           "<li>En tu comprobante de Yape copia el <b>código de seguridad</b> de 3 dígitos.</li>"
           "<li>Escríbelo aquí abajo y toca «Ya yapeé». La academia lo compara con su Yape y confirma tu pago.</li></ol>"
           f"<div class='pd-mock' aria-hidden='true'><div class='t'>¡Yapeaste!</div><div class='mo'>{e(sim)} 250</div><div>{e(cd['titular'][:18])}</div>"
@@ -251,6 +353,33 @@ def bloque_pago_directo(a: dict, items: list[tuple[dict, list[dict]]], *, titulo
           "<button type='button' class='btn pd-enviar'>💜 Ya yapeé · avisar a la academia</button>"
           "<p class='pd-nota'>Tu cuota queda «por confirmar» hasta que la academia lo vea en su Yape. Si no lo encuentra, te avisamos para que lo revises.</p></div>")
     return h
+
+
+def _intencion_viva(items: list[tuple[dict, list[dict]]]) -> str:
+    """Id de un pago por QR en curso de estas cuotas (para reabrirlo al volver)."""
+    from db.store import stores
+    from datetime import datetime, timezone
+    ahora = datetime.now(timezone.utc)
+    for _m, cs in items:
+        for c in cs:
+            rep = (c or {}).get("reporte") or {}
+            iid = str(rep.get("intencion") or "")
+            i = stores.qr_intenciones.get(iid) if iid else None
+            if i and ap._viva(i, ahora):
+                return iid
+    return ""
+
+
+def _bloque_qr(cd: dict, sim: str) -> str:
+    """Ecuador / Bolivia: el alumno paga el QR de la academia con un MONTO
+    ÚNICO y la notificación del celular de la academia lo confirma sola."""
+    return (f"<div class='pd-total'><span>Vas a pagar</span><b data-pd-total>{e(sim)} 0.00</b></div>"
+            "<div class='pq-app'><div class='logo'>▦</div><div class='tx'><small>Paga con el QR de la academia</small>"
+            f"<b>{e(cd['app_nombre'])} · {e(cd['titular'])}</b>"
+            "<small>Te damos un monto único (tu cuota + unos centavos) para reconocer tu pago al instante.</small></div></div>"
+            "<button type='button' class='btn pq-iniciar'>📷 Pagar con QR</button>"
+            "<div class='pq-panel' hidden></div>"
+            "<p class='pd-nota'>Pichangol no toca tu plata: le pagas directo a la academia y tu cuota se marca pagada sola.</p>")
 
 
 def _hoy() -> tuple[str, str]:
@@ -305,6 +434,39 @@ def reportar(request: Request, body: dict = Body(default_factory=dict)) -> JSONR
     if not hechas:
         return JSONResponse(error or {"ok": False, "error": "nada", "mensaje": "No se pudo avisar el pago."})
     return JSONResponse({"ok": True, "cuotas": hechas, "total": round(total, 2)})
+
+
+def _ses_alumno(request: Request):
+    ses = sesion.de_request(request)
+    if not ses:
+        return None, JSONResponse({"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión con Google para pagar."}, status_code=401)
+    return (ses.get("email") or "").strip().lower(), None
+
+
+@router.post("/web/academia/pago-qr/iniciar")
+def qr_iniciar(request: Request, body: dict = Body(default_factory=dict)) -> JSONResponse:
+    """Monto único para pagar por QR una o varias cuotas de la MISMA academia."""
+    email, err = _ses_alumno(request)
+    if err:
+        return err
+    items = body.get("items") if isinstance(body.get("items"), list) else []
+    return JSONResponse(ap.iniciar_pago_qr(email, items))
+
+
+@router.post("/web/academia/pago-qr/{iid}/pagado")
+def qr_pagado(iid: str, request: Request) -> JSONResponse:
+    email, err = _ses_alumno(request)
+    if err:
+        return err
+    return JSONResponse(ap.marcar_pagado_qr(iid, email))
+
+
+@router.get("/web/academia/pago-qr/{iid}")
+def qr_estado(iid: str, request: Request) -> JSONResponse:
+    email, err = _ses_alumno(request)
+    if err:
+        return err
+    return JSONResponse(ap.estado_qr(iid, email))
 
 
 # ── Lado academia: plan, candado y pagos por confirmar ───────────────────────
@@ -539,7 +701,7 @@ def resolver(request: Request, body: dict = Body(default_factory=dict)) -> JSONR
         return resp
     aceptar = bool(body.get("aceptar"))
     motivo = str(body.get("motivo") or "").strip()
-    if not aceptar and motivo not in MOTIVOS_RECHAZO:
+    if not aceptar and motivo not in MOTIVOS_RECHAZO + MOTIVOS_RECHAZO_QR:
         return JSONResponse({"ok": False, "error": "motivo", "mensaje": "Elige por qué no lo confirmas."})
     ids = [str(c) for c in (body.get("cuota_ids") or []) if str(c).strip()]
     return JSONResponse(ap.resolver_pago(str(body.get("academia_id") or ""), str(body.get("alumno_id") or ""), ids,
@@ -554,8 +716,10 @@ def seccion_por_confirmar(acads: list[dict]) -> str:
         return ""
     tarjetas = ""
     for g in pend:
+        qr = g.get("medio") == "qr"
         dato = {"academia_id": g["academia_id"], "alumno_id": g["alumno_id"], "cuota_ids": [c["id"] for c in g["cuotas"]],
-                "total": f"{g['simbolo']} {g['total']:.2f}", "codigo": g["codigo"], "alumno": g["alumno"]}
+                "total": f"{g['simbolo']} {float(g.get('monto_unico') or g['total']) if qr else g['total']:.2f}",
+                "codigo": g["codigo"], "alumno": g["alumno"], "qr": qr}
         lineas = "".join(f"<div style='display:flex;justify-content:space-between;gap:8px;font-size:13px'><span style='min-width:0;overflow-wrap:anywhere'>{e(c['concepto'])}</span>"
                          f"<b style='white-space:nowrap'>{e(g['simbolo'])} {c['monto']:.2f}</b></div>" for c in g["cuotas"])
         tarjetas += (f"<div class='pc-card'><div style='display:flex;justify-content:space-between;gap:10px;align-items:flex-start'>"
@@ -563,15 +727,19 @@ def seccion_por_confirmar(acads: list[dict]) -> str:
                      f"<div class='sub' style='margin:0;font-size:12px;overflow-wrap:anywhere'>{e(g['academia'])}"
                      + (f" · paga {e(g['pagador'])}" if g.get("pagador") else "") + f"</div></div><b style='font-size:18px;white-space:nowrap'>{e(g['simbolo'])} {g['total']:.2f}</b></div>"
                      f"<div style='margin-top:8px'>{lineas}</div>"
-                     f"<div class='sub' style='margin:10px 0 0;font-size:12px;text-align:center'>Código de seguridad</div><div class='pc-cod'>{e(g['codigo'])}</div>"
+                     + ((f"<div class='sub' style='margin:10px 0 0;font-size:12px;text-align:center'>Monto exacto por QR (con centavos de identificación)</div>"
+                         f"<div class='pc-cod' style='letter-spacing:1px'>{e(g['simbolo'])} {float(g.get('monto_unico') or g['total']):.2f}</div>")
+                        if g.get("medio") == "qr" else
+                        f"<div class='sub' style='margin:10px 0 0;font-size:12px;text-align:center'>Código de seguridad</div><div class='pc-cod'>{e(g['codigo'])}</div>")
                      + (f"<div class='sub' style='margin:0;font-size:12.5px;text-align:center'>N.º de operación: <b>{e(g['operacion'])}</b></div>" if g.get("operacion") else "")
                      + f"<div class='sub' style='margin:4px 0 0;font-size:12px;text-align:center'>Reportado el {e(ap.fecha_txt(g.get('fecha')))}</div>"
                      f"<div class='pc-acc'><button type='button' class='btn' data-pc-ok='{e(json.dumps(dato, ensure_ascii=False))}'>✅ Confirmar</button>"
                      f"<button type='button' class='btn sec' data-pc-no='{e(json.dumps(dato, ensure_ascii=False))}'>No lo encontré</button></div></div>")
     motivos = json.dumps(MOTIVOS_RECHAZO, ensure_ascii=False)
+    motivos_qr = json.dumps(MOTIVOS_RECHAZO_QR, ensure_ascii=False)
     return (f"<style>{CSS_PLAN}</style><section id='porConfirmar' style='margin-top:16px'><h2 class='ng-h2' style='margin-bottom:2px'>💜 Pagos por confirmar</h2>"
-            "<p class='sub' style='margin:0'>Tus alumnos te yapearon directo. Compara el código con la notificación de tu Yape y confirma con un toque.</p>"
-            f"<div class='pc-grid'>{tarjetas}</div></section><script>window.__pcMotivos={motivos};{JS_POR_CONFIRMAR}</script>")
+            "<p class='sub' style='margin:0'>Tus alumnos te pagaron directo. Compara el código (Yape) o el monto exacto (QR) con la notificación de tu app y confirma con un toque.</p>"
+            f"<div class='pc-grid'>{tarjetas}</div></section><script>window.__pcMotivos={motivos};window.__pcMotivosQr={motivos_qr};{JS_POR_CONFIRMAR}</script>")
 
 
 JS_POR_CONFIRMAR = r"""
@@ -594,14 +762,15 @@ JS_POR_CONFIRMAR = r"""
     var ok = ev.target.closest && ev.target.closest('[data-pc-ok]');
     if(ok){ var d = JSON.parse(ok.dataset.pcOk);
       pcgConfirmar({titulo: '¿Te llegó ' + d.total + '?', icono: '💜', confirmar: 'Sí, confirmar pago', cancelar: 'Volver',
-                    mensaje: 'Confirma solo si en tu Yape ves un yapeo de ' + d.total + ' con el código ' + d.codigo + '. La cuota de ' + d.alumno + ' queda pagada.'})
+                    mensaje: d.qr ? 'Confirma solo si en tu app de cobros ves un pago de exactamente ' + d.total + '. La cuota de ' + d.alumno + ' queda pagada.'
+                                  : 'Confirma solo si en tu Yape ves un yapeo de ' + d.total + ' con el código ' + d.codigo + '. La cuota de ' + d.alumno + ' queda pagada.'})
         .then(function(r){ if(r) enviar(d, true); });
       return; }
     var no = ev.target.closest && ev.target.closest('[data-pc-no]');
     if(no){ var d2 = JSON.parse(no.dataset.pcNo);
       var chips = '<div style="text-align:left">¿Qué pasó? Se lo diremos a ' + esc(d2.alumno) + ' para que lo revise y vuelva a reportarlo.<div class="chips pc-mot" style="margin-top:10px">' +
-        (window.__pcMotivos || []).map(function(t, i){ return '<button type="button" class="chip' + (i === 0 ? ' sel' : '') + '" data-v="' + esc(t) + '">' + esc(t) + '</button>'; }).join('') + '</div></div>';
-      pcgConfirmar({titulo: 'No encontraste el yapeo', html: chips, icono: '🔎', confirmar: 'Avisar al alumno', cancelar: 'Volver', destructivo: true})
+        ((d2.qr ? window.__pcMotivosQr : window.__pcMotivos) || []).map(function(t, i){ return '<button type="button" class="chip' + (i === 0 ? ' sel' : '') + '" data-v="' + esc(t) + '">' + esc(t) + '</button>'; }).join('') + '</div></div>';
+      pcgConfirmar({titulo: d2.qr ? 'No encontraste el pago' : 'No encontraste el yapeo', html: chips, icono: '🔎', confirmar: 'Avisar al alumno', cancelar: 'Volver', destructivo: true})
         .then(function(r){ if(!r) return; var s = document.querySelector('#pcgDlgMsg .pc-mot .chip.sel') || document.querySelector('.pc-mot .chip.sel');
           enviar(d2, false, s ? s.dataset.v : (window.__pcMotivos || [''])[0]); });
     }

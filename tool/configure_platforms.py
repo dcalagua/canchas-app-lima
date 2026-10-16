@@ -182,6 +182,20 @@ def android_manifest(text):
             text,
             count=1,
         )
+    # PAGO POR QR (Ecuador / Bolivia, 11-oct-2026): el dueño de la academia
+    # elige de sus apps instaladas (DeUna!, su banco…) cuáles escucha el
+    # YapeListener. Android 11+ solo deja listar las apps con ícono en el
+    # lanzador si se declara esta consulta (package visibility).
+    if "pichangol:apps-cobro" not in text:
+        text = text.replace(
+            "<queries>",
+            "<queries>\n        <!-- pichangol:apps-cobro -->\n"
+            "        <intent>\n"
+            "            <action android:name=\"android.intent.action.MAIN\"/>\n"
+            "            <category android:name=\"android.intent.category.LAUNCHER\"/>\n"
+            "        </intent>",
+            1,
+        )
     # FileProvider: para pasar la foto/video de la historia como content:// URI a
     # Instagram/Facebook (con permiso de lectura temporal).
     if ".provider" not in text:
@@ -946,6 +960,23 @@ def configurar_sonido_notificacion():
         "                    \"reintentar\" -> {\n"
         "                        YapeAuto.enviarPendientes(applicationContext)\n"
         "                        result.success(true)\n"
+        "                    }\n"
+        "                    // Apps instaladas (con ícono) para que el dueño elija\n"
+        "                    // dónde recibe sus cobros por QR.\n"
+        "                    \"apps\" -> {\n"
+        "                        try {\n"
+        "                            val pm = packageManager\n"
+        "                            val i = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)\n"
+        "                            val lista = pm.queryIntentActivities(i, 0)\n"
+        "                                .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }\n"
+        "                                .filter { it.first != packageName }\n"
+        "                                .distinctBy { it.first }\n"
+        "                                .sortedBy { it.second.lowercase() }\n"
+        "                                .map { mapOf(\"paquete\" to it.first, \"nombre\" to it.second) }\n"
+        "                            result.success(lista)\n"
+        "                        } catch (e: Exception) {\n"
+        "                            result.success(emptyList<Map<String, String>>())\n"
+        "                        }\n"
         "                    }\n"
         "                    else -> result.notImplemented()\n"
         "                }\n"

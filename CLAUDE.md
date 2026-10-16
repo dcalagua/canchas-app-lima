@@ -918,7 +918,9 @@ para la API del APK.
   `juego_avisos_activo="0"` (ambos en `CONFIG_DEFAULT`). Push tipo `partido`
   con `partido_id`/`tipo_partido` → APK `PushService.alAbrirPartidos` abre
   "Juega ya" en su pestaña. Tests `tests/test_juego.py`; Playwright
-  `$SP/pw_jy.js` (390 px, cero diálogos del navegador). **Filtros
+  `$SP/pw_jy.js` (390 px, cero diálogos del navegador). Menú ☰ (`ui.py`
+  `.menu-panel`): `max-height: calc(100dvh - 110px)` + scroll propio (en
+  pantallas bajas los últimos ítems quedaban fuera). **Filtros
   INTELIGENTES (pedido del director, 10-oct-2026, captura: "por defecto debe
   marcar el país donde me localizo; si busco partner que marque tenis y hoy"):**
   el PAÍS es el de la ubicación real (web: el servidor manda todos los partidos
@@ -931,8 +933,7 @@ para la API del APK.
   nada, se abre solo a los próximos días con el aviso "Hoy no hay nada cerca:
   te mostramos los próximos días". Lo que el usuario toca manda (`cuAuto`/
   `_cuandoAuto`, `_depAuto`). Playwright `$SP/pw_jy2.js` (Quito → Ecuador;
-  Lima partner → Tenis + respaldo de días). **Pendiente:** correr el SQL en
-  QAS y, con autorización, en PRD.
+  Lima partner → Tenis + respaldo de días). SQL corrido en QAS y PRD.
 - **NOVEDADES Y CANALES EN LA WEB (30-sep-2026):** `web/jugador_novedades.py`.
   `/novedades` (feed de historias de MIS CONTACTOS de `pichangol_agenda`, sin
   bloqueados, 24 h; visor con barras, 5 s foto/texto, 15 s con música, video
@@ -2884,6 +2885,16 @@ off → redeploy inmediato en cada push). URL pública:
     (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un APK anterior
     sigue mostrando el chip 🎓 y "Mi academia" en BO/EC (el servidor igual
     bloquea la ficha, la matrícula y guardar una sede ahí) → actualizar.
+    **Pase del 10-oct-2026 (3.º, autorizado: "pasa a PRD"):** `prd` = 9823407
+    (Juega ya: buscar/organizar partido, busco partner, jugadores disponibles,
+    avisos push de partidos cerca, país por ubicación y filtros inteligentes)
+    + 13c88a6 (menú ☰ con scroll propio). SQL
+    `docs/piloto/supabase_partidos_juega_ya.sql` APLICADO en PCG-PRD vía
+    `apply_migration` (`pichangol_partidos_juega_ya`) y por el director en QAS.
+    Sin Edge ni variables (`juego_avisos_*` nacen en `CONFIG_DEFAULT`). CAMBIÓ
+    `lib/` → APK/AAB de PRD = run 1552 (`workflow_dispatch`, `ref=prd`,
+    `entorno=prod`). OJO: un APK anterior publica partidos con título/nota
+    libres (se ven igual) y no tiene "Busco partner" ni avisos → actualizar.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -3984,6 +3995,55 @@ antes del corte.
   pago por S/ 50. El cód. de seguridad es: 427"; con la primera notificación
   real, revisar en la torre si se leyó (columna Resultado) y ajustar. iPhone:
   sigue manual. Test `tests/test_yape_auto.py`.
+  **PAGO POR QR CON MONTO ÚNICO (Ecuador / Bolivia, 11-oct-2026, pedido del
+  director: "el usuario escanea el código, paga y el sistema lo registra
+  automáticamente"):** `cobroDirecto` depende del país de la sede
+  (`academia_plan.medio_cobro_de_pais`): PE = Yape; EC/BO = `{tipo: qr, qr_url,
+  app, titular}` (imagen subida a NUESTRO Storage `canchas/academia_<id>/
+  qr_cobro_<ms>.jpg`, `_qr_url_valida`; app por SELECCIÓN de `QR_APPS` =
+  espejo Dart `QrApps`). El alumno toca "Pagar con QR" → `iniciar_pago_qr`
+  crea una INTENCIÓN (`stores.qr_intenciones`, snapshot, id `pq_…`) con monto
+  = cuotas + 1..`qr_centimos_max` (49) centavos ÚNICOS entre las vivas del
+  mismo dueño y moneda; doble clic/otra pestaña reusa (`clave`), cambiar la
+  selección reemplaza; cuotas con `reporte {medio: qr, estado:
+  esperando_pago, intencion, pagado}`; vence a `qr_vida_horas` (48, `vencer_qr`
+  en el cron) y libera. "Ya pagué" (`marcar_pagado_qr`) → `reportado`, cuotas
+  "por confirmar" (la academia confirma a mano si no tiene el celular
+  vinculado; tarjeta con "Monto exacto por QR"). **Automático:** el dueño
+  elige de sus apps instaladas dónde cobra (`POST /academias/yape/apps`,
+  `stores.yape_dispositivos[email].paquetes`, máx. 6, nunca mensajería; native
+  `apps` = apps con ícono del lanzador, `<queries>` MAIN/LAUNCHER en
+  `configure_platforms.py`) y el `YapeListener` las escucha junto a Yape; el
+  backend lee monto/moneda con `qr_regex_monto` (`monto_flexible`: 1.234,56 /
+  1,234.56) e ignora salidas de plata (`qr_regex_egreso`: pagaste, enviaste…),
+  ambas editables en la torre; `conciliar_qr` confirma la intención viva de
+  ESE dueño cuyo monto calza EXACTO, misma moneda si la notificación la dice,
+  llegada ≥ creada − 5 min, dentro de la ventana y única en ambos sentidos
+  (ambigua → manual) → `confirmar_qr` (todas las cuotas, también familia en un
+  QR; `medioPago=qr_directo`, `operacionId=qr:<pq_id>`, recibo con
+  "Centavos de identificación"). Endpoints APK `POST /academias/pago-qr/
+  iniciar`, `POST …/{id}/pagado`, `GET …/{id}?email=`; web `/web/academia/
+  pago-qr/*` + bloque QR en Mis clases y comprobante (QR, monto grande,
+  Guardar QR, Copiar monto, Ya pagué, sondeo 5 s, reabre el pago en curso con
+  `data-pq-viva`). Editor web/APK: sección "Cobro directo" según el país del
+  punto. APK: `CobroDirecto.qr`, `ReportePago.extra` (conserva `medio/
+  intencion/pagado` al re-guardar la cuota), `_HojaPagoQr` (Compartir QR para
+  abrirlo desde la app del banco), `TarjetaYapeAuto(qr: true)` con "Apps de
+  cobro". Academias de EC/BO siguen OCULTAS (`acad_paises`); esto queda listo
+  para cuando se abran. **Calibrar con notificaciones reales** de DeUna!/bancos
+  (torre → Cobros → Plan Academia → Cobros automáticos → probador). Tests
+  `tests/test_pago_qr.py`, `test_pago_por_qr_con_monto_unico_en_la_web`;
+  Playwright `$SP/pw_qr.js`.
+  **PERÚ: QR DE YAPE OPCIONAL (pedido del director, 15-oct-2026, captura de
+  "Cobro directo por Yape": "aquí quiero que el dueño suba su QR para que los
+  alumnos escaneen y paguen"):** `cobroDirecto` de PE acepta `qr_url`
+  opcional junto al número (`validar_cobro_directo`/`cobro_directo`, misma
+  regla `_qr_url_valida`); el flujo sigue siendo Yape + código de seguridad
+  (no monto único). Editor web (sección única "Cobro directo a tu academia":
+  número solo en PE, QR común "opcional · el de tu Yape" con ✕ Quitar, apps
+  solo EC/BO, un solo titular `#cdTitular`) y APK (`_filaQr`); "Paga a la
+  academia" muestra "O escanea su QR" + Guardar QR (web `.pd-qr`, APK hoja
+  Yape). Test `test_peru_yape_con_qr_opcional`.
 - **PAGOS PERDÍAN DATOS AL REINICIAR (bug de plata hallado el 2-oct-2026):**
   `pg.cargar_normalizado` REEMPLAZABA los pagos/reclamos del snapshot por las
   filas de `growth_pagos`/`growth_reclamos` (solo 10/21 columnas) → tras cada
