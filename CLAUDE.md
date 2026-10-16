@@ -2895,6 +2895,14 @@ off → redeploy inmediato en cada push). URL pública:
     `lib/` → APK/AAB de PRD = run 1552 (`workflow_dispatch`, `ref=prd`,
     `entorno=prod`). OJO: un APK anterior publica partidos con título/nota
     libres (se ven igual) y no tiene "Busco partner" ni avisos → actualizar.
+    **Pase del 16-oct-2026 (autorizado: "pasa a PRD y dame el apk para prd"):**
+    `prd` = 4422da6 (pago por QR con monto único en academias de EC/BO con
+    confirmación automática por notificación y apps de cobro elegibles; QR de
+    Yape opcional en Perú). Sin SQL, sin Edge, sin variables (las intenciones
+    viven en el snapshot y `qr_*` nacen en `CONFIG_DEFAULT`; las academias de
+    EC/BO siguen ocultas con `acad_paises`="PE"). CAMBIÓ `lib/` → APK/AAB de
+    PRD = run 1562 (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un
+    APK anterior no muestra el QR de Yape del dueño ni el pago por QR.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
