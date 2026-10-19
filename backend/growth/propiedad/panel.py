@@ -2123,8 +2123,9 @@ def panel() -> HTMLResponse:
     # `no-store`: el JS de la torre viaja DENTRO de este HTML, así que una
     # página cacheada significa lógica vieja corriendo contra un backend nuevo
     # — y el operador viendo resultados que ya no corresponden al código.
+    from marketing.agente_ia import panel_ui  # pestaña "Marketing IA" (AI Marketing Agent)
     return HTMLResponse(
-        content=_HTML.replace("__AMBIENTE__", _etiqueta_ambiente()),
+        content=panel_ui.inyectar(_HTML).replace("__AMBIENTE__", _etiqueta_ambiente()),
         headers={"Cache-Control": "no-store, must-revalidate",
                  "Pragma": "no-cache"})
 

@@ -78,7 +78,7 @@ DEPORTES_MARCA = ["futbol", "tenis", "padel", "futbol", "pickleball", "tenis", "
 CFG = {"activo": "agente_fb_activo", "hora": "agente_fb_hora", "zona": "agente_fb_zona", "modo": "agente_fb_modo",
        "tono": "agente_fb_tono", "plan": "agente_fb_plan", "ultimo_dia": "agente_fb_ultimo_dia", "ultimo_local": "agente_fb_ultimo_local",
        "destacar_pro": "agente_fb_destacar_pro", "videos": "agente_fb_videos"}
-DEFAULTS = {"activo": "0", "hora": "07:00", "zona": "America/Lima", "modo": "auto", "tono": "cercano", "plan": "", "ultimo_dia": "", "ultimo_local": "",
+DEFAULTS = {"activo": "0", "hora": "07:00", "zona": "America/Lima", "modo": "aprobar", "tono": "cercano", "plan": "", "ultimo_dia": "", "ultimo_local": "",
             "destacar_pro": "0", "videos": "auto"}
 DIAS_VIDEO = {3, 4, 5}          # jue/vie/sáb: si hay un video de la biblioteca sin usar hace 14 días, ese día sale video (con música)
 VIDEO_DESCANSO_DIAS = 14
@@ -93,7 +93,7 @@ def _cfg(k: str) -> str:
 
 
 def configuracion() -> dict:
-    return {"activo": _cfg("activo") == "1", "hora": _cfg("hora"), "zona": _cfg("zona"), "modo": _cfg("modo") if _cfg("modo") in ("auto", "aprobar") else "auto",
+    return {"activo": _cfg("activo") == "1", "hora": _cfg("hora"), "zona": _cfg("zona"), "modo": _cfg("modo") if _cfg("modo") in ("auto", "aprobar") else "aprobar",
             "tono": _cfg("tono"), "plan": plan(), "ultimo_dia": _cfg("ultimo_dia"), "destacar_pro": _cfg("destacar_pro") == "1",
             "videos": _cfg("videos") if _cfg("videos") in ("auto", "nunca") else "auto"}
 
@@ -561,6 +561,8 @@ def tick() -> bool:
     cfg = configuracion()
     if not cfg["activo"]:
         return False
+    if str(stores.config.get("ai_mkt_activo", "0")) == "1":
+        return False        # el AI Marketing Agent (`marketing/agente_ia`) maneja la página: un solo agente publica
     loc = ahora_local()
     hoy = loc.strftime("%Y-%m-%d")
     if cfg["ultimo_dia"] == hoy:

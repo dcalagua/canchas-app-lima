@@ -3854,6 +3854,35 @@ antes del corte.
   sólo lee y sirve para dar soporte. `OCULTAR_PRUEBAS=1` las apaga también en
   dev/QAS.
 
+## AI Marketing Agent (`backend/growth/marketing/agente_ia/`, oct-2026)
+
+Reemplaza al calendario fijo de `agente_redes.py` (al activarlo se apaga
+`agente_fb_activo`). Ciclo: datos reales → estrategia → copy + imagen →
+**guardrails** → aprobación → publicación → métricas → aprendizaje. Detalle en
+`docs/agente-marketing-ia.md`; tests en `tests/test_agente_ia.py`.
+
+- **No inventa:** el estratega genera oportunidades con reglas deterministas y
+  sus `hechos`; la IA solo ELIGE entre ellas y redacta con esos hechos;
+  `guardrails.py` rechaza cualquier monto, %, hora, cifra, zona, local, promo,
+  "gratis" o disponibilidad que no esté en `hechos`. El publisher REVALIDA
+  contra la base justo antes de publicar.
+- **Regla del director respetada:** un local solo se nombra si es Pro y
+  `ai_mkt_destacar_pro=1`; si no, la publicidad es de marca o de zona.
+- **Estado en tablas `ai_*`** (no en `growth_state`); repo en memoria si no hay
+  `DATABASE_URL`. SQL: `docs/piloto/supabase_ai_marketing.sql` (también agrega
+  `created_at`/`origen`/`utm` a `pichangol_reservas`; el código detecta si ya
+  existen y, si no, inserta la reserva como siempre).
+- **Torre `/admin` → Marketing IA** (`panel_ui.py`, inyectado en `panel()`):
+  bandeja, calendario, publicadas con métricas, estrategia/aprendizajes,
+  configuración y bitácora. API `/admin/api/mkt/*`; short-link público
+  `/go/{codigo}` (cookie `pg_utm` 7 días → `utm` de la reserva web).
+- Modo por defecto `aprobar`; `auto_validado` = fase 6 con tope diario;
+  `ai_mkt_pausa=1` = freno de emergencia. Apagado por defecto (`ai_mkt_activo`).
+- Prueba de integración contra un Postgres LOCAL DE PRUEBA (hace TRUNCATE; nunca
+  apuntarla a QAS ni PRD):
+  `AGENTE_IA_PG_URL=postgresql://... python3 -m pytest tests/test_agente_ia.py -k pg`
+  (crear antes las tablas base con `tests/fixtures/pichangol_base.sql` + el SQL).
+
 ## Pendientes / backlog
 
 - **MODELO DE NEGOCIO DE LAS RESERVAS ELEGIBLE EN LA TORRE (decisión del

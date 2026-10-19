@@ -56,6 +56,7 @@ from web.jugador_novedades import router as jugador_novedades_router
 from web.jugador_pro import router as jugador_pro_router
 from models import ConfigRequest, ConsentimientoRequest
 from marketing.router import router as marketing_router
+from marketing.agente_ia.router import router as agente_ia_router
 from pagos.router import (procesar_renovaciones, procesar_renovaciones_alumnos,
                           procesar_renovaciones_pro)
 from pagos.router import router as pagos_router
@@ -171,6 +172,7 @@ app.include_router(retos_router)
 app.include_router(ventas_router)
 app.include_router(circuito_router)
 app.include_router(marketing_router)
+app.include_router(agente_ia_router)  # AI Marketing Agent: /admin/api/mkt/* + short-link /go/{codigo}
 app.include_router(legal_router)
 app.include_router(web_router)
 app.include_router(academia_web_router)  # ficha pública /academia/{id} + matrícula web
@@ -287,6 +289,30 @@ async def _iniciar_cron_agente_redes() -> None:
                 await asyncio.to_thread(tick)   # IA + Pillow + Graph: bloqueante, fuera del event loop
             except Exception as exc:  # noqa: BLE001
                 print(f"[agente] tick falló: {str(exc)[:160]}", flush=True)
+            await asyncio.sleep(60)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_agente_ia() -> None:
+    """AI MARKETING AGENT (`marketing/agente_ia/`): cada 60 s el orquestador
+    planifica el día de cada país a su hora (datos reales → estrategia → piezas
+    validadas), publica lo aprobado cuya hora llegó, mide métricas cada hora y
+    los lunes recalcula los aprendizajes. Apagado por defecto (`ai_mkt_activo`).
+    Una sola réplica en Railway; fail-safe."""
+    import sys
+    if "pytest" in sys.modules:
+        return
+
+    async def _loop() -> None:
+        await asyncio.sleep(150)  # deja arrancar el servicio
+        while True:
+            try:
+                from marketing.agente_ia import orquestador
+                await asyncio.to_thread(orquestador.tick)   # SQL + IA + Pillow + Graph: fuera del event loop
+            except Exception as exc:  # noqa: BLE001
+                print(f"[agente_ia] tick falló: {str(exc)[:160]}", flush=True)
             await asyncio.sleep(60)
 
     asyncio.create_task(_loop())
