@@ -6,20 +6,19 @@ Dos productos, ambos A PARTIR DE LAS FOTOS REALES que subió el dueño:
   toma la foto del local y le agrega jugadores, luz y ambiente de partido. El
   prompt exige conservar el lugar tal cual (cerco, líneas, paredes, techos,
   edificios): la IA ambienta, no inventa otra cancha.
-* **Video** (`video_ia`): OpenAI Sora (`/v1/videos`) con la foto real como
-  primer cuadro (`input_reference`). Tarda minutos: se ENCARGA al crear la pieza
-  y `procesar_videos()` (cron del agente, cada minuto) consulta el estado, baja
-  el MP4 y lo deja en Storage. Mientras tanto la pieza no se aprueba ni se
-  publica; si Sora falla, la pieza sale con la foto ambientada.
+* **Video** (`video_ia`): la foto ambientada + las reales con movimiento, logo,
+  rótulo, cierre y música original, armado EN CASA con FFmpeg (gratis; la API
+  de Sora de OpenAI cerró el 24-sep-2026). Se PIDE al crear la pieza y
+  `procesar_videos()` (cron del agente, cada minuto) lo renderiza y lo deja en
+  Storage. Mientras tanto la pieza no se aprueba ni se publica; si falla, la
+  pieza sale con la foto ambientada.
 
 Todo lo generado lleva el aviso "contenido generado con IA" en el texto (lo
 exige el guardrail) y queda en Storage `canchas/marketing/` para no re-pagarlo.
 
-**Tope de gasto mensual** (`ai_mkt_media_tope_usd`, torre): cada imagen y cada
-segundo de video se RESERVA antes de pedirlo; si no alcanza, el creativo usa las
-fotos reales sin IA. Costos por unidad editables en la torre
-(`ai_mkt_costo_imagen`, `ai_mkt_costo_video_seg`): confirmar con el precio
-vigente de OpenAI antes de encender el video.
+**Tope de gasto mensual** (`ai_mkt_media_tope_usd`, torre): cada imagen se
+RESERVA antes de pedirla; si no alcanza, el creativo usa las fotos reales sin
+IA. Costo por imagen editable en la torre (`ai_mkt_costo_imagen`).
 """
 from __future__ import annotations
 
@@ -42,11 +41,6 @@ PROMPT_AMBIENTAR = (
     "lines, surface, nets, goals, fences, walls, roof, lights, buildings and camera angle. Do not add or remove "
     "any structure, sign, logo or text. Only add life: {escena}, natural {luz}, realistic shadows. "
     "Photorealistic sports photography, candid, faces small and not recognizable, no text, no watermark."
-)
-PROMPT_VIDEO = (
-    "A short cinematic sports video that starts exactly from this real photo of a {deporte} venue and keeps the "
-    "venue unchanged (same lines, fences, walls, roof and lights). {escena}. Slow smooth camera push-in, natural "
-    "{luz}, realistic motion, energetic but authentic atmosphere. No text, no logos, no watermark."
 )
 _ESCENAS = {
     "fútbol": "friends playing a casual 7-a-side football match, one player shooting at goal",
@@ -78,13 +72,12 @@ def costo_imagen() -> float:
     return _num("ai_mkt_costo_imagen", 0.07)
 
 
-def costo_video_seg() -> float:
-    return _num("ai_mkt_costo_video_seg", 0.10)
-
-
 def segundos_video() -> int:
-    s = int(_num("ai_mkt_video_seg", 8))
-    return s if s in (4, 8, 12) else 8
+    s = int(_num("ai_mkt_video_seg", 12))
+    return s if s in VIDEO_SEGUNDOS else 12
+
+
+VIDEO_SEGUNDOS = (8, 12, 16)
 
 
 def tope_usd() -> float:
@@ -153,7 +146,8 @@ def alcanza_imagen() -> bool:
 
 
 def alcanza_video() -> bool:
-    return disponible() and gasto()["disponible_usd"] + 1e-9 >= costo_imagen() + costo_video_seg() * segundos_video()
+    """El video se arma en casa (sin costo): basta con poder pagar la foto ambientada."""
+    return alcanza_imagen()
 
 
 # ── HTTP ─────────────────────────────────────────────────────────────────────
@@ -211,7 +205,7 @@ def _descargar(url: str) -> bytes | None:
 
 def _a_jpeg(datos: bytes, tam: tuple[int, int] | None = None, max_lado: int = 1536) -> bytes:
     """Normaliza la foto del dueño: JPEG RGB; con `tam`, recorte centrado exacto
-    (Sora exige que la referencia mida lo mismo que el video)."""
+    (para el video)."""
     from PIL import Image, ImageOps
     img = ImageOps.exif_transpose(Image.open(io.BytesIO(datos))).convert("RGB")
     if tam:
@@ -265,61 +259,64 @@ def ambientar(foto_url: str, *, deporte: str, pais: str = "PE", hora: int = 19) 
         return None, motivo
 
 
-# ── video Sora ───────────────────────────────────────────────────────────────
-def encargar_video(ref_url: str, *, deporte: str, pais: str = "PE", hora: int = 19) -> dict:
-    """Pide el video a Sora. {'estado': 'generando', 'job': id, ...} o
-    {'estado': 'fallo', 'motivo': ...}. No espera a que termine."""
-    import config
-    seg = segundos_video()
-    usd = costo_video_seg() * seg
-    if not disponible():
-        return {"estado": "fallo", "motivo": "sin_llave"}
-    ref = _descargar(ref_url)
-    if not ref:
+# ── video con movimiento (en casa) ───────────────────────────────────────────
+# OpenAI APAGÓ la API de Sora (/v1/videos) el 24-sep-2026 sin reemplazo: el 1.er
+# pedido real en QAS respondió 404. El video se arma aquí, gratis, con las
+# mismas piezas de la torre de Facebook: las fotos (la ambientada + las reales)
+# con movimiento tipo Ken Burns (`marketing/foto_video.py`) y luego el pulido
+# Pichangol (`video_pulido.pulir`: logo, intro, rótulo con el título, cierre con
+# www.pichangol.app y música original). Si algún día se contrata un generador de
+# video con IA (p. ej. Veo de Google), entra como otro `proveedor` aquí.
+PROVEEDOR_VIDEO = "movimiento"
+SEG_POR_FOTO = (1.5, 6.0)
+
+
+def encargar_video(fotos: list[str], *, mood: str = "energetico") -> dict:
+    """Deja el video PEDIDO (el render corre en el cron, no en la corrida del
+    plan ni en la request de la torre)."""
+    fotos = [u for u in fotos or [] if u][:5]
+    if not fotos:
         return {"estado": "fallo", "motivo": "sin_foto"}
-    if not _reservar(usd, "video", seg):
-        return {"estado": "fallo", "motivo": MOTIVO_TOPE}
+    return {"estado": "generando", "proveedor": PROVEEDOR_VIDEO, "fotos": fotos, "segundos": segundos_video(),
+            "mood": mood if mood in ("chill", "energetico", "epico") else "energetico", "pedido_en": time.time()}
+
+
+def consultar_video(v: dict, *, titulo: str = "") -> dict:
+    """Renderiza el video pedido. Con 'listo' trae `_mp4` (bytes) para que el
+    llamador lo suba; con 'fallo', el motivo (la pieza sale con la foto)."""
+    import os
+    import tempfile
+    from marketing import foto_video
+    from marketing import video_pulido as vp
+    if v.get("proveedor") != PROVEEDOR_VIDEO:
+        return {**v, "estado": "fallo", "motivo": "Proveedor de video no disponible (la API de Sora fue cerrada por OpenAI)."}
+    datos = [d for d in (_descargar(u) for u in v.get("fotos") or []) if d]
+    if not datos:
+        return {**v, "estado": "fallo", "motivo": "No se pudieron leer las fotos del local."}
+    tmp = tempfile.mkdtemp(prefix="pcg_mkt_video_")
+    crudo, final = os.path.join(tmp, "fotos.mp4"), os.path.join(tmp, "final.mp4")
     try:
-        cuerpo, tipo = _multipart({"model": config.SORA_MODEL, "prompt": _prompt(PROMPT_VIDEO, deporte, pais, hora),
-                                   "seconds": str(seg), "size": "720x1280"},
-                                  {"input_reference": ("referencia.jpg", _a_jpeg(ref, (720, 1280)), "image/jpeg")})
-        j = _openai("POST", "videos", cuerpo=cuerpo, tipo=tipo, timeout=60)
-        if not j.get("id"):
-            raise ValueError("Sora no devolvió id")
-        return {"estado": "generando", "job": j["id"], "segundos": seg, "usd": round(usd, 2), "pedido_en": time.time()}
+        lo, hi = SEG_POR_FOTO
+        foto_video.generar([_a_jpeg(d) for d in datos], crudo, formato="cuadrado",
+                           segundos=max(lo, min(hi, float(v.get("segundos") or 12) / len(datos))))
+        vp.pulir(crudo, final, {"formato": "cuadrado", "logo": True, "intro": True, "cierre": True, "rotulo": bool(titulo),
+                                "titulo": titulo, "segmentos": [], "musica_modo": "protagonista", "mood": v.get("mood") or "energetico"})
+        with open(final, "rb") as f:
+            mp4 = f.read()
+        return {**v, "estado": "listo", "_mp4": mp4, "bytes": len(mp4)}
     except Exception as e:  # noqa: BLE001
-        if isinstance(e, (urllib.error.HTTPError, ValueError)):
-            _devolver(usd, "video", seg)                 # Sora no aceptó el pedido: no se cobra
-        motivo = _error(e)
-        print(f"[agente_ia] Sora no aceptó el pedido: {motivo}", flush=True)
-        return {"estado": "fallo", "motivo": motivo}
-
-
-VIDEO_MAX_ESPERA_S = 40 * 60
-
-
-def consultar_video(v: dict) -> dict:
-    """Avanza un video en curso. Devuelve el dict actualizado; con 'listo' trae
-    `_mp4` (bytes) para que el llamador lo suba."""
-    try:
-        j = _openai("GET", f"videos/{v['job']}", timeout=30)
-    except Exception as e:  # noqa: BLE001 — red: se reintenta en el próximo minuto
-        if time.time() - float(v.get("pedido_en") or 0) > VIDEO_MAX_ESPERA_S:
-            return {**v, "estado": "fallo", "motivo": f"Sin respuesta de Sora: {_error(e)}"}
-        return v
-    st = str(j.get("status") or "")
-    if st == "completed":
+        print(f"[agente_ia] no se pudo armar el video: {str(e)[:200]}", flush=True)
+        return {**v, "estado": "fallo", "motivo": f"No se pudo armar el video: {str(e)[:160]}"}
+    finally:
+        for r in (crudo, final):
+            try:
+                os.remove(r)
+            except OSError:
+                pass
         try:
-            mp4 = _openai("GET", f"videos/{v['job']}/content", timeout=120, crudo=True)
-        except Exception as e:  # noqa: BLE001
-            return {**v, "motivo": f"No se pudo bajar el video: {_error(e)}"}
-        return {**v, "estado": "listo", "_mp4": mp4}
-    if st in ("failed", "cancelled", "expired"):
-        err = j.get("error") or {}
-        return {**v, "estado": "fallo", "motivo": str(err.get("message") if isinstance(err, dict) else err or st)[:200]}
-    if time.time() - float(v.get("pedido_en") or 0) > VIDEO_MAX_ESPERA_S:
-        return {**v, "estado": "fallo", "motivo": "Sora tardó demasiado."}
-    return {**v, "progreso": j.get("progress")}
+            os.rmdir(tmp)
+        except OSError:
+            pass
 
 
 def procesar_videos() -> int:
@@ -333,7 +330,7 @@ def procesar_videos() -> int:
         v = receta.get("video_ia") or {}
         if v.get("estado") != "generando":
             continue
-        nuevo = consultar_video(v)
+        nuevo = consultar_video(v, titulo=c.get("title") or "")
         if nuevo == v:
             continue
         mp4 = nuevo.pop("_mp4", None)
@@ -343,6 +340,7 @@ def procesar_videos() -> int:
                 nuevo = {**v, "motivo": "No se pudo guardar el video en Storage; reintento."}
             else:
                 nuevo["url"] = url
+                _reservar(0.0, "video", int(nuevo.get("segundos") or 0))     # solo cuenta: el video es gratis
         receta = {**receta, "video_ia": nuevo}
         if nuevo.get("estado") == "fallo":
             receta["formato"] = receta.get("formato_foto") or "cuadrado"

@@ -3882,13 +3882,20 @@ Reemplaza al calendario fijo de `agente_redes.py` (al activarlo se apaga
   mes por local Pro (`ai_mkt_pro_cupo_mes`, 4; piezas EXTRA repartidas parejo en
   el mes, `estratega.pro_del_dia` + `orquestador.uso_pro`), foto REAL del dueño
   AMBIENTADA con IA (`ia_media.ambientar`, gpt-image-1 edits; el lugar no
-  cambia) y video Sora opcional a partir de esa foto (`encargar_video` +
-  `procesar_videos` en el cron; no se aprueba ni publica mientras se genera; si
-  falla sale la foto). Toda pieza IA lleva `guardrails.AVISO_IA` (el guardrail
-  lo exige). Tope de gasto mensual `ai_mkt_media_tope_usd` (20) con costos
-  editables: confirmar el precio vigente de Sora antes de encender
-  `ai_mkt_video_ia`. Interruptores apagados por defecto y exige
-  `ai_mkt_destacar_pro=1`. Tests `tests/test_agente_ia_media.py`.
+  cambia) y video opcional (`encargar_video` + `procesar_videos` en el cron:
+  la ambientada + las reales con movimiento, logo, rótulo, cierre y música,
+  armado EN CASA con `foto_video` + `video_pulido`, gratis; no se aprueba ni
+  publica mientras se arma; si falla sale la foto). **OJO: OpenAI CERRÓ la API
+  de Sora (/v1/videos) el 24-sep-2026 sin reemplazo** (el 1.er pedido real en
+  QAS dio 404): no volver a usarla; un video "generado" de verdad sería otro
+  proveedor (p. ej. Veo de Google) como nuevo `proveedor` en `ia_media`.
+  Torre: marcar el video marca el ambientado (y quitar el ambientado apaga el
+  video); botón "🎬 Hacer video" en piezas ya ambientadas
+  (`orquestador.pedir_video`, acción `video`). Toda pieza IA lleva
+  `guardrails.AVISO_IA` (el guardrail lo exige). Tope de gasto mensual
+  `ai_mkt_media_tope_usd` (20; solo la imagen cuesta). Interruptores apagados
+  por defecto y exige `ai_mkt_destacar_pro=1`. Tests
+  `tests/test_agente_ia_media.py`.
 - Prueba de integración contra un Postgres LOCAL DE PRUEBA (hace TRUNCATE; nunca
   apuntarla a QAS ni PRD):
   `AGENTE_IA_PG_URL=postgresql://... python3 -m pytest tests/test_agente_ia.py -k pg`

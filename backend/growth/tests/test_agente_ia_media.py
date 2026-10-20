@@ -1,4 +1,4 @@
-"""Marketing IA de locales Pro: fotos reales ambientadas con IA, video Sora,
+"""Marketing IA de locales Pro: fotos reales ambientadas con IA, video con movimiento,
 cupo fijo al mes y tope de gasto (OpenAI simulado: nada sale a la red)."""
 
 import base64
@@ -50,10 +50,12 @@ def pro(monkeypatch):
         assert url == FOTO                      # siempre la foto REAL del dueño
         return _jpeg(), "ok"
 
-    def encargar(url, **k):
+    real = ia_media.encargar_video
+
+    def encargar(fotos, **k):
         llamadas["video"] += 1
-        assert url == FOTO                      # Sora parte de la foto real (sin personas)
-        return {"estado": "generando", "job": "video_123", "segundos": 8, "usd": 0.8, "pedido_en": 0}
+        assert fotos[0].startswith("mem:amb_") and fotos[1:] == [FOTO.replace("a.jpg", "b.jpg")]   # ambientada + reales
+        return real(fotos, **k)
     monkeypatch.setattr(ia_media, "ambientar", ambientar)
     monkeypatch.setattr(ia_media, "encargar_video", encargar)
     return llamadas
@@ -62,8 +64,8 @@ def pro(monkeypatch):
 # ── tope de gasto ────────────────────────────────────────────────────────────
 def test_tope_de_gasto_mensual_reserva_y_devuelve(monkeypatch):
     monkeypatch.setattr(config, "OPENAI_API_KEY", "sk-test")
-    orq.guardar_configuracion({"media_tope_usd": 1, "costo_imagen": 0.4, "costo_video_seg": 0.1, "video_seg": 4})
-    assert ia_media.alcanza_imagen() and ia_media.alcanza_video()        # 0.4 + 0.4 ≤ 1
+    orq.guardar_configuracion({"media_tope_usd": 1, "costo_imagen": 0.4, "video_seg": 8})
+    assert ia_media.alcanza_imagen() and ia_media.alcanza_video()        # el video no cuesta: basta la imagen
     assert ia_media._reservar(0.4, "imagen") and ia_media._reservar(0.4, "imagen")
     assert not ia_media.alcanza_imagen() and not ia_media._reservar(0.4, "imagen")
     ia_media._devolver(0.4, "imagen")
@@ -101,26 +103,34 @@ def test_ambientar_edita_la_foto_real_y_conserva_el_lugar(monkeypatch):
     assert ia_media.gasto()["imagenes"] == 1                           # el rechazo no se cobra
 
 
-def test_sora_encarga_y_consulta_sin_bloquear(monkeypatch):
-    monkeypatch.setattr(config, "OPENAI_API_KEY", "sk-test")
-    monkeypatch.setattr(ia_media, "_descargar", lambda url: _jpeg(tam=(1000, 800)))
-    vistos = []
+def test_video_con_movimiento_se_arma_de_verdad_con_ffmpeg(monkeypatch):
+    """Sin red ni costo: las fotos → video cuadrado con logo, rótulo, cierre y música."""
+    from marketing import video_pulido
+    if not video_pulido.ffmpeg_exe():
+        pytest.skip("FFmpeg no disponible")
+    monkeypatch.setattr(ia_media, "_descargar", lambda url: _jpeg((30, 90, 60) if "a" in url else (200, 120, 40), (640, 480)))
+    v = ia_media.encargar_video(["mem:amb_1", "https://x/b.jpg"], mood="chill")
+    assert v["estado"] == "generando" and v["proveedor"] == "movimiento" and v["segundos"] == 12
+    assert ia_media.encargar_video([])["estado"] == "fallo"
+    listo = ia_media.consultar_video({**v, "segundos": 8}, titulo="Tenis en Chaclacayo")
+    assert listo["estado"] == "listo", listo.get("motivo")
+    mp4 = listo["_mp4"]
+    assert b"ftyp" in mp4[:32] and len(mp4) > 10_000
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as f:
+        f.write(mp4)
+    info = video_pulido.sondear(f.name)
+    os.remove(f.name)
+    assert info["ancho"] == info["alto"] and float(info["duracion"]) > 6          # cuadrado, fotos + intro + cierre
+    viejo = ia_media.consultar_video({"estado": "generando", "job": "video_123"})   # pedido viejo a Sora (API cerrada)
+    assert viejo["estado"] == "fallo" and "Sora" in viejo["motivo"]
 
-    def fake(metodo, ruta, *, cuerpo=None, tipo=None, crudo=False, **k):
-        vistos.append((metodo, ruta))
-        if metodo == "POST":
-            assert b'name="input_reference"' in cuerpo and b"720x1280" in cuerpo
-            return {"id": "video_9", "status": "queued"}
-        if ruta.endswith("/content"):
-            return b"MP4"
-        return {"status": "completed"}
-    monkeypatch.setattr(ia_media, "_openai", fake)
-    v = ia_media.encargar_video(FOTO, deporte="tenis")
-    assert v["estado"] == "generando" and v["job"] == "video_9" and ia_media.gasto()["videos"] == 1
-    listo = ia_media.consultar_video(v)
-    assert listo["estado"] == "listo" and listo["_mp4"] == b"MP4"
-    monkeypatch.setattr(ia_media, "_openai", lambda *a, **k: {"status": "failed", "error": {"message": "policy"}})
-    assert ia_media.consultar_video(v) == {**v, "estado": "fallo", "motivo": "policy"}
+
+def test_marcar_video_marca_el_ambientado_y_quitarlo_apaga_el_video():
+    cfg = orq.guardar_configuracion({"video_ia": True, "ia_ambientar": False})
+    assert cfg["video_ia"] and cfg["ia_ambientar"]
+    cfg = orq.guardar_configuracion({"ia_ambientar": False})
+    assert not cfg["video_ia"] and not cfg["ia_ambientar"]
 
 
 # ── cupo fijo al mes ─────────────────────────────────────────────────────────
@@ -186,13 +196,13 @@ def test_sin_tope_o_sin_ia_sale_con_las_fotos_reales(pro, monkeypatch, _limpio):
     assert p["media_origen"] == "foto_dueno" and guardrails.AVISO_IA not in p["body"] and pro["ambientar"] == 0
 
 
-def test_video_sora_se_espera_se_guarda_y_se_publica(pro, monkeypatch, _limpio):
+def test_video_se_espera_se_guarda_y_se_publica(pro, monkeypatch, _limpio):
     orq.guardar_configuracion({"video_ia": True})
     p = [p for p in orq.planificar("PE", usar_ia=False)["piezas"] if p["oportunidad"]["tipo"] == "local_pro"][0]
     assert p["media_origen"] == "video_ia" and pro["video"] == 1
     with pytest.raises(orq.Rechazo):
         orq.aprobar(p["id"], "ana")                                   # no se aprueba a ciegas
-    monkeypatch.setattr(ia_media, "consultar_video", lambda v: {**v, "estado": "listo", "_mp4": b"MP4DATA"})
+    monkeypatch.setattr(ia_media, "consultar_video", lambda v, **k: {**v, "estado": "listo", "_mp4": b"MP4DATA"})
     assert ia_media.procesar_videos() == 1
     v = _limpio.contenido(p["id"])["oportunidad"]["media"]["video_ia"]
     assert v["estado"] == "listo" and v["url"] == f"mem:{p['id']}.mp4"
@@ -220,7 +230,7 @@ def test_video_en_curso_no_se_publica_y_si_falla_sale_la_foto(pro, monkeypatch, 
     publicador.publicar(_limpio.contenido(p["id"]), snapshot=orq.snapshot("PE"))
     c = _limpio.contenido(p["id"])
     assert c["status"] == "APPROVED" and c["intentos"] == 0 and "video" in c["error"] and not llamadas
-    monkeypatch.setattr(ia_media, "consultar_video", lambda v: {**v, "estado": "fallo", "motivo": "policy"})
+    monkeypatch.setattr(ia_media, "consultar_video", lambda v, **k: {**v, "estado": "fallo", "motivo": "policy"})
     ia_media.procesar_videos()
     _limpio.actualizar_contenido(p["id"], scheduled_at=datetime.now(timezone.utc) - timedelta(minutes=1))
     publicador.publicar(_limpio.contenido(p["id"]), snapshot=orq.snapshot("PE"))
@@ -239,3 +249,23 @@ def test_cupo_se_cumple_y_no_pasa_del_mes(pro, _limpio):
     stores.config["ai_mkt_ultimo_plan"] = "{}"
     tercera = orq.planificar("PE", forzar=True, usar_ia=False)
     assert not any(p["oportunidad"]["tipo"] in ("local_pro", "cancha_destacada", "promo_real") for p in tercera["piezas"])
+
+
+def test_hacer_video_de_una_pieza_ya_ambientada(pro, monkeypatch, _limpio):
+    p = [p for p in orq.planificar("PE", usar_ia=False)["piezas"] if p["oportunidad"]["tipo"] == "local_pro"][0]
+    assert p["media_origen"] == "ia_ambientada"
+    orq.aprobar(p["id"], "ana")
+    r = orq.pedir_video(p["id"], "ana")
+    assert r["media_origen"] == "video_ia" and r["status"] == "PENDING_APPROVAL"     # se revisa el video antes de salir
+    assert r["oportunidad"]["media"]["video_ia"]["fotos"] == p["oportunidad"]["media"]["fotos"]
+    assert guardrails.AVISO_IA in r["body"]
+    with pytest.raises(orq.Rechazo):
+        orq.pedir_video(p["id"], "ana")                                       # ya se está armando
+    monkeypatch.setattr(ia_media, "consultar_video", lambda v, **k: {**v, "estado": "listo", "_mp4": b"MP4"})
+    ia_media.procesar_videos()
+    assert ia_media.gasto()["videos"] == 1 and ia_media.gasto()["usd"] == 0   # el video no suma costo (la imagen está simulada)
+    orq.guardar_configuracion({"ia_ambientar": False})
+    otra = [x for x in orq.planificar("PE", forzar=True, usar_ia=False)["piezas"] if x["media_origen"] == "foto_dueno"]
+    if otra:
+        with pytest.raises(orq.Rechazo):
+            orq.pedir_video(otra[0]["id"], "ana")                             # sin foto ambientada no hay video

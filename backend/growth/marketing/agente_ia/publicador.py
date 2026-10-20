@@ -209,7 +209,7 @@ def publicar(c: dict, *, snapshot: dict | None = None) -> dict:
         return r_.contenido(c["id"]) or c          # otra corrida la tomó, o la cancelaron
     c = reclamada
     if (((c.get("oportunidad") or {}).get("media") or {}).get("video_ia") or {}).get("estado") == "generando":
-        # El video de Sora aún no llega: se espera sin gastar intentos (si falla, sale con la foto ambientada).
+        # El video aún se está armando: se espera sin gastar intentos (si falla, sale con la foto ambientada).
         return _cerrar(c["id"], "APPROVED", error="Esperando el video con IA.",
                        scheduled_at=ahora() + timedelta(minutes=10)) or c
     intentos = int(c.get("intentos") or 0) + 1

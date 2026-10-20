@@ -14,7 +14,8 @@ Prioridad (principio 7 del agente):
 Locales Pro (cupo mensual, ver `estratega.pro_del_dia`): si el operador lo
 encendió y el tope de gasto alcanza, la foto REAL del dueño se AMBIENTA con IA
 (`ia_ambientada`: jugadores, luz; el lugar no cambia) y, opcionalmente, se
-encarga un video Sora a partir de esa foto (`video_ia`, ver `ia_media`). Si la
+pide un video con movimiento y música a partir de esas fotos (`video_ia`, ver
+`ia_media`; se arma en casa: la API de Sora cerró el 24-sep-2026). Si la
 IA falla o no alcanza el tope, sale con las fotos reales (`foto_dueno`).
 
 El resultado guarda la RECETA (fotos + formato) para poder recomponer la imagen
@@ -72,7 +73,7 @@ def _arte_ia(deporte: str) -> str | None:
 
 
 def _media_pro(op: dict, fotos: list[str], formato: str, pais: str, *, ambientar: bool, video: bool) -> dict | None:
-    """Foto ambientada (+ video Sora) a partir de la primera foto REAL del local."""
+    """Foto ambientada (+ video con movimiento) a partir de la primera foto REAL del local."""
     from marketing.agente_ia import ia_media
     if not (ambientar and fotos and ia_media.alcanza_imagen()):
         return None
@@ -88,7 +89,7 @@ def _media_pro(op: dict, fotos: list[str], formato: str, pais: str, *, ambientar
     receta = {"origen": "ia_ambientada", "fotos": [url] + fotos[1:3], "formato": formato, "biblioteca_ids": [],
               "fotos_reales": fotos[:3], "ia": {"modelo": "imagen", "deporte": deporte}}
     if video and ia_media.alcanza_video():
-        v = ia_media.encargar_video(fotos[0], deporte=deporte, pais=pais, hora=hora)
+        v = ia_media.encargar_video(receta["fotos"], mood="energetico" if op.get("audiencia") == "jugadores" else "chill")
         if v.get("estado") == "generando":
             receta.update(origen="video_ia", video_ia=v, formato_foto=formato)
         else:

@@ -68,7 +68,6 @@ class ConfigReq(BaseModel):
     pro_max_dia: int | None = None
     media_tope_usd: float | None = None
     costo_imagen: float | None = None
-    costo_video_seg: float | None = None
     video_seg: int | None = None
 
 
@@ -176,6 +175,8 @@ def post_accion(cid: str, accion: str, req: AccionReq, x_admin_token: str | None
             return {"ok": True, "pieza": orq.pieza(nueva["id"]), "reemplaza": cid}
         elif accion == "publicar":
             orq.publicar_ahora(cid, usuario)
+        elif accion == "video":
+            orq.pedir_video(cid, usuario)
         else:
             raise HTTPException(status_code=404, detail="Acción desconocida.")
     except orq.Rechazo as e:

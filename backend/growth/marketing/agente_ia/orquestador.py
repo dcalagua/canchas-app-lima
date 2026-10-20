@@ -44,10 +44,10 @@ CFG = {
     "ia_ambientar": ("ai_mkt_ia_ambientar", "0"), "video_ia": ("ai_mkt_video_ia", "0"),
     "pro_cupo_mes": ("ai_mkt_pro_cupo_mes", "4"), "pro_max_dia": ("ai_mkt_pro_max_dia", "1"),
     "media_tope_usd": ("ai_mkt_media_tope_usd", "20"), "costo_imagen": ("ai_mkt_costo_imagen", "0.07"),
-    "costo_video_seg": ("ai_mkt_costo_video_seg", "0.10"), "video_seg": ("ai_mkt_video_seg", "8"),
+    "video_seg": ("ai_mkt_video_seg", "12"),
 }
 _RANGOS_MEDIA = {"pro_cupo_mes": (0, 30, int), "pro_max_dia": (0, 3, int), "media_tope_usd": (0, 1000, float),
-                 "costo_imagen": (0, 5, float), "costo_video_seg": (0, 5, float)}
+                 "costo_imagen": (0, 5, float)}
 REINTENTO_PLAN_S = 30 * 60
 EDITABLES = ("PENDING_APPROVAL", "REJECTED", "FAILED", "DRAFT", "APPROVED")
 CANCELABLES = ("DRAFT", "PENDING_APPROVAL", "APPROVED", "FAILED", "REJECTED")
@@ -80,8 +80,7 @@ def configuracion() -> dict:
             "ia_ambientar": _cfg("ia_ambientar") == "1", "video_ia": _cfg("video_ia") == "1",
             "pro_cupo_mes": int(_f("pro_cupo_mes", 0, 30)), "pro_max_dia": int(_f("pro_max_dia", 0, 3)),
             "media_tope_usd": _f("media_tope_usd", 0, 1000), "costo_imagen": _f("costo_imagen", 0, 5),
-            "costo_video_seg": _f("costo_video_seg", 0, 5),
-            "video_seg": int(_cfg("video_seg")) if _cfg("video_seg") in ("4", "8", "12") else 8}
+            "video_seg": int(_cfg("video_seg")) if _cfg("video_seg") in ("8", "12", "16") else 12}
 
 
 def guardar_configuracion(d: dict) -> dict:
@@ -90,6 +89,11 @@ def guardar_configuracion(d: dict) -> dict:
     for k in ("activo", "arte_ia", "destacar_pro", "pausa", "ia_ambientar", "video_ia"):
         if k in d:
             _put(k, "1" if d[k] else "0")
+    # El video parte de la foto ambientada: uno sin la otra no produce nada.
+    if d.get("video_ia"):
+        _put("ia_ambientar", "1")
+    elif "ia_ambientar" in d and not d["ia_ambientar"]:
+        _put("video_ia", "0")
     if "modo" in d:
         if d["modo"] not in ("aprobar", "auto_validado"):
             raise ValueError("Modo inválido (aprobar | auto_validado).")
@@ -130,8 +134,8 @@ def guardar_configuracion(d: dict) -> dict:
                 raise ValueError(f"{k} debe estar entre {lo} y {hi}.")
             _put(k, str(int(v)) if tipo is int else str(round(v, 4)))
     if "video_seg" in d:
-        if str(d["video_seg"]) not in ("4", "8", "12"):
-            raise ValueError("Duración del video: 4, 8 o 12 segundos.")
+        if str(d["video_seg"]) not in ("8", "12", "16"):
+            raise ValueError("Duración del video: 8, 12 o 16 segundos.")
         _put("video_seg", str(d["video_seg"]))
     if d.get("activo"):
         # Un solo agente publica en la página: el nuevo reemplaza al calendario fijo.
@@ -560,6 +564,33 @@ def regenerar(cid: str, usuario: str, *, usar_ia: bool = True) -> dict:
                               motivo_rechazo=f"Reemplazada por {nueva['id']}")
     repo().log("admin", "regenerar", content_id=cid, usuario=usuario, nueva=nueva["id"])
     return nueva
+
+
+def pedir_video(cid: str, usuario: str) -> dict:
+    """"🎬 Hacer video" en la torre: arma el video de una pieza que ya tiene la
+    foto ambientada con IA (o cuyo video falló). Gratis; no toca el texto (ya
+    lleva el aviso de IA). La pieza vuelve a aprobación cuando el video esté."""
+    from marketing.agente_ia import ia_media
+    c = _get(cid)
+    if c["status"] not in ("PENDING_APPROVAL", "APPROVED", "FAILED", "REJECTED"):
+        raise Rechazo(f"No se puede hacer video de una pieza en estado {c['status']}.")
+    op = dict(c.get("oportunidad") or {})
+    receta = dict(op.get("media") or {})
+    if receta.get("origen") not in creativo.ORIGENES_IA_MEDIA:
+        raise Rechazo("Solo las piezas con la foto del local ambientada con IA pueden pasar a video.")
+    if (receta.get("video_ia") or {}).get("estado") in ("generando", "listo"):
+        raise Rechazo("Esta pieza ya tiene su video (o se está armando).")
+    v = ia_media.encargar_video(receta.get("fotos") or [], mood="energetico" if c.get("audiencia") == "jugadores" else "chill")
+    if v.get("estado") != "generando":
+        raise Rechazo("No se pudo pedir el video: la pieza no tiene fotos.")
+    receta.update(origen="video_ia", video_ia=v, formato_foto=receta.get("formato_foto") or receta.get("formato") or "cuadrado")
+    estado = "PENDING_APPROVAL" if c["status"] == "APPROVED" else c["status"]    # se revisa el video antes de salir
+    r = repo().cambiar_estado(cid, (c["status"],), estado, oportunidad={**op, "media": receta}, media_origen="video_ia",
+                              revisado_por=None, revisado_en=None)
+    if not r:
+        raise Rechazo("La pieza cambió mientras se pedía el video; vuelve a intentarlo.")
+    repo().log("admin", "pedir_video", content_id=cid, usuario=usuario)
+    return r
 
 
 def publicar_ahora(cid: str, usuario: str) -> dict:

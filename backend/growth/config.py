@@ -273,9 +273,8 @@ STORAGE_BARRIDO_HORAS = os.getenv("STORAGE_BARRIDO_HORAS", "24")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "").strip()
 # Marketing IA de locales Pro (con la misma OPENAI_API_KEY): edición de la foto
-# real del dueño y video Sora a partir de esa foto.
+# real del dueño (el video se arma en casa; la API de Sora cerró el 24-sep-2026).
 IMAGE_EDIT_MODEL = os.getenv("IMAGE_EDIT_MODEL", "gpt-image-1").strip() or "gpt-image-1"
-SORA_MODEL = os.getenv("SORA_MODEL", "sora-2").strip() or "sora-2"
 
 # Push "tu cancha fue aprobada": URL de la Edge Function de Supabase
 # (push-aprobacion) y su secreto compartido. Al aprobar un reclamo, el backend

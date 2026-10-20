@@ -67,7 +67,7 @@ const MK_ORIGEN = {foto_real:'📷 Foto real', foto_dueno:'🏟️ Foto del due�
 const MK_AVISO_IA = '✨ Contenido creado con IA a partir de fotos reales del local.';
 function mkVideo(p){
   const v = ((p.oportunidad||{}).media||{}).video_ia; if(!v) return '';
-  if(v.estado==='generando') return `<div class="row">🎬 Generando el video con IA${v.progreso!=null?' ('+v.progreso+'%)':''}… se podrá aprobar cuando termine.</div>`;
+  if(v.estado==='generando') return `<div class="row">🎬 Armando el video (fotos con movimiento y música)… tarda alrededor de un minuto; se podrá aprobar cuando termine.</div>`;
   if(v.estado==='listo' && /^https:\/\/[^"'<>\s]+$/.test(v.url||'')) return `<video class="mk-img" src="${v.url}" controls playsinline preload="metadata"></video>`;
   if(v.estado==='fallo') return `<div class="row">🎬 No se pudo generar el video (${esc(v.motivo||'')}); se publicará con la foto.</div>`;
   return '';
@@ -123,6 +123,11 @@ function mkRender(){
   if(MK.tab==='bitacora'){ cuerpo = '<div id="mkLogs" class="card">Cargando…</div>'; setTimeout(mkLogs,0); }
   box.innerHTML = mkBar() + `<div class="mk-tabs">${tabs.map(([k,l])=>`<button class="mk-tab ${MK.tab===k?'on':''}" onclick="MK.tab='${k}';mkRender()">${l}</button>`).join('')}</div>` + cuerpo;
   box.querySelectorAll('img[data-mk]').forEach(mkImagen);
+  if(MK.tab==='config') mkEnlazarVideo();
+  // Un video en curso se arma en el servidor (~1 min): la bandeja se refresca sola hasta que esté.
+  clearTimeout(MK._tVideo);
+  if(MK.tab==='bandeja' && MK.piezas.some(p=>(((p.oportunidad||{}).media||{}).video_ia||{}).estado==='generando'))
+    MK._tVideo = setTimeout(()=>{ if(MK.tab==='bandeja' && document.getElementById('mkBox')) mkCargar(); }, 20000);
 }
 function mkGrid(lista, vacio){
   if(!lista.length) return `<div class="card">${vacio}</div>`;
@@ -145,6 +150,9 @@ function mkCard(p){
   const generando = (((p.oportunidad||{}).media||{}).video_ia||{}).estado==='generando';
   if(p.status==='PENDING_APPROVAL' && !generando) acts.push(`<button class="pri" onclick="mkAccion('${p.id}','aprobar')">✓ Aprobar</button>`);
   if(['PENDING_APPROVAL','APPROVED'].includes(p.status)) acts.push(`<button onclick="mkAccion('${p.id}','publicar')">🚀 Publicar ya</button>`);
+  const vid = (((p.oportunidad||{}).media||{}).video_ia||{}).estado;
+  if(['ia_ambientada','video_ia'].includes(p.media_origen) && !['generando','listo'].includes(vid) && ['PENDING_APPROVAL','APPROVED','FAILED','REJECTED'].includes(p.status))
+    acts.push(`<button onclick="mkAccion('${p.id}','video')">🎬 Hacer video</button>`);
   if(['PENDING_APPROVAL','APPROVED','FAILED'].includes(p.status)) acts.push(`<button onclick="mkReprogramar('${p.id}')">🗓 Reprogramar</button>`);
   if(editable) acts.push(`<button onclick="mkGuardar('${p.id}')">💾 Guardar edición</button>`);
   if(p.status!=='PUBLISHED') acts.push(`<button onclick="mkAccion('${p.id}','regenerar')">↻ Otra versión</button>`);
@@ -249,16 +257,22 @@ function mkConfig(){
     ${num('pro_cupo_mes','Publicaciones por local Pro al mes (0 = ninguna)',0,30)}
     ${num('pro_max_dia','Máximo de piezas Pro extra por día',0,3)}
     ${chk('ia_ambientar','Ambientar con IA las fotos reales del local (OpenAI)')}
-    ${chk('video_ia','Además, generar un video con IA (OpenAI Sora)')}
-    <label>Duración del video<select id="mkc_video_seg">${[4,8,12].map(n=>`<option value="${n}" ${c.video_seg===n?'selected':''}>${n} s</option>`).join('')}</select></label>
+    ${chk('video_ia','Además, armar un video con movimiento y música (gratis)')}
+    <label>Duración del video<select id="mkc_video_seg">${[8,12,16].map(n=>`<option value="${n}" ${c.video_seg===n?'selected':''}>${n} s</option>`).join('')}</select></label>
     ${num('media_tope_usd','Tope de gasto IA al mes (USD)',0,1000,1)}
     ${num('costo_imagen','Costo por imagen (USD)',0,5,0.01)}
-    ${num('costo_video_seg','Costo por segundo de video (USD)',0,5,0.01)}
   </div>
   <p class="row">Gastado este mes: <b>$ ${(MK.resumen.media_ia||{}).usd||0}</b> de $ ${(MK.resumen.media_ia||{}).tope_usd||0}
     · ${(MK.resumen.media_ia||{}).imagenes||0} imágenes · ${(MK.resumen.media_ia||{}).videos||0} videos
     ${(MK.resumen.media_ia||{}).disponible?'':' · ⚠ falta OPENAI_API_KEY en este ambiente'}.
-    Los costos son estimados: confírmalos con el precio vigente de OpenAI antes de encender el video.</p><div class="mk-acts" style="margin-top:14px"><button class="pri" onclick="mkGuardarConfig()">Guardar configuración</button></div></div>`;
+    El costo por imagen es estimado: confírmalo con el precio vigente de OpenAI. El video se arma en el servidor con las fotos (no tiene costo):
+    la API de video de OpenAI (Sora) fue cerrada el 24-sep-2026.</p><div class="mk-acts" style="margin-top:14px"><button class="pri" onclick="mkGuardarConfig()">Guardar configuración</button></div></div>`;
+}
+function mkEnlazarVideo(){
+  const v = document.getElementById('mkc_video_ia'), a = document.getElementById('mkc_ia_ambientar');
+  if(!v || !a) return;
+  v.onchange = ()=>{ if(v.checked) a.checked = true; };          // el video parte de la foto ambientada
+  a.onchange = ()=>{ if(!a.checked) v.checked = false; };
 }
 function mkUsoPro(){
   const u = MK.resumen.pro_uso||{}, cupo = MK.resumen.config.pro_cupo_mes;
@@ -273,7 +287,7 @@ async function mkGuardarConfig(){
     tono:g('tono').value, destacar_pro:g('destacar_pro').checked, arte_ia:g('arte_ia').checked,
     ia_ambientar:g('ia_ambientar').checked, video_ia:g('video_ia').checked, video_seg:+g('video_seg').value,
     pro_cupo_mes:+g('pro_cupo_mes').value, pro_max_dia:+g('pro_max_dia').value, media_tope_usd:+g('media_tope_usd').value,
-    costo_imagen:+g('costo_imagen').value, costo_video_seg:+g('costo_video_seg').value};
+    costo_imagen:+g('costo_imagen').value};
   if(cuerpo.modo==='auto_validado' && !confirm('En modo automático el agente publica sin revisión humana las piezas que pasan todos los controles. ¿Continuar?')) return;
   try{ await mkApi('/config', cuerpo); toast('Configuración guardada'); }catch(e){ return; }
   mkCargar();

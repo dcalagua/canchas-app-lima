@@ -64,24 +64,24 @@ Cada pieza lleva `https://www.pichangol.app/go/<codigo>`. El short-link cuenta e
 | `ai_mkt_pro_cupo_mes` | `4` | Publicaciones por local Pro al mes (0 = ninguna) |
 | `ai_mkt_pro_max_dia` | `1` | Piezas Pro extra por día |
 | `ai_mkt_ia_ambientar` | `0` | Ambientar con IA las fotos reales del local Pro |
-| `ai_mkt_video_ia` | `0` | Además, video Sora a partir de la foto real |
-| `ai_mkt_video_seg` | `8` | 4 / 8 / 12 s |
-| `ai_mkt_media_tope_usd` | `20` | Tope de gasto IA del mes (imágenes + video) |
-| `ai_mkt_costo_imagen` / `ai_mkt_costo_video_seg` | `0.07` / `0.10` | Costo estimado por unidad (confirmar con OpenAI) |
+| `ai_mkt_video_ia` | `0` | Además, video con movimiento y música (en casa, gratis) |
+| `ai_mkt_video_seg` | `12` | 8 / 12 / 16 s de fotos (más intro y cierre) |
+| `ai_mkt_media_tope_usd` | `20` | Tope de gasto IA del mes (solo la imagen cuesta) |
+| `ai_mkt_costo_imagen` | `0.07` | Costo estimado por imagen (confirmar con OpenAI) |
 
 ## Locales Pro con IA (20-oct-2026)
 
-Decisiones del director: **ambientar las fotos reales** del dueño (no inventar el lugar), **video con OpenAI Sora** y **cupo fijo al mes** por local Pro.
+Decisiones del director: **ambientar las fotos reales** del dueño (no inventar el lugar), **video** y **cupo fijo al mes** por local Pro. El video se pidió con OpenAI Sora, pero **OpenAI cerró la API de Sora el 24-sep-2026** sin reemplazo (el primer pedido real en QAS respondió 404): el video se arma en casa.
 
 - **Cupo** (`estratega.pro_del_dia`): piezas EXTRA, fuera de las N del día, para cada local destacable (dueño Pro + `ai_mkt_destacar_pro=1`) con al menos una foto propia. El cupo se reparte parejo en el mes (hoy toca el que va atrasado frente a `cupo × día / días del mes`; entre atrasados, el más atrasado y luego el que hace más tiempo no sale). `orquestador.uso_pro` cuenta las piezas del mes local (sin canceladas/rechazadas/fallidas, una por oportunidad aunque salga en dos redes); un local que llegó a su cupo deja de aparecer también en `cancha_destacada` / `promo_real`.
 - **Foto ambientada** (`ia_media.ambientar`, origen `ia_ambientada`): OpenAI Images *edits* (`IMAGE_EDIT_MODEL`, gpt-image-1, `input_fidelity=high`) sobre la PRIMERA foto propia; el prompt exige conservar cancha, líneas, cercos, paredes, techos y edificios, y solo agrega jugadores y luz. La imagen queda en Storage `canchas/marketing/amb_*.jpg`; el collage lleva la ambientada + hasta 2 fotos reales. "Otra versión" y la gemela de la otra red REUSAN la misma (no se paga dos veces).
-- **Video** (`ia_media.encargar_video` / `procesar_videos`, origen `video_ia`): Sora (`SORA_MODEL`, sora-2, 720×1280) con la foto REAL como `input_reference` (sin personas). Se encarga al crear la pieza y el cron (cada minuto) consulta el estado, baja el MP4 a `canchas/marketing/<id>.mp4` y lo deja listo. Mientras se genera la pieza no se aprueba ni se publica (el publicador espera 10 min sin gastar intentos); si Sora falla o tarda > 40 min, sale con la foto ambientada. En Facebook se sube el MP4; Instagram usa la foto.
+- **Video** (`ia_media.encargar_video` / `procesar_videos`, origen `video_ia`): la foto ambientada + las reales con movimiento tipo Ken Burns (`marketing/foto_video.py`) y el pulido Pichangol (`video_pulido.pulir`: logo, intro, rótulo con el título, cierre con www.pichangol.app, música original), cuadrado, gratis. Se pide al crear la pieza (o con "🎬 Hacer video" en una pieza ya ambientada, `orquestador.pedir_video`) y el cron (cada minuto) lo arma y lo sube a `canchas/marketing/<id>.mp4`. Mientras tanto la pieza no se aprueba ni se publica (el publicador espera 10 min sin gastar intentos); si falla, sale con la foto ambientada. En Facebook se sube el MP4; Instagram usa la foto. Un video GENERADO por IA de verdad (p. ej. Veo de Google) entraría como otro `proveedor` en `ia_media`.
 - **Transparencia**: toda pieza con `ia_ambientada`/`video_ia` termina con `✨ Contenido creado con IA a partir de fotos reales del local.` (`guardrails.AVISO_IA`); el guardrail rechaza la pieza sin el aviso o si el texto presenta la imagen como foto sin retoque.
-- **Tope de gasto mensual** (`ia_media.gasto`, `stores.config[ai_mkt_media_gasto]`): cada imagen y cada video se reservan antes de pedirlos; un error de OpenAI devuelve la reserva. Sin tope disponible o sin `OPENAI_API_KEY`, la pieza Pro sale con las fotos reales (`foto_dueno`).
-- **Torre** → Marketing IA → Configuración → "Locales Pro con IA": cupo, máximo por día, interruptores, duración, tope, costos, gasto del mes y uso por local; la tarjeta muestra el video (o "Generando…") y oculta "Aprobar" mientras Sora trabaja.
+- **Tope de gasto mensual** (`ia_media.gasto`, `stores.config[ai_mkt_media_gasto]`): cada imagen se reserva antes de pedirla; un error de OpenAI devuelve la reserva. El video no cuesta (solo se cuenta). Sin tope disponible o sin `OPENAI_API_KEY`, la pieza Pro sale con las fotos reales (`foto_dueno`).
+- **Torre** → Marketing IA → Configuración → "Locales Pro con IA": cupo, máximo por día, interruptores (marcar el video marca el ambientado), duración, tope, costo por imagen, gasto del mes y uso por local; la tarjeta muestra el video (o "Armando el video…", con refresco solo cada 20 s) y oculta "Aprobar" mientras se arma.
 - Base: `ai_content.media_origen` acepta `ia_ambientada` y `video_ia` (el backend actualiza la regla al arrancar; el SQL lo trae también). Tests `tests/test_agente_ia_media.py`.
 
-Variables de entorno nuevas: `IMAGE_EDIT_MODEL` (gpt-image-1), `SORA_MODEL` (sora-2), `MARKETING_STRATEGY_MODEL`, `MARKETING_COPY_MODEL` (por defecto el de `MARKETING_MODEL`) e `IG_USER_ID`. Para las métricas, el token de la página necesita `pages_read_engagement` y `read_insights`.
+Variables de entorno nuevas: `IMAGE_EDIT_MODEL` (gpt-image-1), `MARKETING_STRATEGY_MODEL`, `MARKETING_COPY_MODEL` (por defecto el de `MARKETING_MODEL`) e `IG_USER_ID`. Para las métricas, el token de la página necesita `pages_read_engagement` y `read_insights`.
 
 ## Base de datos
 
