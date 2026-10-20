@@ -2952,6 +2952,17 @@ off → redeploy inmediato en cada push). URL pública:
     EC/BO siguen ocultas con `acad_paises`="PE"). CAMBIÓ `lib/` → APK/AAB de
     PRD = run 1562 (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un
     APK anterior no muestra el QR de Yape del dueño ni el pago por QR.
+    **Pase del 20-oct-2026 (autorizado: "pasar a PRD"):** `prd` = 897e319
+    (AI Marketing Agent completo: estratega/creador/guardrails/aprobación/
+    publicación/métricas; locales Pro con foto ambientada, video en casa, Veo de
+    Google y Veo 3 por escenas con presentador IA; marca y logo configurables;
+    torneos con la marca del organizador; portada `/tenis`). SQL
+    `docs/piloto/supabase_ai_marketing.sql` APLICADO en PCG-PRD vía
+    `apply_migration` (`pichangol_ai_marketing`). Variable nueva en
+    `pg-backend-prd`: `GEMINI_API_KEY` como REFERENCIA a QAS. El agente nace
+    APAGADO (`ai_mkt_activo`) y en modo `aprobar`: se enciende en la torre de
+    PRD → Marketing IA. CAMBIÓ `lib/` → APK/AAB de PRD = run 1594
+    (`workflow_dispatch`, `ref=prd`, `entorno=prod`).
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
