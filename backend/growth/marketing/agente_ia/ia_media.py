@@ -301,12 +301,16 @@ def ambientar(foto_url: str, *, deporte: str, pais: str = "PE", hora: int = 19) 
 
 # ── Veo (Google, API de Gemini) ──────────────────────────────────────────────
 PROMPT_VIDEO = (
-    "Animate this real photo of a {deporte} venue in {pais} into a short, realistic sports clip: {escena}, "
-    "natural {luz}, slow cinematic camera push-in. Keep the venue EXACTLY as in the photo: the same court or pitch, "
-    "lines, nets, goals, fences, walls, roof, lights and buildings. No text, no logos, no watermark; faces small "
-    "and not recognizable."
+    "Animate this real photo of a {deporte} venue in {pais} into a short, realistic, continuous sports clip: {escena}. "
+    "The SAME players that are in the photo keep playing for the WHOLE clip: they stay on the court, fully visible, "
+    "same number of people, same clothes, from the first frame to the last; nobody appears, disappears, fades or "
+    "leaves the frame. Natural {luz}, smooth realistic motion, steady camera with a very slow push-in. Keep the venue "
+    "EXACTLY as in the photo: the same court or pitch, lines, nets, goals, fences, walls, roof, lights and buildings. "
+    "No text, no logos, no watermark; faces small and not recognizable."
 )
-NEGATIVO_VIDEO = "text, captions, subtitles, watermark, logo, distorted buildings, warped lines, extra limbs"
+NEGATIVO_VIDEO = ("people disappearing, vanishing, fading out, people leaving the frame, people appearing from nowhere, "
+                  "teleporting, morphing bodies, merging people, duplicated people, extra limbs, sudden cuts, scene change, "
+                  "camera shake, fast zoom, text, captions, subtitles, watermark, logo, distorted buildings, warped lines")
 
 
 def _gemini(metodo: str, ruta: str, cuerpo: dict | None = None, *, timeout: int = 60) -> dict:
@@ -401,6 +405,7 @@ def _veo_paso(v: dict, titulo: str) -> dict:
         if time.time() - float(v.get("enviado_en") or 0) > VEO_ESPERA_MAX:
             return _a_casa(v, f"no se pudo descargar el clip ({_error(e)})")
         return v
+    print(f"[agente_ia] Veo listo ({v.get('modelo') or ''}): {len(clip)} bytes", flush=True)
     return _pulir_clip(v, clip, titulo, musica="fondo")
 
 
@@ -462,7 +467,7 @@ def _pulir_clip(v: dict, clip: bytes, titulo: str, *, musica: str) -> dict:
 # Pichangol (`video_pulido.pulir`: logo, intro, rótulo con el título, cierre con
 # www.pichangol.app y música original). Es también el RESPALDO de Veo.
 PROVEEDOR_VIDEO = "movimiento"
-SEG_POR_FOTO = (1.5, 6.0)
+SEG_POR_FOTO = (1.5, 16.0)
 
 
 def encargar_video(fotos: list[str], *, mood: str = "energetico", deporte: str = "fútbol", pais: str = "PE",
@@ -493,7 +498,9 @@ def consultar_video(v: dict, *, titulo: str = "") -> dict:
         v = r                                   # Veo no sirvió: se arma en casa en esta misma vuelta
     if v.get("proveedor") != PROVEEDOR_VIDEO:
         return {**v, "estado": "fallo", "motivo": "Proveedor de video no disponible (la API de Sora fue cerrada por OpenAI)."}
-    datos = [d for d in (_descargar(u) for u in v.get("fotos") or []) if d]
+    # Solo la foto AMBIENTADA (la 1.ª): las reales no tienen jugadores y, al
+    # pasar de una a otra, la gente "desaparecía" en el video.
+    datos = [d for d in (_descargar(u) for u in (v.get("fotos") or [])[:1]) if d]
     if not datos:
         return {**v, "estado": "fallo", "motivo": "No se pudieron leer las fotos del local."}
     tmp = tempfile.mkdtemp(prefix="pcg_mkt_video_")

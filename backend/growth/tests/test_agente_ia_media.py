@@ -406,3 +406,18 @@ def test_el_video_usa_mi_musica_de_drive_si_hay_pistas(monkeypatch, tmp_path):
     monkeypatch.setattr(musica_drive, "marcar_uso", usadas.append)
     extra, nota = ia_media._musica({})
     assert extra == {"musica_ruta": str(ruta), "musica_desde": 2.5} and nota["musica_nombre"] == "Cumbia 1" and usadas == ["mm_1"]
+
+
+def test_video_no_hace_desaparecer_a_los_jugadores(veo, monkeypatch):
+    orq.guardar_configuracion({"video_motor": "veo", "media_tope_usd": 20})
+    ia_media.consultar_video(ia_media.encargar_video([FOTO, FOTO.replace("a.jpg", "b.jpg")], deporte="tenis"))
+    inst = veo["pedidos"][0][1]
+    assert "WHOLE clip" in inst["instances"][0]["prompt"]
+    assert "people disappearing" in inst["parameters"]["negativePrompt"]
+    # En casa: solo la foto ambientada (las reales no tienen jugadores).
+    orq.guardar_configuracion({"video_motor": "movimiento"})
+    usadas = []
+    monkeypatch.setattr("marketing.foto_video.generar", lambda fotos, salida, **k: usadas.append(len(fotos)) or open(salida, "wb").write(b"x"))
+    monkeypatch.setattr("marketing.video_pulido.pulir", lambda e, s, o: open(s, "wb").write(b"CASA"))
+    r = ia_media.consultar_video(ia_media.encargar_video([FOTO, FOTO.replace("a.jpg", "b.jpg")]))
+    assert r["estado"] == "listo" and usadas == [1]
