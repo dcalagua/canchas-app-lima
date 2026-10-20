@@ -249,8 +249,29 @@ def test_creador_reintenta_ia_y_cae_al_banco(monkeypatch):
     monkeypatch.setattr(creador, "_con_ia", falsa)
     op = next(c for c in estratega.candidatas(_snap()) if c["tipo"] == "duenos_beneficios")
     p = creador.redactar(op, link="https://x/go/1", usar_ia=True)
-    assert len(llamadas) == 2 and "errores_version_anterior" in llamadas[1]
-    assert p["fuente"] == "banco" and p["validacion"]["ok"] and len(p["validacion"]["intentos_ia"]) == 2
+    assert len(llamadas) == 3 and "errores_version_anterior" in llamadas[1]
+    assert p["fuente"] == "banco" and p["validacion"]["ok"] and len(p["validacion"]["intentos_ia"]) == 3
+
+
+def test_titulo_largo_de_la_ia_se_reescribe_y_nunca_se_corta_a_media_palabra(monkeypatch):
+    # Caso real QAS (20-oct-2026): "Tu cancha en Lurigancho, en manos tuyas" (39) salió "…en manos tu".
+    largo = "Tu cancha en Lurigancho, en manos tuyas"
+    corto = "Tu cancha, en tus manos"
+    respuestas = [largo, corto]
+    llamadas = []
+    texto = ("Los jugadores ya buscan dónde jugar desde el celular. Publica tu cancha, recibe reservas confirmadas "
+             "y cobra en línea sin perseguir a nadie.")
+
+    def falsa(payload):
+        llamadas.append(payload)
+        return {"titulo": respuestas.pop(0), "subtitulo": "", "etiqueta": "", "texto": texto, "cta": "Regístrala hoy"}
+    monkeypatch.setattr(creador, "_con_ia", falsa)
+    op = next(c for c in estratega.candidatas(_snap()) if c["tipo"] == "duenos_beneficios")
+    p = creador.redactar(op, link="https://x/go/1")
+    assert p["fuente"] == "ia" and p["title"] == corto
+    assert "titulo tiene 39 caracteres" in llamadas[1]["errores_version_anterior"][0]
+    assert creador._limpiar(largo, 36) == "Tu cancha en Lurigancho, en manos"
+    assert creador._limpiar("Supercalifragilisticoespialidoso!!!!!", 10) == "Supercalif"
 
 
 def test_creador_usa_la_ia_si_respeta_los_hechos(monkeypatch):

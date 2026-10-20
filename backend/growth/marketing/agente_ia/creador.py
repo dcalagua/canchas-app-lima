@@ -46,9 +46,28 @@ _SYSTEM = (
 )
 
 
+TOPES = {"titulo": 36, "subtitulo": 80, "etiqueta": 14}
+
+
 def _limpiar(v, tope: int) -> str:
+    """Normaliza espacios y, si no cabe, corta en la última palabra completa
+    (nunca a media palabra: "en manos tuyas" no puede quedar "en manos tu")."""
     t = re.sub(r"[ \t]+", " ", str(v or "")).strip().strip('"“”')
-    return t[:tope].rstrip()
+    if len(t) <= tope:
+        return t
+    corte = t[:tope + 1].rsplit(" ", 1)[0] if " " in t[:tope + 1] else t[:tope]
+    return corte.rstrip(" ,;:-–—")
+
+
+def _excesos(d: dict) -> list[str]:
+    """Textos que van impresos sobre la imagen y no caben: se le devuelven a la
+    IA para que los reescriba más cortos en vez de recortarlos."""
+    out = []
+    for k, tope in TOPES.items():
+        n = len(re.sub(r"[ \t]+", " ", str(d.get(k) or "")).strip().strip('"“”'))
+        if n > tope:
+            out.append(f"{k} tiene {n} caracteres; el máximo es {tope}: reescríbelo más corto, completo y sin cortar palabras")
+    return out
 
 
 def hashtags(op: dict) -> list[str]:
@@ -93,10 +112,10 @@ def _banco(op: dict) -> list[dict]:
     if tipo == "cancha_destacada":
         precio = f" desde {c['moneda']} {c['precio_hora']:g} la hora" if c.get("precio_hora") else ""
         return [
-            {"titulo": loc[:36], "subtitulo": f"Turnos libres el {dia} por la {franja}", "etiqueta": "Destacado",
+            {"titulo": loc, "subtitulo": f"Turnos libres el {dia} por la {franja}", "etiqueta": "Destacado",
              "texto": f"{loc}{(' en ' + z) if z else ''} tiene turnos libres este {dia} por la {franja}{precio}.\n\n"
                       f"Elige tu hora y confirma al instante."},
-            {"titulo": f"{z or loc}: turnos este {dia}"[:36], "subtitulo": f"{loc} por la {franja}"[:80], "etiqueta": "",
+            {"titulo": f"{z or loc}: turnos este {dia}", "subtitulo": f"{loc} por la {franja}", "etiqueta": "",
              "texto": f"¿Buscando dónde jugar este {dia}? En {loc} quedan turnos libres por la {franja}{precio}.\n\n"
                       f"Reserva desde el celular y llega directo a la cancha."},
         ]
@@ -107,47 +126,47 @@ def _banco(op: dict) -> list[dict]:
         else:
             franja_txt = f"el {p.get('dia', '')}"
         return [
-            {"titulo": f"{p.get('pct')}% en {loc}"[:36], "subtitulo": f"Hora feliz {franja_txt}" if p.get("tipo") == "hora_feliz" else "Descuento en turnos seleccionados",
+            {"titulo": f"{p.get('pct')}% en {loc}", "subtitulo": f"Hora feliz {franja_txt}" if p.get("tipo") == "hora_feliz" else "Descuento en turnos seleccionados",
              "etiqueta": "Promo",
              "texto": f"{loc}{(' en ' + z) if z else ''} tiene {p.get('pct')}% de descuento {franja_txt}.\n\n"
                       f"Reserva por Pichangol y el descuento se aplica solo."},
-            {"titulo": f"Promo en {loc}"[:36], "subtitulo": f"{p.get('pct')}% de descuento", "etiqueta": "Promo",
+            {"titulo": f"Promo en {loc}", "subtitulo": f"{p.get('pct')}% de descuento", "etiqueta": "Promo",
              "texto": f"Dato para tu próximo partido: {loc} tiene {p.get('pct')}% de descuento {franja_txt}.\n\n"
                       f"Aparta tu turno en Pichangol antes de que se llene."},
         ]
     if tipo == "promo_zona":
         return [
-            {"titulo": f"Hora feliz en {z}"[:36], "subtitulo": f"Hasta {h.get('pct_max')}% en canchas de la zona", "etiqueta": "Promo",
+            {"titulo": f"Hora feliz en {z}", "subtitulo": f"Hasta {h.get('pct_max')}% en canchas de la zona", "etiqueta": "Promo",
              "texto": f"Hay {h.get('canchas_con_promo')} canchas de {z} con hora feliz: hasta {h.get('pct_max')}% de descuento en sus horarios valle.\n\n"
                       f"Búscalas en el mapa de Pichangol y arma el partido."},
-            {"titulo": f"{z}: juega con descuento"[:36], "subtitulo": f"{h.get('canchas_con_promo')} canchas con hora feliz", "etiqueta": "Promo",
+            {"titulo": f"{z}: juega con descuento", "subtitulo": f"{h.get('canchas_con_promo')} canchas con hora feliz", "etiqueta": "Promo",
              "texto": f"Si juegas en {z}, mira esto: {h.get('canchas_con_promo')} canchas tienen hora feliz con hasta {h.get('pct_max')}% de descuento.\n\n"
                       f"Elige la tuya en Pichangol y reserva en un toque."},
         ]
     if tipo == "canchas_nuevas":
         return [
-            {"titulo": f"Nuevas canchas en {z}"[:36], "subtitulo": "Ya se reservan en Pichangol", "etiqueta": "Nuevo",
+            {"titulo": f"Nuevas canchas en {z}", "subtitulo": "Ya se reservan en Pichangol", "etiqueta": "Nuevo",
              "texto": f"Sumamos {h.get('canchas_nuevas')} cancha(s) en {z} que ya puedes reservar desde Pichangol.\n\n"
                       f"Mira horarios en vivo y confirma sin llamadas."},
-            {"titulo": f"{z} suma canchas"[:36], "subtitulo": "Nuevas opciones para tu partido", "etiqueta": "Nuevo",
+            {"titulo": f"{z} suma canchas", "subtitulo": "Nuevas opciones para tu partido", "etiqueta": "Nuevo",
              "texto": f"Más opciones para jugar en {z}: {h.get('canchas_nuevas')} cancha(s) nueva(s) ya están en Pichangol.\n\n"
                       f"Entra, mira sus horarios y arma el partido."},
         ]
     if tipo == "captar_duenos_zona":
         return [
-            {"titulo": f"Dueños de canchas en {z}"[:36], "subtitulo": "Tu cancha ya está en el mapa: reclámala", "etiqueta": "Para dueños",
+            {"titulo": f"Dueños de canchas en {z}", "subtitulo": "Tu cancha ya está en el mapa: reclámala", "etiqueta": "Para dueños",
              "texto": f"En {z} hay {h.get('canchas_sin_dueno')} canchas que los jugadores ya ven en el mapa de Pichangol, pero sin su dueño.\n\n"
                       f"Si una es tuya, regístrala gratis: recibes reservas, cobras en línea y ordenas tu agenda."},
-            {"titulo": f"¿Tienes cancha en {z}?"[:36], "subtitulo": "Los jugadores ya la buscan en el mapa", "etiqueta": "Para dueños",
+            {"titulo": f"¿Tienes cancha en {z}?", "subtitulo": "Los jugadores ya la buscan en el mapa", "etiqueta": "Para dueños",
              "texto": f"Hay {h.get('canchas_sin_dueno')} canchas de {z} que ya aparecen en Pichangol esperando a su dueño.\n\n"
                       f"Reclama la tuya gratis y empieza a recibir reservas con cobro en línea."},
         ]
     if tipo == "demanda_zona":
         return [
-            {"titulo": f"Buscan cancha en {z}"[:36], "subtitulo": "Jugadores lo están pidiendo en la app", "etiqueta": "Para dueños",
+            {"titulo": f"Buscan cancha en {z}", "subtitulo": "Jugadores lo están pidiendo en la app", "etiqueta": "Para dueños",
              "texto": f"{h.get('solicitudes_jugadores')} jugadores pidieron canchas en {z} desde Pichangol.\n\n"
                       f"Si tienes una, regístrala gratis y empieza a recibir esas reservas."},
-            {"titulo": f"{z} quiere jugar"[:36], "subtitulo": "La demanda ya está, falta tu cancha", "etiqueta": "Para dueños",
+            {"titulo": f"{z} quiere jugar", "subtitulo": "La demanda ya está, falta tu cancha", "etiqueta": "Para dueños",
              "texto": f"Desde la app, {h.get('solicitudes_jugadores')} jugadores pidieron canchas en {z}.\n\n"
                       f"Si administras una, publícala gratis en Pichangol y recibe esas reservas."},
         ]
@@ -233,10 +252,15 @@ def redactar(op: dict, *, link: str, tono: str = "cercano", plataforma: str = "f
                    "objetivo_de_la_pieza": op["objetivo"], "kpi": op["kpi"], "por_que": op.get("por_que") or op.get("razon"),
                    "enfoque": op.get("enfoque"), "tono": TONOS.get(tono, TONOS["cercano"]), "hechos": hechos,
                    "recientes": [next((l for l in r.splitlines() if l.strip()), "")[:140] for r in recientes[:12]]}
-        for _ in range(2):
+        for _ in range(3):
             d = _con_ia(payload)
             if not d:
                 break
+            largos = _excesos(d)
+            if largos:
+                intentos.append(largos)
+                payload["errores_version_anterior"] = largos
+                continue
             p = _a_pieza(d, op, link)
             v = _validar(p)
             intentos.append(v["errores"])
