@@ -3946,6 +3946,11 @@ Reemplaza al calendario fijo de `agente_redes.py` (al activarlo se apaga
   (0.15 USD/s) × 8 reservado al pedir dentro del tope y devuelto si Veo
   rechaza o no entrega clip; sin llave/tope, error o > 20 min → se arma EN
   CASA (`nota_veo`). Confirmar id del modelo y precio en Google AI Studio.
+  Jugadores que "desaparecían" (queja del director, 20-oct-2026): el prompt de
+  Veo exige los mismos jugadores todo el clip + `negativePrompt` contra
+  desapariciones; el video en casa usa SOLO la foto ambientada (las reales no
+  tienen gente). Música distinta por video: Mi música (Drive) o variante de la
+  sintetizada (`musica.generar_pista(variante=)`); "🎬 Rehacer con Veo".
   Torre: marcar el video marca el ambientado (y quitar el ambientado apaga el
   video); botón "🎬 Hacer video" en piezas ya ambientadas
   (`orquestador.pedir_video`, acción `video`). Toda pieza IA lleva
