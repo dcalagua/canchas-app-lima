@@ -525,7 +525,9 @@ def pulir(ruta: str, salida: str, opciones: dict, *, progreso=None) -> dict:
         else:
             try:
                 from marketing.musica import generar_pista
-                wav = generar_pista(D + 0.5, mood=mezcla["mood"])
+                variante = opciones.get("musica_variante")
+                wav = generar_pista(D + 0.5, mood=mezcla["mood"],
+                                    variante=None if variante is None else int(variante))
             except Exception:  # noqa: BLE001
                 wav = None
             if wav:

@@ -404,6 +404,25 @@ def _veo_paso(v: dict, titulo: str) -> dict:
     return _pulir_clip(v, clip, titulo, musica="fondo")
 
 
+def _musica(v: dict) -> tuple[dict, dict]:
+    """Música de ESTE video, distinta cada vez: una pista de "Mi música" (carpeta
+    de Google Drive de la torre, la menos usada) o, sin pistas, la original
+    sintetizada en una variante propia (otra tonalidad, tempo y acordes).
+    Devuelve (opciones para `pulir`, lo que se anota en el video)."""
+    try:
+        from marketing import musica_drive
+        pista = musica_drive.elegir_pista()
+        if pista:
+            ruta = musica_drive.descargar_a_temporal(pista["id"])
+            musica_drive.marcar_uso(pista["id"])
+            return ({"musica_ruta": ruta, "musica_desde": float(pista.get("inicio_sugerido") or 0)},
+                    {"musica": "drive", "musica_nombre": pista.get("nombre") or ""})
+    except Exception as e:  # noqa: BLE001 — sin Drive, la sintetizada
+        print(f"[agente_ia] Mi música no disponible, va la original: {str(e)[:120]}", flush=True)
+    variante = int(uuid.uuid4().int % 100000)
+    return {"musica_variante": variante}, {"musica": "original", "musica_variante": variante}
+
+
 def _pulir_clip(v: dict, clip: bytes, titulo: str, *, musica: str) -> dict:
     """Pulido Pichangol sobre un clip ya hecho (logo, intro, rótulo, cierre, música)."""
     import os
@@ -414,11 +433,13 @@ def _pulir_clip(v: dict, clip: bytes, titulo: str, *, musica: str) -> dict:
     try:
         with open(crudo, "wb") as f:
             f.write(clip)
+        extra, nota = _musica(v)
         vp.pulir(crudo, final, {"formato": "cuadrado", "logo": True, "intro": True, "cierre": True, "rotulo": bool(titulo),
-                                "titulo": titulo, "segmentos": [], "musica_modo": musica, "mood": v.get("mood") or "energetico"})
+                                "titulo": titulo, "segmentos": [], "musica_modo": musica, "mood": v.get("mood") or "energetico",
+                                **extra})
         with open(final, "rb") as f:
             mp4 = f.read()
-        return {**v, "estado": "listo", "_mp4": mp4, "bytes": len(mp4)}
+        return {**v, **nota, "estado": "listo", "_mp4": mp4, "bytes": len(mp4)}
     except Exception as e:  # noqa: BLE001
         return _a_casa(v, f"no se pudo pulir el clip de Veo: {str(e)[:120]}")
     finally:
@@ -481,11 +502,13 @@ def consultar_video(v: dict, *, titulo: str = "") -> dict:
         lo, hi = SEG_POR_FOTO
         foto_video.generar([_a_jpeg(d) for d in datos], crudo, formato="cuadrado",
                            segundos=max(lo, min(hi, float(v.get("segundos") or 12) / len(datos))))
+        extra, nota = _musica(v)
         vp.pulir(crudo, final, {"formato": "cuadrado", "logo": True, "intro": True, "cierre": True, "rotulo": bool(titulo),
-                                "titulo": titulo, "segmentos": [], "musica_modo": "protagonista", "mood": v.get("mood") or "energetico"})
+                                "titulo": titulo, "segmentos": [], "musica_modo": "protagonista", "mood": v.get("mood") or "energetico",
+                                **extra})
         with open(final, "rb") as f:
             mp4 = f.read()
-        return {**v, "estado": "listo", "_mp4": mp4, "bytes": len(mp4)}
+        return {**v, **nota, "estado": "listo", "_mp4": mp4, "bytes": len(mp4)}
     except Exception as e:  # noqa: BLE001
         print(f"[agente_ia] no se pudo armar el video: {str(e)[:200]}", flush=True)
         return {**v, "estado": "fallo", "motivo": f"No se pudo armar el video: {str(e)[:160]}"}

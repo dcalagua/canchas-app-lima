@@ -384,3 +384,25 @@ def test_video_hecho_en_casa_se_puede_rehacer_con_veo(pro, veo, monkeypatch, _li
     ia_media.procesar_videos()
     with pytest.raises(orq.Rechazo):
         orq.pedir_video(p["id"], "ana")                   # ya es de Veo: no se repite
+
+
+def test_la_musica_del_video_cambia_cada_vez():
+    from marketing import musica
+    a, b = musica.generar_pista(3, "energetico", variante=1), musica.generar_pista(3, "energetico", variante=2)
+    assert a and b and a != b                                            # otra tonalidad
+    assert musica.generar_pista(3, "energetico") == musica.generar_pista(3, "energetico")
+    extra1, nota1 = ia_media._musica({})
+    extra2, nota2 = ia_media._musica({})
+    assert nota1["musica"] == "original" and extra1["musica_variante"] != extra2["musica_variante"]
+
+
+def test_el_video_usa_mi_musica_de_drive_si_hay_pistas(monkeypatch, tmp_path):
+    from marketing import musica_drive
+    ruta = tmp_path / "p.mp3"
+    ruta.write_bytes(b"x")
+    usadas = []
+    monkeypatch.setattr(musica_drive, "elegir_pista", lambda carpeta=None: {"id": "mm_1", "nombre": "Cumbia 1", "inicio_sugerido": 2.5})
+    monkeypatch.setattr(musica_drive, "descargar_a_temporal", lambda iid: str(ruta))
+    monkeypatch.setattr(musica_drive, "marcar_uso", usadas.append)
+    extra, nota = ia_media._musica({})
+    assert extra == {"musica_ruta": str(ruta), "musica_desde": 2.5} and nota["musica_nombre"] == "Cumbia 1" and usadas == ["mm_1"]

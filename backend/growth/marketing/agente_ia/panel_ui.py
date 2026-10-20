@@ -71,8 +71,12 @@ function mkVideo(p){
   if(v.estado==='generando') return v.proveedor==='veo'
     ? `<div class="row">🎬 Veo de Google está generando el video del local… suele tardar de 1 a 6 minutos; se podrá aprobar cuando termine.</div>`
     : `<div class="row">🎬 Armando el video (fotos con movimiento y música)… tarda alrededor de un minuto; se podrá aprobar cuando termine.</div>`;
-  if(v.estado==='listo' && v.nota_veo) return `<div class="row">🎬 Veo no pudo generarlo (${esc(v.nota_veo)}); se armó en casa con las fotos.</div>`+mkVideoTag(v);
-  if(v.estado==='listo') return mkVideoTag(v);
+  if(v.estado==='listo'){
+    const mus = v.musica==='drive' ? `🎵 ${esc(v.musica_nombre||'Mi música')}` : '🎵 Música original';
+    const tipo = v.proveedor==='veo' ? '✨ Video generado por Veo de Google' : '🎞️ Video armado con las fotos (no generado por IA)';
+    const aviso = v.nota_veo ? `<div class="row">⚠ Veo no pudo generarlo (${esc(v.nota_veo)}); se armó en casa con las fotos.</div>` : '';
+    return aviso+`<div class="row">${tipo} · ${mus}</div>`+mkVideoTag(v);
+  }
   if(v.estado==='fallo') return `<div class="row">🎬 No se pudo generar el video (${esc(v.motivo||'')}); se publicará con la foto.</div>`;
   return '';
 }
