@@ -3936,8 +3936,16 @@ Reemplaza al calendario fijo de `agente_redes.py` (al activarlo se apaga
   armado EN CASA con `foto_video` + `video_pulido`, gratis; no se aprueba ni
   publica mientras se arma; si falla sale la foto). **OJO: OpenAI CERRÓ la API
   de Sora (/v1/videos) el 24-sep-2026 sin reemplazo** (el 1.er pedido real en
-  QAS dio 404): no volver a usarla; un video "generado" de verdad sería otro
-  proveedor (p. ej. Veo de Google) como nuevo `proveedor` en `ia_media`.
+  QAS dio 404): no volver a usarla. **VEO DE GOOGLE (20-oct-2026, pedido del
+  director):** motor elegible en la torre → Marketing IA → configuración
+  ("Motor del video": En casa gratis | Veo de Google, `ai_mkt_video_motor`):
+  `ia_media._veo_paso` pide image-to-video a la API de Gemini
+  (`GEMINI_API_KEY` + `VEO_MODEL`, default `veo-3.1-fast-generate-preview`)
+  con la foto ambientada, el cron consulta la operación y pule el clip de 8 s
+  (logo, intro, cierre, música de fondo). Costo `ai_mkt_costo_video_seg`
+  (0.15 USD/s) × 8 reservado al pedir dentro del tope y devuelto si Veo
+  rechaza o no entrega clip; sin llave/tope, error o > 20 min → se arma EN
+  CASA (`nota_veo`). Confirmar id del modelo y precio en Google AI Studio.
   Torre: marcar el video marca el ambientado (y quitar el ambientado apaga el
   video); botón "🎬 Hacer video" en piezas ya ambientadas
   (`orquestador.pedir_video`, acción `video`). Toda pieza IA lleva

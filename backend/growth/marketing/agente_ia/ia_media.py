@@ -6,12 +6,20 @@ Dos productos, ambos A PARTIR DE LAS FOTOS REALES que subió el dueño:
   toma la foto del local y le agrega jugadores, luz y ambiente de partido. El
   prompt exige conservar el lugar tal cual (cerco, líneas, paredes, techos,
   edificios): la IA ambienta, no inventa otra cancha.
-* **Video** (`video_ia`): la foto ambientada + las reales con movimiento, logo,
-  rótulo, cierre y música original, armado EN CASA con FFmpeg (gratis; la API
-  de Sora de OpenAI cerró el 24-sep-2026). Se PIDE al crear la pieza y
-  `procesar_videos()` (cron del agente, cada minuto) lo renderiza y lo deja en
-  Storage. Mientras tanto la pieza no se aprueba ni se publica; si falla, la
-  pieza sale con la foto ambientada.
+* **Video** (`video_ia`), con el MOTOR que elija la torre (`ai_mkt_video_motor`):
+  - `veo`: **Veo de Google** (API de Gemini, `GEMINI_API_KEY` + `VEO_MODEL`)
+    anima la foto ambientada (image-to-video, 8 s, con su audio de ambiente);
+    se le pone encima el pulido Pichangol (logo, intro, rótulo, cierre y
+    música de fondo). Se cobra por segundo (`ai_mkt_costo_video_seg`).
+  - `movimiento` (gratis): la foto ambientada + las reales con movimiento tipo
+    Ken Burns y el mismo pulido, armado EN CASA con FFmpeg (la API de Sora de
+    OpenAI cerró el 24-sep-2026).
+  Se PIDE al crear la pieza y `procesar_videos()` (cron del agente, cada
+  minuto) lo avanza: con Veo manda el pedido, consulta la operación hasta que
+  termina y descarga el clip. Si Veo no alcanza el tope, falla o tarda más de
+  `VEO_ESPERA_MAX` s, el video se arma en casa (nunca queda la pieza sin
+  video por Veo). Mientras tanto la pieza no se aprueba ni se publica; si todo
+  falla, la pieza sale con la foto ambientada.
 
 Todo lo generado lleva el aviso "contenido generado con IA" en el texto (lo
 exige el guardrail) y queda en Storage `canchas/marketing/` para no re-pagarlo.
@@ -146,8 +154,40 @@ def alcanza_imagen() -> bool:
 
 
 def alcanza_video() -> bool:
-    """El video se arma en casa (sin costo): basta con poder pagar la foto ambientada."""
-    return alcanza_imagen()
+    """Siempre se puede pedir: si Veo no alcanza el tope, el video se arma en
+    casa (gratis)."""
+    return True
+
+
+# ── motor de video ───────────────────────────────────────────────────────────
+MOTORES_VIDEO = ("movimiento", "veo")
+VEO_SEGUNDOS = 8            # duración del clip que pide la pieza a Veo
+VEO_ESPERA_MAX = 20 * 60    # sin respuesta en 20 min → se arma en casa
+_GEMINI = "https://generativelanguage.googleapis.com/v1beta"
+
+
+def veo_disponible() -> bool:
+    import config
+    return bool(config.GEMINI_API_KEY)
+
+
+def veo_modelo() -> str:
+    import config
+    return config.VEO_MODEL
+
+
+def motor_video() -> str:
+    """El elegido en la torre; Veo solo si hay llave de Gemini."""
+    m = _cfg("ai_mkt_video_motor", "movimiento")
+    return "veo" if m == "veo" and veo_disponible() else "movimiento"
+
+
+def costo_video_seg() -> float:
+    return _num("ai_mkt_costo_video_seg", 0.15)
+
+
+def costo_veo() -> float:
+    return round(costo_video_seg() * VEO_SEGUNDOS, 4)
 
 
 # ── HTTP ─────────────────────────────────────────────────────────────────────
@@ -259,26 +299,163 @@ def ambientar(foto_url: str, *, deporte: str, pais: str = "PE", hora: int = 19) 
         return None, motivo
 
 
+# ── Veo (Google, API de Gemini) ──────────────────────────────────────────────
+PROMPT_VIDEO = (
+    "Animate this real photo of a {deporte} venue in {pais} into a short, realistic sports clip: {escena}, "
+    "natural {luz}, slow cinematic camera push-in. Keep the venue EXACTLY as in the photo: the same court or pitch, "
+    "lines, nets, goals, fences, walls, roof, lights and buildings. No text, no logos, no watermark; faces small "
+    "and not recognizable."
+)
+NEGATIVO_VIDEO = "text, captions, subtitles, watermark, logo, distorted buildings, warped lines, extra limbs"
+
+
+def _gemini(metodo: str, ruta: str, cuerpo: dict | None = None, *, timeout: int = 60) -> dict:
+    import config
+    url = ruta if ruta.startswith("https://") else f"{_GEMINI}/{ruta.lstrip('/')}"
+    datos = json.dumps(cuerpo).encode() if cuerpo is not None else None
+    req = urllib.request.Request(url, data=datos, method=metodo, headers={
+        "x-goog-api-key": config.GEMINI_API_KEY, "Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 — host fijo de Google
+        return json.loads(r.read().decode() or "{}")
+
+
+def _veo_pedir(v: dict) -> dict:
+    """Manda el pedido a Veo con la foto ambientada como primer cuadro."""
+    import base64
+    import config
+    foto = _descargar((v.get("fotos") or [""])[0])
+    if not foto:
+        raise ValueError("No se pudo leer la foto ambientada.")
+    cuerpo = {
+        "instances": [{
+            "prompt": _prompt(PROMPT_VIDEO, v.get("deporte") or "fútbol", v.get("pais") or "PE", int(v.get("hora") or 19)),
+            "image": {"bytesBase64Encoded": base64.b64encode(_a_jpeg(foto, (1280, 720))).decode(), "mimeType": "image/jpeg"},
+        }],
+        "parameters": {"aspectRatio": "16:9", "negativePrompt": NEGATIVO_VIDEO},
+    }
+    j = _gemini("POST", f"models/{config.VEO_MODEL}:predictLongRunning", cuerpo)
+    nombre = str(j.get("name") or "")
+    if not nombre:
+        raise ValueError(f"Veo no devolvió la operación: {str(j)[:160]}")
+    return {**v, "operacion": nombre, "modelo": config.VEO_MODEL, "enviado_en": time.time(), "costo_usd": costo_veo()}
+
+
+def _veo_uri(op: dict) -> str:
+    """Ruta del clip en la respuesta (forma REST y, de respaldo, la del SDK)."""
+    r = op.get("response") or {}
+    for muestras in ((r.get("generateVideoResponse") or {}).get("generatedSamples"), r.get("generatedVideos"), r.get("videos")):
+        for m in muestras or []:
+            vid = (m or {}).get("video") or m or {}
+            uri = vid.get("uri") or vid.get("gcsUri") or ""
+            if uri:
+                return uri
+    return ""
+
+
+def _veo_descargar(uri: str) -> bytes:
+    import config
+    req = urllib.request.Request(uri, headers={"x-goog-api-key": config.GEMINI_API_KEY}
+                                 if "googleapis.com" in uri else {})
+    with urllib.request.urlopen(req, timeout=120) as r:  # noqa: S310
+        return r.read()
+
+
+def _a_casa(v: dict, motivo: str) -> dict:
+    """Veo no sirvió para este video: se arma en casa (gratis)."""
+    print(f"[agente_ia] Veo → video en casa: {motivo}", flush=True)
+    return {**v, "proveedor": PROVEEDOR_VIDEO, "nota_veo": motivo[:200]}
+
+
+def _veo_paso(v: dict, titulo: str) -> dict:
+    """Un paso de Veo por vuelta del cron: pedir → consultar → descargar y pulir."""
+    if not v.get("operacion"):
+        if not veo_disponible():
+            return _a_casa(v, "sin llave de Gemini")
+        if not _reservar(costo_veo(), "video", VEO_SEGUNDOS):
+            return _a_casa(v, "tope de gasto del mes")
+        try:
+            return _veo_pedir(v)
+        except Exception as e:  # noqa: BLE001
+            _devolver(costo_veo(), "video", VEO_SEGUNDOS)   # no se generó nada
+            return _a_casa(v, _error(e))
+    try:
+        op = _gemini("GET", v["operacion"])
+    except Exception as e:  # noqa: BLE001 — error de red: se reintenta en la siguiente vuelta
+        if time.time() - float(v.get("enviado_en") or 0) > VEO_ESPERA_MAX:
+            return _a_casa(v, f"sin respuesta de Veo ({_error(e)})")
+        return v
+    if not op.get("done"):
+        if time.time() - float(v.get("enviado_en") or 0) > VEO_ESPERA_MAX:
+            return _a_casa(v, "Veo tardó demasiado")
+        return v
+    if op.get("error"):
+        _devolver(float(v.get("costo_usd") or costo_veo()), "video", VEO_SEGUNDOS)
+        return _a_casa(v, f"Veo rechazó el pedido: {str((op.get('error') or {}).get('message') or op['error'])[:160]}")
+    uri = _veo_uri(op)
+    if not uri:
+        _devolver(float(v.get("costo_usd") or costo_veo()), "video", VEO_SEGUNDOS)   # p. ej. filtro de seguridad
+        return _a_casa(v, "Veo no entregó el clip (posible filtro de contenido)")
+    try:
+        clip = _veo_descargar(uri)
+    except Exception as e:  # noqa: BLE001
+        if time.time() - float(v.get("enviado_en") or 0) > VEO_ESPERA_MAX:
+            return _a_casa(v, f"no se pudo descargar el clip ({_error(e)})")
+        return v
+    return _pulir_clip(v, clip, titulo, musica="fondo")
+
+
+def _pulir_clip(v: dict, clip: bytes, titulo: str, *, musica: str) -> dict:
+    """Pulido Pichangol sobre un clip ya hecho (logo, intro, rótulo, cierre, música)."""
+    import os
+    import tempfile
+    from marketing import video_pulido as vp
+    tmp = tempfile.mkdtemp(prefix="pcg_mkt_veo_")
+    crudo, final = os.path.join(tmp, "veo.mp4"), os.path.join(tmp, "final.mp4")
+    try:
+        with open(crudo, "wb") as f:
+            f.write(clip)
+        vp.pulir(crudo, final, {"formato": "cuadrado", "logo": True, "intro": True, "cierre": True, "rotulo": bool(titulo),
+                                "titulo": titulo, "segmentos": [], "musica_modo": musica, "mood": v.get("mood") or "energetico"})
+        with open(final, "rb") as f:
+            mp4 = f.read()
+        return {**v, "estado": "listo", "_mp4": mp4, "bytes": len(mp4)}
+    except Exception as e:  # noqa: BLE001
+        return _a_casa(v, f"no se pudo pulir el clip de Veo: {str(e)[:120]}")
+    finally:
+        for r in (crudo, final):
+            try:
+                os.remove(r)
+            except OSError:
+                pass
+        try:
+            os.rmdir(tmp)
+        except OSError:
+            pass
+
+
 # ── video con movimiento (en casa) ───────────────────────────────────────────
 # OpenAI APAGÓ la API de Sora (/v1/videos) el 24-sep-2026 sin reemplazo: el 1.er
 # pedido real en QAS respondió 404. El video se arma aquí, gratis, con las
 # mismas piezas de la torre de Facebook: las fotos (la ambientada + las reales)
 # con movimiento tipo Ken Burns (`marketing/foto_video.py`) y luego el pulido
 # Pichangol (`video_pulido.pulir`: logo, intro, rótulo con el título, cierre con
-# www.pichangol.app y música original). Si algún día se contrata un generador de
-# video con IA (p. ej. Veo de Google), entra como otro `proveedor` aquí.
+# www.pichangol.app y música original). Es también el RESPALDO de Veo.
 PROVEEDOR_VIDEO = "movimiento"
 SEG_POR_FOTO = (1.5, 6.0)
 
 
-def encargar_video(fotos: list[str], *, mood: str = "energetico") -> dict:
-    """Deja el video PEDIDO (el render corre en el cron, no en la corrida del
-    plan ni en la request de la torre)."""
+def encargar_video(fotos: list[str], *, mood: str = "energetico", deporte: str = "fútbol", pais: str = "PE",
+                   hora: int = 19) -> dict:
+    """Deja el video PEDIDO con el motor de la torre (el pedido a Veo y el
+    render corren en el cron, no en la corrida del plan ni en la request)."""
     fotos = [u for u in fotos or [] if u][:5]
     if not fotos:
         return {"estado": "fallo", "motivo": "sin_foto"}
-    return {"estado": "generando", "proveedor": PROVEEDOR_VIDEO, "fotos": fotos, "segundos": segundos_video(),
-            "mood": mood if mood in ("chill", "energetico", "epico") else "energetico", "pedido_en": time.time()}
+    motor = motor_video()
+    return {"estado": "generando", "proveedor": motor, "fotos": fotos,
+            "segundos": VEO_SEGUNDOS if motor == "veo" else segundos_video(),
+            "mood": mood if mood in ("chill", "energetico", "epico") else "energetico",
+            "deporte": deporte or "fútbol", "pais": pais or "PE", "hora": int(hora or 19), "pedido_en": time.time()}
 
 
 def consultar_video(v: dict, *, titulo: str = "") -> dict:
@@ -288,6 +465,11 @@ def consultar_video(v: dict, *, titulo: str = "") -> dict:
     import tempfile
     from marketing import foto_video
     from marketing import video_pulido as vp
+    if v.get("proveedor") == "veo":
+        r = _veo_paso(v, titulo)
+        if r.get("proveedor") == "veo" or r.get("estado") != "generando":
+            return r
+        v = r                                   # Veo no sirvió: se arma en casa en esta misma vuelta
     if v.get("proveedor") != PROVEEDOR_VIDEO:
         return {**v, "estado": "fallo", "motivo": "Proveedor de video no disponible (la API de Sora fue cerrada por OpenAI)."}
     datos = [d for d in (_descargar(u) for u in v.get("fotos") or []) if d]
@@ -340,7 +522,8 @@ def procesar_videos() -> int:
                 nuevo = {**v, "motivo": "No se pudo guardar el video en Storage; reintento."}
             else:
                 nuevo["url"] = url
-                _reservar(0.0, "video", int(nuevo.get("segundos") or 0))     # solo cuenta: el video es gratis
+                if nuevo.get("proveedor") != "veo":     # Veo ya se descontó al pedirlo
+                    _reservar(0.0, "video", int(nuevo.get("segundos") or 0))     # solo cuenta: el video en casa es gratis
         receta = {**receta, "video_ia": nuevo}
         if nuevo.get("estado") == "fallo":
             receta["formato"] = receta.get("formato_foto") or "cuadrado"

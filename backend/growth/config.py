@@ -285,6 +285,10 @@ REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "").strip()
 # Marketing IA de locales Pro (con la misma OPENAI_API_KEY): edición de la foto
 # real del dueño (el video se arma en casa; la API de Sora cerró el 24-sep-2026).
 IMAGE_EDIT_MODEL = os.getenv("IMAGE_EDIT_MODEL", "gpt-image-1").strip() or "gpt-image-1"
+# Video con IA generativa de Google (Veo, API de Gemini): anima la foto
+# ambientada del local Pro. Sin llave el video se arma en casa con las fotos.
+GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")).strip()
+VEO_MODEL = os.getenv("VEO_MODEL", "veo-3.1-fast-generate-preview").strip() or "veo-3.1-fast-generate-preview"
 
 # Push "tu cancha fue aprobada": URL de la Edge Function de Supabase
 # (push-aprobacion) y su secreto compartido. Al aprobar un reclamo, el backend

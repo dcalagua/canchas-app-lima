@@ -90,7 +90,8 @@ def _media_pro(op: dict, fotos: list[str], formato: str, pais: str, *, ambientar
     receta = {"origen": "ia_ambientada", "fotos": [url] + fotos[1:3], "formato": formato, "biblioteca_ids": [],
               "fotos_reales": fotos[:3], "ia": {"modelo": "imagen", "deporte": deporte}}
     if video and ia_media.alcanza_video():
-        v = ia_media.encargar_video(receta["fotos"], mood="energetico" if op.get("audiencia") == "jugadores" else "chill")
+        v = ia_media.encargar_video(receta["fotos"], mood="energetico" if op.get("audiencia") == "jugadores" else "chill",
+                                    deporte=deporte, pais=pais, hora=hora)
         if v.get("estado") == "generando":
             receta.update(origen="video_ia", video_ia=v, formato_foto=formato)
         else:

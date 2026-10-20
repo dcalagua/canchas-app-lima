@@ -68,10 +68,16 @@ const MK_ORIGEN = {foto_real:'📷 Foto real', foto_dueno:'🏟️ Foto del due�
 const MK_AVISO_IA = '✨ Contenido creado con IA a partir de fotos reales del local.';
 function mkVideo(p){
   const v = ((p.oportunidad||{}).media||{}).video_ia; if(!v) return '';
-  if(v.estado==='generando') return `<div class="row">🎬 Armando el video (fotos con movimiento y música)… tarda alrededor de un minuto; se podrá aprobar cuando termine.</div>`;
-  if(v.estado==='listo' && /^https:\/\/[^"'<>\s]+$/.test(v.url||'')) return `<video class="mk-img" src="${v.url}" controls playsinline preload="metadata"></video>`;
+  if(v.estado==='generando') return v.proveedor==='veo'
+    ? `<div class="row">🎬 Veo de Google está generando el video del local… suele tardar de 1 a 6 minutos; se podrá aprobar cuando termine.</div>`
+    : `<div class="row">🎬 Armando el video (fotos con movimiento y música)… tarda alrededor de un minuto; se podrá aprobar cuando termine.</div>`;
+  if(v.estado==='listo' && v.nota_veo) return `<div class="row">🎬 Veo no pudo generarlo (${esc(v.nota_veo)}); se armó en casa con las fotos.</div>`+mkVideoTag(v);
+  if(v.estado==='listo') return mkVideoTag(v);
   if(v.estado==='fallo') return `<div class="row">🎬 No se pudo generar el video (${esc(v.motivo||'')}); se publicará con la foto.</div>`;
   return '';
+}
+function mkVideoTag(v){
+  return /^https:\/\/[^"'<>\s]+$/.test(v.url||'') ? `<video class="mk-img" src="${v.url}" controls playsinline preload="metadata"></video>` : '';
 }
 function mkFecha(s){ if(!s) return '—'; const d=new Date(s); return d.toLocaleString('es-PE',{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
 function mkLocalInput(s){ const d=s?new Date(s):new Date(Date.now()+3600e3); const p=n=>String(n).padStart(2,'0');
@@ -231,7 +237,7 @@ function mkEstrategia(){
     <div class="card"><h3>Estrategia de los últimos días</h3><table><tr><th>Día</th><th>Fuente</th><th>Oportunidades elegidas</th></tr>${est||'<tr><td colspan=3>Sin corridas aún.</td></tr>'}</table></div>`;
 }
 function mkConfig(){
-  const c = MK.resumen.config;
+  const c = MK.resumen.config, mi = MK.resumen.media_ia||{};
   const chk = (k,l)=>`<label><span><input type="checkbox" id="mkc_${k}" style="width:auto" ${c[k]?'checked':''}> ${l}</span></label>`;
   const num = (k,l,min,max,step)=>`<label>${l}<input type="number" id="mkc_${k}" value="${c[k]}" min="${min}" max="${max}" step="${step||1}"></label>`;
   return `<div class="card"><div class="mk-form">
@@ -258,16 +264,23 @@ function mkConfig(){
     ${num('pro_cupo_mes','Publicaciones por local Pro al mes (0 = ninguna)',0,30)}
     ${num('pro_max_dia','Máximo de piezas Pro extra por día',0,3)}
     ${chk('ia_ambientar','Ambientar con IA las fotos reales del local (OpenAI)')}
-    ${chk('video_ia','Además, armar un video con movimiento y música (gratis)')}
+    ${chk('video_ia','Además, hacer un video del local')}
+    <label>Motor del video<select id="mkc_video_motor">
+      <option value="movimiento" ${c.video_motor!=='veo'?'selected':''}>En casa · fotos con movimiento y música (gratis)</option>
+      <option value="veo" ${c.video_motor==='veo'?'selected':''} ${mi.veo_disponible?'':'disabled'}>Veo de Google · video generado (≈ $ ${(mi.costo_veo||0).toFixed(2)} c/u)${mi.veo_disponible?'':' — falta GEMINI_API_KEY'}</option></select></label>
     <label>Duración del video<select id="mkc_video_seg">${[8,12,16].map(n=>`<option value="${n}" ${c.video_seg===n?'selected':''}>${n} s</option>`).join('')}</select></label>
     ${num('media_tope_usd','Tope de gasto IA al mes (USD)',0,1000,1)}
     ${num('costo_imagen','Costo por imagen (USD)',0,5,0.01)}
+    ${num('costo_video_seg','Costo de Veo por segundo (USD)',0,5,0.01)}
   </div>
   <p class="row">Gastado este mes: <b>$ ${(MK.resumen.media_ia||{}).usd||0}</b> de $ ${(MK.resumen.media_ia||{}).tope_usd||0}
     · ${(MK.resumen.media_ia||{}).imagenes||0} imágenes · ${(MK.resumen.media_ia||{}).videos||0} videos
     ${(MK.resumen.media_ia||{}).disponible?'':' · ⚠ falta OPENAI_API_KEY en este ambiente'}.
-    El costo por imagen es estimado: confírmalo con el precio vigente de OpenAI. El video se arma en el servidor con las fotos (no tiene costo):
-    la API de video de OpenAI (Sora) fue cerrada el 24-sep-2026.</p><div class="mk-acts" style="margin-top:14px"><button class="pri" onclick="mkGuardarConfig()">Guardar configuración</button></div></div>`;
+    El costo por imagen es estimado: confírmalo con el precio vigente de OpenAI.
+    Video: “En casa” lo arma el servidor con las fotos (gratis; la duración aplica a este motor). “Veo de Google” anima la foto ambientada
+    (clip de 8 s, modelo <code>${esc(mi.veo_modelo||'')}</code>) y le pone logo, intro, cierre y música; se cobra por segundo
+    (confirma el precio vigente en Google AI Studio). Si Veo falla, no alcanza el tope o tarda más de 20 min, el video se arma en casa.
+    ${c.video_motor==='veo' && mi.motor_efectivo!=='veo' ? '<br>⚠ Elegiste Veo pero falta GEMINI_API_KEY en este ambiente: se usa “En casa”.' : ''}</p><div class="mk-acts" style="margin-top:14px"><button class="pri" onclick="mkGuardarConfig()">Guardar configuración</button></div></div>`;
 }
 function mkEnlazarVideo(){
   const v = document.getElementById('mkc_video_ia'), a = document.getElementById('mkc_ia_ambientar');
@@ -286,9 +299,9 @@ async function mkGuardarConfig(){
     paises:g('paises').value.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean), plataformas:g('plataformas').value.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean),
     posts_dia:+g('posts_dia').value, auto_max_dia:+g('auto_max_dia').value, umbral:+g('umbral').value, mix_baja:+g('mix_baja').value, mix_alta:+g('mix_alta').value,
     tono:g('tono').value, destacar_pro:g('destacar_pro').checked, arte_ia:g('arte_ia').checked,
-    ia_ambientar:g('ia_ambientar').checked, video_ia:g('video_ia').checked, video_seg:+g('video_seg').value,
+    ia_ambientar:g('ia_ambientar').checked, video_ia:g('video_ia').checked, video_seg:+g('video_seg').value, video_motor:g('video_motor').value,
     pro_cupo_mes:+g('pro_cupo_mes').value, pro_max_dia:+g('pro_max_dia').value, media_tope_usd:+g('media_tope_usd').value,
-    costo_imagen:+g('costo_imagen').value};
+    costo_imagen:+g('costo_imagen').value, costo_video_seg:+g('costo_video_seg').value};
   if(cuerpo.modo==='auto_validado' && !confirm('En modo automático el agente publica sin revisión humana las piezas que pasan todos los controles. ¿Continuar?')) return;
   try{ await mkApi('/config', cuerpo); toast('Configuración guardada'); }catch(e){ return; }
   mkCargar();

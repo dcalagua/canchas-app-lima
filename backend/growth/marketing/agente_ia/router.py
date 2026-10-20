@@ -69,6 +69,8 @@ class ConfigReq(BaseModel):
     media_tope_usd: float | None = None
     costo_imagen: float | None = None
     video_seg: int | None = None
+    video_motor: str | None = None
+    costo_video_seg: float | None = None
 
 
 class CorrerReq(BaseModel):

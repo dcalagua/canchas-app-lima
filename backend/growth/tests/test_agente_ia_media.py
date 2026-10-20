@@ -269,3 +269,101 @@ def test_hacer_video_de_una_pieza_ya_ambientada(pro, monkeypatch, _limpio):
     if otra:
         with pytest.raises(orq.Rechazo):
             orq.pedir_video(otra[0]["id"], "ana")                             # sin foto ambientada no hay video
+
+
+# ── Veo de Google (API de Gemini simulada) ───────────────────────────────────
+@pytest.fixture
+def veo(monkeypatch):
+    for k in ("ai_mkt_video_motor", "ai_mkt_media_gasto", "ai_mkt_media_tope_usd", "ai_mkt_costo_video_seg"):
+        monkeypatch.setitem(stores.config, k, "")
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "g-test")
+    monkeypatch.setattr(config, "VEO_MODEL", "veo-test")
+    monkeypatch.setattr(ia_media, "_descargar", lambda url: _jpeg((30, 90, 60), (640, 480)))
+    estado = {"pedidos": [], "consultas": 0, "listo": False, "error": None, "sin_clip": False}
+
+    def gemini(metodo, ruta, cuerpo=None, **k):
+        if metodo == "POST":
+            estado["pedidos"].append((ruta, cuerpo))
+            return {"name": "models/veo-test/operations/op1"}
+        estado["consultas"] += 1
+        if not estado["listo"]:
+            return {"name": ruta, "done": False}
+        if estado["error"]:
+            return {"name": ruta, "done": True, "error": {"message": estado["error"]}}
+        if estado["sin_clip"]:
+            return {"name": ruta, "done": True, "response": {"generateVideoResponse": {}}}
+        return {"name": ruta, "done": True, "response": {"generateVideoResponse": {
+            "generatedSamples": [{"video": {"uri": "https://generativelanguage.googleapis.com/v1beta/files/x:download"}}]}}}
+    monkeypatch.setattr(ia_media, "_gemini", gemini)
+    monkeypatch.setattr(ia_media, "_veo_descargar", lambda uri: b"CLIP")
+    monkeypatch.setattr(ia_media, "_pulir_clip", lambda v, clip, titulo, **k: {**v, "estado": "listo", "_mp4": b"PULIDO" + clip})
+    return estado
+
+
+def test_motor_veo_se_elige_en_la_torre_y_exige_llave(veo, monkeypatch):
+    assert ia_media.motor_video() == "movimiento"            # por defecto, en casa
+    cfg = orq.guardar_configuracion({"video_motor": "veo", "costo_video_seg": 0.4})
+    assert cfg["video_motor"] == "veo" and cfg["costo_video_seg"] == 0.4
+    assert ia_media.motor_video() == "veo" and ia_media.costo_veo() == pytest.approx(3.2)
+    with pytest.raises(ValueError):
+        orq.guardar_configuracion({"video_motor": "sora"})
+    monkeypatch.setattr(config, "GEMINI_API_KEY", "")
+    assert ia_media.motor_video() == "movimiento"            # sin llave, nunca Veo
+
+
+def test_veo_pide_consulta_descarga_y_cobra_una_vez(veo):
+    orq.guardar_configuracion({"video_motor": "veo", "costo_video_seg": 0.15, "media_tope_usd": 20})
+    v = ia_media.encargar_video([FOTO], mood="chill", deporte="tenis", pais="EC")
+    assert v["proveedor"] == "veo" and v["segundos"] == ia_media.VEO_SEGUNDOS
+    v = ia_media.consultar_video(v, titulo="Club X")          # 1.ª vuelta: manda el pedido
+    ruta, cuerpo = veo["pedidos"][0]
+    assert ruta == "models/veo-test:predictLongRunning"
+    inst = cuerpo["instances"][0]
+    assert "tenis" in inst["prompt"] and "Ecuador" in inst["prompt"] and inst["image"]["mimeType"] == "image/jpeg"
+    assert v["estado"] == "generando" and v["operacion"].endswith("op1")
+    assert ia_media.gasto()["usd"] == pytest.approx(1.2)      # 8 s × 0.15 reservado al pedir
+    assert ia_media.consultar_video(v) == v                  # aún no termina: sin cambios
+    veo["listo"] = True
+    r = ia_media.consultar_video(v, titulo="Club X")
+    assert r["estado"] == "listo" and r["_mp4"] == b"PULIDOCLIP" and r["proveedor"] == "veo"
+    assert len(veo["pedidos"]) == 1 and ia_media.gasto()["usd"] == pytest.approx(1.2)
+
+
+@pytest.mark.parametrize("caso", ["error", "sin_clip"])
+def test_veo_falla_devuelve_el_gasto_y_se_arma_en_casa(veo, monkeypatch, caso):
+    orq.guardar_configuracion({"video_motor": "veo", "media_tope_usd": 20})
+    casa = []
+    monkeypatch.setattr("marketing.foto_video.generar", lambda fotos, salida, **k: casa.append(len(fotos)) or open(salida, "wb").write(b"x"))
+    monkeypatch.setattr("marketing.video_pulido.pulir", lambda e, s, o: open(s, "wb").write(b"CASA"))
+    v = ia_media.consultar_video(ia_media.encargar_video([FOTO]))
+    veo["listo"] = True
+    veo["error"] = "safety" if caso == "error" else None
+    veo["sin_clip"] = caso == "sin_clip"
+    r = ia_media.consultar_video(v)
+    assert r["estado"] == "listo" and r["proveedor"] == "movimiento" and r["_mp4"] == b"CASA" and r["nota_veo"]
+    assert casa == [1] and ia_media.gasto()["usd"] == 0      # Veo no cobró: se devolvió
+
+
+def test_veo_sin_tope_o_que_tarda_demasiado_va_a_casa(veo, monkeypatch):
+    orq.guardar_configuracion({"video_motor": "veo", "media_tope_usd": 0.5})   # 8 s × 0.15 = 1.2 no alcanza
+    r = ia_media._veo_paso(ia_media.encargar_video([FOTO]), "")
+    assert r["proveedor"] == "movimiento" and "tope" in r["nota_veo"] and not veo["pedidos"]
+    orq.guardar_configuracion({"media_tope_usd": 20})
+    v = ia_media._veo_paso(ia_media.encargar_video([FOTO]), "")
+    v["enviado_en"] -= ia_media.VEO_ESPERA_MAX + 1
+    r = ia_media._veo_paso(v, "")
+    assert r["proveedor"] == "movimiento" and "tard" in r["nota_veo"]
+
+
+def test_resumen_de_la_torre_dice_el_motor_de_video(veo):
+    orq.guardar_configuracion({"video_motor": "veo"})
+    mi = orq.resumen()["media_ia"]
+    assert mi["veo_disponible"] and mi["veo_modelo"] == "veo-test" and mi["motor_efectivo"] == "veo"
+
+
+def test_clip_de_veo_se_pule_de_verdad_con_ffmpeg(tmp_path):
+    from marketing import foto_video
+    crudo = tmp_path / "veo.mp4"
+    foto_video.generar([_jpeg((30, 90, 60), (640, 360))], str(crudo), formato="horizontal", segundos=2)
+    r = ia_media._pulir_clip({"mood": "chill"}, crudo.read_bytes(), "Club X", musica="fondo")
+    assert r["estado"] == "listo" and r["_mp4"][4:8] == b"ftyp" and r["bytes"] > 1000

@@ -27,7 +27,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import config
 from db.store import stores
-from marketing.agente_ia import aprendizaje, analitica, creador, creativo, datos, estratega, guardrails, publicador
+from marketing.agente_ia import aprendizaje, analitica, creador, creativo, datos, estratega, guardrails, ia_media, publicador
 from marketing.agente_ia.repo import ESTADOS, ahora, nuevo_codigo, nuevo_id, repo
 
 ZONAS_PAIS = {"PE": "America/Lima", "BO": "America/La_Paz", "EC": "America/Guayaquil"}
@@ -45,9 +45,11 @@ CFG = {
     "pro_cupo_mes": ("ai_mkt_pro_cupo_mes", "4"), "pro_max_dia": ("ai_mkt_pro_max_dia", "1"),
     "media_tope_usd": ("ai_mkt_media_tope_usd", "20"), "costo_imagen": ("ai_mkt_costo_imagen", "0.07"),
     "video_seg": ("ai_mkt_video_seg", "12"),
+    # Motor del video: "movimiento" (en casa, gratis) o "veo" (Veo de Google, por segundo).
+    "video_motor": ("ai_mkt_video_motor", "movimiento"), "costo_video_seg": ("ai_mkt_costo_video_seg", "0.15"),
 }
 _RANGOS_MEDIA = {"pro_cupo_mes": (0, 30, int), "pro_max_dia": (0, 3, int), "media_tope_usd": (0, 1000, float),
-                 "costo_imagen": (0, 5, float)}
+                 "costo_imagen": (0, 5, float), "costo_video_seg": (0, 5, float)}
 REINTENTO_PLAN_S = 30 * 60
 EDITABLES = ("PENDING_APPROVAL", "REJECTED", "FAILED", "DRAFT", "APPROVED")
 CANCELABLES = ("DRAFT", "PENDING_APPROVAL", "APPROVED", "FAILED", "REJECTED")
@@ -80,7 +82,9 @@ def configuracion() -> dict:
             "ia_ambientar": _cfg("ia_ambientar") == "1", "video_ia": _cfg("video_ia") == "1",
             "pro_cupo_mes": int(_f("pro_cupo_mes", 0, 30)), "pro_max_dia": int(_f("pro_max_dia", 0, 3)),
             "media_tope_usd": _f("media_tope_usd", 0, 1000), "costo_imagen": _f("costo_imagen", 0, 5),
-            "video_seg": int(_cfg("video_seg")) if _cfg("video_seg") in ("8", "12", "16") else 12}
+            "video_seg": int(_cfg("video_seg")) if _cfg("video_seg") in ("8", "12", "16") else 12,
+            "video_motor": _cfg("video_motor") if _cfg("video_motor") in ia_media.MOTORES_VIDEO else "movimiento",
+            "costo_video_seg": _f("costo_video_seg", 0, 5)}
 
 
 def guardar_configuracion(d: dict) -> dict:
@@ -137,6 +141,10 @@ def guardar_configuracion(d: dict) -> dict:
         if str(d["video_seg"]) not in ("8", "12", "16"):
             raise ValueError("Duración del video: 8, 12 o 16 segundos.")
         _put("video_seg", str(d["video_seg"]))
+    if "video_motor" in d:
+        if d["video_motor"] not in ia_media.MOTORES_VIDEO:
+            raise ValueError("Motor de video inválido (movimiento | veo).")
+        _put("video_motor", d["video_motor"])
     if d.get("activo"):
         # Un solo agente publica en la página: el nuevo reemplaza al calendario fijo.
         stores.config["agente_fb_activo"] = "0"
@@ -580,7 +588,8 @@ def pedir_video(cid: str, usuario: str) -> dict:
         raise Rechazo("Solo las piezas con la foto del local ambientada con IA pueden pasar a video.")
     if (receta.get("video_ia") or {}).get("estado") in ("generando", "listo"):
         raise Rechazo("Esta pieza ya tiene su video (o se está armando).")
-    v = ia_media.encargar_video(receta.get("fotos") or [], mood="energetico" if c.get("audiencia") == "jugadores" else "chill")
+    v = ia_media.encargar_video(receta.get("fotos") or [], mood="energetico" if c.get("audiencia") == "jugadores" else "chill",
+                                deporte=(receta.get("ia") or {}).get("deporte") or "fútbol", pais=c.get("pais") or "PE")
     if v.get("estado") != "generando":
         raise Rechazo("No se pudo pedir el video: la pieza no tiene fotos.")
     receta.update(origen="video_ia", video_ia=v, formato_foto=receta.get("formato_foto") or receta.get("formato") or "cuadrado")
@@ -631,7 +640,9 @@ def resumen() -> dict:
             "insights": repo().insights_vigentes()[:10], "estrategias": [
                 {k: e.get(k) for k in ("id", "fecha", "pais", "fuente", "oportunidades", "created_at")} for e in repo().estrategias_lista(7)],
             "campanas": repo().campanas_lista(10), "agente_viejo_activo": str(stores.config.get("agente_fb_activo", "0")) == "1",
-            "media_ia": {**ia_media.gasto(), "disponible": ia_media.disponible()},
+            "media_ia": {**ia_media.gasto(), "disponible": ia_media.disponible(),
+                         "veo_disponible": ia_media.veo_disponible(), "veo_modelo": ia_media.veo_modelo(),
+                         "motor_efectivo": ia_media.motor_video(), "costo_veo": ia_media.costo_veo()},
             "pro_uso": {p: dict(sorted(uso_pro(p)[0].items())) for p in cfg["paises"]}}
 
 
