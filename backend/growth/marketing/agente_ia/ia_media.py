@@ -454,6 +454,7 @@ def _veo_paso(v: dict, titulo: str) -> dict:
 # logo, intro, cierre y música bajita. El texto de la pieza suma
 # AVISO_PRESENTADOR. Si una escena falla, el video sale con las que sí; si
 # fallan todas, se arma en casa.
+# Va en el texto del post cuando el video lleva la escena del presentador.
 AVISO_PRESENTADOR = "🎙️ El presentador y las escenas del video son generados con IA."
 _PERSONAS = ("young woman", "young man", "woman in her thirties", "man in his thirties")
 PROMPT_PRESENTADOR = (
