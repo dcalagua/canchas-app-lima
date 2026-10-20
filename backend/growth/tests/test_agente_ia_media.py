@@ -421,3 +421,26 @@ def test_video_no_hace_desaparecer_a_los_jugadores(veo, monkeypatch):
     monkeypatch.setattr("marketing.video_pulido.pulir", lambda e, s, o: open(s, "wb").write(b"CASA"))
     r = ia_media.consultar_video(ia_media.encargar_video([FOTO, FOTO.replace("a.jpg", "b.jpg")]))
     assert r["estado"] == "listo" and usadas == [1]
+
+
+def test_veo_saturado_se_reintenta_antes_de_ir_a_casa(veo, monkeypatch):
+    orq.guardar_configuracion({"video_motor": "veo", "media_tope_usd": 20})
+    v = ia_media.consultar_video(ia_media.encargar_video([FOTO]))
+    veo["listo"], veo["error"] = True, "This model is currently experiencing high demand. Please try again later."
+    r = ia_media.consultar_video(v)
+    assert r["estado"] == "generando" and r["proveedor"] == "veo" and r["veo_intentos"] == 1 and "operacion" not in r
+    assert ia_media.gasto()["usd"] == 0                       # el intento fallido no se cobra
+    assert ia_media.consultar_video(r) == r                   # espera antes de volver a pedir
+    r["veo_reintentar_en"] = 0
+    veo["error"] = None
+    r2 = ia_media.consultar_video(r)                          # vuelve a pedir y ahora sale
+    assert r2.get("operacion") and len(veo["pedidos"]) == 2
+    r3 = ia_media.consultar_video(r2)
+    assert r3["estado"] == "listo" and r3["proveedor"] == "veo"
+    # Agotados los reintentos, va a casa.
+    monkeypatch.setattr("marketing.foto_video.generar", lambda f, s, **k: open(s, "wb").write(b"x"))
+    monkeypatch.setattr("marketing.video_pulido.pulir", lambda e, s, o: open(s, "wb").write(b"CASA"))
+    veo["error"] = "high demand"
+    agot = ia_media.consultar_video({**r, "veo_intentos": ia_media.VEO_REINTENTOS, "veo_reintentar_en": 0})
+    r4 = ia_media.consultar_video(agot)
+    assert r4["proveedor"] == "movimiento" and "reintentos" in r4["nota_veo"]

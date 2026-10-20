@@ -69,7 +69,9 @@ const MK_AVISO_IA = '✨ Contenido creado con IA a partir de fotos reales del lo
 function mkVideo(p){
   const v = ((p.oportunidad||{}).media||{}).video_ia; if(!v) return '';
   if(v.estado==='generando') return v.proveedor==='veo'
-    ? `<div class="row">🎬 Veo de Google está generando el video del local… suele tardar de 1 a 6 minutos; se podrá aprobar cuando termine.</div>`
+    ? (v.veo_intentos && !v.operacion
+        ? `<div class="row">🎬 Veo de Google está saturado; reintento ${v.veo_intentos} de 4 en unos minutos (si no responde, se arma en casa).</div>`
+        : `<div class="row">🎬 Veo de Google está generando el video del local… suele tardar de 1 a 6 minutos; se podrá aprobar cuando termine.</div>`)
     : `<div class="row">🎬 Armando el video (fotos con movimiento y música)… tarda alrededor de un minuto; se podrá aprobar cuando termine.</div>`;
   if(v.estado==='listo'){
     const mus = v.musica==='drive' ? `🎵 ${esc(v.musica_nombre||'Mi música')}` : '🎵 Música original';

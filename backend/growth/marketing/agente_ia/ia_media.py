@@ -370,9 +370,34 @@ def _a_casa(v: dict, motivo: str) -> dict:
     return {**v, "proveedor": PROVEEDOR_VIDEO, "nota_veo": motivo[:200]}
 
 
+VEO_REINTENTOS = 4                      # demanda alta / cupo por minuto: se reintenta antes de ir a casa
+VEO_ESPERA_REINTENTO = (60, 180, 300, 600)
+
+
+def _veo_pasajero(motivo: str) -> bool:
+    """Errores de Veo que se arreglan solos esperando (saturación, cupo por minuto)."""
+    m = (motivo or "").lower()
+    return any(t in m for t in ("high demand", "try again later", "temporar", "unavailable", "overloaded",
+                                "resource_exhausted", "resource exhausted", "rate limit", "429", "503"))
+
+
+def _veo_reintentar(v: dict, motivo: str) -> dict:
+    """Programa otro intento con Veo (sin operación viva) o, agotados, va a casa."""
+    n = int(v.get("veo_intentos") or 0) + 1
+    if n > VEO_REINTENTOS or time.time() - float(v.get("veo_desde") or time.time()) > VEO_ESPERA_MAX:
+        return _a_casa(v, f"{motivo} (tras {n - 1} reintentos)")
+    espera = VEO_ESPERA_REINTENTO[min(n - 1, len(VEO_ESPERA_REINTENTO) - 1)]
+    print(f"[agente_ia] Veo ocupado, reintento {n} en {espera} s: {motivo[:120]}", flush=True)
+    return {**{k: x for k, x in v.items() if k not in ("operacion", "enviado_en")},
+            "veo_intentos": n, "veo_reintentar_en": time.time() + espera, "veo_ultimo_error": motivo[:200]}
+
+
 def _veo_paso(v: dict, titulo: str) -> dict:
     """Un paso de Veo por vuelta del cron: pedir → consultar → descargar y pulir."""
     if not v.get("operacion"):
+        if time.time() < float(v.get("veo_reintentar_en") or 0):
+            return v                                        # esperando el próximo intento
+        v = v if v.get("veo_desde") else {**v, "veo_desde": time.time()}
         if not veo_disponible():
             return _a_casa(v, "sin llave de Gemini")
         if not _reservar(costo_veo(), "video", VEO_SEGUNDOS):
@@ -381,7 +406,8 @@ def _veo_paso(v: dict, titulo: str) -> dict:
             return _veo_pedir(v)
         except Exception as e:  # noqa: BLE001
             _devolver(costo_veo(), "video", VEO_SEGUNDOS)   # no se generó nada
-            return _a_casa(v, _error(e))
+            motivo = _error(e)
+            return _veo_reintentar(v, motivo) if _veo_pasajero(motivo) else _a_casa(v, motivo)
     try:
         op = _gemini("GET", v["operacion"])
     except Exception as e:  # noqa: BLE001 — error de red: se reintenta en la siguiente vuelta
@@ -394,7 +420,11 @@ def _veo_paso(v: dict, titulo: str) -> dict:
         return v
     if op.get("error"):
         _devolver(float(v.get("costo_usd") or costo_veo()), "video", VEO_SEGUNDOS)
-        return _a_casa(v, f"Veo rechazó el pedido: {str((op.get('error') or {}).get('message') or op['error'])[:160]}")
+        err = op.get("error") or {}
+        motivo = f"Veo rechazó el pedido: {str(err.get('message') if isinstance(err, dict) else err)[:160]}"
+        if _veo_pasajero(motivo + " " + str(err.get("code") if isinstance(err, dict) else "")):
+            return _veo_reintentar(v, motivo)
+        return _a_casa(v, motivo)
     uri = _veo_uri(op)
     if not uri:
         _devolver(float(v.get("costo_usd") or costo_veo()), "video", VEO_SEGUNDOS)   # p. ej. filtro de seguridad
