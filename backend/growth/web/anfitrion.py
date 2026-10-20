@@ -120,24 +120,38 @@ def pagina_menu(request: Request) -> HTMLResponse:
                     titulo_tab=f"Modo anfitrión · {MARCA}")
 
 
-def _contexto(request: Request, volver: str):
-    """(sesión, canchas del dueño) o una respuesta de redirección/onboarding."""
+def _contexto(request: Request, volver: str, seccion: str = "hoy", sin_canchas_ok: bool = False):
+    """(sesión, canchas del dueño) o una respuesta de redirección/onboarding.
+    Sin canchas, cada pestaña muestra la bienvenida CON SU pestaña marcada (antes
+    todas pintaban "Hoy" y parecía que el clic no hacía nada); [sin_canchas_ok]
+    deja pasar a las que sirven igual sin canchas (Ingresos: un organizador de
+    torneos o una academia también tiene plata por recibir)."""
     ses, resp = _sesion_o_entrar(request, volver)
     if resp is not None:
         return None, None, resp
     canchas = datos.canchas_de_dueno(ses["email"])
-    if not canchas:
-        return ses, [], _onboarding(ses)
+    if not canchas and not sin_canchas_ok:
+        return ses, [], _onboarding(ses, seccion)
     return ses, canchas, None
 
 
-def _onboarding(ses: dict) -> HTMLResponse:
+_INTRO_SIN_CANCHAS = {
+    "hoy": "Con esta cuenta todavía no tienes canchas registradas.",
+    "calendario": "Tu calendario aparecerá aquí cuando registres tu primera cancha: turnos, reservas y bloqueos por semana.",
+    "reservas": "Aquí verás las reservas de tus canchas en cuanto registres la primera.",
+    "canchas": "Todavía no tienes canchas a tu nombre. Registra tu local y aquí podrás editarlo, agregar canchas y ver su ficha pública.",
+}
+
+
+def _onboarding(ses: dict, seccion: str = "hoy") -> HTMLResponse:
     """Como "Conviértete en anfitrión" de Airbnb: el dueño aún no tiene canchas
     a su nombre; el registro (reclamo + verificación) vive en el app."""
+    intro = _INTRO_SIN_CANCHAS.get(seccion, _INTRO_SIN_CANCHAS["hoy"])
+    titulo = next((n for k, n, _h, _i in SECCIONES if k == seccion), "Modo anfitrión")
     cuerpo = (
         "<div style='max-width:760px;margin:30px auto 0'>"
         f"<h1 class='anf-hola'>Hola, {e((ses.get('nombre') or ses.get('email') or '').split(' ')[0])} 👋</h1>"
-        f"<p class='sub' style='font-size:16px'>Con esta cuenta todavía no tienes canchas registradas. En {MARCA} tu cancha "
+        f"<p class='sub' style='font-size:16px'>{e(intro)} En {MARCA} tu cancha "
         "recibe reservas y pagos en línea, y tú la administras desde la app y desde aquí.</p>"
         "<div class='kpis' style='margin-top:22px'>"
         "<div class='kpi'><small>1 · Regístrala</small><b style='font-size:16px'>Aquí mismo o desde la app: Pon tu cancha</b></div>"
@@ -148,7 +162,7 @@ def _onboarding(ses: dict) -> HTMLResponse:
         f"<a class='btn sec' href='{PLAY_URL}' rel='noopener'>O desde la app</a><a class='btn sec' href='/#como'>Cómo funciona</a></div>"
         "<p class='sub' style='margin-top:18px;font-size:13px'>¿Ya registraste tu cancha con otro correo? Inicia sesión aquí con ese mismo correo de Google.</p>"
         "</div>")
-    return ui.shell("Modo anfitrión", cuerpo, nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab=f"Modo anfitrión · {MARCA}")
+    return ui.shell(titulo, cuerpo, nav=_cabecera(seccion, ses), sesion=ses, ancho=True, titulo_tab=f"{titulo} · Modo anfitrión · {MARCA}")
 
 
 def _hoy(canchas: list[dict]) -> date:
@@ -245,7 +259,7 @@ def pagina_hoy(request: Request) -> HTMLResponse:
 
 @router.get("/anfitrion/reservas", response_class=HTMLResponse)
 def pagina_reservas(request: Request) -> HTMLResponse:
-    ses, canchas, resp = _contexto(request, "/anfitrion/reservas")
+    ses, canchas, resp = _contexto(request, "/anfitrion/reservas", "reservas")
     if resp is not None:
         return resp
     hoy = _hoy(canchas)
@@ -339,7 +353,7 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
     (como el calendario de Airbnb): libre → reserva manual o bloquear;
     bloqueado → desbloquear; reservado → detalle, marcar pagada / por cobrar
     y quitar (solo las manuales)."""
-    ses, canchas, resp = _contexto(request, "/anfitrion/calendario")
+    ses, canchas, resp = _contexto(request, "/anfitrion/calendario", "calendario")
     if resp is not None:
         return resp
     hoy = _hoy(canchas)
@@ -734,12 +748,16 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
     regalo, por recibir, liquidaciones pagadas y últimos movimientos)."""
     from pagos.router import _liquidacion_dict
     from pagos import cuentas_cobro as _cc
-    ses, canchas, resp = _contexto(request, "/anfitrion/ingresos")
+    ses, canchas, resp = _contexto(request, "/anfitrion/ingresos", "ingresos", sin_canchas_ok=True)
     if resp is not None:
         return resp
     email = ses["email"]
-    sim = _moneda_de(canchas[0])[0] if canchas else "S/"
-    pais_iso = _pais_de(canchas[0]) if canchas else "PE"
+    if canchas:
+        sim, pais_iso = _moneda_de(canchas[0])[0], _pais_de(canchas[0])
+    else:  # sin canchas: la moneda y el país de su billetera (academia, torneos)
+        from web.jugador_billetera import pais_billetera
+        pais_iso = pais_billetera(email)[0] or "PE"
+        sim = {"PE": "S/", "EC": "$", "BO": "Bs"}.get(pais_iso, "S/")
     cuenta = stores.cuenta_cobro(email)
     res_cta = _cc.resumen(cuenta)
     saldo = stores.saldo_centimos(email) / 100.0
@@ -908,7 +926,7 @@ def _tarjeta_local(local: str, lst: list[dict], foto: str, zona: str, n: int, pi
 
 @router.get("/anfitrion/canchas", response_class=HTMLResponse)
 def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
-    ses, canchas, resp = _contexto(request, "/anfitrion/canchas")
+    ses, canchas, resp = _contexto(request, "/anfitrion/canchas", "canchas")
     if resp is not None:
         return resp
     # Como "Mis canchas" del app (`_LocalCard`): UNA tarjeta por LOCAL (club)

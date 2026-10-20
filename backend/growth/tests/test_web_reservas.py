@@ -907,6 +907,18 @@ def test_modo_anfitrion_en_la_web_como_airbnb(db, monkeypatch):
     assert "Cambiar a modo jugador" in menu
     html = cli.get("/anfitrion/mis-canchas").text
     assert "todavía no tienes canchas registradas" in html and "href='/anfitrion/nueva'" in html
+    # Sin canchas, cada pestaña marca la SUYA (antes todas pintaban "Hoy" y
+    # parecía que el clic no hacía nada) y explica qué verá ahí.
+    for ruta, nombre, texto in (("/anfitrion/canchas", "Canchas", "Todavía no tienes canchas a tu nombre"),
+                                ("/anfitrion/calendario", "Calendario", "Tu calendario aparecerá aquí"),
+                                ("/anfitrion/reservas", "Reservas", "Aquí verás las reservas de tus canchas")):
+        pag = cli.get(ruta).text
+        assert f"class='cat sel' href='{ruta}'" in pag, ruta
+        assert "class='cat sel' href='/anfitrion/mis-canchas'" not in pag, ruta
+        assert texto in pag and f"<title>{nombre} · Modo anfitrión" in pag, ruta
+    # Ingresos sirve sin canchas (academia, torneos): billetera y cuenta de cobro.
+    ing = cli.get("/anfitrion/ingresos").text
+    assert "class='cat sel' href='/anfitrion/ingresos'" in ing and "Cuenta de cobro" in ing
     aca = cli.get("/anfitrion/verificador").text  # el verificador también es web (web/anfitrion_verificador.py)
     assert "Visitas pendientes" in aca and "Validar reclamo por código" in aca
     assert cli.get("/anfitrion/nada").status_code == 404
