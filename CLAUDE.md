@@ -3878,6 +3878,17 @@ Reemplaza al calendario fijo de `agente_redes.py` (al activarlo se apaga
   `/go/{codigo}` (cookie `pg_utm` 7 días → `utm` de la reserva web).
 - Modo por defecto `aprobar`; `auto_validado` = fase 6 con tope diario;
   `ai_mkt_pausa=1` = freno de emergencia. Apagado por defecto (`ai_mkt_activo`).
+- **Locales Pro con IA (20-oct-2026, decisiones del director):** cupo FIJO al
+  mes por local Pro (`ai_mkt_pro_cupo_mes`, 4; piezas EXTRA repartidas parejo en
+  el mes, `estratega.pro_del_dia` + `orquestador.uso_pro`), foto REAL del dueño
+  AMBIENTADA con IA (`ia_media.ambientar`, gpt-image-1 edits; el lugar no
+  cambia) y video Sora opcional a partir de esa foto (`encargar_video` +
+  `procesar_videos` en el cron; no se aprueba ni publica mientras se genera; si
+  falla sale la foto). Toda pieza IA lleva `guardrails.AVISO_IA` (el guardrail
+  lo exige). Tope de gasto mensual `ai_mkt_media_tope_usd` (20) con costos
+  editables: confirmar el precio vigente de Sora antes de encender
+  `ai_mkt_video_ia`. Interruptores apagados por defecto y exige
+  `ai_mkt_destacar_pro=1`. Tests `tests/test_agente_ia_media.py`.
 - Prueba de integración contra un Postgres LOCAL DE PRUEBA (hace TRUNCATE; nunca
   apuntarla a QAS ni PRD):
   `AGENTE_IA_PG_URL=postgresql://... python3 -m pytest tests/test_agente_ia.py -k pg`

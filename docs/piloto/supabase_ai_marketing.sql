@@ -64,7 +64,7 @@ create table if not exists ai_content (
   link_url text,
   destino_url text,
   media_url text,
-  media_origen text check (media_origen in ('foto_real','foto_dueno','diseno','ia_conceptual')),
+  media_origen text check (media_origen in ('foto_real','foto_dueno','diseno','ia_conceptual','ia_ambientada','video_ia')),
   hechos jsonb not null default '{}'::jsonb,
   validacion jsonb not null default '{}'::jsonb,
   fuente text not null default 'reglas',
@@ -82,6 +82,11 @@ create table if not exists ai_content (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- Medios con IA de locales Pro (20-oct-2026): fotos reales ambientadas y video
+-- Sora. drop+add: re-correr el script actualiza la regla en tablas ya creadas.
+alter table ai_content drop constraint if exists ai_content_media_origen_check;
+alter table ai_content add constraint ai_content_media_origen_check check (media_origen in
+  ('foto_real','foto_dueno','diseno','ia_conceptual','ia_ambientada','video_ia'));
 -- PUBLISHING = reclamada por el publicador mientras habla con la red social
 -- (evita publicar dos veces). drop+add: re-correr el script actualiza la regla.
 alter table ai_content drop constraint if exists ai_content_status_check;

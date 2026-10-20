@@ -193,6 +193,79 @@ def candidatas(s: dict, *, umbral: int = 15, dia_rotacion: int = 0) -> list[dict
     return out
 
 
+# ── locales Pro: cupo fijo al mes ─────────────────────────────────────────────
+def club_de(c: dict) -> str:
+    return str(c.get("club") or c.get("nombre") or c.get("id") or "").strip().lower()
+
+
+def pro_del_dia(s: dict, *, cupo: int, usados: dict[str, int], ultimo: dict[str, str] | None = None,
+                ya: set[str] | None = None, max_dia: int = 1) -> list[dict]:
+    """Piezas EXTRA del día para cumplir el cupo mensual de cada local Pro
+    destacable (dueño Pro + "destacar Pro" encendido). El cupo se reparte
+    parejo en el mes: hoy toca el local que va ATRASADO respecto a su ritmo
+    (cupo × día / días del mes); entre atrasados, el más atrasado y luego el
+    que hace más tiempo no sale. `usados` cuenta lo que ya tiene el local este
+    mes (por club); `ya` = clubes que ya salen hoy. Solo locales con fotos
+    reales (la IA ambienta SUS fotos, no inventa el lugar)."""
+    import calendar
+    import math
+    from datetime import date
+    if cupo <= 0 or max_dia <= 0:
+        return []
+    hoy = date.fromisoformat(s["hoy"])
+    dias_mes = calendar.monthrange(hoy.year, hoy.month)[1]
+    meta_hoy = math.ceil(cupo * hoy.day / dias_mes)
+    ultimo, ya = ultimo or {}, ya or set()
+    por_club: dict[str, dict] = {}
+    for c in s["canchas_lista"]:
+        if not (c.get("destacable") and c.get("reservable") and c.get("fotos")):
+            continue
+        k = club_de(c)
+        if k in ya:
+            continue
+        actual = por_club.get(k)
+        if actual is None or len(c["fotos"]) > len(actual["fotos"]):
+            por_club[k] = c
+    atrasados = []
+    for k, c in por_club.items():
+        n = int(usados.get(k) or 0)
+        if n >= cupo or n >= meta_hoy:
+            continue
+        atrasados.append((meta_hoy - n, ultimo.get(k) or "", k, c))
+    atrasados.sort(key=lambda t: (-t[0], t[1], t[2]))
+    out = []
+    for i, (deuda, _u, k, c) in enumerate(atrasados[:max_dia], start=1):
+        n = int(usados.get(k) or 0)
+        out.append({**_cand(900 + i, tipo="local_pro", objetivo="promo_cancha", audiencia="jugadores", zona=c["zona"], content_type="post",
+                             razon=f"{c['club']} es Pro: lleva {n} de {cupo} publicaciones este mes.",
+                             score=5.0, cancha_ids=[c["id"]], destacadas=[c["id"]],
+                             hechos={**_base_hechos(s), "zona": c.get("zona_nombre"), "cancha": _cancha_hechos(c)}),
+                    "hora": HORA_DEFECTO["jugadores"], "por_que": f"Cupo Pro del mes ({n + 1} de {cupo}) para {c['club']}.",
+                    "puntaje": 5.0})
+    return out
+
+
+def _sin_pro_agotado(cands: list[dict], lista: dict[str, dict], cupo: int | None, usados: dict[str, int]) -> list[dict]:
+    """Con cupo, una oportunidad que nombra a un local que ya llegó a su cupo del mes no se ofrece."""
+    if cupo is None:
+        return cands
+    out = []
+    for c in cands:
+        clubes = {club_de(lista[x]) for x in c.get("destacadas") or [] if x in lista}
+        if clubes and any(int(usados.get(k) or 0) >= cupo for k in clubes):
+            continue
+        out.append(c)
+    return out
+
+
+def _club_repetido(c: dict, usados: set[str], lista: dict[str, dict]) -> bool:
+    clubes = {club_de(lista[x]) for x in c.get("destacadas") or [] if x in lista}
+    if clubes & usados:
+        return True
+    usados |= clubes
+    return False
+
+
 # ── decisión ─────────────────────────────────────────────────────────────────
 def _baja_densidad(s: dict, umbral: int) -> bool:
     return not any(v["reservables"] >= umbral for v in s["canchas"]["por_zona"].values())
@@ -240,13 +313,15 @@ def _audiencias_del_dia(n: int, s: dict, umbral: int, mix_duenos_baja: float, mi
     return out
 
 
-def por_reglas(cands: list[dict], n: int, auds: list[str]) -> list[dict]:
-    elegidas, usados = [], set()
+def por_reglas(cands: list[dict], n: int, auds: list[str], lista: dict[str, dict] | None = None) -> list[dict]:
+    elegidas, usados, clubes = [], set(), set()
+    lista = lista or {}
     for aud in auds:
-        c = next((c for c in cands if c["audiencia"] == aud and c["id"] not in usados), None) or \
-            next((c for c in cands if c["id"] not in usados), None)
+        libres = [c for c in cands if c["id"] not in usados and not ({club_de(lista[x]) for x in c.get("destacadas") or [] if x in lista} & clubes)]
+        c = next((c for c in libres if c["audiencia"] == aud), None) or next(iter(libres), None)
         if c:
             usados.add(c["id"])
+            _club_repetido(c, clubes, lista)
             elegidas.append({**c, "hora": HORA_DEFECTO.get(c["audiencia"], "12:30"), "por_que": c["razon"]})
     return elegidas[:n]
 
@@ -287,17 +362,17 @@ def _hora_ok(h) -> str | None:
     return f"{int(m.group(1)):02d}:{m.group(2)}" if m else None
 
 
-def validar_ia(resp: dict | None, cands: list[dict], n: int) -> list[dict] | None:
-    """Solo acepta ids existentes, sin duplicar, con tipo y hora válidos."""
+def validar_ia(resp: dict | None, cands: list[dict], n: int, lista: dict[str, dict] | None = None) -> list[dict] | None:
+    """Solo acepta ids existentes, sin duplicar (ni el mismo local dos veces), con tipo y hora válidos."""
     if not isinstance(resp, dict) or not isinstance(resp.get("elegidas"), list):
         return None
     por_id = {c["id"]: c for c in cands}
-    out, vistos = [], set()
+    out, vistos, clubes, lista = [], set(), set(), lista or {}
     for e in resp["elegidas"]:
         if not isinstance(e, dict):
             continue
         c = por_id.get(str(e.get("id")))
-        if not c or c["id"] in vistos:
+        if not c or c["id"] in vistos or _club_repetido(c, clubes, lista):
             continue
         vistos.add(c["id"])
         tipo = e.get("content_type") if e.get("content_type") in TIPOS_CONTENIDO else c["content_type"]
@@ -309,8 +384,11 @@ def validar_ia(resp: dict | None, cands: list[dict], n: int) -> list[dict] | Non
 
 
 def decidir(s: dict, *, insights: list[dict], recientes: list[dict], n: int = 1, umbral: int = 15,
-            mix_duenos_baja: float = 0.7, mix_duenos_alta: float = 0.3, dia_rotacion: int = 0, usar_ia: bool = True) -> dict:
-    cands = ordenar(candidatas(s, umbral=umbral, dia_rotacion=dia_rotacion), insights=insights, recientes=recientes)
+            mix_duenos_baja: float = 0.7, mix_duenos_alta: float = 0.3, dia_rotacion: int = 0, usar_ia: bool = True,
+            cupo_pro: int | None = None, usados_pro: dict[str, int] | None = None) -> dict:
+    lista = {c["id"]: c for c in s["canchas_lista"]}
+    cands = _sin_pro_agotado(candidatas(s, umbral=umbral, dia_rotacion=dia_rotacion), lista, cupo_pro, usados_pro or {})
+    cands = ordenar(cands, insights=insights, recientes=recientes)
     auds = _audiencias_del_dia(n, s, umbral, mix_duenos_baja, mix_duenos_alta, recientes)
     elegidas, fuente = None, "reglas"
     if usar_ia:
@@ -319,10 +397,10 @@ def decidir(s: dict, *, insights: list[dict], recientes: list[dict], n: int = 1,
                                   for c in cands[:15]],
                    "insights": [{k: i.get(k) for k in ("enunciado", "dimension", "valor", "efecto", "confianza")} for i in insights[:10]],
                    "recientes": [{k: r.get(k) for k in ("tipo", "audiencia", "zona", "fecha")} for r in recientes[:10]]}
-        elegidas = validar_ia(_con_ia(payload), cands, n)
+        elegidas = validar_ia(_con_ia(payload), cands, n, lista)
         if elegidas:
             fuente = "ia"
     if not elegidas:
-        elegidas = por_reglas(cands, n, auds)
+        elegidas = por_reglas(cands, n, auds, lista)
     return {"candidatas": cands, "elegidas": elegidas, "audiencias": auds, "fuente": fuente,
             "baja_densidad": _baja_densidad(s, umbral)}

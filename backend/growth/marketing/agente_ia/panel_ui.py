@@ -63,7 +63,15 @@ BLOQUE = r"""
 const MK = {tab:'bandeja', resumen:null, piezas:[], semana:0};
 const MK_ESTADO = {DRAFT:'Borrador', PENDING_APPROVAL:'Por aprobar', APPROVED:'Aprobada', PUBLISHED:'Publicada',
   REJECTED:'Rechazada', FAILED:'Falló', CANCELLED:'Cancelada', PUBLISHING:'Publicando…'};
-const MK_ORIGEN = {foto_real:'📷 Foto real', foto_dueno:'🏟️ Foto del dueño', diseno:'🎨 Diseño de marca', ia_conceptual:'✨ IA conceptual'};
+const MK_ORIGEN = {foto_real:'📷 Foto real', foto_dueno:'🏟️ Foto del dueño', diseno:'🎨 Diseño de marca', ia_conceptual:'✨ IA conceptual', ia_ambientada:'✨ Foto del local ambientada con IA', video_ia:'🎬 Video IA del local'};
+const MK_AVISO_IA = '✨ Contenido creado con IA a partir de fotos reales del local.';
+function mkVideo(p){
+  const v = ((p.oportunidad||{}).media||{}).video_ia; if(!v) return '';
+  if(v.estado==='generando') return `<div class="row">🎬 Generando el video con IA${v.progreso!=null?' ('+v.progreso+'%)':''}… se podrá aprobar cuando termine.</div>`;
+  if(v.estado==='listo' && /^https:\/\/[^"'<>\s]+$/.test(v.url||'')) return `<video class="mk-img" src="${v.url}" controls playsinline preload="metadata"></video>`;
+  if(v.estado==='fallo') return `<div class="row">🎬 No se pudo generar el video (${esc(v.motivo||'')}); se publicará con la foto.</div>`;
+  return '';
+}
 function mkFecha(s){ if(!s) return '—'; const d=new Date(s); return d.toLocaleString('es-PE',{weekday:'short',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
 function mkLocalInput(s){ const d=s?new Date(s):new Date(Date.now()+3600e3); const p=n=>String(n).padStart(2,'0');
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; }
@@ -132,9 +140,10 @@ function mkMetricas(m){
 function mkCard(p){
   const op = p.oportunidad||{}, v = p.validacion||{};
   const editable = ['PENDING_APPROVAL','REJECTED','FAILED','APPROVED'].includes(p.status);
-  const texto = (p.body||'').split('\n\n').filter(x=>!x.includes(p.link_url||'\u0000') && !x.trim().startsWith('#')).join('\n\n');
+  const texto = (p.body||'').split('\n\n').filter(x=>!x.includes(p.link_url||'\u0000') && !x.trim().startsWith('#') && x.trim()!==MK_AVISO_IA).join('\n\n');
   const acts = [];
-  if(p.status==='PENDING_APPROVAL') acts.push(`<button class="pri" onclick="mkAccion('${p.id}','aprobar')">✓ Aprobar</button>`);
+  const generando = (((p.oportunidad||{}).media||{}).video_ia||{}).estado==='generando';
+  if(p.status==='PENDING_APPROVAL' && !generando) acts.push(`<button class="pri" onclick="mkAccion('${p.id}','aprobar')">✓ Aprobar</button>`);
   if(['PENDING_APPROVAL','APPROVED'].includes(p.status)) acts.push(`<button onclick="mkAccion('${p.id}','publicar')">🚀 Publicar ya</button>`);
   if(['PENDING_APPROVAL','APPROVED','FAILED'].includes(p.status)) acts.push(`<button onclick="mkReprogramar('${p.id}')">🗓 Reprogramar</button>`);
   if(editable) acts.push(`<button onclick="mkGuardar('${p.id}')">💾 Guardar edición</button>`);
@@ -147,7 +156,7 @@ function mkCard(p){
       <span class="mk-tag">${p.platform}</span><span class="mk-tag">${p.audiencia==='duenos'?'Dueños':'Jugadores'}</span>
       <span class="mk-tag">🎯 ${esc(p.objetivo)} · KPI ${esc(p.kpi)}</span>${p.zona?`<span class="mk-tag">📍 ${esc(p.zona)}</span>`:''}
       <span class="mk-tag">${MK_ORIGEN[p.media_origen]||''}</span><span class="mk-tag">${{ia:'✍️ Copy IA', banco:'✍️ Plantilla'}[(p.fuente||'').split('+')[0]]||esc(p.fuente)}${(p.fuente||'').includes('editado')?' · editado':''}</span></div>
-    <img class="mk-img" data-mk="${p.id}" alt="">
+    <img class="mk-img" data-mk="${p.id}" alt="">${mkVideo(p)}
     <div class="row">🕒 ${p.status==='PUBLISHED'?'Publicada '+mkFecha(p.published_at):'Programada '+mkFecha(p.scheduled_at)}
       ${/^https:\/\/[^"'<>\s]+$/.test(p.permalink||'')?` · <a href="${p.permalink}" target="_blank" rel="noopener">ver post</a>`:''}</div>
     <div class="mk-why"><b>¿Por qué?</b> ${esc(op.por_que||op.razon||'')}</div>
@@ -232,14 +241,39 @@ function mkConfig(){
     <label>Tono<select id="mkc_tono">${['cercano','divertido','informativo','motivador'].map(t=>`<option ${c.tono===t?'selected':''}>${t}</option>`).join('')}</select></label>
     ${chk('destacar_pro','Destacar locales Pro por nombre')}
     ${chk('arte_ia','Permitir arte IA conceptual (si no hay fotos reales)')}
-  </div><div class="mk-acts" style="margin-top:14px"><button class="pri" onclick="mkGuardarConfig()">Guardar configuración</button></div></div>`;
+  </div>
+  <h3 style="margin-top:18px">Locales Pro con IA</h3>
+  <p class="row">Solo locales cuyo dueño tiene Pichangol Pro y con “Destacar locales Pro” encendido. La IA ambienta las fotos REALES del dueño
+    (jugadores, luz; el lugar no cambia) y cada pieza dice que se creó con IA. Uso del mes: <b>${mkUsoPro()}</b></p>
+  <div class="mk-form">
+    ${num('pro_cupo_mes','Publicaciones por local Pro al mes (0 = ninguna)',0,30)}
+    ${num('pro_max_dia','Máximo de piezas Pro extra por día',0,3)}
+    ${chk('ia_ambientar','Ambientar con IA las fotos reales del local (OpenAI)')}
+    ${chk('video_ia','Además, generar un video con IA (OpenAI Sora)')}
+    <label>Duración del video<select id="mkc_video_seg">${[4,8,12].map(n=>`<option value="${n}" ${c.video_seg===n?'selected':''}>${n} s</option>`).join('')}</select></label>
+    ${num('media_tope_usd','Tope de gasto IA al mes (USD)',0,1000,1)}
+    ${num('costo_imagen','Costo por imagen (USD)',0,5,0.01)}
+    ${num('costo_video_seg','Costo por segundo de video (USD)',0,5,0.01)}
+  </div>
+  <p class="row">Gastado este mes: <b>$ ${(MK.resumen.media_ia||{}).usd||0}</b> de $ ${(MK.resumen.media_ia||{}).tope_usd||0}
+    · ${(MK.resumen.media_ia||{}).imagenes||0} imágenes · ${(MK.resumen.media_ia||{}).videos||0} videos
+    ${(MK.resumen.media_ia||{}).disponible?'':' · ⚠ falta OPENAI_API_KEY en este ambiente'}.
+    Los costos son estimados: confírmalos con el precio vigente de OpenAI antes de encender el video.</p><div class="mk-acts" style="margin-top:14px"><button class="pri" onclick="mkGuardarConfig()">Guardar configuración</button></div></div>`;
+}
+function mkUsoPro(){
+  const u = MK.resumen.pro_uso||{}, cupo = MK.resumen.config.pro_cupo_mes;
+  const filas = Object.entries(u).flatMap(([pais,m])=>Object.entries(m).map(([k,n])=>`${esc(k)} ${n}/${cupo}`));
+  return filas.length ? filas.join(' · ') : 'aún sin piezas Pro este mes';
 }
 async function mkGuardarConfig(){
   const g = k => document.getElementById('mkc_'+k);
   const cuerpo = {activo:g('activo').checked, modo:g('modo').value, pausa:g('pausa').checked, hora_plan:g('hora_plan').value,
     paises:g('paises').value.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean), plataformas:g('plataformas').value.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean),
     posts_dia:+g('posts_dia').value, auto_max_dia:+g('auto_max_dia').value, umbral:+g('umbral').value, mix_baja:+g('mix_baja').value, mix_alta:+g('mix_alta').value,
-    tono:g('tono').value, destacar_pro:g('destacar_pro').checked, arte_ia:g('arte_ia').checked};
+    tono:g('tono').value, destacar_pro:g('destacar_pro').checked, arte_ia:g('arte_ia').checked,
+    ia_ambientar:g('ia_ambientar').checked, video_ia:g('video_ia').checked, video_seg:+g('video_seg').value,
+    pro_cupo_mes:+g('pro_cupo_mes').value, pro_max_dia:+g('pro_max_dia').value, media_tope_usd:+g('media_tope_usd').value,
+    costo_imagen:+g('costo_imagen').value, costo_video_seg:+g('costo_video_seg').value};
   if(cuerpo.modo==='auto_validado' && !confirm('En modo automático el agente publica sin revisión humana las piezas que pasan todos los controles. ¿Continuar?')) return;
   try{ await mkApi('/config', cuerpo); toast('Configuración guardada'); }catch(e){ return; }
   mkCargar();

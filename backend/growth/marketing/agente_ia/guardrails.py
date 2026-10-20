@@ -47,6 +47,10 @@ _RE_LETRAS = re.compile(r"\b(un|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez
                         r"por\s?ciento|horas gratis)\b", re.I)
 _RE_FONO = re.compile(r"(?<!\d)(?:\+?51\s?)?9\d{2}[\s-]?\d{3}[\s-]?\d{3}(?!\d)|(?<!\d)(?:\+?59[13]\s?)?[67]\d{7}(?!\d)|wa\.me", re.I)
 _RE_MAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+# Medios con IA a partir de fotos reales del local (locales Pro): la pieza DEBE
+# decirlo (transparencia con el público; también lo piden las reglas de Meta).
+ORIGENES_IA_MEDIA = ("ia_ambientada", "video_ia")
+AVISO_IA = "✨ Contenido creado con IA a partir de fotos reales del local."
 _RE_FOTO_REAL = re.compile(r"\b(as[ií] luce|foto real|as[ií] es la cancha|mira c[oó]mo es)\b", re.I)
 _SOLO_PE = re.compile(r"\b(yape|plin|soles?|lucas|PEN)\b|S/", re.I)
 _PROPIO = re.compile(r"^(https?://)?(www\.)?pichangol\.app/?$", re.I)
@@ -149,7 +153,7 @@ def validar(pieza: dict, hechos: dict, *, oportunidad: dict, media_origen: str |
 
     # Se apartan SOLO el enlace propio y los hashtags que puso el código; un
     # hashtag escrito a mano (#2x1, #Miraflores) se valida como texto.
-    limpio = texto
+    limpio = texto.replace(AVISO_IA, " ")
     if link:
         limpio = limpio.replace(link, " ")
     for tag in pieza.get("hashtags") or []:
@@ -245,6 +249,11 @@ def validar(pieza: dict, hechos: dict, *, oportunidad: dict, media_origen: str |
             errores.append("Una imagen generada por IA no puede acompañar a una cancha concreta.")
         if _RE_FOTO_REAL.search(limpio):
             errores.append("El texto presenta como real una imagen conceptual.")
+    if media_origen in ORIGENES_IA_MEDIA:
+        if AVISO_IA not in cuerpo:
+            errores.append("El contenido se creó con IA y el texto no lo dice (falta el aviso de IA).")
+        if _RE_FOTO_REAL.search(limpio):
+            errores.append("El texto presenta como foto sin retoque una imagen ambientada con IA.")
     # País.
     if pais != "PE" and _SOLO_PE.search(limpio):
         errores.append("Usa jerga o moneda de Perú en una pieza de otro país.")

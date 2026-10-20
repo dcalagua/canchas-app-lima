@@ -82,12 +82,14 @@ def hashtags(op: dict) -> list[str]:
     return list(dict.fromkeys(tags))[:6]
 
 
-def componer_cuerpo(texto: str, cta: str, link: str, tags: list[str]) -> str:
-    partes = [texto.strip()]
+def componer_cuerpo(texto: str, cta: str, link: str, tags: list[str], aviso: str = "") -> str:
+    partes = [texto.replace(guardrails.AVISO_IA, "").strip()]
     if cta or link:
         partes.append(f"{cta.strip().rstrip('.:')}: {link}" if link else cta.strip())
     if tags:
         partes.append(" ".join(tags))
+    if aviso:
+        partes.append(aviso)
     return "\n\n".join(p for p in partes if p)
 
 
@@ -225,12 +227,16 @@ def _con_ia(payload: dict) -> dict | None:
     return d if isinstance(d, dict) and str(d.get("texto") or "").strip() else None
 
 
-def _a_pieza(d: dict, op: dict, link: str) -> dict:
+def aviso_para(media_origen: str | None) -> str:
+    return guardrails.AVISO_IA if media_origen in guardrails.ORIGENES_IA_MEDIA else ""
+
+
+def _a_pieza(d: dict, op: dict, link: str, aviso: str = "") -> dict:
     tags = hashtags(op)
     cta = _limpiar(d.get("cta"), 90) or CTA[op["audiencia"]]
     texto = _limpiar(d.get("texto"), 1500)
     return {"title": _limpiar(d.get("titulo"), 36), "subtitle": _limpiar(d.get("subtitulo"), 80), "etiqueta": _limpiar(d.get("etiqueta"), 14),
-            "texto": texto, "call_to_action": cta, "hashtags": tags, "body": componer_cuerpo(texto, cta, link, tags)}
+            "texto": texto, "call_to_action": cta, "hashtags": tags, "body": componer_cuerpo(texto, cta, link, tags, aviso)}
 
 
 def redactar(op: dict, *, link: str, tono: str = "cercano", plataforma: str = "facebook", recientes: list[str] | None = None,
@@ -252,6 +258,9 @@ def redactar(op: dict, *, link: str, tono: str = "cercano", plataforma: str = "f
                    "objetivo_de_la_pieza": op["objetivo"], "kpi": op["kpi"], "por_que": op.get("por_que") or op.get("razon"),
                    "enfoque": op.get("enfoque"), "tono": TONOS.get(tono, TONOS["cercano"]), "hechos": hechos,
                    "recientes": [next((l for l in r.splitlines() if l.strip()), "")[:140] for r in recientes[:12]]}
+        if media_origen in guardrails.ORIGENES_IA_MEDIA:
+            payload["imagen"] = ("Foto real del local ambientada con IA (jugadores y luz agregados; el lugar es el real). "
+                                 "El aviso de IA se agrega aparte: no lo escribas, y no digas que es una foto sin retoque.")
         for _ in range(3):
             d = _con_ia(payload)
             if not d:
@@ -261,7 +270,7 @@ def redactar(op: dict, *, link: str, tono: str = "cercano", plataforma: str = "f
                 intentos.append(largos)
                 payload["errores_version_anterior"] = largos
                 continue
-            p = _a_pieza(d, op, link)
+            p = _a_pieza(d, op, link, aviso_para(media_origen))
             v = _validar(p)
             intentos.append(v["errores"])
             if v["ok"]:
@@ -272,7 +281,7 @@ def redactar(op: dict, *, link: str, tono: str = "cercano", plataforma: str = "f
     rnd.shuffle(banco)
     ultimo = None
     for d in banco:
-        p = _a_pieza({**d, "cta": CTA[op["audiencia"]]}, op, link)
+        p = _a_pieza({**d, "cta": CTA[op["audiencia"]]}, op, link, aviso_para(media_origen))
         v = _validar(p)
         ultimo = (p, v)
         if v["ok"]:

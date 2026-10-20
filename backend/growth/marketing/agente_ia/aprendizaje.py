@@ -32,7 +32,8 @@ _FRASE = {
     "audiencia": lambda v: "para dueños de canchas" if v == "duenos" else "para jugadores",
     "tipo": lambda v: f"de tipo «{v.replace('_', ' ')}»", "content_type": lambda v: f"en formato {v}",
     "media_origen": lambda v: {"foto_real": "con fotos reales", "foto_dueno": "con fotos del dueño", "diseno": "con diseño de marca",
-                               "ia_conceptual": "con arte IA"}.get(v, v),
+                               "ia_conceptual": "con arte IA",
+                               "ia_ambientada": "con fotos del local ambientadas con IA", "video_ia": "con video IA"}.get(v, v),
     "objetivo": lambda v: f"con objetivo «{v.replace('_', ' ')}»", "zona": lambda v: f"sobre {v}",
 }
 

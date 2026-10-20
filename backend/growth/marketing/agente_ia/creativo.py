@@ -11,6 +11,12 @@ Prioridad (principio 7 del agente):
 4. **Arte IA** (`ia_conceptual`): solo si el operador lo habilitó y NUNCA para
    una cancha concreta; es una imagen conceptual, no la foto de un lugar.
 
+Locales Pro (cupo mensual, ver `estratega.pro_del_dia`): si el operador lo
+encendió y el tope de gasto alcanza, la foto REAL del dueño se AMBIENTA con IA
+(`ia_ambientada`: jugadores, luz; el lugar no cambia) y, opcionalmente, se
+encarga un video Sora a partir de esa foto (`video_ia`, ver `ia_media`). Si la
+IA falla o no alcanza el tope, sale con las fotos reales (`foto_dueno`).
+
 El resultado guarda la RECETA (fotos + formato) para poder recomponer la imagen
 si el operador edita el título (va impreso sobre la foto). La imagen final se
 sube a Storage (`canchas/marketing/<id>.jpg`) para que sobreviva a redeploys.
@@ -21,10 +27,13 @@ import base64
 import io
 import threading
 import urllib.request
+import uuid
 
 from collections import OrderedDict
 
 FORMATO = {"story": "historia", "reel": "cuadrado"}
+from marketing.agente_ia.guardrails import AVISO_IA, ORIGENES_IA_MEDIA  # noqa: E402,F401
+_HORA_FRANJA = {"mañana": 9, "manana": 9, "tarde": 16, "noche": 20}
 CACHE_MAX = 64                  # imágenes en memoria (la fuente de verdad es Storage)
 _cache: "OrderedDict[str, bytes]" = OrderedDict()
 _lock = threading.Lock()
@@ -62,12 +71,41 @@ def _arte_ia(deporte: str) -> str | None:
         return None
 
 
-def elegir(op: dict, snapshot: dict, *, permitir_ia: bool = False, permitir_video: bool = True) -> dict:
-    """Receta de medios: {origen, fotos, formato, video_id?, biblioteca_ids}."""
+def _media_pro(op: dict, fotos: list[str], formato: str, pais: str, *, ambientar: bool, video: bool) -> dict | None:
+    """Foto ambientada (+ video Sora) a partir de la primera foto REAL del local."""
+    from marketing.agente_ia import ia_media
+    if not (ambientar and fotos and ia_media.alcanza_imagen()):
+        return None
+    h = op.get("hechos") or {}
+    deportes = (h.get("cancha") or {}).get("deportes") or []
+    deporte = deportes[0] if deportes else "fútbol"
+    hora = _HORA_FRANJA.get(str(h.get("franja") or "").lower(), 19)
+    jpg, motivo = ia_media.ambientar(fotos[0], deporte=deporte, pais=pais, hora=hora)
+    if not jpg:
+        print(f"[agente_ia] sin foto ambientada ({motivo}); se usan las fotos reales", flush=True)
+        return None
+    url = guardar(f"amb_{uuid.uuid4().hex[:16]}", jpg)
+    receta = {"origen": "ia_ambientada", "fotos": [url] + fotos[1:3], "formato": formato, "biblioteca_ids": [],
+              "fotos_reales": fotos[:3], "ia": {"modelo": "imagen", "deporte": deporte}}
+    if video and ia_media.alcanza_video():
+        v = ia_media.encargar_video(fotos[0], deporte=deporte, pais=pais, hora=hora)
+        if v.get("estado") == "generando":
+            receta.update(origen="video_ia", video_ia=v, formato_foto=formato)
+        else:
+            print(f"[agente_ia] video IA no encargado ({v.get('motivo')}); sale con la foto ambientada", flush=True)
+    return receta
+
+
+def elegir(op: dict, snapshot: dict, *, permitir_ia: bool = False, permitir_video: bool = True,
+           ambientar: bool = False, video_ia: bool = False) -> dict:
+    """Receta de medios: {origen, fotos, formato, video_id?, video_ia?, biblioteca_ids}."""
     formato = FORMATO.get(op.get("content_type"), "cuadrado")
     lista = {c["id"]: c for c in snapshot.get("canchas_lista") or []}
     if op.get("destacadas"):
         fotos = [u for cid in op["destacadas"] for u in (lista.get(cid) or {}).get("fotos", [])][:3]
+        con_ia = _media_pro(op, fotos, formato, snapshot.get("pais") or "PE", ambientar=ambientar, video=video_ia)
+        if con_ia:
+            return con_ia
         return {"origen": "foto_dueno" if fotos else "diseno", "fotos": fotos or ["brand:portada"], "formato": formato, "biblioteca_ids": []}
     if op.get("content_type") == "reel" and permitir_video:
         v = _biblioteca_video()
@@ -128,6 +166,9 @@ def _resolver_fotos(receta: dict) -> list[str]:
             u = receta.get("_data") or _arte_ia("futbol") or fondo_marca(receta.get("formato") or "cuadrado")
         elif u == "brand:portada":
             u = fondo_marca(receta.get("formato") or "cuadrado")
+        elif u.startswith("mem:"):
+            datos = leer(u[4:], None)
+            u = ("data:image/jpeg;base64," + base64.b64encode(datos).decode()) if datos else None
         if u:
             out.append(u)
     return out
@@ -165,6 +206,30 @@ def guardar(content_id: str, imagen: bytes) -> str:
     except Exception as e:  # noqa: BLE001
         print(f"[agente_ia] no se pudo subir la imagen a Storage: {str(e)[:120]}", flush=True)
         return f"mem:{content_id}"
+
+
+VIDEO_MAX_BYTES = 150 * 1024 * 1024
+
+
+def guardar_video(content_id: str, mp4: bytes | None) -> str | None:
+    """MP4 del video IA → Storage `canchas/marketing/<id>.mp4`. Sin Storage
+    (tests) queda en memoria como `mem:<id>.mp4`. None si no se pudo."""
+    if not mp4:
+        return None
+    from web import almacen
+    if not almacen.disponible():
+        _cachear(f"{content_id}.mp4", mp4)
+        return f"mem:{content_id}.mp4"
+    url = almacen.subir("canchas", f"marketing/{content_id}.mp4", mp4, "video/mp4", max_bytes=VIDEO_MAX_BYTES)
+    if url:
+        _cachear(f"{content_id}.mp4", mp4)
+    return url
+
+
+def leer_video(url: str) -> bytes | None:
+    if url.startswith("mem:"):
+        return leer(url[4:], None)
+    return leer(url.rsplit("/", 1)[-1].split("?")[0], url)
 
 
 def _cachear(content_id: str, datos: bytes) -> None:

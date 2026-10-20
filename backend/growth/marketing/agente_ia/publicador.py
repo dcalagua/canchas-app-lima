@@ -99,9 +99,30 @@ def instagram_listo() -> bool:
     return bool(config.IG_USER_ID) and facebook_listo()
 
 
+def _video_ia_listo(receta: dict) -> str | None:
+    v = receta.get("video_ia") or {}
+    return v.get("url") if v.get("estado") == "listo" and v.get("url") else None
+
+
 def _publicar_facebook(c: dict, imagen: bytes) -> dict:
     from marketing import post_redes
     receta = (c.get("oportunidad") or {}).get("media") or {}
+    url_video = _video_ia_listo(receta)
+    if url_video:
+        mp4 = creativo.leer_video(url_video)
+        if not mp4:
+            return {"ok": False, "error": "No se pudo leer el video IA guardado."}
+        import tempfile
+        fd, ruta = tempfile.mkstemp(suffix=".mp4")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(mp4)
+            return post_redes.publicar_video_facebook(c["body"], c.get("title") or "", ruta)
+        finally:
+            try:
+                os.remove(ruta)
+            except OSError:
+                pass
     if receta.get("video_id"):
         from marketing import agente_redes
         try:
@@ -146,7 +167,9 @@ def _registrar_historial(c: dict, r: dict) -> None:
     """Mismo historial que ve la torre en "Publicar en Facebook"."""
     try:
         from marketing import post_redes
-        post_redes.registrar({"red": c["platform"], "tipo": "video" if (c.get("oportunidad") or {}).get("media", {}).get("video_id") else "foto",
+        m = (c.get("oportunidad") or {}).get("media") or {}
+        es_video = bool(m.get("video_id")) or (bool(_video_ia_listo(m)) and c["platform"] == "facebook")
+        post_redes.registrar({"red": c["platform"], "tipo": "video" if es_video else "foto",
                               "plantilla": "agente_ia", "enfoque": (c.get("oportunidad") or {}).get("tipo", ""), "fuente": c.get("fuente", ""),
                               "audiencia": c.get("audiencia", ""), "local": "", "titulo": c.get("title", ""), "texto": (c.get("body") or "")[:600],
                               "ok": bool(r.get("ok")), "post_id": r.get("post_id", ""), "url": r.get("url", ""), "error": r.get("error", ""),
@@ -185,6 +208,10 @@ def publicar(c: dict, *, snapshot: dict | None = None) -> dict:
     if not reclamada:
         return r_.contenido(c["id"]) or c          # otra corrida la tomó, o la cancelaron
     c = reclamada
+    if (((c.get("oportunidad") or {}).get("media") or {}).get("video_ia") or {}).get("estado") == "generando":
+        # El video de Sora aún no llega: se espera sin gastar intentos (si falla, sale con la foto ambientada).
+        return _cerrar(c["id"], "APPROVED", error="Esperando el video con IA.",
+                       scheduled_at=ahora() + timedelta(minutes=10)) or c
     intentos = int(c.get("intentos") or 0) + 1
     motivo, transitorio = sigue_vigente(c, snapshot)
     if motivo:

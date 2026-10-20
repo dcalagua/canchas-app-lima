@@ -62,6 +62,14 @@ class ConfigReq(BaseModel):
     plataformas: list[str] | None = None
     auto_max_dia: int | None = None
     pausa: bool | None = None
+    ia_ambientar: bool | None = None
+    video_ia: bool | None = None
+    pro_cupo_mes: int | None = None
+    pro_max_dia: int | None = None
+    media_tope_usd: float | None = None
+    costo_imagen: float | None = None
+    costo_video_seg: float | None = None
+    video_seg: int | None = None
 
 
 class CorrerReq(BaseModel):

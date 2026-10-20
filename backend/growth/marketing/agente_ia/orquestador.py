@@ -40,7 +40,14 @@ CFG = {
     "auto_max_dia": ("ai_mkt_auto_max_dia", "2"), "pausa": ("ai_mkt_pausa", "0"), "ultimo_plan": ("ai_mkt_ultimo_plan", "{}"),
     "ultimo_aprendizaje": ("ai_mkt_ultimo_aprendizaje", ""), "ultima_medicion": ("ai_mkt_ultima_medicion", "0"),
     "reintento_plan": ("ai_mkt_reintento_plan", "{}"),
+    # Locales Pro con IA (decisión del director, 20-oct-2026).
+    "ia_ambientar": ("ai_mkt_ia_ambientar", "0"), "video_ia": ("ai_mkt_video_ia", "0"),
+    "pro_cupo_mes": ("ai_mkt_pro_cupo_mes", "4"), "pro_max_dia": ("ai_mkt_pro_max_dia", "1"),
+    "media_tope_usd": ("ai_mkt_media_tope_usd", "20"), "costo_imagen": ("ai_mkt_costo_imagen", "0.07"),
+    "costo_video_seg": ("ai_mkt_costo_video_seg", "0.10"), "video_seg": ("ai_mkt_video_seg", "8"),
 }
+_RANGOS_MEDIA = {"pro_cupo_mes": (0, 30, int), "pro_max_dia": (0, 3, int), "media_tope_usd": (0, 1000, float),
+                 "costo_imagen": (0, 5, float), "costo_video_seg": (0, 5, float)}
 REINTENTO_PLAN_S = 30 * 60
 EDITABLES = ("PENDING_APPROVAL", "REJECTED", "FAILED", "DRAFT", "APPROVED")
 CANCELABLES = ("DRAFT", "PENDING_APPROVAL", "APPROVED", "FAILED", "REJECTED")
@@ -69,13 +76,18 @@ def configuracion() -> dict:
             "mix_alta": _f("mix_alta", 0, 1), "arte_ia": _cfg("arte_ia") == "1", "destacar_pro": _cfg("destacar_pro") == "1",
             "tono": _cfg("tono") if _cfg("tono") in creador.TONOS else "cercano",
             "plataformas": [p for p in _cfg("plataformas").split(",") if p in ("facebook", "instagram")] or ["facebook"],
-            "auto_max_dia": int(_f("auto_max_dia", 0, 5)), "pausa": _cfg("pausa") == "1"}
+            "auto_max_dia": int(_f("auto_max_dia", 0, 5)), "pausa": _cfg("pausa") == "1",
+            "ia_ambientar": _cfg("ia_ambientar") == "1", "video_ia": _cfg("video_ia") == "1",
+            "pro_cupo_mes": int(_f("pro_cupo_mes", 0, 30)), "pro_max_dia": int(_f("pro_max_dia", 0, 3)),
+            "media_tope_usd": _f("media_tope_usd", 0, 1000), "costo_imagen": _f("costo_imagen", 0, 5),
+            "costo_video_seg": _f("costo_video_seg", 0, 5),
+            "video_seg": int(_cfg("video_seg")) if _cfg("video_seg") in ("4", "8", "12") else 8}
 
 
 def guardar_configuracion(d: dict) -> dict:
     def _put(k, v):
         stores.config[CFG[k][0]] = v
-    for k in ("activo", "arte_ia", "destacar_pro", "pausa"):
+    for k in ("activo", "arte_ia", "destacar_pro", "pausa", "ia_ambientar", "video_ia"):
         if k in d:
             _put(k, "1" if d[k] else "0")
     if "modo" in d:
@@ -108,6 +120,19 @@ def guardar_configuracion(d: dict) -> dict:
             _put(k, str(int(v)) if k in ("posts_dia", "umbral", "auto_max_dia") else str(v))
     if "tono" in d:
         _put("tono", d["tono"] if d["tono"] in creador.TONOS else "cercano")
+    for k, (lo, hi, tipo) in _RANGOS_MEDIA.items():
+        if k in d:
+            try:
+                v = float(d[k])
+            except (TypeError, ValueError):
+                raise ValueError(f"Valor inválido para {k}.")
+            if not lo <= v <= hi:
+                raise ValueError(f"{k} debe estar entre {lo} y {hi}.")
+            _put(k, str(int(v)) if tipo is int else str(round(v, 4)))
+    if "video_seg" in d:
+        if str(d["video_seg"]) not in ("4", "8", "12"):
+            raise ValueError("Duración del video: 4, 8 o 12 segundos.")
+        _put("video_seg", str(d["video_seg"]))
     if d.get("activo"):
         # Un solo agente publica en la página: el nuevo reemplaza al calendario fijo.
         stores.config["agente_fb_activo"] = "0"
@@ -171,15 +196,51 @@ def _aprobados_auto_hoy(pais: str) -> int:
     return sum(1 for c in repo().listar_contenidos(desde=ini, limite=100) if c.get("revisado_por") == "auto" and c.get("pais") == pais)
 
 
+def _clubes_de(c: dict) -> list[str]:
+    """Locales que una pieza destaca, por nombre (mismo criterio que `estratega.club_de`)."""
+    op = c.get("oportunidad") or {}
+    if not op.get("destacadas"):
+        return []
+    h = c.get("hechos") or {}
+    nombres = [(h.get("cancha") or {}).get("nombre")] + [x.get("nombre") for x in h.get("canchas") or [] if isinstance(x, dict)]
+    return list(dict.fromkeys(str(n).strip().lower() for n in nombres if n))
+
+
+def uso_pro(pais: str) -> tuple[dict[str, int], dict[str, str]]:
+    """Piezas de cada local Pro en el mes LOCAL en curso (sin canceladas,
+    rechazadas ni fallidas) y la fecha de la última. Cuenta una por
+    oportunidad aunque salga en dos redes."""
+    loc = ahora_local(pais)
+    ini = datetime(loc.year, loc.month, 1, tzinfo=_tz(pais)).astimezone(timezone.utc)
+    usados: dict[str, int] = {}
+    ultimo: dict[str, str] = {}
+    vistas: set[tuple] = set()
+    for c in repo().listar_contenidos(desde=ini, limite=500):
+        if c.get("pais") != pais or c["status"] in ("CANCELLED", "REJECTED", "FAILED"):
+            continue
+        clave = (c.get("strategy_id"), (c.get("oportunidad") or {}).get("id"))
+        if clave in vistas:
+            continue
+        vistas.add(clave)
+        fecha = str((c.get("scheduled_at") or c["created_at"]).date())
+        for k in _clubes_de(c):
+            usados[k] = usados.get(k, 0) + 1
+            ultimo[k] = max(ultimo.get(k, ""), fecha)
+    return usados, ultimo
+
+
 def crear_pieza(op: dict, s: dict, *, estrategia_id: str | None, campana_id: str | None, plataforma: str, fecha: date,
-                recientes: list[dict], usar_ia: bool = True) -> dict:
-    """Contenido + creativo + validación para UNA oportunidad. Guarda la pieza."""
+                recientes: list[dict], usar_ia: bool = True, receta: dict | None = None) -> dict:
+    """Contenido + creativo + validación para UNA oportunidad. Guarda la pieza.
+    `receta`: medios ya resueltos (la misma oportunidad en otra red, u "Otra
+    versión" de una pieza con IA: no se vuelve a pagar la imagen/video)."""
     cfg = configuracion()
     pais = s["pais"]
     cid, codigo = nuevo_id("cnt"), nuevo_codigo()
     base = (config.PUBLIC_BASE_URL or "https://www.pichangol.app").rstrip("/")
     link = f"{base}/go/{codigo}"
-    receta = creativo.elegir(op, s, permitir_ia=cfg["arte_ia"])
+    if receta is None:
+        receta = elegir_medios(op, s, cfg)
     locales = [c["club"] for c in s["canchas_lista"] if c.get("club")]
     p = creador.redactar(op, link=link, tono=cfg["tono"], plataforma=plataforma, recientes=[r["body"] for r in recientes],
                          locales_pais=locales, media_origen=receta["origen"], usar_ia=usar_ia, semilla=fecha.toordinal())
@@ -213,6 +274,11 @@ def crear_pieza(op: dict, s: dict, *, estrategia_id: str | None, campana_id: str
     return guardado
 
 
+def elegir_medios(op: dict, s: dict, cfg: dict | None = None) -> dict:
+    cfg = cfg or configuracion()
+    return creativo.elegir(op, s, permitir_ia=cfg["arte_ia"], ambientar=cfg["ia_ambientar"], video_ia=cfg["video_ia"])
+
+
 def planificar(pais: str, *, forzar: bool = False, usar_ia: bool = True) -> dict:
     """Corrida del día para un país. Idempotente por (fecha, país) salvo `forzar`
     ("Correr ahora"), que reemplaza las piezas aún no aprobadas de ese día.
@@ -241,9 +307,17 @@ def _planificar(pais: str, *, forzar: bool, usar_ia: bool) -> dict:
     s = snapshot(pais)
     insights = repo().insights_vigentes()
     recientes = _recientes()
+    usados, ultimo = uso_pro(pais)
     dec = estratega.decidir(s, insights=insights, recientes=recientes, n=cfg["posts_dia"], umbral=cfg["umbral"],
                             mix_duenos_baja=cfg["mix_baja"], mix_duenos_alta=cfg["mix_alta"], dia_rotacion=hoy.toordinal(),
-                            usar_ia=usar_ia)
+                            usar_ia=usar_ia, cupo_pro=cfg["pro_cupo_mes"], usados_pro=usados)
+    # Cupo Pro: piezas EXTRA (fuera de las N del día) para que cada local Pro reciba lo suyo en el mes.
+    lista = {c["id"]: c for c in s["canchas_lista"]}
+    ya = {estratega.club_de(lista[x]) for o in dec["elegidas"] for x in o.get("destacadas") or [] if x in lista}
+    for k in ya:
+        usados[k] = usados.get(k, 0) + 1
+    dec["elegidas"] = dec["elegidas"] + estratega.pro_del_dia(s, cupo=cfg["pro_cupo_mes"], usados=usados, ultimo=ultimo, ya=ya,
+                                                              max_dia=cfg["pro_max_dia"])
     snap_guardar = {k: v for k, v in s.items() if k not in ("canchas_lista", "libres_por_cancha")}
     snap_guardar["canchas_lista"] = [{k: c[k] for k in ("id", "club", "zona_nombre", "reservable", "destacable")} for c in s["canchas_lista"]]
     e = repo().guardar_estrategia({"id": (previa or {}).get("id"), "fecha": hoy, "pais": pais, "snapshot": snap_guardar,
@@ -261,12 +335,15 @@ def _planificar(pais: str, *, forzar: bool, usar_ia: bool) -> dict:
                                           f"{(' · ' + op['hechos']['zona']) if op['hechos'].get('zona') else ''} · semana {semana.isoformat()}",
                                           objetivo=op["objetivo"], audiencia=op["audiencia"], pais=pais, zona=op.get("zona"), kpi=op["kpi"],
                                           inicio=semana, fin=semana + timedelta(days=6))
+        receta = None                    # una sola imagen/video IA por oportunidad, aunque salga en dos redes
         for plataforma in cfg["plataformas"]:
             if plataforma == "instagram" and not publicador.instagram_listo():
                 continue
             try:
+                if receta is None:
+                    receta = elegir_medios(op, s, cfg)
                 piezas.append(crear_pieza(op, s, estrategia_id=e["id"], campana_id=campana, plataforma=plataforma, fecha=hoy,
-                                          recientes=recientes, usar_ia=usar_ia))
+                                          recientes=recientes, usar_ia=usar_ia, receta=receta))
             except Exception as ex:  # noqa: BLE001
                 repo().log("creator", "error", strategy_id=e["id"], nivel="error", tipo=op.get("tipo"), error=str(ex)[:300])
     ult = _ultimo_plan()
@@ -324,6 +401,12 @@ def tick() -> bool:
                 except Exception:  # noqa: BLE001
                     pass
         try:
+            from marketing.agente_ia import ia_media
+            if ia_media.procesar_videos():
+                hizo = True
+        except Exception as e:  # noqa: BLE001
+            print(f"[agente_ia] videos IA: {str(e)[:200]}", flush=True)
+        try:
             if not cfg["pausa"] and publicador.tick(snapshot_de=snapshot):
                 hizo = True
         except Exception as e:  # noqa: BLE001
@@ -351,6 +434,10 @@ class Rechazo(ValueError):
     pass
 
 
+def video_en_curso(c: dict) -> bool:
+    return (((c.get("oportunidad") or {}).get("media") or {}).get("video_ia") or {}).get("estado") == "generando"
+
+
 def _get(cid: str) -> dict:
     c = repo().contenido(cid)
     if not c:
@@ -362,6 +449,8 @@ def aprobar(cid: str, usuario: str, scheduled_at: datetime | None = None) -> dic
     c = _get(cid)
     if not (c.get("validacion") or {}).get("ok"):
         raise Rechazo("La pieza no pasó la validación; edítala primero.")
+    if video_en_curso(c):
+        raise Rechazo("El video con IA aún se está generando; revísalo en unos minutos antes de aprobar.")
     cuando = scheduled_at or c.get("scheduled_at") or ahora()
     cuando = max(cuando, ahora())
     r = repo().cambiar_estado(cid, ("PENDING_APPROVAL",), "APPROVED", revisado_por=usuario, revisado_en=ahora(), scheduled_at=cuando)
@@ -428,7 +517,8 @@ def editar(cid: str, usuario: str, campos: dict) -> dict:
              "subtitle": creador._limpiar(campos.get("subtitle", c.get("subtitle")), 80),
              "etiqueta": creador._limpiar(campos.get("etiqueta", c.get("etiqueta")), 14),
              "call_to_action": creador._limpiar(campos.get("call_to_action", c.get("call_to_action")), 90) or creador.CTA[c["audiencia"]]}
-    nuevo["body"] = creador.componer_cuerpo(str(texto), nuevo["call_to_action"], c.get("link_url") or "", c.get("hashtags") or [])
+    nuevo["body"] = creador.componer_cuerpo(str(texto), nuevo["call_to_action"], c.get("link_url") or "", c.get("hashtags") or [],
+                                            creador.aviso_para(c.get("media_origen")))
     nuevo["hashtags"] = c.get("hashtags") or []
     # Fuera de la comparación: la propia pieza y su gemela de la otra red (misma oportunidad del mismo día).
     otros = [r["body"] for r in _recientes()
@@ -461,8 +551,10 @@ def regenerar(cid: str, usuario: str, *, usar_ia: bool = True) -> dict:
     op["hechos"] = c.get("hechos") or {}
     op.setdefault("content_type", c["content_type"])
     recientes = _recientes() + [{"body": c.get("body") or ""}]
+    receta = (c.get("oportunidad") or {}).get("media")
+    reusar = receta if (receta or {}).get("origen") in creativo.ORIGENES_IA_MEDIA else None   # la IA ya se pagó
     nueva = crear_pieza(op, s, estrategia_id=c.get("strategy_id"), campana_id=c.get("campaign_id"), plataforma=c["platform"],
-                        fecha=ahora_local(c.get("pais") or "PE").date(), recientes=recientes, usar_ia=usar_ia)
+                        fecha=ahora_local(c.get("pais") or "PE").date(), recientes=recientes, usar_ia=usar_ia, receta=reusar)
     if c["status"] in CANCELABLES:
         repo().cambiar_estado(cid, CANCELABLES, "CANCELLED", revisado_por=usuario, revisado_en=ahora(),
                               motivo_rechazo=f"Reemplazada por {nueva['id']}")
@@ -501,13 +593,15 @@ def resumen() -> dict:
     for c in piezas:
         conteo[c["status"]] += 1
     import config as _c
-    from marketing.agente_ia import esquema
+    from marketing.agente_ia import esquema, ia_media
     return {"config": cfg, "conteo": conteo, "facebook_listo": publicador.facebook_listo(), "instagram_listo": publicador.instagram_listo(),
             "ia": bool(_c.ANTHROPIC_API_KEY), "atribucion": sorted(esquema.columnas_atribucion()),
             "ultimo_plan": _ultimo_plan(), "hora_local": {p: ahora_local(p).strftime("%Y-%m-%d %H:%M") for p in cfg["paises"]},
             "insights": repo().insights_vigentes()[:10], "estrategias": [
                 {k: e.get(k) for k in ("id", "fecha", "pais", "fuente", "oportunidades", "created_at")} for e in repo().estrategias_lista(7)],
-            "campanas": repo().campanas_lista(10), "agente_viejo_activo": str(stores.config.get("agente_fb_activo", "0")) == "1"}
+            "campanas": repo().campanas_lista(10), "agente_viejo_activo": str(stores.config.get("agente_fb_activo", "0")) == "1",
+            "media_ia": {**ia_media.gasto(), "disponible": ia_media.disponible()},
+            "pro_uso": {p: dict(sorted(uso_pro(p)[0].items())) for p in cfg["paises"]}}
 
 
 def piezas(*, estado: str | None = None, desde: datetime | None = None, hasta: datetime | None = None) -> list[dict]:
