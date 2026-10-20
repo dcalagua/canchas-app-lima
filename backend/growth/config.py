@@ -19,6 +19,12 @@ CONCIERGE_MODEL = os.getenv("CONCIERGE_MODEL", "claude-opus-4-8")
 # Modelo para GENERAR posts de redes: por defecto Haiku (barato) porque un copy
 # de Instagram no necesita Opus. Baja mucho el costo por generación → más margen.
 MARKETING_MODEL = os.getenv("MARKETING_MODEL", "claude-haiku-4-5-20251001")
+# AI Marketing Agent (`marketing/agente_ia/`): el ESTRATEGA razona sobre datos
+# (elige oportunidades, pesa aprendizajes) → modelo de más capacidad que el de
+# redacción. Una llamada al día por país: costo marginal.
+MARKETING_STRATEGY_MODEL = os.getenv("MARKETING_STRATEGY_MODEL", "claude-sonnet-5")
+# Copy del AI Marketing Agent; por defecto el mismo modelo de redacción de redes.
+MARKETING_COPY_MODEL = os.getenv("MARKETING_COPY_MODEL", MARKETING_MODEL)
 
 # --- Factiliza (consulta de DNI = identidad del reclamante) -----------------
 # El token nunca va en el APK; se lee aquí. Sin token, la consulta queda
@@ -159,6 +165,11 @@ META_TOKEN_KEY = os.getenv("META_TOKEN_KEY", "")
 # repo: va como variable de Railway.
 FB_PAGE_ID = os.getenv("FB_PAGE_ID", "")
 FB_PAGE_TOKEN = os.getenv("FB_PAGE_TOKEN", "")
+# Instagram de Pichangol (cuenta profesional vinculada a la página). El AI
+# Marketing Agent publica ahí con el MISMO token de página (permiso
+# `instagram_content_publish`, requiere App Review de Meta). Vacío = Instagram
+# apagado: el agente solo programa Facebook.
+IG_USER_ID = os.getenv("IG_USER_ID", "")
 
 
 def meta_modo() -> str:

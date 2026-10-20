@@ -2486,6 +2486,9 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
                 extras_ok.append(_se.linea_reserva(s, cant, len(pedidos)))
     hoy = horarios.ahora_local(pais).date()
     grupo = f"grp_web_{int(time.time() * 1000)}" if len(pedidos) > 1 else ""
+    # Atribución: la pieza del AI Marketing Agent que trajo al jugador (cookie del short-link /go).
+    from marketing.agente_ia.router import utm_de_request
+    utm_mkt = utm_de_request(request)
     filas, total = [], 0
     for i, key in enumerate(sorted(pedidos)):
         s = validos.get(key)
@@ -2547,7 +2550,7 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
             "usuario": email, "deporte": deporte, "moneda": sim,
             "extras": extras_ok if i == 0 else [],
             "telefono": req.celular.strip()[:20], "grupo_reserva_id": grupo,
-            "medio_pago": "web_hold",
+            "medio_pago": "web_hold", "origen": "web", "utm": utm_mkt,
         })
     precio_turnos = int(round(total - desc_total))
     total = int(round(total - desc_total + sum(x["precio"] for x in extras_ok)))
