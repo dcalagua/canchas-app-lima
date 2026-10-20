@@ -9,6 +9,7 @@ import '../theme.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/cargando_pichangol.dart';
 
+import '../brand.dart';
 /// LLENAR LA CANCHA VACÍA: el dueño ve las horas LIBRES de hoy/mañana y con un
 /// toque las AVISA a sus clientes — por la app (chat + push) a los que tienen
 /// cuenta, y por WhatsApp a los que no. Convierte horas muertas en reservas.
@@ -83,7 +84,7 @@ class _LlenarCanchaScreenState extends State<LlenarCanchaScreen> {
     final promo = _promo.text.trim().isEmpty ? '' : '\n${_promo.text.trim()}';
     return '¡Hola $nombre! 🎾 Tengo libre $donde $_diaLabel: $horas '
         '(desde ${c.monedaSimbolo} $desde$off). ¿La quieres? Resérvala en '
-        'Pichangol o respóndeme por aquí.$promo';
+        '$kBrandName o respóndeme por aquí.$promo';
   }
 
   Future<void> _avisar() async {

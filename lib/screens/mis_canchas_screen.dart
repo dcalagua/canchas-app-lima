@@ -25,6 +25,7 @@ import '../widgets/dialogo_pichangol.dart';
 import '../widgets/vacio_airbnb.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Canchas del dueño agrupadas por LOCAL (un local = varias canchas, posibles
 /// de distintos deportes). Cada local permite agregar más canchas y editar las
 /// existentes (precio, deporte, horario, fotos).
@@ -291,7 +292,7 @@ class _SeccionMetricasMes extends StatelessWidget {
         title: const Text('Resumen del mes y destacar',
             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
         subtitle: const Text(
-            'Lo que te generó Pichangol y cómo destacar tus canchas',
+            'Lo que te generó $kBrandName y cómo destacar tus canchas',
             style: TextStyle(fontSize: 12)),
         childrenPadding: const EdgeInsets.only(top: 4, bottom: 6),
         children: [
@@ -368,7 +369,7 @@ class _GeneradoCard extends StatelessWidget {
             children: [
               const IconoVivo(Icons.trending_up, color: Colors.white, size: 20),
               const SizedBox(width: 8),
-              Text('Lo que Pichangol te generó',
+              Text('Lo que $kBrandName te generó',
                   style: t.titleMedium?.copyWith(
                       color: Colors.white, fontWeight: FontWeight.w800)),
             ],
@@ -395,7 +396,7 @@ class _GeneradoCard extends StatelessWidget {
           Text(
             nReservas == 0
                 ? 'Aún no tienes reservas este mes por la app. Cuando te lleguen, '
-                    'verás aquí cuánto te trae Pichangol.'
+                    'verás aquí cuánto te trae $kBrandName.'
                 : 'Reservas que te llegaron por la app. ¡Sigue así! 🎉',
             style: t.bodySmall?.copyWith(color: Colors.white70, height: 1.3),
           ),
@@ -855,7 +856,7 @@ class _LocalCard extends StatelessWidget {
                   ),
                   icon:
                       Icon(Icons.campaign_outlined, color: cs.primary, size: 20),
-                  label: Text('Servicios Pichangol',
+                  label: Text('Servicios $kBrandName',
                       style: TextStyle(
                           color: cs.primary, fontWeight: FontWeight.w700)),
                 ),
@@ -1054,7 +1055,7 @@ class _Vacio extends StatelessWidget {
     return VacioAirbnb(
       icono: Icons.add_location_alt,
       titulo: 'Aún no registras\nninguna cancha',
-      mensaje: 'Registra tu local para que aparezca en Pichangol; luego '
+      mensaje: 'Registra tu local para que aparezca en $kBrandName; luego '
           'puedes agregarle todas las canchas que tengas.',
       textoBoton: 'Registrar mi local',
       onBoton: () => Navigator.of(context).push(

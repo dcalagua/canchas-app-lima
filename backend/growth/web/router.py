@@ -51,6 +51,7 @@ from pagos import devoluciones as _dev
 from web import beneficios, catalogos, datos, descubrir, horarios, marca, osm, pago_hospedado, sesion, ui
 from web.ui import e
 import academia_plan as _ap
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter()
 
@@ -221,13 +222,13 @@ def _maps(c: dict) -> str:
 def _no_encontrada(que: str = "Cancha no disponible") -> HTMLResponse:
     return ui.shell(que, (f"<div class='panel' style='text-align:center;margin-top:24px'><h1>{e(que)}</h1>"
                           "<p class='sub'>Puede que el enlace sea viejo o que el local haya dejado de "
-                          "publicar en Pichangol.</p><div class='acciones' style='justify-content:center'>"
+                          f"publicar en {MARCA}.</p><div class='acciones' style='justify-content:center'>"
                           "<a class='btn' href='/canchas'>Ver canchas disponibles</a></div></div>"))
 
 
 # ── catálogo ──────────────────────────────────────────────────────────────────
 
-_JS_EXPLORAR = r"""
+_JS_EXPLORAR = (r"""
 (function(){
   var C = window.__explorar, $ = function(id){ return document.getElementById(id); };
   var cards = function(){ return Array.prototype.slice.call(document.querySelectorAll('.lst[data-lat]')); };
@@ -308,7 +309,7 @@ _JS_EXPLORAR = r"""
         var why = (yo && !filtro.q && !filtro.hora) ? (C.dep === 'academias' ? 'No hay academias a ' + radio + ' km de ti.' : 'No hay canchas a ' + radio + ' km de ti.') + (radio < 30 ? ' Amplía la distancia o busca otra zona.' : ' Busca otra zona por nombre.')
                 : filtro.hora ? 'Ninguna cancha' + (filtro.cerca ? ' cerca de ti' : '') + ' tiene turno libre ' + (filtro.fecha ? etiquetaFecha(filtro.fecha).toLowerCase() : '') + ' a las ' + filtro.hora + '. Prueba con otra hora u otro día.'
                               : C.dep === 'academias' ? (filtro.q ? 'No encontramos academias con “' + filtro.q + '”. Prueba con otro nombre o zona.' : 'No hay academias con esa búsqueda. Prueba con otra zona.')
-                              : (filtro.q && C.lugares ? (busqGoogle[filtro.q] === 'pendiente' ? 'Buscando “' + filtro.q + '” también en Google Maps…' : 'No encontramos “' + filtro.q + '” en Pichangol ni en Google Maps. Prueba con otro nombre o zona.')
+                              : (filtro.q && C.lugares ? (busqGoogle[filtro.q] === 'pendiente' ? 'Buscando “' + filtro.q + '” también en Google Maps…' : 'No encontramos “' + filtro.q + '” en ⟦MARCA⟧ ni en Google Maps. Prueba con otro nombre o zona.')
                               : 'No hay canchas libres con esa búsqueda. Prueba con otra zona, día u hora.');
         v.textContent = why; } }
     if(mapa) marcadores.forEach(function(m){ var ok = m._card.style.display !== 'none'; if(ok){ m.addTo(mapa); } else { m.remove(); } });
@@ -788,7 +789,7 @@ _JS_EXPLORAR = r"""
   aplicar();
   try { if(localStorage.getItem('pcg_mapa') === '1' && window.innerWidth > 900) verMapa(true); } catch(e){}
 })();
-"""
+""").replace('⟦MARCA⟧', MARCA)
 
 _LUPA = ("<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round'>"
          "<circle cx='11' cy='11' r='7'/><path d='M20 20l-3.5-3.5'/></svg>")
@@ -1197,7 +1198,7 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     elif not lista:
         cuerpo += ("<div class='vacio' id='vacio'><h3>Todavía no hay canchas publicadas aquí</h3>"
                    "<p class='sub'>Estamos sumando locales. En la app ya puedes explorar el mapa completo.</p>"
-                   f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+                   f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a></div></div>")
     else:
         cuerpo += "<div class='vacio' id='vacio' data-base='' style='display:none'>No hay canchas libres con esa búsqueda. Prueba con otra zona, día u hora.</div>"
     if todas and not lista and not solo_aca:
@@ -1220,7 +1221,7 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
                    "<a class='btn sec' href='/canchas'>Ver canchas</a></div></div>")
     if not solo_aca:
         cuerpo += ("<section id='descubiertas' style='display:none'><div class='tit'><h2>Más canchas cerca de ti</h2></div>"
-                   "<p class='sub' style='margin:-4px 0 12px'>Locales que aún no están en Pichangol. Reserva desde la app o, si es tu "
+                   f"<p class='sub' style='margin:-4px 0 12px'>Locales que aún no están en {MARCA}. Reserva desde la app o, si es tu "
                    "cancha, ¡Reclámala! y empieza a recibir reservas.</p><div class='lst-grid' id='gridDesc'></div></section>")
     cuerpo += "</div><aside class='mapa-lado'><div class='mapa' id='mapa' aria-label='Mapa de canchas'></div></aside></div>"
     cuerpo += "<button class='btn-mapa' id='btnMapa'><span>Mostrar mapa</span> 🗺️</button>"
@@ -1243,11 +1244,11 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
         cuerpo += f"<script>{js_m}</script>"
     canonical = f"{config.PUBLIC_BASE_URL.rstrip('/')}/" if getattr(config, "PUBLIC_BASE_URL", "") else ""
     ses = sesion.de_request(request)
-    titulo_tab = ("Pichangol · Academias deportivas cerca de ti" if solo_aca
-                  else "Pichangol · Reserva canchas de fútbol, tenis y pádel")
+    titulo_tab = (f"{MARCA} · Academias deportivas cerca de ti" if solo_aca
+                  else f"{MARCA} · Reserva canchas de fútbol, tenis y pádel")
     desc = ("Academias de tenis, fútbol, pádel y más cerca de ti: programas, tarifario y matrícula en línea." if solo_aca
             else "Reserva canchas de fútbol, tenis y pádel cerca de ti y paga con Yape o tarjeta. Perú, Ecuador y Bolivia.")
-    return ui.shell("Pichangol", cuerpo, extra_head=head, nav=_nav_explorar(dep, ses, _zonas_sugeridas(lista)), ancho=True, sesion=ses,
+    return ui.shell(MARCA, cuerpo, extra_head=head, nav=_nav_explorar(dep, ses, _zonas_sugeridas(lista)), ancho=True, sesion=ses,
                     titulo_tab=titulo_tab, canonical=canonical, desc=desc)
 
 
@@ -1373,7 +1374,7 @@ def pagina_entrar(request: Request, volver: str = "/") -> HTMLResponse:
               "<a href='/legal/privacidad'>política de privacidad</a>.</p>"
               + (("<div id='revision' style='margin-top:18px;padding-top:16px;border-top:1px solid #eee;text-align:left'>"
                   "<b style='font-size:14px'>Acceso de revisión</b>"
-                  "<div class='sub' style='font-size:12.5px;margin:2px 0 10px'>Para revisores (Culqi, INDECOPI): usa el usuario y la contraseña que te entregó Pichangol.</div>"
+                  f"<div class='sub' style='font-size:12.5px;margin:2px 0 10px'>Para revisores (Culqi, INDECOPI): usa el usuario y la contraseña que te entregó {MARCA}.</div>"
                   "<label for='revUsr' style='font-size:12.5px;font-weight:700'>Usuario</label>"
                   "<input id='revUsr' autocomplete='username' maxlength='120' style='width:100%;margin:4px 0 10px'>"
                   "<label for='revPwd' style='font-size:12.5px;font-weight:700'>Contraseña</label>"
@@ -1546,7 +1547,7 @@ def _es_iso(s: str) -> bool:
 
 # ── página de reserva ─────────────────────────────────────────────────────────
 
-_JS_RESERVA = r"""
+_JS_RESERVA = (r"""
 (function(){
   var C = window.__cancha, sel = {}, slots = [], hold = null, fechaSel = C.fecha || C.hoy;
   // SEÑA del dueño (como el app): por defecto se adelanta la seña y el resto se paga en la
@@ -1586,7 +1587,7 @@ _JS_RESERVA = r"""
     if(!bolLista.length){ box.innerHTML = '<span class="sub">' + (Object.keys(sel).length ? 'Ningún ' + C.nombreBoleador.toLowerCase() + ' disponible para ese horario.' : 'Elige un horario para ver quién puede atenderte.') + '</span>'; return; }
     box.innerHTML = bolLista.map(function(b){
       var ini = b.foto ? '<img src="' + esc(b.foto) + '" alt="">' : '<span class="ini">' + esc((b.nombre || '?').charAt(0).toUpperCase()) + '</span>';
-      var det = [b.etiquetas && b.etiquetas.length ? b.etiquetas.slice(0, 3).join(' · ') : '', b.aceptadas ? b.aceptadas + ' boleos' : 'Nuevo en Pichangol'].filter(Boolean).join(' · ');
+      var det = [b.etiquetas && b.etiquetas.length ? b.etiquetas.slice(0, 3).join(' · ') : '', b.aceptadas ? b.aceptadas + ' boleos' : 'Nuevo en ⟦MARCA⟧'].filter(Boolean).join(' · ');
       return '<div class="bol-card' + (bolSel && bolSel.slug === b.slug ? ' sel' : '') + '" data-slug="' + esc(b.slug) + '" role="button" tabindex="0">' + ini +
              '<div><span class="nom">' + esc(b.nombre) + '</span><span class="cat">' + esc(b.categoria) + '</span><div class="det">' + esc(det) + '</div></div>' +
              '<div class="pre">' + fmt(b.tarifa) + '<small>por turno</small></div><span class="chk">✓</span></div>';
@@ -1682,7 +1683,7 @@ _JS_RESERVA = r"""
     }
     var pm = puntosMotivo();
     if(pm !== 'no'){
-      h += '<div class="ben-it"><b>⭐ Tienes ' + ben.puntos.disponibles + ' puntos Pichangol</b>';
+      h += '<div class="ben-it"><b>⭐ Tienes ' + ben.puntos.disponibles + ' puntos ⟦MARCA⟧</b>';
       if(pm) h += '<div class="sub">Canjea ' + ben.puntos.canje + ' puntos por ' + fmt(ben.puntos.descuento) + ' de descuento pagando todo en línea (no aplica ' + esc(pm) + ').</div>';
       else h += '<label class="fid-usar"><input type="checkbox" id="benPts"' + (usarPts ? ' checked' : '') + '> Usar ' + ben.puntos.canje + ' puntos: −' + fmt(ben.puntos.descuento) + ' en esta reserva</label>';
       h += '</div>';
@@ -1702,7 +1703,7 @@ _JS_RESERVA = r"""
     var bl = bolLinea(); if(bl) t += bl.precio;
     return Math.max(0, t);
   }
-  // CARGO POR SERVICIO Pichangol (fase 2, sep-2026): el servidor cotiza
+  // CARGO POR SERVICIO ⟦MARCA⟧ (fase 2, sep-2026): el servidor cotiza
   // (`/web/cotizar`, misma regla que al cobrar); aquí solo se pinta la línea,
   // el ⓘ con el desglose y el total. Con C.cargo=false no se cotiza nada.
   var cot = null, cotT = null, cotCache = {};
@@ -1735,7 +1736,7 @@ _JS_RESERVA = r"""
     var op = ev.target && ev.target.closest ? ev.target.closest('.op-sena') : null;
     if(op){ ev.preventDefault(); if(modoPago !== op.dataset.modo){ modoPago = op.dataset.modo; pintarResumen(); } return; }
     var b = ev.target && ev.target.closest ? ev.target.closest('#btnCargoInfo') : null;
-    if(b && cot && window.pcgAvisar) pcgAvisar({titulo: cot.titulo || 'Cargo por servicio Pichangol', html: htmlDesglose(cot), confirmar: 'Entendido', icono: '🛡️'});
+    if(b && cot && window.pcgAvisar) pcgAvisar({titulo: cot.titulo || 'Cargo por servicio ⟦MARCA⟧', html: htmlDesglose(cot), confirmar: 'Entendido', icono: '🛡️'});
   });
   function pintarResumen(){
     var ks = Object.keys(sel).sort(), n = ks.length, t = total(), pd = puntosDesc();
@@ -1764,7 +1765,7 @@ _JS_RESERVA = r"""
           if(sn > 0) h += '<div class="linea"><span>Seña ' + C.senaPct + ' % (pagas hoy)</span><b>' + fmt(sn) + '</b></div><div class="linea" style="color:var(--tenue)"><span>Resto en la cancha</span><b>' + fmt(t - sn) + '</b></div>';
         }
       }
-      if(C.cargo && base > 0) h += '<div class="linea" id="lineaCargo"><span>Cargo por servicio Pichangol ' + BTN_INFO + '</span><b>' + (cot ? fmt(cargo) : '…') + '</b></div>';
+      if(C.cargo && base > 0) h += '<div class="linea" id="lineaCargo"><span>Cargo por servicio ⟦MARCA⟧ ' + BTN_INFO + '</span><b>' + (cot ? fmt(cargo) : '…') + '</b></div>';
     }
     $('lineas').innerHTML = h;
     cargarBoleadores();
@@ -1914,7 +1915,7 @@ _JS_RESERVA = r"""
         hold = j;
         var fdTxt = j.fidelidad ? {t: '🎁 ' + esc(j.fidelidad.texto) + ' · fidelidad', m: -j.fidelidad.descuento} : null;
         var bnTxt = j.bono ? {t: '🎟️ Pagado con tu bono · ' + j.bono.horas + (j.bono.horas === 1 ? ' hora' : ' horas'), m: -j.bono.cubre} : null;
-        var ptTxt = j.puntos ? {t: '⭐ Canje de ' + j.puntos.puntos + ' puntos Pichangol', m: -j.puntos.descuento} : null;
+        var ptTxt = j.puntos ? {t: '⭐ Canje de ' + j.puntos.puntos + ' puntos ⟦MARCA⟧', m: -j.puntos.descuento} : null;
         if(j.sin_pago){
           // RESERVA GRATIS (hora gratis sin extras): no se abre Culqi; se confirma directo.
           var confirmarGratis = function(){
@@ -1963,7 +1964,7 @@ _JS_RESERVA = r"""
         // cobrará el servidor). "Volver" libera la retención del horario.
         var abrirCulqi = function(){
         Culqi.publicKey = C.pk;
-        Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: j.total_centimos });
+        Culqi.settings({ title: '⟦MARCA⟧', currency: 'PEN', amount: j.total_centimos });
         Culqi.options({ lang: 'es', installments: false,
           paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false },
           style: { logo: C.logo, bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
@@ -2027,7 +2028,7 @@ _JS_RESERVA = r"""
   if(C.pasarela && C.pasarela !== 'culqi'){ ordenEnCurso(); window.addEventListener('pageshow', function(ev){ if(ev.persisted){ pintarResumen(); ordenEnCurso(); } }); }
   pintarDias(); cargar(); cargarFidelidad(); cargarBeneficios();
 })();
-"""
+""").replace('⟦MARCA⟧', MARCA)
 
 
 def _tira_dias(pais: str) -> tuple[list[dict], dict]:
@@ -2157,17 +2158,17 @@ def pagina_lugar(request: Request, lugar_id: str, nombre: str = "", direccion: s
         "<ul class='datos'>"
         f"<li>📍 <span>{e(direccion or nombre)} · <a href='{_maps(c)}' target='_blank' rel='noopener'>Abrir en Google Maps</a> · "
         f"<a href='https://www.google.com/maps/dir/?api=1&destination={lat},{lng}' target='_blank' rel='noopener'>Indicaciones</a></span></li>"
-        "<li>🕒 <span>Horarios y precios aún no publicados: este local todavía no está en Pichangol.</span></li></ul>"
+        f"<li>🕒 <span>Horarios y precios aún no publicados: este local todavía no está en {MARCA}.</span></li></ul>"
         + (f"<p class='osm-atrib' style='font-size:12px;color:#717171;margin-top:8px'>Datos del lugar: "
            f"<a href='{osm.ATRIBUCION_URL}' target='_blank' rel='noopener'>© colaboradores de OpenStreetMap</a></p>" if es_osm else "")
         + "</div>"
         "<div class='panel' style='margin-top:20px;border:1px solid var(--verde)'><h2>¿Es tuya esta cancha?</h2>"
-        "<p class='sub'>Publícala en Pichangol en 5 minutos: horarios, precios y fotos. Confirmamos que eres el dueño y empiezas a recibir reservas y pagos en línea.</p>"
+        f"<p class='sub'>Publícala en {MARCA} en 5 minutos: horarios, precios y fotos. Confirmamos que eres el dueño y empiezas a recibir reservas y pagos en línea.</p>"
         f"<div class='acciones'><a class='btn' href='/anfitrion/nueva?{q}'>🏷️ Reclámala y recibe reservas</a></div></div>"
         "<div class='panel' style='margin-top:16px'><h2>¿Quieres jugar aquí?</h2>"
-        "<p class='sub'>Este local aún no acepta reservas en Pichangol. Desde la app puedes guardarlo, ver cómo llegar y avisarle al local que lo estás buscando.</p>"
+        f"<p class='sub'>Este local aún no acepta reservas en {MARCA}. Desde la app puedes guardarlo, ver cómo llegar y avisarle al local que lo estás buscando.</p>"
         f"<div class='acciones'><a class='btn sec' href='{PLAY_URL}' rel='noopener'>📲 Abrir en la app</a><a class='btn sec' href='/canchas'>Ver canchas disponibles</a></div></div>")
-    return ui.shell(nombre, cuerpo, desc=f"{nombre} · {direccion}", sesion=ses, titulo_tab=f"{nombre} · Pichangol")
+    return ui.shell(nombre, cuerpo, desc=f"{nombre} · {direccion}", sesion=ses, titulo_tab=f"{nombre} · {MARCA}")
 
 
 @router.get("/reservar/{cancha_id}", response_class=HTMLResponse)
@@ -2194,7 +2195,7 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
 
     if not datos.reservable(c) or not _pago_web_disponible(iso):
         if not datos.reservable(c):
-            motivo = ("Este local todavía está en proceso de verificación con Pichangol. Desde la app puedes "
+            motivo = (f"Este local todavía está en proceso de verificación con {MARCA}. Desde la app puedes "
                       "reservar y pagar en la cancha, y te avisamos cuando acepte pagos en línea.")
         else:
             motivo = (f"El pago en línea en {e(sim)} desde la web se está habilitando." if iso != "PEN"
@@ -2206,8 +2207,8 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
                         f"<div class='acciones'><a class='btn' href='/anfitrion/nueva?cancha={quote(c['id'], safe='')}'>🏷️ Reclamar esta cancha</a></div></div>")
         cuerpo = (f"<div style='padding-top:22px'>{ficha}</div>"
                   f"<div class='panel' style='margin-top:20px'><h2>Reserva desde la app</h2>"
-                  f"<p class='sub'>{motivo} En la app Pichangol reservas y pagas con los medios de tu país.</p>"
-                  f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a>"
+                  f"<p class='sub'>{motivo} En la app {MARCA} reservas y pagas con los medios de tu país.</p>"
+                  f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a>"
                   f"<a class='btn sec' href='/canchas'>Ver otras canchas</a></div></div>{reclamar}")
         return ui.shell(titulo, cuerpo, desc=f"{titulo} · {c['nombre']}", canonical=canonical,
                         og_image=og, jsonld=_jsonld_cancha(c, sim), sesion=ses)
@@ -2247,7 +2248,7 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
     if con_bol:
         extras_html += (f"<div class='paso'><span>{'4' if filas else '3'}</span> 🎾 ¿Quieres un {nombre_bol.lower()}? "
                         "<small style='color:var(--tenue);font-weight:600'>(opcional)</small></div>"
-                        f"<div class='sub' style='margin:-4px 0 10px;font-size:13px'>Jugadores de la Liga Pichangol que pelotean contigo en este local. "
+                        f"<div class='sub' style='margin:-4px 0 10px;font-size:13px'>Jugadores de la Liga {MARCA} que pelotean contigo en este local. "
                         f"Eliges por categoría y precio por turno; el {nombre_bol.lower()} confirma y, si no puede, te devolvemos su parte.</div>"
                         "<div id='bolBox' class='bol-box'><span class='sub'>Elige un horario para ver quién puede atenderte.</span></div>")
 
@@ -3239,7 +3240,7 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
                                 tipo="reserva")
         txt = {"reembolsado": f"Te devolvemos {dev_txt} al mismo medio de pago (3 a 7 días hábiles)."
                               + ("" if incluye_cargo else " El cargo por servicio no se devuelve."),
-               "saldo": f"Te devolvimos {dev_txt} a tu saldo Pichangol (100 %, cargo incluido). Ya lo puedes usar.",
+               "saldo": f"Te devolvimos {dev_txt} a tu saldo {MARCA} (100 %, cargo incluido). Ya lo puedes usar.",
                "manual": f"Te devolvemos {dev_txt}; te escribimos para coordinar.",
                "fallo": "Tu devolución está en proceso; te escribimos en breve.",
                "bono": "",
@@ -3247,7 +3248,7 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
         if ben_dev["horas"]:
             txt = (txt + f" Te devolvimos {ben_dev['horas']} h a tu bono de este local.").strip()
         if ben_dev["puntos"]:
-            txt = (txt + f" Recuperaste tus {ben_dev['puntos']} puntos Pichangol.").strip()
+            txt = (txt + f" Recuperaste tus {ben_dev['puntos']} puntos {MARCA}.").strip()
         quien_txt = "El local canceló" if cancela_anfitrion else "Reserva cancelada"
         _aviso_push_usuario(email, quien_txt if cancela_anfitrion else "Reserva cancelada",
                             f"{(c or {}).get('nombre', '')} · {horarios.fecha_larga(str(filas[0]['fecha']))} {rango}. {txt}".strip(), tipo="reserva")
@@ -3290,7 +3291,7 @@ _MODAL_CANCELAR = (
     "<div class='modal-pie'><button type='button' class='limpiar' id='cancNo'>Mantener reserva</button>"
     "<button type='button' class='btn dark' id='cancSi'>Sí, cancelar</button></div></div></div>")
 
-JS_CANCELAR = r"""
+JS_CANCELAR = (r"""
 (function(){
   var m = document.getElementById('modalCancelar'); if(!m) return;
   var ref = '', datos = null;
@@ -3322,7 +3323,7 @@ JS_CANCELAR = r"""
       });
       opc.style.display = '';
       if(parseInt(datos.bono || '0') > 0) pol.textContent += ' Además te devolvemos ' + datos.bono + ' h a tu bono.';
-      if(parseInt(datos.puntos || '0') > 0) pol.textContent += ' Recuperas tus ' + datos.puntos + ' puntos Pichangol.';
+      if(parseInt(datos.puntos || '0') > 0) pol.textContent += ' Recuperas tus ' + datos.puntos + ' puntos ⟦MARCA⟧.';
     }
     else { pol.className = 'estado bad'; pol.textContent = 'Faltan menos de ' + datos.minimo + ' h para el turno: la cancelación NO tiene devolución (política publicada)' + (parseInt(datos.bono || '0') > 0 ? ' y las horas de tu bono no vuelven' : '') + '. Puedes mantener la reserva y jugar.'; }
     document.getElementById('cancErr').style.display = 'none';
@@ -3341,7 +3342,7 @@ JS_CANCELAR = r"""
         if(!j.ok){ var e = document.getElementById('cancErr'); e.textContent = j.mensaje || 'No pudimos cancelar.'; e.style.display = 'block'; si.disabled = false; si.textContent = 'Reintentar'; return; }
         var dev = fmt(j.moneda, j.monto_devuelto != null ? j.monto_devuelto : j.monto);
         var msg = {reembolsado: 'Reserva cancelada. Te devolvemos ' + dev + ' al mismo medio de pago en 3 a 7 días hábiles.' + (j.incluye_cargo === false && j.cargo > 0 ? ' El cargo por servicio no se devuelve.' : ''),
-                   saldo: 'Reserva cancelada. Te devolvimos ' + dev + ' a tu saldo Pichangol (cargo incluido): ya lo puedes usar.',
+                   saldo: 'Reserva cancelada. Te devolvimos ' + dev + ' a tu saldo ⟦MARCA⟧ (cargo incluido): ya lo puedes usar.',
                    manual: 'Reserva cancelada. Te devolvemos ' + dev + '; te escribimos para coordinar.',
                    fallo: 'Reserva cancelada. Tu devolución está en proceso; te escribimos en breve.',
                    bono: 'Reserva cancelada.',
@@ -3353,7 +3354,7 @@ JS_CANCELAR = r"""
       }).catch(function(){ var e = document.getElementById('cancErr'); e.textContent = 'Sin conexión. Inténtalo de nuevo.'; e.style.display = 'block'; si.disabled = false; si.textContent = 'Reintentar'; });
   });
 })();
-"""
+""").replace('⟦MARCA⟧', MARCA)
 
 
 def _boton_cancelar(filas: list[dict], c: dict | None, ses: dict | None, clase: str = "btn sec") -> str:
@@ -3468,7 +3469,7 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
         cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'>"
                   "<h1 style='font-size:22px'>Mis reservas</h1>"
                   "<p class='sub'>En esta web aún no está activo el inicio de sesión. Tus reservas están en la app.</p>"
-                  f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+                  f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a></div></div>")
         return ui.shell("Mis reservas", cuerpo, sesion=None)
     email = ses["email"]
     from db.store import stores as _st
@@ -3538,7 +3539,7 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
 </script>""")
     head = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
             "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>")
-    return ui.shell("Mis reservas", cuerpo, sesion=ses, titulo_tab="Mis reservas · Pichangol", extra_head=head, ancho=True)
+    return ui.shell("Mis reservas", cuerpo, sesion=ses, titulo_tab=f"Mis reservas · {MARCA}", extra_head=head, ancho=True)
 
 
 
@@ -3633,7 +3634,7 @@ def pagina_perfil(request: Request) -> HTMLResponse:
         cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'>"
                   "<h1 style='font-size:22px'>Perfil</h1>"
                   "<p class='sub'>En esta web aún no está activo el inicio de sesión. Tu perfil está en la app.</p>"
-                  f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+                  f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a></div></div>")
         return ui.shell("Perfil", cuerpo, sesion=None)
     from db.store import stores as _st
     from retos.router import _auto_confirmar, _lado_retado, _lado_retador, _participantes
@@ -3709,14 +3710,14 @@ def pagina_perfil(request: Request) -> HTMLResponse:
     menu += _item_perfil("🏆", "Campeonatos", href="/anfitrion/campeonatos", sub="Únete con un código o mira dónde participas")
     menu += _item_perfil("🎁", "Invita y gana", href="/referidos", sub="Comparte tu código con tus amigos")
     tenis = (
-        _item_perfil("🥇", "Liga de tenis Pichangol", href="/liga", sub="Ranking, retos y resultados")
+        _item_perfil("🥇", f"Liga de tenis {MARCA}", href="/liga", sub="Ranking, retos y resultados")
         + _item_perfil("🥎", "Soy boleador" if es_boleador else "Ser boleador", href="/anfitrion/boleador",
                        sub="Bolea en las canchas de tu zona y cobra por turno"))
     menu += ("<details class='perf-grp'><summary class='perf-it'><span class='em'>🎾</span>"
              "<span class='tx'>Mundo tenis<small>Entrena, bolea y compite</small></span>"
              + (f"<span class='bdg'>{retos}</span>" if retos else "") + "<span class='chev'>›</span></summary>"
              f"<div class='perf-sub'>{tenis}</div></details>")
-    menu += _item_perfil("👑", "Pichangol Pro", href="/pro", sub="Retos sin límite, campeonatos, bodega y más")
+    menu += _item_perfil("👑", f"{MARCA} Pro", href="/pro", sub="Retos sin límite, campeonatos, bodega y más")
     menu += _item_perfil("💳", "Métodos de pago", href="/cuenta/tarjetas", sub="Tus tarjetas guardadas")
     menu += _item_perfil("👛", "Mi billetera", href="/mi-billetera", sub="Saldo, recargas, cupones y movimientos")
     menu += "<div class='perf-sep'></div>"
@@ -3736,7 +3737,7 @@ def pagina_perfil(request: Request) -> HTMLResponse:
         f"   .then(function(ok){{ if(ok) window.open({json.dumps(PLAY_URL)}, '_blank', 'noopener'); }});\n"
         "}); });\n"
         "})();</script>")
-    return ui.shell("Perfil", cuerpo, sesion=ses, titulo_tab="Perfil · Pichangol")
+    return ui.shell("Perfil", cuerpo, sesion=ses, titulo_tab=f"Perfil · {MARCA}")
 
 
 def _filas_comprobante(ref: str) -> list[dict]:
@@ -3771,7 +3772,7 @@ def comprobante_ics(ref: str) -> Response:
                   f"UID:{f['id']}@pichangol.app\r\nDTSTAMP:{ahora}\r\n"
                   f"DTSTART:{ini.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}\r\n"
                   f"DTEND:{fin.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}\r\n"
-                  f"SUMMARY:Pichangol · {_ics(c.get('nombre') or 'Reserva')}\r\n"
+                  f"SUMMARY:{MARCA} · {_ics(c.get('nombre') or 'Reserva')}\r\n"
                   f"LOCATION:{_ics(lugar)}\r\n"
                   f"DESCRIPTION:Reserva {_ics(ref)}. Comprobante: {_ics((config.PUBLIC_BASE_URL or '').rstrip('/'))}/reserva/{_ics(ref)}\r\n"
                   "END:VEVENT\r\n")
@@ -3782,7 +3783,7 @@ def comprobante_ics(ref: str) -> Response:
 
 
 def _ics(s) -> str:
-    return str(s or "").replace("\\", "\\\\").replace(";", "\;").replace(",", "\\,").replace("\n", "\\n")
+    return str(s or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
 
 
 @router.get("/reserva/{ref}", response_class=HTMLResponse)
@@ -3850,10 +3851,10 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         lineas += (f"<div class='linea' style='color:var(--verde)'><span>🎟️ Pagado con tu bono · {aj['bono_horas']} "
                    f"{'hora' if aj['bono_horas'] == 1 else 'horas'}</span><b>−{e(sim)} {aj['bono_cubre']:.2f}</b></div>")
     if aj["puntos_desc"] > 0:
-        lineas += (f"<div class='linea' style='color:var(--verde)'><span>⭐ Canje de {aj['puntos']} puntos Pichangol</span>"
+        lineas += (f"<div class='linea' style='color:var(--verde)'><span>⭐ Canje de {aj['puntos']} puntos {MARCA}</span>"
                    f"<b>−{e(sim)} {aj['puntos_desc']:.2f}</b></div>")
     if cargo_c > 0:
-        lineas += (f"<div class='linea'><span>Cargo por servicio Pichangol</span><b>{e(sim)} {cargo_c / 100.0:.2f}</b></div>")
+        lineas += (f"<div class='linea'><span>Cargo por servicio {MARCA}</span><b>{e(sim)} {cargo_c / 100.0:.2f}</b></div>")
     detalle_cargo = ""
     if cargo_c > 0:
         _s, _iso_c = _moneda_de(c) if c else (sim, _cs.moneda_iso(sim))
@@ -3862,7 +3863,7 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
     lugar = ", ".join(x for x in (c.get("direccion"), _zona(c)) if x)
     base = (config.PUBLIC_BASE_URL or "").rstrip("/")
     boton_wa = ui.boton_whatsapp(
-        f"Reservé en {c.get('nombre', 'una cancha')} por Pichangol: "
+        f"Reservé en {c.get('nombre', 'una cancha')} por {MARCA}: "
         f"{horarios.fecha_larga(filas[0]['fecha'])} {filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}. "
         f"Comprobante: {base}/reserva/{ref}", etiqueta="💬 Compartir", clase="btn sec")
     medio = {"yape": "Yape", "tarjeta": "tarjeta", "fidelidad": "tu premio de fidelidad 🎁", "sena": "seña en línea",

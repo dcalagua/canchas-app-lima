@@ -39,6 +39,7 @@ from . import tarifas_pasarela as _tp
 from . import cargo_servicio as _cs
 from . import modelo_negocio as _mn
 from . import stock_productos as _stock
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(prefix="/pagos", tags=["pagos"])
 
@@ -207,7 +208,7 @@ class FeeReq(BaseModel):
     token: str
     email: str
     monto_soles: float         # la comisión a cobrar (la calcula el APK o aquí)
-    concepto: str = "Fee de reserva Pichangol"
+    concepto: str = f"Fee de reserva {MARCA}"
     reserva_id: str | None = None
     # Datos del pagador para el antifraude de Culqi (lo que el APK sepa: nombre
     # de Google / verificado, celular del perfil, país). Vacíos = se completa
@@ -224,7 +225,7 @@ class CobroReq(BaseModel):
     token: str                 # tkn_ (tarjeta nueva) o crd_ (tarjeta guardada)
     email: str
     monto_soles: float
-    concepto: str = "Pago Pichangol"
+    concepto: str = f"Pago {MARCA}"
     tipo: str = "cobro"        # reserva | academia | cobro
     # Datos del pagador para el antifraude de Culqi (lo que el APK sepa: nombre
     # de Google / verificado, celular del perfil, país). Vacíos = se completa
@@ -361,7 +362,7 @@ def get_config() -> dict:
 
 
 @router.get("/checkout", response_class=HTMLResponse)
-def get_checkout(amount: int, email: str, title: str = "Pichangol",
+def get_checkout(amount: int, email: str, title: str = MARCA,
                  desc: str = "Pago") -> HTMLResponse:
     """Sirve la página de Culqi Checkout (culqi.js v4) desde el propio backend,
     con la llave PÚBLICA inyectada del lado servidor. El APK la abre en un
@@ -374,7 +375,7 @@ def get_checkout(amount: int, email: str, title: str = "Pichangol",
     email_s = _html.escape(email)[:120]
     page = f"""<!doctype html><html lang="es"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Pago Pichangol</title>
+<title>Pago {MARCA}</title>
 <style>
  html,body{{margin:0;height:100%;background:#F4F6F1;font-family:system-ui,Segoe UI,Roboto,sans-serif;color:#14463A}}
  .c{{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:14px;padding:20px;text-align:center}}
@@ -421,7 +422,7 @@ def get_checkout(amount: int, email: str, title: str = "Pichangol",
 class DeudaBoReq(BaseModel):
     email: str
     monto_bs: float
-    concepto: str = "Pago Pichangol"
+    concepto: str = f"Pago {MARCA}"
     nombre: str = ""
     apellido: str = ""
     tipo: str = ""       # reserva | sena | matricula | producto | pro | recarga
@@ -586,10 +587,10 @@ def bo_retorno(id: str = "") -> HTMLResponse:
     mensaje claro para volver a la app."""
     page = ("<!doctype html><meta charset=utf-8>"
             "<meta name=viewport content='width=device-width,initial-scale=1'>"
-            "<title>Pago Pichangol</title>"
+            f"<title>Pago {MARCA}</title>"
             "<div style='font-family:system-ui;text-align:center;padding:44px;color:#14463A'>"
             "<h2>¡Pago recibido! ✅</h2>"
-            "<p>Ya puedes volver a Pichangol.</p></div>")
+            f"<p>Ya puedes volver a {MARCA}.</p></div>")
     return HTMLResponse(content=page, headers={"Cache-Control": "no-store"})
 
 
@@ -601,7 +602,7 @@ def bo_retorno(id: str = "") -> HTMLResponse:
 class PagoEcReq(BaseModel):
     email: str
     monto_usd: float
-    concepto: str = "Pago Pichangol"
+    concepto: str = f"Pago {MARCA}"
     nombre: str = ""
     telefono: str = ""
     documento: str = ""
@@ -704,17 +705,17 @@ def ec_ir(identificador: str, request: Request,
         (request.headers.get("user-agent") or "")[:60])
     if not d or d.get("pagado"):
         return _pagina_ec("Pago no disponible",
-                          "Vuelve a Pichangol e inicia el pago otra vez.")
+                          f"Vuelve a {MARCA} e inicia el pago otra vez.")
     url = (d.get("url_payphone") if medio == "payphone" else None) \
         or d.get("url_tarjeta") or d.get("url_payphone") or ""
     if not url:
         return _pagina_ec("Pago no disponible",
-                          "Vuelve a Pichangol e inicia el pago otra vez.")
+                          f"Vuelve a {MARCA} e inicia el pago otra vez.")
     u = _html.escape(url, quote=True)
     page = ("<!doctype html><html lang=es><head><meta charset=utf-8>"
             "<meta name=viewport content='width=device-width,initial-scale=1'>"
             "<meta name=referrer content=origin>"
-            "<title>Pago Pichangol</title></head>"
+            f"<title>Pago {MARCA}</title></head>"
             "<body style='font-family:system-ui;text-align:center;padding:44px;"
             f"color:#14463A'><p>Abriendo el pago seguro de {_html.escape(pasarela_ec.nombre())}…</p>"
             f"<p><a href=\"{u}\" style='display:inline-block;margin-top:12px;"
@@ -800,7 +801,7 @@ def _confirmar_ec_inner(d: dict, ident: str, tx: str) -> dict:
 def _pagina_ec(titulo: str, cuerpo: str) -> HTMLResponse:
     page = ("<!doctype html><meta charset=utf-8>"
             "<meta name=viewport content='width=device-width,initial-scale=1'>"
-            "<title>Pago Pichangol</title>"
+            f"<title>Pago {MARCA}</title>"
             "<div style='font-family:system-ui;text-align:center;padding:44px;"
             f"color:#14463A'><h2>{_html.escape(titulo)}</h2>"
             f"<p>{_html.escape(cuerpo)}</p></div>")
@@ -817,13 +818,13 @@ def ec_retorno(id: str = "", clientTransactionId: str = "") -> HTMLResponse:
     d = _confirmar_ec(ident, id) if ident else None
     if d and d.get("pagado"):
         return _pagina_ec("¡Pago recibido! ✅", "Cierra esta ventana para volver a "
-                          "Pichangol: tu pago ya quedó confirmado.")
+                          f"{MARCA}: tu pago ya quedó confirmado.")
     if d:
         return _pagina_ec("Pago no aprobado",
                           f"{pasarela_ec.nombre()} no aprobó el cobro. Puedes intentarlo de "
                           "nuevo desde la app; no se te cobró nada.")
     return _pagina_ec("Pago no encontrado",
-                      "Vuelve a Pichangol e intenta otra vez.")
+                      f"Vuelve a {MARCA} e intenta otra vez.")
 
 
 @router.get("/ec/cancelado", response_class=HTMLResponse)
@@ -834,7 +835,7 @@ def ec_cancelado(clientTransactionId: str = "") -> HTMLResponse:
         d["estado"] = "cancelado"
         _persistir_ahora()
     return _pagina_ec("Pago cancelado", "No se te cobró nada. Cierra esta "
-                      "ventana para volver a Pichangol e intentarlo cuando quieras.")
+                      f"ventana para volver a {MARCA} e intentarlo cuando quieras.")
 
 
 @router.get("/ec/pago/{identificador}", dependencies=_APP)
@@ -1020,7 +1021,7 @@ def post_recarga_qr_aprobar(solicitud_id: int) -> dict:
             r["resuelto_en"] = _ahora_iso()
             _aviso_push_usuario(
                 r["email"], "Recarga acreditada ✅",
-                f"+{moneda_simbolo(mon)} {r['monto_soles']:.2f} a tu saldo Pichangol por tu "
+                f"+{moneda_simbolo(mon)} {r['monto_soles']:.2f} a tu saldo {MARCA} por tu "
                 "Yape al QR. ¡Gracias!", tipo="recarga")
             bono = _aplicar_bono_recarga(
                 r["email"], r["monto_soles"], f"qr_{solicitud_id}")
@@ -1499,7 +1500,7 @@ def post_pro_suscribir(req: ProSuscribirReq) -> dict:
         # El precio es el del país (`_pro_precio_centimos`): se registra en SU
         # moneda (S/ · $ · Bs), no siempre en soles.
         tipo="suscripcion_pro", monto_centimos=precio, moneda=_moneda_pais(pais),
-        estado="aprobado", dueno_id=email, concepto="Pichangol Pro (1 mes)")
+        estado="aprobado", dueno_id=email, concepto=f"{MARCA} Pro (1 mes)")
     nuevo = stores.saldo_centimos(email)
     return {"ok": True, "hasta": hasta,
             "saldo_centimos": nuevo, "saldo_soles": nuevo / 100.0}
@@ -1575,7 +1576,7 @@ def procesar_renovaciones_pro() -> dict:
                 tipo="suscripcion_pro", monto_centimos=precio,
                 moneda=_moneda_pais(m.get("pais", "PE")),
                 estado="aprobado", dueno_id=email,
-                concepto="Pichangol Pro (renovación)")
+                concepto=f"{MARCA} Pro (renovación)")
             renovadas += 1
         else:
             sin_saldo += 1
@@ -1625,7 +1626,7 @@ def post_pro_cortesia(req: ProCortesiaReq) -> dict:
     stores.registrar_pago(
         tipo="pro_cortesia", monto_centimos=0, moneda=_moneda_pais(req.pais),
         estado="aprobado", dueno_id=email,
-        concepto=f"Pichangol Pro cortesía ({dias} días)")
+        concepto=f"{MARCA} Pro cortesía ({dias} días)")
     return {"ok": True, "email": email, "hasta": hasta, "cortesia": True}
 
 
@@ -1656,7 +1657,7 @@ def post_regalo_saldo(req: RegaloSaldoReq) -> dict:
         concepto="Regalo de saldo (cubre tus comisiones)")
     _aviso_push_usuario(
         email, "🎁 Te regalamos saldo",
-        f"Pichangol te regaló {moneda_simbolo(mon)} {soles:.2f} de saldo: tus comisiones se "
+        f"{MARCA} te regaló {moneda_simbolo(mon)} {soles:.2f} de saldo: tus comisiones se "
         "descuentan de ahí primero, sin tocar tu plata.")
     return {"ok": True, "email": email, "saldo_promo_centimos": total,
             "saldo_promo_soles": total / 100.0}
@@ -1712,7 +1713,7 @@ def otorgar_bienvenida(email: str, pais: str = "PE") -> dict:
         stores.membresias_pro[email] = {
             "hasta": (base + timedelta(days=dias)).isoformat(),
             "cortesia": True, "pais": pais}
-        partes.append(f"{dias} días de Pichangol Pro")
+        partes.append(f"{dias} días de {MARCA} Pro")
     if saldo_soles > 0:
         cent = _soles_a_centimos(saldo_soles)
         stores.acreditar_promo(email, cent)
@@ -1723,7 +1724,7 @@ def otorgar_bienvenida(email: str, pais: str = "PE") -> dict:
         partes.append(f"{simbolo} {saldo_soles:g} de saldo de regalo para "
                       "tus comisiones")
     _aviso_push_usuario(
-        email, "🎁 ¡Bienvenido a Pichangol!",
+        email, f"🎁 ¡Bienvenido a {MARCA}!",
         "Por activar tu cancha te regalamos " + " y ".join(partes) +
         ". Ya está en tu cuenta.")
     return {"ok": True, "email": email, "pro_dias": dias, "pais": pais,
@@ -3243,7 +3244,7 @@ def recordar_liquidaciones_pendientes(ahora_utc: "datetime | None" = None) -> di
         return {"enviado": False, "motivo": "sin_atrasadas", "pendientes": len(pend)}
     total = sum(x["neto_soles"] for x in atrasadas)
     duenos = len({x["dueno_id"] for x in atrasadas})
-    texto = (f"Pichangol · {len(atrasadas)} liquidación(es) con {LIQUIDACION_AVISO_DIAS}+ días sin pagar "
+    texto = (f"{MARCA} · {len(atrasadas)} liquidación(es) con {LIQUIDACION_AVISO_DIAS}+ días sin pagar "
              f"(S/ {total:.2f} a {duenos} dueño(s)/organizador(es); la más antigua hace {max(x['dias'] for x in atrasadas)} días). "
              f"Torre → Liquidaciones.")
     print(f"[liquidaciones] {texto}", flush=True)
@@ -3372,7 +3373,7 @@ def movimientos_de(dueno_id: str) -> list[dict]:
         "bono_referido": "Bono Invita y gana 🎁",
         "comision_reserva": "Comisión de reserva",
         "suscripcion": "Servicio de marketing",
-        "suscripcion_pro": "Pichangol Pro",
+        "suscripcion_pro": f"{MARCA} Pro",
         "inscripcion_torneo": "Inscripción a torneo",
         "inscripcion_torneo_ingreso": "Inscripción a torneo (neto por recibir)",
         "aporte_equipo": "Mi parte en el equipo (torneo)",
@@ -3521,7 +3522,7 @@ def post_recarga(req: RecargaReq) -> dict:
         token=req.token,
         monto_centimos=centimos,
         email=req.email,
-        descripcion="Recarga Pichangol",
+        descripcion=f"Recarga {MARCA}",
         # Sin metadata por ahora: la recarga acredita de forma síncrona (no
         # depende del webhook). Se aísla un posible parameter_error de Culqi.
         cliente=_cliente_de(req.email, req),

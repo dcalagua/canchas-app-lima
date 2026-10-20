@@ -62,6 +62,7 @@ from pagos import culqi
 from pagos import router as _pagos
 from web import catalogos, datos, horarios, sesion, ui
 from web.ui import PLAY_URL, e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["web-jugador-pro"])
 
@@ -132,7 +133,7 @@ _BENEFICIOS = [("🪪", "Carnet oficial verificado", "Tu ficha de jugador con la
 
 @router.get("/pro", response_class=HTMLResponse)
 def pagina_pro(request: Request) -> HTMLResponse:
-    ses, resp = _gate(request, "/pro", "Pichangol Pro", "La membresía Pichangol Pro se activa desde la app.")
+    ses, resp = _gate(request, "/pro", f"{MARCA} Pro", f"La membresía {MARCA} Pro se activa desde la app.")
     if resp:
         return resp
     email = _email(ses)
@@ -145,18 +146,18 @@ def pagina_pro(request: Request) -> HTMLResponse:
         sub = f"Tu membresía venció el {_fecha(st['hasta'])}. Reactívala y vuelve al circuito."
     else:
         sub = "Sé parte del circuito: tu carnet oficial, tu ranking y tus estadísticas."
-    hero = ("<section class='pr-hero'><div class='pr-hero-t'><span class='pr-corona'>👑</span><b>Pichangol Pro</b>"
+    hero = (f"<section class='pr-hero'><div class='pr-hero-t'><span class='pr-corona'>👑</span><b>{MARCA} Pro</b>"
             + ("<span class='pr-activo'>ACTIVO</span>" if st["activa"] else "") + "</div>"
             f"<p>{e(sub)}</p><div class='pr-precio'><b>{e(p_txt)}</b><span>/mes</span></div></section>")
     bens = "".join(f"<li><span class='pr-ic'>{ic}</span><div><b>{e(t)}</b><small>{e(d)}</small></div></li>" for ic, t, d in _BENEFICIOS)
-    nota = (f"<div class='pr-nota'><span class='pr-bur'>👛</span><div>Se cobra de tu saldo Pichangol (la misma billetera de la app). "
+    nota = (f"<div class='pr-nota'><span class='pr-bur'>👛</span><div>Se cobra de tu saldo {MARCA} (la misma billetera de la app). "
             f"Tu saldo hoy: <b>{e(_monto(sim, st['saldo']))}</b>. "
             + ("Se renueva solo cada mes." if not st["cortesia"] else "")
             + " <a href='/mi-billetera#recargar'>Recargar saldo</a></div></div>")
     # Estado de la renovación (solo con membresía vigente).
     renov = ""
     if st["activa"] and st["cortesia"]:
-        renov = ("<div class='pr-card'><b>🎁 Pro de cortesía</b><small>Te lo regaló Pichangol. No se renueva solo: al vencer, "
+        renov = (f"<div class='pr-card'><b>🎁 Pro de cortesía</b><small>Te lo regaló {MARCA}. No se renueva solo: al vencer, "
                  "puedes seguir pagando desde tu saldo.</small></div>")
     elif st["activa"]:
         if st["auto"]:
@@ -177,8 +178,8 @@ def pagina_pro(request: Request) -> HTMLResponse:
         + f"<button type='button' class='btn pr-cta' id='btnPro'>{e(boton)}</button>"
         + "</div>"
         + f"<style>{CSS}</style><script>window.__pro={json.dumps(cfg, ensure_ascii=False)};{JS_PRO}</script>")
-    return ui.shell("Pichangol Pro", cuerpo, sesion=ses, titulo_tab="Pichangol Pro",
-                    desc="Membresía Pichangol Pro: carnet oficial, ranking y retos sin límite.")
+    return ui.shell(f"{MARCA} Pro", cuerpo, sesion=ses, titulo_tab=f"{MARCA} Pro",
+                    desc=f"Membresía {MARCA} Pro: carnet oficial, ranking y retos sin límite.")
 
 
 @router.post("/web/pro/suscribir")
@@ -240,12 +241,12 @@ def pagina_planes_pro(request: Request) -> HTMLResponse:
         filas.append(("📝", "Reserva manual y bloqueo de horas (dueños)", no, si))
     tabla = "".join(f"<div class='pr-fila'><span class='pr-f-t'><span>{ic}</span>{e(t)}</span><span class='pr-c'>{a}</span><span class='pr-c pro'>{b}</span></div>"
                     for ic, t, a, b in filas)
-    cuerpo = ("<div class='pr-wrap'><a class='pr-back' href='/pro'>‹ Pichangol Pro</a><h1 class='pr-h1'>Gratis vs Pro</h1>"
-              f"<p class='sub'>Pro cuesta {e(_monto(sim, precio))} al mes y se cobra de tu saldo Pichangol.</p>"
+    cuerpo = (f"<div class='pr-wrap'><a class='pr-back' href='/pro'>‹ {MARCA} Pro</a><h1 class='pr-h1'>Gratis vs Pro</h1>"
+              f"<p class='sub'>Pro cuesta {e(_monto(sim, precio))} al mes y se cobra de tu saldo {MARCA}.</p>"
               "<div class='pr-tabla'><div class='pr-fila cab'><span></span><span class='pr-c'>Gratis</span><span class='pr-c pro'>👑 Pro</span></div>"
               + tabla + "</div><a class='btn pr-cta' href='/pro'>Quiero ser Pro</a></div>"
               + f"<style>{CSS}</style>")
-    return ui.shell("Gratis vs Pro", cuerpo, sesion=ses, titulo_tab="Planes · Pichangol Pro")
+    return ui.shell("Gratis vs Pro", cuerpo, sesion=ses, titulo_tab=f"Planes · {MARCA} Pro")
 
 
 # ══════════════════════════ TARJETAS GUARDADAS ═════════════════════════════════
@@ -275,7 +276,7 @@ def pagina_tarjetas(request: Request) -> HTMLResponse:
     cuerpo = ("<div class='pr-wrap'><a class='pr-back' href='/mi-billetera'>‹ Mi billetera</a><h1 class='pr-h1'>Métodos de pago</h1>"
               "<p class='sub'>Las tarjetas que guardes aquí son las mismas de la app (pago en un toque, débito automático de academias).</p>"
               + (f"<div class='pr-lista' id='tjs'>{filas}</div>" if filas else vacio) + agregar
-              + "<p class='pr-seg'>🔒 Tus tarjetas se guardan de forma segura en Culqi. Pichangol nunca ve ni guarda el número completo: "
+              + f"<p class='pr-seg'>🔒 Tus tarjetas se guardan de forma segura en Culqi. {MARCA} nunca ve ni guarda el número completo: "
                 "solo la marca y los últimos 4 dígitos.</p></div>"
               + f"<style>{CSS}</style><script>window.__tj={json.dumps({'pk': config.CULQI_PUBLIC_KEY if disponible else ''})};{JS_TARJETAS}</script>")
     head = "<script src='https://checkout.culqi.com/js/v4'></script>" if disponible else ""
@@ -718,24 +719,24 @@ CSS = r"""
 @media (max-width:600px){.pr-fila{grid-template-columns:minmax(0,1fr) 64px 70px;padding:11px 10px}.pr-sug-b{display:none}.pr-sug-f{width:72px;height:72px}}
 """
 
-JS_PRO = r"""
+JS_PRO = (r"""
 (function(){
   var C = window.__pro || {}, $ = function(id){ return document.getElementById(id); };
   function fmt(n){ n = Number(n || 0); return C.sim + ' ' + (n % 1 === 0 ? n.toFixed(0) : n.toFixed(2)); }
   function post(url, body){ return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})}).then(function(r){ return r.json(); }); }
   var b = $('btnPro');
   if(b) b.addEventListener('click', function(){
-    pcgConfirmar({titulo: C.activa ? 'Renovar Pichangol Pro' : 'Activar Pichangol Pro', icono: '👑',
-                  mensaje: 'Se debitará ' + fmt(C.precio) + ' de tu saldo Pichangol por 1 mes' + (C.activa ? ' (se suma a tu vigencia actual).' : '.'),
+    pcgConfirmar({titulo: C.activa ? 'Renovar ⟦MARCA⟧ Pro' : 'Activar ⟦MARCA⟧ Pro', icono: '👑',
+                  mensaje: 'Se debitará ' + fmt(C.precio) + ' de tu saldo ⟦MARCA⟧ por 1 mes' + (C.activa ? ' (se suma a tu vigencia actual).' : '.'),
                   confirmar: 'Pagar ' + fmt(C.precio), cancelar: 'Ahora no'}).then(function(ok){
       if(!ok) return;
       pcgCargando('Activando…');
       post('/web/pro/suscribir').then(function(j){
         pcgCargando(false);
-        if(j.ok){ pcgAvisar({titulo: '¡Ya eres Pro! 🎾', icono: '👑', confirmar: 'Genial', mensaje: 'Tu membresía Pichangol Pro está activa hasta el ' + j.hasta + '. Se renueva sola desde tu saldo.'}).then(function(){ pcgRecargar('Actualizando…'); }); return; }
+        if(j.ok){ pcgAvisar({titulo: '¡Ya eres Pro! 🎾', icono: '👑', confirmar: 'Genial', mensaje: 'Tu membresía ⟦MARCA⟧ Pro está activa hasta el ' + j.hasta + '. Se renueva sola desde tu saldo.'}).then(function(){ pcgRecargar('Actualizando…'); }); return; }
         if(j.falta_saldo){
           pcgConfirmar({titulo: 'Te falta saldo', icono: '👛', confirmar: 'Recargar saldo', cancelar: 'Ahora no',
-                        mensaje: 'Pichangol Pro se cobra de tu saldo (' + fmt(j.requerido || C.precio) + '/mes). Tu saldo es ' + fmt(j.saldo) + '. Recarga y actívalo al toque.'})
+                        mensaje: '⟦MARCA⟧ Pro se cobra de tu saldo (' + fmt(j.requerido || C.precio) + '/mes). Tu saldo es ' + fmt(j.saldo) + '. Recarga y actívalo al toque.'})
             .then(function(ok){ if(ok) pcgIr('/mi-billetera#recargar', 'Abriendo tu billetera…'); });
           return;
         }
@@ -760,7 +761,7 @@ JS_PRO = r"""
       });
   });
 })();
-"""
+""").replace('⟦MARCA⟧', MARCA)
 
 JS_TARJETAS = r"""
 (function(){

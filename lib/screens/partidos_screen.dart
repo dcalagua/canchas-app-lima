@@ -24,6 +24,7 @@ import 'login_google_sheet.dart';
 import 'ranking_global_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// JUEGA YA (antes "Partidos", el **Match** del benchmark): para quien está
 /// solo y quiere jugar. Tres caminos, igual que la web `/partidos`:
 ///  · **Busco partido**: partidos abiertos cerca (radio 5/10/20/30 km desde mi
@@ -984,7 +985,7 @@ class _CircuitoPreview extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text('Circuito Pichangol',
+                              Text('Circuito $kBrandName',
                                   style: TextStyle(
                                       fontWeight: FontWeight.w800,
                                       fontSize: 15.5)),
@@ -1690,7 +1691,7 @@ class _CrearPartidoSheetState extends State<_CrearPartidoSheet> {
                       labelText: '¿Dónde se juega?',
                       hintText: 'Busca la cancha o el lugar',
                       helperText:
-                          'Si no es un local de Pichangol, usamos tu ubicación '
+                          'Si no es un local de $kBrandName, usamos tu ubicación '
                           'para avisar a los de la zona.',
                       helperMaxLines: 2,
                       prefixIcon: IconoVivo(Icons.place_outlined)),

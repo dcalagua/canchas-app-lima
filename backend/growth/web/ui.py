@@ -23,17 +23,18 @@ from __future__ import annotations
 import html as _html
 
 from fastapi.responses import HTMLResponse
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
-TOKENS = """
+TOKENS = ("""
 :root{
-  /* Paleta del LOGO oficial (pin verde + pelota + arco naranja + "Pichangol" azul noche) */
+  /* Paleta del LOGO oficial (pin verde + pelota + arco naranja + "⟦MARCA⟧" azul noche) */
   --blanco:#FFFFFF;--noche:#0A1B3D;--esmeralda:#0B8A3E;--teal:#067A38;--lima:#7CB518;--naranja:#F28C28;--dorado:#D9B45A;
   --papel:#FFFFFF;--trazo:#DDE5E0;--tenue:#5F6F7A;--tinte:#E6F4EA;--gris:#EDF1EE;
   --ok-bg:#E9F4EE;--ok-fg:#1F6E49;--warn-bg:#FDF2D6;--warn-fg:#946200;--bad-bg:#FBE7E7;--bad-fg:#C0392B;
   --rojo:#C13515;--sombra:0 2px 14px rgba(15,27,45,.06);--sombra2:0 10px 30px rgba(15,27,45,.10);
   --r:16px;--r-lg:20px;--r-btn:12px;
 }
-"""
+""").replace('⟦MARCA⟧', MARCA)
 
 CSS = TOKENS + """
 *{box-sizing:border-box}html{-webkit-text-size-adjust:100%;overflow-x:hidden}body{overflow-x:clip;max-width:100%}
@@ -739,8 +740,8 @@ PELOTA_SVG = (
 def wordmark(tam: int = 22, href: str = "/") -> str:
     """Logo oficial: pin verde con la pelota (`/static/brand/logo_pin.png`) +
     "Pichangol" en azul noche, peso 800, SIN cursiva (pedido del director)."""
-    return (f"<a class='wm' href='{href}' style='font-size:{tam}px' aria-label='Pichangol'>"
-            "<img src='/static/brand/logo_pin.png' alt=''><span>Pichangol</span></a>")
+    return (f"<a class='wm' href='{href}' style='font-size:{tam}px' aria-label='{MARCA}'>"
+            f"<img src='/static/brand/logo_pin.png' alt=''><span>{MARCA}</span></a>")
 
 
 def tarjeta_comision(linea: str, simbolo: str = "S/", iso: str = "PEN") -> str:
@@ -770,15 +771,15 @@ def tarjeta_comision(linea: str, simbolo: str = "S/", iso: str = "PEN") -> str:
         pas = (p["banco_pct"] + p["pasarela_pct"]) * (1 + p["igv_pct"] / 100.0) * (100 - p["reparto_cliente_pct"]) / 100.0
         regla = (f"En cada reserva pagada en línea se descuenta tu parte del costo del pago en línea (≈ {pas:.2f} % "
                  f"del precio; el jugador paga la otra parte)"
-                 + (f" y {p['dueno_pct']:g} % de comisión Pichangol" if p["dueno_pct"] > 0 else
-                    (f" y una comisión Pichangol de {p['simbolo']} {p['dueno_min']:.2f}" if p.get("dueno_min", 0) > 0
-                     else ", sin comisión Pichangol"))
+                 + (f" y {p['dueno_pct']:g} % de comisión {MARCA}" if p["dueno_pct"] > 0 else
+                    (f" y una comisión {MARCA} de {p['simbolo']} {p['dueno_min']:.2f}" if p.get("dueno_min", 0) > 0
+                     else f", sin comisión {MARCA}"))
                  + (f" (mínimo {p['simbolo']} {p['dueno_min']:.2f})" if p["dueno_pct"] > 0 and p.get("dueno_min", 0) > 0 else "")
-                 + (". En efectivo se cobra la misma comisión Pichangol" if p["dueno_pct"] > 0 or p.get("dueno_min", 0) > 0
+                 + (f". En efectivo se cobra la misma comisión {MARCA}" if p["dueno_pct"] > 0 or p.get("dueno_min", 0) > 0
                     else ". En efectivo no se cobra comisión"))
     filas = "".join(
         f"<div class='com-fila'><b>{e(c.get('nombre'))}</b><span>{e(c.get('detalle'))}</span></div>" for c in comps)
-    return (f"<div class='panel com-card' style='margin-top:18px'><h3 style='margin:0 0 4px'>Tu comisión Pichangol incluye</h3>"
+    return (f"<div class='panel com-card' style='margin-top:18px'><h3 style='margin:0 0 4px'>Tu comisión {MARCA} incluye</h3>"
             f"<div class='sub' style='font-size:13px'>{e(regla)}. El jugador o alumno paga aparte el cargo por servicio de la "
             f"plataforma; a ti te llega el precio completo menos esta comisión.</div>"
             f"<div class='com-lista'>{filas}</div></div>"
@@ -901,7 +902,7 @@ def redes_pie(em: dict) -> str:
     if not rs:
         return ""
     return ("<div class='pie-redes'><span>Síguenos</span>"
-            + "".join(f"<a class='red-{r['red']}' href='{r['url']}' target='_blank' rel='noopener' aria-label='{r['nombre']} de Pichangol' title='{r['nombre']}'>{RED_SVG[r['red']]}</a>"
+            + "".join(f"<a class='red-{r['red']}' href='{r['url']}' target='_blank' rel='noopener' aria-label='{r['nombre']} de {MARCA}' title='{r['nombre']}'>{RED_SVG[r['red']]}</a>"
                       for r in rs) + "</div>")
 
 
@@ -917,16 +918,16 @@ def footer() -> str:
         "<div style='margin-top:10px;font-size:12.5px'>Fútbol · Tenis · Pádel · Pickleball<br>Perú · Ecuador · Bolivia</div>"
         f"{redes_pie(em)}</div>"
         "<div><h4>Reservar</h4><a href=\"/canchas\">Todas las canchas</a><a href='/canchas?deporte=futbol'>Canchas de fútbol</a>"
-        "<a href='/canchas?deporte=tenis'>Canchas de tenis</a><a href='/canchas?deporte=padel'>Canchas de pádel</a>"
+        "<a href='/canchas?deporte=tenis'>Canchas de tenis</a><a href='/canchas?deporte=padel'>Canchas de pádel</a><a href='/tenis'>Tenis y pádel: torneos y partner</a>"
         "<a href='/canchas?deporte=academias'>Academias</a><a href='/#servicios'>Servicios y precios</a></div>"
         "<div><h4>Soporte</h4><a href='/#contacto'>Contacto</a><a href='/#como'>Cómo funciona</a>"
         "<a href='/#pagos'>Pagos y seguridad</a><a href='/legal/devoluciones'>Cambios, cancelaciones y devoluciones</a>"
         f"<a class='libro' href='/libro-de-reclamaciones'>{LIBRO_SVG}<span>Libro de Reclamaciones</span></a></div>"
-        "<div><h4>Pichangol</h4><a href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>Descarga la app</a>"
-        "<a href='/anfitrion/nueva'>Pon tu cancha en Pichangol</a>"
+        f"<div><h4>{MARCA}</h4><a href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>Descarga la app</a>"
+        f"<a href='/anfitrion/nueva'>Pon tu cancha en {MARCA}</a>"
         "<a href=\"/legal/terminos\">Términos y condiciones</a><a href=\"/legal/privacidad\">Política de privacidad</a>"
         "<a href=\"/legal/eliminar-cuenta\">Eliminar mi cuenta</a></div>"
-        f"</div><div class='pie-bajo'><div>© {em['anio']} Pichangol · {em['razon_social']} · {em['doc_etiqueta']} {em['ruc']} · {em['ciudad']} · "
+        f"</div><div class='pie-bajo'><div>© {em['anio']} {MARCA} · {em['razon_social']} · {em['doc_etiqueta']} {em['ruc']} · {em['ciudad']} · "
         f"<a href='mailto:{em['correo']}'>{em['correo']}</a></div>"
         "<div><a href='/legal/terminos'>Términos</a><a href='/legal/privacidad'>Privacidad</a><a href='/legal/devoluciones'>Devoluciones</a>"
         "<a href='/libro-de-reclamaciones'>Libro de Reclamaciones</a></div>"
@@ -997,9 +998,9 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
         "<div class='menu'><button type='button' class='redondo' id='btnMenu' aria-label='Menú' aria-expanded='false'>"
         f"{_HAMB_SVG}</button>"
         f"<div class='menu-panel' id='menuPanel' role='menu'>{cuenta}<hr>"
-        "<a href='/#como'>Cómo funciona</a><a href='/#contacto'>Centro de ayuda</a><hr>"
+        "<a href='/tenis'>🎾 Tenis y pádel</a><a href='/#como'>Cómo funciona</a><a href='/#contacto'>Centro de ayuda</a><hr>"
         + ("<a class='b' href='/'>Cambiar a modo jugador</a>" if modo == "anfitrion" else "<a class='b' href='/anfitrion'>Modo anfitrión</a>")
-        + "<a href='/anfitrion/nueva'>Pon tu cancha en Pichangol</a>"
+        + f"<a href='/anfitrion/nueva'>Pon tu cancha en {MARCA}</a>"
         f"<a href='{PLAY_URL}' rel='noopener'>Descarga la app</a><hr>"
         "<a href='/legal/terminos'>Términos y condiciones</a><a href='/legal/devoluciones'>Cambios y devoluciones</a>"
         "<a href='/libro-de-reclamaciones'>📕 Libro de Reclamaciones</a>"
@@ -1032,7 +1033,7 @@ def cabecera(*, tabs: str = "", busq: str = "", ses: dict | None = None, volver:
 
 # JS de la cabecera: menú ☰ (abre/cierra, se cierra al hacer clic fuera o con
 # Esc), desplegable del buscador y cerrar sesión.
-JS_NAV = r"""
+JS_NAV = (r"""
 (function(){
   // Medio de pago del checkout web (Yape por defecto, pedido del director 27-sep-2026):
   // `pcgMedioPago()` → 'yape' | 'tarjeta'. El selector (#medioPago) y el chip de la barra
@@ -1079,7 +1080,7 @@ JS_NAV = r"""
     document.body.appendChild(d); return d; }
   function abrirDlg(o, conCancelar){ return new Promise(function(res){ var d = dlg(), ok = d.querySelector('#pcgDlgOk'), no = d.querySelector('#pcgDlgNo'), ico = d.querySelector('#pcgDlgIco');
     d.querySelector('#pcgDlgTit').textContent = o.titulo || (conCancelar ? '¿Seguro?' : 'Aviso'); var msgEl = d.querySelector('#pcgDlgMsg'); if(o.html){ msgEl.innerHTML = o.html; } else { msgEl.textContent = o.mensaje || ''; }
-    if(o.logo){ ico.innerHTML = "<img src='/static/brand/logo_pin.png' alt='Pichangol'>"; } else { ico.textContent = o.icono || (o.destructivo ? '🗑' : (conCancelar ? '❓' : 'ℹ️')); }
+    if(o.logo){ ico.innerHTML = "<img src='/static/brand/logo_pin.png' alt='⟦MARCA⟧'>"; } else { ico.textContent = o.icono || (o.destructivo ? '🗑' : (conCancelar ? '❓' : 'ℹ️')); }
     ico.classList.toggle('mal', !!o.destructivo); ico.classList.toggle('marca', !!o.logo);
     ok.textContent = o.confirmar || (conCancelar ? 'Sí, continuar' : 'Entendido'); ok.classList.toggle('mal', !!o.destructivo); no.textContent = o.cancelar || 'Cancelar'; no.style.display = conCancelar ? '' : 'none';
     function fin(v){ d.classList.remove('open'); ok.onclick = no.onclick = d.onclick = null; document.removeEventListener('keydown', esc); res(v); }
@@ -1098,7 +1099,7 @@ JS_NAV = r"""
     (o.lineas || []).forEach(function(l){ h += '<div class="rp-l"><span>' + l.t + '</span><b>' + fmt(l.m) + '</b></div>'; });
     var c = o.cargo;
     if(c && c.monto > 0){
-      h += '<div class="rp-l"><span>' + (c.titulo || 'Cargo por servicio Pichangol') + '</span><b>' + fmt(c.monto) + '</b></div>';
+      h += '<div class="rp-l"><span>' + (c.titulo || 'Cargo por servicio ⟦MARCA⟧') + '</span><b>' + fmt(c.monto) + '</b></div>';
       if(c.html) h += '<details class="rp-d"><summary>Qué incluye el cargo</summary>' + c.html + '</details>';
       if(c.ahorro > 0) h += '<div class="rp-ok">🎉 Ahorras ' + fmt(c.ahorro) + ' en el cargo por pagar todo en un solo cobro</div>';
     }
@@ -1154,7 +1155,7 @@ JS_NAV = r"""
     fw.__pcg = true; window.fetch = fw; }
   if(!window.pcgToast){ window.pcgToast = function(t){ var el = document.createElement('div'); el.className = 'toast'; el.textContent = t; document.body.appendChild(el); setTimeout(function(){ el.classList.add('on'); }, 10); setTimeout(function(){ el.classList.remove('on'); setTimeout(function(){ el.remove(); }, 300); }, 2600); }; }
 })();
-"""
+""").replace('⟦MARCA⟧', MARCA)
 
 
 # ── ABRIR EN LA APP desde el navegador del CELULAR (pedido del director,
@@ -1179,7 +1180,7 @@ JS_NAV = r"""
 #     abren la app SIN pasar por el navegador cuando el enlace se toca en
 #     WhatsApp u otra app; esto cubre el caso en que el usuario ya está en Chrome.
 APP_PAQUETE = "pe.ebim.pichangol"
-JS_ABRIR_APP = r"""
+JS_ABRIR_APP = (r"""
 (function(){
   var ua = navigator.userAgent || '';
   var android = /Android/i.test(ua), webview = /; wv\)/.test(ua) || /\bwv\b/.test(ua);
@@ -1220,14 +1221,14 @@ JS_ABRIR_APP = r"""
     var st = document.createElement('style');
     st.textContent = ".abrir-app{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 14px;background:#0A1B3D;color:#fff;font:600 14px/1.25 'DM Sans',system-ui,sans-serif}.abrir-app img{width:36px;height:36px;border-radius:10px;background:#fff;padding:3px;flex:none}.abrir-app .t{flex:1;min-width:0}.abrir-app .t small{display:block;font-weight:500;opacity:.8;font-size:12px}.abrir-app .ir{flex:none;background:#0B8A3E;color:#fff;border:0;border-radius:999px;padding:9px 16px;font:700 14px 'DM Sans',system-ui,sans-serif;width:auto}.abrir-app .x{flex:none;background:transparent;border:0;color:#fff;opacity:.7;font-size:20px;line-height:1;padding:6px;width:auto}@media(min-width:901px){.abrir-app{display:none}}";
     var d = document.createElement('div'); d.id = 'abrirApp'; d.className = 'abrir-app'; d.setAttribute('role', 'region'); d.setAttribute('aria-label', 'Abrir en la app');
-    d.innerHTML = "<img src='/static/brand/logo_pin.png' alt=''><div class='t'>Abrir en la app Pichangol<small>Reserva más rápido y recibe avisos de tus partidos</small></div><button type='button' class='ir' id='abrirAppIr'>Abrir</button><button type='button' class='x' id='abrirAppX' aria-label='Seguir en la web'>&times;</button>";
+    d.innerHTML = "<img src='/static/brand/logo_pin.png' alt=''><div class='t'>Abrir en la app ⟦MARCA⟧<small>Reserva más rápido y recibe avisos de tus partidos</small></div><button type='button' class='ir' id='abrirAppIr'>Abrir</button><button type='button' class='x' id='abrirAppX' aria-label='Seguir en la web'>&times;</button>";
     document.head.appendChild(st); document.body.insertBefore(d, document.body.firstChild);
     d.querySelector('#abrirAppIr').addEventListener('click', function(){ window.pcgAbrirApp(); });
     d.querySelector('#abrirAppX').addEventListener('click', function(){ ls('pcg_app_banner_off', Date.now()); d.remove(); });
   }
   if(document.body) banner(); else document.addEventListener('DOMContentLoaded', banner);
 })();
-"""
+""").replace('⟦MARCA⟧', MARCA)
 JS_ABRIR_APP = JS_ABRIR_APP.replace("pe.ebim.pichangol", APP_PAQUETE)
 JS_NAV = JS_NAV + JS_ABRIR_APP
 
@@ -1256,9 +1257,9 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
     page = (
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
         f"<meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover{vp_extra}'>"
-        f"<title>{e(titulo_tab or (titulo + ' · Pichangol'))}</title>"
+        f"<title>{e(titulo_tab or (titulo + f' · {MARCA}'))}</title>"
         f"<meta name='description' content='{e(desc or titulo)}'>"
-        f"<meta property='og:title' content='{e(titulo)} · Pichangol'>"
+        f"<meta property='og:title' content='{e(titulo)} · {MARCA}'>"
         f"<meta property='og:description' content='{e(desc or 'Reserva, juega, repite.')}'>"
         f"<meta property='og:image' content='{e(og_image)}'><meta property='og:type' content='website'>"
         + (f"<link rel='canonical' href='{e(canonical)}'><meta property='og:url' content='{e(canonical)}'>" if canonical else "")

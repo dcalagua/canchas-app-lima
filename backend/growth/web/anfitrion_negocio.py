@@ -54,6 +54,7 @@ from db.store import stores
 from web import datos, horarios, sesion, ui
 from web.anfitrion import (JS_PAGAR, _cabecera, _contexto, _en_segundo_plano, _pais_de, _sesion_o_entrar)
 from web.router import PLAY_URL, _moneda_de, e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["web-anfitrion-negocio"])
 
@@ -763,11 +764,11 @@ def _resumen_comision(email: str, iso: str, sim: str) -> str:
             n_on += 1
     total = rec_on + rec_sal
     if total <= 0:
-        return ("<div class='ng-card'><h3>Cuánto vas a recibir de Pichangol</h3><p class='sub' style='margin:0'>Nada pendiente por ahora. "
+        return (f"<div class='ng-card'><h3>Cuánto vas a recibir de {MARCA}</h3><p class='sub' style='margin:0'>Nada pendiente por ahora. "
                 "Cuando un jugador pague en línea, el neto aparece aquí y en tu billetera.</p></div>")
     def bloque(t, s, v):
         return f"<div class='ng-rc'><div><b>{e(t)}</b><small>{s}</small></div><span>{e(_m(v, sim))}</span></div>"
-    return ("<div class='ng-card'><h3>Cuánto vas a recibir de Pichangol</h3>"
+    return (f"<div class='ng-card'><h3>Cuánto vas a recibir de {MARCA}</h3>"
             + (bloque(f"Reservas online ({n_on})", f"La comisión ({e(_m(com_on, sim))}) se descontó del pago · recibes el neto", rec_on) if n_on else "")
             + (bloque(f"Reservas pagadas con tu saldo ({n_sal})", f"Recibes el 100% · la comisión ({e(_m(com_sal, sim))}) salió de tu billetera", rec_sal) if n_sal else "")
             + f"<div class='ng-rc tot'><b>Total por recibir</b><span>{e(_m(total, sim))}</span></div>"
@@ -833,7 +834,7 @@ def pagina_cobros_reporte(request: Request, r: str = "mes", desde: str = "", has
         f"<p class='sub' style='margin-top:6px'>{e(txt_rango)}</p>"
         "<div class='kpis'>" + _kpi("Cobrado", e(_m(facturado, sim, 0))) + _kpi("Por cobrar", e(_m(por_cobrar, sim, 0)))
         + _kpi("Reservas", str(n)) + _kpi("Ticket promedio por reserva", e(_m(ticket, sim)))
-        + _kpi("Comisión Pichangol estimada", e(_m(comision, sim)), "5 % de las reservas que trajo la app") + "</div>"
+        + _kpi(f"Comisión {MARCA} estimada", e(_m(comision, sim)), "5 % de las reservas que trajo la app") + "</div>"
         + _resumen_comision(ses["email"], iso, sim)
         + "<h2 class='ng-h2'>Ingresos cobrados (últimos 6 meses)</h2><div class='ng-card'>"
         + _barras(tot6, [f"{MESES_CORTO[mm - 1]} {str(yy)[2:]}" for yy, mm in meses], sim, "Cobrado por mes, últimos 6 meses") + "</div>"
@@ -1002,8 +1003,8 @@ def pagina_ocupacion(request: Request, p: str = "d90", m: str = "") -> HTMLRespo
 # ── Reportes · Cancelaciones (cancelaciones_screen.dart) ────────────────────
 
 _REEMBOLSO = {"reembolsado": "Devuelto al jugador por la pasarela", "reembolsado_manual": "Devuelto al jugador (a mano)",
-              "devuelto_saldo": "Devuelto al saldo del jugador", "manual": "Devolución pendiente del equipo Pichangol",
-              "fallo": "Devolución pendiente del equipo Pichangol", "sin_reembolso": "Canceló tarde · sin devolución",
+              "devuelto_saldo": "Devuelto al saldo del jugador", "manual": f"Devolución pendiente del equipo {MARCA}",
+              "fallo": f"Devolución pendiente del equipo {MARCA}", "sin_reembolso": "Canceló tarde · sin devolución",
               "no_aplica": "Pagaba en la cancha · nadie debe nada"}
 
 
@@ -2246,11 +2247,11 @@ document.addEventListener('click',async function(ev){var b=ev.target.closest('.n
   var j=await ngPost('/anfitrion/fijas/'+encodeURIComponent(id)+'/quitar',{},'Quitando…');if(j&&j.ok)pcgRecargar();else if(j)pcgAvisar({titulo:'No se pudo',mensaje:j.error});});})();
 """
 
-JS_DISPO = r"""
+JS_DISPO = (r"""
 document.addEventListener('change',async function(ev){var i=ev.target.closest('.ng-dispo input[type=checkbox]');if(!i)return;var abrir=i.checked;
   var j=await ngPost('/anfitrion/bloqueo',{cancha_id:window.__dispo.cancha,fecha:i.dataset.f,hora:i.dataset.h,bloquear:!abrir},abrir?'Abriendo…':'Cerrando…');
-  if(j&&j.ok){pcgToast(abrir?'Turno abierto ✅':'Turno cerrado');}else{i.checked=!abrir;if(j)pcgAvisar({titulo:j.error==='requiere_pro'?'Es Pichangol Pro':'No se pudo',mensaje:j.mensaje||j.error||'Reintenta.'});}});
-"""
+  if(j&&j.ok){pcgToast(abrir?'Turno abierto ✅':'Turno cerrado');}else{i.checked=!abrir;if(j)pcgAvisar({titulo:j.error==='requiere_pro'?'Es ⟦MARCA⟧ Pro':'No se pudo',mensaje:j.mensaje||j.error||'Reintenta.'});}});
+""").replace('⟦MARCA⟧', MARCA)
 
 JS_COBROS = r"""
 (function(){var C=window.__cob;

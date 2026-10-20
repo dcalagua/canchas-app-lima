@@ -27,6 +27,7 @@ from __future__ import annotations
 import os
 
 import config
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 ARREPENTIMIENTO_HORAS = float(os.getenv("ARREPENTIMIENTO_HORAS", "1"))
 ARREPENTIMIENTO_MIN_HORAS_TURNO = float(os.getenv("ARREPENTIMIENTO_MIN_HORAS_TURNO", "24"))
@@ -77,7 +78,7 @@ def opciones(mot: str, precio_centimos: int, cargo_centimos: int, simbolo: str =
     for medio in MEDIOS:
         monto, incluye = monto_devolucion(mot, medio, precio_centimos, cargo_centimos)
         if medio == "saldo":
-            etiqueta = "A tu saldo Pichangol (al instante)"
+            etiqueta = f"A tu saldo {MARCA} (al instante)"
             nota = "100 %, incluido el cargo por servicio. Lo usas en tu próxima reserva."
         else:
             etiqueta = "Al mismo medio de pago (tarjeta / Yape)"

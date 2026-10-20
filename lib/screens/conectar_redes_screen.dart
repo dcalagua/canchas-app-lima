@@ -90,7 +90,7 @@ class _ConectarRedesScreenState extends State<ConectarRedesScreen> {
         context,
         titulo: 'Autoriza en Facebook',
         mensaje:
-            'Se abrió una página de Facebook para que autorices a Pichangol a '
+            'Se abrió una página de Facebook para que autorices a $kBrandName a '
             'publicar en tu Instagram/Facebook. Cuando termines y veas el '
             'mensaje de confirmación, vuelve aquí y toca "Ya autoricé".',
         textoBoton: 'Ya autoricé',
@@ -129,7 +129,7 @@ class _ConectarRedesScreenState extends State<ConectarRedesScreen> {
             kContactoWhatsApp;
     await WhatsAppLink.abrir(
         numero,
-        'Hola Pichangol, quiero conectar las redes de "${widget.negocio.nombre}" '
+        'Hola $kBrandName, quiero conectar las redes de "${widget.negocio.nombre}" '
         'pero necesito ayuda con mi Instagram/Página.');
   }
 

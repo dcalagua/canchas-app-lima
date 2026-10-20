@@ -31,6 +31,7 @@ import urllib.request
 import uuid
 
 from collections import OrderedDict
+from config import MARCA, MARCA_DOMINIO  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 FORMATO = {"story": "historia", "reel": "cuadrado"}
 from marketing.agente_ia.guardrails import AVISO_IA, ORIGENES_IA_MEDIA  # noqa: E402,F401
@@ -183,7 +184,7 @@ def componer(receta: dict, *, titulo: str, subtitulo: str, etiqueta: str) -> byt
         v = {"id": receta["video_id"], "url": receta.get("video_url", "")}
         return agente_redes._poster_video(v, {"titulo": titulo, "subtitulo": subtitulo})
     formato = receta.get("formato") if receta.get("formato") in _pr.FORMATOS else "cuadrado"
-    return _pr.componer(_resolver_fotos(receta), titulo or "Pichangol", subtitulo or "", "www.pichangol.app", formato, etiqueta or "")
+    return _pr.componer(_resolver_fotos(receta), titulo or MARCA, subtitulo or "", MARCA_DOMINIO, formato, etiqueta or "")
 
 
 def guardar(content_id: str, imagen: bytes) -> str:

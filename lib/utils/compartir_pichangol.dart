@@ -6,6 +6,7 @@ import '../screens/login_google_sheet.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
 
+import '../brand.dart';
 /// COMPARTIR EN PICHANGOL: envía algo (link/texto de una ficha, producto,
 /// referido…) a un chat INTERNO de Pichangol, en vez del share sheet externo.
 ///
@@ -18,7 +19,7 @@ class CompartirPichangol {
   /// Comparte [texto] en un chat de Pichangol. Exige sesión (usa el portón único
   /// si no hay). Si no hay conversaciones, avisa y no rompe.
   static Future<void> compartir(BuildContext context,
-      {required String texto, String titulo = 'Compartir en Pichangol'}) async {
+      {required String texto, String titulo = 'Compartir en $kBrandName'}) async {
     if (!await LoginGoogleSheet.mostrar(context, motivo: 'compartir')) return;
     if (!context.mounted) return;
     final email = appState.usuario?.email ?? '';
@@ -27,7 +28,7 @@ class CompartirPichangol {
     if (convs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text(
-              'Aún no tienes chats en Pichangol. Escríbele a alguien primero.')));
+              'Aún no tienes chats en $kBrandName. Escríbele a alguien primero.')));
       return;
     }
     await showModalBottomSheet<void>(

@@ -7,6 +7,7 @@ import '../theme.dart';
 import 'compartir_pichangol.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Compartir / abrir la ubicación de un lugar (cancha o academia). Usa un enlace
 /// de Google Maps; no requiere dependencias extra (solo url_launcher).
 class UbicacionShare {
@@ -89,7 +90,7 @@ class UbicacionShare {
                             color: Colors.white,
                             fontWeight: FontWeight.w900,
                             fontSize: 13))),
-                title: const Text('Compartir en Pichangol'),
+                title: const Text('Compartir en $kBrandName'),
                 subtitle: const Text('Envíalo a un chat de la app'),
                 onTap: () {
                   Navigator.pop(ctx);

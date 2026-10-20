@@ -12,6 +12,7 @@ import 'chat_screen.dart';
 import 'login_google_sheet.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Ficha de un producto del Marketplace: foto, precio, vendedor y descripción.
 /// El comprador paga en la app (Culqi) y coordina la entrega por chat. Pichangol
 /// cobra su comisión y le debe el neto al vendedor.
@@ -324,7 +325,7 @@ class _ProductoDetalleScreenState extends State<ProductoDetalleScreen> {
                       SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                            'Pago protegido por Pichangol. Pagas en la app y '
+                            'Pago protegido por $kBrandName. Pagas en la app y '
                             'coordinas la entrega con el vendedor por chat.',
                             style: TextStyle(fontSize: 12, color: bosque)),
                       ),

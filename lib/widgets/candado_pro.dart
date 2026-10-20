@@ -4,6 +4,7 @@ import '../screens/hazte_pro_screen.dart';
 import '../state/app_state.dart';
 import 'dialogo_pichangol.dart';
 
+import '../brand.dart';
 /// Candado de PICHANGOL PRO (regla del director): las herramientas avanzadas
 /// del dueño — reserva manual y bloqueo de horas — son parte de la suscripción.
 ///
@@ -14,8 +15,8 @@ Future<bool> exigirPro(BuildContext context, {required String funcion}) async {
   if (appState.proActivo) return true;
   final ir = await confirmarPichangol(
     context,
-    titulo: 'Función de Pichangol Pro',
-    mensaje: '$funcion es parte de Pichangol Pro, la suscripción para dueños '
+    titulo: 'Función de $kBrandName Pro',
+    mensaje: '$funcion es parte de $kBrandName Pro, la suscripción para dueños '
         'que administran su negocio desde la app. Actívala y desbloquea esta '
         'y todas las herramientas Pro.',
     textoConfirmar: 'Hazte Pro',

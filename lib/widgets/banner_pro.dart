@@ -5,6 +5,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import 'icono_vivo.dart';
 
+import '../brand.dart';
 /// Banner "Hazte Pro" — visible en los puntos de mayor tráfico (pedido del
 /// director: que la membresía se vea en toda la app):
 ///  - NO Pro → tarjeta premium (gradiente bosque, mismo look que
@@ -87,7 +88,7 @@ class BannerPro extends StatelessWidget {
                           Text(
                             mensaje.isNotEmpty
                                 ? mensaje
-                                : 'Desbloquea todo Pichangol: reserva manual, '
+                                : 'Desbloquea todo $kBrandName: reserva manual, '
                                     'bloqueo de horas, campeonatos y más.',
                             style: TextStyle(
                                 color: Colors.white.withOpacity(0.88),
@@ -141,7 +142,7 @@ class BannerPro extends StatelessWidget {
                     color: Color(0xFFD9B45A), size: 20),
                 const SizedBox(width: 8),
                 const Expanded(
-                  child: Text('Eres Pichangol PRO',
+                  child: Text('Eres $kBrandName PRO',
                       style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w800,

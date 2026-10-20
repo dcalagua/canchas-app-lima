@@ -10,6 +10,7 @@ import '../theme.dart';
 import 'cargando_pichangol.dart';
 import 'dialogo_pichangol.dart';
 
+import '../brand.dart';
 /// Cobro con LIBÉLULA (Bolivia). Modelo "deuda + pasarela hospedada": el backend
 /// registra la deuda y devuelve una URL; aquí abrimos esa URL en un WebView para
 /// que el cliente pague (QR interoperable · tarjeta · Tigo Money). Al volver a la
@@ -99,7 +100,7 @@ class PagoLibelula {
           context,
           titulo: 'Pago en la app no disponible',
           mensaje: 'Todavía no tenemos habilitado el cobro dentro de '
-              'Pichangol en Bolivia, así que no se te cobró nada. Coordina '
+              '$kBrandName en Bolivia, así que no se te cobró nada. Coordina '
               'el pago directamente con el local o el vendedor.',
           icono: Icons.credit_card_off_outlined,
         );

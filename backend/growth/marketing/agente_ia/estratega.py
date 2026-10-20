@@ -19,6 +19,7 @@ import json
 import re
 
 from marketing.agente_ia import datos as _d
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 OBJETIVOS = ("reservas", "usuarios", "promo_cancha", "captar_duenos", "promo_zona", "interaccion", "trafico", "promo_real")
 KPI = {"reservas": "reservas_atribuidas", "promo_cancha": "reservas_atribuidas", "promo_real": "reservas_atribuidas",
@@ -157,7 +158,7 @@ def candidatas(s: dict, *, umbral: int = 15, dia_rotacion: int = 0) -> list[dict
             continue
         i += 1
         out.append(_cand(i, tipo="captar_duenos_zona", objetivo="captar_duenos", audiencia="duenos", zona=z,
-                         razon=f"{v['total']} canchas de {v['nombre']} ya aparecen en el mapa de Pichangol y no tienen dueño registrado.",
+                         razon=f"{v['total']} canchas de {v['nombre']} ya aparecen en el mapa de {MARCA} y no tienen dueño registrado.",
                          score=2.5 + min(v["total"], 80) / 40,
                          hechos={**_base_hechos(s), "zona": v["nombre"], "canchas_sin_dueno": v["total"], "registro_gratis": True}))
         if i > 40:
@@ -327,7 +328,7 @@ def por_reglas(cands: list[dict], n: int, auds: list[str], lista: dict[str, dict
 
 
 _SYSTEM = (
-    "Eres el estratega de marketing de Pichangol (marketplace para reservar canchas en Perú, Bolivia y Ecuador). "
+    f"Eres el estratega de marketing de {MARCA} (marketplace para reservar canchas en Perú, Bolivia y Ecuador). "
     "Cada día eliges QUÉ publicar en la página de Facebook entre oportunidades ya calculadas con datos reales. "
     "Regla fundamental: cada publicación debe tener un objetivo medible y una razón de negocio; no se publica por publicar. "
     "Solo puedes elegir ids de la lista de candidatas; no inventes oportunidades, cifras, promociones ni lugares. "

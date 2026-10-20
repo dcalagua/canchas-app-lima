@@ -39,6 +39,7 @@ import time
 
 import config
 from db.store import stores
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 # Duración de la sesión del panel. Vencida, el panel devuelve 401 y la página
 # vuelve sola al login (mismo manejo de 401 que ya existía).
@@ -115,7 +116,7 @@ TOTP_PASO = 30
 TOTP_DIGITOS = 6
 TOTP_VENTANA = 1           # ±1 paso (reloj del teléfono desfasado ≤30 s)
 RECUPERACION_N = 8
-EMISOR = "Pichangol Torre"
+EMISOR = f"{MARCA} Torre"
 
 _CFG_SECRETO = "admin_2fa_{u}"        # secreto TOTP cifrado
 _CFG_DESDE = "admin_2fa_desde_{u}"    # epoch de enrolamiento

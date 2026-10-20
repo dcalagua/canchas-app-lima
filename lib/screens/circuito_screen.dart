@@ -13,6 +13,7 @@ import 'ranking_global_screen.dart';
 import 'reto_dobles_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// CIRCUITO (hub del deporte). Agrupa TODO lo competitivo del circuito —ranking,
 /// retos, jugadores disponibles y la membresía Pro— en un solo lugar. Hoy el
 /// circuito es una capa de **TENIS**; cuando entre fútbol tendrá su propio
@@ -25,7 +26,7 @@ class CircuitoScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Liga de tenis Pichangol'),
+        title: const Text('Liga de tenis $kBrandName'),
         actions: [
           IconButton(
             tooltip: 'Unirme a un campeonato (enlace o código)',
@@ -116,8 +117,8 @@ class CircuitoScreen extends StatelessWidget {
                     : Icons.star,
                 color: amarillo,
                 title: appState.proActivo
-                    ? 'Pichangol Pro ✓'
-                    : 'Hazte Pichangol Pro',
+                    ? '$kBrandName Pro ✓'
+                    : 'Hazte $kBrandName Pro',
                 subtitle: appState.proActivo
                     ? 'Tu membresía del circuito está activa'
                     : 'Tu carnet oficial y el ranking del circuito',
@@ -178,7 +179,7 @@ class _HeroLiga extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Liga de tenis Pichangol',
+                    Text('Liga de tenis $kBrandName',
                         style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w900,

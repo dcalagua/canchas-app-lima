@@ -4,6 +4,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Mensaje de BIENVENIDA al dueño (onboarding con el "stack de valor" de la
 /// estrategia comercial: docs/estrategia-comercial-dueno.md). Se muestra UNA
 /// sola vez, al entrar por primera vez a "Mis canchas". Reencuadra la comisión
@@ -95,7 +96,7 @@ class _BienvenidaDuenoSheet extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                      'Pichangol es tu socio digital: te traemos clientes y te '
+                      '$kBrandName es tu socio digital: te traemos clientes y te '
                       'damos el sistema para manejar todo tu negocio.',
                       style: t.bodyMedium?.copyWith(
                           color: Colors.white.withOpacity(0.95), height: 1.35)),

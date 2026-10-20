@@ -1326,6 +1326,27 @@ def participa_en(c: dict, email: str) -> bool:
     return False
 
 
+def campeonatos_publicos(deportes: tuple[str, ...], limite: int = 12) -> list[dict]:
+    """Torneos vivos de esos deportes para una portada pública (`/tenis`): no
+    eliminados, no cerrados, el más nuevo primero (id descendente)."""
+    if not pg.habilitado or not deportes:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, academia_id, data FROM pichangol_campeonatos WHERE coalesce(eliminado,false) = false "
+                        "AND data->>'deporte' = ANY(%s) AND coalesce((data->>'cerrado')::boolean, false) = false "
+                        "ORDER BY id DESC LIMIT %s", (list(deportes), int(limite)))
+            out = []
+            for cid, aid, data in cur.fetchall():
+                d = _json_dict(data)
+                d["id"] = cid
+                d.setdefault("academiaId", aid or "")
+                out.append(d)
+            return out
+    except Exception:  # noqa: BLE001
+        return []
+
+
 def campeonato(campeonato_id: str) -> dict | None:
     if not pg.habilitado or not campeonato_id:
         return None

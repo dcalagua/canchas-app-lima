@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../utils/geo.dart';
 import 'dialogo_pichangol.dart';
 
+import '../brand.dart';
 /// Resultado de [exigirUbicacionReclamo]: si se puede seguir con el reclamo y
 /// el GPS que viaja al backend (puede ser null si la torre no lo exige).
 class UbicacionReclamo {
@@ -63,7 +64,7 @@ Future<UbicacionReclamo> exigirUbicacionReclamo(
         ajustes = true;
       case EstadoGpsReclamo.permisoBloqueado:
         titulo = 'Permite la ubicación';
-        mensaje = 'Pichangol no tiene permiso de ubicación. Actívalo en los '
+        mensaje = '$kBrandName no tiene permiso de ubicación. Actívalo en los '
             'ajustes de la app: para reclamar tu cancha necesitamos tu '
             'ubicación estando en el local (a menos de $maxM m).';
         ajustes = true;

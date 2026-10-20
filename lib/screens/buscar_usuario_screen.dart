@@ -13,6 +13,7 @@ import 'chat_screen.dart';
 import 'login_google_sheet.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// BUSCAR USUARIO (tipo WhatsApp): encuentra a un jugador por nombre o correo,
 /// chatéale directo y guárdalo como contacto. Con la búsqueda vacía muestra tus
 /// contactos guardados para escribir rápido.
@@ -336,7 +337,7 @@ class _FilaUsuario extends StatelessWidget {
               icon: const FaIcon(FontAwesomeIcons.whatsapp,
                   color: Color(0xFF25D366), size: 20),
               onPressed: () => WhatsAppLink.abrir(
-                  celular, 'Hola, te escribo desde Pichangol.'),
+                  celular, 'Hola, te escribo desde $kBrandName.'),
             ),
           if (onRetar != null)
             IconButton(

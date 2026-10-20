@@ -20,6 +20,7 @@ import paises
 from web import datos, horarios, ui
 from web.anfitrion import _entrar, _sesion_o_entrar
 from web.router import PLAY_URL, e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["web-anfitrion-boleadores"])
 _JSON_INVALIDO = object()
@@ -36,7 +37,7 @@ def _candado(ses: dict, nombre: str) -> HTMLResponse:
               "<div class='panel' style='max-width:640px;margin:22px auto 0;text-align:center'>"
               "<span class='anf-item-ico' style='background:#0E8F67'>🎾</span>"
               f"<h2 style='margin-top:12px'>Verifica tu identidad para ser {nombre.lower()}</h2>"
-              f"<p class='sub'>Vas a estar en una cancha con jugadores que no te conocen: por eso todo {nombre.lower()} de Pichangol tiene "
+              f"<p class='sub'>Vas a estar en una cancha con jugadores que no te conocen: por eso todo {nombre.lower()} de {MARCA} tiene "
               "identidad verificada (DNI validado). Verifícate desde la app: Perfil → Verificar identidad. Toma un minuto.</p>"
               f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}' rel='noopener'>Abrir en la app</a>"
               "<a class='btn sec' href='/anfitrion'>Volver al menú</a></div></div>")
@@ -81,11 +82,11 @@ def _tarjeta_sol(s: dict, sim: str) -> str:
             f"<div style='display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap'><b>{e(horarios.fecha_larga(s['fecha']))} · {e(s['hora_inicio'])}–{e(s['hora_fin'])}</b>"
             f"<span class='pill{' ok' if s['estado'] == 'aceptada' else ''}'>{e(_bol.estado_visible(s) or s['estado'])}</span></div>"
             f"<div class='sub' style='margin:0'>{e(s.get('club') or (s.get('data') or {}).get('cancha') or 'Cancha')} · {cliente} · {s['turnos']} turno{'s' if s['turnos'] != 1 else ''}</div>"
-            f"<div class='sub' style='margin:0'>Cobras {e(sim)} {int(s['monto_centimos']) / 100.0:.2f} − comisión Pichangol {e(sim)} {int(s['comision_centimos']) / 100.0:.2f} = <b>{e(sim)} {neto:.2f}</b> por recibir al terminar el turno.</div>"
+            f"<div class='sub' style='margin:0'>Cobras {e(sim)} {int(s['monto_centimos']) / 100.0:.2f} − comisión {MARCA} {e(sim)} {int(s['comision_centimos']) / 100.0:.2f} = <b>{e(sim)} {neto:.2f}</b> por recibir al terminar el turno.</div>"
             f"{acc}</div>")
 
 
-_JS_BOL = r"""
+_JS_BOL = (r"""
 (function(){
   var C = window.__bol, sel = new Set(C.canchas || []);
   var $ = function(id){ return document.getElementById(id); };
@@ -113,7 +114,7 @@ _JS_BOL = r"""
     box.innerHTML = '<span class="sub">Cargando locales…</span>';
     fetch('/anfitrion/boleador/locales?deporte=' + encodeURIComponent(dep)).then(function(r){ return r.json(); }).then(function(j){
       var ls = (j && j.locales) || [];
-      if(!ls.length){ box.innerHTML = '<span class="sub">Aún no hay locales verificados de ' + dep + ' en Pichangol.</span>'; return; }
+      if(!ls.length){ box.innerHTML = '<span class="sub">Aún no hay locales verificados de ' + dep + ' en ⟦MARCA⟧.</span>'; return; }
       box.innerHTML = ls.map(function(l){ var on = l.ids.some(function(i){ return sel.has(i); });
         return '<label class="bol-card' + (on ? ' sel' : '') + '" data-ids="' + l.ids.join(',') + '"><span class="ini">🏟️</span><div><span class="nom">' + esc(l.club) + '</span><div class="det">' + esc(l.zona || '') + ' · ' + l.ids.length + ' cancha' + (l.ids.length === 1 ? '' : 's') + '</div></div><span class="chk">✓</span></label>'; }).join('');
       box.querySelectorAll('.bol-card').forEach(function(el){ el.addEventListener('click', function(){ var ids = el.dataset.ids.split(','); var on = el.classList.toggle('sel'); ids.forEach(function(i){ if(on) sel.add(i); else sel.delete(i); }); }); });
@@ -126,7 +127,7 @@ _JS_BOL = r"""
     var body = {deporte: val('deps', 'dep'), categoria: val('cats', 'cat'), tarifa: tarifa, canchas: Array.from(sel),
                 disponibilidad: {dias: vals('dias', 'dia').map(Number), desde: $('desde').value, hasta: $('hasta').value},
                 etiquetas: vals('etqs', 'etq'), celular: $('celular').value, nombre: $('nombreBol').value, activo: $('activo').checked};
-    if(!body.categoria){ pcgAvisar({titulo: 'Falta tu categoría', mensaje: 'Elige tu categoría de la Liga Pichangol (5P, 5A, 5B, 4ta…).'}); return; }
+    if(!body.categoria){ pcgAvisar({titulo: 'Falta tu categoría', mensaje: 'Elige tu categoría de la Liga ⟦MARCA⟧ (5P, 5A, 5B, 4ta…).'}); return; }
     if(!(tarifa > 0)){ pcgAvisar({titulo: 'Falta tu tarifa', mensaje: 'Elige cuánto cobras por turno.'}); return; }
     if(!body.canchas.length){ pcgAvisar({titulo: 'Elige tus locales', mensaje: 'Marca al menos un local donde atiendes.'}); return; }
     pcgCargando('Guardando…');
@@ -155,7 +156,7 @@ _JS_BOL = r"""
                   confirmar: acc === 'cancelar' ? 'Sí, cancelar' : 'No puedo', destructivo: acc === 'cancelar'}).then(function(ok){ if(ok) go(); });
   });
 })();
-"""
+""").replace('⟦MARCA⟧', MARCA)
 
 
 @router.get("/anfitrion/boleador", response_class=HTMLResponse)
@@ -188,17 +189,17 @@ def pagina_boleador(request: Request) -> HTMLResponse:
         "<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
         f"<h1 class='anf-hola' style='margin-top:6px'>Soy {nombre.lower()} {estado}</h1>"
         f"<p class='sub'>Los jugadores te contratan por turno al reservar la cancha. Tú aceptas o rechazas cada solicitud. "
-        f"Pichangol descuenta {sim} {cfg['comision']:.2f} por turno y el resto queda por recibir en tu billetera al terminar el boleo.</p>"
+        f"{MARCA} descuenta {sim} {cfg['comision']:.2f} por turno y el resto queda por recibir en tu billetera al terminar el boleo.</p>"
         + (f"<h2 style='margin-top:22px'>Solicitudes pendientes <span class='pill'>{len(pend)}</span></h2><div style='display:grid;gap:10px'>"
            + "".join(_tarjeta_sol(s, paises.simbolo_de_moneda(s['moneda'])) for s in pend) + "</div>" if pend else "")
         + (f"<h2 style='margin-top:22px'>Boleos confirmados</h2><div style='display:grid;gap:10px'>"
            + "".join(_tarjeta_sol(s, paises.simbolo_de_moneda(s['moneda'])) for s in prox) + "</div>" if prox else "")
         + "<h2 style='margin-top:26px'>Mi perfil</h2><div class='panel' style='display:grid;gap:16px'>"
         "<div><label>Deporte</label><div class='chips' id='deps'></div></div>"
-        "<div><label>Mi categoría (Liga Pichangol)</label><div class='chips' id='cats'></div></div>"
+        f"<div><label>Mi categoría (Liga {MARCA})</label><div class='chips' id='cats'></div></div>"
         "<div><label>Tarifa por turno</label><div class='chips' id='tarifas'></div>"
         f"<div class='row' style='margin-top:8px'><div><label for='tarifaOtra'>Otro monto ({sim})</label><input id='tarifaOtra' inputmode='decimal' placeholder='p. ej. 35'></div></div></div>"
-        "<div><label>Locales donde atiendes</label><div class='sub' style='margin:0 0 8px;font-size:13px'>Solo locales verificados en Pichangol. Marca todos los que te queden bien.</div><div class='bol-box' id='locales'></div></div>"
+        f"<div><label>Locales donde atiendes</label><div class='sub' style='margin:0 0 8px;font-size:13px'>Solo locales verificados en {MARCA}. Marca todos los que te queden bien.</div><div class='bol-box' id='locales'></div></div>"
         "<div><label>Disponibilidad</label><div class='chips' id='dias'></div>"
         f"<div class='row' style='margin-top:8px'><div><label for='desde'>Desde</label><select id='desde'>{horas}</select></div><div><label for='hasta'>Hasta</label><select id='hasta'>{horas}</select></div></div></div>"
         "<div><label>Sobre ti (elige)</label><div class='chips' id='etqs'></div></div>"

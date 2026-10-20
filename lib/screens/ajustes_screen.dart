@@ -253,7 +253,7 @@ class AjustesScreen extends StatelessWidget {
               _AccionTile(
                 icon: Icons.ios_share,
                 color: morado,
-                title: 'Comparte Pichangol',
+                title: 'Comparte $kBrandName',
                 subtitle: 'Invita a tus amigos a reservar y jugar',
                 onTap: () => _compartirApp(context),
               ),
@@ -261,7 +261,7 @@ class AjustesScreen extends StatelessWidget {
               Text('Apariencia',
                   style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(height: 4),
-              Text('Elige cómo se ve Pichangol. Por defecto es claro.',
+              Text('Elige cómo se ve $kBrandName. Por defecto es claro.',
                   style: t.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurface
                           .withOpacity(0.6))),

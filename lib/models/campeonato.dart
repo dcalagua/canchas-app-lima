@@ -465,6 +465,10 @@ class Campeonato {
   /// AUSPICIADOR oficial (ej. "JORDI MEAT BOUTIQUE"). Espacio de marca en la
   /// publicidad y la página del torneo.
   final String auspiciador;
+  /// ORGANIZADOR del torneo (club, academia o persona: "Club Lawn Tennis").
+  /// La página pública y el afiche llevan SU marca primero; la plataforma
+  /// sale chica ("con la tecnología de …"). Vacío = academia / auspiciador.
+  final String organizador;
   /// LOGOS de los auspiciadores (URLs en Storage). Un campeonato puede tener
   /// varias empresas auspiciando: sus logos salen en el AFICHE y en la página.
   final List<String> auspiciadoresLogos;
@@ -515,6 +519,7 @@ class Campeonato {
     this.gruposManuales = const [],
     this.premios = '',
     this.auspiciador = '',
+    this.organizador = '',
     this.auspiciadoresLogos = const [],
     this.fotos = const [],
     this.aficheFondoUrl = '',
@@ -753,6 +758,7 @@ class Campeonato {
     List<List<String>>? gruposManuales,
     String? premios,
     String? auspiciador,
+    String? organizador,
     List<String>? auspiciadoresLogos,
     List<String>? fotos,
     String? aficheFondoUrl,
@@ -791,6 +797,7 @@ class Campeonato {
         gruposManuales: gruposManuales ?? this.gruposManuales,
         premios: premios ?? this.premios,
         auspiciador: auspiciador ?? this.auspiciador,
+        organizador: organizador ?? this.organizador,
         auspiciadoresLogos: auspiciadoresLogos ?? this.auspiciadoresLogos,
         fotos: fotos ?? this.fotos,
         aficheFondoUrl: aficheFondoUrl ?? this.aficheFondoUrl,
@@ -842,6 +849,7 @@ class Campeonato {
           'gruposManuales': gruposManuales,
         if (premios.isNotEmpty) 'premios': premios,
         if (auspiciador.isNotEmpty) 'auspiciador': auspiciador,
+        if (organizador.isNotEmpty) 'organizador': organizador,
         if (auspiciadoresLogos.isNotEmpty)
           'auspiciadoresLogos': auspiciadoresLogos,
         if (fotos.isNotEmpty) 'fotos': fotos,
@@ -905,6 +913,7 @@ class Campeonato {
         ],
         premios: (j['premios'] ?? '') as String,
         auspiciador: (j['auspiciador'] ?? '') as String,
+        organizador: (j['organizador'] ?? '') as String,
         auspiciadoresLogos: (j['auspiciadoresLogos'] as List?)
                 ?.map((e) => e.toString())
                 .toList() ??

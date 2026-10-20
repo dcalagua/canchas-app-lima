@@ -12,6 +12,7 @@ import '../theme.dart';
 import '../widgets/reto_flow.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// PERFIL GLOBAL del jugador: su carnet CONSOLIDADO entre todas las academias
 /// (identidad = correo). Se abre al tocar una fila del ranking global. Cierra el
 /// círculo de identidad: "una persona, un ranking".
@@ -421,7 +422,7 @@ class _PerfilGlobalScreenState extends State<PerfilGlobalScreen> {
                           fontWeight: pw.FontWeight.bold,
                           color: verde)),
                   pw.SizedBox(height: 6),
-                  pw.Text('Ranking Global Pichangol',
+                  pw.Text('Ranking Global $kBrandName',
                       style: const pw.TextStyle(
                           fontSize: 9, color: PdfColors.grey600)),
                 ]),

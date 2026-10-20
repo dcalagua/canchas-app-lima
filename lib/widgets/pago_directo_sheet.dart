@@ -20,6 +20,7 @@ import 'icono_vivo.dart';
 import 'logo_academia.dart';
 import 'marcas_pago.dart';
 
+import '../brand.dart';
 const _yapeMorado = Color(0xFF742284);
 
 /// Abre el CHAT INTERNO con la academia (exige cuenta). Lo usan la ficha de la
@@ -58,7 +59,7 @@ Future<void> avisarCoordinarPago(BuildContext context, Academia academia,
             onPressed: () {
               Navigator.of(ctx).pop();
               WhatsAppLink.abrir(academia.whatsapp,
-                  'Hola, quiero coordinar el pago de mis clases en ${academia.nombre} (vi tu academia en Pichangol).');
+                  'Hola, quiero coordinar el pago de mis clases en ${academia.nombre} (vi tu academia en $kBrandName).');
             },
             icon: const Icon(Icons.chat_outlined, color: lima),
             label: const Text('WhatsApp'),
@@ -508,7 +509,7 @@ class _HojaPagoDirectoState extends State<_HojaPagoDirecto> {
             ),
             const SizedBox(height: 8),
             const Text(
-                'Le pagas directo a la academia. Pichangol solo registra tu pago '
+                'Le pagas directo a la academia. $kBrandName solo registra tu pago '
                 'y te lo recuerda; no cobra comisión.',
                 style: TextStyle(color: textoTenue, fontSize: 12)),
           ],
@@ -999,7 +1000,7 @@ class _HojaPagoQrState extends State<_HojaPagoQr> {
             ],
             const SizedBox(height: 10),
             const Text(
-                'Le pagas directo a la academia. Pichangol no toca tu plata ni '
+                'Le pagas directo a la academia. $kBrandName no toca tu plata ni '
                 'cobra comisión: solo reconoce tu pago y te lo recuerda.',
                 style: TextStyle(color: textoTenue, fontSize: 12)),
           ],

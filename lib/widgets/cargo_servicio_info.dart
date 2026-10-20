@@ -4,6 +4,7 @@ import '../models/cargo_servicio.dart';
 import '../theme.dart';
 import 'dialogo_pichangol.dart';
 
+import '../brand.dart';
 /// Línea "Cargo por servicio Pichangol ⓘ · S/ x" del checkout (reserva,
 /// matrícula, Mi familia). El ⓘ abre el desglose con el MISMO formato de
 /// popup de toda la app (`DialogoPichangol`). Con [cot] nulo o sin cargo no
@@ -178,7 +179,7 @@ Future<void> mostrarDesgloseCargo(BuildContext context, CotizacionCargo cot,
             Text(
               '${cot.regla.isNotEmpty ? '${cot.regla}. ' : ''}'
               'El precio va completo al ${cot.linea == 'academias' ? 'a la academia' : 'local'}, '
-              'menos su comisión; este cargo es lo que cobra Pichangol por el servicio.',
+              'menos su comisión; este cargo es lo que cobra $kBrandName por el servicio.',
               style: t.bodySmall?.copyWith(color: textoTenue, height: 1.3),
             ),
             if (cot.ahorroCentimos > 0) ...[

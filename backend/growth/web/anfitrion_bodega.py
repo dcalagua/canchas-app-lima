@@ -38,6 +38,7 @@ from web import almacen, datos, sesion, ui
 from web import bodega_datos as bd
 from web.anfitrion import _entrar
 from web.ui import PLAY_URL, e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["web-anfitrion-bodega"])
 BASE = "/anfitrion/bodega"
@@ -136,7 +137,7 @@ def _ses(request: Request):
     cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'>"
               "<h1 style='font-size:22px'>Mi bodega</h1><p class='sub'>En esta web aún no está activo el inicio de sesión. "
               "Administra tu bodega desde la app.</p>"
-              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a></div></div>")
     return None, ui.shell("Mi bodega", cuerpo, sesion=None)
 
 
@@ -151,7 +152,7 @@ def _dueno_json(request: Request) -> tuple[str | None, JSONResponse | None]:
     if not email:
         return None, JSONResponse({"ok": False, "error": "Inicia sesión para continuar."}, status_code=401)
     if not pro(email):
-        return None, JSONResponse({"ok": False, "error": "La bodega es parte de Pichangol Pro.", "requiere_pro": True}, status_code=402)
+        return None, JSONResponse({"ok": False, "error": f"La bodega es parte de {MARCA} Pro.", "requiere_pro": True}, status_code=402)
     return email, None
 
 
@@ -247,8 +248,8 @@ def _vista_pro(ses: dict) -> HTMLResponse:
               "<div style='font-size:44px'>🧃🍺</div><h1 style='font-size:22px;margin:10px 0 6px'>Administra tu bodega</h1>"
               "<p class='sub'>Caja rápida, stock con alertas de reposición, reportes de venta y la carta digital con QR para tus "
               "clientes. Tú cobras con tu Yape o efectivo, como siempre.</p>"
-              "<p class='sub'>La bodega es parte de <b>Pichangol Pro</b>. Actívalo en Perfil → 👑 Pichangol Pro y vuelve aquí.</p>"
-              f"<div class='acciones' style='justify-content:center'><a class='btn' href='/pro'>👑 Activar con Pichangol Pro</a>"
+              f"<p class='sub'>La bodega es parte de <b>{MARCA} Pro</b>. Actívalo en Perfil → 👑 {MARCA} Pro y vuelve aquí.</p>"
+              f"<div class='acciones' style='justify-content:center'><a class='btn' href='/pro'>👑 Activar con {MARCA} Pro</a>"
               "<a class='btn sec' href='/anfitrion'>Volver al menú</a></div></div>")
     return ui.shell("Mi bodega", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mi bodega · Modo anfitrión",
                     extra_head=f"<style>{CSS}</style>")
@@ -346,7 +347,7 @@ def _vista_pedidos(pedidos: list[dict], cfg: dict) -> str:
         cab = (f"<div class='t'><b>{e(bd.resumen(p['items']))} → {e(p['zona'])}</b><b style='white-space:nowrap'>{e(_m(p['moneda'], p['total']))}</b></div>"
                f"<div class='sub2'>{e(p['cliente_nombre'] or p['cliente'])} · {e(_hace(p['creado']))}</div>")
         if p["pagado"]:
-            cab += "<div class='pag'>💳 PAGADO con saldo Pichangol · solo entrégalo</div>"
+            cab += f"<div class='pag'>💳 PAGADO con saldo {MARCA} · solo entrégalo</div>"
         if est == "pendiente":
             acc = (f"<div class='acc'><button type='button' class='btn' data-resp='{e(p['id'])}' data-v='1'>Confirmar ✅</button>"
                    f"<button type='button' class='btn sec' data-resp='{e(p['id'])}' data-v='0' style='color:var(--rojo,#C0392B)'>Rechazar</button></div>")
@@ -777,7 +778,7 @@ def entregar_pedido(request: Request, pid: str, body: dict = Body(default_factor
         puntos = int(round(p["total"]))
         if puntos > 0:  # FIDELIDAD: pagar con saldo suma puntos, se acreditan al ENTREGARSE
             _push(p["cliente"], "¡Te llegaron puntos! ⭐",
-                  f"Ganaste +{puntos} puntos Pichangol por tu pedido pagado con saldo. Canjéalos como descuento en tu próxima reserva online.",
+                  f"Ganaste +{puntos} puntos {MARCA} por tu pedido pagado con saldo. Canjéalos como descuento en tu próxima reserva online.",
                   tipo="puntos")
         return JSONResponse({"ok": True, "mensaje": "Entregado ✅ · ya estaba pagado con saldo (el monto entra a tu «por recibir»)"})
     medio = str(body.get("medio") or "")

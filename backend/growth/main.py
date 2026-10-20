@@ -24,6 +24,7 @@ from entrenador.router import router as entrenador_router
 from db.store import seed_verificadores, stores
 from legal.router import router as legal_router
 from web.router import router as web_router
+from web.portal_tenis import router as portal_tenis_router
 from web.anfitrion import router as anfitrion_router
 from web.anfitrion_academia import router as anfitrion_academia_router
 from web.anfitrion_academia_ops import router as anfitrion_academia_ops_router
@@ -69,9 +70,10 @@ from propiedad.router import router as propiedad_router
 from puntos.router import router as puntos_router
 from solicitudes.router import router as solicitudes_router
 from verificacion_fisica.router import router as vf_router
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 app = FastAPI(
-    title="Pichangol — Crecimiento (puntos, zonas, verificación física)",
+    title=f"{MARCA} — Crecimiento (puntos, zonas, verificación física)",
     description="No-retención de datos personales (Ley 29733). Integraciones en STUB.",
     version="0.1.0",
 )
@@ -175,6 +177,7 @@ app.include_router(marketing_router)
 app.include_router(agente_ia_router)  # AI Marketing Agent: /admin/api/mkt/* + short-link /go/{codigo}
 app.include_router(legal_router)
 app.include_router(web_router)
+app.include_router(portal_tenis_router)  # /tenis: portada de raqueta (canchas, torneos con marca del organizador, partner, liga)
 app.include_router(academia_web_router)  # ficha pública /academia/{id} + matrícula web
 app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}
 app.include_router(jugador_clases_router)  # /mis-clases: Mis clases y pagos del jugador

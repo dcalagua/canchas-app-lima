@@ -15,9 +15,10 @@ import random
 import re
 
 from marketing.agente_ia import guardrails, zonas
+from config import MARCA, MARCA_DOMINIO  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 CTA = {
-    "jugadores": "Reserva en la web o descarga la app Pichangol",
+    "jugadores": f"Reserva en la web o descarga la app {MARCA}",
     "duenos": "Registra tu cancha en Modo anfitrión",
 }
 TONOS = {"cercano": "cercano y natural, como un amigo que juega", "divertido": "divertido y con chispa, sin payasadas",
@@ -26,7 +27,7 @@ _PAIS = {"PE": "Perú", "BO": "Bolivia", "EC": "Ecuador"}
 _TAG_DEP = {"fútbol": "futbol", "pádel": "padel", "vóley": "voley", "básquet": "basquet", "natación": "natacion"}
 
 _SYSTEM = (
-    "Escribes las publicaciones de la página de Facebook/Instagram de Pichangol, una app (Android y web www.pichangol.app) "
+    f"Escribes las publicaciones de la página de Facebook/Instagram de {MARCA}, una app (Android y web {MARCA_DOMINIO}) "
     "para reservar canchas y armar partidos, presente en Perú, Bolivia y Ecuador. Español latinoamericano natural "
     "(del país indicado), como una persona, no como una marca gritando.\n"
     "REGLAS ESTRICTAS:\n"
@@ -131,63 +132,63 @@ def _banco(op: dict) -> list[dict]:
             {"titulo": f"{p.get('pct')}% en {loc}", "subtitulo": f"Hora feliz {franja_txt}" if p.get("tipo") == "hora_feliz" else "Descuento en turnos seleccionados",
              "etiqueta": "Promo",
              "texto": f"{loc}{(' en ' + z) if z else ''} tiene {p.get('pct')}% de descuento {franja_txt}.\n\n"
-                      f"Reserva por Pichangol y el descuento se aplica solo."},
+                      f"Reserva por {MARCA} y el descuento se aplica solo."},
             {"titulo": f"Promo en {loc}", "subtitulo": f"{p.get('pct')}% de descuento", "etiqueta": "Promo",
              "texto": f"Dato para tu próximo partido: {loc} tiene {p.get('pct')}% de descuento {franja_txt}.\n\n"
-                      f"Aparta tu turno en Pichangol antes de que se llene."},
+                      f"Aparta tu turno en {MARCA} antes de que se llene."},
         ]
     if tipo == "promo_zona":
         return [
             {"titulo": f"Hora feliz en {z}", "subtitulo": f"Hasta {h.get('pct_max')}% en canchas de la zona", "etiqueta": "Promo",
              "texto": f"Hay {h.get('canchas_con_promo')} canchas de {z} con hora feliz: hasta {h.get('pct_max')}% de descuento en sus horarios valle.\n\n"
-                      f"Búscalas en el mapa de Pichangol y arma el partido."},
+                      f"Búscalas en el mapa de {MARCA} y arma el partido."},
             {"titulo": f"{z}: juega con descuento", "subtitulo": f"{h.get('canchas_con_promo')} canchas con hora feliz", "etiqueta": "Promo",
              "texto": f"Si juegas en {z}, mira esto: {h.get('canchas_con_promo')} canchas tienen hora feliz con hasta {h.get('pct_max')}% de descuento.\n\n"
-                      f"Elige la tuya en Pichangol y reserva en un toque."},
+                      f"Elige la tuya en {MARCA} y reserva en un toque."},
         ]
     if tipo == "canchas_nuevas":
         return [
-            {"titulo": f"Nuevas canchas en {z}", "subtitulo": "Ya se reservan en Pichangol", "etiqueta": "Nuevo",
-             "texto": f"Sumamos {h.get('canchas_nuevas')} cancha(s) en {z} que ya puedes reservar desde Pichangol.\n\n"
+            {"titulo": f"Nuevas canchas en {z}", "subtitulo": f"Ya se reservan en {MARCA}", "etiqueta": "Nuevo",
+             "texto": f"Sumamos {h.get('canchas_nuevas')} cancha(s) en {z} que ya puedes reservar desde {MARCA}.\n\n"
                       f"Mira horarios en vivo y confirma sin llamadas."},
             {"titulo": f"{z} suma canchas", "subtitulo": "Nuevas opciones para tu partido", "etiqueta": "Nuevo",
-             "texto": f"Más opciones para jugar en {z}: {h.get('canchas_nuevas')} cancha(s) nueva(s) ya están en Pichangol.\n\n"
+             "texto": f"Más opciones para jugar en {z}: {h.get('canchas_nuevas')} cancha(s) nueva(s) ya están en {MARCA}.\n\n"
                       f"Entra, mira sus horarios y arma el partido."},
         ]
     if tipo == "captar_duenos_zona":
         return [
             {"titulo": f"Dueños de canchas en {z}", "subtitulo": "Tu cancha ya está en el mapa: reclámala", "etiqueta": "Para dueños",
-             "texto": f"En {z} hay {h.get('canchas_sin_dueno')} canchas que los jugadores ya ven en el mapa de Pichangol, pero sin su dueño.\n\n"
+             "texto": f"En {z} hay {h.get('canchas_sin_dueno')} canchas que los jugadores ya ven en el mapa de {MARCA}, pero sin su dueño.\n\n"
                       f"Si una es tuya, regístrala gratis: recibes reservas, cobras en línea y ordenas tu agenda."},
             {"titulo": f"¿Tienes cancha en {z}?", "subtitulo": "Los jugadores ya la buscan en el mapa", "etiqueta": "Para dueños",
-             "texto": f"Hay {h.get('canchas_sin_dueno')} canchas de {z} que ya aparecen en Pichangol esperando a su dueño.\n\n"
+             "texto": f"Hay {h.get('canchas_sin_dueno')} canchas de {z} que ya aparecen en {MARCA} esperando a su dueño.\n\n"
                       f"Reclama la tuya gratis y empieza a recibir reservas con cobro en línea."},
         ]
     if tipo == "demanda_zona":
         return [
             {"titulo": f"Buscan cancha en {z}", "subtitulo": "Jugadores lo están pidiendo en la app", "etiqueta": "Para dueños",
-             "texto": f"{h.get('solicitudes_jugadores')} jugadores pidieron canchas en {z} desde Pichangol.\n\n"
+             "texto": f"{h.get('solicitudes_jugadores')} jugadores pidieron canchas en {z} desde {MARCA}.\n\n"
                       f"Si tienes una, regístrala gratis y empieza a recibir esas reservas."},
             {"titulo": f"{z} quiere jugar", "subtitulo": "La demanda ya está, falta tu cancha", "etiqueta": "Para dueños",
              "texto": f"Desde la app, {h.get('solicitudes_jugadores')} jugadores pidieron canchas en {z}.\n\n"
-                      f"Si administras una, publícala gratis en Pichangol y recibe esas reservas."},
+                      f"Si administras una, publícala gratis en {MARCA} y recibe esas reservas."},
         ]
     if tipo == "comunidad":
         return [
             {"titulo": "¿Te falta uno para la pichanga?", "subtitulo": "Hay partidos buscando jugadores", "etiqueta": "Comunidad",
-             "texto": f"Ahora mismo hay {h.get('partidos_abiertos')} partidos abiertos en Pichangol buscando jugadores.\n\n"
+             "texto": f"Ahora mismo hay {h.get('partidos_abiertos')} partidos abiertos en {MARCA} buscando jugadores.\n\n"
                       f"Cuéntanos: ¿qué posición juegas y quién es el que siempre llega tarde?"},
             {"titulo": "Partidos buscando jugadores", "subtitulo": "Súmate a una pichanga", "etiqueta": "Comunidad",
-             "texto": f"¿Sin equipo esta semana? Hay {h.get('partidos_abiertos')} partidos abiertos en Pichangol que necesitan gente.\n\n"
+             "texto": f"¿Sin equipo esta semana? Hay {h.get('partidos_abiertos')} partidos abiertos en {MARCA} que necesitan gente.\n\n"
                       f"Comenta tu deporte favorito y entra a sumarte."},
         ]
     if tipo == "duenos_beneficios":
         return [
             {"titulo": "Tu cancha, siempre llena", "subtitulo": "Agenda, cobros y reservas en un solo lugar", "etiqueta": "Para dueños",
              "texto": "¿Sigues anotando reservas en un cuaderno y respondiendo mensajes a medianoche?\n\n"
-                      "Con Pichangol publicas tu cancha gratis, recibes reservas con confirmación y cobras en línea."},
+                      f"Con {MARCA} publicas tu cancha gratis, recibes reservas con confirmación y cobras en línea."},
             {"titulo": "Horas vacías, a llenarlas", "subtitulo": "Jugadores nuevos buscando dónde jugar", "etiqueta": "Para dueños",
-             "texto": "Cada hora sin jugar es plata que no vuelve. En Pichangol los jugadores ven tu cancha en el mapa y reservan solos.\n\n"
+             "texto": f"Cada hora sin jugar es plata que no vuelve. En {MARCA} los jugadores ven tu cancha en el mapa y reservan solos.\n\n"
                       "El registro es gratis y te acompañamos a activarla."},
         ]
     # marca_jugadores
@@ -200,13 +201,13 @@ def _banco(op: dict) -> list[dict]:
                    "texto": "Todos tenemos en el grupo al que dice 'ya estoy saliendo' desde la ducha.\n\n"
                             "Etiquétalo y que esta vez llegue: la cancha ya la reservaste tú."}],
         "historia": [{"titulo": "Hecha para jugar más", "subtitulo": "Reservar cancha sin complicarse", "etiqueta": "",
-                      "texto": "Pichangol nació de una pregunta simple: ¿por qué conseguir cancha es más difícil que jugar?\n\n"
+                      "texto": f"{MARCA} nació de una pregunta simple: ¿por qué conseguir cancha es más difícil que jugar?\n\n"
                                "Por eso puedes ver horarios, reservar y armar tu partido desde el celular."}],
         "comunidad": [{"titulo": "¿Con quién juegas hoy?", "subtitulo": "Arma el partido con tu grupo", "etiqueta": "",
                        "texto": "Cuéntanos en los comentarios: ¿cuál es tu deporte y cuál es tu horario favorito para jugar?\n\n"
-                                "En Pichangol encuentras cancha y gente con quien armarlo."}],
+                                f"En {MARCA} encuentras cancha y gente con quien armarlo."}],
     }.get(enfoque, [{"titulo": "Reserva sin llamar", "subtitulo": "Horarios a la vista, confirmación al instante", "etiqueta": "",
-                     "texto": "Olvídate de llamar a preguntar si hay cancha. En Pichangol ves los horarios, eliges y confirmas.\n\n"
+                     "texto": f"Olvídate de llamar a preguntar si hay cancha. En {MARCA} ves los horarios, eliges y confirmas.\n\n"
                               "Así de simple para organizar la próxima pichanga."}])
 
 

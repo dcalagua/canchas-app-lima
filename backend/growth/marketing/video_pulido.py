@@ -36,6 +36,7 @@ import urllib.request
 import uuid
 
 import config
+from config import MARCA, MARCA_DOMINIO  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _ASSETS = os.path.join(_DIR, "assets")
@@ -131,12 +132,12 @@ def _png_intro(W: int, H: int, ruta: str) -> str:
     lg = _logo(diam)
     f = _font("Bold", int(min(W, H) * 0.11))
     fs = _font("Medium", int(min(W, H) * 0.036))
-    tw = d.textlength("Pichangol", font=f)
+    tw = d.textlength(MARCA, font=f)
     total_w = diam + int(diam * 0.18) + tw
     x = (W - total_w) // 2
     y = H // 2 - diam // 2 - int(H * 0.03)
     im.paste(lg, (int(x), int(y)), lg)
-    d.text((x + diam + int(diam * 0.18), y + diam // 2), "Pichangol", font=f, fill=NOCHE, anchor="lm")
+    d.text((x + diam + int(diam * 0.18), y + diam // 2), MARCA, font=f, fill=NOCHE, anchor="lm")
     d.text((W // 2, y + diam + int(H * 0.05)), "Reserva, juega, repite.", font=fs, fill=VERDE, anchor="mm")
     return _guardar(im, ruta)
 
@@ -156,17 +157,17 @@ def _png_cierre(W: int, H: int, titulo: str, ruta: str) -> str:
     lg = _logo(diam)
     im.paste(lg, ((W - diam) // 2, int(H * 0.22)), lg)
     f_t = _font("Bold", int(min(W, H) * 0.072))
-    lineas = _envolver(d, (titulo or "Reserva tu cancha en Pichangol").strip(), f_t, int(W * 0.82))[:3]
+    lineas = _envolver(d, (titulo or f"Reserva tu cancha en {MARCA}").strip(), f_t, int(W * 0.82))[:3]
     y = int(H * 0.22) + diam + int(H * 0.05)
     for ln in lineas:
         d.text((W // 2, y), ln, font=f_t, fill=BLANCO, anchor="mm")
         y += int(f_t.size * 1.18)
     f_u = _font("Bold", int(min(W, H) * 0.046))
-    pill_w = int(d.textlength("www.pichangol.app", font=f_u)) + int(W * 0.08)
+    pill_w = int(d.textlength(MARCA_DOMINIO, font=f_u)) + int(W * 0.08)
     pill_h = int(f_u.size * 1.9)
     px0, py0 = (W - pill_w) // 2, y + int(H * 0.03)
     d.rounded_rectangle([px0, py0, px0 + pill_w, py0 + pill_h], radius=pill_h // 2, fill=BLANCO)
-    d.text((W // 2, py0 + pill_h // 2), "www.pichangol.app", font=f_u, fill=NOCHE, anchor="mm")
+    d.text((W // 2, py0 + pill_h // 2), MARCA_DOMINIO, font=f_u, fill=NOCHE, anchor="mm")
     f_s = _font("Medium", int(min(W, H) * 0.03))
     d.text((W // 2, py0 + pill_h + int(H * 0.035)), "Descarga la app · Android", font=f_s, fill=(200, 230, 200), anchor="mm")
     return _guardar(im, ruta)
@@ -178,7 +179,7 @@ def _png_marca(W: int, H: int, ruta: str) -> str:
     diam = int(min(W, H) * 0.07)
     f = _font("Bold", int(diam * 0.62))
     tmp = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
-    tw = int(tmp.textlength("Pichangol", font=f))
+    tw = int(tmp.textlength(MARCA, font=f))
     w = diam + int(diam * 0.25) + tw + int(diam * 0.5)
     h = int(diam * 1.3)
     im = Image.new("RGBA", (w, h), (0, 0, 0, 0))
@@ -186,7 +187,7 @@ def _png_marca(W: int, H: int, ruta: str) -> str:
     d.rounded_rectangle([0, 0, w - 1, h - 1], radius=h // 2, fill=(0, 0, 0, 92))
     lg = _logo(diam)
     im.paste(lg, (int(diam * 0.15), (h - diam) // 2), lg)
-    d.text((int(diam * 0.15) + diam + int(diam * 0.2), h // 2), "Pichangol", font=f, fill=BLANCO, anchor="lm")
+    d.text((int(diam * 0.15) + diam + int(diam * 0.2), h // 2), MARCA, font=f, fill=BLANCO, anchor="lm")
     return _guardar(im, ruta)
 
 
@@ -197,7 +198,7 @@ def _png_rotulo(W: int, H: int, titulo: str, ruta: str) -> str:
     tmp = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     lineas = _envolver(tmp, (titulo or "").strip(), f, int(W * 0.78))[:2]
     if not lineas:
-        lineas = ["Pichangol"]
+        lineas = [MARCA]
     tw = max(int(tmp.textlength(ln, font=f)) for ln in lineas)
     pad_x, pad_y = int(f.size * 0.7), int(f.size * 0.45)
     w = tw + pad_x * 2 + int(f.size * 0.5)
@@ -276,7 +277,7 @@ def escribir_ass(segmentos: list[dict], W: int, H: int, ruta: str, *, desplazar:
         "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, "
         "ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
         # Primary = color "cantado" (lima), Secondary = pendiente (blanco); BorderStyle 3 = caja (BackColour) con Outline de relleno.
-        f"Style: Pichangol,DM Sans,{tam},&H0018B57C,&H00FFFFFF,&H00000000,&H6E000000,-1,0,0,0,100,100,0,0,3,{max(6, tam // 6)},0,2,{int(W * 0.06)},{int(W * 0.06)},{margen_v},1",
+        f"Style: {MARCA},DM Sans,{tam},&H0018B57C,&H00FFFFFF,&H00000000,&H6E000000,-1,0,0,0,100,100,0,0,3,{max(6, tam // 6)},0,2,{int(W * 0.06)},{int(W * 0.06)},{margen_v},1",
         f"Style: Plano,DM Sans,{tam},&H00FFFFFF,&H00FFFFFF,&H00000000,&H6E000000,-1,0,0,0,100,100,0,0,3,{max(6, tam // 6)},0,2,{int(W * 0.06)},{int(W * 0.06)},{margen_v},1",
         "", "[Events]", "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
@@ -292,7 +293,7 @@ def escribir_ass(segmentos: list[dict], W: int, H: int, ruta: str, *, desplazar:
                 partes.append(f"{{\\k{cs}}}{_limpiar_ass(p['p'])}")
                 t = p_fin
             texto = " ".join(partes)
-            estilo = "Pichangol"
+            estilo = MARCA
         else:
             texto = _limpiar_ass(s.get("texto"))
             estilo = "Plano"

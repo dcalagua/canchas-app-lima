@@ -19,6 +19,7 @@ import json
 import urllib.request
 
 import config
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 
 def disponible() -> bool:
@@ -78,13 +79,13 @@ def registrar_deuda(
         "identificador_deuda": identificador,
         "callback_url": callback_url,
         "url_retorno": url_retorno,
-        "descripcion": (concepto or "Pago Pichangol")[:150],
+        "descripcion": (concepto or f"Pago {MARCA}")[:150],
         "nombre_cliente": (nombre or "Cliente")[:60],
-        "apellido_cliente": (apellido or "Pichangol")[:60],
+        "apellido_cliente": (apellido or MARCA)[:60],
         "moneda": "BOB",
         "lineas_detalle_deuda": [
             {
-                "concepto": (concepto or "Pago Pichangol")[:120],
+                "concepto": (concepto or f"Pago {MARCA}")[:120],
                 "cantidad": 1,
                 "costo_unitario": monto,
             }

@@ -12,6 +12,7 @@ import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Crea un canal de difusión (tipo WhatsApp): nombre, descripción y foto.
 class CrearCanalScreen extends StatefulWidget {
   const CrearCanalScreen({super.key});
@@ -114,7 +115,7 @@ class _CrearCanalScreenState extends State<CrearCanalScreen> {
               maxLength: 50,
               decoration: const InputDecoration(
                 labelText: 'Nombre del canal',
-                hintText: 'Ej. Pichangol San Borja',
+                hintText: 'Ej. $kBrandName San Borja',
               ),
             ),
             const SizedBox(height: 12),

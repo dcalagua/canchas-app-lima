@@ -64,6 +64,9 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
       TextEditingController(text: widget.editar?.premios ?? '');
   late final _auspiciador =
       TextEditingController(text: widget.editar?.auspiciador ?? '');
+  // Quién organiza (su marca va primero en la página y el afiche).
+  late final _organizador =
+      TextEditingController(text: widget.editar?.organizador ?? '');
   late Deporte _deporte = widget.deporteSugerido ?? Deporte.futbol;
   FormatoTorneo _formato = FormatoTorneo.eliminacion;
   /// Formato grupos: cada equipo juega al menos N partidos (2 o 3).
@@ -394,6 +397,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         minPartidos: _minPartidos,
         premios: _premios.text.trim(),
         auspiciador: _auspiciador.text.trim(),
+        organizador: _organizador.text.trim(),
         // Conservar los LOGOS de auspiciadores ya subidos: al reconstruir sin
         // este campo, la edición los borraba (default = lista vacía).
         auspiciadoresLogos: e.auspiciadoresLogos,
@@ -427,6 +431,7 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
         minPartidos: _minPartidos,
         premios: _premios.text.trim(),
         auspiciador: _auspiciador.text.trim(),
+        organizador: _organizador.text.trim(),
       );
     }
     // Sube el logo (si eligió uno nuevo) ahora que el campeonato ya tiene id.
@@ -819,6 +824,17 @@ class _CrearCampeonatoScreenState extends State<CrearCampeonatoScreen> {
               'en la página del torneo.',
               style: TextStyle(color: textoTenue, fontSize: 12)),
           const SizedBox(height: 10),
+          TextField(
+            controller: _organizador,
+            textCapitalization: TextCapitalization.words,
+            maxLength: 60,
+            decoration: const InputDecoration(
+                labelText: 'Organiza (opcional)',
+                hintText: 'Ej. Club Lawn Tennis de la Exposición',
+                helperText:
+                    'Tu marca sale primero en la página y el afiche del torneo.'),
+          ),
+          const SizedBox(height: 12),
           TextField(
             controller: _auspiciador,
             textCapitalization: TextCapitalization.characters,

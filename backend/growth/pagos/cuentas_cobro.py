@@ -37,6 +37,7 @@ from __future__ import annotations
 import re
 import time
 from datetime import datetime, timezone
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 # ── Catálogos por país (SELECCIÓN, nunca texto libre) ────────────────────────
 
@@ -323,7 +324,7 @@ def archivo_telecredito(lote: dict, cuenta_cargo: str, tipo_cargo: str = "C",
         lineas.append(_linea(_DETALLE, {
             "tipo_registro": "2", "tipo_cuenta_abono": tipo_cta, "moneda_abono": moneda,
             "cuenta_abono": cuenta, "tipo_doc": doc_tipo, "numero_doc": c.get("doc_numero", ""),
-            "nombre": c.get("titular", ""), "referencia_abono": f"Liquidacion Pichangol {f['n']} pago(s)",
+            "nombre": c.get("titular", ""), "referencia_abono": f"Liquidacion {MARCA} {f['n']} pago(s)",
             "referencia_beneficiario": f["dueno"][:20], "moneda_importe": moneda,
             "importe": str(f["neto_centimos"]), "validar_doc": "S" if c.get("doc_numero") else "N",
             "tipo_doc_pago": "D", "numero_doc_pago": lote.get("id", "")[:20],

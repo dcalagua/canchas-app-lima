@@ -14,6 +14,7 @@ import 'mis_ordenes_screen.dart';
 import 'verificar_identidad_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// "Mi tienda": el vendedor (dueño/academia) gestiona sus productos del
 /// Marketplace Pichangol — publicar, editar, pausar y borrar.
 class MisProductosScreen extends StatefulWidget {
@@ -64,7 +65,7 @@ class _MisProductosScreenState extends State<MisProductosScreen> {
     final ir = await confirmarPichangol(
       context,
       titulo: 'Verifícate para vender',
-      mensaje: 'Para publicar en el Marketplace Pichangol necesitas verificar tu '
+      mensaje: 'Para publicar en el Marketplace $kBrandName necesitas verificar tu '
           'identidad. Así los compradores confían en quién les vende. Es rápido.',
       textoConfirmar: 'Verificar identidad',
       textoCancelar: 'Ahora no',
@@ -169,7 +170,7 @@ class _MisProductosScreenState extends State<MisProductosScreen> {
         icono: Icons.storefront,
         titulo: 'Tu tienda\nestá vacía',
         mensaje: 'Publica tu primer producto y aparecerá en el Marketplace '
-            'Pichangol para todos los jugadores.',
+            '$kBrandName para todos los jugadores.',
         textoBoton: 'Publicar producto',
         onBoton: _nuevo,
       );

@@ -10,6 +10,7 @@ import '../utils/moneda.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Un renglón del estado de cuenta del JUGADOR (un pago que hizo o una reserva).
 class _Pago {
   final DateTime fecha;
@@ -129,7 +130,7 @@ class _MisPagosScreenState extends State<MisPagosScreen> {
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
               pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-                pw.Text('Pichangol',
+                pw.Text('$kBrandName',
                     style: pw.TextStyle(
                         color: PdfColors.white,
                         fontSize: 22,
@@ -211,7 +212,7 @@ class _MisPagosScreenState extends State<MisPagosScreen> {
         ),
         pw.SizedBox(height: 16),
         pw.Text(
-            'Documento generado por la app Pichangol. No es un comprobante '
+            'Documento generado por la app $kBrandName. No es un comprobante '
             'tributario.',
             style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
       ],

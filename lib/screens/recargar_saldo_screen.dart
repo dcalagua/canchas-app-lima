@@ -17,6 +17,7 @@ import '../utils/moneda.dart';
 import 'recarga_qr_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Recarga de saldo del dueño con Culqi (tarjeta o Yape). Tokeniza con la llave
 /// pública en el celular y confirma el cobro contra el backend. Devuelve el monto
 /// recargado (int soles) por Navigator.pop, o null si se canceló/falló.
@@ -310,7 +311,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
         ? await PagoPayPhone.cobrar(
             context,
             monto: _monto,
-            concepto: 'Recarga de saldo Pichangol',
+            concepto: 'Recarga de saldo $kBrandName',
             email: _email,
             moneda: _mon,
             tipo: 'recarga',
@@ -319,7 +320,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
         : await PagoLibelula.cobrar(
             context,
             monto: _monto,
-            concepto: 'Recarga de saldo Pichangol',
+            concepto: 'Recarga de saldo $kBrandName',
             email: _email,
             moneda: _mon,
             tipo: 'recarga',
@@ -477,7 +478,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                     child: const Text(
                         'Las recargas con Yape y tarjeta todavía no están '
                         'activas. Estamos terminando de habilitarlas; mientras '
-                        'tanto puedes seguir usando Pichangol con normalidad.',
+                        'tanto puedes seguir usando $kBrandName con normalidad.',
                         style: TextStyle(fontSize: 13)),
                   ),
                 ],
@@ -536,7 +537,7 @@ class _RecargarSaldoScreenState extends State<RecargarSaldoScreen> {
                       },
                       icon: const Icon(Icons.qr_code_2, color: bosque),
                       label: const Text(
-                          'Yapear al QR de Pichangol (sin tarjeta)',
+                          'Yapear al QR de $kBrandName (sin tarjeta)',
                           style: TextStyle(
                               color: bosque, fontWeight: FontWeight.w700)),
                     ),

@@ -20,6 +20,7 @@ import 'pago_procesando.dart';
 import '../utils/moneda.dart';
 import 'icono_vivo.dart';
 
+import '../brand.dart';
 /// Flujo de cobro reutilizable al jugador (reservas, matrículas). Deja elegir
 /// una **tarjeta guardada** (Culqi One Click) o **una nueva**, tokeniza, cobra
 /// contra el backend y muestra la caja "cobrándose". Devuelve true si el pago
@@ -243,7 +244,7 @@ class PagoTarjeta {
           context,
           titulo: 'Pago en la app no disponible',
           mensaje: 'Todavía no tenemos habilitado el cobro dentro de '
-              'Pichangol, así que no se te cobró nada. Coordina el pago '
+              '$kBrandName, así que no se te cobró nada. Coordina el pago '
               'directamente con el local o el vendedor.',
           icono: Icons.credit_card_off_outlined,
         );

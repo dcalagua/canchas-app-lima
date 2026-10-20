@@ -33,6 +33,7 @@ from db.store import (
     stores,
 )
 from propiedad import fotos_reclamo, identidad, twilio_adapter, whatsapp_adapter
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 
 def config_modo() -> dict:
@@ -361,7 +362,7 @@ def crear_reclamo(cancha_id: str, solicitante_id: str, nombre_local: str,
     )
     stores.reclamos.append(r)
     _notificar_admin(
-        f"🟢 Nuevo reclamo de cancha en Pichangol\n"
+        f"🟢 Nuevo reclamo de cancha en {MARCA}\n"
         f"Local: {nombre_local}\n"
         f"Relación: {relacion or 's/d'}\n"
         f"Titular (DNI {dni or 's/n'}): {nombre_titular or 's/d'}\n"

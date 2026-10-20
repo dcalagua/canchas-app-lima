@@ -18,6 +18,7 @@ import '../widgets/sesion_requerida.dart';
 import 'chat_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Reservas hechas por el jugador logueado (rediseño premium, handoff v2):
 /// tabs Próximas/Historial + card destacada bosque de la próxima reserva.
 class MisReservasScreen extends StatefulWidget {
@@ -237,7 +238,7 @@ class _PuntosCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('$puntos puntos Pichangol',
+                    Text('$puntos puntos $kBrandName',
                         style: t.titleMedium
                             ?.copyWith(fontWeight: FontWeight.w800)),
                     Text(
@@ -723,7 +724,7 @@ Future<void> _cancelarPagadaEnLinea(
   final incluyeCargo = res['incluye_cargo'] == true;
   final msg = switch (reembolso) {
     'saldo' =>
-      'Reserva cancelada. Te devolvimos $devTxt a tu saldo Pichangol (cargo incluido): ya lo puedes usar.',
+      'Reserva cancelada. Te devolvimos $devTxt a tu saldo $kBrandName (cargo incluido): ya lo puedes usar.',
     'reembolsado' =>
       'Reserva cancelada. Te devolvemos $devTxt al mismo medio de pago en 3 a 7 días hábiles.'
           '${!incluyeCargo && r.cargoServicio > 0 ? ' El cargo por servicio no se devuelve.' : ''}',
@@ -738,7 +739,7 @@ Future<void> _cancelarPagadaEnLinea(
   final extra = [
     if (horasBono > 0)
       'Te devolvimos $horasBono ${horasBono == 1 ? 'hora' : 'horas'} a tu bono de este local.',
-    if (ptsDev > 0) 'Recuperaste tus $ptsDev puntos Pichangol.',
+    if (ptsDev > 0) 'Recuperaste tus $ptsDev puntos $kBrandName.',
   ].join(' ');
   if (reembolso == 'saldo') unawaited(appState.sincronizarSaldo());
   if (context.mounted) {
@@ -839,7 +840,7 @@ class _HojaCancelarOnlineState extends State<_HojaCancelarOnline> {
     if (widget.estado['reembolsable'] == true) {
       return [
         if (h > 0 && !_soloBonoATiempo) 'Además te devolvemos $hTxt a tu bono.',
-        if (p > 0) 'Recuperas tus $p puntos Pichangol.',
+        if (p > 0) 'Recuperas tus $p puntos $kBrandName.',
       ].join(' ');
     }
     return [

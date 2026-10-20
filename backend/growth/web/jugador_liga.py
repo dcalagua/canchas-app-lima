@@ -56,6 +56,7 @@ from db.store import stores
 from web import campeonatos_logica as L
 from web import catalogos, sesion, ui
 from web.ui import e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter()
 
@@ -93,7 +94,7 @@ def sin_sesion(request: Request, ruta: str, titulo: str, que: str) -> HTMLRespon
     cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'>"
               f"<h1 style='font-size:22px'>{e(titulo)}</h1>"
               f"<p class='sub'>En esta web aún no está activo el inicio de sesión. {e(que)} está en la app.</p>"
-              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a></div></div>")
     return ui.shell(titulo, cuerpo, sesion=None)
 
 
@@ -356,7 +357,7 @@ def pagina_mi_nivel(request: Request, deporte: str = "") -> HTMLResponse:
         " .catch(function(){pcgCargando(false);btn.disabled=false;pcgAvisar({titulo:'Sin conexión',mensaje:'Revisa tu internet y reintenta.',icono:'📶'})})};\n"
         "$('nvOtro').onclick=function(){pcgRecargar('Un momento…')};\n"
         "})();</script>")
-    return ui.shell("Tu nivel de jugador", cuerpo, sesion=ses, titulo_tab="Tu nivel · Pichangol")
+    return ui.shell("Tu nivel de jugador", cuerpo, sesion=ses, titulo_tab=f"Tu nivel · {MARCA}")
 
 
 @router.post("/web/mi-nivel")
@@ -847,7 +848,7 @@ def pagina_liga(request: Request, tab: str = "ranking", deporte: str = "", modal
     ses = sesion.de_request(request)
     if not ses:
         return sin_sesion(request, "/liga" + ("?" + request.url.query if request.url.query else ""),
-                          "Liga de tenis Pichangol", "La Liga de tenis")
+                          f"Liga de tenis {MARCA}", "La Liga de tenis")
     from circuito.router import perfil as circ_perfil
     email = ses["email"].lower()
     tab = tab if tab in dict(_TABS) else "ranking"
@@ -857,13 +858,13 @@ def pagina_liga(request: Request, tab: str = "ranking", deporte: str = "", modal
 
     det = " · ".join(x for x in ((mi_circ or {}).get("zona"), ("Cat. " + mi_circ["categoria"]) if (mi_circ or {}).get("categoria") else "") if x)
     estado = ((f"✅ Estás en el circuito{' · ' + e(det) if det else ''}") if mi_circ else "🏆 Únete al circuito y deja que te reten")
-    hero = ("<div class='lg-hero'><div class='top'><span class='bola'>🎾</span><div><b>Liga de tenis Pichangol</b>"
+    hero = (f"<div class='lg-hero'><div class='top'><span class='bola'>🎾</span><div><b>Liga de tenis {MARCA}</b>"
             "<small>Rankea, reta y sube en tu ciudad</small></div></div>"
             f"<div class='est'>{estado}</div><div class='acc'>"
             + ("" if mi_circ else "<button type='button' class='btn' onclick='lgUnirme()'>Unirme al circuito</button>")
             + "<a class='btn' href='/anfitrion/campeonatos'>🔗 Unirme a un campeonato</a>"
-            + ("<span class='btn' style='cursor:default'>👑 Pichangol Pro ✓</span>" if pro
-               else "<button type='button' class='btn' onclick='lgPro()'>⭐ Hazte Pichangol Pro</button>")
+            + (f"<span class='btn' style='cursor:default'>👑 {MARCA} Pro ✓</span>" if pro
+               else f"<button type='button' class='btn' onclick='lgPro()'>⭐ Hazte {MARCA} Pro</button>")
             + "</div></div>")
     tabs = "<nav class='lg-tabs'>" + "".join(
         f"<a class='{'sel' if k == tab else ''}' href='/liga?tab={k}'>{t}"
@@ -885,7 +886,7 @@ def pagina_liga(request: Request, tab: str = "ranking", deporte: str = "", modal
               "<a class='sub' href='/perfil' style='text-decoration:none'>‹ Perfil</a>"
               + hero + tabs + contenido + "</div>"
               "<script>window.LG=" + json.dumps(cfg).replace("</", "<\\/") + ";</script><script>" + _JS_LIGA + "</script>")
-    return ui.shell("Liga de tenis Pichangol", cuerpo, sesion=ses, titulo_tab="Liga de tenis · Pichangol")
+    return ui.shell(f"Liga de tenis {MARCA}", cuerpo, sesion=ses, titulo_tab=f"Liga de tenis · {MARCA}")
 
 
 def _medalla(pos: int) -> str:
@@ -1118,7 +1119,7 @@ def _tab_dobles(ses: dict) -> str:
         return (f"<button type='button' class='lg-slot nada' data-slot='{k}'>{avatar('+', '')}"
                 f"<span class='q'><small>{titulo}</small><b>{sub}</b></span><span style='color:#b0b0b0;font-size:22px'>›</span></button>")
     return ("<div class='lg-card'><div style='font-weight:800;font-size:18px'>🎾 Dobles de Tenis</div>"
-            "<p class='sub' style='margin:4px 0 12px'>Arma el partido: tu pareja vs la pareja rival. Los cuatro deben estar registrados en Pichangol.</p>"
+            f"<p class='sub' style='margin:4px 0 12px'>Arma el partido: tu pareja vs la pareja rival. Los cuatro deben estar registrados en {MARCA}.</p>"
             "<div class='lg-sec' style='margin-top:4px'>Tu pareja</div>"
             f"<div class='lg-slot fijo'>{avatar(yo_nombre, foto)}<span class='q'><small>Tú</small><b>{e(yo_nombre)}</b></span></div>"
             + slot("companero", "Compañero", "Elegir compañero")
@@ -1194,7 +1195,7 @@ def salir_circuito(request: Request) -> JSONResponse:
 
 def _texto_limite(r: dict) -> JSONResponse:
     return JSONResponse({"ok": False, "error": "limite_retos_free", "limite": int(r.get("limite") or 3),
-                         "mensaje": f"Los jugadores sin Pichangol Pro pueden enviar {int(r.get('limite') or 3)} retos por semana. Hazte Pro y reta sin límites."})
+                         "mensaje": f"Los jugadores sin {MARCA} Pro pueden enviar {int(r.get('limite') or 3)} retos por semana. Hazte Pro y reta sin límites."})
 
 
 @router.post("/web/liga/retar")
@@ -1226,7 +1227,7 @@ def retar(request: Request, body: dict = Body(default_factory=dict)) -> JSONResp
         return JSONResponse({"ok": False, "mensaje": "No se pudo enviar el reto. Reintenta."}, status_code=400)
     aviso_push(rival, "¡Te retaron! 🎾", f'{minom} te retó a un partido. Ábrelo en "Mis retos".', "reto",
                {"accion": "reto", "deporte": dep})
-    _mensaje_directo(yo, minom, rival, f"⚔️ Te reté en Pichangol ({dep}). Coordinemos cancha y horario.")
+    _mensaje_directo(yo, minom, rival, f"⚔️ Te reté en {MARCA} ({dep}). Coordinemos cancha y horario.")
     return JSONResponse({"ok": True, "mensaje": f'Reto enviado a {rival_nombre}. Coordinen la cancha y repórtenlo en "Mis retos".'})
 
 
@@ -1378,7 +1379,7 @@ def confirmar(request: Request, rid: int, body: dict = Body(default_factory=dict
     return JSONResponse({"ok": True, "mensaje": "Marcaste el resultado en disputa. Vuelvan a reportarlo cuando coincidan."})
 
 
-_JS_LIGA = r"""
+_JS_LIGA = (r"""
 (function(){
 var C = window.LG || {};
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -1392,7 +1393,7 @@ function post(url, body, msg){
 function fallo(j, t){ pcgAvisar({titulo: t || 'No se pudo', mensaje: (j && j.mensaje) || 'Reintenta en un momento.', icono: '⚠️'}); }
 function av(nombre, foto){ return foto ? "<img class='lg-av' src='" + esc(foto) + "' alt='' referrerpolicy='no-referrer'>" : "<span class='lg-av ini'>" + esc((nombre || '?').trim().charAt(0).toUpperCase() || '?') + "</span>"; }
 window.lgPro = function(){
-  pcgConfirmar({titulo: 'Pichangol Pro', icono: '⭐', mensaje: 'Tu carnet oficial, el ranking del circuito y retos sin límite. Actívala aquí mismo con tu saldo.', confirmar: 'Ver Pichangol Pro', cancelar: 'Ahora no'})
+  pcgConfirmar({titulo: '⟦MARCA⟧ Pro', icono: '⭐', mensaje: 'Tu carnet oficial, el ranking del circuito y retos sin límite. Actívala aquí mismo con tu saldo.', confirmar: 'Ver ⟦MARCA⟧ Pro', cancelar: 'Ahora no'})
     .then(function(ok){ if(ok) location.href = '/pro'; });
 };
 function limite(j){
@@ -1452,7 +1453,7 @@ function buscador(input, caja, alElegir){
     t = setTimeout(function(){ fetch('/web/liga/buscar?q=' + encodeURIComponent(q)).then(function(r){ return r.json(); }).then(function(j){
       if(input.value.trim() !== q) return; var l = (j && j.jugadores) || [];
       caja.innerHTML = l.length ? l.map(function(x, i){ return "<div class='lg-jug' data-i='" + i + "'>" + av(x.nombre, x.foto) + "<div class='q'><b>" + esc(x.nombre) + "</b><small>" + esc(x.sub) + "</small></div>" + alElegir.boton(x) + "</div>"; }).join('')
-        : "<p class='sub' style='font-size:13px'>Nadie con ese nombre. La persona debe haber entrado a Pichangol al menos una vez.</p>";
+        : "<p class='sub' style='font-size:13px'>Nadie con ese nombre. La persona debe haber entrado a ⟦MARCA⟧ al menos una vez.</p>";
       caja.querySelectorAll('.lg-jug').forEach(function(el){ var x = l[+el.dataset.i]; if(alElegir.click) el.addEventListener('click', function(){ alElegir.click(x); }); });
     }).catch(function(){}); }, 350); });
 }
@@ -1518,4 +1519,4 @@ if(retos) retos.addEventListener('click', function(ev){
   }
 });
 })();
-"""
+""").replace('⟦MARCA⟧', MARCA)

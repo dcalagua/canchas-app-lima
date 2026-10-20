@@ -3,6 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../models/models.dart';
 import '../utils/geo.dart';
 import '../utils/moneda.dart';
+import '../brand.dart';
 import 'concierge_service.dart'; // reutiliza SugerenciaConcierge / RespuestaConcierge
 
 /// Búsqueda inteligente por **REGLAS** (sin IA, costo CERO). Interpreta la
@@ -130,7 +131,7 @@ class BusquedaLocal {
     final q = dep != null ? '${dep.etiqueta.toLowerCase()} ' : '';
     if (n == 0) {
       return 'No encontré canchas ${q}reservables cerca de ti$cuando. 😕\n'
-          'Prueba con otro deporte, o si conoces una, ¡regístrala en Pichangol! 🙌';
+          'Prueba con otro deporte, o si conoces una, ¡regístrala en $kBrandName! 🙌';
     }
     final b = barato ? 'más económicas ' : '';
     return '¡Listo! Estas canchas ${q}${b}son las más cercanas a ti$cuando 👇';

@@ -28,6 +28,7 @@ import '../utils/moneda.dart';
 import '../config/pais.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Ficha pública de una academia: feed de fotos propio (no Instagram embebido),
 /// planes con matrícula en el mismo app (pago simulado) y redes para seguir.
 class AcademiaDetalleScreen extends StatelessWidget {
@@ -229,7 +230,7 @@ class _Contenido extends StatelessWidget {
                       label: const Text('Contactar por WhatsApp',
                           style: TextStyle(fontWeight: FontWeight.w800)),
                       onPressed: () => WhatsAppLink.abrir(academia.whatsapp,
-                          'Hola, vi ${academia.nombre} en Pichangol y quiero info de las clases.'),
+                          'Hola, vi ${academia.nombre} en $kBrandName y quiero info de las clases.'),
                     ),
                   ),
                 ],
@@ -258,7 +259,7 @@ class _Contenido extends StatelessWidget {
                         label: 'WhatsApp',
                         color: const Color(0xFF25D366), // verde WhatsApp oficial
                         onTap: () => WhatsAppLink.abrir(academia.whatsapp,
-                            'Hola, vi ${academia.nombre} en Pichangol y quiero info de las clases.'),
+                            'Hola, vi ${academia.nombre} en $kBrandName y quiero info de las clases.'),
                       ),
                     _ChipAccion(
                       icon: Icons.emoji_events,
@@ -959,8 +960,8 @@ Future<bool> _pagarMatriculas(
               WhatsAppLink.abrir(
                   academia.whatsapp,
                   varios
-                      ? 'Hola, acabo de matricular a ${items.map((d) => d.nombre).join(', ')} en ${academia.nombre} por Pichangol.'
-                      : 'Hola, acabo de matricularme en ${academia.nombre} (${items.first.plan.nombre}) por Pichangol. Soy ${items.first.nombre}.');
+                      ? 'Hola, acabo de matricular a ${items.map((d) => d.nombre).join(', ')} en ${academia.nombre} por $kBrandName.'
+                      : 'Hola, acabo de matricularme en ${academia.nombre} (${items.first.plan.nombre}) por $kBrandName. Soy ${items.first.nombre}.');
               Navigator.of(context).pop();
             },
             icon: const Icon(Icons.chat, color: lima),
@@ -994,7 +995,7 @@ Future<void> _avisarSinMatricula(BuildContext context, Academia academia) =>
     avisarCoordinarPago(context, academia,
         titulo: 'Inscríbete con la academia',
         mensaje: '${academia.nombre} todavía no recibe matrículas en línea por '
-            'Pichangol. Escríbele y te inscribe directo.');
+            '$kBrandName. Escríbele y te inscribe directo.');
 
 /// PLAN ACADEMIA (pago directo): crea la matrícula de cada persona con TODAS
 /// sus cuotas PENDIENTES (sin débito automático) y luego ofrece pagarle a la
@@ -1939,7 +1940,7 @@ class _HojaDatosAlumnoState extends State<_HojaDatosAlumno> {
                 if (_directo) ...[
                   const SizedBox(height: 2),
                   const Text(
-                      'Le pagas directo a la academia (Yape). Pichangol no cobra nada y te recuerda cada pago.',
+                      'Le pagas directo a la academia (Yape). $kBrandName no cobra nada y te recuerda cada pago.',
                       style: TextStyle(
                           color: bosque,
                           fontWeight: FontWeight.w600,

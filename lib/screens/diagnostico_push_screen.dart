@@ -9,6 +9,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/responsive.dart';
 
+import '../brand.dart';
 /// Diagnóstico de NOTIFICACIONES PUSH: recorre la cadena completa
 /// (Firebase en el APK → permiso → token → nube → Edge Function) y dice en
 /// cristiano cuál eslabón está roto y qué paso de la guía lo arregla
@@ -134,8 +135,8 @@ class _DiagnosticoPushScreenState extends State<DiagnosticoPushScreen> {
       } else {
         _marcar(pPermiso, _Estado.fallo,
             detalle: 'El sistema tiene bloqueadas las notificaciones de '
-                'Pichangol.',
-            arreglo: 'Ajustes de Android → Apps → Pichangol → Notificaciones '
+                '$kBrandName.',
+            arreglo: 'Ajustes de Android → Apps → $kBrandName → Notificaciones '
                 '→ permitir.');
         return _terminar();
       }
@@ -229,7 +230,7 @@ class _DiagnosticoPushScreenState extends State<DiagnosticoPushScreen> {
               'al recibir una llamada en reposo suena, pero la pantalla no se '
               'enciende para contestar.',
           arreglo: 'Toca "Activar pantalla completa" abajo (o en Ajustes → '
-              'Aplicaciones → Pichangol → Notificaciones → activa '
+              'Aplicaciones → $kBrandName → Notificaciones → activa '
               '"Notificaciones en pantalla completa") y repite.');
     }
     _terminar();

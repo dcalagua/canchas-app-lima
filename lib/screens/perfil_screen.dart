@@ -150,7 +150,7 @@ class PerfilScreen extends StatelessWidget {
         if (u == null)
           _ItemAirbnb(
             icono: Icons.storefront_outlined,
-            titulo: 'Marketplace Pichangol',
+            titulo: 'Marketplace $kBrandName',
             onTap: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const MarketplaceScreen())),
           ),
@@ -284,7 +284,7 @@ class PerfilScreen extends StatelessWidget {
                 _ItemAirbnb(
                   icono: Icons.leaderboard,
                   emoji: '🥇',
-                  titulo: 'Liga de tenis Pichangol',
+                  titulo: 'Liga de tenis $kBrandName',
                   badge: appState.retosPendientes,
                   onTap: () => ir(const CircuitoScreen(),
                       alVolver: appState.cargarRetosPendientes),
@@ -385,7 +385,7 @@ class PerfilScreen extends StatelessWidget {
     if (!context.mounted) return;
     Navigator.of(context).popUntil((r) => r.isFirst);
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Tu cuenta fue eliminada. Gracias por usar Pichangol.')));
+        content: Text('Tu cuenta fue eliminada. Gracias por usar $kBrandName.')));
   }
 
   @override
@@ -417,7 +417,7 @@ class PerfilScreen extends StatelessWidget {
                       margen: EdgeInsets.only(top: 14),
                       mensaje:
                           'Insignia PRO en el ranking, retos y beneficios '
-                          'exclusivos en todo Pichangol.'),
+                          'exclusivos en todo $kBrandName.'),
                   const SizedBox(height: 16),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -452,7 +452,7 @@ class PerfilScreen extends StatelessWidget {
                     // Si YA es Pro, la insignia va SOBRE la foto (no aquí).
                     insigniaSiPro: false,
                     mensaje: 'Insignia PRO en el ranking, retos y beneficios '
-                        'exclusivos en todo Pichangol.'),
+                        'exclusivos en todo $kBrandName.'),
                 const SizedBox(height: 16),
                 ..._colIzquierda(context, u),
                 ..._colDerecha(context, u),

@@ -34,6 +34,7 @@ from . import redes as redes_svc
 from .flyer import generar_flyer
 from .landing import render_landing
 from .posts import generar_posts
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["marketing"])
 
@@ -329,7 +330,7 @@ def redes_callback(code: str = "", state: str = "",
     else:
         r = redes_svc.procesar_callback(code, state)
         ok = r.get("ok", False)
-        msg = "¡Listo! Ya puedes volver a Pichangol." if ok else \
+        msg = f"¡Listo! Ya puedes volver a {MARCA}." if ok else \
             (r.get("error") or "No se pudo conectar.")
         # El callback es GET, así que el middleware NO persiste: guardamos el
         # snapshot a mano para que la conexión SOBREVIVA a reinicios/redeploys.
@@ -565,7 +566,7 @@ def ver_campeonato(campeonato_id: str, request: Request,
         detalle = ("La variable SUPABASE_URL no parece una URL (revísala en "
                    "Railway)." if "invalida" in str(e) else
                    "El servidor aún no está configurado para mostrar "
-                   "campeonatos. Ábrelo desde la app Pichangol.")
+                   f"campeonatos. Ábrelo desde la app {MARCA}.")
         return HTMLResponse(campeonato_web.html_simple(
             "Página no disponible", detalle), status_code=503)
     except urllib.error.HTTPError as e:

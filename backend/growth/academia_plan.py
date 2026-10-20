@@ -50,6 +50,7 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 from db.store import stores
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["academias"])
 
@@ -722,7 +723,7 @@ def _avisar_resultado(a: dict, data: dict, hechas: list[dict], aceptar: bool, mo
                               + ([["Centavos de identificación del pago", f"{sim} {extra:.2f}"]] if extra > 0 else []),
                     "total": ["Total pagado", f"{sim} {(total + extra):.2f}"],
                     "boton": ["Ver mis clases", "/mis-clases"], "etiqueta": "Recibo",
-                    "nota": f"Pagaste directo a {nombre_a}. Pichangol solo registra el pago y te lo recuerda."})
+                    "nota": f"Pagaste directo a {nombre_a}. {MARCA} solo registra el pago y te lo recuerda."})
             except Exception:  # noqa: BLE001
                 pass
 
@@ -1082,10 +1083,10 @@ def recordatorios_alumnos(ahora: datetime | None = None, academias: list[dict] |
             monto = float(c.get("monto") or 0)
             concepto = str(c.get("concepto") or "tu mensualidad")
             if cd and cd.get("tipo") == "qr":
-                como = " Págala con el QR de la academia desde Pichangol (Mis clases): se confirma sola."
+                como = f" Págala con el QR de la academia desde {MARCA} (Mis clases): se confirma sola."
             elif cd:
                 como = (f" Yapea a {cd['titular']} ({cd['yape'][:3]} {cd['yape'][3:6]} {cd['yape'][6:]}) "
-                        f"y reporta el código de seguridad en Pichangol.")
+                        f"y reporta el código de seguridad en {MARCA}.")
             else:
                 como = " Coordina el pago con la academia."
             if etapa == "antes":

@@ -77,6 +77,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../config/pais.dart';
 import '../utils/moneda.dart';
 
+import '../brand.dart';
 /// Instancia única del estado para toda la app (sin paquetes extra de DI).
 final AppState appState = AppState();
 
@@ -2832,6 +2833,7 @@ class AppState extends ChangeNotifier {
       minJugadoresEquipo: base.minJugadoresEquipo,
       premios: base.premios,
       auspiciador: base.auspiciador,
+      organizador: base.organizador,
       auspiciadoresLogos: base.auspiciadoresLogos,
       aficheFondoUrl: base.aficheFondoUrl,
       aficheVariante: base.aficheVariante,
@@ -2862,6 +2864,7 @@ class AppState extends ChangeNotifier {
     int minPartidos = 2,
     String premios = '',
     String auspiciador = '',
+    String organizador = '',
   }) {
     final c = Campeonato(
       id: 'camp_${DateTime.now().microsecondsSinceEpoch}',
@@ -2887,6 +2890,7 @@ class AppState extends ChangeNotifier {
       minPartidos: minPartidos,
       premios: premios,
       auspiciador: auspiciador,
+      organizador: organizador,
       // Congela la moneda por el país de la SEDE (no el del dispositivo): un
       // torneo en Lima queda en S/ aunque el profe lo cree desde Bolivia.
       moneda: sedeUbicacion != null
@@ -8836,7 +8840,7 @@ class AppState extends ChangeNotifier {
           cuerpo:
               '${_lugarFechaHora(cancha, fecha, '$hora–${reserva.horaFin}')}. '
               '¡Te esperamos!'
-              '${pts > 0 ? ' ⭐ Ganaste +$pts puntos Pichangol.' : ''}'
+              '${pts > 0 ? ' ⭐ Ganaste +$pts puntos $kBrandName.' : ''}'
               '${ptsEfectivo > 0 ? ' ⭐ Pagando en la cancha ganas +$ptsEfectivo puntos (se acreditan cuando el local registre tu pago).' : ''}',
         );
       }
@@ -9029,7 +9033,7 @@ class AppState extends ChangeNotifier {
         titulo: 'Reserva confirmada ✅',
         cuerpo:
             '${_lugarFechaHora(cancha, fechaBloque, rango)}. ¡Te esperamos!'
-            '${ganadosYa ? ' ⭐ Ganaste +$ptsBloque puntos Pichangol.' : ''}'
+            '${ganadosYa ? ' ⭐ Ganaste +$ptsBloque puntos $kBrandName.' : ''}'
             '${ganaraEfectivo ? ' ⭐ Pagando en la cancha ganas +$ptsBloque puntos (se acreditan cuando el local registre tu pago).' : ''}',
       );
     } else {
@@ -9274,7 +9278,7 @@ class AppState extends ChangeNotifier {
     _pushAviso(
       email: email,
       titulo: '¡Te llegaron puntos! ⭐',
-      cuerpo: 'Ganaste +$puntos puntos Pichangol por tu pedido pagado con '
+      cuerpo: 'Ganaste +$puntos puntos $kBrandName por tu pedido pagado con '
           'saldo. Canjéalos como descuento en tu próxima reserva online.',
       tipo: 'puntos',
     );
@@ -9397,7 +9401,7 @@ class AppState extends ChangeNotifier {
       _pushAviso(
         email: r.usuario,
         titulo: '¡Te llegaron puntos! ⭐',
-        cuerpo: 'El local confirmó tu pago: +$pts puntos Pichangol por '
+        cuerpo: 'El local confirmó tu pago: +$pts puntos $kBrandName por '
             '$lugar. Canjéalos como descuento en tu próxima reserva online.',
         tipo: 'puntos',
         data: {'reserva_id': r.id},

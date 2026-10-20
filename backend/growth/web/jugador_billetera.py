@@ -59,6 +59,7 @@ from pagos import culqi
 from pagos import router as _pagos
 from web import datos, pago_hospedado, sesion, ui
 from web.ui import PLAY_URL, e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter()
 
@@ -486,7 +487,7 @@ def _gate(request: Request, ruta: str, titulo: str, en_app: str):
     cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'>"
               f"<h1 style='font-size:22px'>{e(titulo)}</h1>"
               f"<p class='sub'>En esta web aún no está activo el inicio de sesión. {e(en_app)}</p>"
-              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a></div></div>")
     return None, ui.shell(titulo, cuerpo, sesion=None)
 
 
@@ -525,7 +526,7 @@ def _fila_mov(m: dict) -> str:
     recibo = ""
     if con_recibo:
         recibo = (f"<div><span>Cobrado al cliente</span><b>{e(_dinero(sim, m['bruto']))}</b></div>"
-                  f"<div><span>Comisión Pichangol</span><b style='color:#C13515'>−{e(_dinero(sim, m['comision']))}</b></div><hr>"
+                  f"<div><span>Comisión {MARCA}</span><b style='color:#C13515'>−{e(_dinero(sim, m['comision']))}</b></div><hr>"
                   f"<div><span>{'Recibiste' if pagada else 'Recibes'}</span><b style='color:{color}'>{e(_dinero(sim, m['monto']))}</b></div>")
     detalle = (recibo
                + f"<div><span>Fecha</span><b>{e(_fecha_larga(m['creado_en']))}</b></div>"
@@ -538,7 +539,7 @@ def _fila_mov(m: dict) -> str:
             f"<div class='rec'>{detalle}</div></details>")
 
 
-_JS_BILLETERA = r"""
+_JS_BILLETERA = (r"""
 (function(){
   var C = window.__billetera || {}, $ = function(id){ return document.getElementById(id); };
   var st = {monto: (C.recargas || [])[1] || (C.recargas || [])[0] || 0, otro: false};
@@ -563,12 +564,12 @@ _JS_BILLETERA = r"""
     if(C.pasarela){ recargarPasarela(); return; }
     if(!C.pk || !window.Culqi){ err('El pago en línea no está disponible por ahora.'); return; }
     var m = window.pcgMedioPago ? pcgMedioPago() : 'yape', monto = st.monto, bv = bono(monto);
-    pcgResumenPago({moneda: C.moneda, medio: m, lineas: [{t: 'Recarga de saldo Pichangol', m: monto}], total: monto,
-                    nota: (bv > 0 ? '🎁 Además recibes +' + fmt(bv) + ' de bono (lo pone Pichangol). ' : '') + 'El saldo se acredita al instante en tu billetera, la misma de la app.'})
+    pcgResumenPago({moneda: C.moneda, medio: m, lineas: [{t: 'Recarga de saldo ⟦MARCA⟧', m: monto}], total: monto,
+                    nota: (bv > 0 ? '🎁 Además recibes +' + fmt(bv) + ' de bono (lo pone ⟦MARCA⟧). ' : '') + 'El saldo se acredita al instante en tu billetera, la misma de la app.'})
       .then(function(ok){
         if(!ok) return;
         Culqi.publicKey = C.pk;
-        Culqi.settings({title: 'Pichangol', currency: 'PEN', amount: Math.round(monto * 100)});
+        Culqi.settings({title: '⟦MARCA⟧', currency: 'PEN', amount: Math.round(monto * 100)});
         Culqi.options({lang: 'es', installments: false,
           paymentMethods: {yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false},
           style: {logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF'}});
@@ -595,8 +596,8 @@ _JS_BILLETERA = r"""
   // $ / Bs: la recarga se paga en la página de la pasarela del país y vuelve a /web/pago/{orden}.
   function recargarPasarela(){
     var monto = st.monto, bv = bono(monto);
-    pcgResumenPago({moneda: C.moneda, medio: C.pasarela, medioNombre: C.pasarelaNombre, lineas: [{t: 'Recarga de saldo Pichangol', m: monto}], total: monto,
-                    nota: (bv > 0 ? '🎁 Además recibes +' + fmt(bv) + ' de bono (lo pone Pichangol). ' : '') + 'Te llevamos a la página segura de ' + C.pasarelaNombre + '; al confirmarse el pago, el saldo se acredita en tu billetera, la misma de la app.'})
+    pcgResumenPago({moneda: C.moneda, medio: C.pasarela, medioNombre: C.pasarelaNombre, lineas: [{t: 'Recarga de saldo ⟦MARCA⟧', m: monto}], total: monto,
+                    nota: (bv > 0 ? '🎁 Además recibes +' + fmt(bv) + ' de bono (lo pone ⟦MARCA⟧). ' : '') + 'Te llevamos a la página segura de ' + C.pasarelaNombre + '; al confirmarse el pago, el saldo se acredita en tu billetera, la misma de la app.'})
       .then(function(ok){
         if(!ok) return;
         pcgCargando('Abriendo el pago seguro de ' + C.pasarelaNombre + '…');
@@ -623,7 +624,7 @@ _JS_BILLETERA = r"""
       .then(function(r){ return r.json(); })
       .then(function(p){
         pcgCargando(false);
-        if(p.ok){ pcgAvisar({titulo: '¡Cupón canjeado! 🎁', icono: '🎟️', confirmar: 'Listo', mensaje: '+' + fmt(p.valor_soles) + ' a tu saldo Pichangol.'}).then(function(){ pcgRecargar(); }); }
+        if(p.ok){ pcgAvisar({titulo: '¡Cupón canjeado! 🎁', icono: '🎟️', confirmar: 'Listo', mensaje: '+' + fmt(p.valor_soles) + ' a tu saldo ⟦MARCA⟧.'}).then(function(){ pcgRecargar(); }); }
         else { pcgAvisar({titulo: 'No se pudo canjear', icono: '🎟️', confirmar: 'Entendido', mensaje: p.mensaje || 'Código inválido o vencido. Revísalo e intenta de nuevo.'}); }
       }).catch(function(){ pcgCargando(false); pcgToast('Sin conexión. Intenta de nuevo.'); });
   });
@@ -633,7 +634,7 @@ _JS_BILLETERA = r"""
       .then(function(ok){ if(ok) window.open(C.play, '_blank', 'noopener'); }); }); });
   pintar();
 })();
-"""
+""").replace('⟦MARCA⟧', MARCA)
 
 
 @router.get("/mi-billetera", response_class=HTMLResponse)
@@ -661,7 +662,7 @@ def pagina_billetera(request: Request) -> HTMLResponse:
 
     destacado = saldo > 0
     tarjeta = (
-        "<div class='bil-saldo'><div class='top'><span>Saldo Pichangol</span>"
+        f"<div class='bil-saldo'><div class='top'><span>Saldo {MARCA}</span>"
         f"<span class='pill'>{'⭐ Destacado' if destacado else '⏸ Pausado'}</span></div>"
         f"<div class='monto'>{e(_dinero(sim, saldo))}</div>"
         "<div class='txt'>Es tu saldo único: el mismo de la app, para tus reservas, tus canchas y academias. "
@@ -670,14 +671,14 @@ def pagina_billetera(request: Request) -> HTMLResponse:
     avisos = ""
     if regalo > 0:
         avisos += (f"<div class='bil-card regalo'><span class='em'>🎁</span><span class='tx'>Tienes {e(_dinero(sim, regalo))} de saldo "
-                   "de REGALO por unirte a Pichangol: tus comisiones se descuentan de aquí primero, sin tocar tu plata.</span></div>")
+                   f"de REGALO por unirte a {MARCA}: tus comisiones se descuentan de aquí primero, sin tocar tu plata.</span></div>")
     # "Saldo bajo" habla de salir destacado: solo aplica a quien tiene canchas.
     if canchas and saldo <= SALDO_BAJO and regalo <= 0:
         avisos += ("<div class='bil-card bajo'><span class='em'>⚠️</span><span class='tx'>Saldo bajo: si llega a 0 dejas de "
                    "aparecer destacado. Recarga para seguir recibiendo reservas.</span></div>")
     for mon, v in pend.items():
         avisos += (f"<a class='bil-card recibir' href='/anfitrion/ingresos'><span class='em'>👛</span><span class='tx'>"
-                   f"<b>Por recibir</b>De reservas online, ventas y torneos (Pichangol te transfiere aparte).</span>"
+                   f"<b>Por recibir</b>De reservas online, ventas y torneos ({MARCA} te transfiere aparte).</span>"
                    f"<span class='val'>{e(_dinero(mon, v))}</span></a>")
     if pend or res_cc.get("tiene"):
         urgente = bool(pend) and not res_cc.get("tiene")
@@ -756,7 +757,7 @@ def pagina_billetera(request: Request) -> HTMLResponse:
         lista = ""
         if liqs:
             lista += ("<h2>Por recibir</h2><p class='h2sub'>Pagos de tus clientes: reservas online, bonos y ventas. "
-                      "Pichangol te transfiere el neto.</p>" + "".join(_fila_mov(m) for m in liqs))
+                      f"{MARCA} te transfiere el neto.</p>" + "".join(_fila_mov(m) for m in liqs))
         if mios:
             lista += ("<h2>Mi saldo</h2><p class='h2sub'>Tu monedero: recargas y gastos (comisiones, servicios, Pro).</p>"
                       + "".join(_fila_mov(m) for m in mios))
@@ -772,7 +773,7 @@ def pagina_billetera(request: Request) -> HTMLResponse:
                 "Está en <a href='/mis-pagos'>Mis pagos</a>.</p></div>"
               + f"<script>window.__billetera={json.dumps(cfg)};</script><script>{_JS_BILLETERA}</script>")
     head = "<script src='https://checkout.culqi.com/js/v4'></script>" if ("btnRecargar" in recargar and P["pasarela"] == "culqi") else ""
-    return ui.shell("Mi billetera", cuerpo, sesion=ses, titulo_tab="Mi billetera · Pichangol", extra_head=head)
+    return ui.shell("Mi billetera", cuerpo, sesion=ses, titulo_tab=f"Mi billetera · {MARCA}", extra_head=head)
 
 
 def _recarga_ok(request: Request, email: str) -> dict | None:
@@ -810,8 +811,8 @@ def pagina_estado_cuenta(request: Request) -> HTMLResponse:
               f"<div><small>Movimientos</small><b>{len(movs)}</b></div></div>"
               "<div class='no-print' style='display:flex;gap:10px;flex-wrap:wrap'><button class='btn' onclick='window.print()'>🖨️ Imprimir / guardar PDF</button>"
               "<a class='btn sec' href='/mi-billetera'>‹ Volver a Mi billetera</a></div>"
-              f"{tabla}<p class='sub' style='font-size:12px;margin-top:14px'>Documento generado por Pichangol. No es un comprobante tributario.</p></div>")
-    return ui.shell("Estado de cuenta", cuerpo, sesion=ses, titulo_tab="Estado de cuenta · Pichangol")
+              f"{tabla}<p class='sub' style='font-size:12px;margin-top:14px'>Documento generado por {MARCA}. No es un comprobante tributario.</p></div>")
+    return ui.shell("Estado de cuenta", cuerpo, sesion=ses, titulo_tab=f"Estado de cuenta · {MARCA}")
 
 
 @router.post("/web/billetera/recargar")
@@ -1023,8 +1024,8 @@ def pagina_mis_pagos(request: Request) -> HTMLResponse:
               "o por pagar en la cancha), cuotas de academia, compras y recargas.</p>"
               + resumen
               + ("<div class='no-print' style='margin:4px 0 6px'><button class='btn sec chico' onclick='window.print()'>🖨️ Imprimir / guardar PDF</button></div>" if pagos else "")
-              + lista + "<p class='sub' style='font-size:12px;margin-top:16px'>Documento generado por Pichangol. No es un comprobante tributario.</p></div>")
-    return ui.shell("Mis pagos", cuerpo, sesion=ses, titulo_tab="Mis pagos · Pichangol")
+              + lista + f"<p class='sub' style='font-size:12px;margin-top:16px'>Documento generado por {MARCA}. No es un comprobante tributario.</p></div>")
+    return ui.shell("Mis pagos", cuerpo, sesion=ses, titulo_tab=f"Mis pagos · {MARCA}")
 
 
 # ── /mis-puntos ───────────────────────────────────────────────────────────────
@@ -1039,7 +1040,7 @@ def _fecha_corta(v) -> str:
 
 @router.get("/mis-puntos", response_class=HTMLResponse)
 def pagina_mis_puntos(request: Request) -> HTMLResponse:
-    ses, resp = _gate(request, "/mis-puntos", "Mis puntos", "Tus puntos Pichangol están en la app.")
+    ses, resp = _gate(request, "/mis-puntos", "Mis puntos", f"Tus puntos {MARCA} están en la app.")
     if resp:
         return resp
     email = _email(ses)
@@ -1084,7 +1085,7 @@ def pagina_mis_puntos(request: Request) -> HTMLResponse:
             "el canje hoy aplica al pagar en línea reservas en soles (Perú).")
     cuerpo = (
         f"<style>{_CSS}</style><div class='bil'>{_nav('puntos')}<h1>Mis puntos</h1>"
-        f"<div class='pts-top'><div class='t'>⭐ Puntos Pichangol</div><div class='n'>{disponibles}</div>"
+        f"<div class='pts-top'><div class='t'>⭐ Puntos {MARCA}</div><div class='n'>{disponibles}</div>"
         f"<div class='v'>Valen S/ {valor:.2f} en descuentos al reservar en línea</div>"
         + (f"<div class='c'>Ya canjeaste {canjeados} puntos 🎉</div>" if canjeados > 0 else "") + "</div>"
         + (f"<div class='pts-pend'>⏳ +{pendientes} por confirmar: pídele al local que marque tu pago en efectivo para acreditarlos.</div>"
@@ -1092,15 +1093,15 @@ def pagina_mis_puntos(request: Request) -> HTMLResponse:
         + "<div class='pts-como'><b>Cómo funcionan</b><br>"
           "• Ganas 1 punto por cada S/ 1 que pagas por la app o la web (últimos 12 meses).<br>"
           "• Pago en línea: puntos al instante. Efectivo: cuando el local confirma tu pago.<br>"
-          "• Los pedidos de bodega pagados con tu SALDO Pichangol también suman (al entregarse). En efectivo no acumulan.<br>"
+          f"• Los pedidos de bodega pagados con tu SALDO {MARCA} también suman (al entregarse). En efectivo no acumulan.<br>"
           "• Cada 100 puntos = S/ 3 de descuento al pagar en línea tu próxima reserva, en la web o en la app: marca “Usar 100 puntos” en el resumen "
-          "(un canje por reserva; no aplica con seña, bono ni premio de fidelidad). El descuento lo pone Pichangol, no el local.<br>"
+          f"(un canje por reserva; no aplica con seña, bono ni premio de fidelidad). El descuento lo pone {MARCA}, no el local.<br>"
           "• Si cancelas a tiempo una reserva en la que usaste puntos, los recuperas."
         + otra + "</div>"
         "<h2>Historial (últimos 12 meses)</h2>" + lista
         + "<p class='sub' style='font-size:13px;margin-top:18px'><a href='/mis-reservas'>Mis reservas</a> · "
           "<a href='/mi-billetera'>Mi billetera</a></p></div>")
-    return ui.shell("Mis puntos", cuerpo, sesion=ses, titulo_tab="Mis puntos · Pichangol")
+    return ui.shell("Mis puntos", cuerpo, sesion=ses, titulo_tab=f"Mis puntos · {MARCA}")
 
 
 # ── /mi-pais ──────────────────────────────────────────────────────────────────
@@ -1147,7 +1148,7 @@ def pagina_mi_pais(request: Request) -> HTMLResponse:
         "        else { pcgAvisar({titulo: 'No se pudo cambiar', icono: '👛', confirmar: 'Entendido', mensaje: p.mensaje || 'Intenta de nuevo.'}); }\n"
         "      }).catch(function(){ pcgCargando(false); pcgToast('Sin conexión. Intenta de nuevo.'); });\n"
         "  }); }); }); })();</script>")
-    return ui.shell("Mi país", cuerpo, sesion=ses, titulo_tab="Mi país · Pichangol")
+    return ui.shell("Mi país", cuerpo, sesion=ses, titulo_tab=f"Mi país · {MARCA}")
 
 
 @router.post("/web/mi-pais")

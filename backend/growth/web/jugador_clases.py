@@ -58,6 +58,7 @@ from web.academia import _iso as _iso_academia
 from web.academia import _moneda as _moneda_academia
 from web.academia import _wa as _wa_academia
 from web.router import PLAY_URL, _pago_web_disponible, _pasarela_web, e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter()
 
@@ -380,7 +381,7 @@ def _bloque_pago(grupo: str, sim: str, puede: bool, iso: str, familia: bool = Fa
     if not puede:
         motivo = (f"Esta academia cobra en {e(sim)}: el pago en línea en esa moneda aún no está disponible en la web."
                   if iso != "PEN" else "El pago en línea desde la web se está habilitando.")
-        return (f"<div class='mc-nota' style='font-size:12.5px;margin-top:10px'>{motivo} Paga tus cuotas desde la app Pichangol.</div>"
+        return (f"<div class='mc-nota' style='font-size:12.5px;margin-top:10px'>{motivo} Paga tus cuotas desde la app {MARCA}.</div>"
                 f"<a class='btn sec mc-pagar' href='{PLAY_URL}' target='_blank' rel='noopener'>Pagar en la app</a>")
     # En $ / Bs: la pasarela HOSPEDADA del país (un solo medio, sin Culqi).
     from web import pago_hospedado as ph
@@ -515,7 +516,7 @@ def _tarjeta_matricula(m: dict, a: dict | None, email: str, hoy: str, directo: b
     tel = _wa_academia(a) if a else ""
     acc = ""
     if tel:
-        acc += f"<a class='btn sec' href='{e(ui.enlace_whatsapp('Hola, soy ' + str(m.get('nombre') or '') + ', alumno de ' + nombre_aca + '. Te escribo desde Pichangol.', tel))}' target='_blank' rel='noopener'>💬 WhatsApp</a>"
+        acc += f"<a class='btn sec' href='{e(ui.enlace_whatsapp('Hola, soy ' + str(m.get('nombre') or '') + ', alumno de ' + nombre_aca + f'. Te escribo desde {MARCA}.', tel))}' target='_blank' rel='noopener'>💬 WhatsApp</a>"
     if a:
         acc += f"<a class='btn sec' href='/academia/{e(m['academiaId'])}'>Ver academia</a>"
         acc += f"<a class='btn sec' href='/academia/{e(m['academiaId'])}/matricula/{e(m['id'])}'>Mi matrícula</a>"
@@ -531,7 +532,7 @@ def pagina_mis_clases(request: Request, pagado: str = "") -> HTMLResponse:
         cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'>"
                   "<h1 style='font-size:22px'>Mis clases y pagos</h1>"
                   "<p class='sub'>En esta web aún no está activo el inicio de sesión. Tus clases y pagos están en la app.</p>"
-                  f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+                  f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a></div></div>")
         return ui.shell("Mis clases y pagos", cuerpo, sesion=None)
     email = (ses.get("email") or "").strip().lower()
     ms, acs = _vista(email)
@@ -541,7 +542,7 @@ def pagina_mis_clases(request: Request, pagado: str = "") -> HTMLResponse:
                   "<div class='mc-card mc-vacio'><div class='em'>🎓</div><h2 style='margin:8px 0 4px'>Aún no tienes clases</h2>"
                   "<p class='sub'>Entra a «Academias» en Explorar y matricúlate, o únete con el código de tu profe en la app.</p>"
                   "<div class='acciones' style='justify-content:center'><a class='btn' href='/?deporte=academias'>Ver academias</a></div></div></div>")
-        return ui.shell("Mis clases y pagos", cuerpo, sesion=ses, titulo_tab="Mis clases y pagos · Pichangol")
+        return ui.shell("Mis clases y pagos", cuerpo, sesion=ses, titulo_tab=f"Mis clases y pagos · {MARCA}")
     import academia_plan as _ap
     directo = _ap.es_suscripcion()
     if directo:
@@ -572,7 +573,7 @@ def pagina_mis_clases(request: Request, pagado: str = "") -> HTMLResponse:
               + ("<script src='https://checkout.culqi.com/js/v4'></script>" if hay_culqi else "")
               + f"<script>{_ph_js() if n_hosp else ''}{_JS}</script>"
               + (f"<style>{_apw_css()}</style><script>{_apw_js()}</script>" if directo else ""))
-    return ui.shell("Mis clases y pagos", cuerpo, sesion=ses, titulo_tab="Mis clases y pagos · Pichangol")
+    return ui.shell("Mis clases y pagos", cuerpo, sesion=ses, titulo_tab=f"Mis clases y pagos · {MARCA}")
 
 
 def _apw_css() -> str:
@@ -590,7 +591,7 @@ def _ph_js() -> str:
     return ph.JS_IR_PASARELA
 
 
-_JS = r"""
+_JS = (r"""
 (function(){
   var C = window.__misClases || {};
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -630,7 +631,7 @@ _JS = r"""
     s.forEach(function(x){ total += parseFloat(x.dataset.m); personas[x.dataset.al] = 1; });
     var np = Object.keys(personas).length, cg = cotizar(g), cargo = (cg && cg.activo && cg.cargo_centimos > 0) ? cg.cargo_centimos / 100 : 0;
     var lc = document.querySelector('[data-cargo="' + g + '"]'), la = document.querySelector('[data-ahorro="' + g + '"]');
-    if(C.cargo && s.length){ lc.hidden = false; lc.innerHTML = '<span>Cargo por servicio Pichangol<button type="button" class="mc-info" data-info="' + g + '" aria-label="Qué incluye">ⓘ</button></span><b>' + (cg ? fmt(mon, cargo) : '…') + '</b>'; }
+    if(C.cargo && s.length){ lc.hidden = false; lc.innerHTML = '<span>Cargo por servicio ⟦MARCA⟧<button type="button" class="mc-info" data-info="' + g + '" aria-label="Qué incluye">ⓘ</button></span><b>' + (cg ? fmt(mon, cargo) : '…') + '</b>'; }
     else if(lc){ lc.hidden = true; }
     if(la){ var ah = cg && cg.ahorro_centimos > 0; la.hidden = !ah; if(ah) la.textContent = '🎉 Ahorras ' + fmt(mon, cg.ahorro_centimos / 100) + ' en el cargo por pagar en familia (un solo cobro).'; }
     btn.disabled = !s.length || btn.dataset.ocupado === '1';
@@ -642,7 +643,7 @@ _JS = r"""
   document.addEventListener('change', function(ev){ var x = ev.target; if(x && x.dataset && x.dataset.g) pintar(x.dataset.g); });
   document.addEventListener('click', function(ev){
     var i = ev.target.closest && ev.target.closest('[data-info]');
-    if(i){ ev.preventDefault(); var cg = cotizar(i.dataset.info); if(cg) pcgAvisar({titulo: cg.titulo || 'Cargo por servicio Pichangol', html: htmlDesglose(cg, body(i.dataset.info).dataset.mon), confirmar: 'Entendido', icono: '🛡️'}); return; }
+    if(i){ ev.preventDefault(); var cg = cotizar(i.dataset.info); if(cg) pcgAvisar({titulo: cg.titulo || 'Cargo por servicio ⟦MARCA⟧', html: htmlDesglose(cg, body(i.dataset.info).dataset.mon), confirmar: 'Entendido', icono: '🛡️'}); return; }
     var c = ev.target.closest && ev.target.closest('[data-comp]');
     if(c){ comprobante(JSON.parse(c.dataset.comp)); return; }
     var s = ev.target.closest && ev.target.closest('[data-cancelar-sus]');
@@ -656,8 +657,8 @@ _JS = r"""
     h += f('Academia', esc(d.academia)) + f('Alumno', esc(d.alumno)) + f('Concepto', esc(d.concepto)) + f('Fecha y hora', esc(d.fecha));
     if(d.op) h += f('N.º operación', esc(d.op));
     h += '<hr style="border:0;border-top:1px solid #eee;margin:8px 0">' + f('Monto', fmt(d.moneda, d.monto), !(d.cargo > 0));
-    if(d.cargo > 0){ h += f('Cargo por servicio Pichangol', fmt(d.moneda, d.cargo)); if(d.personas > 1) h += '<div style="color:#717171;font-size:12px">Un solo cargo por las ' + d.personas + ' personas de ese pago.</div>'; h += f('Total pagado', fmt(d.moneda, d.monto + d.cargo), true); }
-    h += '<div style="color:#717171;font-size:12px;margin-top:8px">Pago procesado por Pichangol.</div></div>';
+    if(d.cargo > 0){ h += f('Cargo por servicio ⟦MARCA⟧', fmt(d.moneda, d.cargo)); if(d.personas > 1) h += '<div style="color:#717171;font-size:12px">Un solo cargo por las ' + d.personas + ' personas de ese pago.</div>'; h += f('Total pagado', fmt(d.moneda, d.monto + d.cargo), true); }
+    h += '<div style="color:#717171;font-size:12px;margin-top:8px">Pago procesado por ⟦MARCA⟧.</div></div>';
     pcgConfirmar({titulo: 'Comprobante de pago', html: h, icono: '🧾', confirmar: 'Imprimir / PDF', cancelar: 'Cerrar'}).then(function(ok){ if(ok) window.open(d.url, '_blank', 'noopener'); });
   }
   function cancelarSus(id){
@@ -704,7 +705,7 @@ _JS = r"""
           return;
         }
         Culqi.publicKey = C.pk;
-        Culqi.settings({title: 'Pichangol', currency: 'PEN', amount: montoC});
+        Culqi.settings({title: '⟦MARCA⟧', currency: 'PEN', amount: montoC});
         Culqi.options({lang: 'es', installments: false, paymentMethods: {yape: medio === 'yape', tarjeta: medio === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false},
                        style: {logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF'}});
         window.culqi = function(){
@@ -728,7 +729,7 @@ _JS = r"""
       });
   }
 })();
-"""
+""").replace('⟦MARCA⟧', MARCA)
 
 
 # ── pagar ────────────────────────────────────────────────────────────────────
@@ -1193,10 +1194,10 @@ def comprobante_cuota(request: Request, alumno_id: str, cuota_id: str) -> HTMLRe
               + li("Fecha y hora", e(_fecha_txt(c.get("fechaPago") or c.get("vencimiento"), hora=True)))
               + (li("N.º operación", e(c.get("operacionId"))) if c.get("operacionId") else "")
               + li("Monto", f"{e(sim)} {c['monto']:.2f}", fuerte=cargo <= 0)
-              + ((li("Cargo por servicio Pichangol", f"{e(sim)} {cargo:.2f}")
+              + ((li(f"Cargo por servicio {MARCA}", f"{e(sim)} {cargo:.2f}")
                   + (f"<div class='sub' style='font-size:12px;margin-top:4px'>Un solo cargo por las {personas} personas de ese pago.</div>" if personas > 1 else "")
                   + li("Total pagado", f"{e(sim)} {c['monto'] + cargo:.2f}", fuerte=True)) if cargo > 0 else "")
-              + f"<p class='sub' style='font-size:12px;margin-top:12px'>Pago procesado por Pichangol · {e(empresa.valores().get('empresa_razon_social') or '')}</p>"
+              + f"<p class='sub' style='font-size:12px;margin-top:12px'>Pago procesado por {MARCA} · {e(empresa.valores().get('empresa_razon_social') or '')}</p>"
               "<div class='acciones no-print' style='margin-top:14px'><button type='button' class='btn' onclick='window.print()'>Imprimir / Guardar PDF</button>"
               "<a class='btn sec' href='/mis-clases'>Volver</a></div></div>")
-    return ui.shell("Comprobante de pago", cuerpo, sesion=ses, titulo_tab="Comprobante · Pichangol")
+    return ui.shell("Comprobante de pago", cuerpo, sesion=ses, titulo_tab=f"Comprobante · {MARCA}")

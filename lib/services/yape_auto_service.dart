@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import 'pagos_service.dart';
 
+import '../brand.dart';
 /// YAPE AUTOMÁTICO (fase 2 del Plan Academia, 10-oct-2026): el celular Android
 /// de la academia lee la notificación de su Yape (servicio nativo
 /// `YapeListener`, MethodChannel `pichangol/yape_auto`) y el backend confirma
@@ -131,7 +132,7 @@ class YapeAutoService {
       return {
         'ok': false,
         'mensaje': 'Esta versión del app aún no puede leer notificaciones. '
-            'Actualiza Pichangol.'
+            'Actualiza $kBrandName.'
       };
     }
     return {'ok': true};

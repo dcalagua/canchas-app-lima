@@ -12,6 +12,7 @@ import '../widgets/cargando_pichangol.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// RECARGA POR QR (Yape directo, sin comisión de pasarela): el usuario yapea
 /// al QR de Pichangol, sube su constancia y el OPERADOR la aprueba en la
 /// torre — al aprobar, el saldo se acredita y llega el push "Recarga
@@ -137,7 +138,7 @@ class _RecargaQrScreenState extends State<RecargaQrScreen> {
     final activo = (_cfg?['activo'] ?? false) == true;
     final qrUrl = (_cfg?['qr_url'] ?? '').toString();
     final numero = (_cfg?['numero'] ?? '').toString();
-    final nombre = (_cfg?['nombre'] ?? 'Pichangol').toString();
+    final nombre = (_cfg?['nombre'] ?? '$kBrandName').toString();
     return Scaffold(
       appBar: AppBar(title: const Text('Recargar con Yape (QR)')),
       body: AnchoLectura(
@@ -262,7 +263,7 @@ class _RecargaQrScreenState extends State<RecargaQrScreen> {
                       const SizedBox(height: 10),
                       const Center(
                         child: Text(
-                            'Sin comisiones · lo valida el equipo Pichangol',
+                            'Sin comisiones · lo valida el equipo $kBrandName',
                             style: TextStyle(
                                 color: textoTenue, fontSize: 12)),
                       ),

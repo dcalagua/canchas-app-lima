@@ -14,6 +14,7 @@ import '../widgets/cargando_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// COMMUNITY MANAGER autónomo (Fase 0): el "post del día" LISTO para las redes
 /// del negocio (IG/FB). Muestra el flyer de marca + el copy (editable) y lo
 /// publica en **1 toque** (hoja de compartir del sistema). Sin depender aún de
@@ -198,7 +199,7 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
   void _avisarPro() {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('El community manager con IA es Pichangol Pro. '
+      content: Text('El community manager con IA es $kBrandName Pro. '
           'Actívalo para que el agente trabaje por ti.'),
       duration: Duration(seconds: 3),
     ));
@@ -316,7 +317,7 @@ class _PostDelDiaScreenState extends State<PostDelDiaScreen> {
               const SizedBox(height: 12),
               Text(
                   _requierePro
-                      ? 'El community manager con IA es Pichangol Pro. Actívalo '
+                      ? 'El community manager con IA es $kBrandName Pro. Actívalo '
                           'y el agente arma y publica tus posts por ti.'
                       : 'No se pudo generar el post. Revisa tu conexión.',
                   textAlign: TextAlign.center,

@@ -31,6 +31,7 @@ import config
 import empresa
 from db.store import stores
 from marketing import redes as redes_svc
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["legal"])
 
@@ -82,11 +83,11 @@ def _doc(titulo: str, cuerpo: str) -> str:
     return (
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        f"<title>{titulo} · Pichangol</title>{_ESTILO}</head><body>"
+        f"<title>{titulo} · {MARCA}</title>{_ESTILO}</head><body>"
         f"<header><div class='wrap'><h1>{titulo}</h1>"
-        f"<div class='sub'>Pichangol · un producto de {em['razon_social']}</div></div></header>"
+        f"<div class='sub'>{MARCA} · un producto de {em['razon_social']}</div></div></header>"
         f"<div class='wrap'>{cuerpo}"
-        f"<footer><p class='mut'>Pichangol es un producto de <b>{em['razon_social']}</b> "
+        f"<footer><p class='mut'>{MARCA} es un producto de <b>{em['razon_social']}</b> "
         f"({em['doc_etiqueta']} {em['ruc']} · {em['direccion']}). Contacto: <a href='mailto:{CONTACTO}'>{CONTACTO}</a>.</p>"
         f"<p class='mut'>Vigente desde el {VIGENCIA}.</p></footer>"
         "</div></body></html>")
@@ -161,7 +162,7 @@ def post_reclamacion(req: ReclamacionReq) -> dict:
 @router.get("/legal/privacidad", response_class=HTMLResponse)
 def privacidad() -> str:
     cuerpo = f"""
-    <p>En <b>Pichangol</b> ({_em()["razon_social"]}) tratamos tus datos conforme a la
+    <p>En <b>{MARCA}</b> ({_em()["razon_social"]}) tratamos tus datos conforme a la
     <b>Ley N.° 29733</b> de Protección de Datos Personales del Perú y su
     reglamento. Esta política explica <b>qué recogemos, para qué, con quién se
     comparte y cómo lo borras</b>.</p>
@@ -180,7 +181,7 @@ def privacidad() -> str:
       bodega del local. <b>No hacemos seguimiento en segundo plano.</b></li>
       <li><b>Reservas y pagos:</b> qué cancha, día y hora reservaste, el importe
       y el medio de pago. Los <b>datos de tu tarjeta los procesa Culqi</b>
-      (pasarela autorizada): Pichangol <b>nunca</b> ve ni guarda el número
+      (pasarela autorizada): {MARCA} <b>nunca</b> ve ni guarda el número
       completo de tu tarjeta. Con cada pago te enviamos a tu correo una
       <b>constancia con el detalle</b> y, a quien recibe el pago (dueño del local,
       academia, vendedor, organizador o boleador), un aviso con el detalle de esa
@@ -198,7 +199,7 @@ def privacidad() -> str:
       <li><b>Notificaciones:</b> un identificador del dispositivo para enviarte
       avisos (reserva confirmada, pedido listo). No identifica a la persona.</li>
       <li><b>Pagos de Yape o QR de tu academia (opcional, sólo academias con
-      Android):</b> si activas "Confirmar mis pagos automáticamente", Pichangol
+      Android):</b> si activas "Confirmar mis pagos automáticamente", {MARCA}
       lee en ese celular <b>únicamente las notificaciones de la app Yape</b>
       (monto, nombre de quien te yapeó y código de seguridad) para confirmar los
       pagos que tus alumnos reportan. En Ecuador y Bolivia, donde tus alumnos
@@ -252,7 +253,7 @@ def privacidad() -> str:
       <li><b>Autoridades</b>, cuando la ley lo exija.</li>
     </ul>
     <p><b>Transferencia internacional:</b> algunos de estos proveedores procesan
-    la información en servidores fuera del Perú. Al usar Pichangol aceptas esa
+    la información en servidores fuera del Perú. Al usar {MARCA} aceptas esa
     transferencia, que se realiza con proveedores que ofrecen niveles adecuados
     de protección.</p>
 
@@ -270,7 +271,7 @@ def privacidad() -> str:
     </ul>
 
     <h2>6. Menores de edad</h2>
-    <p>Pichangol está dirigido a mayores de edad. Un padre, madre o apoderado
+    <p>{MARCA} está dirigido a mayores de edad. Un padre, madre o apoderado
     puede matricular a un menor en una academia; en ese caso trata esos datos
     bajo su responsabilidad y con su consentimiento.</p>
 
@@ -303,7 +304,7 @@ def eliminar_cuenta() -> str:
     """Página de ELIMINACIÓN DE CUENTA que exige Google Play para toda app con
     registro de usuarios. Debe ser pública y accesible sin instalar la app."""
     cuerpo = f"""
-    <p>Puedes pedir la eliminación de tu cuenta de <b>Pichangol</b> y de los
+    <p>Puedes pedir la eliminación de tu cuenta de <b>{MARCA}</b> y de los
     datos asociados en cualquier momento. No necesitas tener la app instalada.</p>
 
     <h2>Cómo eliminarla</h2>
@@ -312,7 +313,7 @@ def eliminar_cuenta() -> str:
     <p><b>Si ya no tienes la app instalada</b>, escríbenos:</p>
     <ol>
       <li>Envía un correo a <a href="mailto:{CONTACTO}?subject=Eliminar%20mi%20cuenta%20Pichangol">{CONTACTO}</a>
-      desde <b>el mismo correo con el que ingresas</b> a Pichangol, con el asunto
+      desde <b>el mismo correo con el que ingresas</b> a {MARCA}, con el asunto
       «Eliminar mi cuenta».</li>
       <li>Verificamos que la solicitud venga de tu cuenta y la procesamos.</li>
       <li>Te confirmamos por correo cuando esté hecha.</li>
@@ -356,15 +357,15 @@ def eliminar_cuenta() -> str:
 @router.get("/legal/terminos", response_class=HTMLResponse)
 def terminos() -> str:
     cuerpo = f"""
-    <p>Estos Términos y Condiciones regulan el uso de <b>Pichangol</b>, plataforma
+    <p>Estos Términos y Condiciones regulan el uso de <b>{MARCA}</b>, plataforma
     operada por <b>{_em()["razon_social"]}</b> ({_em()["doc_etiqueta"]} {_em()["ruc"]}, {_em()["direccion"]}). Al crear una cuenta o usar la
     app aceptas estos términos.</p>
 
-    <h2>1. Qué es Pichangol</h2>
-    <p>Pichangol es un <b>marketplace</b> para descubrir y reservar canchas
+    <h2>1. Qué es {MARCA}</h2>
+    <p>{MARCA} es un <b>marketplace</b> para descubrir y reservar canchas
     deportivas, gestionar academias y publicar contenido. Facilitamos la conexión
     entre jugadores, dueños de canchas y academias; el servicio deportivo lo presta
-    el establecimiento, no Pichangol.</p>
+    el establecimiento, no {MARCA}.</p>
 
     <h2>2. Cuenta y elegibilidad</h2>
     <ul>
@@ -377,7 +378,7 @@ def terminos() -> str:
     <ul>
       <li>Al reservar puedes pagar una <b>seña</b> o el total según configure el
       establecimiento. Los pagos se procesan mediante pasarelas de terceros.</li>
-      <li>Pichangol puede cobrar una <b>comisión</b> por las operaciones realizadas
+      <li>{MARCA} puede cobrar una <b>comisión</b> por las operaciones realizadas
       en la plataforma (reservas y ventas del marketplace), informada al momento de
       la operación.</li>
       <li>Las cancelaciones y devoluciones se rigen por nuestra
@@ -389,13 +390,13 @@ def terminos() -> str:
       <li>Desde la web puedes <b>reservar canchas</b> y <b>matricularte en academias</b>
       con tu cuenta de Google. El <b>precio</b>, la moneda, los extras y el total se
       muestran antes de confirmar; no hay cargos ocultos.</li>
-      <li>Cuando está habilitado, el total incluye un <b>Cargo por servicio Pichangol</b>
+      <li>Cuando está habilitado, el total incluye un <b>Cargo por servicio {MARCA}</b>
       que se muestra como línea aparte antes de pagar, con su regla de cálculo y el
       detalle (ⓘ) de lo que cubre: pago protegido, reserva o matrícula gestionada en
       línea y beneficios de la plataforma. El precio de la cancha o de la academia se
       muestra sin ese cargo y es lo que recibe el anfitrión, menos su comisión.</li>
       <li>El pago en línea se procesa con <b>Culqi</b> (tarjetas Visa/Mastercard y
-      Yape) en un formulario seguro (HTTPS). Pichangol no almacena los datos de tu
+      Yape) en un formulario seguro (HTTPS). {MARCA} no almacena los datos de tu
       tarjeta.</li>
       <li>Al pagar recibes un <b>comprobante en pantalla</b> con el número de
       operación y la reserva o matrícula queda registrada a nombre de tu correo;
@@ -419,12 +420,12 @@ def terminos() -> str:
     responsable del contenido final que difundes.</p>
 
     <h2>6. Uso permitido</h2>
-    <p>No puedes usar Pichangol para fines ilícitos, publicar contenido falso,
+    <p>No puedes usar {MARCA} para fines ilícitos, publicar contenido falso,
     ofensivo o que infrinja derechos de terceros, ni intentar vulnerar la seguridad
     de la plataforma. Podemos suspender cuentas que incumplan estos términos.</p>
 
     <h2>7. Responsabilidad</h2>
-    <p>Pichangol se ofrece "tal cual". No garantizamos la disponibilidad de las
+    <p>{MARCA} se ofrece "tal cual". No garantizamos la disponibilidad de las
     canchas ni el resultado de los servicios de terceros. En lo permitido por la ley,
     nuestra responsabilidad se limita a los montos efectivamente cobrados como
     comisión por la operación involucrada.</p>
@@ -434,7 +435,7 @@ def terminos() -> str:
     <b>OpenStreetMap</b> (© colaboradores de OpenStreetMap, datos disponibles bajo
     la licencia <a href="https://www.openstreetmap.org/copyright" target="_blank"
     rel="noopener">Open Database License (ODbL)</a>) y de Google Maps. Son
-    referenciales: no significan que el local esté afiliado a Pichangol hasta que
+    referenciales: no significan que el local esté afiliado a {MARCA} hasta que
     su dueño lo registre.</p>
 
     <h2>8. Privacidad</h2>
@@ -461,15 +462,15 @@ def devoluciones() -> str:
     horas = int(getattr(config, "WEB_CANCELACION_HORAS", 6) or 6)
     cuerpo = f"""
     <p>Esta política es aplicada por <b>{em["razon_social"]}</b> ({em["doc_etiqueta"]}
-    {em["ruc"]}, {em["direccion"]}), operadora de la plataforma <b>Pichangol</b>
+    {em["ruc"]}, {em["direccion"]}), operadora de la plataforma <b>{MARCA}</b>
     (web <b>pichangol.app</b> y app), a todas las compras realizadas en ella.</p>
 
     <h2>1. Reservas de canchas</h2>
-    <p>Cuando pagas en línea, el total puede incluir un <b>cargo por servicio Pichangol</b>
+    <p>Cuando pagas en línea, el total puede incluir un <b>cargo por servicio {MARCA}</b>
     (se muestra como línea aparte antes de pagar). Las devoluciones se calculan así:</p>
     <ul>
       <li><b>Cancelación por el jugador con {horas} horas o más de anticipación</b> al inicio
-      del turno: eliges a dónde va la devolución. <b>A tu saldo Pichangol</b>: el
+      del turno: eliges a dónde va la devolución. <b>A tu saldo {MARCA}</b>: el
       <b>100 %</b>, cargo por servicio incluido, al instante, para usarlo en tu próxima
       reserva. <b>Al mismo medio de pago</b> (tarjeta o Yape): se devuelve el <b>precio de
       la reserva</b>; el cargo por servicio no se devuelve, porque cubre la comisión que la
@@ -500,12 +501,12 @@ def devoluciones() -> str:
     <h2>3. Productos del marketplace (app)</h2>
     <p>Puedes solicitar el <b>cambio o la devolución</b> de un producto dentro de los
     <b>7 días calendario</b> siguientes a la entrega si llegó dañado, incompleto o distinto
-    a lo ofrecido. La entrega la coordina el vendedor por el chat de la app; Pichangol
+    a lo ofrecido. La entrega la coordina el vendedor por el chat de la app; {MARCA}
     media en la solicitud y, si corresponde, devuelve el pago.</p>
 
-    <h2>4. Saldo Pichangol y suscripciones</h2>
+    <h2>4. Saldo {MARCA} y suscripciones</h2>
     <p>Las recargas de saldo se usan dentro de la plataforma y solo se devuelven ante un
-    cobro erróneo o duplicado. La suscripción <b>Pichangol Pro</b> puede cancelarse en
+    cobro erróneo o duplicado. La suscripción <b>{MARCA} Pro</b> puede cancelarse en
     cualquier momento y no se renueva; el período ya pagado no se prorratea.</p>
 
     <h2>5. Cómo pedir una devolución</h2>
@@ -517,7 +518,7 @@ def devoluciones() -> str:
       ({em["whatsapp_bonito"] or "ver Contacto"}) indicando tu nombre, la fecha y hora de la
       compra y el motivo.</li>
     </ul>
-    <p>Las devoluciones a tu <b>saldo Pichangol</b> son inmediatas. Las devoluciones al
+    <p>Las devoluciones a tu <b>saldo {MARCA}</b> son inmediatas. Las devoluciones al
     <b>mismo medio de pago</b> (tarjeta o Yape, a través de Culqi) llegan en un plazo de
     <b>hasta 7 días hábiles</b>, según los tiempos de la pasarela y del banco emisor. El monto
     devuelto es el que corresponde según esta política; el cargo por servicio solo se
@@ -683,20 +684,20 @@ def libro_de_reclamaciones(request: Request) -> HTMLResponse:
     ses = sesion.de_request(request)
     cuerpo = f"<style>{_LIBRO_CSS}</style><div style='padding-top:6px'>{_libro_html()}</div>"
     return ui.shell("Libro de Reclamaciones", cuerpo, sesion=ses, nav=ui.nav_simple(ses, volver="/"),
-                    desc="Libro de Reclamaciones virtual de Pichangol: registra tu reclamo o queja y recibe respuesta en 15 días hábiles.")
+                    desc=f"Libro de Reclamaciones virtual de {MARCA}: registra tu reclamo o queja y recibe respuesta en 15 días hábiles.")
 
 
 @router.get("/legal/eliminacion-datos", response_class=HTMLResponse)
 def eliminacion_datos() -> str:
     cuerpo = f"""
-    <p>Puedes eliminar los datos que Pichangol guarda de tus redes sociales en
+    <p>Puedes eliminar los datos que {MARCA} guarda de tus redes sociales en
     cualquier momento, por cualquiera de estas vías:</p>
     <ol>
-      <li><b>Desde la app Pichangol:</b> entra a <b>Servicios → Gestión de redes →
+      <li><b>Desde la app {MARCA}:</b> entra a <b>Servicios → Gestión de redes →
       Desconectar</b>. Al desconectar, eliminamos el token de acceso y la conexión
       de tus redes.</li>
       <li><b>Desde Facebook:</b> <b>Configuración → Apps y sitios web</b>, ubica
-      "Pichangol" y elimínala. Meta nos notifica y borramos tus datos asociados.</li>
+      "{MARCA}" y elimínala. Meta nos notifica y borramos tus datos asociados.</li>
       <li><b>Por correo:</b> escríbenos a <a href="mailto:{CONTACTO}">{CONTACTO}</a>
       pidiendo la eliminación; la procesamos y te confirmamos.</li>
     </ol>

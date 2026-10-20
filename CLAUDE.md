@@ -152,6 +152,38 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
   `LANDING_BASE_URL` (dominio de marca para el enlace público de la landing).
   **OJO:** `GROWTH_API_URL` ≠ `VERIF_API_URL` (servicios distintos).
 
+## Marca configurable + torneos con marca del organizador (20-oct-2026)
+
+Pedido del director: gente del tenis pide un nombre más genérico ("Pichangol
+suena a fútbol") y quiere hacer sus torneos y alquilar canchas aquí. Se hizo:
+(1) **nombre y dominio de marca en UN solo lugar** — backend `config.MARCA` /
+`config.MARCA_DOMINIO` (env `MARCA_NOMBRE` / `MARCA_DOMINIO`, defaults
+Pichangol / www.pichangol.app); TODO texto visible de Python usa esas
+constantes (f-string, o en plantillas con llaves el marcador `⟦MARCA⟧` +
+`.replace("⟦MARCA⟧", MARCA)`), `legal/home.html` usa `{{MARCA}}` /
+`{{MARCA_DOMINIO}}` (`empresa.rellenar`); APK `kBrandName` / `kBrandDominio`
+en `lib/brand.dart` (cada literal visible usa `$kBrandName`). **Nunca escribir
+"Pichangol" a mano en un texto visible**: `tests/test_marca_configurable.py` lo
+impide (docstrings y comentarios sí pueden) y prueba que con `MARCA_NOMBRE`
+=CanchaLibre las páginas lo muestran. NO dependen de la marca: tablas
+`pichangol_*`, paquete `pe.ebim.pichangol`, ids, salas Jitsi (`llamada_service`
+`salaDeEnlace`), claves de SharedPreferences. Cambiar de nombre de verdad =
+variables en Railway + `kBrandName` + logos (`static/brand/`, assets del APK) +
+dominio/ficha de Play (decisión pendiente del director). Producción corre
+**Python 3.11** (Dockerfile): no usar sintaxis de f-strings de 3.12 (mismas
+comillas anidadas, `\` en expresiones). (2) **Torneo con la marca del
+ORGANIZADOR:** campo `Campeonato.organizador` (app: "Organiza (opcional)" en
+crear/editar; web: `#orga` en el asistente; se conserva al duplicar);
+`campeonato_web.organizador_de(c)` = organizador → academia (`academiaId`) →
+auspiciador, logo del torneo → de la academia. La página `/c/{id}` pone su logo
+y "Organiza X" en el hero, `<title>`/og con su nombre y al pie "Torneo de X ·
+con la tecnología de {MARCA}"; el afiche cambia el pie a "Organiza X" +
+"Inscripciones en {MARCA_DOMINIO}". (3) **Portada de raqueta `GET /tenis`**
+(`web/portal_tenis.py`): canchas aprobadas de tenis/pádel/pickleball por local,
+torneos vivos (`datos.campeonatos_publicos`), Busco partner, Liga, Boleadores,
+Organiza tu torneo y "¿Tienes un club?"; enlazada en el menú ☰ y el pie. Test
+`tests/test_portal_tenis.py`.
+
 ## Dominio oficial: `pichangol.app`
 
 El dominio de marca **YA ESTÁ REGISTRADO Y VIVO**. En Railway (`pg-backend`) el

@@ -12,6 +12,7 @@ import 'llamada_service.dart';
 import 'llamada_webrtc.dart';
 import 'supabase_service.dart';
 
+import '../brand.dart';
 /// Handler de mensajes en SEGUNDO PLANO / app cerrada. Debe ser una función de
 /// nivel superior con este pragma (Firebase la ejecuta en un isolate aparte).
 /// No necesita lógica: el sistema ya muestra la notificación (`notification`
@@ -278,7 +279,7 @@ class PushService {
       } catch (_) {}
       // El banner in-app también navega al tocarlo (igual que la notificación
       // del sistema): pedidos de bodega van a su pantalla.
-      _mostrarBanner(t.isEmpty ? 'Pichangol' : t, c,
+      _mostrarBanner(t.isEmpty ? '$kBrandName' : t, c,
           onTap: esBodega ? () => _abrir(m.data) : null);
       return;
     }

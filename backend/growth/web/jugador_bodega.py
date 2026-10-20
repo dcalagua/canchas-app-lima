@@ -38,6 +38,7 @@ from web import datos, sesion, ui
 from web import bodega_datos as bd
 from web.anfitrion_bodega import imagen, _push, _m
 from web.ui import PLAY_URL, e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["web-jugador-bodega"])
 RADIO_KM = 0.25  # anti-troll: debes estar EN el local para pedir
@@ -197,7 +198,7 @@ CSS = r"""
 def _no_disponible(ses) -> HTMLResponse:
     cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'><div style='font-size:44px'>🧃</div>"
               "<h1 style='font-size:22px'>Esta bodega no está disponible</h1>"
-              "<p class='sub'>Solo los locales verificados de Pichangol reciben pedidos a la cancha.</p>"
+              f"<p class='sub'>Solo los locales verificados de {MARCA} reciben pedidos a la cancha.</p>"
               "<div class='acciones' style='justify-content:center'><a class='btn' href='/canchas'>Explorar canchas</a></div></div>")
     resp = ui.shell("Bodega", cuerpo, sesion=ses, nav=ui.nav_simple(ses))
     resp.status_code = 404
@@ -353,7 +354,7 @@ def pedir(request: Request, body: dict = Body(default_factory=dict)) -> JSONResp
                         else "No se pudo cobrar tu saldo: el pedido se canceló y no se cobró nada.", 409)
     _push(dueno, f"💳 Pedido PAGADO a la {zona}" if con_saldo else f"🧃 Pedido a la {zona}",
           f"{bd.resumen(items)} · {_m(mon, total)} · {nombre}. "
-          + ("Ya está pagado con saldo Pichangol: solo entrégalo." if con_saldo else "Confírmalo en Mi bodega."), destino="dueno")
+          + (f"Ya está pagado con saldo {MARCA}: solo entrégalo." if con_saldo else "Confírmalo en Mi bodega."), destino="dueno")
     return JSONResponse({"ok": True, "id": ped["id"],
                          "mensaje": "Pedido pagado y enviado 💳 Te avisamos cuando lo confirmen." if con_saldo
                          else "Pedido enviado 🏃 Te avisamos cuando lo confirmen. Pagas al recibirlo, como siempre."})
@@ -403,7 +404,7 @@ def pagina_mis_pedidos(request: Request) -> HTMLResponse:
             return HTMLResponse("", status_code=302, headers={"Location": "/entrar?volver=%2Fmis-pedidos-bodega"})
         cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'><h1 style='font-size:22px'>Mis pedidos a la cancha</h1>"
                   "<p class='sub'>En esta web aún no está activo el inicio de sesión. Tus pedidos están en la app.</p>"
-                  f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+                  f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a></div></div>")
         return ui.shell("Mis pedidos a la cancha", cuerpo, sesion=None)
     mios = bd.pedidos_de_cliente(email)
     cuentas = bd.cuentas_abiertas_cliente(email)

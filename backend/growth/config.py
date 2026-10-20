@@ -5,6 +5,16 @@ from __future__ import annotations
 
 import os
 
+# --- Marca (un solo lugar) ----------------------------------------------------
+# Nombre comercial y dominio de marca que ven usuarios y dueños en la web, la
+# torre, los correos, los avisos y las piezas de marketing. Cambiar de nombre =
+# cambiar estas dos variables en Railway (y los logos de static/brand/), sin
+# tocar código. Las tablas `pichangol_*`, el paquete del APK y los ids internos
+# NO dependen de esto.
+MARCA = os.getenv("MARCA_NOMBRE", "").strip() or "Pichangol"
+MARCA_DOMINIO = (os.getenv("MARCA_DOMINIO", "").strip().removeprefix("https://").removeprefix("http://").strip("/")
+                 or "www.pichangol.app")
+
 # URL del módulo de existencia (Capa IA). Si está vacío, se usa el stub.
 EXISTENCIA_API_URL = os.getenv("EXISTENCIA_API_URL", "")
 
@@ -114,7 +124,7 @@ GOOGLE_OAUTH_CLIENT_IDS = os.getenv("GOOGLE_OAUTH_CLIENT_IDS", "")
 # que muestra el APK. Vacío = la opción no se ofrece en el APK.
 RECARGA_YAPE_QR_URL = os.getenv("RECARGA_YAPE_QR_URL", "")
 RECARGA_YAPE_NUMERO = os.getenv("RECARGA_YAPE_NUMERO", "")
-RECARGA_YAPE_NOMBRE = os.getenv("RECARGA_YAPE_NOMBRE", "Pichangol")
+RECARGA_YAPE_NOMBRE = os.getenv("RECARGA_YAPE_NOMBRE", MARCA)
 # Rate-limit anti-spam de los endpoints con efecto externo (crear reclamo, OTP):
 # máx RECLAMO_RATE_LIMIT solicitudes por IP en una ventana de RATE_WINDOW segundos.
 # 0 = desactivado. Protege el backend (y el costo de Factiliza/WhatsApp) si la URL

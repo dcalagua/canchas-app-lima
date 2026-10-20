@@ -19,6 +19,7 @@ import re
 from datetime import datetime, timezone
 from html import escape
 
+import config
 from db.store import CONFIG_DEFAULT, stores
 
 # WhatsApp por país (regla multi-país del director): (clave iso, nombre,
@@ -219,6 +220,7 @@ def _marcadores() -> dict[str, str]:
         "{{WHATSAPP}}": _wa_inline(d["whatsapps"]), "{{WHATSAPP_LISTA}}": _wa_lista(d["whatsapps"]),
         "{{WA_BOTONES}}": _wa_botones(d["whatsapps"]), "{{CORREO}}": d["correo"],
         "{{CORREO_PRIVACIDAD}}": d["correo_privacidad"], "{{HORARIO}}": d["horario"], "{{ANIO}}": d["anio"],
+        "{{MARCA}}": escape(config.MARCA), "{{MARCA_DOMINIO}}": escape(config.MARCA_DOMINIO),
     }
 
 

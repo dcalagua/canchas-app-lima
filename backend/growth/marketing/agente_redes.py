@@ -39,6 +39,7 @@ from datetime import datetime, timedelta, timezone
 
 import config
 from db.store import stores
+from config import MARCA, MARCA_DOMINIO  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _STATIC = os.path.join(os.path.dirname(_DIR), "static", "brand")
@@ -47,15 +48,15 @@ DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "doming
 AUDIENCIAS = {
     "jugadores": {
         "nombre": "Jugadores",
-        "objetivo": ("Objetivo comercial: que quien lee DESCARGUE la app Pichangol (Android, Play Store: "
+        "objetivo": (f"Objetivo comercial: que quien lee DESCARGUE la app {MARCA} (Android, Play Store: "
                      "https://play.google.com/store/apps/details?id=pe.ebim.pichangol) o RESERVE su cancha en la web "
-                     "www.pichangol.app. Menciona una de las dos opciones de forma natural, no las dos como lista."),
+                     f"{MARCA_DOMINIO}. Menciona una de las dos opciones de forma natural, no las dos como lista."),
     },
     "duenos": {
         "nombre": "Dueños de canchas",
         "objetivo": ("Objetivo comercial: que los DUEÑOS y administradores de canchas o academias registren su local y lo "
-                     "administren GRATIS con Pichangol: agenda de reservas, cobros en línea, clientes nuevos. Se hace en "
-                     "Modo anfitrión en www.pichangol.app o desde la app. Habla de igual a igual, como socio."),
+                     f"administren GRATIS con {MARCA}: agenda de reservas, cobros en línea, clientes nuevos. Se hace en "
+                     f"Modo anfitrión en {MARCA_DOMINIO} o desde la app. Habla de igual a igual, como socio."),
     },
 }
 # Calendario editorial por defecto (índice = weekday(): 0 = lunes). 5 días a jugadores, 2 a dueños.
@@ -257,9 +258,9 @@ def planificar(fecha_local: datetime | None = None, *, audiencia: str | None = N
         enf = "beneficio"
     tema = AUDIENCIAS[aud]["objetivo"]
     if aud == "jugadores" and not local:
-        tema += " La publicación es de la MARCA Pichangol: no menciones ningún local ni academia en particular."
+        tema += f" La publicación es de la MARCA {MARCA}: no menciones ningún local ni academia en particular."
     if aud == "jugadores" and local:
-        tema += f" Local Pro destacado del día: {local['local']} ({local.get('zona') or 'la zona'}) ya se reserva en Pichangol; menciónalo con naturalidad."
+        tema += f" Local Pro destacado del día: {local['local']} ({local.get('zona') or 'la zona'}) ya se reserva en {MARCA}; menciónalo con naturalidad."
     if aud == "duenos":
         tema += " No menciones locales ni academias por nombre; habla de la solución y de lo que gana el dueño."
     # ¿Toca VIDEO? Solo de la biblioteca de marca (Google Fotos), en días de video, sin repetir uno reciente, y siempre con música.
@@ -314,7 +315,7 @@ def crear_pieza(brief: dict, *, evitar: list[str] | None = None) -> dict:
             pieza.update(musica_id=brief["pista"]["id"], musica_nombre=brief["pista"].get("nombre", ""))
         pieza["png"] = _poster_video(video, pieza)      # vista previa (frame + marca) para la torre
         return pieza
-    pieza["png"] = _pr.componer(fotos, copy["titulo"] or "Pichangol", copy.get("subtitulo") or "", "www.pichangol.app", pieza["formato"], etiqueta)
+    pieza["png"] = _pr.componer(fotos, copy["titulo"] or MARCA, copy.get("subtitulo") or "", MARCA_DOMINIO, pieza["formato"], etiqueta)
     return pieza
 
 
@@ -342,7 +343,7 @@ def _poster_video(video: dict, pieza: dict) -> bytes:
         frame = _frame_video(ruta)
     except Exception:  # noqa: BLE001
         frame = _foto_marca()
-    return _pr.componer([frame] if frame else [], pieza["titulo"] or "Pichangol", pieza.get("subtitulo") or "", "www.pichangol.app", "cuadrado", "▶ Video")
+    return _pr.componer([frame] if frame else [], pieza["titulo"] or MARCA, pieza.get("subtitulo") or "", MARCA_DOMINIO, "cuadrado", "▶ Video")
 
 
 def render_video(receta: dict) -> str:
@@ -385,7 +386,7 @@ def componer_receta(receta: dict) -> bytes:
         loc = ahora_local()
     fotos = [(_arte_marca(loc) if u in ("brand:arte", "brand:portada") else u) for u in receta.get("fotos") or []]
     fotos = [u for u in fotos if u]
-    return _pr.componer(fotos, receta.get("titulo") or "Pichangol", receta.get("subtitulo") or "", "www.pichangol.app", receta.get("formato") or "cuadrado", receta.get("etiqueta") or "")
+    return _pr.componer(fotos, receta.get("titulo") or MARCA, receta.get("subtitulo") or "", MARCA_DOMINIO, receta.get("formato") or "cuadrado", receta.get("etiqueta") or "")
 
 
 # ── community manager ────────────────────────────────────────────────────────

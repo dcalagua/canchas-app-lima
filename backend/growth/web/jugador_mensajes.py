@@ -77,6 +77,7 @@ from web import almacen, datos, sesion, ui
 from web.jugador_liga import (_ocultar_correo, email_de_ref, perfiles, ref_de,
                               sin_sesion)
 from web.ui import e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter()
 
@@ -1135,7 +1136,7 @@ _CSS = """
 </style>
 """
 
-_JS_COMUN = r"""
+_JS_COMUN = (r"""
 <script>
 (function(){
 var MESES = ['ene','feb','mar','abr','may','jun','jul','ago','set','oct','nov','dic'];
@@ -1150,8 +1151,8 @@ window.mjDia = function(iso){ var d = new Date(iso), h = new Date(), a = new Dat
 window.mjEsc = function(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
 window.mjAv = function(nombre, foto, cls){ cls = cls || 'mj-av'; if(foto) return "<img class='" + cls + "' src='" + mjEsc(foto) + "' alt='' loading='lazy' referrerpolicy='no-referrer'>";
   return "<span class='" + cls + "'>" + mjEsc((String(nombre || '?').trim() || '?').charAt(0).toUpperCase()) + "</span>"; };
-window.mjLlamadas = function(){ pcgConfirmar({titulo: 'Llamadas en la app', icono: '📞', mensaje: 'Las llamadas de voz y las videollamadas se hacen desde la app Pichangol. Aquí puedes seguir escribiendo.', confirmar: 'Abrir la app', cancelar: 'Seguir aquí'})
-  .then(function(ok){ if(ok) location.href = '""" + PLAY_URL + r"""'; }); };
+window.mjLlamadas = function(){ pcgConfirmar({titulo: 'Llamadas en la app', icono: '📞', mensaje: 'Las llamadas de voz y las videollamadas se hacen desde la app ⟦MARCA⟧. Aquí puedes seguir escribiendo.', confirmar: 'Abrir la app', cancelar: 'Seguir aquí'})
+  .then(function(ok){ if(ok) location.href = '""").replace('⟦MARCA⟧', MARCA) + PLAY_URL + r"""'; }); };
 // Foto rota (URL vencida o borrada) → inicial de color, como el app.
 document.addEventListener('error', function(ev){ var im = ev.target; if(!im || im.tagName !== 'IMG' || !im.classList.contains('mj-av')) return;
   var c = im.closest('.mj-fila,.mj-per,.mj-cab,.mj-gfoto'), b = c && c.querySelector('b'), sp = document.createElement('span');
@@ -1303,7 +1304,7 @@ def pagina_mensajes(request: Request) -> HTMLResponse:
     cfg = {"cache": _clave_cache(yo), "inicial": inicial, "fresca": True, "cada": 12000}
     cuerpo = (_CSS + "<div class='mj-panel' style='max-width:760px'>" + _cabecera_bandeja() + _lista_html(b) + "</div>"
               + f"<script>window.MJ = {json.dumps(cfg, ensure_ascii=False)};</script>" + _JS_COMUN + _JS_BANDEJA)
-    return ui.shell("Mensajes", cuerpo, sesion=ses, titulo_tab="Mensajes · Pichangol", pantalla="mensajes")
+    return ui.shell("Mensajes", cuerpo, sesion=ses, titulo_tab=f"Mensajes · {MARCA}", pantalla="mensajes")
 
 
 _JS_CHAT = r"""
@@ -1462,7 +1463,7 @@ def pagina_nuevo(request: Request, cancha: str = "", academia: str = "", persona
               "<div class='mj-res' id='mjRes'></div>"
               + ("<div class='mj-sec'>Mis contactos</div><div class='mj-res'>" + "".join(f for _, f in filas) + "</div>" if filas else "")
               + "</div>" + _JS_COMUN + _JS_BUSCAR.replace("__MODO__", "chat"))
-    return ui.shell("Nuevo chat", cuerpo, sesion=ses, titulo_tab="Nuevo chat · Pichangol", pantalla="mensajes")
+    return ui.shell("Nuevo chat", cuerpo, sesion=ses, titulo_tab=f"Nuevo chat · {MARCA}", pantalla="mensajes")
 
 
 def _av_html(nombre: str, foto: str, cls: str = "mj-av") -> str:
@@ -1506,7 +1507,7 @@ def _abrir_con(ses: dict, yo: str, cancha: str = "", academia: str = "", persona
         if not c:
             return aviso("Cancha no encontrada", "Esta cancha ya no está disponible.")
         if not dueno:
-            return aviso("Aún sin dueño", "Esta cancha todavía no tiene un dueño en Pichangol, así que no hay a quién escribirle.",
+            return aviso("Aún sin dueño", f"Esta cancha todavía no tiene un dueño en {MARCA}, así que no hay a quién escribirle.",
                          "Ver la cancha", f"/reservar/{quote(cancha, safe='')}")
         if dueno == yo:
             return aviso("Es tu cancha", "Los mensajes de tus clientes te llegan a tu bandeja de Mensajes.")
@@ -1567,7 +1568,7 @@ def pagina_nuevo_grupo(request: Request):
               + (f"<div class='mj-sec'>Mis contactos</div><div class='mj-res' id='mjSug'>{sug}</div>" if sug else "")
               + "<div class='acciones' style='margin-top:16px'><button class='btn lg' id='mjGCrear' type='button'>Crear grupo</button></div></div></div>"
               + _JS_COMUN + _JS_BUSCAR.replace("__MODO__", "grupo") + _JS_GRUPO_NUEVO)
-    return ui.shell("Nuevo grupo", cuerpo, sesion=ses, titulo_tab="Nuevo grupo · Pichangol", pantalla="mensajes")
+    return ui.shell("Nuevo grupo", cuerpo, sesion=ses, titulo_tab=f"Nuevo grupo · {MARCA}", pantalla="mensajes")
 
 
 _JS_GRUPO_NUEVO = r"""
@@ -1605,7 +1606,7 @@ def pagina_info_grupo(request: Request, grupo_id: str):
         cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'><h1 style='font-size:22px'>Grupo no disponible</h1>"
                   "<p class='sub'>No existe o ya no eres parte de este grupo.</p><div class='acciones' style='justify-content:center'>"
                   "<a class='btn' href='/mensajes'>Ir a Mensajes</a></div></div>")
-        return ui.shell("Info del grupo", cuerpo, sesion=ses, titulo_tab="Grupo · Pichangol", pantalla="mensajes")
+        return ui.shell("Info del grupo", cuerpo, sesion=ses, titulo_tab=f"Grupo · {MARCA}", pantalla="mensajes")
     ag = agenda_de(yo)
     perf = perfiles(g["miembros"])
     miembros = []
@@ -1637,7 +1638,7 @@ def pagina_info_grupo(request: Request, grupo_id: str):
               + "<div class='acciones' style='margin-top:18px'><button type='button' class='btn sec' id='mjGLlamar' onclick='mjLlamadas()'>📹 Llamada grupal (en la app)</button>"
               "<button type='button' class='btn sec' id='mjGSalir' style='color:var(--rojo)'>🚪 Salir del grupo</button></div></div></div>"
               f"<script>window.MJG = {json.dumps(cfg)};</script>" + _JS_COMUN + _JS_BUSCAR.replace("__MODO__", "grupo") + _JS_GRUPO_INFO)
-    return ui.shell("Info del grupo", cuerpo, sesion=ses, titulo_tab=f"{g['nombre'] or 'Grupo'} · Pichangol", pantalla="mensajes")
+    return ui.shell("Info del grupo", cuerpo, sesion=ses, titulo_tab=f"{g['nombre'] or 'Grupo'} · {MARCA}", pantalla="mensajes")
 
 
 _JS_GRUPO_INFO = r"""
@@ -1681,7 +1682,7 @@ def pagina_chat(request: Request, clave: str):
         cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'><h1 style='font-size:22px'>Chat no disponible</h1>"
                   "<p class='sub'>Este chat no existe o no eres parte de él.</p><div class='acciones' style='justify-content:center'>"
                   "<a class='btn' href='/mensajes'>Ir a Mensajes</a></div></div>")
-        return ui.shell("Mensajes", cuerpo, sesion=ses, titulo_tab="Mensajes · Pichangol", pantalla="mensajes")
+        return ui.shell("Mensajes", cuerpo, sesion=ses, titulo_tab=f"Mensajes · {MARCA}", pantalla="mensajes")
     hilos = conv["hilos"]
     k = clave_de(hilos)
     tit = _titulo_conv(conv, yo)
@@ -1711,7 +1712,7 @@ def pagina_chat(request: Request, clave: str):
               + f"<script>window.MJ = {json.dumps(cfg_b, ensure_ascii=False)}; window.MJC = {json.dumps(cfg, ensure_ascii=False)}; "
               + f"window.MJ_ABIERTA = {json.dumps(fila_json(fila)['k'] if fila else '')};</script>"
               + _JS_COMUN + _JS_BANDEJA + _JS_CHAT)
-    return ui.shell(tit["titulo"], cuerpo, sesion=ses, titulo_tab=f"{tit['titulo']} · Mensajes · Pichangol",
+    return ui.shell(tit["titulo"], cuerpo, sesion=ses, titulo_tab=f"{tit['titulo']} · Mensajes · {MARCA}",
                     pantalla="chat")
 
 

@@ -10,6 +10,7 @@ import '../services/llamada_service.dart';
 import '../services/llamada_webrtc.dart';
 import '../theme.dart';
 
+import '../brand.dart';
 /// Pantalla de llamada 1-a-1 tipo WhatsApp (WebRTC propio): video remoto a
 /// pantalla completa, cámara propia en PiP, nombre + estado/duración y los
 /// controles (silenciar, altavoz, cámara, voltear, colgar). Sirve para el que
@@ -98,9 +99,9 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
           setState(() {
             _errorPermiso = permanente;
             _error = widget.video
-                ? 'Pichangol necesita permiso de micrófono y cámara para las '
+                ? '$kBrandName necesita permiso de micrófono y cámara para las '
                     'videollamadas.'
-                : 'Pichangol necesita permiso de micrófono para las llamadas.';
+                : '$kBrandName necesita permiso de micrófono para las llamadas.';
           });
         }
         try {
@@ -140,9 +141,9 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
         setState(() {
           _error = widget.video
               ? 'No se pudo acceder al micrófono o la cámara. Revisa los '
-                  'permisos de Pichangol y vuelve a intentar.'
+                  'permisos de $kBrandName y vuelve a intentar.'
               : 'No se pudo acceder al micrófono. Revisa los permisos de '
-                  'Pichangol y vuelve a intentar.';
+                  '$kBrandName y vuelve a intentar.';
         });
       }
       try {
@@ -318,7 +319,7 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    widget.nombreOtro.isEmpty ? 'Pichangol' : widget.nombreOtro,
+                    widget.nombreOtro.isEmpty ? '$kBrandName' : widget.nombreOtro,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
@@ -399,7 +400,7 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
   /// Pantalla de llamada ENTRANTE dentro de la app (Contestar/Rechazar).
   Widget _pantallaEntrante() {
     final nombre =
-        widget.nombreOtro.isEmpty ? 'Pichangol' : widget.nombreOtro;
+        widget.nombreOtro.isEmpty ? '$kBrandName' : widget.nombreOtro;
     return PopScope(
       canPop: true,
       child: Scaffold(
@@ -433,8 +434,8 @@ class _LlamadaScreenState extends State<LlamadaScreen> {
                   const SizedBox(height: 8),
                   Text(
                     widget.video
-                        ? 'Videollamada de Pichangol…'
-                        : 'Llamada de Pichangol…',
+                        ? 'Videollamada de $kBrandName…'
+                        : 'Llamada de $kBrandName…',
                     style: const TextStyle(color: Colors.white70, fontSize: 15),
                   ),
                 ],

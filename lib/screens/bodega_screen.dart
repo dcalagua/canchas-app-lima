@@ -23,6 +23,7 @@ import '../widgets/ilustracion_pichangol.dart';
 import '../widgets/imagen_producto_bodega.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// MI BODEGA — POS ligero del dueño (función Pichangol Pro): caja rápida de
 /// venta, catálogo con stock y reportes. La plata NO pasa por Pichangol (el
 /// dueño cobra con su Yape/efectivo de siempre); aquí registra la venta en
@@ -1020,7 +1021,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
                 if (mounted) setState(() {});
               },
               icon: const Icon(Icons.workspace_premium),
-              label: const Text('Activar con Pichangol Pro'),
+              label: const Text('Activar con $kBrandName Pro'),
             ),
           ],
         ),
@@ -1589,7 +1590,7 @@ class _BodegaScreenState extends State<BodegaScreen> {
               if (p.pagado)
                 const Padding(
                   padding: EdgeInsets.only(top: 4),
-                  child: Text('💳 PAGADO con saldo Pichangol · solo entrégalo',
+                  child: Text('💳 PAGADO con saldo $kBrandName · solo entrégalo',
                       style: TextStyle(
                           color: bosque,
                           fontWeight: FontWeight.w800,

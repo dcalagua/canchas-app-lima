@@ -41,6 +41,7 @@ import '../widgets/pago_tarjeta_sheet.dart';
 import 'registrar_cancha_screen.dart';
 import 'reservas_dueno_screen.dart';
 
+import '../brand.dart';
 /// Ficha de CLUB (rediseño): un local con varias canchas. Selector "Elige
 /// cancha" + horarios de la cancha elegida + reserva con seña.
 class ClubDetalleScreen extends StatefulWidget {
@@ -1822,7 +1823,7 @@ class _StripConfianza extends StatelessWidget {
   Widget build(BuildContext context) {
     return const Row(
       children: [
-        Expanded(child: _Garantia(titulo: '✓ Verificada', sub: 'por Pichangol')),
+        Expanded(child: _Garantia(titulo: '✓ Verificada', sub: 'por $kBrandName')),
         SizedBox(width: 10),
         Expanded(child: _Garantia(titulo: 'Pago seguro', sub: 'seña protegida')),
         SizedBox(width: 10),
@@ -2401,7 +2402,7 @@ class _ResumenReservaState extends State<_ResumenReserva> {
               ),
               const SizedBox(height: 4),
               Text(
-                  'Jugadores de la Liga Pichangol que pelotean contigo en este '
+                  'Jugadores de la Liga $kBrandName que pelotean contigo en este '
                   'local. Eliges por categoría y precio por turno; el '
                   '${_nombreBol.toLowerCase()} confirma y, si no puede, te '
                   'devolvemos su parte.',
@@ -3534,7 +3535,7 @@ class _PanelDescubiertaState extends State<_PanelDescubierta> {
           ],
           const SizedBox(height: 10),
           Text(
-            'Todavía no está activa en Pichangol, así que aún no se puede '
+            'Todavía no está activa en $kBrandName, así que aún no se puede '
             'reservar online. ¿Es tuya? Regístrala y empieza a recibir reservas.',
             style: t.bodyMedium?.copyWith(color: textoTenue, height: 1.4),
           ),
@@ -3867,7 +3868,7 @@ class _PanelPendienteState extends State<_PanelPendiente> {
             _esMio
                 ? 'Tu solicitud está en revisión. Por seguridad, las reservas '
                     'online se habilitan recién cuando confirmemos la propiedad.'
-                : 'Esta cancha aún no está activa en Pichangol; todavía no se '
+                : 'Esta cancha aún no está activa en $kBrandName; todavía no se '
                     'puede reservar online.',
             style: t.bodyMedium?.copyWith(color: textoTenue, height: 1.4),
           ),

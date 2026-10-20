@@ -11,6 +11,7 @@ import '../widgets/cargando_pichangol.dart';
 import 'hazte_pro_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// CIRCUITO / RANKING interno de una academia (Fase 0 de Pichangol Circuito).
 /// Tabla de posiciones de los alumnos + carnet del jugador. El dueño (profe)
 /// registra resultados de partidos entre sus alumnos; los puntos actualizan la
@@ -460,7 +461,7 @@ class _Carnet extends StatelessWidget {
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 12)),
                       icon: const Icon(Icons.workspace_premium, size: 18),
-                      label: const Text('Hazte Pichangol Pro',
+                      label: const Text('Hazte $kBrandName Pro',
                           style: TextStyle(fontWeight: FontWeight.w800)),
                       onPressed: () {
                         Navigator.pop(context);
@@ -647,7 +648,7 @@ class _Carnet extends StatelessWidget {
                     ],
                   ),
                   pw.SizedBox(height: 4),
-                  pw.Text('Pichangol · Circuito',
+                  pw.Text('$kBrandName · Circuito',
                       style:
                           const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
                 ]),

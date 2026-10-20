@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/juego.dart';
 import 'pagos_service.dart';
 
+import '../brand.dart';
 /// JUEGA YA (backend `juego.py`): preferencias de avisos/disponibilidad y
 /// jugadores disponibles cerca. Cache-first: las preferencias se pintan al
 /// instante desde el teléfono y se refrescan del backend.
@@ -65,7 +66,7 @@ class JuegoService {
       {double? lat, double? lng, String nombre = ''}) async {
     final e = _cuenta(email);
     if (!PagosService.disponible || e.isEmpty) {
-      return (null, 'Sin conexión con Pichangol. Reintenta.');
+      return (null, 'Sin conexión con $kBrandName. Reintenta.');
     }
     try {
       final r = await http

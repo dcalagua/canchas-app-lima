@@ -6,6 +6,7 @@ import '../theme.dart';
 import 'dialogo_pichangol.dart';
 import 'icono_vivo.dart';
 
+import '../brand.dart';
 /// "Confirmar mis pagos automáticamente" (fase 2 del Plan Academia): el
 /// celular Android de la academia lee la notificación de su Yape y Pichangol
 /// confirma solo el pago del alumno con el mismo código de seguridad y monto.
@@ -90,19 +91,19 @@ class _TarjetaYapeAutoState extends State<TarjetaYapeAuto>
       context,
       titulo: 'Confirmar pagos solos',
       mensaje: widget.qr
-          ? 'Pichangol leerá en ESTE celular solo las notificaciones de la app '
+          ? '$kBrandName leerá en ESTE celular solo las notificaciones de la app '
               'donde recibes tus cobros por QR (la eliges en el siguiente paso) '
               'para reconocer el monto único que paga cada alumno y marcar su '
               'cuota como pagada. No leemos tus chats ni otras apps, y puedes '
               'apagarlo cuando quieras.\n\n'
               'Android te pedirá el permiso "Acceso a notificaciones" para '
-              'Pichangol.'
-          : 'Pichangol leerá en ESTE celular solo las notificaciones de tu '
+              '$kBrandName.'
+          : '$kBrandName leerá en ESTE celular solo las notificaciones de tu '
               'app Yape (monto, nombre y código de seguridad) para confirmar '
               'automáticamente los pagos que tus alumnos reportan. No leemos tus '
               'chats ni otras apps, y puedes apagarlo cuando quieras.\n\n'
               'En el siguiente paso Android te pedirá el permiso "Acceso a '
-              'notificaciones" para Pichangol.',
+              'notificaciones" para $kBrandName.',
       textoConfirmar: 'Activar',
       textoCancelar: 'Ahora no',
       icono: Icons.notifications_active_outlined,
@@ -139,9 +140,9 @@ class _TarjetaYapeAutoState extends State<TarjetaYapeAuto>
     if (!mounted) return;
     if (instaladas.isEmpty) {
       await avisarPichangol(context,
-          titulo: 'Actualiza Pichangol',
+          titulo: 'Actualiza $kBrandName',
           mensaje: 'Esta versión del app no puede listar tus apps de cobro. '
-              'Actualiza Pichangol e inténtalo otra vez.',
+              'Actualiza $kBrandName e inténtalo otra vez.',
           icono: Icons.system_update_alt);
       return;
     }
@@ -209,7 +210,7 @@ class _TarjetaYapeAutoState extends State<TarjetaYapeAuto>
     } else if (widget.qr && _apps.isEmpty) {
       sub = 'Elige la app donde recibes tus cobros por QR.';
     } else if (faltaPermiso) {
-      sub = 'Falta darle a Pichangol el "Acceso a notificaciones".';
+      sub = 'Falta darle a $kBrandName el "Acceso a notificaciones".';
     } else {
       sub = _confirmadas > 0
           ? 'Activo en este celular · $_confirmadas '
@@ -290,9 +291,9 @@ class _TarjetaYapeAutoState extends State<TarjetaYapeAuto>
                     await avisarPichangol(
                       context,
                       titulo: '¿El interruptor sale bloqueado?',
-                      mensaje: 'En algunos Android, si instalaste Pichangol '
+                      mensaje: 'En algunos Android, si instalaste $kBrandName '
                           'fuera de Play, primero entra a Ajustes → Apps → '
-                          'Pichangol → ⋮ → "Permitir ajustes restringidos" y '
+                          '$kBrandName → ⋮ → "Permitir ajustes restringidos" y '
                           'vuelve a "Dar acceso".',
                       textoBoton: 'Abrir info de la app',
                       icono: Icons.lock_open_outlined,

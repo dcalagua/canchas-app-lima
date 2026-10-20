@@ -6,6 +6,7 @@ import '../state/app_state.dart';
 import '../theme.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Reporte de cobros del DUEÑO de canchas (panel SaaS): facturación por rango de
 /// fechas, reservas, ticket promedio, ingresos por mes y desglose por cancha.
 /// Reusa `appState.reservas` (las de las canchas del dueño); no hay tabla nueva.
@@ -323,7 +324,7 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
       }
     }
     final b = StringBuffer()
-      ..writeln('📊 Reporte de cobros · Pichangol')
+      ..writeln('📊 Reporte de cobros · $kBrandName')
       ..writeln('')
       ..writeln('Generado: $moneda ${bruto.toStringAsFixed(2)}')
       ..writeln('  • Cobrado: $moneda ${cobrado.toStringAsFixed(2)}')
@@ -332,7 +333,7 @@ class _ReporteCanchasScreenState extends State<ReporteCanchasScreen> {
     if (recOnline + recSaldo > 0) {
       b
         ..writeln('')
-        ..writeln('Por recibir de Pichangol: $moneda ${recOnline + recSaldo}')
+        ..writeln('Por recibir de $kBrandName: $moneda ${recOnline + recSaldo}')
         ..writeln('  • Online ($nOnline): $moneda $recOnline '
             '(comisión $moneda ${comOnline.round()} del pago)')
         ..writeln('  • Con tu saldo ($nSaldo): $moneda $recSaldo al 100% '
@@ -510,7 +511,7 @@ class _ResumenComision extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Cuánto vas a recibir de Pichangol',
+          Text('Cuánto vas a recibir de $kBrandName',
               style: TextStyle(
                   color: cs.onSurface,
                   fontWeight: FontWeight.w800,

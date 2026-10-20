@@ -22,6 +22,7 @@ from datetime import date, timedelta
 
 import config
 from starlette.concurrency import run_in_threadpool
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 _JSON_INVALIDO = object()
 
@@ -67,7 +68,7 @@ MENU = [
     ("cobros", "Cobros de academia", "Quién debe, recordatorios y cobro en efectivo", "#D4B048", "💳", "/anfitrion/cobros", True),
     ("plan-academia", "Plan Academia", "Tu suscripción: prueba gratis, precio fijo al mes y tus alumnos te pagan directo", "#742284", "🎓", "/anfitrion/academia/plan", True),
     ("campeonatos", "Mis campeonatos", "Organiza torneos (fútbol, tenis…), invita y sortea", "#D4B048", "🏆", "/anfitrion/campeonatos", True),
-    ("tienda", "Mi tienda", "Vende en el Marketplace Pichangol: raquetas, pelotas y más", "#7B61FF", "🏪", "/anfitrion/tienda", True),
+    ("tienda", "Mi tienda", f"Vende en el Marketplace {MARCA}: raquetas, pelotas y más", "#7B61FF", "🏪", "/anfitrion/tienda", True),
     ("bodega", "Mi bodega", "Caja rápida, stock, pedidos a la cancha y carta con QR (Pro)", "#E07A3F", "🧃", "/anfitrion/bodega", True),
     ("boleador", "Soy boleador", "Peloteo por turno: pon tu categoría, tu tarifa y dónde atiendes", "#0E8F67", "🎾", "/anfitrion/boleador", True),
     ("verificador", "Verificador", "Rol de campo: visitas con foto, GPS y firma", "#0E8F67", "🛡️", "/anfitrion/verificador", True),
@@ -94,7 +95,7 @@ def _sesion_o_entrar(request: Request, volver: str):
     cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'>"
               "<h1 style='font-size:22px'>Modo anfitrión</h1>"
               "<p class='sub'>En esta web aún no está activo el inicio de sesión. Administra tus canchas desde la app.</p>"
-              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a></div></div>")
     return None, ui.shell("Modo anfitrión", cuerpo, sesion=None)
 
 
@@ -116,7 +117,7 @@ def pagina_menu(request: Request) -> HTMLResponse:
               "<p>Publica tu cancha o academia y recibe reservas y alumnos.</p></div>"
               f"<div class='anf-menu'>{items}</div>")
     return ui.shell("Modo anfitrión", cuerpo, nav=_cabecera("", ses, tabs_visibles=False), sesion=ses, ancho=True,
-                    titulo_tab="Modo anfitrión · Pichangol")
+                    titulo_tab=f"Modo anfitrión · {MARCA}")
 
 
 def _contexto(request: Request, volver: str):
@@ -136,7 +137,7 @@ def _onboarding(ses: dict) -> HTMLResponse:
     cuerpo = (
         "<div style='max-width:760px;margin:30px auto 0'>"
         f"<h1 class='anf-hola'>Hola, {e((ses.get('nombre') or ses.get('email') or '').split(' ')[0])} 👋</h1>"
-        "<p class='sub' style='font-size:16px'>Con esta cuenta todavía no tienes canchas registradas. En Pichangol tu cancha "
+        f"<p class='sub' style='font-size:16px'>Con esta cuenta todavía no tienes canchas registradas. En {MARCA} tu cancha "
         "recibe reservas y pagos en línea, y tú la administras desde la app y desde aquí.</p>"
         "<div class='kpis' style='margin-top:22px'>"
         "<div class='kpi'><small>1 · Regístrala</small><b style='font-size:16px'>Aquí mismo o desde la app: Pon tu cancha</b></div>"
@@ -147,7 +148,7 @@ def _onboarding(ses: dict) -> HTMLResponse:
         f"<a class='btn sec' href='{PLAY_URL}' rel='noopener'>O desde la app</a><a class='btn sec' href='/#como'>Cómo funciona</a></div>"
         "<p class='sub' style='margin-top:18px;font-size:13px'>¿Ya registraste tu cancha con otro correo? Inicia sesión aquí con ese mismo correo de Google.</p>"
         "</div>")
-    return ui.shell("Modo anfitrión", cuerpo, nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab="Modo anfitrión · Pichangol")
+    return ui.shell("Modo anfitrión", cuerpo, nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab=f"Modo anfitrión · {MARCA}")
 
 
 def _hoy(canchas: list[dict]) -> date:
@@ -239,7 +240,7 @@ def pagina_hoy(request: Request) -> HTMLResponse:
         "b.disabled=false;b.dataset.v=v?'0':'1';b.className='btn'+(v?' sec':'');b.innerHTML=v?'↩ Marcar por cobrar':'✅ Marcar pagada'};</script>"
         "<script>(function(){var t=document.getElementById('anfTabs');if(!t)return;t.addEventListener('click',function(ev){var b=ev.target.closest('[data-tab]');if(!b)return;"
         "t.querySelectorAll('.chip').forEach(function(x){x.classList.toggle('sel',x===b);});document.querySelectorAll('[data-panel]').forEach(function(p){p.style.display=p.dataset.panel===b.dataset.tab?'':'none';});});})();</script>")
-    return ui.shell("Hoy", cuerpo, nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab="Modo anfitrión · Pichangol")
+    return ui.shell("Hoy", cuerpo, nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab=f"Modo anfitrión · {MARCA}")
 
 
 @router.get("/anfitrion/reservas", response_class=HTMLResponse)
@@ -328,7 +329,7 @@ def _pro_ok(email: str) -> bool:
 
 
 _RESP_PRO = {"ok": False, "error": "requiere_pro",
-             "mensaje": "La reserva manual y el bloqueo de horas son parte de Pichangol Pro. Actívalo en Perfil → 👑 Pichangol Pro."}
+             "mensaje": f"La reserva manual y el bloqueo de horas son parte de {MARCA} Pro. Actívalo en Perfil → 👑 {MARCA} Pro."}
 
 
 @router.get("/anfitrion/calendario", response_class=HTMLResponse)
@@ -415,7 +416,7 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
     <div><label for='mEm'>Correo de su cuenta <span class='req'>opcional</span></label><input id='mEm' type='email' maxlength='120' placeholder='para que la vea en su app'></div></div>
     <label for='mPre'>Precio</label><div class='inp-moneda'><span>{e(sim)}</span><input id='mPre' type='number' min='0' step='0.5' inputmode='decimal'></div>
     <label class='chk' style='margin-top:14px'><input type='checkbox' id='mPag'> Ya pagó <small>(si no, queda "por cobrar" en tu caja)</small></label>
-    <p class='sub' style='font-size:12.5px;margin-top:10px'>Cliente propio: sin comisión. No entra a tu billetera Pichangol, sí a tu caja del día.</p>
+    <p class='sub' style='font-size:12.5px;margin-top:10px'>Cliente propio: sin comisión. No entra a tu billetera {MARCA}, sí a tu caja del día.</p>
    </div>
    <div id='calBloq' hidden style='margin-top:14px'><p class='sub' style='margin:0'>El turno deja de aparecer libre en la app y en la web (mantenimiento, uso propio, clases…). Puedes desbloquearlo cuando quieras.</p></div>
   </div>
@@ -438,13 +439,13 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
         f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}&desde={sig}'>Semana siguiente ›</a>"
         f"<span class='sub' style='margin:0 0 0 auto'>{e(c['nombre'])} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min</span></div>"
         f"<div class='cal-sem cal-act'><table><thead><tr><th></th>{cab}</tr></thead><tbody>{filas_html}</tbody></table></div>"
-        + ("" if cfg["pro"] else "<p class='aviso warn' style='margin-top:12px'>📝 La reserva manual y el bloqueo de horas son parte de <b>Pichangol Pro</b>. Actívalo en Perfil → 👑 Pichangol Pro.</p>")
+        + ("" if cfg["pro"] else f"<p class='aviso warn' style='margin-top:12px'>📝 La reserva manual y el bloqueo de horas son parte de <b>{MARCA} Pro</b>. Actívalo en Perfil → 👑 {MARCA} Pro.</p>")
         + modal
         + f"<script>var CAL={json.dumps(cfg, ensure_ascii=False)};var RES={json.dumps(res_json, ensure_ascii=False)};</script><script>{_JS_CAL}</script>")
     return ui.shell("Calendario", cuerpo, nav=_cabecera("calendario", ses), sesion=ses, ancho=True, titulo_tab="Calendario · Modo anfitrión")
 
 
-_JS_CAL = r"""
+_JS_CAL = (r"""
 (function(){
 var M=document.getElementById('modalCal'), cel=null, modo='', acc='manual';
 function $(id){return document.getElementById(id)}
@@ -454,7 +455,7 @@ function abrir(td){cel=td;modo=td.dataset.t;err('');['calLibre','calBloqueado','
   $('calSub').textContent=CAL.nombre+' · '+fechaTxt(td.dataset.f)+' · '+td.dataset.h+'–'+td.dataset.fin;
   var si=$('calSi');si.hidden=false;si.disabled=false;
   if(modo==='libre'){$('calTit').textContent='Turno libre';$('calLibre').hidden=false;setAcc('manual');$('mCli').value='';$('mNom').value='';$('mTel').value='';$('mEm').value='';$('mPre').value=td.dataset.p;$('mPag').checked=false;
-    if(!CAL.pro){$('calLibre').hidden=true;si.hidden=true;err('La reserva manual y el bloqueo de horas son parte de Pichangol Pro. Actívalo en Perfil → Pichangol Pro (/pro).')}}
+    if(!CAL.pro){$('calLibre').hidden=true;si.hidden=true;err('La reserva manual y el bloqueo de horas son parte de ⟦MARCA⟧ Pro. Actívalo en Perfil → ⟦MARCA⟧ Pro (/pro).')}}
   else if(modo==='bloq'){$('calTit').textContent='Turno bloqueado';$('calBloqueado').hidden=false;si.textContent='Desbloquear'}
   else{var r=RES[td.dataset.rid];$('calTit').textContent='Reserva';$('calRes').hidden=false;si.hidden=true;
     $('rAv').textContent=(r.jugador||r.usuario||'?').charAt(0).toUpperCase();$('rNom').textContent=r.jugador||r.usuario||'Reserva';
@@ -489,7 +490,7 @@ document.addEventListener('click',async function(ev){var q=ev.target.closest('#r
 document.addEventListener('click',async function(ev){var q=ev.target.closest('#rQuitar');if(!q||!cel)return;if(!await pcgConfirmar({titulo:'Quitar reserva manual',mensaje:'El turno vuelve a quedar libre en tu calendario.',confirmar:'Quitar',destructivo:true}))return;q.disabled=true;pcgCargando('Quitando la reserva…');
   try{var j=await post('/anfitrion/reserva/'+encodeURIComponent(cel.dataset.rid)+'/quitar',{});if(j.ok){pcgRecargar();return}pcgCargando(false);err(j.error||'No se pudo quitar.')}catch(e){pcgCargando(false);err('No se pudo quitar.')}q.disabled=false});
 })();
-""" + JS_PAGAR
+""").replace('⟦MARCA⟧', MARCA) + JS_PAGAR
 
 
 def _canchas_sesion(request: Request):
@@ -654,7 +655,7 @@ def _marcar_pagado_web(request: Request, res_id: str, _cuerpo_json) -> JSONRespo
         lugar = ((c or {}).get("club") or "").strip() or (c or {}).get("nombre") or "tu reserva"
         from pagos import router as pr
         _en_segundo_plano(pr._aviso_push_usuario, usuario, "¡Te llegaron puntos! ⭐",
-                          f"El local confirmó tu pago: +{pts} puntos Pichangol por tu reserva en {lugar}. Canjéalos como descuento en tu próxima reserva online.",
+                          f"El local confirmó tu pago: +{pts} puntos {MARCA} por tu reserva en {lugar}. Canjéalos como descuento en tu próxima reserva online.",
                           "puntos")
     print(f"[pago-web] {ses['email']} marcó {res_id} pagado={pagado}", flush=True)
     return JSONResponse({"ok": True, "pagado": pagado})
@@ -761,7 +762,7 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
         "<h1 class='anf-hola'>Ingresos</h1><p class='sub'>La misma billetera que ves en la app.</p>"
         "<div class='kpis'>"
         f"<div class='kpi'><small>Por recibir (reservas en línea)</small><b>{e(sim)} {por_recibir:.2f}</b><small>{len(pend)} liquidación{'es' if len(pend) != 1 else ''} pendiente{'s' if len(pend) != 1 else ''}</small></div>"
-        f"<div class='kpi'><small>Saldo Pichangol</small><b>{e(sim)} {saldo:.2f}</b><small>de aquí sale la comisión</small></div>"
+        f"<div class='kpi'><small>Saldo {MARCA}</small><b>{e(sim)} {saldo:.2f}</b><small>de aquí sale la comisión</small></div>"
         + (f"<div class='kpi'><small>Saldo de regalo 🎁</small><b>{e(sim)} {promo:.2f}</b><small>cubre comisiones</small></div>" if promo > 0 else "")
         + "</div>"
         f"<p style='margin-top:14px'><a class='btn sec' href='{PLAY_URL}' rel='noopener' style='padding:10px 16px;font-size:14px'>Recargar saldo en la app</a></p>"
@@ -788,7 +789,7 @@ def _tarjeta_cuenta_cobro(cuenta: dict | None, res: dict, pais_iso: str, ses: di
                   "<button type='button' class='btn sec' id='ccEditar'>Cambiar</button></div>")
     else:
         estado = ("<div class='cc-actual sin'><span class='ico'>⚠️</span><div><b>Aún no registraste dónde cobrar</b>"
-                  f"<small>{'Ya tienes plata por recibir: ' if hay_pendiente else ''}Regístrala para que Pichangol pueda transferirte."
+                  f"<small>{'Ya tienes plata por recibir: ' if hay_pendiente else ''}Regístrala para que {MARCA} pueda transferirte."
                   "</small></div><button type='button' class='btn' id='ccEditar'>Registrar cuenta</button></div>")
     return (f"<section class='panel' id='cuentaCobro' style='margin-top:18px'><h2 style='margin-top:0'>Cuenta de cobro</h2>{estado}"
             "<form id='ccForm' hidden style='margin-top:14px'>"
@@ -956,7 +957,7 @@ def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
         aviso = (f"<div class='aviso ok' style='margin:16px 0 0'>✅ Agregamos <b>{e(agregada['nombre'])}</b> a <b>{e(agregada.get('club') or '')}</b>. "
                  + ("Ya está activa y recibe reservas: el local ya estaba verificado." if datos.reservable(agregada)
                     else "Se activará junto con el local cuando aprobemos la verificación.") + "</div>")
-    cuerpo = ("<h1 class='anf-hola'>Mis canchas</h1><p class='sub'>Tus locales en Pichangol, con sus canchas. Edita precio, horario, fotos y servicios aquí o en la app: es la misma cancha.</p>"
+    cuerpo = (f"<h1 class='anf-hola'>Mis canchas</h1><p class='sub'>Tus locales en {MARCA}, con sus canchas. Edita precio, horario, fotos y servicios aquí o en la app: es la misma cancha.</p>"
               f"{aviso}{_aviso_verificacion(canchas, ses['email'])}{fotos_locales.avisos_dueno(ses['email'], canchas)}"
               f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(min(420px,100%),1fr));margin-top:16px'>{tarjetas}</div>"
               "<p style='margin-top:20px'><a class='btn' href='/anfitrion/nueva'>＋ Registrar otro local</a></p>")
@@ -1121,7 +1122,7 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
            "storage": almacen.disponible()}
     cuerpo = f"""
 <div class='edit-top'><a class='volver-lnk' href='/anfitrion/canchas'>‹ Canchas</a>
-<h1 class='anf-hola' style='margin-top:8px'>Editar cancha</h1><p class='sub'>{e(c['nombre'])}{(' · ' + e(c.get('club'))) if c.get('club') else ''} · {e(_zona(c)) if _zona(c) else 'Pichangol'}</p></div>
+<h1 class='anf-hola' style='margin-top:8px'>Editar cancha</h1><p class='sub'>{e(c['nombre'])}{(' · ' + e(c.get('club'))) if c.get('club') else ''} · {e(_zona(c)) if _zona(c) else MARCA}</p></div>
 <div class='edit-grid'>
 <nav class='edit-nav'>{nav}</nav>
 <form id='fEdit' class='edit-form' autocomplete='off' novalidate>
@@ -1162,7 +1163,7 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
  <section class='panel edit-sec' id='sec-extras'><h2>Servicios extra de esta cancha</h2><p class='sub'>De pago: el jugador los agrega al reservar y suman al total. Solo los que aplican a {e(' / '.join(_deporte(d)[0] for d in deps))}. Los del local (piscina, sauna, entrada general…) van en <a href='{url_local}'>Editar local</a>.</p>
   <div class='servs'>{filas_serv}</div>
   <div style='margin-top:18px;padding-top:14px;border-top:1px solid var(--linea,#E4E4E4)'>
-   <label for='sugTxt'>¿Tu local ofrece algo que no está en la lista? <span class='req'>lo revisa el equipo de Pichangol y lo agrega al catálogo</span></label>
+   <label for='sugTxt'>¿Tu local ofrece algo que no está en la lista? <span class='req'>lo revisa el equipo de {MARCA} y lo agrega al catálogo</span></label>
    <div class='acciones' style='align-items:center'><input id='sugTxt' maxlength='120' placeholder='Ej. Frontón, clases de natación, cochera techada' style='flex:1;min-width:220px'><button type='button' class='btn sec' id='btnSug'>💡 Sugerir</button></div>
    <span class='sub' id='sugMsg' style='margin:4px 0 0'></span>
   </div>
@@ -1424,7 +1425,7 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
 <nav class='edit-nav'>{nav}</nav>
 <form id='fLocal' class='edit-form' autocomplete='off' novalidate>
  <section class='panel edit-sec' id='sec-fotos'><h2>📷 Fotos del local</h2>
-  <p class='sub'>Sube fotos reales de tu local (cancha, ingreso, vestuarios…). Pichangol necesita al menos <b>{min_local or 3}</b> fotos tuyas.{plazo_txt}
+  <p class='sub'>Sube fotos reales de tu local (cancha, ingreso, vestuarios…). {MARCA} necesita al menos <b>{min_local or 3}</b> fotos tuyas.{plazo_txt}
   Las marcadas <b>Google</b> son temporales: no cuentan y se quitarán; puedes quitarlas tú cuando subas las tuyas. La primera foto es la portada.</p>
   <div id='contFotos' class='aviso' style='margin:10px 0'></div>
   <div class='edit-fotos' id='fotos'></div>
@@ -1443,7 +1444,7 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
  <section class='panel edit-sec' id='sec-extras'><h2>Servicios extra del local</h2><p class='sub'>De pago, del recinto (piscina, sauna, entrada general…): el jugador los agrega al reservar cualquiera de tus canchas. Por reserva, por persona (el jugador elige cuántas) o por turno.</p>
   <div class='servs'>{filas_serv}</div>
   <div style='margin-top:18px;padding-top:14px;border-top:1px solid var(--linea,#E4E4E4)'>
-   <label for='sugTxt'>¿Tu local ofrece algo que no está en la lista? <span class='req'>lo revisa el equipo de Pichangol y lo agrega al catálogo</span></label>
+   <label for='sugTxt'>¿Tu local ofrece algo que no está en la lista? <span class='req'>lo revisa el equipo de {MARCA} y lo agrega al catálogo</span></label>
    <div class='acciones' style='align-items:center'><input id='sugTxt' maxlength='120' placeholder='Ej. Frontón, clases de natación, cochera techada' style='flex:1;min-width:220px'><button type='button' class='btn sec' id='btnSug'>💡 Sugerir</button></div>
    <span class='sub' id='sugMsg' style='margin:4px 0 0'></span>
   </div>
@@ -1866,7 +1867,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
     nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
     cuerpo = f"""
 <div class='edit-top'><a class='volver-lnk' href='/anfitrion'>‹ Modo anfitrión</a>
-<h1 class='anf-hola' style='margin-top:8px'>{'Reclama tu cancha' if existente else 'Pon tu cancha en Pichangol'}</h1><p class='sub'>{'Esta cancha ya está en Pichangol pero nadie la administra. Completa los datos y confirmamos que es tuya antes de activarla.' if existente else 'Publícala y empieza a recibir reservas. Confirmamos que eres el dueño antes de activarla (WhatsApp o visita), igual que en la app.'}</p></div>
+<h1 class='anf-hola' style='margin-top:8px'>{'Reclama tu cancha' if existente else f'Pon tu cancha en {MARCA}'}</h1><p class='sub'>{f'Esta cancha ya está en {MARCA} pero nadie la administra. Completa los datos y confirmamos que es tuya antes de activarla.' if existente else 'Publícala y empieza a recibir reservas. Confirmamos que eres el dueño antes de activarla (WhatsApp o visita), igual que en la app.'}</p></div>
 <div class='edit-grid'><nav class='edit-nav'>{nav}</nav>
 <form id='fNueva' class='edit-form' autocomplete='off' novalidate>
  <section class='panel edit-sec' id='sec-local'><h2>Tu local</h2>
@@ -1902,7 +1903,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
   <div class='acciones' style='margin-top:12px'><label class='btn sec' for='inFotos'>📷 Agregar fotos</label><input type='file' id='inFotos' accept='image/*' multiple hidden{'' if almacen.disponible() else ' disabled'}>
   <span class='sub' id='fotosMsg' style='margin:0'>{'' if almacen.disponible() else 'La subida de fotos no está disponible en este ambiente; súbelas desde la app.'}</span></div>
  </section>
- <section class='panel edit-sec' id='sec-dueno'><h2>Verificación de propiedad</h2><p class='sub'>Existir no es ser dueño: con estos datos el equipo de Pichangol confirma que la cancha es tuya antes de activarla. No se publican.</p>
+ <section class='panel edit-sec' id='sec-dueno'><h2>Verificación de propiedad</h2><p class='sub'>Existir no es ser dueño: con estos datos el equipo de {MARCA} confirma que la cancha es tuya antes de activarla. No se publican.</p>
   <label for='wa'>WhatsApp del local o del dueño <span class='req'>obligatorio</span></label><div class='inp-moneda' style='max-width:300px'><span id='telPre'>+{catalogos.TEL_PREFIJO.get(iso, '51')}</span><input id='wa' inputmode='tel' maxlength='15' placeholder='999 888 777'></div>
   <label style='margin-top:14px'>Tu relación con el local</label>{_chips('relacion', RELACIONES, 'dueno')}
   <label for='doc' style='margin-top:14px'><span id='docNombre'>{DOC_NOMBRE.get(iso, 'Documento')}</span> del titular <span class='req'>opcional, ayuda a aprobar más rápido</span></label><input id='doc' inputmode='numeric' maxlength='12' style='max-width:220px' placeholder='Solo números'>
@@ -1915,7 +1916,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
 <button type='button' class='btn' id='btnGuardar'>{'Reclamar mi cancha' if existente else 'Registrar mi cancha'}</button></div></div>
 <script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{JS_PRECIO}</script><script>{_JS_NUEVA}</script>"""
     return ui.shell("Pon tu cancha", cuerpo, nav=_cabecera("canchas", ses, tabs_visibles=False), sesion=ses, ancho=True,
-                    extra_head=_LEAFLET, titulo_tab="Pon tu cancha · Pichangol")
+                    extra_head=_LEAFLET, titulo_tab=f"Pon tu cancha · {MARCA}")
 
 
 _JS_NUEVA = r"""
@@ -2537,7 +2538,7 @@ def pagina_modulo_app(request: Request, modulo: str) -> HTMLResponse:
               "<div class='panel' style='max-width:640px;margin:22px auto 0;text-align:center'>"
               f"<span class='anf-item-ico' style='background:{color}'>{ico}</span>"
               f"<h2 style='margin-top:12px'>{e(titulo)} está en la app</h2>"
-              "<p class='sub'>Esta sección se administra desde la app de Pichangol con la misma cuenta de Google. "
+              f"<p class='sub'>Esta sección se administra desde la app de {MARCA} con la misma cuenta de Google. "
               "La versión web llegará más adelante.</p>"
               f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}' rel='noopener'>Abrir en la app</a>"
               "<a class='btn sec' href='/anfitrion'>Volver al menú</a></div></div>")

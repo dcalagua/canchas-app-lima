@@ -10,6 +10,7 @@ import 'metodos_pago_screen.dart';
 import 'recargar_saldo_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// MI BILLETERA: saldo único del usuario + historial COMPLETO de movimientos
 /// (recargas por Yape/tarjeta que entran, y lo que consume: Pichangol Pro,
 /// inscripciones a torneos, servicios, comisiones). Cada movimiento tiene su
@@ -68,7 +69,7 @@ class _BilleteraScreenState extends State<BilleteraScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Saldo Pichangol',
+                      const Text('Saldo $kBrandName',
                           style: TextStyle(color: Colors.white70, fontSize: 13)),
                       const SizedBox(height: 6),
                       Text('$mon ${appState.saldoClub}.00',
@@ -245,7 +246,7 @@ class _BilleteraScreenState extends State<BilleteraScreen> {
             decoration: pw.BoxDecoration(
                 color: verde, borderRadius: pw.BorderRadius.circular(12)),
             child: pw.Column(children: [
-              pw.Text('Pichangol',
+              pw.Text('$kBrandName',
                   style: pw.TextStyle(
                       color: PdfColors.white,
                       fontSize: 20,
@@ -270,7 +271,7 @@ class _BilleteraScreenState extends State<BilleteraScreen> {
           if (m.fechaIso.isNotEmpty) _pdfFila('Fecha', _fechaLarga(m.fechaIso)),
           pw.Spacer(),
           pw.Divider(),
-          pw.Text('Gracias por usar Pichangol.',
+          pw.Text('Gracias por usar $kBrandName.',
               style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
         ],
       ),

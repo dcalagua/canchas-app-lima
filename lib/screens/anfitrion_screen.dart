@@ -14,6 +14,7 @@ import 'mis_productos_screen.dart';
 import 'verificador_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Modo anfitrión (estilo Airbnb): un solo lugar con todo lo del anfitrión —
 /// publicar/administrar canchas y academias, y el rol de verificador. Separa el
 /// mundo "jugador" (perfil) del mundo "anfitrión".
@@ -164,7 +165,7 @@ class AnfitrionScreen extends StatelessWidget {
                   color: morado,
                   title: 'Mi tienda',
                   subtitle:
-                      'Vende en el Marketplace Pichangol: raquetas, pelotas y más',
+                      'Vende en el Marketplace $kBrandName: raquetas, pelotas y más',
                   onTap: () => Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => const MisProductosScreen())),
                 ),

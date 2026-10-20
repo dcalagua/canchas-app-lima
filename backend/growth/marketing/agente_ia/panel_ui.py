@@ -4,8 +4,9 @@ Se inyecta en el HTML de `propiedad/panel.py` (estilos + script) para no
 engordar más ese archivo. Usa los helpers de la torre: `headers()`, `salir()`,
 `toast()`, `esc()`. Todo pasa por `/admin/api/mkt/*` (sesión admin).
 """
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
-BLOQUE = r"""
+BLOQUE = (r"""
 <style>
   #page-marketing .mk-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 14px}
   #page-marketing .mk-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 11px;font-size:12px;
@@ -251,7 +252,7 @@ function mkConfig(){
     ${chk('arte_ia','Permitir arte IA conceptual (si no hay fotos reales)')}
   </div>
   <h3 style="margin-top:18px">Locales Pro con IA</h3>
-  <p class="row">Solo locales cuyo dueño tiene Pichangol Pro y con “Destacar locales Pro” encendido. La IA ambienta las fotos REALES del dueño
+  <p class="row">Solo locales cuyo dueño tiene ⟦MARCA⟧ Pro y con “Destacar locales Pro” encendido. La IA ambienta las fotos REALES del dueño
     (jugadores, luz; el lugar no cambia) y cada pieza dice que se creó con IA. Uso del mes: <b>${mkUsoPro()}</b></p>
   <div class="mk-form">
     ${num('pro_cupo_mes','Publicaciones por local Pro al mes (0 = ninguna)',0,30)}
@@ -300,13 +301,13 @@ async function mkLogs(){
   }catch(e){}
 }
 </script>
-"""
+""").replace('⟦MARCA⟧', MARCA)
 
-SECCION = """    <section id="page-marketing" class="page" style="display:none">
+SECCION = f"""    <section id="page-marketing" class="page" style="display:none">
       <div class="page-head">
         <div class="page-eyebrow">Crecimiento</div>
         <h1 class="page-h">Marketing IA</h1>
-        <p class="page-sub">El agente analiza los datos reales de Pichangol, decide qué comunicar y a quién,
+        <p class="page-sub">El agente analiza los datos reales de {MARCA}, decide qué comunicar y a quién,
           crea las piezas y las deja aquí para aprobar. Nada se publica sin pasar los controles: sin precios,
           zonas, locales ni promociones que no estén en la base.</p>
       </div>

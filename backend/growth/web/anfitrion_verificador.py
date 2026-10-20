@@ -59,6 +59,7 @@ from verificacion_fisica import service as vf_svc
 from web import almacen, catalogos, datos, ui
 from web.anfitrion import _ESTADO_RECLAMO, _sesion_o_entrar, aviso_fotos_reclamo
 from web.router import PLAY_URL, e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["web-anfitrion-verificador"])
 
@@ -544,7 +545,7 @@ def _validar(ses: dict, ip: str, body) -> dict:
     # Mismo criterio de búsqueda que `validar_en_sitio`: nadie valida su propio reclamo.
     r = next((x for x in stores.reclamos if x.codigo == codigo and x.estado in ("aprobado_triage", "pendiente_validacion")), None)
     if r is not None and (r.solicitante_id or "").strip().lower() == email.lower():
-        return {"ok": False, "error": "propio", "mensaje": "No puedes validar tu propio reclamo: lo valida un verificador de Pichangol en el local."}
+        return {"ok": False, "error": "propio", "mensaje": f"No puedes validar tu propio reclamo: lo valida un verificador de {MARCA} en el local."}
     res = reclamos.validar_en_sitio(codigo, lat, lng, email, _fotos_validas(body.get("fotos"), "validacion"))
     if res.get("error") == "codigo_invalido":
         _contar("codigo", email, ip)
@@ -585,7 +586,7 @@ def _pasos(r, modo: str, verificada: bool, otp) -> str:
         pasos.append(li("hecho" if hecho else ("actual" if est in ("aprobado_triage", "pendiente_validacion") else ""),
                         "✓" if hecho else "3", "Validación en sitio",
                         "Un verificador fue al local con el código y su GPS." if hecho else
-                        "Un verificador de Pichangol irá al local con el código del reclamo."))
+                        f"Un verificador de {MARCA} irá al local con el código del reclamo."))
     pasos.append(li("hecho" if verificada else "", "✓" if verificada else "★", "Activa: recibe reservas",
                     "Tu cancha ya acepta reservas en línea." if verificada else "Se habilita al aprobar la propiedad."))
     return "<ol class='vf-pasos'>" + "".join(pasos) + "</ol>"
@@ -719,7 +720,7 @@ def pagina_verificacion(cancha_id: str, request: Request) -> HTMLResponse:
         f"{otp_html}"
         + ("" if verificada else
            f"<p class='vf-nota' style='text-align:center'>¿Dudas? Escríbenos por WhatsApp desde el pie de página o sigue tu solicitud en la "
-           f"<a href='{PLAY_URL}' rel='noopener'>app de Pichangol</a>.</p>")
+           f"<a href='{PLAY_URL}' rel='noopener'>app de {MARCA}</a>.</p>")
         + "</div>"
         f"<script>window.__ve={cfg};</script><script>{_JS_BASE}{_JS_ESTADO}</script>")
     return ui.shell("Verificación de mi cancha", cuerpo, nav=_cab(ses, "canchas"), sesion=ses, ancho=True,

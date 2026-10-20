@@ -10,6 +10,7 @@ import '../theme.dart';
 import 'cargando_pichangol.dart';
 import 'dialogo_pichangol.dart';
 
+import '../brand.dart';
 /// Cobro con PAYPHONE (Ecuador). Modelo "botón de pagos por redirección": el
 /// backend PREPARA la transacción y devuelve una URL hospedada; aquí la abrimos
 /// en un NAVEGADOR REAL (Chrome Custom Tab) para que el cliente pague (tarjeta
@@ -114,7 +115,7 @@ class PagoPayPhone {
           context,
           titulo: 'Pago en la app no disponible',
           mensaje: 'Todavía no tenemos habilitado el cobro dentro de '
-              'Pichangol en Ecuador, así que no se te cobró nada. Coordina '
+              '$kBrandName en Ecuador, así que no se te cobró nada. Coordina '
               'el pago directamente con el local o el vendedor.',
           icono: Icons.credit_card_off_outlined,
         );
@@ -495,7 +496,7 @@ class _EsperandoPagoNavegadorState extends State<_EsperandoPagoNavegador>
                 _volvio
                     ? 'Estamos verificando con PayPhone. No cierres esta ventana.'
                     : 'Se abrió PayPhone para cobrar $montoTxt. Cuando termines, '
-                        'vuelve a Pichangol: el pago se confirma solo.',
+                        'vuelve a $kBrandName: el pago se confirma solo.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                     fontSize: 13.5, color: textoTenue, height: 1.4),

@@ -11,6 +11,7 @@ import 'login_google_sheet.dart';
 import 'unirse_campeonato_sheet.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// "Mis campeonatos": TODOS los campeonatos que el usuario organiza, con o sin
 /// academia. Antes, un campeonato creado desde Anfitrión (sin academia) no
 /// aparecía en ninguna lista y "se perdía". Aquí siempre está, y re-sincroniza
@@ -44,7 +45,7 @@ class _MisCampeonatosScreenState extends State<MisCampeonatosScreen> {
     // Candado Pichangol Pro: organizar campeonatos es feature de la suscripción.
     final ok = await exigirPro(context,
         motivo: 'Crear y administrar tus propios campeonatos (fixture, '
-            'inscripciones, resultados) es parte de Pichangol Pro. Hazte Pro '
+            'inscripciones, resultados) es parte de $kBrandName Pro. Hazte Pro '
             'para organizar los tuyos.');
     if (!ok || !mounted) return;
     final c = await Navigator.of(context).push<Campeonato>(MaterialPageRoute(
