@@ -160,7 +160,8 @@ def alcanza_video() -> bool:
 
 
 # ── motor de video ───────────────────────────────────────────────────────────
-MOTORES_VIDEO = ("movimiento", "veo")
+MOTORES_VIDEO = ("movimiento", "veo", "escenas")
+ESCENAS = ("presentador", "accion", "local")   # orden del video por escenas
 VEO_SEGUNDOS = 8            # duración del clip que pide la pieza a Veo
 VEO_ESPERA_MAX = 20 * 60    # sin respuesta en 20 min → se arma en casa
 _GEMINI = "https://generativelanguage.googleapis.com/v1beta"
@@ -179,7 +180,7 @@ def veo_modelo() -> str:
 def motor_video() -> str:
     """El elegido en la torre; Veo solo si hay llave de Gemini."""
     m = _cfg("ai_mkt_video_motor", "movimiento")
-    return "veo" if m == "veo" and veo_disponible() else "movimiento"
+    return m if m in ("veo", "escenas") and veo_disponible() else "movimiento"
 
 
 def costo_video_seg() -> float:
@@ -188,6 +189,10 @@ def costo_video_seg() -> float:
 
 def costo_veo() -> float:
     return round(costo_video_seg() * VEO_SEGUNDOS, 4)
+
+
+def costo_escenas() -> float:
+    return round(costo_veo() * len(ESCENAS), 4)
 
 
 # ── HTTP ─────────────────────────────────────────────────────────────────────
@@ -439,6 +444,227 @@ def _veo_paso(v: dict, titulo: str) -> dict:
     return _pulir_clip(v, clip, titulo, musica="fondo")
 
 
+# ── Veo 3 por ESCENAS: presentador IA + acción + el local real ───────────────
+# Pedido del director (20-oct-2026): videos "100 % IA" con una persona que habla
+# y hace la publicidad. Tres tomas de 8 s con su propio audio (Veo 3): (1) un
+# presentador FICTICIO que habla como vocero de la marca (nunca como cliente) y
+# dice una línea armada SOLO con el título/subtítulo ya validados por los
+# guardrails; (2) gente jugando; (3) el local REAL animado desde su foto
+# ambientada. Se unen, se subtitula lo que dice el presentador y se pule con
+# logo, intro, cierre y música bajita. El texto de la pieza suma
+# AVISO_PRESENTADOR. Si una escena falla, el video sale con las que sí; si
+# fallan todas, se arma en casa.
+AVISO_PRESENTADOR = "🎙️ El presentador y las escenas del video son generados con IA."
+_PERSONAS = ("young woman", "young man", "woman in her thirties", "man in his thirties")
+PROMPT_PRESENTADOR = (
+    "Medium shot of a friendly fictional {persona} presenter in casual sportswear, standing at an outdoor {deporte} "
+    "venue in {pais}, natural {luz}. The presenter looks straight into the camera, smiles and says in clear Latin "
+    "American Spanish, with natural lip sync and a warm, energetic tone: \"{linea}\". Ambient sound of the venue, no "
+    "background music. Realistic smartphone ad style, steady camera. The person is fictional and does not resemble "
+    "any celebrity or real person. No text, no captions, no subtitles, no logos, no watermark."
+)
+NEGATIVO_PRESENTADOR = ("subtitles, captions, text on screen, logo, watermark, several people talking, distorted face, "
+                        "bad lip sync, celebrity, cartoon")
+PROMPT_ACCION = (
+    "Realistic cinematic sports clip: {escena} at an outdoor {deporte} venue in {pais}, natural {luz}, smooth dynamic "
+    "camera. Natural sounds of the game: ball hits, steps, friends cheering; no music. The same people stay in the "
+    "frame for the whole clip. No text, no logos, no watermark; faces small and not recognizable."
+)
+_MONEDA_HABLADA = ((r"S/\s*(\d+(?:[.,]\d+)?)", r"\1 soles"), (r"Bs\.?\s*(\d+(?:[.,]\d+)?)", r"\1 bolivianos"),
+                   (r"\$\s*(\d+(?:[.,]\d+)?)", r"\1 dólares"))
+
+
+def linea_presentador(titulo: str, subtitulo: str = "") -> str:
+    """Lo que DICE el presentador: título (+ subtítulo si cabe en 8 s) ya
+    validados por los guardrails + la marca. Montos en palabras para la voz."""
+    import re
+
+    import config
+
+    def limpio(t: str) -> str:
+        t = re.sub(r"[\"“”«»#]", "", str(t or ""))
+        t = re.sub(r"[^\w\s.,;:¡!¿?%/$áéíóúüñÁÉÍÓÚÜÑ-]", "", t)
+        return re.sub(r"\s+", " ", t).strip(" .,;:")
+    partes = [p for p in (limpio(titulo), limpio(subtitulo)) if p]
+    linea = ". ".join(partes[:1])
+    if len(partes) > 1 and len((linea + " " + partes[1]).split()) <= 15:
+        linea = ". ".join(partes)
+    palabras = linea.split()
+    if len(palabras) > 15:                        # ~8 s de voz con la marca al final
+        linea = " ".join(palabras[:15])
+    linea = (linea.rstrip(" .") + ". " if linea else "") + f"Reserva en {config.MARCA}."
+    for patron, rep in _MONEDA_HABLADA:
+        linea = re.sub(patron, rep, linea)
+    return linea.strip()
+
+
+def _escena_pedir(e: dict, v: dict) -> dict:
+    import base64
+    import config
+    import random
+    deporte, pais, hora = v.get("deporte") or "fútbol", v.get("pais") or "PE", int(v.get("hora") or 19)
+    luz = "evening floodlights" if hora >= 18 or hora < 6 else "late afternoon sunlight"
+    base = {"deporte": deporte, "pais": _PAIS.get(pais, "Peru"), "luz": luz,
+            "escena": _ESCENAS.get(deporte, "friends playing a casual match")}
+    if e["tipo"] == "presentador":
+        inst = {"prompt": PROMPT_PRESENTADOR.format(persona=random.choice(_PERSONAS), linea=v.get("linea") or "", **base)}
+        neg = NEGATIVO_PRESENTADOR
+    elif e["tipo"] == "accion":
+        inst, neg = {"prompt": PROMPT_ACCION.format(**base)}, NEGATIVO_VIDEO
+    else:
+        foto = _descargar((v.get("fotos") or [""])[0])
+        if not foto:
+            raise ValueError("No se pudo leer la foto ambientada.")
+        inst = {"prompt": _prompt(PROMPT_VIDEO, deporte, pais, hora),
+                "image": {"bytesBase64Encoded": base64.b64encode(_a_jpeg(foto, (1280, 720))).decode(), "mimeType": "image/jpeg"}}
+        neg = NEGATIVO_VIDEO
+    j = _gemini("POST", f"models/{config.VEO_MODEL}:predictLongRunning",
+                {"instances": [inst], "parameters": {"aspectRatio": "16:9", "negativePrompt": neg}})
+    nombre = str(j.get("name") or "")
+    if not nombre:
+        raise ValueError(f"Veo no devolvió la operación: {str(j)[:160]}")
+    return {**e, "estado": "generando", "operacion": nombre, "enviado_en": time.time(), "costo_usd": costo_veo()}
+
+
+def _escena_reintentar(e: dict, motivo: str) -> dict:
+    n = int(e.get("intentos") or 0) + 1
+    if n > VEO_REINTENTOS or time.time() - float(e.get("desde") or time.time()) > VEO_ESPERA_MAX:
+        return {**e, "estado": "fallo", "motivo": f"{motivo[:160]} (tras {n - 1} reintentos)"}
+    espera = VEO_ESPERA_REINTENTO[min(n - 1, len(VEO_ESPERA_REINTENTO) - 1)]
+    print(f"[agente_ia] escena {e['tipo']}: Veo ocupado, reintento {n} en {espera} s", flush=True)
+    return {**{k: x for k, x in e.items() if k not in ("operacion", "enviado_en")},
+            "estado": "esperando", "intentos": n, "reintentar_en": time.time() + espera, "ultimo_error": motivo[:200]}
+
+
+def _escena_paso(e: dict, v: dict) -> dict:
+    """Avanza UNA escena (misma lógica que `_veo_paso`): pedir, consultar, quedarse con la URI."""
+    if e.get("estado") in ("listo", "fallo"):
+        return e
+    if not e.get("operacion"):
+        if time.time() < float(e.get("reintentar_en") or 0):
+            return e
+        e = e if e.get("desde") else {**e, "desde": time.time()}
+        if not _reservar(costo_veo(), "video", VEO_SEGUNDOS):
+            return {**e, "estado": "fallo", "motivo": "tope de gasto del mes"}
+        try:
+            return _escena_pedir(e, v)
+        except Exception as ex:  # noqa: BLE001
+            _devolver(costo_veo(), "video", VEO_SEGUNDOS)
+            motivo = _error(ex)
+            return _escena_reintentar(e, motivo) if _veo_pasajero(motivo) else {**e, "estado": "fallo", "motivo": motivo[:200]}
+    try:
+        op = _gemini("GET", e["operacion"])
+    except Exception as ex:  # noqa: BLE001 — red: se reintenta en la siguiente vuelta
+        if time.time() - float(e.get("enviado_en") or 0) > VEO_ESPERA_MAX:
+            return {**e, "estado": "fallo", "motivo": f"sin respuesta de Veo ({_error(ex)})"}
+        return e
+    if not op.get("done"):
+        if time.time() - float(e.get("enviado_en") or 0) > VEO_ESPERA_MAX:
+            return {**e, "estado": "fallo", "motivo": "Veo tardó demasiado"}
+        return e
+    if op.get("error"):
+        _devolver(float(e.get("costo_usd") or costo_veo()), "video", VEO_SEGUNDOS)
+        err = op.get("error") or {}
+        motivo = f"Veo rechazó el pedido: {str(err.get('message') if isinstance(err, dict) else err)[:160]}"
+        if _veo_pasajero(motivo + " " + str(err.get("code") if isinstance(err, dict) else "")):
+            return _escena_reintentar(e, motivo)
+        return {**e, "estado": "fallo", "motivo": motivo}
+    uri = _veo_uri(op)
+    if not uri:
+        _devolver(float(e.get("costo_usd") or costo_veo()), "video", VEO_SEGUNDOS)
+        return {**e, "estado": "fallo", "motivo": "Veo no entregó el clip (posible filtro de contenido)"}
+    return {**e, "estado": "listo", "uri": uri}
+
+
+def _unir_clips(rutas: list[str], salida: str) -> None:
+    """Une clips (mismo 1280×720, 30 fps; sin audio → silencio) con cortes limpios."""
+    import subprocess
+    from marketing import video_pulido as vp
+    ff = vp.ffmpeg_exe()
+    entradas, filtros, pares = [], [], []
+    for i, r in enumerate(rutas):
+        entradas += ["-i", r]
+        filtros.append(f"[{i}:v]scale=1280:720:force_original_aspect_ratio=increase,crop=1280:720,setsar=1,fps=30,format=yuv420p[v{i}]")
+        if vp.sondear(r).get("audio"):
+            filtros.append(f"[{i}:a]aformat=sample_rates=48000:channel_layouts=stereo[a{i}]")
+        else:
+            d = max(0.5, float(vp.sondear(r).get("duracion") or 8))
+            filtros.append(f"aevalsrc=0:d={d:.3f}:s=48000,aformat=sample_rates=48000:channel_layouts=stereo[a{i}]")
+        pares.append(f"[v{i}][a{i}]")
+    filtros.append("".join(pares) + f"concat=n={len(rutas)}:v=1:a=1[v][a]")
+    p = subprocess.run([ff, "-y", "-hide_banner", "-loglevel", "error", *entradas, "-filter_complex", ";".join(filtros),
+                        "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+                        "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", salida],
+                       capture_output=True, text=True, errors="ignore", timeout=300)
+    if p.returncode != 0:
+        raise RuntimeError(f"no se pudieron unir las escenas: {(p.stderr or '')[-200:]}")
+
+
+def _escenas_paso(v: dict, titulo: str, subtitulo: str = "") -> dict:
+    """Un paso del video por escenas: avanza cada escena y, cuando todas
+    terminaron, las une y pule. Devuelve `v` sin cambios mientras espera."""
+    import os
+    import tempfile
+    from marketing import video_pulido as vp
+    if not veo_disponible():
+        return _a_casa(v, "sin llave de Gemini")
+    nuevo = dict(v)
+    if not nuevo.get("linea"):
+        nuevo["linea"] = linea_presentador(titulo, subtitulo)
+    nuevo["escenas"] = [_escena_paso(dict(e), nuevo) for e in v.get("escenas") or []]
+    if any(e.get("estado") not in ("listo", "fallo") for e in nuevo["escenas"]):
+        return v if nuevo == v else nuevo
+    listas = [e for e in nuevo["escenas"] if e.get("estado") == "listo"]
+    if not listas:
+        motivos = "; ".join(f"{e['tipo']}: {e.get('motivo') or ''}" for e in nuevo["escenas"])
+        return _a_casa(nuevo, f"ninguna escena salió ({motivos})"[:200])
+    tmp = tempfile.mkdtemp(prefix="pcg_mkt_escenas_")
+    rutas: list[str] = []
+    try:
+        for i, e in enumerate(listas):
+            ruta = os.path.join(tmp, f"esc_{i}.mp4")
+            with open(ruta, "wb") as f:
+                f.write(_veo_descargar(e["uri"]))
+            rutas.append(ruta)
+    except Exception as ex:  # noqa: BLE001 — la URI aún vale: reintento en la siguiente vuelta
+        for r in rutas:
+            try:
+                os.remove(r)
+            except OSError:
+                pass
+        if time.time() - max(float(e.get("enviado_en") or 0) for e in listas) > VEO_ESPERA_MAX:
+            return _a_casa(nuevo, f"no se pudieron descargar las escenas ({_error(ex)})")
+        return nuevo
+    unido, final = os.path.join(tmp, "unido.mp4"), os.path.join(tmp, "final.mp4")
+    hechas = [e["tipo"] for e in listas]
+    try:
+        _unir_clips(rutas, unido)
+        segmentos = []
+        if hechas and hechas[0] == "presentador":
+            fin = min(7.6, float(vp.sondear(rutas[0]).get("duracion") or 8) - 0.4)
+            segmentos = [{"inicio": 0.4, "fin": fin, "texto": nuevo["linea"]}]
+        extra, nota = _musica(nuevo)
+        vp.pulir(unido, final, {"formato": "cuadrado", "logo": True, "intro": True, "cierre": True, "rotulo": False,
+                                "titulo": titulo, "segmentos": segmentos, "resaltar": False, "musica_modo": "fondo",
+                                "mood": nuevo.get("mood") or "energetico", **extra})
+        with open(final, "rb") as f:
+            mp4 = f.read()
+        print(f"[agente_ia] video por escenas listo: {', '.join(hechas)} ({len(mp4)} bytes)", flush=True)
+        return {**nuevo, **nota, "estado": "listo", "escenas_hechas": hechas, "_mp4": mp4, "bytes": len(mp4)}
+    except Exception as ex:  # noqa: BLE001
+        return _a_casa(nuevo, f"no se pudo armar el video por escenas: {str(ex)[:120]}")
+    finally:
+        for r in [*rutas, unido, final]:
+            try:
+                os.remove(r)
+            except OSError:
+                pass
+        try:
+            os.rmdir(tmp)
+        except OSError:
+            pass
+
+
 def _musica(v: dict) -> tuple[dict, dict]:
     """Música de ESTE video, distinta cada vez: una pista de "Mi música" (carpeta
     de Google Drive de la torre, la menos usada) o, sin pistas, la original
@@ -508,22 +734,24 @@ def encargar_video(fotos: list[str], *, mood: str = "energetico", deporte: str =
     if not fotos:
         return {"estado": "fallo", "motivo": "sin_foto"}
     motor = motor_video()
-    return {"estado": "generando", "proveedor": motor, "fotos": fotos,
-            "segundos": VEO_SEGUNDOS if motor == "veo" else segundos_video(),
+    extra = {"escenas": [{"tipo": t, "estado": "pendiente"} for t in ESCENAS]} if motor == "escenas" else {}
+    return {"estado": "generando", "proveedor": motor, "fotos": fotos, **extra,
+            "segundos": VEO_SEGUNDOS * (len(ESCENAS) if motor == "escenas" else 1) if motor != "movimiento" else segundos_video(),
             "mood": mood if mood in ("chill", "energetico", "epico") else "energetico",
             "deporte": deporte or "fútbol", "pais": pais or "PE", "hora": int(hora or 19), "pedido_en": time.time()}
 
 
-def consultar_video(v: dict, *, titulo: str = "") -> dict:
+def consultar_video(v: dict, *, titulo: str = "", subtitulo: str = "") -> dict:
     """Renderiza el video pedido. Con 'listo' trae `_mp4` (bytes) para que el
     llamador lo suba; con 'fallo', el motivo (la pieza sale con la foto)."""
     import os
     import tempfile
     from marketing import foto_video
     from marketing import video_pulido as vp
-    if v.get("proveedor") == "veo":
-        r = _veo_paso(v, titulo)
-        if r.get("proveedor") == "veo" or r.get("estado") != "generando":
+    if v.get("proveedor") in ("veo", "escenas"):
+        prov = v["proveedor"]
+        r = _escenas_paso(v, titulo, subtitulo) if prov == "escenas" else _veo_paso(v, titulo)
+        if r.get("proveedor") == prov or r.get("estado") != "generando":
             return r
         v = r                                   # Veo no sirvió: se arma en casa en esta misma vuelta
     if v.get("proveedor") != PROVEEDOR_VIDEO:
@@ -572,7 +800,7 @@ def procesar_videos() -> int:
         v = receta.get("video_ia") or {}
         if v.get("estado") != "generando":
             continue
-        nuevo = consultar_video(v, titulo=c.get("title") or "")
+        nuevo = consultar_video(v, titulo=c.get("title") or "", subtitulo=c.get("subtitle") or "")
         if nuevo == v:
             continue
         mp4 = nuevo.pop("_mp4", None)
@@ -583,13 +811,18 @@ def procesar_videos() -> int:
             else:
                 # Misma ruta al rehacer: la versión evita que el navegador muestre el video viejo.
                 nuevo["url"] = url if url.startswith("mem:") else f"{url}?v={int(time.time())}"
-                if nuevo.get("proveedor") != "veo":     # Veo ya se descontó al pedirlo
+                if nuevo.get("proveedor") not in ("veo", "escenas"):     # Veo ya se descontó al pedirlo
                     _reservar(0.0, "video", int(nuevo.get("segundos") or 0))     # solo cuenta: el video en casa es gratis
         receta = {**receta, "video_ia": nuevo}
         if nuevo.get("estado") == "fallo":
             receta["formato"] = receta.get("formato_foto") or "cuadrado"
         estado_actual = c["status"]
-        if repo().cambiar_estado(c["id"], (estado_actual,), estado_actual, oportunidad={**op, "media": receta}):
+        campos = {"oportunidad": {**op, "media": receta}}
+        if nuevo.get("estado") == "listo" and "presentador" in (nuevo.get("escenas_hechas") or []):
+            cuerpo = c.get("body") or ""
+            if AVISO_PRESENTADOR not in cuerpo:          # la persona que habla es IA: se dice en el texto
+                campos["body"] = (cuerpo.rstrip() + "\n" + AVISO_PRESENTADOR).strip()
+        if repo().cambiar_estado(c["id"], (estado_actual,), estado_actual, **campos):
             repo().log("creative", f"video_{nuevo.get('estado')}", content_id=c["id"], motivo=nuevo.get("motivo", ""))
             n += 1
     return n

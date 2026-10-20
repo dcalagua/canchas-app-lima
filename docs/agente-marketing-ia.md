@@ -88,3 +88,28 @@ Variables de entorno nuevas: `IMAGE_EDIT_MODEL` (gpt-image-1), `MARKETING_STRATE
 `docs/piloto/supabase_ai_marketing.sql` (idempotente). Crea las 8 tablas `ai_*` con RLS activo y sin políticas (solo backend) y agrega `created_at`, `origen` y `utm` a `pichangol_reservas`. El backend también crea las tablas `ai_*` al arrancar; las columnas de reservas **solo** las agrega el SQL manual.
 
 Orden de despliegue: **QAS** (Supabase "Pichangol") → probar → con la orden "pasa a PRD", **PCG-PRD**.
+
+
+### Veo 3 por escenas con presentador IA (20-oct-2026)
+
+Motor `escenas` (torre → Marketing IA → configuración → "Motor del video"):
+tres tomas de 8 s generadas por Veo 3 con su propio audio:
+
+1. **Presentador** ficticio (text-to-video) que mira a cámara y dice en
+   español la línea `ia_media.linea_presentador(título, subtítulo)`: solo el
+   título y subtítulo de la pieza (ya validados por los guardrails) + "Reserva
+   en {MARCA}", máx. ~15 palabras, montos dichos en palabras. Habla como
+   vocero de la marca, nunca como cliente (sin testimonios inventados) y el
+   prompt exige que no se parezca a nadie real.
+2. **Acción**: gente jugando el deporte del local (text-to-video).
+3. **Local**: la foto ambientada del local real animada (image-to-video).
+
+Cada escena se pide, consulta y reintenta por separado (`_escena_paso`;
+saturación → 4 reintentos en 20 min, sin cobrar los fallidos). Al terminar se
+unen (`_unir_clips`, 1280×720) y se pulen en cuadrado con subtítulos de la
+línea del presentador, logo, intro, cierre y música de fondo bajo el audio de
+Veo. Escena fallida = se omite; si fallan todas, el video se arma en casa. El
+texto de la pieza suma `AVISO_PRESENTADOR` (además de `AVISO_IA`). Costo ≈ 3 ×
+`costo_veo()`, reservado dentro del tope mensual. Tests en
+`tests/test_agente_ia_media.py` (Gemini simulado, unión y pulido reales con
+FFmpeg).

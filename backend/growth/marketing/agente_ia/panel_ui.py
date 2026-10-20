@@ -68,6 +68,11 @@ const MK_ORIGEN = {foto_real:'📷 Foto real', foto_dueno:'🏟️ Foto del due�
 const MK_AVISO_IA = '✨ Contenido creado con IA a partir de fotos reales del local.';
 function mkVideo(p){
   const v = ((p.oportunidad||{}).media||{}).video_ia; if(!v) return '';
+  if(v.estado==='generando' && v.proveedor==='escenas'){
+    const es = v.escenas||[], n = es.filter(e=>e.estado==='listo').length, esp = es.some(e=>e.estado==='esperando');
+    return `<div class="row">🎬 Veo 3 está grabando 3 escenas (presentador IA, acción y tu local): ${n} de ${es.length} listas${esp?' · Veo saturado, reintentando':''}. Tarda unos minutos; se podrá aprobar cuando termine.</div>`
+      + (v.linea ? `<div class="row">🎙️ Dirá: “${esc(v.linea)}”</div>` : '');
+  }
   if(v.estado==='generando') return v.proveedor==='veo'
     ? (v.veo_intentos && !v.operacion
         ? `<div class="row">🎬 Veo de Google está saturado; reintento ${v.veo_intentos} de 4 en unos minutos (si no responde, se arma en casa).</div>`
@@ -75,7 +80,8 @@ function mkVideo(p){
     : `<div class="row">🎬 Armando el video (fotos con movimiento y música)… tarda alrededor de un minuto; se podrá aprobar cuando termine.</div>`;
   if(v.estado==='listo'){
     const mus = v.musica==='drive' ? `🎵 ${esc(v.musica_nombre||'Mi música')}` : '🎵 Música original';
-    const tipo = v.proveedor==='veo' ? '✨ Video generado por Veo de Google' : '🎞️ Video armado con las fotos (no generado por IA)';
+    const tipo = v.proveedor==='escenas' ? `✨ Video IA por escenas (${(v.escenas_hechas||[]).join(' + ')}) · Veo de Google`
+      : v.proveedor==='veo' ? '✨ Video generado por Veo de Google' : '🎞️ Video armado con las fotos (no generado por IA)';
     const aviso = v.nota_veo ? `<div class="row">⚠ Veo no pudo generarlo (${esc(v.nota_veo)}); se armó en casa con las fotos.</div>` : '';
     return aviso+`<div class="row">${tipo} · ${mus}</div>`+mkVideoTag(v);
   }
@@ -165,9 +171,9 @@ function mkCard(p){
   if(['PENDING_APPROVAL','APPROVED'].includes(p.status)) acts.push(`<button onclick="mkAccion('${p.id}','publicar')">🚀 Publicar ya</button>`);
   const vid = (((p.oportunidad||{}).media||{}).video_ia||{}).estado;
   const vidIa = (((p.oportunidad||{}).media||{}).video_ia||{}), mi = (MK.resumen||{}).media_ia||{};
-  const rehacerVeo = vid==='listo' && vidIa.proveedor!=='veo' && mi.motor_efectivo==='veo';
+  const rehacerVeo = vid==='listo' && ['veo','escenas'].includes(mi.motor_efectivo) && vidIa.proveedor!==mi.motor_efectivo;
   if(['ia_ambientada','video_ia'].includes(p.media_origen) && (!['generando','listo'].includes(vid) || rehacerVeo) && ['PENDING_APPROVAL','APPROVED','FAILED','REJECTED'].includes(p.status))
-    acts.push(`<button onclick="mkAccion('${p.id}','video')">${rehacerVeo?'🎬 Rehacer con Veo':'🎬 Hacer video'}</button>`);
+    acts.push(`<button onclick="mkAccion('${p.id}','video')">${rehacerVeo?(mi.motor_efectivo==='escenas'?'🎬 Rehacer con presentador IA':'🎬 Rehacer con Veo'):'🎬 Hacer video'}</button>`);
   if(['PENDING_APPROVAL','APPROVED','FAILED'].includes(p.status)) acts.push(`<button onclick="mkReprogramar('${p.id}')">🗓 Reprogramar</button>`);
   if(editable) acts.push(`<button onclick="mkGuardar('${p.id}')">💾 Guardar edición</button>`);
   if(p.status!=='PUBLISHED') acts.push(`<button onclick="mkAccion('${p.id}','regenerar')">↻ Otra versión</button>`);
@@ -275,7 +281,8 @@ function mkConfig(){
     ${chk('video_ia','Además, hacer un video del local')}
     <label>Motor del video<select id="mkc_video_motor">
       <option value="movimiento" ${c.video_motor!=='veo'?'selected':''}>En casa · fotos con movimiento y música (gratis)</option>
-      <option value="veo" ${c.video_motor==='veo'?'selected':''} ${mi.veo_disponible?'':'disabled'}>Veo de Google · video generado (≈ $ ${(mi.costo_veo||0).toFixed(2)} c/u)${mi.veo_disponible?'':' — falta GEMINI_API_KEY'}</option></select></label>
+      <option value="veo" ${c.video_motor==='veo'?'selected':''} ${mi.veo_disponible?'':'disabled'}>Veo de Google · una toma del local (≈ $ ${(mi.costo_veo||0).toFixed(2)} c/u)${mi.veo_disponible?'':' — falta GEMINI_API_KEY'}</option>
+      <option value="escenas" ${c.video_motor==='escenas'?'selected':''} ${mi.veo_disponible?'':'disabled'}>Veo 3 por escenas · presentador IA + acción + tu local (≈ $ ${((mi.costo_veo||0)*3).toFixed(2)} c/u)</option></select></label>
     <label>Duración del video<select id="mkc_video_seg">${[8,12,16].map(n=>`<option value="${n}" ${c.video_seg===n?'selected':''}>${n} s</option>`).join('')}</select></label>
     ${num('media_tope_usd','Tope de gasto IA al mes (USD)',0,1000,1)}
     ${num('costo_imagen','Costo por imagen (USD)',0,5,0.01)}
@@ -286,9 +293,10 @@ function mkConfig(){
     ${(MK.resumen.media_ia||{}).disponible?'':' · ⚠ falta OPENAI_API_KEY en este ambiente'}.
     El costo por imagen es estimado: confírmalo con el precio vigente de OpenAI.
     Video: “En casa” lo arma el servidor con las fotos (gratis; la duración aplica a este motor). “Veo de Google” anima la foto ambientada
-    (clip de 8 s, modelo <code>${esc(mi.veo_modelo||'')}</code>) y le pone logo, intro, cierre y música; se cobra por segundo
+    (clip de 8 s, modelo <code>${esc(mi.veo_modelo||'')}</code>) y le pone logo, intro, cierre y música; “Veo 3 por escenas” hace 3 tomas
+    con sonido —un presentador ficticio que habla como vocero de la marca y solo dice el título y subtítulo ya validados, gente jugando y tu local real— con subtítulos (el texto avisa que el presentador es IA); se cobra por segundo
     (confirma el precio vigente en Google AI Studio). Si Veo falla, no alcanza el tope o tarda más de 20 min, el video se arma en casa.
-    ${c.video_motor==='veo' && mi.motor_efectivo!=='veo' ? '<br>⚠ Elegiste Veo pero falta GEMINI_API_KEY en este ambiente: se usa “En casa”.' : ''}</p><div class="mk-acts" style="margin-top:14px"><button class="pri" onclick="mkGuardarConfig()">Guardar configuración</button></div></div>`;
+    ${['veo','escenas'].includes(c.video_motor) && mi.motor_efectivo==='movimiento' ? '<br>⚠ Elegiste Veo pero falta GEMINI_API_KEY en este ambiente: se usa “En casa”.' : ''}</p><div class="mk-acts" style="margin-top:14px"><button class="pri" onclick="mkGuardarConfig()">Guardar configuración</button></div></div>`;
 }
 function mkEnlazarVideo(){
   const v = document.getElementById('mkc_video_ia'), a = document.getElementById('mkc_ia_ambientar');

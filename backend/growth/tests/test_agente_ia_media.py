@@ -444,3 +444,52 @@ def test_veo_saturado_se_reintenta_antes_de_ir_a_casa(veo, monkeypatch):
     agot = ia_media.consultar_video({**r, "veo_intentos": ia_media.VEO_REINTENTOS, "veo_reintentar_en": 0})
     r4 = ia_media.consultar_video(agot)
     assert r4["proveedor"] == "movimiento" and "reintentos" in r4["nota_veo"]
+
+
+def test_linea_del_presentador_sale_del_titulo_validado_y_dice_la_marca():
+    linea = ia_media.linea_presentador('Tenis "ya" en Chaclacayo 🎾', "Desde S/ 60 la hora")
+    assert linea == "Tenis ya en Chaclacayo. Desde 60 soles la hora. Reserva en Pichangol."
+    larga = ia_media.linea_presentador(" ".join(["palabra"] * 30))
+    assert len(larga.split()) <= 18 and larga.endswith("Reserva en Pichangol.")
+
+
+def test_video_por_escenas_con_presentador_ia_se_une_y_avisa(pro, veo, monkeypatch, tmp_path, _limpio):
+    from marketing import foto_video
+    clip = tmp_path / "clip.mp4"
+    foto_video.generar([_jpeg((30, 90, 60), (640, 360))], str(clip), formato="horizontal", segundos=2)
+    monkeypatch.setattr(ia_media, "_veo_descargar", lambda uri: clip.read_bytes())
+    orq.guardar_configuracion({"video_motor": "escenas", "video_ia": True, "costo_video_seg": 0.15, "media_tope_usd": 20})
+    p = [p for p in orq.planificar("PE", usar_ia=False)["piezas"] if p["oportunidad"]["tipo"] == "local_pro"][0]
+    v = p["oportunidad"]["media"]["video_ia"]
+    assert v["proveedor"] == "escenas" and [e["tipo"] for e in v["escenas"]] == ["presentador", "accion", "local"]
+    ia_media.procesar_videos()                                 # pide las 3 escenas
+    assert len(veo["pedidos"]) == 3
+    prompts = [c["instances"][0] for _, c in veo["pedidos"]]
+    assert "says in clear Latin American Spanish" in prompts[0]["prompt"] and "Reserva en Pichangol" in prompts[0]["prompt"]
+    assert "image" not in prompts[0] and "image" not in prompts[1] and "image" in prompts[2]   # solo el local sale de su foto
+    assert ia_media.gasto()["usd"] == pytest.approx(3.6)
+    veo["listo"] = True
+    ia_media.procesar_videos()                                 # las 3 listas → se unen y pulen de verdad
+    c = orq.repo().contenido(p["id"])
+    vid = c["oportunidad"]["media"]["video_ia"]
+    assert vid["estado"] == "listo" and vid["proveedor"] == "escenas" and vid["escenas_hechas"] == ["presentador", "accion", "local"]
+    assert ia_media.AVISO_PRESENTADOR in c["body"] and guardrails.AVISO_IA in c["body"]
+
+
+def test_escenas_que_fallan_se_omiten_y_si_fallan_todas_va_a_casa(veo, monkeypatch, tmp_path):
+    from marketing import foto_video
+    clip = tmp_path / "clip.mp4"
+    foto_video.generar([_jpeg((30, 90, 60), (640, 360))], str(clip), formato="horizontal", segundos=2)
+    monkeypatch.setattr(ia_media, "_veo_descargar", lambda uri: clip.read_bytes())
+    orq.guardar_configuracion({"video_motor": "escenas", "media_tope_usd": 20})
+    v = ia_media.encargar_video([FOTO], deporte="tenis")
+    v = ia_media.consultar_video(v, titulo="Tenis hoy")
+    v["escenas"][0] = {**v["escenas"][0], "estado": "fallo", "motivo": "filtro"}   # el presentador no salió
+    veo["listo"] = True
+    r = ia_media.consultar_video(v, titulo="Tenis hoy")
+    assert r["estado"] == "listo" and r["escenas_hechas"] == ["accion", "local"]
+    todas = {**v, "escenas": [{**e, "estado": "fallo", "motivo": "x"} for e in v["escenas"]]}
+    monkeypatch.setattr("marketing.foto_video.generar", lambda f, s, **k: open(s, "wb").write(b"x"))
+    monkeypatch.setattr("marketing.video_pulido.pulir", lambda e, s, o: open(s, "wb").write(b"CASA"))
+    r2 = ia_media.consultar_video(todas, titulo="Tenis hoy")
+    assert r2["proveedor"] == "movimiento" and "ninguna escena" in r2["nota_veo"]

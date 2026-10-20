@@ -3951,6 +3951,16 @@ Reemplaza al calendario fijo de `agente_redes.py` (al activarlo se apaga
   desapariciones; el video en casa usa SOLO la foto ambientada (las reales no
   tienen gente). Música distinta por video: Mi música (Drive) o variante de la
   sintetizada (`musica.generar_pista(variante=)`); "🎬 Rehacer con Veo".
+  **VEO 3 POR ESCENAS con PRESENTADOR IA (pedido del director, 20-oct-2026:
+  "videos 100 % IA con una persona hablando y haciendo publicidad"):** motor
+  `escenas` = 3 tomas de 8 s con audio de Veo: presentador FICTICIO que habla
+  como vocero de la marca (nunca cliente falso) y dice SOLO
+  `linea_presentador(título, subtítulo)` ya validados + "Reserva en {MARCA}"
+  (montos en palabras), gente jugando, y el local real desde su foto
+  ambientada; `_unir_clips` + `pulir` con subtítulos de la línea, logo,
+  intro, cierre y música de fondo. Si Veo está saturado reintenta (4 veces,
+  20 min); escenas fallidas se omiten; todas fallan → en casa. El texto suma
+  `AVISO_PRESENTADOR`. Costo ≈ 3 × `costo_veo()`.
   Torre: marcar el video marca el ambientado (y quitar el ambientado apaga el
   video); botón "🎬 Hacer video" en piezas ya ambientadas
   (`orquestador.pedir_video`, acción `video`). Toda pieza IA lleva

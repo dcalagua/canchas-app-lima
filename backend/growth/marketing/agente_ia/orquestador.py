@@ -591,9 +591,10 @@ def pedir_video(cid: str, usuario: str) -> dict:
     previo = receta.get("video_ia") or {}
     if previo.get("estado") == "generando":
         raise Rechazo("El video de esta pieza se está armando.")
-    if previo.get("estado") == "listo" and (previo.get("proveedor") == "veo" or ia_media.motor_video() != "veo"):
+    motor = ia_media.motor_video()
+    if previo.get("estado") == "listo" and (motor == "movimiento" or previo.get("proveedor") == motor):
         raise Rechazo("Esta pieza ya tiene su video.")
-    # Un video ya hecho EN CASA se puede rehacer con Veo (p. ej. Veo falló por cuota y ya se arregló).
+    # Un video ya hecho se puede REHACER con el motor de Veo elegido (una toma o por escenas).
     v = ia_media.encargar_video(receta.get("fotos") or [], mood="energetico" if c.get("audiencia") == "jugadores" else "chill",
                                 deporte=(receta.get("ia") or {}).get("deporte") or "fútbol", pais=c.get("pais") or "PE")
     if v.get("estado") != "generando":
