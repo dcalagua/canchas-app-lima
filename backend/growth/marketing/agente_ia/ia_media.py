@@ -521,7 +521,8 @@ def procesar_videos() -> int:
             if not url:
                 nuevo = {**v, "motivo": "No se pudo guardar el video en Storage; reintento."}
             else:
-                nuevo["url"] = url
+                # Misma ruta al rehacer: la versión evita que el navegador muestre el video viejo.
+                nuevo["url"] = url if url.startswith("mem:") else f"{url}?v={int(time.time())}"
                 if nuevo.get("proveedor") != "veo":     # Veo ya se descontó al pedirlo
                     _reservar(0.0, "video", int(nuevo.get("segundos") or 0))     # solo cuenta: el video en casa es gratis
         receta = {**receta, "video_ia": nuevo}

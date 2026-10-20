@@ -158,8 +158,10 @@ function mkCard(p){
   if(p.status==='PENDING_APPROVAL' && !generando) acts.push(`<button class="pri" onclick="mkAccion('${p.id}','aprobar')">✓ Aprobar</button>`);
   if(['PENDING_APPROVAL','APPROVED'].includes(p.status)) acts.push(`<button onclick="mkAccion('${p.id}','publicar')">🚀 Publicar ya</button>`);
   const vid = (((p.oportunidad||{}).media||{}).video_ia||{}).estado;
-  if(['ia_ambientada','video_ia'].includes(p.media_origen) && !['generando','listo'].includes(vid) && ['PENDING_APPROVAL','APPROVED','FAILED','REJECTED'].includes(p.status))
-    acts.push(`<button onclick="mkAccion('${p.id}','video')">🎬 Hacer video</button>`);
+  const vidIa = (((p.oportunidad||{}).media||{}).video_ia||{}), mi = (MK.resumen||{}).media_ia||{};
+  const rehacerVeo = vid==='listo' && vidIa.proveedor!=='veo' && mi.motor_efectivo==='veo';
+  if(['ia_ambientada','video_ia'].includes(p.media_origen) && (!['generando','listo'].includes(vid) || rehacerVeo) && ['PENDING_APPROVAL','APPROVED','FAILED','REJECTED'].includes(p.status))
+    acts.push(`<button onclick="mkAccion('${p.id}','video')">${rehacerVeo?'🎬 Rehacer con Veo':'🎬 Hacer video'}</button>`);
   if(['PENDING_APPROVAL','APPROVED','FAILED'].includes(p.status)) acts.push(`<button onclick="mkReprogramar('${p.id}')">🗓 Reprogramar</button>`);
   if(editable) acts.push(`<button onclick="mkGuardar('${p.id}')">💾 Guardar edición</button>`);
   if(p.status!=='PUBLISHED') acts.push(`<button onclick="mkAccion('${p.id}','regenerar')">↻ Otra versión</button>`);

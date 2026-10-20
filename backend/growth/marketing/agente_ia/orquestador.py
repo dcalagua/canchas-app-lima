@@ -576,8 +576,10 @@ def regenerar(cid: str, usuario: str, *, usar_ia: bool = True) -> dict:
 
 def pedir_video(cid: str, usuario: str) -> dict:
     """"🎬 Hacer video" en la torre: arma el video de una pieza que ya tiene la
-    foto ambientada con IA (o cuyo video falló). Gratis; no toca el texto (ya
-    lleva el aviso de IA). La pieza vuelve a aprobación cuando el video esté."""
+    foto ambientada con IA (o cuyo video falló), con el motor de la torre; con
+    Veo elegido también REHACE con Veo un video que se armó en casa. No toca
+    el texto (ya lleva el aviso de IA). La pieza vuelve a aprobación cuando el
+    video esté."""
     from marketing.agente_ia import ia_media
     c = _get(cid)
     if c["status"] not in ("PENDING_APPROVAL", "APPROVED", "FAILED", "REJECTED"):
@@ -586,8 +588,12 @@ def pedir_video(cid: str, usuario: str) -> dict:
     receta = dict(op.get("media") or {})
     if receta.get("origen") not in creativo.ORIGENES_IA_MEDIA:
         raise Rechazo("Solo las piezas con la foto del local ambientada con IA pueden pasar a video.")
-    if (receta.get("video_ia") or {}).get("estado") in ("generando", "listo"):
-        raise Rechazo("Esta pieza ya tiene su video (o se está armando).")
+    previo = receta.get("video_ia") or {}
+    if previo.get("estado") == "generando":
+        raise Rechazo("El video de esta pieza se está armando.")
+    if previo.get("estado") == "listo" and (previo.get("proveedor") == "veo" or ia_media.motor_video() != "veo"):
+        raise Rechazo("Esta pieza ya tiene su video.")
+    # Un video ya hecho EN CASA se puede rehacer con Veo (p. ej. Veo falló por cuota y ya se arregló).
     v = ia_media.encargar_video(receta.get("fotos") or [], mood="energetico" if c.get("audiencia") == "jugadores" else "chill",
                                 deporte=(receta.get("ia") or {}).get("deporte") or "fútbol", pais=c.get("pais") or "PE")
     if v.get("estado") != "generando":

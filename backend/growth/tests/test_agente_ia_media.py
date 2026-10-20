@@ -367,3 +367,20 @@ def test_clip_de_veo_se_pule_de_verdad_con_ffmpeg(tmp_path):
     foto_video.generar([_jpeg((30, 90, 60), (640, 360))], str(crudo), formato="horizontal", segundos=2)
     r = ia_media._pulir_clip({"mood": "chill"}, crudo.read_bytes(), "Club X", musica="fondo")
     assert r["estado"] == "listo" and r["_mp4"][4:8] == b"ftyp" and r["bytes"] > 1000
+
+
+def test_video_hecho_en_casa_se_puede_rehacer_con_veo(pro, veo, monkeypatch, _limpio):
+    p = [p for p in orq.planificar("PE", usar_ia=False)["piezas"] if p["oportunidad"]["tipo"] == "local_pro"][0]
+    orq.pedir_video(p["id"], "ana")
+    monkeypatch.setattr(ia_media, "consultar_video", lambda v, **k: {**v, "estado": "listo", "_mp4": b"MP4"})
+    ia_media.procesar_videos()
+    with pytest.raises(orq.Rechazo):
+        orq.pedir_video(p["id"], "ana")                   # en casa y con motor en casa: ya tiene video
+    orq.guardar_configuracion({"video_motor": "veo"})
+    r = orq.pedir_video(p["id"], "ana")                   # con Veo elegido se puede rehacer
+    v = r["oportunidad"]["media"]["video_ia"]
+    assert v["estado"] == "generando" and v["proveedor"] == "veo"
+    monkeypatch.setattr(ia_media, "consultar_video", lambda v, **k: {**v, "estado": "listo", "_mp4": b"VEO"})
+    ia_media.procesar_videos()
+    with pytest.raises(orq.Rechazo):
+        orq.pedir_video(p["id"], "ana")                   # ya es de Veo: no se repite
