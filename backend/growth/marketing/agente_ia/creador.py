@@ -190,22 +190,20 @@ def _banco(op: dict) -> list[dict]:
 
 
 # ── IA ───────────────────────────────────────────────────────────────────────
+_ESQUEMA = {
+    "type": "object",
+    "properties": {k: {"type": "string"} for k in ("titulo", "subtitulo", "etiqueta", "texto", "cta")},
+    "required": ["titulo", "subtitulo", "etiqueta", "texto", "cta"],
+    "additionalProperties": False,
+}
+
+
 def _con_ia(payload: dict) -> dict | None:
     import config
-    if not config.ANTHROPIC_API_KEY:
-        return None
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-        resp = client.messages.create(model=config.MARKETING_COPY_MODEL, max_tokens=900, temperature=0.9, system=_SYSTEM,
-                                      messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False, default=str)}])
-        texto = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "")
-        m = re.search(r"\{.*\}", texto or "", re.DOTALL)
-        d = json.loads(m.group(0)) if m else None
-        return d if isinstance(d, dict) and str(d.get("texto") or "").strip() else None
-    except Exception as e:  # noqa: BLE001
-        print(f"[agente_ia] creador IA no respondió, se usa el banco: {str(e)[:120]}", flush=True)
-        return None
+    from . import ia
+    d = ia.pedir_json(modelo=config.MARKETING_COPY_MODEL, sistema=_SYSTEM, esquema=_ESQUEMA,
+                      contenido=json.dumps(payload, ensure_ascii=False, default=str), etiqueta="agente_ia creador")
+    return d if isinstance(d, dict) and str(d.get("texto") or "").strip() else None
 
 
 def _a_pieza(d: dict, op: dict, link: str) -> dict:

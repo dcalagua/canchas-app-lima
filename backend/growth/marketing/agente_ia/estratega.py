@@ -262,21 +262,24 @@ _SYSTEM = (
 )
 
 
+_ESQUEMA = {
+    "type": "object",
+    "properties": {"elegidas": {"type": "array", "items": {
+        "type": "object",
+        "properties": {"id": {"type": "string"}, "content_type": {"type": "string"},
+                       "hora": {"type": "string"}, "por_que": {"type": "string"}},
+        "required": ["id", "content_type", "hora", "por_que"],
+        "additionalProperties": False}}},
+    "required": ["elegidas"],
+    "additionalProperties": False,
+}
+
+
 def _con_ia(payload: dict) -> dict | None:
     import config
-    if not config.ANTHROPIC_API_KEY:
-        return None
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-        resp = client.messages.create(model=config.MARKETING_STRATEGY_MODEL, max_tokens=900, temperature=0.4, system=_SYSTEM,
-                                      messages=[{"role": "user", "content": json.dumps(payload, ensure_ascii=False, default=str)}])
-        texto = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "")
-        m = re.search(r"\{.*\}", texto or "", re.DOTALL)
-        return json.loads(m.group(0)) if m else None
-    except Exception as e:  # noqa: BLE001
-        print(f"[agente_ia] estratega IA no respondió, se usan reglas: {str(e)[:120]}", flush=True)
-        return None
+    from . import ia
+    return ia.pedir_json(modelo=config.MARKETING_STRATEGY_MODEL, sistema=_SYSTEM, esquema=_ESQUEMA,
+                         contenido=json.dumps(payload, ensure_ascii=False, default=str), etiqueta="agente_ia estratega")
 
 
 def _hora_ok(h) -> str | None:
