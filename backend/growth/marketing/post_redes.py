@@ -427,7 +427,7 @@ def _con_claude_redactor(payload: dict) -> dict | None:
         return None
     try:
         client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-        resp = client.messages.create(model=config.MARKETING_MODEL, max_tokens=900, temperature=1.0, system=_SYSTEM_REDACTOR,
+        resp = client.messages.create(model=config.MARKETING_MODEL, max_tokens=4000, system=_SYSTEM_REDACTOR,
                                       messages=[{"role": "user", "content": "Redacta la publicación (JSON):\n" + json.dumps(payload, ensure_ascii=False)}])
         texto = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "")
         m = re.search(r"\{.*\}", texto or "", re.DOTALL)
