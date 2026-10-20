@@ -18,6 +18,7 @@ import '../widgets/pago_directo_sheet.dart';
 import '../widgets/pago_tarjeta_sheet.dart';
 import '../widgets/sesion_requerida.dart';
 
+import '../brand.dart';
 /// Vista del ALUMNO: sus matrículas, los pagos que hizo (comprobante/boleta) y
 /// los próximos pagos. Es el "¿dónde veo mis pagos?" del jugador.
 class MisClasesScreen extends StatelessWidget {
@@ -470,7 +471,7 @@ class MisClasesScreen extends StatelessWidget {
             _lineaComp('Monto', '$mon ${c.monto.toStringAsFixed(2)}',
                 fuerte: c.cargoServicio <= 0),
             if (c.cargoServicio > 0) ...[
-              _lineaComp('Cargo por servicio Pichangol',
+              _lineaComp('Cargo por servicio $kBrandName',
                   '$mon ${c.cargoServicio.toStringAsFixed(2)}'),
               if (c.cargoPersonas > 1)
                 Text(
@@ -484,7 +485,7 @@ class MisClasesScreen extends StatelessWidget {
             Text(
                 c.pagadaDirecto
                     ? 'Pagado directo a la academia por Yape y confirmado por ella.'
-                    : 'Pago procesado por Pichangol.',
+                    : 'Pago procesado por $kBrandName.',
                 style: const TextStyle(color: textoTenue, fontSize: 12)),
           ],
         ),
@@ -562,7 +563,7 @@ class MisClasesScreen extends StatelessWidget {
               pw.Text(
                   c.pagadaDirecto
                       ? 'Pagado directo a la academia por Yape.'
-                      : 'Pago procesado por Pichangol.',
+                      : 'Pago procesado por $kBrandName.',
                   style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
             ],
           ),

@@ -9,6 +9,7 @@ import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 import 'chat_screen.dart';
 
+import '../brand.dart';
 /// Registro de llamadas (estilo WhatsApp): entrante/saliente/perdida, con foto,
 /// hora y duración. Historial LOCAL del dispositivo.
 class LlamadasScreen extends StatefulWidget {
@@ -108,7 +109,7 @@ class _LlamadasScreenState extends State<LlamadasScreen> {
   }
 
   Widget _fila(LlamadaHistorial c, int index) {
-    final nombre = c.nombre.isNotEmpty ? c.nombre : 'Pichangol';
+    final nombre = c.nombre.isNotEmpty ? c.nombre : '$kBrandName';
     // Foto: la guardada, o la del perfil por correo (por si se cargó luego).
     final foto = c.foto.isNotEmpty
         ? c.foto

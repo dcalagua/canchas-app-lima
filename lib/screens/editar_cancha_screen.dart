@@ -28,6 +28,7 @@ import '../config/pais.dart';
 import '../widgets/icono_vivo.dart';
 import '../widgets/ubicacion_reclamo.dart';
 
+import '../brand.dart';
 /// Edición de una cancha ya registrada por el dueño: cambiar nombre, precio,
 /// deporte, horario/duración, dirección/ubicación, agregar foto o eliminarla.
 class EditarCanchaScreen extends StatefulWidget {
@@ -547,7 +548,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
           duration: Duration(seconds: 9),
           content: Text(
               '⚠️ Este local ya fue reclamado por otra cuenta y está en manos '
-              'de Pichangol. Si el local es tuyo, escríbenos por WhatsApp para '
+              'de $kBrandName. Si el local es tuyo, escríbenos por WhatsApp para '
               'revisarlo.',
               style: TextStyle(color: Colors.white)),
         ));
@@ -961,7 +962,7 @@ class _EditarCanchaScreenState extends State<EditarCanchaScreen> {
             Text(
                 'Si lo permites, el jugador puede contratar un '
                 '${paisDeCoordenadas(_ubicacion.latitude, _ubicacion.longitude).nombreBoleadorMin} '
-                'de la Liga Pichangol al reservar (lo paga aparte; a ti no te '
+                'de la Liga $kBrandName al reservar (lo paga aparte; a ti no te '
                 'cuesta nada y tu cancha se llena más).',
                 style: TextStyle(color: textoTenue, fontSize: 12)),
             const SizedBox(height: 10),

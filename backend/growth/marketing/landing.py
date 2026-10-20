@@ -10,6 +10,7 @@ URL pública compartible.
 from __future__ import annotations
 
 import html
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 
 def _e(v) -> str:
@@ -127,7 +128,7 @@ def render_landing(d: dict, canonical: str = "") -> str:
             <thead><tr><th>#</th><th>Jugador</th><th>PJ</th><th>G</th><th>Pts</th></tr></thead>
             <tbody>{filas}</tbody>
           </table></div>
-          <p class='tleyenda'>Tabla de posiciones de la academia · vía Pichangol.</p>
+          <p class='tleyenda'>Tabla de posiciones de la academia · vía {MARCA}.</p>
         </div></section>"""
 
     # --- Fotos ---------------------------------------------------------------
@@ -233,6 +234,6 @@ footer{{background:var(--verde-osc);color:#cbd3c0;text-align:center;padding:22px
   <h2 class="h2">Reserva tu lugar</h2>
   <div>{wa_btn}{ig_btn}</div>
 </div></section>
-<footer>{nombre}{(' · ' + sede) if sede else ''} · Hecho con Pichangol</footer>
+<footer>{nombre}{(' · ' + sede) if sede else ''} · Hecho con {MARCA}</footer>
 </body>
 </html>"""

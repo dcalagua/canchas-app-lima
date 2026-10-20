@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../services/marca_remota.dart';
 import 'marca.dart';
 
 const _navyLogo = Color(0xFF0A1F3C); // azul marino de la pelota del logo
@@ -62,6 +63,24 @@ class _LogoPichangolVivoState extends State<LogoPichangolVivo>
   Widget build(BuildContext context) {
     final lado = widget.ancho;
     final d = lado * _fd;
+    if (MarcaRemota.logoUrl.value.isNotEmpty) {
+      // Logo propio de la torre: el mismo pulso suave, sin la pelota animada
+      // (su posición se midió sobre el logo de siempre).
+      return SizedBox(
+        width: lado,
+        height: lado,
+        child: AnimatedBuilder(
+          animation: _pulso,
+          builder: (context, child) => Transform.scale(
+              scale: 1 + 0.05 * Curves.easeInOut.transform(_pulso.value),
+              child: child),
+          child: LogoMarcaImagen(
+              asset: 'assets/brand/logo_pichangol.png',
+              width: lado * 0.8,
+              height: lado * 0.8),
+        ),
+      );
+    }
     return SizedBox(
       width: lado,
       height: lado,

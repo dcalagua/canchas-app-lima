@@ -26,6 +26,7 @@ import 'chat_screen.dart';
 import 'llamada_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Visor de ESTADOS / HISTORIAS a pantalla completa (tipo WhatsApp): barras de
 /// progreso arriba, auto-avance, tap izquierda/derecha para retroceder/avanzar,
 /// mantener presionado para pausar y deslizar hacia abajo para cerrar.
@@ -377,7 +378,7 @@ class _EstadoViewerScreenState extends State<EstadoViewerScreen>
         );
       } else {
         await Share.share(
-          e.texto.isNotEmpty ? e.texto : 'Mira mi novedad en Pichangol',
+          e.texto.isNotEmpty ? e.texto : 'Mira mi novedad en $kBrandName',
         );
       }
     } catch (_) {

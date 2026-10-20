@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../utils/moneda.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Reporte de pagos de la academia: dashboard (cobrado / por cobrar / vencido),
 /// gráfico de ingresos por mes y lista de cuotas, con filtro por fecha.
 class ReporteAcademiaScreen extends StatefulWidget {
@@ -336,7 +337,7 @@ class _ReporteAcademiaScreenState extends State<ReporteAcademiaScreen> {
             ],
           ),
           pw.SizedBox(height: 16),
-          pw.Text('Generado por Pichangol · ${_fechaLarga(hoy)}',
+          pw.Text('Generado por $kBrandName · ${_fechaLarga(hoy)}',
               style: pw.TextStyle(fontSize: 9, color: PdfColors.grey600)),
         ],
       ),

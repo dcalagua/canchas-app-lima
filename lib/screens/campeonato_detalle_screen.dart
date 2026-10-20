@@ -29,6 +29,7 @@ import '../utils/moneda.dart';
 import '../config/pais.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Detalle de un campeonato: participantes, fixture (llave o tabla), carga de
 /// resultados y compartir por WhatsApp. Los controles de edición se muestran
 /// solo al organizador (dueño).
@@ -79,7 +80,7 @@ Future<int?> _aportarPozo(BuildContext context, Campeonato c,
       context,
       titulo: 'Te falta saldo',
       mensaje: 'Tu parte es ${c.monedaSimbolo} ${req.toStringAsFixed(2)} y '
-          'se paga de tu saldo Pichangol. Recarga y vuelve a intentarlo.',
+          'se paga de tu saldo $kBrandName. Recarga y vuelve a intentarlo.',
       textoConfirmar: 'Recargar saldo',
       textoCancelar: 'Ahora no',
       icono: Icons.account_balance_wallet_outlined,
@@ -101,7 +102,7 @@ Future<int?> _aportarPozo(BuildContext context, Campeonato c,
     await avisarPichangol(
       context,
       titulo: 'Tu saldo está en otra moneda',
-      mensaje: 'Tu saldo Pichangol está en ${simB.isEmpty ? 'otra moneda' : simB} '
+      mensaje: 'Tu saldo $kBrandName está en ${simB.isEmpty ? 'otra moneda' : simB} '
           'y este campeonato cobra en ${c.monedaSimbolo}. Solo se puede pagar '
           'con saldo de la misma moneda. No se te cobró nada.',
       icono: Icons.currency_exchange,
@@ -141,7 +142,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
       Campeonato c, String nombreEquipo, String codigo) {
     final enlace = enlaceEquipo(c, codigo);
     final b = StringBuffer(
-        'Únete a mi equipo «$nombreEquipo» en "${c.nombre}" (Pichangol).');
+        'Únete a mi equipo «$nombreEquipo» en "${c.nombre}" ($kBrandName).');
     if (enlace != null) {
       b.write(' Toca y quedas inscrito: $enlace');
     }
@@ -1079,7 +1080,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
             titulo: 'Te falta saldo',
             mensaje:
                 'La inscripción cuesta ${c.monedaSimbolo} ${req.toStringAsFixed(2)} '
-                'y se paga de tu saldo Pichangol. Recarga y vuelve a inscribirte.',
+                'y se paga de tu saldo $kBrandName. Recarga y vuelve a inscribirte.',
             textoConfirmar: 'Recargar saldo',
             textoCancelar: 'Ahora no',
             icono: Icons.account_balance_wallet_outlined,
@@ -1095,7 +1096,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
             context,
             titulo: 'Tu saldo es de otro país',
             mensaje: 'La inscripción se paga en ${c.monedaSimbolo} y tu saldo '
-                'Pichangol está en ${appState.monedaSaldoSimbolo}. Inscríbete '
+                '$kBrandName está en ${appState.monedaSaldoSimbolo}. Inscríbete '
                 'con una cuenta cuya billetera sea de ese país.',
             icono: Icons.account_balance_wallet_outlined,
           );
@@ -1416,7 +1417,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     final link = SupabaseService.paginaCampeonato(c.id);
     if (link != null) sb.writeln('👉 Inscríbete aquí: $link');
     sb.writeln('');
-    sb.writeln('vía *Pichangol* · Reserva, juega, repite.');
+    sb.writeln('vía *$kBrandName* · Reserva, juega, repite.');
     return sb.toString();
   }
 
@@ -1481,7 +1482,7 @@ class CampeonatoDetalleScreen extends StatelessWidget {
     }
     final link = SupabaseService.paginaCampeonato(c.id);
     if (link != null) sb.writeln('\n👉 Míralo aquí: $link');
-    sb.writeln('\nvía Pichangol');
+    sb.writeln('\nvía $kBrandName');
     return sb.toString();
   }
 }
@@ -1991,7 +1992,7 @@ class _Participantes extends StatelessWidget {
                           ),
                     label: Text(
                         sel == null
-                            ? 'Buscar en Pichangol'
+                            ? 'Buscar en $kBrandName'
                             : 'Vinculado · ${(sel!['nombre'] ?? sel!['email'] ?? '').toString()}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
@@ -2127,7 +2128,7 @@ class _Participantes extends StatelessWidget {
               const SizedBox(height: 8),
               const Text(
                   'Si los excluyes, cada jugador recupera lo que puso en su '
-                  'saldo Pichangol.',
+                  'saldo $kBrandName.',
                   style: TextStyle(color: textoTenue, fontSize: 12.5)),
             ],
           ),
@@ -3454,7 +3455,7 @@ class _InvitarCard extends StatelessWidget {
                   ? 'Comparte el código o el enlace. Para unirse en la app: '
                       '“Unirme a un campeonato” 🔗 y pegar el código.'
                   : 'Comparte el enlace para que se inscriban (o mándalo por '
-                      'Pichangol/WhatsApp).',
+                      '$kBrandName/WhatsApp).',
               style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
           const SizedBox(height: 12),
           // Código grande (solo si hay código corto real; los campeonatos viejos
@@ -3512,7 +3513,7 @@ class _InvitarCard extends StatelessWidget {
                 onPressed: () =>
                     CompartirPichangol.compartir(context, texto: _mensaje()),
                 icon: const Icon(Icons.send, size: 18),
-                label: const Text('Compartir en Pichangol'),
+                label: const Text('Compartir en $kBrandName'),
               ),
               OutlinedButton.icon(
                 onPressed: () => WhatsAppLink.compartir(_mensaje()),

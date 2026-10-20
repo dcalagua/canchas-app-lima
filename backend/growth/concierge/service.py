@@ -21,9 +21,10 @@ import unicodedata
 from typing import Any
 
 import config
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 _SYSTEM = (
-    "Eres el concierge de reservas de Pichangol, un marketplace para reservar "
+    f"Eres el concierge de reservas de {MARCA}, un marketplace para reservar "
     "canchas de fútbol, tenis, pádel y más en Lima, Perú. Hablas SIEMPRE en "
     "español peruano, cercano y breve.\n\n"
     "Recibes el mensaje del jugador y una lista JSON de CANCHAS DISPONIBLES "

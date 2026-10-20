@@ -17,6 +17,7 @@ import urllib.parse
 import urllib.request
 
 import config
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 _ESMERALDA = "#0E8F67"
 _NAVY = "#0F1B2D"
@@ -160,7 +161,7 @@ def html_carta(productos: list[dict], con_packshots: bool = False) -> str:
               '<p class="vacio">La carta aún no tiene productos.</p>')
     return f"""<!doctype html><html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Carta de la bodega · Pichangol</title>
+<title>Carta de la bodega · {MARCA}</title>
 <meta property="og:title" content="🧃 Carta de la bodega">
 <meta property="og:description" content="Precios al día. Pide en el mostrador.">
 <style>
@@ -190,5 +191,5 @@ def html_carta(productos: list[dict], con_packshots: bool = False) -> str:
     <p>Pide en el mostrador y paga ahí mismo. Precios siempre al día.</p>
   </div>
   <div class="wrap">{cuerpo}</div>
-  <div class="foot">Bodega administrada con <b>Pichangol</b> · Reserva, juega, repite.</div>
+  <div class="foot">Bodega administrada con <b>{MARCA}</b> · Reserva, juega, repite.</div>
 </body></html>"""

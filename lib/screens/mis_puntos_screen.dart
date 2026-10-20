@@ -7,6 +7,7 @@ import '../theme.dart';
 import '../widgets/ancho_lectura.dart';
 import '../widgets/ilustracion_pichangol.dart';
 
+import '../brand.dart';
 /// MIS PUNTOS (fidelidad del jugador). Los puntos se DERIVAN de sus reservas
 /// pagadas por la app (últimos 12 meses): 1 punto por S/ 1 pagado — online al
 /// instante, efectivo cuando el local marca el cobro (por eso conviene exigir
@@ -183,7 +184,7 @@ class _MisPuntosScreenState extends State<MisPuntosScreen> {
                     ),
                     child: Column(
                       children: [
-                        const Text('⭐ Puntos Pichangol',
+                        const Text('⭐ Puntos $kBrandName',
                             style: TextStyle(
                                 color: Colors.white70,
                                 fontWeight: FontWeight.w700,
@@ -250,11 +251,11 @@ class _MisPuntosScreenState extends State<MisPuntosScreen> {
                           '• Pago online: puntos al instante. Efectivo: '
                           'cuando el local confirma tu pago.\n'
                           '• Los pedidos de bodega pagados con tu SALDO '
-                          'Pichangol también suman (al entregarse). En '
+                          '$kBrandName también suman (al entregarse). En '
                           'efectivo no acumulan.\n'
                           '• Cada 100 puntos = S/ 3 de descuento al pagar '
                           'online tu próxima reserva (el descuento lo pone '
-                          'Pichangol, no el local).',
+                          '$kBrandName, no el local).',
                           style: TextStyle(fontSize: 12.5, height: 1.5),
                         ),
                       ],

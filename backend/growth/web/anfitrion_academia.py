@@ -20,6 +20,7 @@ from datetime import date
 from pathlib import Path
 
 from starlette.concurrency import run_in_threadpool
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 _JSON_INVALIDO = object()
 
@@ -73,15 +74,15 @@ def _seccion_cobro(cd: dict, iso: str) -> str:
     img_qr = f"<img src='{e(qr_url)}' alt='Tu QR de cobro'>" if qr_url else "<span>▦</span>"
     return ("<section class='panel edit-sec' id='sec-cobro'><h2>💜 Cobro directo a tu academia</h2>"
             f"<div id='cdYapeBox'{' hidden' if es_qr else ''}>"
-            "<p class='sub'>Tus alumnos te pagan directo a tu Yape (escaneando tu QR o con tu número) y reportan en Pichangol el "
+            f"<p class='sub'>Tus alumnos te pagan directo a tu Yape (escaneando tu QR o con tu número) y reportan en {MARCA} el "
             "código de seguridad de su comprobante; tú lo comparas con la notificación de tu Yape y confirmas con un toque. "
-            "<b>Pichangol no toca tu plata ni cobra comisión.</b></p>"
+            f"<b>{MARCA} no toca tu plata ni cobra comisión.</b></p>"
             "<div class='row'><div><label for='cdYape'>Número de Yape <span class='req'>celular de 9 dígitos</span></label>"
             f"<div class='inp-moneda' style='max-width:260px'><span>+51</span><input id='cdYape' inputmode='numeric' maxlength='11' value='{e(yape)}' placeholder='987 654 321'></div></div></div></div>"
             f"<div id='cdQrTexto'{'' if es_qr else ' hidden'}>"
             "<p class='sub'>Sube el <b>código QR</b> donde recibes pagos (DeUna!, tu banco o QR Simple). Tus alumnos lo escanean y pagan un "
             "<b>monto único</b> (su cuota + unos centavos); si activas la confirmación automática en la app, tu celular reconoce el pago "
-            "y la cuota queda pagada sola. <b>Pichangol no toca tu plata ni cobra comisión.</b></p></div>"
+            f"y la cuota queda pagada sola. <b>{MARCA} no toca tu plata ni cobra comisión.</b></p></div>"
             "<label style='margin-top:14px;display:block'>Tu código QR de cobro "
             f"<span class='req' id='cdQrReq'>{'obligatorio' if es_qr else 'opcional · el de tu Yape'}</span></label>"
             "<div style='display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:8px'>"
@@ -184,7 +185,7 @@ def pagina_academias(request: Request, guardado: str = "") -> HTMLResponse:
                   "<div class='kpis' style='margin-top:22px'>"
                   "<div class='kpi'><small>1 · Créala</small><b style='font-size:16px'>Deporte, sede, planes y tarifario</b></div>"
                   "<div class='kpi'><small>2 · Matricula</small><b style='font-size:16px'>Tus alumnos y sus cuotas, desde la app</b></div>"
-                  "<div class='kpi'><small>3 · Difunde</small><b style='font-size:16px'>Landing y redes con Pichangol</b></div></div>"
+                  f"<div class='kpi'><small>3 · Difunde</small><b style='font-size:16px'>Landing y redes con {MARCA}</b></div></div>"
                   "<div class='acciones' style='margin-top:24px'><a class='btn' href='/anfitrion/academia/nueva'>＋ Crear mi academia</a></div></div>")
         return ui.shell("Mi academia", cuerpo, nav=_cab(ses, "academias"), sesion=ses, ancho=True, titulo_tab="Mi academia · Modo anfitrión")
     cuerpo = ("<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
@@ -339,7 +340,7 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
   <div class='row' id='geoRow' style='grid-template-columns:1fr 1fr 1fr'><select id='g1'><option value=''>—</option></select><select id='g2'><option value=''>—</option></select><select id='g3'><option value=''>—</option></select></div>
   <label for='wa'>WhatsApp de contacto</label><div class='inp-moneda' style='max-width:300px'><span id='telPre'>+{catalogos.TEL_PREFIJO.get(iso, '51')}</span><input id='wa' inputmode='tel' maxlength='15' value='{e(a.get('whatsapp') or '')}' placeholder='999 888 777'></div>
  </section>
- <section class='panel edit-sec' id='sec-fotos'><h2>Fotos</h2><p class='sub'>Feed de tu academia dentro de Pichangol (hasta 8).</p>
+ <section class='panel edit-sec' id='sec-fotos'><h2>Fotos</h2><p class='sub'>Feed de tu academia dentro de {MARCA} (hasta 8).</p>
   <div class='edit-fotos' id='fotos'>{fotos_html}</div>
   <div class='acciones' style='margin-top:12px'><label class='btn sec' for='inFotos'>📷 Agregar fotos</label><input type='file' id='inFotos' accept='image/*' multiple hidden{'' if almacen.disponible() else ' disabled'}><span class='sub' id='fotosMsg' style='margin:0'></span></div>
  </section>

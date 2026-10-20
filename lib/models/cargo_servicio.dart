@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/growth_service.dart';
 import '../services/pagos_service.dart';
 
+import '../brand.dart';
 /// CARGO POR SERVICIO Pichangol al cliente (fase 3 del diseño aprobado por el
 /// director el 27-sep-2026, `docs/diseno-cargo-por-servicio.md`).
 ///
@@ -91,7 +92,7 @@ class CotizacionCargo {
     this.ajusteCentimos = 0,
     this.ahorroCentimos = 0,
     this.regla = '',
-    this.titulo = 'Cargo por servicio Pichangol',
+    this.titulo = 'Cargo por servicio $kBrandName',
     this.desglose = const [],
     this.delServidor = false,
     this.medio = '',
@@ -122,7 +123,7 @@ class CotizacionCargo {
       ahorroCentimos: ((j['ahorro_centimos'] ?? 0) as num).round(),
       regla: (j['regla'] ?? '').toString(),
       titulo: (j['titulo'] ?? '').toString().isEmpty
-          ? 'Cargo por servicio Pichangol'
+          ? 'Cargo por servicio $kBrandName'
           : j['titulo'].toString(),
       desglose: ComponenteCargo.listaDe(j['desglose']),
       delServidor: delServidor,
@@ -405,7 +406,7 @@ class CargoServicio {
       ahorroCentimos: ahorro,
       regla: reglaTexto(iso),
       titulo: (t['titulo'] ?? '').toString().isEmpty
-          ? 'Cargo por servicio Pichangol'
+          ? 'Cargo por servicio $kBrandName'
           : t['titulo'].toString(),
       desglose: _desgloseLocal(linea, iso, cargo, deporte),
       medio: medio,

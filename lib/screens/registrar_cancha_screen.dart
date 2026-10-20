@@ -29,6 +29,7 @@ import '../widgets/icono_vivo.dart';
 import '../widgets/dialogo_pichangol.dart';
 import '../widgets/ubicacion_reclamo.dart';
 
+import '../brand.dart';
 /// Registrar una cancha escribiendo la dirección: se geocodifica y aparece en el
 /// mapa automáticamente (estilo eSupplier). Un local puede tener varias canchas
 /// de distintos deportes, así que el deporte es de selección múltiple.
@@ -708,7 +709,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
         ),
         PasoWizard(
           titulo: 'Revisa y envía',
-          sub: 'Tu solicitud viaja a la torre de control de Pichangol; te '
+          sub: 'Tu solicitud viaja a la torre de control de $kBrandName; te '
               'avisamos con una notificación cuando quede aprobada.',
           hijos: _hijosResumen(context),
         ),
@@ -1211,7 +1212,7 @@ class _RegistrarCanchaScreenState extends State<RegistrarCanchaScreen> {
           style: t.titleSmall?.copyWith(fontWeight: FontWeight.w800)),
       const SizedBox(height: 10),
       for (final (n, txt) in const [
-        (1, 'El equipo de Pichangol revisa tu solicitud y te contacta por '
+        (1, 'El equipo de $kBrandName revisa tu solicitud y te contacta por '
             'WhatsApp si necesita confirmar algo.'),
         (2, 'Cuando quede aprobada, te llega una notificación al celular.'),
         (3, 'Recién ahí configuras deportes, precios y horarios — y empiezas '

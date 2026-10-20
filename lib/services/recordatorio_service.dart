@@ -4,6 +4,7 @@ import 'package:timezone/timezone.dart' as tz;
 
 import '../config/pais.dart';
 
+import '../brand.dart';
 /// Recordatorios LOCALES (gratis, sin servidor) para el DUEÑO: "cobra en
 /// efectivo" cuando se acerca la hora de una reserva pagada en efectivo. La
 /// notificación la programa y la muestra el propio teléfono; no cuesta nada ni
@@ -185,7 +186,7 @@ class RecordatorioService {
       await _plugin.zonedSchedule(
         _idCierreDiario,
         'Cierra tu caja de hoy',
-        'Revisa lo cobrado del día y cierra tu caja en Pichangol.',
+        'Revisa lo cobrado del día y cierra tu caja en $kBrandName.',
         cuando,
         const NotificationDetails(
           android: AndroidNotificationDetails(

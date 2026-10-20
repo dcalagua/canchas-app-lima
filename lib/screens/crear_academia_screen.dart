@@ -26,6 +26,7 @@ import '../config/pais.dart';
 import 'servicios_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Crea o edita la academia del profe (marca independiente). Fase 1: nombre,
 /// deporte, sede actual (texto), WhatsApp, descripción y planes.
 class CrearAcademiaScreen extends StatefulWidget {
@@ -1013,7 +1014,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
               'Sube el QR donde recibes pagos. Tus alumnos lo escanean y pagan '
               'un monto único (su cuota + unos centavos); con la confirmación '
               'automática activada, tu celular reconoce el pago y la cuota '
-              'queda pagada sola. Pichangol no toca tu plata.',
+              'queda pagada sola. $kBrandName no toca tu plata.',
               style: TextStyle(color: textoTenue, fontSize: 12.5)),
           const SizedBox(height: 12),
           _filaQr(),
@@ -1238,7 +1239,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
         PasoWizard(
           titulo: editando ? 'Edita tu academia' : 'Presenta tu academia',
           sub: 'El logo, el deporte y el nombre son la cara de tu academia '
-              'en Pichangol.',
+              'en $kBrandName.',
           hijos: _hijosPresentacion(context),
         ),
         PasoWizard(
@@ -1249,7 +1250,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
         ),
         PasoWizard(
           titulo: 'Fotos y redes',
-          sub: 'Muestra tu academia: fotos para el feed dentro de Pichangol '
+          sub: 'Muestra tu academia: fotos para el feed dentro de $kBrandName '
               'y tus redes sociales.',
           hijos: _hijosFotosRedes(context),
         ),
@@ -1436,8 +1437,8 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   const SizedBox(height: 4),
                   const Text(
                       'Tus alumnos te yapean directo a este número y te avisan '
-                      'en Pichangol con el código de seguridad de su Yape. Tú '
-                      'confirmas con un toque. Pichangol no toca tu plata.',
+                      'en $kBrandName con el código de seguridad de su Yape. Tú '
+                      'confirmas con un toque. $kBrandName no toca tu plata.',
                       style: TextStyle(color: textoTenue, fontSize: 12.5)),
                   const SizedBox(height: 12),
                   TextField(
@@ -1498,7 +1499,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
           const Text('Fotos (feed de tu academia)',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
           const SizedBox(height: 4),
-          const Text('Se muestran dentro de Pichangol, sin salir a Instagram.',
+          const Text('Se muestran dentro de $kBrandName, sin salir a Instagram.',
               style: TextStyle(color: textoTenue, fontSize: 13)),
           const SizedBox(height: 10),
           SizedBox(
@@ -1620,7 +1621,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                           (widget.academia?.landingUrl ?? '').isNotEmpty &&
                           _redesCtrl['web']?.text.trim() ==
                               widget.academia?.landingUrl.trim()
-                      ? 'Es tu landing de Pichangol (puedes reemplazarla).'
+                      ? 'Es tu landing de $kBrandName (puedes reemplazarla).'
                       : null,
                 ),
               ),
@@ -1660,14 +1661,14 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 Text(
                     _redesConectadas
                         ? 'Ya podemos publicar por ti. Genera contenido con IA y '
-                            'administra tus publicaciones en Servicios Pichangol.'
+                            'administra tus publicaciones en Servicios $kBrandName.'
                         : (_igDeclarado.isNotEmpty
                             ? 'Detectamos tu Instagram $_igDeclarado. Conéctalo y '
-                                'Pichangol publica por ti (contenido con IA + '
-                                'publicación). Se activa en Servicios Pichangol.'
-                            : 'Conecta tu Instagram/Facebook y deja que Pichangol '
+                                '$kBrandName publica por ti (contenido con IA + '
+                                'publicación). Se activa en Servicios $kBrandName.'
+                            : 'Conecta tu Instagram/Facebook y deja que $kBrandName '
                                 'maneje tus redes (contenido con IA + publicación). '
-                                'Se activa en Servicios Pichangol.'),
+                                'Se activa en Servicios $kBrandName.'),
                     style: const TextStyle(fontSize: 12.5, color: textoTenue)),
                 const SizedBox(height: 10),
                 if (widget.academia != null)
@@ -1679,7 +1680,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                       icon: const Icon(Icons.arrow_forward, size: 18),
                       label: Text(_redesConectadas
                           ? 'Administrar en Servicios'
-                          : 'Ir a Servicios Pichangol'),
+                          : 'Ir a Servicios $kBrandName'),
                       onPressed: () async {
                         await Navigator.of(context).push(
                           MaterialPageRoute(
@@ -1696,7 +1697,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                   )
                 else
                   const Text(
-                      'Guarda la academia y actívalo desde Servicios Pichangol.',
+                      'Guarda la academia y actívalo desde Servicios $kBrandName.',
                       style: TextStyle(fontSize: 12, color: textoTenue)),
               ],
             ),
@@ -1848,7 +1849,7 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
             titulo: 'Publicidad / Landing (opcional)',
             subtitulo:
                 'Si ya tienes tu página web, pégala aquí. Si no, contrata tu '
-                'landing en "Servicios Pichangol": la generamos con los datos de '
+                'landing en "Servicios $kBrandName": la generamos con los datos de '
                 'tu academia.',
             abierta: (widget.academia?.landingUrl ?? '').isNotEmpty,
             hijos: [
@@ -1899,10 +1900,10 @@ class _CrearAcademiaScreenState extends State<CrearAcademiaScreen> {
                 Text(
                     widget.academia == null
                         ? '¿No tienes web? Guarda la academia y contrata tu '
-                            'landing en "Servicios Pichangol" (📣): la generamos '
+                            'landing en "Servicios $kBrandName" (📣): la generamos '
                             'con tus datos.'
                         : '¿No tienes web? Contrata tu landing en "Servicios '
-                            'Pichangol": la generamos con los datos de tu academia '
+                            '$kBrandName": la generamos con los datos de tu academia '
                             'y el enlace aparece aquí solo.',
                     style: const TextStyle(color: textoTenue, fontSize: 12)),
                 const SizedBox(height: 8),

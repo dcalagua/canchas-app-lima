@@ -12,6 +12,7 @@ import '../widgets/yape_auto_card.dart';
 import 'crear_academia_screen.dart';
 import 'recargar_saldo_screen.dart';
 
+import '../brand.dart';
 /// PLAN ACADEMIA (decisión del director, 10-oct-2026): suscripción mensual que
 /// la academia paga a Pichangol (con prueba gratis). Sus alumnos le pagan
 /// DIRECTO por Yape; Pichangol no cobra comisión. Estilo Spotify/Airbnb:
@@ -53,7 +54,7 @@ class _PlanAcademiaScreenState extends State<PlanAcademiaScreen> {
       context,
       titulo: 'Pagar Plan Academia',
       mensaje: 'Se descontarán $sim ${precio.toStringAsFixed(2)} de tu saldo '
-          'Pichangol por 30 días más del Plan Academia de ${_ac.nombre}.',
+          '$kBrandName por 30 días más del Plan Academia de ${_ac.nombre}.',
       textoConfirmar: 'Pagar $sim ${precio.toStringAsFixed(2)}',
       textoCancelar: 'Ahora no',
       icono: Icons.workspace_premium,
@@ -171,7 +172,7 @@ class _PlanAcademiaScreenState extends State<PlanAcademiaScreen> {
                     icono: Icons.how_to_reg_outlined,
                     titulo: 'Matrícula en línea',
                     texto:
-                        'Se inscriben desde tu ficha en Pichangol, con tus programas, sedes y descuentos.'),
+                        'Se inscriben desde tu ficha en $kBrandName, con tus programas, sedes y descuentos.'),
                 const _Beneficio(
                     icono: Icons.dashboard_outlined,
                     titulo: 'Panel de tu academia',

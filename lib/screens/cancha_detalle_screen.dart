@@ -20,6 +20,7 @@ import '../utils/ubicacion_share.dart';
 import '../widgets/atribucion_osm.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Detalle de una cancha (estilo ficha de Airbnb) con selección de día/hora y
 /// flujo de reserva. Demo sin backend: la reserva se guarda en memoria.
 class CanchaDetalleScreen extends StatefulWidget {
@@ -767,7 +768,7 @@ class _PanelDescubierta extends StatelessWidget {
           if (cancha.esOsm) const AtribucionOsm(),
           const SizedBox(height: 10),
           const Text(
-            'Todavía no está activa en Pichangol, así que aún no se puede '
+            'Todavía no está activa en $kBrandName, así que aún no se puede '
             'reservar online. ¿Es tuya? Regístrala y empieza a recibir '
             'reservas.',
             style: TextStyle(height: 1.4),

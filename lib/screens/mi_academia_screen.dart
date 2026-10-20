@@ -25,6 +25,7 @@ import '../utils/moneda.dart';
 import '../config/pais.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Panel del PROFE: su academia, alumnos y cobros (Fase 1). Sin pasarela: marca
 /// pagos en efectivo y manda recordatorios por WhatsApp.
 class MiAcademiaScreen extends StatelessWidget {
@@ -393,7 +394,7 @@ const _kReleaseUrl =
 /// Mensaje de invitación por WhatsApp (con el código de la academia).
 String _mensajeInvitacion(Academia ac, String nombre) {
   final saludo = nombre.isNotEmpty ? '¡Hola $nombre!' : '¡Hola!';
-  return '$saludo Te invito a mi academia "${ac.nombre}" en Pichangol 🎾\n\n'
+  return '$saludo Te invito a mi academia "${ac.nombre}" en $kBrandName 🎾\n\n'
       '1) Descarga la app: $_kReleaseUrl\n'
       '2) Entra a Academias → "Unirme con código"\n'
       '3) Ingresa el código: ${ac.codigo}\n\n'
@@ -740,7 +741,7 @@ class _CodigoCard extends StatelessWidget {
 
   Future<void> _compartir(BuildContext context) async {
     final msg = '¡Hola! Te invito a mi academia "${academia.nombre}" en '
-        'Pichangol 🎾\n\n'
+        '$kBrandName 🎾\n\n'
         '1) Descarga la app: $_releaseUrl\n'
         '2) Entra a Academias → "Unirme con código"\n'
         '3) Ingresa el código: ${academia.codigo}\n\n'
@@ -959,7 +960,7 @@ class _SaldoPill extends StatelessWidget {
                   size: 18, color: Colors.white),
               const SizedBox(width: 8),
               Flexible(
-                child: Text('Saldo Pichangol  ',
+                child: Text('Saldo $kBrandName  ',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(

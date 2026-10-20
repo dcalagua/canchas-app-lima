@@ -86,7 +86,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
         await GrowthService.contactoWhatsApp(widget.negocio.pais.iso) ??
             kContactoWhatsApp;
     await WhatsAppLink.abrir(numero,
-        'Hola Pichangol, no tengo redes y quiero que me ayuden a crear y manejar '
+        'Hola $kBrandName, no tengo redes y quiero que me ayuden a crear y manejar '
         'las de "${widget.negocio.nombre}".');
   }
 
@@ -287,7 +287,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
       return;
     }
     if (r['requiere_pro'] == true) {
-      _msg('El community manager con IA es Pichangol Pro. Actívalo para que '
+      _msg('El community manager con IA es $kBrandName Pro. Actívalo para que '
           'el agente arme y publique tus posts por ti.');
       return;
     }
@@ -421,7 +421,7 @@ class _ServiciosScreenState extends State<ServiciosScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Servicios Pichangol'),
+        title: const Text('Servicios $kBrandName'),
         actions: [
           // "Mi billetera": solo cuando NO hay menú lateral (club / móvil). En la
           // academia va como ítem del rail, así que aquí se oculta. Es el mismo

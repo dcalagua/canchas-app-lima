@@ -14,6 +14,7 @@ import '../widgets/responsive.dart';
 import 'verificar_identidad_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// "Soy boleador" (Perfil → Ser boleador; módulo Boleadores, sep-2026). Mismo
 /// flujo que `/anfitrion/boleador` de la web: solicitudes PENDIENTES arriba
 /// (Aceptar · ganas X / No puedo), confirmadas, y el perfil por SELECCIÓN
@@ -134,7 +135,7 @@ class _BoleadorScreenState extends State<BoleadorScreen> {
       await avisarPichangol(context,
           titulo: 'Falta tu categoría',
           mensaje:
-              'Elige tu categoría de la Liga Pichangol (5P, 5A, 5B, 4ta…).',
+              'Elige tu categoría de la Liga $kBrandName (5P, 5A, 5B, 4ta…).',
           icono: Icons.sports_tennis);
       return;
     }
@@ -220,7 +221,7 @@ class _BoleadorScreenState extends State<BoleadorScreen> {
         titulo: 'Verifica tu identidad',
         mensaje:
             'Vas a estar en una cancha con jugadores que no te conocen: por '
-            'eso todo ${_cfg?.nombre.toLowerCase() ?? 'boleador'} de Pichangol '
+            'eso todo ${_cfg?.nombre.toLowerCase() ?? 'boleador'} de $kBrandName '
             'tiene su ${_pais.docId} validado. Toma un minuto.',
         textoConfirmar: 'Verificar ahora',
         icono: Icons.verified_user_outlined);
@@ -377,13 +378,13 @@ class _BoleadorScreenState extends State<BoleadorScreen> {
             }),
           ),
           const SizedBox(height: 14),
-          _label('Mi categoría (Liga Pichangol)'),
+          _label('Mi categoría (Liga $kBrandName)'),
           _chipsTexto([for (final c in cfg.categorias) (c, c)], {_categoria},
               (v) => setState(() => _categoria = v)),
           const SizedBox(height: 14),
           _label('Tarifa por turno'),
           Text(
-              'Lo que cobras por cada turno de la cancha. Pichangol descuenta '
+              'Lo que cobras por cada turno de la cancha. $kBrandName descuenta '
               '$_sim ${_fmt(cfg.comision)} por turno y el resto queda por recibir '
               'en tu billetera al terminar el boleo.',
               style: t.bodySmall?.copyWith(color: textoTenue, height: 1.3)),
@@ -422,7 +423,7 @@ class _BoleadorScreenState extends State<BoleadorScreen> {
           const SizedBox(height: 14),
           _label('Locales donde atiendes'),
           Text(
-              'Solo locales verificados en Pichangol. Marca todos los que te '
+              'Solo locales verificados en $kBrandName. Marca todos los que te '
               'queden bien.',
               style: t.bodySmall?.copyWith(color: textoTenue)),
           const SizedBox(height: 8),
@@ -626,7 +627,7 @@ class _Intro extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                     'Los jugadores te contratan por turno al reservar la cancha. '
-                    'Tú aceptas o rechazas cada solicitud. Pichangol descuenta '
+                    'Tú aceptas o rechazas cada solicitud. $kBrandName descuenta '
                     '${cfg.simbolo} ${_BoleadorScreenState._fmt(cfg.comision)} por turno y el resto '
                     'queda por recibir en tu billetera al terminar el boleo.',
                     style: t.bodySmall?.copyWith(color: bosque, height: 1.35)),
@@ -674,7 +675,7 @@ class _Candado extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
               'Vas a estar en una cancha con jugadores que no te conocen: por eso '
-              'todo ${nombre.toLowerCase()} de Pichangol tiene su ${pais.docId} '
+              'todo ${nombre.toLowerCase()} de $kBrandName tiene su ${pais.docId} '
               'validado. Toma un minuto.',
               style: const TextStyle(fontSize: 13, height: 1.3)),
           const SizedBox(height: 8),
@@ -845,7 +846,7 @@ class _TarjetaSolicitud extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-              'Cobras ${s.simbolo} ${s.monto.toStringAsFixed(2)} − comisión Pichangol '
+              'Cobras ${s.simbolo} ${s.monto.toStringAsFixed(2)} − comisión $kBrandName '
               '${s.simbolo} ${s.comision.toStringAsFixed(2)} = ${s.simbolo} ${s.neto.toStringAsFixed(2)} '
               'por recibir al terminar el turno.',
               style: t.bodySmall?.copyWith(height: 1.3)),

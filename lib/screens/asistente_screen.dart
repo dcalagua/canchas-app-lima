@@ -14,6 +14,7 @@ import 'cancha_detalle_screen.dart';
 import '../utils/moneda.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Asistente Pichangol: chat estilo WhatsApp donde el jugador escribe en
 /// lenguaje natural ("fútbol mañana 8pm por Surco") y se le sugieren canchas.
 /// La interpretación es LOCAL por reglas (`BusquedaLocal`) — sin IA/tokens, así
@@ -207,7 +208,7 @@ class _AsistenteScreenState extends State<AsistenteScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Asistente Pichangol',
+                const Text('Asistente $kBrandName',
                     style: TextStyle(
                         color: Colors.white,
                         fontSize: 16.5,

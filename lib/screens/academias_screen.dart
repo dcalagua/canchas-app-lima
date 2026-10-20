@@ -21,6 +21,7 @@ import 'mis_clases_screen.dart';
 import '../config/pais.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Directorio público de academias (Fase 1): el jugador ve las academias, su
 /// deporte, dónde entrenan y sus planes. Al tocar una entra a la ficha, donde
 /// ve el feed de fotos, se matricula (pago simulado) y sigue sus redes.
@@ -818,7 +819,7 @@ class _RankingGlobalBanner extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Liga de tenis Pichangol',
+                    const Text('Liga de tenis $kBrandName',
                         style: TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w800,

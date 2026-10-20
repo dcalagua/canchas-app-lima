@@ -46,6 +46,7 @@ import 'selector_chat_screen.dart';
 import 'ubicacion_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 // ── Paleta estilo WhatsApp (theme-aware) ─────────────────────────────────────
 // Se calcula según el brillo del tema. Fondo del chat, burbujas y barra imitan
 // la app de WhatsApp sobre la marca Pichangol (verde bosque/lima).
@@ -704,7 +705,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (apodo != null && nombreReal != null && nombreReal != apodo)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
-                    child: Text('En Pichangol: $nombreReal',
+                    child: Text('En $kBrandName: $nombreReal',
                         style:
                             const TextStyle(color: textoTenue, fontSize: 13)),
                   ),
@@ -729,7 +730,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           icon: const FaIcon(FontAwesomeIcons.whatsapp,
                               color: Color(0xFF25D366), size: 20),
                           onPressed: () => WhatsAppLink.abrir(
-                              celular, 'Hola, te escribo desde Pichangol.')),
+                              celular, 'Hola, te escribo desde $kBrandName.')),
                     ]),
                   ),
                 if (recado != null)
@@ -1520,7 +1521,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   color: Color(0xFF25D366)),
               onPressed: () => WhatsAppLink.abrir(
                   appState.celularDe(_contraparteEmail)!,
-                  'Hola, te escribo desde Pichangol.'),
+                  'Hola, te escribo desde $kBrandName.'),
             ),
           // Menú del contacto (tipo WhatsApp): agenda + apodo + bloquear.
           if (_contraparteEmail.isNotEmpty)

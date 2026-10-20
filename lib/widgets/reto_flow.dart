@@ -11,6 +11,7 @@ import '../theme.dart';
 import 'dialogo_pichangol.dart';
 import 'cargando_pichangol.dart';
 
+import '../brand.dart';
 /// Retos que se están enviando AHORA (clave = correo del retado). Es la guardia
 /// anti doble-clic: mientras un reto a ese jugador está en vuelo, se ignora
 /// cualquier tap repetido (así un usuario ansioso no crea 3 retos iguales).
@@ -79,7 +80,7 @@ Future<void> enviarRetoConGuardia(
     // Chat del partido: abre el hilo directo con el rival con un mensaje inicial
     // para coordinar la cancha (y le llega el push). Best-effort.
     unawaited(appState.enviarMensajeDirecto(email,
-        '⚔️ Te reté en Pichangol ($deporte). Coordinemos cancha y horario.'));
+        '⚔️ Te reté en $kBrandName ($deporte). Coordinemos cancha y horario.'));
   }
   if (!context.mounted) return;
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -185,7 +186,7 @@ Future<void> _ofrecerPro(BuildContext context, dynamic limite) async {
   final ir = await confirmarPichangol(
     context,
     titulo: 'Llegaste a tu límite de retos',
-    mensaje: 'Los jugadores sin Pichangol Pro pueden enviar $n retos por semana. '
+    mensaje: 'Los jugadores sin $kBrandName Pro pueden enviar $n retos por semana. '
         'Hazte Pro y reta sin límites.',
     textoConfirmar: 'Ver Pro',
     textoCancelar: 'Ahora no',

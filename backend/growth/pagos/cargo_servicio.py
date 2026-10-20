@@ -29,6 +29,7 @@ from dataclasses import asdict, dataclass, field
 
 import config
 from db.store import stores
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 LINEAS = ("reservas", "academias", "marketplace", "torneos")
 MONEDAS = ("PEN", "USD", "BOB")
@@ -53,28 +54,28 @@ CLAVES_DEFAULT: dict[str, str] = {
 TEXTOS_DEFAULT: dict = {
     "version": 1,
     "reservas": {
-        "titulo": "Cargo por servicio Pichangol",
+        "titulo": f"Cargo por servicio {MARCA}",
         "componentes": [
             {"clave": "pago_protegido", "nombre": "Pago protegido", "pct": 2.0,
              "detalle": "Cobro seguro con {medios}, antifraude, comprobante y reembolso si la cancha cancela."},
             {"clave": "reserva_garantizada", "nombre": "Reserva garantizada", "pct": 1.5,
              "detalle": "Turno bloqueado al instante, sin doble reserva, aviso al dueño, cancelación según política y soporte."},
             {"clave": "beneficios", "nombre": "Promociones y beneficios", "pct": 1.5,
-             "detalle": "Puntos Pichangol, bonos de recarga, cupones, recordatorios e historial."},
+             "detalle": f"Puntos {MARCA}, bonos de recarga, cupones, recordatorios e historial."},
         ],
         # Texto del tercer componente por deporte (clave = deporte del app).
         "por_deporte": {
-            "futbol": {"nombre": "Tu equipo y tu partido", "detalle": "Vaquita entre jugadores, invitación por enlace, campeonatos con fixture, petos y árbitro reservables, puntos Pichangol."},
-            "futsal": {"nombre": "Tu equipo y tu partido", "detalle": "Vaquita entre jugadores, invitación por enlace, campeonatos con fixture, petos y árbitro reservables, puntos Pichangol."},
-            "basquet": {"nombre": "Tu equipo y tu partido", "detalle": "Vaquita entre jugadores, invitación por enlace, campeonatos, puntos Pichangol."},
-            "voley": {"nombre": "Tu equipo y tu partido", "detalle": "Vaquita entre jugadores, invitación por enlace, campeonatos, puntos Pichangol."},
-            "tenis": {"nombre": "Comunidad y ranking", "detalle": "Jugadores disponibles, retos, ranking, campeonatos, puntos Pichangol."},
-            "padel": {"nombre": "Comunidad y ranking", "detalle": "Jugadores disponibles, retos, ranking, campeonatos, puntos Pichangol."},
-            "pickleball": {"nombre": "Comunidad y ranking", "detalle": "Jugadores disponibles, retos, ranking, campeonatos, puntos Pichangol."},
+            "futbol": {"nombre": "Tu equipo y tu partido", "detalle": f"Vaquita entre jugadores, invitación por enlace, campeonatos con fixture, petos y árbitro reservables, puntos {MARCA}."},
+            "futsal": {"nombre": "Tu equipo y tu partido", "detalle": f"Vaquita entre jugadores, invitación por enlace, campeonatos con fixture, petos y árbitro reservables, puntos {MARCA}."},
+            "basquet": {"nombre": "Tu equipo y tu partido", "detalle": f"Vaquita entre jugadores, invitación por enlace, campeonatos, puntos {MARCA}."},
+            "voley": {"nombre": "Tu equipo y tu partido", "detalle": f"Vaquita entre jugadores, invitación por enlace, campeonatos, puntos {MARCA}."},
+            "tenis": {"nombre": "Comunidad y ranking", "detalle": f"Jugadores disponibles, retos, ranking, campeonatos, puntos {MARCA}."},
+            "padel": {"nombre": "Comunidad y ranking", "detalle": f"Jugadores disponibles, retos, ranking, campeonatos, puntos {MARCA}."},
+            "pickleball": {"nombre": "Comunidad y ranking", "detalle": f"Jugadores disponibles, retos, ranking, campeonatos, puntos {MARCA}."},
         },
     },
     "academias": {
-        "titulo": "Cargo por servicio Pichangol",
+        "titulo": f"Cargo por servicio {MARCA}",
         "componentes": [
             {"clave": "pago_protegido", "nombre": "Pago protegido", "pct": 2.0,
              "detalle": "Cobro seguro con {medios}, comprobante y reembolso según la política de la academia."},
@@ -91,7 +92,7 @@ TEXTOS_DEFAULT: dict = {
         },
     },
     "marketplace": {
-        "titulo": "Cargo por servicio Pichangol",
+        "titulo": f"Cargo por servicio {MARCA}",
         "componentes": [
             {"clave": "pago_protegido", "nombre": "Pago protegido", "pct": 3.0, "detalle": "Cobro seguro con {medios}, comprobante y devolución si el producto no llega."},
             {"clave": "coordinacion", "nombre": "Coordinación de la entrega", "pct": 2.0, "detalle": "Chat con el vendedor, vendedores verificados, soporte."},
@@ -99,7 +100,7 @@ TEXTOS_DEFAULT: dict = {
         "por_deporte": {},
     },
     "torneos": {
-        "titulo": "Cargo por servicio Pichangol",
+        "titulo": f"Cargo por servicio {MARCA}",
         "componentes": [
             {"clave": "pago_protegido", "nombre": "Pago protegido", "pct": 2.5, "detalle": "Cobro seguro con {medios}, comprobante y devolución si el equipo queda fuera antes de empezar."},
             {"clave": "torneo", "nombre": "Tu torneo en la app", "pct": 2.5, "detalle": "Vaquita del equipo, fixture, resultados y ranking en vivo."},
@@ -109,12 +110,12 @@ TEXTOS_DEFAULT: dict = {
     # Lo que incluye la COMISIÓN de quien recibe (se muestra al dueño/academia).
     "comision": {
         "reservas": [
-            {"clave": "marketing", "nombre": "Visibilidad y marketing", "pct": 2.0, "detalle": "Explorador de la app y la web, ficha pública con fotos y reseñas, Google, redes de Pichangol, campañas por deporte y zona."},
+            {"clave": "marketing", "nombre": "Visibilidad y marketing", "pct": 2.0, "detalle": f"Explorador de la app y la web, ficha pública con fotos y reseñas, Google, redes de {MARCA}, campañas por deporte y zona."},
             {"clave": "operacion", "nombre": "Agenda y reservas", "pct": 1.5, "detalle": "Calendario en línea, reserva manual y bloqueos, sin doble reserva, recordatorios de cobro, WhatsApp del jugador."},
             {"clave": "cobros", "nombre": "Cobros y liquidación", "pct": 1.5, "detalle": "Cobro en línea, billetera, liquidación a tu cuenta, reportes de ingresos."},
         ],
         "academias": [
-            {"clave": "marketing", "nombre": "Visibilidad y marketing", "pct": 2.0, "detalle": "Pestaña Academias del explorador, ficha web con tarifario y matrícula en línea, landing pública, redes de Pichangol."},
+            {"clave": "marketing", "nombre": "Visibilidad y marketing", "pct": 2.0, "detalle": f"Pestaña Academias del explorador, ficha web con tarifario y matrícula en línea, landing pública, redes de {MARCA}."},
             {"clave": "operacion", "nombre": "Alumnos y cuotas", "pct": 2.0, "detalle": "Matrículas, cuotas, débito automático, recordatorios de vencimiento, familia y descuentos, morosos."},
             {"clave": "cobros", "nombre": "Cobros y liquidación", "pct": 1.0, "detalle": "Cobro en línea, comprobante al alumno, liquidación a tu cuenta."},
         ],
@@ -288,7 +289,7 @@ def cotizar(*, linea: str, moneda: str, base_centimos: int, medio: str | None = 
         ahorro = max(sum(cargo_centimos(int(p), iso) for p in partes) - cargo, 0)
     return Cotizacion(linea=linea, moneda=iso, simbolo=_SIMBOLO.get(iso, "S/"), activo=True, base_centimos=base,
                       cargo_centimos=cargo, total_centimos=base + cargo, ajuste_seguridad_centimos=ajuste,
-                      regla=regla_texto(iso), titulo=(textos().get(linea) or {}).get("titulo", "Cargo por servicio Pichangol"),
+                      regla=regla_texto(iso), titulo=(textos().get(linea) or {}).get("titulo", f"Cargo por servicio {MARCA}"),
                       desglose=desglose(linea, iso, cargo, deporte), ahorro_centimos=ahorro)
 
 
@@ -297,7 +298,7 @@ def _cotizar_modelo_2(iso: str, base: int, partes: list[int] | None, medio: str 
     su parte de la pasarela DEL MEDIO con que paga (Yape es más barato que la
     tarjeta) + la comisión Pichangol al jugador. Sin medio = tarjeta."""
     from pagos import modelo_negocio as _mn
-    titulo = "Pago en línea y servicio Pichangol"
+    titulo = f"Pago en línea y servicio {MARCA}"
     if base <= 0:
         return Cotizacion(linea="reservas", moneda=iso, simbolo=_SIMBOLO.get(iso, "S/"), activo=True, base_centimos=0,
                           cargo_centimos=0, total_centimos=0, regla=_mn.regla_texto(iso, medio), titulo=titulo)

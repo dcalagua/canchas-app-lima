@@ -61,6 +61,7 @@ from web.jugador_liga import (DEPORTES, DEPORTES_ACTIVOS, DEPORTES_CIRCUITO, PUN
                               deportes_con_ranking, mi_nombre, perfiles, ranking_global, ref_de,
                               sin_sesion)
 from web.ui import PLAY_URL, e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["web-jugador-partidos"])
 
@@ -501,7 +502,7 @@ def _preview_circuito() -> str:
         + ("<span class='jp-pro'>PRO</span>" if f["email"] and stores.pro_activo(f["email"]) else "")
         + f"</span><small>{f['pj']} PJ</small><span class='pt'>{f['puntos']} pts</span></div>" for i, f in enumerate(top))
     return (f"<a class='jp-card' href='/liga?deporte={deps[0]}' style='display:block;text-decoration:none;color:inherit'>"
-            "<div class='jp-top'><span class='jp-dep'>🏆</span><div class='t'><b>Circuito Pichangol</b>"
+            f"<div class='jp-top'><span class='jp-dep'>🏆</span><div class='t'><b>Circuito {MARCA}</b>"
             "<small>Ranking de tu ciudad · rétalos y sube</small></div><span style='font-size:22px;color:#6a6a6a'>›</span></div>"
             + (f"<div style='margin-top:8px'>{filas}</div>" if filas else "") + "</a>")
 
@@ -687,10 +688,10 @@ def pagina_partidos(request: Request, pais: str = "", tab: str = "") -> HTMLResp
               f"<div class='jp-chips' style='margin-top:18px'>{chips}</div></div>"
               f"{fab}<datalist id='jpSedes'>{opciones}</datalist>"
               f"<script>window.JP={_js(cfg)};</script><script>{_JS_BASE}{_JS_PARTIDOS}</script>")
-    return ui.shell("Juega ya", cuerpo, sesion=ses, titulo_tab="Juega ya · Pichangol")
+    return ui.shell("Juega ya", cuerpo, sesion=ses, titulo_tab=f"Juega ya · {MARCA}")
 
 
-_JS_PARTIDOS = r"""
+_JS_PARTIDOS = (r"""
 var JY = {yo: null, dep: JP.depIni || '', cu: 'hoy', cuAuto: true, niv: false,
   pais: JP.paisFijo || JP.paisDefault, paisAuto: !JP.paisFijo, radio: (JP.prefs && JP.prefs.radio_km) || 10};
 try { var _r = +localStorage.getItem('pcg_radio'); if([5,10,20,30].indexOf(_r) >= 0) JY.radio = _r; } catch(e){}
@@ -821,7 +822,7 @@ window.jpCrear = function(tipo, reusar){
   var dias = JP.proximos.map(function(d){ return "<button type='button' class='chip' data-dia='" + d[0] + "'>" + jpEsc(d[1]) + "</button>"; }).join('');
   var html = "<div class='jp-form' style='text-align:left'>"
     + "<label class='l'>Deporte</label><div class='jp-chips' id='jpDeps'>" + deps + "</div>"
-    + "<label class='l'>¿Dónde se juega?</label><div class='ayuda'>Elige un local de Pichangol; si es otro lugar, usamos tu ubicación para avisar a los de la zona.</div>"
+    + "<label class='l'>¿Dónde se juega?</label><div class='ayuda'>Elige un local de ⟦MARCA⟧; si es otro lugar, usamos tu ubicación para avisar a los de la zona.</div>"
     + "<input type='text' id='jpSede' list='jpSedes' maxlength='80' placeholder='Busca la cancha o el lugar'>"
     + "<label class='l'>Fecha</label><div class='jp-chips' id='jpDias'>" + dias + "</div>"
     + "<input type='date' id='jpFecha' min='" + JP.hoy + "' max='" + JP.max + "'>"
@@ -935,7 +936,7 @@ document.addEventListener('click', function(ev){
 });
 try { var _g = JSON.parse(localStorage.getItem('pcg_ubic') || 'null'); if(_g && _g.lat){ JY.yo = _g; if(JY.paisAuto) JY.pais = jpPaisDe(_g.lat, _g.lng); } } catch(e){}
 jpUbicTxt(); jpAplicar(); jpDisponibles(); jpUbicar(false);
-"""
+""").replace('⟦MARCA⟧', MARCA)
 
 
 def validar_partido(b: dict, hoy: date) -> tuple[dict | None, str]:
@@ -1220,7 +1221,7 @@ def pagina_pichangas(request: Request, club: str = "") -> HTMLResponse:
     cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap'><a class='jp-volver' href='/partidos'>‹ Partidos</a>"
               f"<h1>Pichangas</h1>{titulo_club}<p class='sub'>Convocatorias de club con cupos y lista de espera: te anotas y sabes al toque si entras.</p>"
               f"{acciones}{chips}{tarj}</div>")
-    return ui.shell("Pichangas", cuerpo, sesion=ses, titulo_tab="Pichangas · Pichangol")
+    return ui.shell("Pichangas", cuerpo, sesion=ses, titulo_tab=f"Pichangas · {MARCA}")
 
 
 @router.get("/pichangas/nueva", response_class=HTMLResponse)
@@ -1260,7 +1261,7 @@ def pagina_nueva_pichanga(request: Request, club: str = "") -> HTMLResponse:
               f"<div id='npModos'>{modos}</div>"
               "<div class='jp-acc'><button type='button' class='btn' id='npGo'>✓ Crear convocatoria</button></div></div>"
               f"<script>window.NP={_js(cfg)};</script><script>{_JS_BASE}{_JS_NUEVA}</script>")
-    return ui.shell("Nueva pichanga", cuerpo, sesion=ses, titulo_tab="Nueva pichanga · Pichangol")
+    return ui.shell("Nueva pichanga", cuerpo, sesion=ses, titulo_tab=f"Nueva pichanga · {MARCA}")
 
 
 _JS_NUEVA = r"""
@@ -1452,7 +1453,7 @@ def pagina_pichanga(request: Request, cid: int) -> HTMLResponse:
               f"<div class='jp-sec'>✅ {t_conf} · {len(conf) if conf else 0}</div><div class='jp-card'>{_lista_inscritos(conf, yo, False, cerrada)}</div>"
               + (f"<div class='jp-sec'>⏳ {'Lista de espera' if (cerrada or modo == 'orden_llegada') else 'Anotados'} · {len(esp)}</div><div class='jp-card'>{_lista_inscritos(esp, yo, True, cerrada)}</div>" if esp else "")
               + f"</div><script>window.PC={_js(cfg)};</script><script>{_JS_BASE}{_JS_PICHANGA}</script>")
-    return ui.shell(str(c.get("titulo") or "Pichanga"), cuerpo, sesion=ses, titulo_tab=f"{c.get('titulo') or 'Pichanga'} · Pichangol")
+    return ui.shell(str(c.get("titulo") or "Pichanga"), cuerpo, sesion=ses, titulo_tab=f"{c.get('titulo') or 'Pichanga'} · {MARCA}")
 
 
 _JS_PICHANGA = r"""
@@ -1582,12 +1583,12 @@ def pagina_referidos(request: Request) -> HTMLResponse:
     bono = int(est.get("bono_centimos") or 0)
     bono_txt = _ref._fmt(bono, est.get("moneda") or "PEN") if bono else ""
     ganado = int(est.get("ganado_centimos") or 0)
-    msg = ("¡Juega conmigo en Pichangol! 🎾⚽\n\nReserva canchas de fútbol, tenis y más cerca de ti.\n"
+    msg = (f"¡Juega conmigo en {MARCA}! 🎾⚽\n\nReserva canchas de fútbol, tenis y más cerca de ti.\n"
            f"Usa mi código *{cod}* al registrarte y ambos ganamos un bono. 🎁\n\nDescárgala: {config.APP_DOWNLOAD_URL}")
     estado_txt = (f"{n} {'persona ya usó' if n == 1 else 'personas ya usaron'} tu código." if n else "Aún nadie usó tu código. ¡Comparte y gana!")
     ganado_html = (f"<div class='jp-banner' style='background:#FFF6E0;color:#8a5a00'><span class='em'>🎁</span><div><b>Llevas "
                    f"{e(_ref._fmt(ganado, est.get('moneda') or 'PEN'))} ganados con Invita y gana</b>"
-                   "<small>Ya están en tu saldo Pichangol (Mi billetera).</small></div></div>") if ganado else ""
+                   f"<small>Ya están en tu saldo {MARCA} (Mi billetera).</small></div></div>") if ganado else ""
     tope_html = ("<div class='jp-banner' style='background:#F4F4F4;color:#555'><span class='em'>ℹ️</span><div><b>Llegaste al tope de invitados con bono</b>"
                  "<small>Tus amigos igual reciben su bono de bienvenida.</small></div></div>") if est.get("tope_alcanzado") else ""
     canje = est.get("canjeado") or ""
@@ -1600,7 +1601,7 @@ def pagina_referidos(request: Request) -> HTMLResponse:
         "style='flex:1;min-width:0;text-transform:uppercase;letter-spacing:1px'>"
         "<button type='button' class='btn' id='rfBtn' onclick='rfCanjear()'>Canjear</button></div></div>")
     regla = (f"Comparte tu código. Cuando un amigo lo canjea, {e(bono_txt)} para cada uno, directo a tu saldo. 🎁"
-             if bono_txt else "Comparte tu código con tus amigos para que juegue contigo en Pichangol.")
+             if bono_txt else f"Comparte tu código con tus amigos para que juegue contigo en {MARCA}.")
     cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap' style='max-width:600px'><a class='jp-volver' href='/perfil'>‹ Perfil</a>"
               "<h1>Invita y gana</h1>"
               "<div class='jp-hero' style='text-align:center;background:linear-gradient(135deg,#7CB518,#0B8A3E)'>"
@@ -1621,7 +1622,7 @@ def pagina_referidos(request: Request) -> HTMLResponse:
               "  else { pcgAvisar({titulo: 'No se pudo canjear', mensaje: j.mensaje || 'Revisa el código e inténtalo otra vez.', icono: '⚠️'}); } })"
               " .catch(function(){ pcgCargando(false); pcgAvisar({titulo: 'Sin conexión', mensaje: 'No pudimos canjear. Inténtalo otra vez.', icono: '⚠️'}); }); };"
               "</script>")
-    return ui.shell("Invita y gana", cuerpo, sesion=ses, titulo_tab="Invita y gana · Pichangol")
+    return ui.shell("Invita y gana", cuerpo, sesion=ses, titulo_tab=f"Invita y gana · {MARCA}")
 
 
 @router.post("/web/referidos/canjear")
@@ -1797,9 +1798,9 @@ def pagina_carnet(request: Request, ref: str, deporte: str = "") -> HTMLResponse
               f"<div class='jp-sec'>{e(t_ac)}</div><div class='jp-card'>{acad}</div>"
               + (f"<div class='jp-sec'>Acerca de {e(primer)}</div><div class='jp-card'>{bio_h}</div>" if bio_h else "")
               + f"<div class='jp-sec'>Últimos partidos</div><div class='jp-card'>{ult}</div>"
-              "<p class='sub' style='text-align:center'>Ranking Global Pichangol</p></div>"
+              f"<p class='sub' style='text-align:center'>Ranking Global {MARCA}</p></div>"
               f"<script>{_JS_BASE}{_JS_CARNET}</script>")
-    return ui.shell(f"Carnet de {nombre}", cuerpo, sesion=ses, titulo_tab=f"{nombre} · Carnet Pichangol")
+    return ui.shell(f"Carnet de {nombre}", cuerpo, sesion=ses, titulo_tab=f"{nombre} · Carnet {MARCA}")
 
 
 _JS_CARNET = r"""
@@ -1879,7 +1880,7 @@ def texto_aviso(c: dict, nombre: str, horas: list[str], precios: list[int], dia:
     desde = min(precios) if precios else 0
     extra = f"\n{promo}" if promo else ""
     return (f"¡Hola {nombre}! 🎾 Tengo libre {donde} {dia}: {', '.join(sorted(horas))} "
-            f"(desde {sim} {desde}{off}). ¿La quieres? Resérvala en Pichangol o respóndeme por aquí.{extra}")
+            f"(desde {sim} {desde}{off}). ¿La quieres? Resérvala en {MARCA} o respóndeme por aquí.{extra}")
 
 
 @router.get("/anfitrion/llenar", response_class=HTMLResponse)
@@ -1919,10 +1920,10 @@ def pagina_llenar(request: Request, cancha: str = "", dia: int = 0) -> HTMLRespo
               "<label class='l'>Mensaje o promo (opcional)</label><input type='text' id='llPromo' maxlength='160' placeholder='Ej.: 20% off hoy'>"
               f"<div class='jp-acc'><button type='button' class='btn' id='llGo' disabled>Elige horas para avisar</button></div></div>"
               f"<script>window.LL={_js(cfg)};</script><script>{_JS_BASE}{_JS_LLENAR}</script>")
-    return ui.shell("Llenar cancha", cuerpo, nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab="Llenar cancha · Pichangol")
+    return ui.shell("Llenar cancha", cuerpo, nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab=f"Llenar cancha · {MARCA}")
 
 
-_JS_LLENAR = r"""
+_JS_LLENAR = (r"""
 var sel = {}, desc = 0;
 function precio(s){ return (sel[s.h] && desc > 0) ? s.px[String(desc)] : (sel[s.h] ? s.p0 : s.pa); }
 function pintar(){
@@ -1944,7 +1945,7 @@ document.addEventListener('click', function(ev){
 document.getElementById('llGo').addEventListener('click', function(){
   var horas = Object.keys(sel); if(!horas.length) return;
   if(!LL.n){ pcgAvisar({titulo: 'Aún sin clientes', icono: 'ℹ️', mensaje: 'Aún no tienes clientes registrados para avisar.'}); return; }
-  pcgConfirmar({titulo: 'Avisar a tus clientes', icono: '📣', mensaje: 'Se aplicará el precio elegido a ' + horas.length + ' hora(s) y se avisará a tus ' + LL.n + ' cliente(s): por el chat de Pichangol a los que tienen la app y por WhatsApp a los demás.', confirmar: 'Avisar', cancelar: 'Cancelar'}).then(function(ok){
+  pcgConfirmar({titulo: 'Avisar a tus clientes', icono: '📣', mensaje: 'Se aplicará el precio elegido a ' + horas.length + ' hora(s) y se avisará a tus ' + LL.n + ' cliente(s): por el chat de ⟦MARCA⟧ a los que tienen la app y por WhatsApp a los demás.', confirmar: 'Avisar', cancelar: 'Cancelar'}).then(function(ok){
     if(!ok) return;
     jpPost('/anfitrion/llenar/avisar', {cancha_id: LL.cancha, dia: LL.dia, horas: horas, descuento: desc, promo: document.getElementById('llPromo').value}, 'Avisando…').then(function(j){
       if(!j.ok){ jpFallo(j); return; }
@@ -1957,7 +1958,7 @@ document.getElementById('llGo').addEventListener('click', function(){
   });
 });
 pintar();
-"""
+""").replace('⟦MARCA⟧', MARCA)
 
 
 @router.post("/anfitrion/llenar/avisar")

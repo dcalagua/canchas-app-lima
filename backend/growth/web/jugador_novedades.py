@@ -75,6 +75,7 @@ from web import almacen, sesion, ui
 from web.jugador_liga import email_de_ref, perfiles, ref_de, sin_sesion
 from web.jugador_mensajes import agenda_de, hilo_directo, insertar_mensaje
 from web.ui import e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter()
 
@@ -1075,7 +1076,7 @@ def pagina_novedades(request: Request) -> HTMLResponse:
               + _VISOR_HTML
               + f"<script>window.NV_CFG = {_js(cfg)};</script>"
               + _JS_COMUN + _JS_NOVEDADES + _JS_VISOR)
-    return ui.shell("Novedades", cuerpo, sesion=ses, titulo_tab="Novedades · Pichangol")
+    return ui.shell("Novedades", cuerpo, sesion=ses, titulo_tab=f"Novedades · {MARCA}")
 
 
 @router.get("/web/novedades/datos")
@@ -1276,7 +1277,7 @@ _MUSICA_CACHE: dict[str, tuple[float, list]] = {}
 
 def _itunes(url: str) -> dict | None:
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "Pichangol/1.0"})
+        req = urllib.request.Request(url, headers={"User-Agent": f"{MARCA}/1.0"})
         with urllib.request.urlopen(req, timeout=8) as r:  # noqa: S310
             return json.loads(r.read().decode("utf-8"))
     except Exception:  # noqa: BLE001
@@ -1426,7 +1427,7 @@ def pagina_nuevo_estado(request: Request, tipo: str = "texto") -> HTMLResponse:
               "<p class='nv-ayuda'>Tu estado dura 24 horas y lo ven tus contactos.</p>"
               "<div class='nv-acc'><button type='button' class='btn lg' id='nvPublicar'>Publicar estado</button></div></div>"
               + f"<script>window.NV_COMP = {json.dumps(cfg)};</script>" + _JS_COMUN + _JS_COMPOSER)
-    return ui.shell("Nuevo estado", cuerpo, sesion=ses, titulo_tab="Nuevo estado · Pichangol")
+    return ui.shell("Nuevo estado", cuerpo, sesion=ses, titulo_tab=f"Nuevo estado · {MARCA}")
 
 
 # ═══════════════════════════ /canales ═════════════════════════════════════════
@@ -1468,7 +1469,7 @@ def pagina_canales(request: Request) -> HTMLResponse:
               "<input class='nv-buscar' id='nvBuscar' type='search' placeholder='Buscar' autocomplete='off'>"
               "<div id='nvCanales'></div><p style='margin-top:18px'><a href='/novedades'>‹ Volver a Novedades</a></p></div>"
               + f"<script>window.NV_CAN = {_js(cfg)};</script>" + _JS_COMUN + _JS_CANALES)
-    return ui.shell("Canales", cuerpo, sesion=ses, titulo_tab="Canales · Pichangol")
+    return ui.shell("Canales", cuerpo, sesion=ses, titulo_tab=f"Canales · {MARCA}")
 
 
 @router.get("/web/canales/datos")
@@ -1507,7 +1508,7 @@ def _form_canal(ses: dict, c: dict | None) -> HTMLResponse:
               f"<div class='nv-foto-edit'><span class='nv-av' id='nvFotoAv' role='button' aria-label='Foto del canal'>{av}</span>"
               "<button type='button' class='btn sec' id='nvFotoBtn'>📷 Foto del canal</button></div>"
               "<label class='nv-lbl' for='nvNombre'>Nombre del canal</label>"
-              f"<input class='nv-campo' id='nvNombre' maxlength='{CANAL_NOMBRE_MAX}' placeholder='Ej. Pichangol San Borja' value='{e((c or {}).get('nombre') or '')}'>"
+              f"<input class='nv-campo' id='nvNombre' maxlength='{CANAL_NOMBRE_MAX}' placeholder='Ej. {MARCA} San Borja' value='{e((c or {}).get('nombre') or '')}'>"
               "<small class='nv-ayuda' id='nvNombreC' style='display:block;text-align:right'></small>"
               f"<label class='nv-lbl' for='nvDesc'>Descripción{'' if c else ' (opcional)'}</label>"
               f"<textarea class='nv-campo' id='nvDesc' maxlength='{CANAL_DESC_MAX}' placeholder='¿De qué trata tu canal?'>{e((c or {}).get('descripcion') or '')}</textarea>"
@@ -1515,7 +1516,7 @@ def _form_canal(ses: dict, c: dict | None) -> HTMLResponse:
               + ("" if c else "<p class='nv-ayuda'>Tú serás el administrador. Solo tú publicas; los seguidores ven tus novedades y pueden reaccionar.</p>")
               + f"<div class='nv-acc'><button type='button' class='btn lg' id='nvGuardar'>{'Guardar cambios' if c else '📢 Crear canal'}</button></div></div></div>"
               + f"<script>window.NV_FC = {json.dumps({'id': (c or {}).get('id') or ''})};</script>" + _JS_COMUN + _JS_FORM_CANAL)
-    return ui.shell(titulo, cuerpo, sesion=ses, titulo_tab=f"{titulo} · Pichangol")
+    return ui.shell(titulo, cuerpo, sesion=ses, titulo_tab=f"{titulo} · {MARCA}")
 
 
 @router.get("/canales/nuevo", response_class=HTMLResponse)
@@ -1706,7 +1707,7 @@ def pagina_canal(request: Request, canal_id: str) -> HTMLResponse:
                     "<button type='button' class='env' id='nvPubEnv'>Publicar</button></div>")
     cuerpo = (_CSS + "<div class='nv-wrap'><p style='margin:0 0 8px'><a href='/canales'>‹ Canales</a></p><div id='nvCanal'></div>" + escribir + "</div>"
               + f"<script>window.NV_CD = {_js(cfg)};</script>" + _JS_COMUN + _JS_CANAL)
-    return ui.shell(c["nombre"], cuerpo, sesion=ses, titulo_tab=f"{c['nombre']} · Canal · Pichangol")
+    return ui.shell(c["nombre"], cuerpo, sesion=ses, titulo_tab=f"{c['nombre']} · Canal · {MARCA}")
 
 
 @router.get("/canales/{canal_id}/editar", response_class=HTMLResponse)

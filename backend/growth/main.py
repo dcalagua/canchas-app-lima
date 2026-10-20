@@ -24,6 +24,7 @@ from entrenador.router import router as entrenador_router
 from db.store import seed_verificadores, stores
 from legal.router import router as legal_router
 from web.router import router as web_router
+from web.portal_tenis import router as portal_tenis_router
 from web.anfitrion import router as anfitrion_router
 from web.anfitrion_academia import router as anfitrion_academia_router
 from web.anfitrion_academia_ops import router as anfitrion_academia_ops_router
@@ -56,6 +57,7 @@ from web.jugador_novedades import router as jugador_novedades_router
 from web.jugador_pro import router as jugador_pro_router
 from models import ConfigRequest, ConsentimientoRequest
 from marketing.router import router as marketing_router
+from marketing.agente_ia.router import router as agente_ia_router
 from pagos.router import (procesar_renovaciones, procesar_renovaciones_alumnos,
                           procesar_renovaciones_pro)
 from pagos.router import router as pagos_router
@@ -68,9 +70,10 @@ from propiedad.router import router as propiedad_router
 from puntos.router import router as puntos_router
 from solicitudes.router import router as solicitudes_router
 from verificacion_fisica.router import router as vf_router
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 app = FastAPI(
-    title="Pichangol — Crecimiento (puntos, zonas, verificación física)",
+    title=f"{MARCA} — Crecimiento (puntos, zonas, verificación física)",
     description="No-retención de datos personales (Ley 29733). Integraciones en STUB.",
     version="0.1.0",
 )
@@ -171,8 +174,12 @@ app.include_router(retos_router)
 app.include_router(ventas_router)
 app.include_router(circuito_router)
 app.include_router(marketing_router)
+app.include_router(agente_ia_router)  # AI Marketing Agent: /admin/api/mkt/* + short-link /go/{codigo}
 app.include_router(legal_router)
+from marca_logo import router as marca_logo_router  # noqa: E402
+app.include_router(marca_logo_router)  # /marca/logo.png + torre → Logo de la marca
 app.include_router(web_router)
+app.include_router(portal_tenis_router)  # /tenis: portada de raqueta (canchas, torneos con marca del organizador, partner, liga)
 app.include_router(academia_web_router)  # ficha pública /academia/{id} + matrícula web
 app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}
 app.include_router(jugador_clases_router)  # /mis-clases: Mis clases y pagos del jugador
@@ -287,6 +294,30 @@ async def _iniciar_cron_agente_redes() -> None:
                 await asyncio.to_thread(tick)   # IA + Pillow + Graph: bloqueante, fuera del event loop
             except Exception as exc:  # noqa: BLE001
                 print(f"[agente] tick falló: {str(exc)[:160]}", flush=True)
+            await asyncio.sleep(60)
+
+    asyncio.create_task(_loop())
+
+
+@app.on_event("startup")
+async def _iniciar_cron_agente_ia() -> None:
+    """AI MARKETING AGENT (`marketing/agente_ia/`): cada 60 s el orquestador
+    planifica el día de cada país a su hora (datos reales → estrategia → piezas
+    validadas), publica lo aprobado cuya hora llegó, mide métricas cada hora y
+    los lunes recalcula los aprendizajes. Apagado por defecto (`ai_mkt_activo`).
+    Una sola réplica en Railway; fail-safe."""
+    import sys
+    if "pytest" in sys.modules:
+        return
+
+    async def _loop() -> None:
+        await asyncio.sleep(150)  # deja arrancar el servicio
+        while True:
+            try:
+                from marketing.agente_ia import orquestador
+                await asyncio.to_thread(orquestador.tick)   # SQL + IA + Pillow + Graph: fuera del event loop
+            except Exception as exc:  # noqa: BLE001
+                print(f"[agente_ia] tick falló: {str(exc)[:160]}", flush=True)
             await asyncio.sleep(60)
 
     asyncio.create_task(_loop())

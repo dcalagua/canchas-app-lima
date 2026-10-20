@@ -233,7 +233,7 @@ class _LoginGoogleSheetState extends State<LoginGoogleSheet> {
           const SizedBox(height: 16),
           Center(
             child: Text(
-              'Al continuar aceptas los Términos y la Privacidad de Pichangol.',
+              'Al continuar aceptas los Términos y la Privacidad de $kBrandName.',
               textAlign: TextAlign.center,
               style: t.bodySmall?.copyWith(color: const Color(0xFFA39D91)),
             ),

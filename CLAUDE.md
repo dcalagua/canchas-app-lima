@@ -152,6 +152,55 @@ jugador es 100% Pichangol, EBIM solo aparece discreto como respaldo).
   `LANDING_BASE_URL` (dominio de marca para el enlace público de la landing).
   **OJO:** `GROWTH_API_URL` ≠ `VERIF_API_URL` (servicios distintos).
 
+## Marca configurable + torneos con marca del organizador (20-oct-2026)
+
+Pedido del director: gente del tenis pide un nombre más genérico ("Pichangol
+suena a fútbol") y quiere hacer sus torneos y alquilar canchas aquí. Se hizo:
+(1) **nombre y dominio de marca en UN solo lugar** — backend `config.MARCA` /
+`config.MARCA_DOMINIO` (env `MARCA_NOMBRE` / `MARCA_DOMINIO`, defaults
+Pichangol / www.pichangol.app); TODO texto visible de Python usa esas
+constantes (f-string, o en plantillas con llaves el marcador `⟦MARCA⟧` +
+`.replace("⟦MARCA⟧", MARCA)`), `legal/home.html` usa `{{MARCA}}` /
+`{{MARCA_DOMINIO}}` (`empresa.rellenar`); APK `kBrandName` / `kBrandDominio`
+en `lib/brand.dart` (cada literal visible usa `$kBrandName`). **Nunca escribir
+"Pichangol" a mano en un texto visible**: `tests/test_marca_configurable.py` lo
+impide (docstrings y comentarios sí pueden) y prueba que con `MARCA_NOMBRE`
+=CanchaLibre las páginas lo muestran. NO dependen de la marca: tablas
+`pichangol_*`, paquete `pe.ebim.pichangol`, ids, salas Jitsi (`llamada_service`
+`salaDeEnlace`), claves de SharedPreferences. Cambiar de nombre de verdad =
+variables en Railway + `kBrandName` + logos (`static/brand/`, assets del APK) +
+dominio/ficha de Play (decisión pendiente del director). Producción corre
+**Python 3.11** (Dockerfile): no usar sintaxis de f-strings de 3.12 (mismas
+comillas anidadas, `\` en expresiones). (2) **Torneo con la marca del
+ORGANIZADOR:** campo `Campeonato.organizador` (app: "Organiza (opcional)" en
+crear/editar; web: `#orga` en el asistente; se conserva al duplicar);
+`campeonato_web.organizador_de(c)` = organizador → academia (`academiaId`) →
+auspiciador, logo del torneo → de la academia. La página `/c/{id}` pone su logo
+y "Organiza X" en el hero, `<title>`/og con su nombre y al pie "Torneo de X ·
+con la tecnología de {MARCA}"; el afiche cambia el pie a "Organiza X" +
+"Inscripciones en {MARCA_DOMINIO}". (3) **Portada de raqueta `GET /tenis`**
+(`web/portal_tenis.py`): canchas aprobadas de tenis/pádel/pickleball por local,
+torneos vivos (`datos.campeonatos_publicos`), Busco partner, Liga, Boleadores,
+Organiza tu torneo y "¿Tienes un club?"; enlazada en el menú ☰ y el pie. Test
+`tests/test_portal_tenis.py`. (4) **LOGO configurable en la torre**
+(`backend/growth/marca_logo.py`, pedido del director el mismo día): torre →
+Comunicación → Datos de la empresa → "🎨 Logo de la marca" (`GET/POST
+/admin/api/marca/logo`, `…/quitar`). El PNG/JPG se normaliza a 512×512 PNG
+(recorta el borde transparente, centra con margen, conserva la transparencia;
+mínimo 128 px, máx. 5 MB), se sube a Storage `canchas/marca/logo_<ms>.png` y la
+URL queda en `stores.config[marca_logo_url]` + `marca_logo_v` (sin Storage,
+base64 en `marca_logo_b64`). TODO lo que muestra el logo lo pide a
+`GET /marca/logo.png` (`?v=` = versión; og:image → `/marca/logo-og.png`):
+cabecera, favicon, diálogos y banner de la web, correos de pago
+(`marca_logo.url_publica(base)`); las piezas Pillow (redes, video, agente)
+usan `marca_logo.abrir()`. **Nunca volver a apuntar a
+`/static/brand/logo_pin.png` en HTML.** APK: `/config/canal` publica
+`marca_logo_url` → `lib/services/marca_remota.dart` (`MarcaRemota`,
+cache-first en SharedPreferences + caché de disco; `LogoMarcaImagen`) usado en
+`LogoCuadrado`, `PichangolWordmark` (logo + `kBrandName`), `LogoPichangolVivo`
+y `ChatBurbuja`. El ícono del celular y el splash nativo siguen compilados en
+el APK (cambiarlos = assets nuevos + build). Test `tests/test_marca_logo.py`.
+
 ## Dominio oficial: `pichangol.app`
 
 El dominio de marca **YA ESTÁ REGISTRADO Y VIVO**. En Railway (`pg-backend`) el
@@ -2895,6 +2944,14 @@ off → redeploy inmediato en cada push). URL pública:
     `lib/` → APK/AAB de PRD = run 1552 (`workflow_dispatch`, `ref=prd`,
     `entorno=prod`). OJO: un APK anterior publica partidos con título/nota
     libres (se ven igual) y no tiene "Busco partner" ni avisos → actualizar.
+    **Pase del 16-oct-2026 (autorizado: "pasa a PRD y dame el apk para prd"):**
+    `prd` = 4422da6 (pago por QR con monto único en academias de EC/BO con
+    confirmación automática por notificación y apps de cobro elegibles; QR de
+    Yape opcional en Perú). Sin SQL, sin Edge, sin variables (las intenciones
+    viven en el snapshot y `qr_*` nacen en `CONFIG_DEFAULT`; las academias de
+    EC/BO siguen ocultas con `acad_paises`="PE"). CAMBIÓ `lib/` → APK/AAB de
+    PRD = run 1562 (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un
+    APK anterior no muestra el QR de Yape del dueño ni el pago por QR.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
@@ -3845,6 +3902,76 @@ antes del corte.
   **diagnóstico de push** vive fuera de esa zona (sección "Diagnóstico") porque
   sólo lee y sirve para dar soporte. `OCULTAR_PRUEBAS=1` las apaga también en
   dev/QAS.
+
+## AI Marketing Agent (`backend/growth/marketing/agente_ia/`, oct-2026)
+
+Reemplaza al calendario fijo de `agente_redes.py` (al activarlo se apaga
+`agente_fb_activo`). Ciclo: datos reales → estrategia → copy + imagen →
+**guardrails** → aprobación → publicación → métricas → aprendizaje. Detalle en
+`docs/agente-marketing-ia.md`; tests en `tests/test_agente_ia.py`.
+
+- **No inventa:** el estratega genera oportunidades con reglas deterministas y
+  sus `hechos`; la IA solo ELIGE entre ellas y redacta con esos hechos;
+  `guardrails.py` rechaza cualquier monto, %, hora, cifra, zona, local, promo,
+  "gratis" o disponibilidad que no esté en `hechos`. El publisher REVALIDA
+  contra la base justo antes de publicar.
+- **Regla del director respetada:** un local solo se nombra si es Pro y
+  `ai_mkt_destacar_pro=1`; si no, la publicidad es de marca o de zona.
+- **Estado en tablas `ai_*`** (no en `growth_state`); repo en memoria si no hay
+  `DATABASE_URL`. SQL: `docs/piloto/supabase_ai_marketing.sql` (también agrega
+  `created_at`/`origen`/`utm` a `pichangol_reservas`; el código detecta si ya
+  existen y, si no, inserta la reserva como siempre).
+- **Torre `/admin` → Marketing IA** (`panel_ui.py`, inyectado en `panel()`):
+  bandeja, calendario, publicadas con métricas, estrategia/aprendizajes,
+  configuración y bitácora. API `/admin/api/mkt/*`; short-link público
+  `/go/{codigo}` (cookie `pg_utm` 7 días → `utm` de la reserva web).
+- Modo por defecto `aprobar`; `auto_validado` = fase 6 con tope diario;
+  `ai_mkt_pausa=1` = freno de emergencia. Apagado por defecto (`ai_mkt_activo`).
+- **Locales Pro con IA (20-oct-2026, decisiones del director):** cupo FIJO al
+  mes por local Pro (`ai_mkt_pro_cupo_mes`, 4; piezas EXTRA repartidas parejo en
+  el mes, `estratega.pro_del_dia` + `orquestador.uso_pro`), foto REAL del dueño
+  AMBIENTADA con IA (`ia_media.ambientar`, gpt-image-1 edits; el lugar no
+  cambia) y video opcional (`encargar_video` + `procesar_videos` en el cron:
+  la ambientada + las reales con movimiento, logo, rótulo, cierre y música,
+  armado EN CASA con `foto_video` + `video_pulido`, gratis; no se aprueba ni
+  publica mientras se arma; si falla sale la foto). **OJO: OpenAI CERRÓ la API
+  de Sora (/v1/videos) el 24-sep-2026 sin reemplazo** (el 1.er pedido real en
+  QAS dio 404): no volver a usarla. **VEO DE GOOGLE (20-oct-2026, pedido del
+  director):** motor elegible en la torre → Marketing IA → configuración
+  ("Motor del video": En casa gratis | Veo de Google, `ai_mkt_video_motor`):
+  `ia_media._veo_paso` pide image-to-video a la API de Gemini
+  (`GEMINI_API_KEY` + `VEO_MODEL`, default `veo-3.1-fast-generate-preview`)
+  con la foto ambientada, el cron consulta la operación y pule el clip de 8 s
+  (logo, intro, cierre, música de fondo). Costo `ai_mkt_costo_video_seg`
+  (0.15 USD/s) × 8 reservado al pedir dentro del tope y devuelto si Veo
+  rechaza o no entrega clip; sin llave/tope, error o > 20 min → se arma EN
+  CASA (`nota_veo`). Confirmar id del modelo y precio en Google AI Studio.
+  Jugadores que "desaparecían" (queja del director, 20-oct-2026): el prompt de
+  Veo exige los mismos jugadores todo el clip + `negativePrompt` contra
+  desapariciones; el video en casa usa SOLO la foto ambientada (las reales no
+  tienen gente). Música distinta por video: Mi música (Drive) o variante de la
+  sintetizada (`musica.generar_pista(variante=)`); "🎬 Rehacer con Veo".
+  **VEO 3 POR ESCENAS con PRESENTADOR IA (pedido del director, 20-oct-2026:
+  "videos 100 % IA con una persona hablando y haciendo publicidad"):** motor
+  `escenas` = 3 tomas de 8 s con audio de Veo: presentador FICTICIO que habla
+  como vocero de la marca (nunca cliente falso) y dice SOLO
+  `linea_presentador(título, subtítulo)` ya validados + "Reserva en {MARCA}"
+  (montos en palabras), gente jugando, y el local real desde su foto
+  ambientada; `_unir_clips` + `pulir` con subtítulos de la línea, logo,
+  intro, cierre y música de fondo. Si Veo está saturado reintenta (4 veces,
+  20 min); escenas fallidas se omiten; todas fallan → en casa. El texto suma
+  `AVISO_PRESENTADOR`. Costo ≈ 3 × `costo_veo()`.
+  Torre: marcar el video marca el ambientado (y quitar el ambientado apaga el
+  video); botón "🎬 Hacer video" en piezas ya ambientadas
+  (`orquestador.pedir_video`, acción `video`). Toda pieza IA lleva
+  `guardrails.AVISO_IA` (el guardrail lo exige). Tope de gasto mensual
+  `ai_mkt_media_tope_usd` (20; solo la imagen cuesta). Interruptores apagados
+  por defecto y exige `ai_mkt_destacar_pro=1`. Tests
+  `tests/test_agente_ia_media.py`.
+- Prueba de integración contra un Postgres LOCAL DE PRUEBA (hace TRUNCATE; nunca
+  apuntarla a QAS ni PRD):
+  `AGENTE_IA_PG_URL=postgresql://... python3 -m pytest tests/test_agente_ia.py -k pg`
+  (crear antes las tablas base con `tests/fixtures/pichangol_base.sql` + el SQL).
 
 ## Pendientes / backlog
 

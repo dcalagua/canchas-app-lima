@@ -38,6 +38,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 import academia_plan as ap
 from web import datos, sesion, ui
 from web.router import e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["web-academia-plan"])
 
@@ -47,7 +48,7 @@ MOTIVOS_RECHAZO_QR = ["No llegó ese pago", "El monto no coincide"]
 
 BENEFICIOS = [
     ("🔔", "Recordatorios automáticos a tus alumnos", "Push y correo antes de que venza cada cuota, el día y al vencer."),
-    ("📝", "Matrícula en línea", "Desde tu ficha en Pichangol y la app, con descuentos familiares y por adelantar."),
+    ("📝", "Matrícula en línea", f"Desde tu ficha en {MARCA} y la app, con descuentos familiares y por adelantar."),
     ("📊", "Panel de gestión", "Alumnos, cobros, asistencia, evaluaciones, ranking, reportes, chats y sedes."),
     ("💜", "Tus alumnos te pagan directo", "0 % de comisión. En Perú por Yape (confirmas con el código de seguridad); en Ecuador y Bolivia con tu QR de cobro y un monto único. Tu celular Android lo confirma solo (actívalo en la app → Plan Academia)."),
 ]
@@ -317,12 +318,12 @@ def bloque_pago_directo(a: dict, items: list[tuple[dict, list[dict]]], *, titulo
     nombre = a.get("nombre") or "la academia"
     tel = _wa_academia(a)
     h = (f"<div class='pd-box' data-mon='{e(sim)}' data-acad='{e(nombre)}'><h2>💜 {e(titulo)}</h2>"
-         f"<p class='sub' style='margin:0 0 6px'>{e(intro or ('Le pagas directo a ' + nombre + '. Pichangol no cobra comisión ni toca tu plata.'))}</p>{filas}")
+         f"<p class='sub' style='margin:0 0 6px'>{e(intro or ('Le pagas directo a ' + nombre + f'. {MARCA} no cobra comisión ni toca tu plata.'))}</p>{filas}")
     if not n_sel:
         return h + "<p class='pd-nota'>La academia está revisando tu pago. Te avisamos apenas lo confirme.</p></div>"
     if not cd:
-        wa = ui.enlace_whatsapp(f"Hola, soy alumno de {nombre} en Pichangol. ¿Cómo te pago mi cuota?", tel) if tel else ""
-        return (h + "<div class='aviso warn' style='margin-top:12px'>Coordina el pago con la academia: aún no registró su Yape en Pichangol.</div>"
+        wa = ui.enlace_whatsapp(f"Hola, soy alumno de {nombre} en {MARCA}. ¿Cómo te pago mi cuota?", tel) if tel else ""
+        return (h + f"<div class='aviso warn' style='margin-top:12px'>Coordina el pago con la academia: aún no registró su Yape en {MARCA}.</div>"
                 "<div class='acciones' style='margin-top:10px'>"
                 + (f"<a class='btn' href='{e(wa)}' target='_blank' rel='noopener'>💬 WhatsApp de la academia</a>" if wa else "")
                 + f"<a class='btn sec' href='/mensajes/nuevo?academia={e(up.quote(str(a.get('id') or '')))}'>✉️ Escribir al profe</a></div></div>")
@@ -379,7 +380,7 @@ def _bloque_qr(cd: dict, sim: str) -> str:
             "<small>Te damos un monto único (tu cuota + unos centavos) para reconocer tu pago al instante.</small></div></div>"
             "<button type='button' class='btn pq-iniciar'>📷 Pagar con QR</button>"
             "<div class='pq-panel' hidden></div>"
-            "<p class='pd-nota'>Pichangol no toca tu plata: le pagas directo a la academia y tu cuota se marca pagada sola.</p>")
+            f"<p class='pd-nota'>{MARCA} no toca tu plata: le pagas directo a la academia y tu cuota se marca pagada sola.</p>")
 
 
 def _hoy() -> tuple[str, str]:
@@ -641,7 +642,7 @@ def pagina_plan(request: Request, academia: str = "") -> HTMLResponse:
         return HTMLResponse("", status_code=302, headers={"Location": "/anfitrion/academia"})
     if not activo():
         cuerpo = ("<a class='anf-back' href='/anfitrion/academia'>‹ Mi academia</a><div class='panel pw-card' style='max-width:560px;margin:22px auto 0;text-align:center'>"
-                  "<h1 style='font-size:22px'>Plan Academia</h1><p class='sub'>Hoy tu academia no paga plan: Pichangol cobra una comisión solo cuando tus alumnos pagan en línea.</p></div>")
+                  f"<h1 style='font-size:22px'>Plan Academia</h1><p class='sub'>Hoy tu academia no paga plan: {MARCA} cobra una comisión solo cuando tus alumnos pagan en línea.</p></div>")
         return ui.shell("Plan Academia", cuerpo, nav=_cab(ses, "academias"), sesion=ses, ancho=True, titulo_tab="Plan Academia · Modo anfitrión")
     a = next((x for x in acads if x.get("id") == academia), acads[0])
     chips = ("<div class='chips' style='margin-top:12px;justify-content:center'>" + "".join(
@@ -649,7 +650,7 @@ def pagina_plan(request: Request, academia: str = "") -> HTMLResponse:
         for x in acads) + "</div>") if len(acads) > 1 else ""
     cuerpo = (f"<style>{CSS_PLAN}</style><a class='anf-back' href='/anfitrion/academia'>‹ Mi academia</a>"
               "<div style='text-align:center;margin-top:8px'><h1 class='anf-hola' style='margin:0'>Plan Academia</h1>"
-              f"<p class='sub'>Un precio fijo al mes. {ap.prueba_dias()} días de prueba gratis. Tus alumnos te pagan directo: Pichangol no cobra comisión.</p></div>"
+              f"<p class='sub'>Un precio fijo al mes. {ap.prueba_dias()} días de prueba gratis. Tus alumnos te pagan directo: {MARCA} no cobra comisión.</p></div>"
               f"{chips}{_tarjeta_plan(a, email)}<script>{JS_PLAN}</script>")
     return ui.shell("Plan Academia", cuerpo, nav=_cab(ses, "academias"), sesion=ses, ancho=True, titulo_tab="Plan Academia · Modo anfitrión")
 

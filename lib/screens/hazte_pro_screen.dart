@@ -8,6 +8,7 @@ import '../widgets/responsive.dart';
 import 'recargar_saldo_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// PICHANGOL PRO: membresía mensual del jugador. Se cobra de la BILLETERA ÚNICA
 /// (saldo del usuario) — no pide tarjeta de nuevo. Es la monetización recurrente
 /// (MRR) de la capa de comunidad/ranking.
@@ -55,7 +56,7 @@ class _HazteProScreenState extends State<HazteProScreen> {
       avisarPichangol(
         context,
         titulo: '¡Ya eres Pro! 🎾',
-        mensaje: 'Tu membresía Pichangol Pro está activa hasta el '
+        mensaje: 'Tu membresía $kBrandName Pro está activa hasta el '
             '${_fecha(r['hasta'] as String?)}.'
             '${appState.proRenueva ? ' Se renueva sola desde tu saldo.' : ''}',
         textoBoton: 'Genial',
@@ -66,7 +67,7 @@ class _HazteProScreenState extends State<HazteProScreen> {
       final ok = await confirmarPichangol(
         context,
         titulo: 'Te falta saldo',
-        mensaje: 'Pichangol Pro se cobra de tu saldo (${appState.monedaSaldoSimbolo} '
+        mensaje: '$kBrandName Pro se cobra de tu saldo (${appState.monedaSaldoSimbolo} '
             '${req.toStringAsFixed(2)}/mes). Recarga y actívalo al toque.',
         textoConfirmar: 'Recargar saldo',
         textoCancelar: 'Ahora no',
@@ -132,7 +133,7 @@ class _HazteProScreenState extends State<HazteProScreen> {
             'Al vencer, actívalo pagando si quieres seguir.'
         : renueva
             ? 'Al vencer (${_fecha(appState.proHasta)}) se cobra 1 mes de tu '
-                'saldo Pichangol.'
+                'saldo $kBrandName.'
             : 'Cancelada: vence el ${_fecha(appState.proHasta)} y no se cobrará '
                 'nada más.';
     return Container(
@@ -175,7 +176,7 @@ class _HazteProScreenState extends State<HazteProScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Pichangol Pro')),
+      appBar: AppBar(title: const Text('$kBrandName Pro')),
       body: ListenableBuilder(
         listenable: appState,
         builder: (context, _) {
@@ -207,7 +208,7 @@ class _HazteProScreenState extends State<HazteProScreen> {
                         const IconoVivo(Icons.workspace_premium,
                             color: lima, size: 30),
                         const SizedBox(width: 10),
-                        const Text('Pichangol Pro',
+                        const Text('$kBrandName Pro',
                             style: TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w900,
@@ -285,7 +286,7 @@ class _HazteProScreenState extends State<HazteProScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                          'Se cobra de tu saldo Pichangol (la misma billetera). '
+                          'Se cobra de tu saldo $kBrandName (la misma billetera). '
                           'Tu saldo hoy: $mon $saldo.'
                           '${activo && !appState.proRenueva ? '' : ' Se renueva solo cada mes.'}',
                           style: const TextStyle(

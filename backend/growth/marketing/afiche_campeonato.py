@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from . import arte_ia
 from .flyer import _bajar_imagen, _envolver, _font, _limpiar
+from config import MARCA, MARCA_DOMINIO  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 W, H = 1080, 1350
 
@@ -317,7 +318,10 @@ def generar_afiche(c: dict, esperar_ia: bool = True) -> bytes:
 
     # Pie de marca: pastilla esmeralda + eslogan (anclado abajo).
     f = _font(34)
-    marca = "Inscríbete en  Pichangol"
+    org = " ".join(str(c.get("organizador") or "").split())[:40]
+    marca = f"Organiza  {org}" if org else f"Inscríbete en  {MARCA}"
+    while org and d.textlength(marca, font=f) > W - 160 and len(marca) > 12:
+        marca = marca[:-2].rstrip() + "…"
     py = H - 120
     ancho = d.textlength(marca, font=f) + 64
     x0 = (W - ancho) / 2
@@ -325,7 +329,7 @@ def generar_afiche(c: dict, esperar_ia: bool = True) -> bytes:
                         fill=_ESMERALDA)
     d.text((x0 + 32, py + 15), marca, font=f, fill=_BLANCO)
     f = _font(24, bold=False)
-    eslogan = "Reserva, juega, repite."
+    eslogan = f"Inscripciones en {MARCA_DOMINIO}" if org else "Reserva, juega, repite."
     d.text(((W - d.textlength(eslogan, font=f)) / 2, py + 80), eslogan,
            font=f, fill=_GRIS)
 

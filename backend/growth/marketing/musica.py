@@ -86,9 +86,12 @@ def _kick(np, dur_total: float, bpm: int) -> "any":
     return out * 0.6
 
 
-def generar_pista(segundos: float, mood: str | None = None) -> bytes | None:
+def generar_pista(segundos: float, mood: str | None = None, variante: int | None = None) -> bytes | None:
     """Devuelve un WAV (bytes) de [segundos] con música original del [mood], o
-    None si numpy no está. Pensada como fondo (volumen moderado)."""
+    None si numpy no está. Pensada como fondo (volumen moderado).
+
+    `variante` (cualquier entero) cambia tonalidad, tempo y orden de los
+    acordes: así dos videos seguidos no suenan igual. None = la de siempre."""
     try:
         import numpy as np
     except Exception:  # noqa: BLE001
@@ -99,13 +102,19 @@ def generar_pista(segundos: float, mood: str | None = None) -> bytes | None:
         mood = "chill"
     cfg = _MOODS[mood]
     bpm = int(cfg["bpm"])
+    acordes = [list(a) for a in cfg["acordes"]]
+    if variante is not None:
+        v = abs(int(variante))
+        tono = (-5, -3, -2, 0, 2, 3, 5, 7)[v % 8]                 # otra tonalidad
+        bpm += (-8, -4, 0, 4, 8)[(v // 8) % 5]                     # otro tempo
+        giro = (v // 40) % len(acordes)                            # empieza en otro acorde
+        acordes = [[n + tono for n in a] for a in acordes[giro:] + acordes[:giro]]
     compas = 4 * (60.0 / bpm)  # 4 tiempos por acorde
 
     # Construye la progresión repitiéndola hasta cubrir la duración.
     trozos = []
     total = 0.0
     idx = 0
-    acordes = cfg["acordes"]
     while total < dur:
         onda = _pad(np, acordes[idx % len(acordes)], compas)
         trozos.append(onda)

@@ -11,6 +11,7 @@ import 'mis_productos_screen.dart';
 import 'producto_detalle_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Marketplace Pichangol (comprador): feed único de productos que publican los
 /// dueños de cancha y academias. Buscador por nombre + filtro por categoría,
 /// estilo Airbnb. Tocar un producto abre su ficha para comprar/coordinar.
@@ -78,7 +79,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
     final items = _filtrados;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Marketplace Pichangol'),
+        title: const Text('Marketplace $kBrandName'),
         actions: [
           IconButton(
             tooltip: 'Mis compras',

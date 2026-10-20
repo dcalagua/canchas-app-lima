@@ -45,6 +45,7 @@ from html import escape
 
 import config
 from db.store import stores
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 # ── Configuración ─────────────────────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ def _env(nombre: str) -> str:
 
 
 def remitente() -> str:
-    return _env("CORREO_REMITENTE") or "Pichangol <no-reply@pichangol.app>"
+    return _env("CORREO_REMITENTE") or f"{MARCA} <no-reply@pichangol.app>"
 
 
 def proveedor() -> str:
@@ -124,7 +125,7 @@ def _soles(valor: float, moneda: str | None) -> str:
 
 def _medio_txt(medio: str | None) -> str:
     m = (medio or "").strip().lower()
-    return {"yape": "Yape", "tarjeta": "Tarjeta", "saldo": "Saldo Pichangol", "sena": "Seña en línea",
+    return {"yape": "Yape", "tarjeta": "Tarjeta", "saldo": f"Saldo {MARCA}", "sena": "Seña en línea",
             "yape_qr": "Yape (QR)", "fidelidad": "Premio de fidelidad", "efectivo": "Efectivo",
             "payphone": "PayPhone", "libelula": "Libélula"}.get(m, m.capitalize() if m else "")
 
@@ -278,7 +279,8 @@ def plantilla(*, titulo: str, saludo: str, intro: str, datos: list[tuple[str, st
     except Exception:  # noqa: BLE001
         e = {}
     base = base_url()
-    logo = f"{base}/static/brand/logo_pin.png"
+    import marca_logo
+    logo = marca_logo.url_publica(base)
     bloque_datos = ""
     if datos:
         bloque_datos = ("<table role='presentation' width='100%' cellpadding='0' cellspacing='0' "
@@ -308,7 +310,7 @@ def plantilla(*, titulo: str, saludo: str, intro: str, datos: list[tuple[str, st
 <tr><td style="padding:22px 26px 6px">
   <table role="presentation" cellpadding="0" cellspacing="0"><tr>
     <td style="vertical-align:middle"><img src="{logo}" width="34" height="34" alt="" style="display:block;border:0"></td>
-    <td style="vertical-align:middle;padding-left:8px;font-size:20px;font-weight:800;color:{_TINTA}">Pichangol</td>
+    <td style="vertical-align:middle;padding-left:8px;font-size:20px;font-weight:800;color:{_TINTA}">{MARCA}</td>
   </tr></table>
 </td></tr>
 <tr><td style="padding:10px 26px 26px">
@@ -319,7 +321,7 @@ def plantilla(*, titulo: str, saludo: str, intro: str, datos: list[tuple[str, st
   {bloque_datos}{bloque_montos}{bloque_boton}{bloque_notas}
 </td></tr>
 <tr><td style="padding:16px 26px 22px;background:#FAFBFC;border-top:1px solid {_BORDE};font-size:12px;line-height:1.55;color:{_TENUE}">
-  Este correo es una constancia de tu operación en Pichangol; no es un comprobante de pago electrónico.
+  Este correo es una constancia de tu operación en {MARCA}; no es un comprobante de pago electrónico.
   {('¿Dudas? Escríbenos a <a href="mailto:' + contacto + '" style="color:' + _VERDE + '">' + contacto + '</a>.') if contacto else ''}<br>
   {pie_emp}{(' · ' if pie_emp else '')}<a href="{base}" style="color:{_TENUE}">{escape(base.replace('https://', ''))}</a>
 </td></tr>
@@ -336,7 +338,7 @@ def plantilla(*, titulo: str, saludo: str, intro: str, datos: list[tuple[str, st
     if boton:
         t += ["", f"{boton[0]}: {boton[1]}"]
     t += [""] + [n for n in (notas or []) if n]
-    t += ["", "Pichangol · " + base]
+    t += ["", f"{MARCA} · " + base]
     return html, "\n".join(t)
 
 
@@ -394,7 +396,7 @@ def _armar_reserva(ev: dict) -> list[dict]:
     if not cargo_c:
         cargo_c = int(round(float(filas[0].get("cargo_servicio") or 0) * 100))
     if cargo_c:
-        lineas.append(("Cargo por servicio Pichangol", _monto(cargo_c, moneda)))
+        lineas.append((f"Cargo por servicio {MARCA}", _monto(cargo_c, moneda)))
     total_c = int(round(subtotal * 100)) + cargo_c
     if cobro and cobro.monto_centimos:
         pagado_c = int(cobro.monto_centimos)
@@ -435,11 +437,11 @@ def _armar_reserva(ev: dict) -> list[dict]:
         bruto = sum(float(_liq(q).get("bruto_soles") or 0) for q in liqs)
         com = sum(float(_liq(q).get("comision_soles") or 0) for q in liqs)
         neto = sum(float(_liq(q).get("neto_soles") or 0) for q in liqs)
-        montos = [("Precio pagado en línea", _soles(bruto, moneda)), ("Comisión Pichangol", "− " + _soles(com, moneda))]
+        montos = [("Precio pagado en línea", _soles(bruto, moneda)), (f"Comisión {MARCA}", "− " + _soles(com, moneda))]
         extra = [("Por cobrar en la cancha", _monto(resto_c, moneda))] if resto_c else []
         notas = ["El neto queda “por recibir” en tu billetera y te lo transferimos a tu cuenta de cobro registrada."]
         if bol:
-            notas.append("El boleador lo paga Pichangol aparte: no se descuenta de tu liquidación.")
+            notas.append(f"El boleador lo paga {MARCA} aparte: no se descuenta de tu liquidación.")
         out.append(_msg(f"reserva:{ref}:dueno", dueno, f"📅 Nueva reserva pagada · {local} · {fecha} {horario}",
                         plantilla(titulo="Tienes una nueva reserva pagada", saludo=_hola(_nombre_de(dueno)),
                                   intro=f"{jugador or 'Un jugador'} reservó y pagó en línea en {local}.",
@@ -498,7 +500,7 @@ def _armar_matricula(ev: dict) -> list[dict]:
         dif = precio_c - suma_c
         lineas.append(("Descuentos (familiar / prepago)" if dif < 0 else "Ajuste", ("− " if dif < 0 else "") + _monto(abs(dif), moneda)))
     if cargo_c:
-        lineas.append(("Cargo por servicio Pichangol", _monto(cargo_c, moneda)))
+        lineas.append((f"Cargo por servicio {MARCA}", _monto(cargo_c, moneda)))
     total_c = precio_c + cargo_c
     medio = (cobro.medio if cobro and cobro.medio else "") or p.medio or ""
     renovacion = "renov" in (p.concepto or "").lower() or "#" in charge
@@ -529,7 +531,7 @@ def _armar_matricula(ev: dict) -> list[dict]:
                                   datos=[("Alumno(s)", quien), ("Pagó", pagador), ("Medio de pago", _medio_txt(medio)),
                                          ("N.º de operación", base_op)],
                                   lineas=[("Cobrado (sin cargo por servicio)", _monto(precio_c, moneda)),
-                                          ("Comisión Pichangol", "− " + _soles(com, moneda))],
+                                          (f"Comisión {MARCA}", "− " + _soles(com, moneda))],
                                   total=("Recibes", _soles(neto, moneda)),
                                   boton=("Ver mis alumnos", f"{base_url()}/anfitrion/academia/alumnos?academia={aid}"),
                                   notas=["El neto queda “por recibir” y te lo transferimos a tu cuenta de cobro registrada."],
@@ -577,7 +579,7 @@ def _armar_venta(ev: dict) -> list[dict]:
                                   intro=(f"{orden.comprador_nombre or 'Un cliente'} pagó {producto}." if orden else f"Se pagó {producto}.")
                                   + ("" if es_bono else " Coordina la entrega por el chat."),
                                   datos=[("Producto", producto), ("Comprador", orden.comprador_nombre if orden else "")],
-                                  lineas=[("Precio", _monto(p.monto_centimos, moneda)), ("Comisión Pichangol", "− " + _soles(lq.get("comision_soles") or 0, moneda))],
+                                  lineas=[("Precio", _monto(p.monto_centimos, moneda)), (f"Comisión {MARCA}", "− " + _soles(lq.get("comision_soles") or 0, moneda))],
                                   total=("Recibes", _soles(lq.get("neto_soles") or 0, moneda)),
                                   boton=("Ver mis ventas", f"{base_url()}/anfitrion/tienda"),
                                   notas=[] if es_bono else ["El neto se libera cuando el comprador confirma que recibió el producto."],
@@ -609,13 +611,13 @@ def _armar_simple(ev: dict) -> list[dict]:
     except Exception:  # noqa: BLE001
         pass
     cfg = {
-        "recarga": ("✅ Recarga confirmada", "Tu recarga está confirmada", "Ya puedes usar tu saldo para reservar, pagar clases o comprar en Pichangol.",
+        "recarga": ("✅ Recarga confirmada", "Tu recarga está confirmada", f"Ya puedes usar tu saldo para reservar, pagar clases o comprar en {MARCA}.",
                     ("Ver mi billetera", "/mi-billetera"), [("Saldo actual", saldo)]),
         "academia_plan": ("🎓 Plan Academia activo", "Tu Plan Academia está activo", "Pagaste el plan de tu academia con tu saldo: recordatorios automáticos a tus alumnos, matrículas y panel de cobros.",
                           ("Ver mi Plan Academia", "/anfitrion/academia/plan"), [("Saldo restante", saldo)]),
-        "pro": ("👑 Pichangol Pro activo", "Tu Pichangol Pro está activo", "Pagaste tu suscripción Pro con tu saldo.",
-                ("Ver Pichangol Pro", "/pro"), [("Saldo restante", saldo)]),
-        "servicio": ("✅ Suscripción pagada", "Tu suscripción está pagada", "Pagaste tu servicio Pichangol.",
+        "pro": (f"👑 {MARCA} Pro activo", f"Tu {MARCA} Pro está activo", "Pagaste tu suscripción Pro con tu saldo.",
+                (f"Ver {MARCA} Pro", "/pro"), [("Saldo restante", saldo)]),
+        "servicio": ("✅ Suscripción pagada", "Tu suscripción está pagada", f"Pagaste tu servicio {MARCA}.",
                      ("Ver mi billetera", "/mi-billetera"), [("Saldo restante", saldo)]),
         "torneo": ("🏆 Inscripción confirmada", "Tu inscripción al torneo está pagada", "Pagaste tu inscripción con tu saldo.",
                    ("Ver campeonatos", "/anfitrion/campeonatos"), [("Saldo restante", saldo)]),
@@ -625,7 +627,7 @@ def _armar_simple(ev: dict) -> list[dict]:
     asunto, titulo, intro, (bt, ruta), extra = cfg
     return [_msg(f"{tipo}:{p.id}:cliente", email, f"{asunto} · {_monto(p.monto_centimos, moneda)}",
                  plantilla(titulo=titulo, saludo=_hola(_nombre_de(email)), intro=intro,
-                           datos=[("Concepto", concepto), ("Medio de pago", _medio_txt(p.medio) or ("Saldo Pichangol" if tipo != "recarga" else "")),
+                           datos=[("Concepto", concepto), ("Medio de pago", _medio_txt(p.medio) or (f"Saldo {MARCA}" if tipo != "recarga" else "")),
                                   ("N.º de operación", str(p.culqi_charge_id or f"PCG-{p.id}"))],
                            lineas=[(concepto or titulo, _monto(p.monto_centimos, moneda))], total=("Total", _monto(p.monto_centimos, moneda)),
                            extra_montos=[x for x in extra if x[1]], boton=(bt, base_url() + ruta)),
@@ -644,7 +646,7 @@ def _armar_torneo_ingreso(ev: dict) -> list[dict]:
     return [_msg(f"torneo_ingreso:{p.id}:dueno", org, "🏆 Recibiste una inscripción · " + (p.concepto or "torneo")[:60],
                  plantilla(titulo="Recibiste el pago de una inscripción", saludo=_hola(_nombre_de(org)),
                            intro="Se completó un pago de inscripción a tu campeonato.", datos=[("Concepto", p.concepto or "")],
-                           lineas=[("Inscripción", _monto(p.monto_centimos, moneda)), ("Comisión Pichangol", "− " + _soles(lq.get("comision_soles") or 0, moneda))],
+                           lineas=[("Inscripción", _monto(p.monto_centimos, moneda)), (f"Comisión {MARCA}", "− " + _soles(lq.get("comision_soles") or 0, moneda))],
                            total=("Recibes", _soles(lq.get("neto_soles") or 0, moneda)),
                            boton=("Ver mis campeonatos", f"{base_url()}/anfitrion/campeonatos"),
                            notas=["El neto queda “por recibir” y te lo transferimos a tu cuenta de cobro registrada."],
@@ -666,8 +668,8 @@ def _armar_bodega(ev: dict) -> list[dict]:
     if _correo_valido(cliente):
         out.append(_msg(f"bodega:{ref}:cliente", cliente, f"✅ Pedido pagado · {_monto(p.monto_centimos, moneda)}",
                         plantilla(titulo="Tu pedido de bodega está pagado", saludo=_hola(_nombre_de(cliente)),
-                                  intro="Pagaste tu pedido con tu saldo Pichangol. El local te lo lleva a tu cancha.",
-                                  datos=[("Pedido", concepto), ("Medio de pago", "Saldo Pichangol"), ("N.º de pedido", ref)],
+                                  intro=f"Pagaste tu pedido con tu saldo {MARCA}. El local te lo lleva a tu cancha.",
+                                  datos=[("Pedido", concepto), ("Medio de pago", f"Saldo {MARCA}"), ("N.º de pedido", ref)],
                                   lineas=[(concepto, _monto(p.monto_centimos, moneda))], total=("Pagaste", _monto(p.monto_centimos, moneda)),
                                   boton=("Ver mis pedidos", f"{base_url()}/mis-pedidos-bodega"),
                                   notas=["Si el local no puede atenderlo, te devolvemos el saldo automáticamente."]),
@@ -675,9 +677,9 @@ def _armar_bodega(ev: dict) -> list[dict]:
     if _correo_valido(dueno):
         out.append(_msg(f"bodega:{ref}:dueno", dueno, f"🧃 Pedido pagado con saldo · {_monto(p.monto_centimos, moneda)}",
                         plantilla(titulo="Te pagaron un pedido de bodega", saludo=_hola(_nombre_de(dueno)),
-                                  intro="Un cliente pagó su pedido con saldo Pichangol: entrégalo sin cobrar.",
+                                  intro=f"Un cliente pagó su pedido con saldo {MARCA}: entrégalo sin cobrar.",
                                   datos=[("Pedido", concepto), ("N.º de pedido", ref)],
-                                  lineas=[("Pedido", _monto(p.monto_centimos, moneda)), ("Comisión Pichangol", _monto(0, moneda))],
+                                  lineas=[("Pedido", _monto(p.monto_centimos, moneda)), (f"Comisión {MARCA}", _monto(0, moneda))],
                                   total=("Recibes", _monto(p.monto_centimos, moneda)),
                                   boton=("Ver pedidos", f"{base_url()}/anfitrion/bodega?tab=pedidos"),
                                   etiqueta="Aviso de pago recibido"),
@@ -699,7 +701,7 @@ def _armar_boleo(ev: dict) -> list[dict]:
                  plantilla(titulo="Confirmaste un boleo pagado", saludo=_hola(_nombre_de(bol)),
                            intro="El cliente ya pagó. Te transferimos tu parte cuando termine el turno.",
                            datos=[("Detalle", p.concepto or "")],
-                           lineas=[("Tarifa", _monto(p.monto_centimos, moneda)), ("Comisión Pichangol", "− " + _monto(com, moneda))],
+                           lineas=[("Tarifa", _monto(p.monto_centimos, moneda)), (f"Comisión {MARCA}", "− " + _monto(com, moneda))],
                            total=("Recibes", _monto(p.monto_centimos - com, moneda)),
                            boton=("Ver mis boleos", f"{base_url()}/anfitrion/boleador"),
                            etiqueta="Aviso de pago recibido"),
@@ -721,7 +723,7 @@ def _armar_boleo_solicitud(ev: dict) -> list[dict]:
                            datos=[("Local", str(s.get("club") or "")), ("Fecha", fecha),
                                   ("Horario", f"{s.get('hora_inicio', '')}–{s.get('hora_fin', '')} · {s.get('turnos') or 1} turno(s)"),
                                   ("Cliente", str(s.get("cliente_nombre") or ""))],
-                           lineas=[("Tarifa", _monto(monto, moneda)), ("Comisión Pichangol", "− " + _monto(com, moneda))],
+                           lineas=[("Tarifa", _monto(monto, moneda)), (f"Comisión {MARCA}", "− " + _monto(com, moneda))],
                            total=("Ganas", _monto(monto - com, moneda)),
                            boton=("Aceptar o rechazar", f"{base_url()}/anfitrion/boleador"),
                            notas=["Si no respondes a tiempo, la solicitud vence y le devolvemos su parte al cliente."],
@@ -750,7 +752,7 @@ def _armar_fotos_local(ev: dict) -> list[dict]:
                            notas=["Las fotos de Google no se pueden guardar (sus términos no lo permiten): las tuyas quedan "
                                   "para siempre en tu ficha. Puedes subirlas desde la web (Modo anfitrión → Mis canchas) o "
                                   "desde la app (Mis canchas → Editar cancha)."],
-                           etiqueta="Aviso de Pichangol"),
+                           etiqueta=f"Aviso de {MARCA}"),
                  "dueno", "fotos_local")]
 
 
@@ -767,14 +769,14 @@ def _armar_aviso(ev: dict) -> list[dict]:
     bt = s.get("boton") or None
     boton = (str(bt[0]), base_url() + str(bt[1])) if bt and len(bt) == 2 else None
     total = s.get("total")
-    titulo = str(s.get("titulo") or "Aviso de Pichangol")
+    titulo = str(s.get("titulo") or f"Aviso de {MARCA}")
     return [_msg(str(s.get("clave") or f"aviso:{para}:{ev.get('id')}"), para, titulo,
                  plantilla(titulo=titulo, saludo=_hola(_nombre_de(para)), intro=str(s.get("intro") or ""),
                            datos=[(str(a), str(b)) for a, b in (s.get("datos") or [])],
                            lineas=[(str(a), str(b)) for a, b in (s.get("lineas") or [])] or None,
                            total=(str(total[0]), str(total[1])) if total and len(total) == 2 else None,
                            boton=boton, notas=[str(s["nota"])] if s.get("nota") else None,
-                           etiqueta=str(s.get("etiqueta") or "Aviso de Pichangol")),
+                           etiqueta=str(s.get("etiqueta") or f"Aviso de {MARCA}")),
                  "cliente", "aviso")]
 
 
@@ -1003,12 +1005,12 @@ def reintentar(correo_id: str) -> bool:
 def correo_prueba(para: str) -> dict:
     if not _correo_valido(para):
         raise ValueError("Correo inválido")
-    html, texto = plantilla(titulo="Correo de prueba de Pichangol", saludo="Hola,",
+    html, texto = plantilla(titulo=f"Correo de prueba de {MARCA}", saludo="Hola,",
                             intro="Si lees esto, los correos de pago de este ambiente están funcionando.",
                             datos=[("Proveedor", proveedor() or "ninguno"), ("Remitente", remitente())],
-                            lineas=[("Turno 19:00–20:00", "S/ 60.00"), ("Cargo por servicio Pichangol", "S/ 3.00")],
-                            total=("Pagaste hoy", "S/ 63.00"), boton=("Ir a Pichangol", base_url()), etiqueta="Prueba")
-    m = {"clave": f"prueba:{time.time()}", "para": para.strip().lower(), "asunto": "Prueba · correos de Pichangol",
+                            lineas=[("Turno 19:00–20:00", "S/ 60.00"), (f"Cargo por servicio {MARCA}", "S/ 3.00")],
+                            total=("Pagaste hoy", "S/ 63.00"), boton=(f"Ir a {MARCA}", base_url()), etiqueta="Prueba")
+    m = {"clave": f"prueba:{time.time()}", "para": para.strip().lower(), "asunto": f"Prueba · correos de {MARCA}",
          "html": html, "texto": texto, "rol": "prueba", "tipo": "prueba"}
     pid = enviar(m)
     return {"ok": True, "proveedor": proveedor(), "id": pid}

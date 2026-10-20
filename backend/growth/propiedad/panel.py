@@ -30,6 +30,7 @@ from db import pg
 from db.store import stores
 import storage_limpieza
 from propiedad import admin_auth, reclamos
+from config import MARCA, MARCA_DOMINIO  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["panel"])
 
@@ -824,7 +825,7 @@ class PostRedesRequest(BaseModel):
     fotos: list[str] = []          # URLs https del bucket o data:image (adjuntas)
     titulo: str = ""
     subtitulo: str = ""
-    pie: str = "www.pichangol.app"
+    pie: str = MARCA_DOMINIO
     etiqueta: str = ""
     formato: str = "cuadrado"
     texto: str = ""                # texto del post (solo al publicar)
@@ -2088,7 +2089,15 @@ def get_canal_publico() -> dict:
         "reclamo_ubicacion_max_m": config.RECLAMO_UBICACION_MAX_M,
         # Campaña de fotos propias de los locales ya verificados (0 = apagada).
         "fotos_local_min": _fotos_local_min(),
+        # Logo de la marca configurable en la torre (vacío = el que trae el APK).
+        **_marca_logo_publico(),
     }
+
+
+def _marca_logo_publico() -> dict:
+    import correos
+    import marca_logo
+    return marca_logo.publico(correos.base_url())
 
 
 def _fotos_local_min() -> int:
@@ -2123,8 +2132,9 @@ def panel() -> HTMLResponse:
     # `no-store`: el JS de la torre viaja DENTRO de este HTML, así que una
     # página cacheada significa lógica vieja corriendo contra un backend nuevo
     # — y el operador viendo resultados que ya no corresponden al código.
+    from marketing.agente_ia import panel_ui  # pestaña "Marketing IA" (AI Marketing Agent)
     return HTMLResponse(
-        content=_HTML.replace("__AMBIENTE__", _etiqueta_ambiente()),
+        content=panel_ui.inyectar(_HTML).replace("__AMBIENTE__", _etiqueta_ambiente()),
         headers={"Cache-Control": "no-store, must-revalidate",
                  "Pragma": "no-cache"})
 
@@ -2139,17 +2149,17 @@ def _etiqueta_ambiente() -> str:
     return entorno or ref or "ambiente sin identificar"
 
 
-_HTML = r"""<!DOCTYPE html>
+_HTML = ((r"""<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pichangol · Torre de control</title>
+<title>⟦MARCA⟧ · Torre de control</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
-  /* Paleta del APP (verde WhatsApp) — co-marca Pichangol + EBIM, solo web admin.
+  /* Paleta del APP (verde WhatsApp) — co-marca ⟦MARCA⟧ + EBIM, solo web admin.
      El primario ('bosque'/'lima') se remapea al verde de la app para congruencia:
      superficies primarias en verde #128C7E con texto blanco. */
   :root{
@@ -2557,7 +2567,7 @@ _HTML = r"""<!DOCTYPE html>
       </div>
       <h1>Torre de control</h1>
       <div class="eyebrow">Operación del marketplace</div>
-      <p class="pitch">Desde aquí el equipo opera Pichangol: reclamos de
+      <p class="pitch">Desde aquí el equipo opera ⟦MARCA⟧: reclamos de
         propiedad, cobros y liquidaciones, disputas y comunicación con dueños
         y jugadores.</p>
       <div class="feat"><div class="fi">📋</div><div><b>Reclamos con evidencia</b>
@@ -2568,7 +2578,7 @@ _HTML = r"""<!DOCTYPE html>
         con la billetera de la app.</span></div></div>
       <div class="feat"><div class="fi">🛡️</div><div><b>Sesión protegida</b>
         <span>Usuario, contraseña y código de tu app autenticadora (verificación en dos pasos); la sesión expira sola.</span></div></div>
-      <div class="foot">Conexión cifrada · Pichangol · una solución de <span class="ebim" style="color:#AEEA94">EBIM</span></div>
+      <div class="foot">Conexión cifrada · ⟦MARCA⟧ · una solución de <span class="ebim" style="color:#AEEA94">EBIM</span></div>
     </div>
     <div class="form">
       <div id="paso1">
@@ -2733,7 +2743,7 @@ _HTML = r"""<!DOCTYPE html>
           </button>
           <button class="md-item" data-pane="proPanel" onclick="mostrarPane(this,'proPanel')">
             <span class="md-ico">⭐</span>
-            <span class="md-txt"><b>Pichangol Pro</b><small>Suscripción mensual</small></span>
+            <span class="md-txt"><b>⟦MARCA⟧ Pro</b><small>Suscripción mensual</small></span>
           </button>
           <button class="md-item" data-pane="recargasQr" onclick="mostrarPane(this,'recargasQr');cargarRecargasQr()">
             <span class="md-ico">📲</span>
@@ -2871,7 +2881,7 @@ _HTML = r"""<!DOCTYPE html>
           </button>
           <button class="md-item" onclick="mostrarPane(this,'redesPanel');cargarRedes()">
             <span class="md-ico">📣</span>
-            <span class="md-txt"><b>Publicar en Facebook</b><small>Piezas con fotos reales de las canchas · publicación directa en la página de Pichangol</small></span>
+            <span class="md-txt"><b>Publicar en Facebook</b><small>Piezas con fotos reales de las canchas · publicación directa en la página de ⟦MARCA⟧</small></span>
           </button>
         </aside>
         <div class="md-detail">
@@ -3032,7 +3042,7 @@ async function verificar2fa(enrolando){
 function copiarRec(){ navigator.clipboard && navigator.clipboard.writeText(recCodigos.join('\n')).then(()=>toast('Códigos copiados')); }
 function descargarRec(){
   const usr = localStorage.getItem('pichangol_admin_usr')||'';
-  const blob = new Blob([`Pichangol · Torre de control · códigos de recuperación de ${usr}\nCada código vale UNA vez. Guárdalos en un lugar seguro.\n\n`+recCodigos.join('\n')+'\n'],{type:'text/plain'});
+  const blob = new Blob([`⟦MARCA⟧ · Torre de control · códigos de recuperación de ${usr}\nCada código vale UNA vez. Guárdalos en un lugar seguro.\n\n`+recCodigos.join('\n')+'\n'],{type:'text/plain'});
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'pichangol-torre-recuperacion.txt'; a.click();
 }
 ['cod','codEnrolar'].forEach(id=>{ document.addEventListener('DOMContentLoaded',()=>{ const el=document.getElementById(id); if(el) el.addEventListener('keydown',e=>{ if(e.key==='Enter') verificar2fa(id==='codEnrolar'); }); }); });
@@ -3420,7 +3430,7 @@ async function guardarComision(){
   else toast('No se pudo guardar');
 }
 
-// --- Márgenes Pichangol: desglose de la comisión (banco vs PCG) -------------
+// --- Márgenes ⟦MARCA⟧: desglose de la comisión (banco vs PCG) -------------
 async function cargarMargenes(){
   const r = await fetch('/admin/api/margenes',{headers:headers()});
   if(!r.ok) return;
@@ -3430,7 +3440,7 @@ function renderMargenes(m){
   const s = v => 'S/ ' + (Number(v)||0).toFixed(2);
   const fila = (t,v,extra='') => `<div class="row" style="display:flex;justify-content:space-between;${extra}"><span>${t}</span><span>${v}</span></div>`;
   document.getElementById('margenes').innerHTML =
-    `<div class="card"><div class="top"><h3>Márgenes Pichangol (comisiones)</h3></div>
+    `<div class="card"><div class="top"><h3>Márgenes ⟦MARCA⟧ (comisiones)</h3></div>
       <div class="row">Tus INGRESOS (comisiones de matrículas y reservas + servicios)
         menos el COSTO real del banco/pasarela (Culqi) sobre todo lo cobrado por
         tarjeta (matrículas + recargas de saldo + servicios). Ajusta la tasa del
@@ -3438,7 +3448,7 @@ function renderMargenes(m){
       ${fila('Comisión de matrículas · '+m.cobros_matricula, '<b>'+s(m.comision_matricula_soles)+'</b>')}
       ${fila('Comisión de reservas · '+m.cobros_reserva, '<b>'+s(m.comision_reserva_soles)+'</b>')}
       ${fila('Ingresos por servicios · '+(m.cobros_servicios||0), '<b>'+s(m.ingresos_servicios_soles)+'</b>')}
-      ${fila('= Ingresos Pichangol (total)', '<b>'+s(m.ingresos_pcg_soles)+'</b>', 'color:#14463A')}
+      ${fila('= Ingresos ⟦MARCA⟧ (total)', '<b>'+s(m.ingresos_pcg_soles)+'</b>', 'color:#14463A')}
       <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
       ${fila('Bruto procesado por tarjeta (matrículas + recargas + servicios)', s(m.bruto_procesado_soles), 'color:var(--muted)')}
       <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
@@ -3449,7 +3459,7 @@ function renderMargenes(m){
       </div>
       ${fila('Costo banco estimado', '− '+s(m.costo_banco_soles), 'color:var(--muted)')}
       <hr style="border:none;border-top:1px solid var(--border);margin:8px 0">
-      ${fila('Margen neto Pichangol', s(m.margen_pcg_soles), 'font-weight:800;color:#14463A')}
+      ${fila('Margen neto ⟦MARCA⟧', s(m.margen_pcg_soles), 'font-weight:800;color:#14463A')}
       <div class="actions"><button class="btn-ap" onclick="guardarBanco()">Guardar tasa banco</button></div>
     </div>
     <div class="card"><div class="top"><h3>Comisión cobrada del saldo (billetera)</h3></div>
@@ -3525,7 +3535,7 @@ async function cargarCircuito(){
     document.getElementById('circuitoPanel').innerHTML =
       `<div class="card"><div class="top"><h3>🏆 Ingresos del circuito</h3></div>
         <div class="row">Lo que genera la capa de comunidad: membresías Pro (todo el
-          monto es ingreso Pichangol) + comisión de inscripciones a torneos.</div>
+          monto es ingreso ⟦MARCA⟧) + comisión de inscripciones a torneos.</div>
         ${fila('Membresías Pro · '+(j.pro.cobros||0), '<b>'+s(j.pro.total_soles)+'</b>')}
         ${fila('Comisión de torneos · '+(j.torneos.inscripciones||0), '<b>'+s(j.torneos.comision_soles)+'</b>', 'color:var(--muted)')}
         ${fila('(volumen bruto de torneos)', s(j.torneos.bruto_soles), 'color:var(--muted);font-size:12px')}
@@ -3611,7 +3621,7 @@ async function cargarRanking(){
       '<div class="card">No se pudo cargar el ranking.</div>'; }
 }
 
-// --- Pichangol Pro (membresía del jugador): precios por país + miembros + MRR -
+// --- ⟦MARCA⟧ Pro (membresía del jugador): precios por país + miembros + MRR -
 async function cargarPro(){
   try{
     const r = await fetch('/admin/api/pro',{headers:headers()});
@@ -3649,7 +3659,7 @@ async function cargarPro(){
          <button class="btn-ap" onclick="guardarProPrecio('${iso}')">✓</button>
        </div>`;
     document.getElementById('proPanel').innerHTML =
-      `<div class="card"><div class="top"><h3>⭐ Pichangol Pro (jugadores)</h3></div>
+      `<div class="card"><div class="top"><h3>⭐ ⟦MARCA⟧ Pro (jugadores)</h3></div>
         <div class="row">Membresía mensual del jugador. Se cobra de su billetera única
           (saldo) y se renueva sola cada 12 h. Precio por país:</div>
         <div class="actions" style="align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px">
@@ -3741,7 +3751,7 @@ async function cargarPro(){
       document.getElementById('bvSaldoBob').value = bv.saldo_bob || '0';
     }
   }catch(e){ document.getElementById('proPanel').innerHTML =
-      '<div class="card">No se pudo cargar Pichangol Pro.</div>'; }
+      '<div class="card">No se pudo cargar ⟦MARCA⟧ Pro.</div>'; }
 }
 async function guardarProPrecio(iso){
   const v = parseFloat((document.getElementById('proPrecio_'+iso).value||'0').replace(',','.'))||0;
@@ -3820,6 +3830,7 @@ async function cargarEmpresa(){
     const j = await r.json();
     empresaCampos = j.campos||[];
     renderEmpresa(j.datos||{}, j.vista||{});
+    cargarLogoMarca();
   }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
 }
 function renderEmpresa(d, v){
@@ -3833,7 +3844,7 @@ function renderEmpresa(d, v){
       <small style="display:block;color:var(--muted);font-weight:400;margin-top:3px">${esc(c.ayuda)}</small>
     </label>`).join('');
   document.getElementById('empresaPanel').innerHTML =
-    `<div class="card"><div class="top"><h3>Datos de la empresa</h3></div>
+    `<div id="logoMarcaBox"></div><div class="card"><div class="top"><h3>Datos de la empresa</h3></div>
       <div class="row">Salen en la portada (Contacto, Términos, Privacidad), en el pie de
         TODAS las páginas web, en <code>/legal/*</code> y en el Libro de Reclamaciones.
         Culqi, INDECOPI y Play revisan que sean los reales. Los cambios se ven al instante,
@@ -3899,6 +3910,63 @@ async function reintentarCorreo(id){
   if(r.status===401){ salir(); return; }
   const j = await r.json().catch(()=>({}));
   if(r.ok) { toast('En cola de nuevo'); cargarCorreos(); } else toast(j.detail||'No se pudo');
+}
+// --- LOGO de la marca (configurable, 20-oct-2026) ------------------------------
+// Un PNG/JPG cuadrado; el servidor lo centra en 512×512 y lo usa en la web, los
+// correos, las piezas de redes y el app (que lo lee de /config/canal).
+async function cargarLogoMarca(){
+  const box = document.getElementById('logoMarcaBox');
+  if(!box) return;
+  try{
+    const r = await fetch('/admin/api/marca/logo',{headers:headers()});
+    if(!r.ok){ box.innerHTML=''; return; }
+    renderLogoMarca(await r.json());
+  }catch(e){ box.innerHTML=''; }
+}
+function renderLogoMarca(j){
+  const box = document.getElementById('logoMarcaBox');
+  if(!box) return;
+  box.innerHTML = `<div class="card"><div class="top"><h3>🎨 Logo de la marca</h3></div>
+    <div class="row">El isotipo (cuadrado) que sale en la cabecera y el ícono de la web, la vista previa de
+      enlaces, los correos de pago, las piezas de Facebook y dentro del app. Sube un <b>PNG con fondo
+      transparente</b> (o JPG) de al menos 512×512 px; se centra solo. Es de <b>este ambiente</b>.
+      <br><small style="color:var(--muted)">El ícono del app en el celular y su pantalla de arranque van dentro del APK: para
+      cambiarlos hay que generar un APK nuevo.</small></div>
+    <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <div style="text-align:center"><img id="logoMarcaImg" src="${esc(j.url||'/marca/logo.png')}" alt=""
+        style="width:96px;height:96px;object-fit:contain;border:1px solid var(--border);border-radius:22px;background:#fff;padding:6px">
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">${j.personalizado?'Logo propio':'Logo original'}</div></div>
+      <div style="text-align:center"><div style="width:44px;height:44px;border-radius:12px;overflow:hidden;border:1px solid var(--border);margin:auto">
+        <img src="${esc(j.url||'/marca/logo.png')}" alt="" style="width:100%;height:100%;object-fit:contain;background:#fff"></div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">Pequeño</div></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--border);border-radius:14px;background:#fff">
+        <img src="${esc(j.url||'/marca/logo.png')}" alt="" style="width:30px;height:30px;object-fit:contain">
+        <b style="font-size:19px">${esc(j.nombre||'')}</b></div>
+    </div>
+    <div class="actions">
+      <label class="btn-ap" style="cursor:pointer">Subir logo nuevo<input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="subirLogoMarca(this)"></label>
+      ${j.personalizado?'<button class="btn-sec" onclick="quitarLogoMarca()">Volver al logo original</button>':''}
+      <span id="logoMarcaMsg" style="font-size:13px;color:var(--muted)"></span>
+    </div></div>`;
+}
+async function subirLogoMarca(inp){
+  const f = inp.files && inp.files[0]; inp.value='';
+  if(!f) return;
+  const msg = document.getElementById('logoMarcaMsg');
+  if(f.size > 5*1024*1024){ msg.textContent='La imagen pesa más de 5 MB.'; return; }
+  msg.textContent='Subiendo…';
+  const dataUrl = await new Promise((ok,mal)=>{ const fr=new FileReader(); fr.onload=()=>ok(fr.result); fr.onerror=mal; fr.readAsDataURL(f); });
+  try{
+    const r = await fetch('/admin/api/marca/logo',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({imagen:dataUrl})});
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok){ msg.textContent = j.detail || 'No se pudo guardar.'; return; }
+    toast('Logo actualizado ✅'); cargarLogoMarca();
+  }catch(e){ msg.textContent='Error de red.'; }
+}
+async function quitarLogoMarca(){
+  if(!confirm('¿Volver al logo original?')) return;
+  const r = await fetch('/admin/api/marca/logo/quitar',{method:'POST',headers:headers()});
+  if(r.ok){ toast('Volviste al logo original'); cargarLogoMarca(); } else toast('No se pudo');
 }
 async function guardarEmpresa(){
   const datos = {};
@@ -3998,9 +4066,9 @@ function usarSugerencia(id, texto){
   document.getElementById('ns_nombre').scrollIntoView({behavior:'smooth', block:'center'}); document.getElementById('ns_nombre').focus();
   atenderSugerencia(id, 'atendida');
 }
-// ── Publicar en Facebook (página de Pichangol): fotos reales + plantilla + vista previa ──
+// ── Publicar en Facebook (página de ⟦MARCA⟧): fotos reales + plantilla + vista previa ──
 let redes = {facebook:{}, locales:[], plantillas:{}, historial:[], ia:{}}, redesSel = {fotos:[], cancha:'', plantilla:'ia', formato:'cuadrado', img:'', tono:'cercano', enfoque:'auto', ia:null, evitar:[], redactando:false};
-const ENFOQUE_NOMBRE = {auto:'Que varíe solo', beneficio:'Beneficio de reservar', local:'El local protagonista', comunidad:'Comunidad / armar partido', tip:'Tip deportivo', finde:'Plan de fin de semana', promo:'Precio / promo', duenos:'Para dueños de cancha', academia:'Para padres (academias)', humor:'Humor ligero', historia:'La historia de Pichangol'};
+const ENFOQUE_NOMBRE = {auto:'Que varíe solo', beneficio:'Beneficio de reservar', local:'El local protagonista', comunidad:'Comunidad / armar partido', tip:'Tip deportivo', finde:'Plan de fin de semana', promo:'Precio / promo', duenos:'Para dueños de cancha', academia:'Para padres (academias)', humor:'Humor ligero', historia:'La historia de ⟦MARCA⟧'};
 async function cargarRedes(){
   const box = document.getElementById('redesPanel'); if(!box) return;
   box.innerHTML = '<div class="card"><div class="rd-cargando"><span class="rd-spin"></span> Cargando locales, fotos y estado de la página…</div></div>';
@@ -4090,7 +4158,7 @@ function renderRedes(){
     ? `<label class="btn-sec" for="rd_video" style="cursor:pointer">🎬 Elegir un video de mi computadora</label><input type="file" id="rd_video" accept="video/mp4,video/quicktime,video/x-m4v,video/webm,video/*" hidden onchange="subirVideoRedes(this)"><small style="display:block;margin-top:6px;color:var(--muted)">MP4 o MOV · hasta ${redes.video_max_mb||300} MB. Sube a la torre con barra de progreso.</small>`
     : `<div id="rd_biblioteca_videos"></div>`;
   const paso1 = `<div class="rd-tiles">
-      <button type="button" class="rd-tile${tipo==='foto'?' on':''}" onclick="rdTipo('foto')"><b>📷 Fotos</b><small>Una imagen o collage de hasta ${redes.max_fotos||4} fotos con el logo, un título y el pie www.pichangol.app.</small></button>
+      <button type="button" class="rd-tile${tipo==='foto'?' on':''}" onclick="rdTipo('foto')"><b>📷 Fotos</b><small>Una imagen o collage de hasta ${redes.max_fotos||4} fotos con el logo, un título y el pie ⟦MARCA_DOMINIO⟧.</small></button>
       <button type="button" class="rd-tile${tipo==='video'?' on':''}" onclick="rdTipo('video')"><b>🎬 Video</b><small>Un clip pulido con intro, marca de agua, cierre, subtítulos y música original.</small></button></div>
     ${tipo==='foto' ? `<div class="rd-subs"><small style="align-self:center;color:var(--muted);font-weight:700;margin-right:4px">De dónde</small>${fuenteBtn('biblioteca','📷 Google Fotos'+(bib?' ('+(bib.fotos||0)+')':''))}${fuenteBtn('local','🏟️ Fotos de un local')}${fuenteBtn('pc','💻 Mi computadora')}</div>${fuenteFoto}${elegidas}`
                     : (esVideo ? videoEstado : `<div class="rd-subs"><small style="align-self:center;color:var(--muted);font-weight:700;margin-right:4px">De dónde</small>${fuenteVBtn('biblioteca','📷 Google Fotos'+(bib?' ('+(bib.videos||0)+')':''))}${fuenteVBtn('pc','💻 Mi computadora')}</div>${fuenteVideo}`)}
@@ -4102,7 +4170,7 @@ function renderRedes(){
   const estiloFoto = `<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
         <label style="font-size:12.5px;font-weight:700">Formato<select id="rd_formato" ${inp} onchange="redesSel.formato=this.value"><option value="cuadrado">Cuadrado 1080×1080 (feed)</option><option value="horizontal">Horizontal 1200×630</option><option value="historia">Historia 1080×1920</option></select></label>
         <label style="font-size:12.5px;font-weight:700">Etiqueta<input id="rd_etq" ${inp} maxlength="16" placeholder="Nuevo"></label>
-        <label style="font-size:12.5px;font-weight:700">Pie<input id="rd_pie" ${inp} value="www.pichangol.app" maxlength="40"></label></div>
+        <label style="font-size:12.5px;font-weight:700">Pie<input id="rd_pie" ${inp} value="⟦MARCA_DOMINIO⟧" maxlength="40"></label></div>
       <small style="display:block;margin-top:8px;color:var(--muted)">La etiqueta es la pastilla naranja arriba a la derecha (Tip, Nuevo, Promo…); el pie es la pastilla blanca de abajo. El título y el subtítulo que van sobre la imagen se escriben en el paso 3.</small>`;
   const estiloVideo = !esVideo ? '<small style="color:var(--muted)">Primero elige un video en el paso 1.</small>'
     : vd.estado!=='listo' ? '<small style="color:var(--muted)"><span class="rd-spin chico"></span> Espera a que el video termine de subir.</small>'
@@ -4169,7 +4237,7 @@ function renderRedes(){
   const agActivo = agente && agente.config && agente.config.activo;
   document.getElementById('redesPanel').innerHTML = `
     <div class="card">
-      <div class="top" style="flex-wrap:wrap;gap:8px"><h3>📣 Redes de Pichangol</h3><span style="flex:1"></span>${fbPill} ${bibPill} ${musPill}</div>
+      <div class="top" style="flex-wrap:wrap;gap:8px"><h3>📣 Redes de ⟦MARCA⟧</h3><span style="flex:1"></span>${fbPill} ${bibPill} ${musPill}</div>
       <div class="rd-tabs">${tabBtn('publicar','✍️ Publicar ahora')}${tabBtn('agente','🤖 Agente 24×7'+(agente?(agActivo?' · activo':' · pausado'):''))}${tabBtn('historial','🕘 Historial'+(histN?' ('+histN+')':''))}${tabBtn('conexiones','🔌 Conexiones')}</div>
       ${tab('publicar', `<div class="rd-grid">
         <div>
@@ -4188,8 +4256,8 @@ function renderRedes(){
       ${tab('conexiones', `<div class="row" style="padding:12px 14px;border:1px solid var(--border);border-radius:14px"><b>📘 Página de Facebook</b><div style="margin-top:6px">${estadoFb}</div>${tokenCaja}
           <details class="row" style="margin-top:10px"><summary style="cursor:pointer;font-weight:700">Cómo conectar la página (una sola vez)</summary>
             <ol style="margin:8px 0 0 18px;line-height:1.6">
-              <li>Entra a <b>developers.facebook.com</b> con la cuenta que administra la página Pichangol → <b>Mis apps → Crear app</b> (tipo Empresa). Puede quedarse en <b>modo desarrollo</b>: los administradores de la app pueden publicar en sus propias páginas sin revisión de Meta.</li>
-              <li>En la app: <b>Herramientas → Explorador de la API Graph</b>. Elige la app, en "Usuario o página" selecciona <b>Obtener token de acceso a la página</b> → marca la página Pichangol y los permisos <code>pages_manage_posts</code>, <code>pages_read_engagement</code>, <code>pages_show_list</code> → Generar. <b>Tiene que ser el token de la PÁGINA</b> (en el desplegable debe quedar elegida "Pichangol", no tu nombre): con un token de usuario Facebook responde <i>"(#200) publish_actions… deprecated"</i>. Si pegas uno de usuario, la torre intenta obtener el de página sola, pero igual necesita que hayas marcado <code>pages_manage_posts</code>.</li>
+              <li>Entra a <b>developers.facebook.com</b> con la cuenta que administra la página ⟦MARCA⟧ → <b>Mis apps → Crear app</b> (tipo Empresa). Puede quedarse en <b>modo desarrollo</b>: los administradores de la app pueden publicar en sus propias páginas sin revisión de Meta.</li>
+              <li>En la app: <b>Herramientas → Explorador de la API Graph</b>. Elige la app, en "Usuario o página" selecciona <b>Obtener token de acceso a la página</b> → marca la página ⟦MARCA⟧ y los permisos <code>pages_manage_posts</code>, <code>pages_read_engagement</code>, <code>pages_show_list</code> → Generar. <b>Tiene que ser el token de la PÁGINA</b> (en el desplegable debe quedar elegida "⟦MARCA⟧", no tu nombre): con un token de usuario Facebook responde <i>"(#200) publish_actions… deprecated"</i>. Si pegas uno de usuario, la torre intenta obtener el de página sola, pero igual necesita que hayas marcado <code>pages_manage_posts</code>.</li>
               <li>Convierte ese token en uno de LARGA duración: <b>Herramientas → Depurador de tokens de acceso</b> → pega el token → "Extender token de acceso". Un token de PÁGINA obtenido desde un token de usuario extendido no caduca.</li>
               <li>Copia el <b>ID de la página</b> (Configuración de la página → Información de la página) y ponlo en Railway como <code>FB_PAGE_ID</code>. El token pégalo arriba en <b>🔑 Token de Facebook</b> (la torre lo extiende y guarda el de la página, que no vence) o, si prefieres, en Railway como <code>FB_PAGE_TOKEN</code>. <b>No lo pegues en el chat ni en el repo.</b></li>
             </ol></details></div>
@@ -4336,7 +4404,7 @@ function renderBiblioteca(){
        ${videos.length?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">${videos.map(it=>tVideo(it,false)).join('')}</div>`:'<small style="display:block;margin-top:8px;color:var(--muted)">Aún no hay videos en la biblioteca: pulsa "Elegir en Google Fotos" y marca uno.</small>'}`;
   if(bC) bC.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">${!bib.conectado ? sinConexion : `<span style="color:var(--green);font-weight:700">● Google Fotos conectado</span> <small style="color:var(--muted)">${esc(bib.cuenta||'')}</small> ${elegir} <button type="button" class="btn-sec" onclick="bibDesconectar()" ${bibOcupado?'disabled':''}>Desconectar</button>`}</div>
       ${!bib.storage?'<small style="color:var(--rojo)">Sin SUPABASE_URL/ANON_KEY en Railway no se pueden guardar los archivos importados.</small>':''}${msg}
-      <small style="display:block;margin-top:8px;color:var(--muted)">Lo que eliges en Google Fotos se copia a la biblioteca de Pichangol (${bib.fotos||0} fotos · ${bib.videos||0} videos). El agente 24×7 publica con estas fotos y, jueves a sábado, con un video que no haya usado en 14 días. Con ✕ se quita de la biblioteca y de Storage.</small>
+      <small style="display:block;margin-top:8px;color:var(--muted)">Lo que eliges en Google Fotos se copia a la biblioteca de ⟦MARCA⟧ (${bib.fotos||0} fotos · ${bib.videos||0} videos). El agente 24×7 publica con estas fotos y, jueves a sábado, con un video que no haya usado en 14 días. Con ✕ se quita de la biblioteca y de Storage.</small>
       ${items.length?`<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">${items.map(it=>it.tipo==='video'?tVideo(it,true):tFoto(it,true)).join('')}</div>`:''}`;
 }
 async function bibConectar(){
@@ -4515,10 +4583,10 @@ function renderAgente(){
     </div>`; }).join('') || '<small style="color:var(--muted)">No hay borradores pendientes.</small>';
   const log = (agente.corridas||[]).map(k=>`<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid #F0F2F4;font-size:12.5px"><span>${k.resultado==='publicado'?'✅':k.resultado==='borrador'?'📝':'⚠️'}</span><span style="color:var(--muted);min-width:120px">${new Date((k.en||0)*1000).toLocaleString('es-PE',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</span><span style="flex:1">${esc(k.resultado)}${k.audiencia?' · '+esc((agente.audiencias||{})[k.audiencia]||k.audiencia):''}${k.titulo?' · '+esc(k.titulo):''}${k.detalle?' · <span style="color:var(--rojo)">'+esc(k.detalle)+'</span>':''}</span>${k.url?`<a href="${esc(k.url)}" target="_blank" rel="noopener">ver ↗</a>`:''}</div>`).join('') || '<small style="color:var(--muted)">Todavía no corrió.</small>';
   box.innerHTML = `<div class="top"><h3>🤖 Agente de marketing 24×7</h3>${c.activo?`<span style="color:var(--green);font-weight:700">● Activo · publica a las ${esc(c.hora)} (${esc(c.zona.replace('America/',''))})</span>`:'<span style="color:var(--muted);font-weight:700">○ Pausado</span>'}</div>
-    <div class="row" style="color:var(--muted);font-size:13px">Estratega + creativo + community manager de la página: cada día arma una pieza de <b>la MARCA Pichangol</b> (fotos y videos de tu biblioteca de Google Fotos si los hay, si no arte de marca por deporte; copy con IA que no se repite y un objetivo comercial: jugadores → descargar la app o reservar en la web; dueños → administrar su cancha con Pichangol) y la publica solo a la hora fijada, o te la deja para aprobar. Ningún local sale en la publicidad salvo que sea <b>Pro</b> y actives "Destacar locales Pro". Próxima: ${cuando} → ${esc((agente.audiencias||{})[px.audiencia]||'')} · ${esc(ENFOQUE_NOMBRE[px.enfoque]||px.enfoque||'')}. Hora local del agente: ${esc(agente.hora_local||'')}.${!agente.credenciales?' <b style="color:var(--rojo)">Falta el token de Facebook: el agente no puede publicar.</b>':''}${agente.ia===false?' <span style="color:#8a5a00">Sin ANTHROPIC_API_KEY: usa el banco de variantes.</span>':''}${agente.arte_ia===false?' <span style="color:#8a5a00">Sin proveedor de imágenes IA (OPENAI_API_KEY): usa la portada de marca.</span>':''}</div>
+    <div class="row" style="color:var(--muted);font-size:13px">Estratega + creativo + community manager de la página: cada día arma una pieza de <b>la MARCA ⟦MARCA⟧</b> (fotos y videos de tu biblioteca de Google Fotos si los hay, si no arte de marca por deporte; copy con IA que no se repite y un objetivo comercial: jugadores → descargar la app o reservar en la web; dueños → administrar su cancha con ⟦MARCA⟧) y la publica solo a la hora fijada, o te la deja para aprobar. Ningún local sale en la publicidad salvo que sea <b>Pro</b> y actives "Destacar locales Pro". Próxima: ${cuando} → ${esc((agente.audiencias||{})[px.audiencia]||'')} · ${esc(ENFOQUE_NOMBRE[px.enfoque]||px.enfoque||'')}. Hora local del agente: ${esc(agente.hora_local||'')}.${!agente.credenciales?' <b style="color:var(--rojo)">Falta el token de Facebook: el agente no puede publicar.</b>':''}${agente.ia===false?' <span style="color:#8a5a00">Sin ANTHROPIC_API_KEY: usa el banco de variantes.</span>':''}${agente.arte_ia===false?' <span style="color:#8a5a00">Sin proveedor de imágenes IA (OPENAI_API_KEY): usa la portada de marca.</span>':''}</div>
     <div class="row" style="display:flex;gap:14px;flex-wrap:wrap;align-items:end">
       <label style="display:flex;align-items:center;gap:8px;font-weight:700"><input type="checkbox" id="ag_activo" ${c.activo?'checked':''} style="width:18px;height:18px"> Activo</label>
-      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px" title="Solo locales verificados cuyo dueño tiene Pichangol Pro vigente entran en la rotación (enfoque 'El local protagonista')"><input type="checkbox" id="ag_pro" ${c.destacar_pro?'checked':''} style="width:16px;height:16px"> Destacar locales Pro <small style="color:var(--muted)">(${agente.locales_pro||0} disponibles)</small></label>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px" title="Solo locales verificados cuyo dueño tiene ⟦MARCA⟧ Pro vigente entran en la rotación (enfoque 'El local protagonista')"><input type="checkbox" id="ag_pro" ${c.destacar_pro?'checked':''} style="width:16px;height:16px"> Destacar locales Pro <small style="color:var(--muted)">(${agente.locales_pro||0} disponibles)</small></label>
       <label style="display:flex;align-items:center;gap:8px;font-size:12.5px" title="Jueves, viernes y sábado: si hay un video de la biblioteca sin usar hace 14 días, ese día publica video pulido con música"><input type="checkbox" id="ag_videos" ${c.videos!=='nunca'?'checked':''} style="width:16px;height:16px"> Videos con música <small style="color:var(--muted)">(biblioteca: ${(agente.biblioteca||{}).fotos||0} fotos · ${(agente.biblioteca||{}).videos||0} videos · ${(agente.biblioteca||{}).pistas||0} pistas propias${(agente.biblioteca||{}).pistas?', rota la menos usada':', usa la música original'})</small></label>
       <label style="font-size:12.5px;font-weight:700">Hora<br><select id="ag_hora" ${inp}>${horas.join('')}</select></label>
       <label style="font-size:12.5px;font-weight:700">Zona<br><select id="ag_zona" ${inp}>${zonas}</select></label>
@@ -4580,7 +4648,7 @@ async function agAccion(bid, accion){
   catch(e){ alert('Error de red'); }
   agOcupado=''; renderAgente();
 }
-// ── Pulido con estilo Pichangol (FFmpeg en el backend) + subtítulos Whisper ──
+// ── Pulido con estilo ⟦MARCA⟧ (FFmpeg en el backend) + subtítulos Whisper ──
 const PUL_DEF = {formato:'vertical', logo:true, intro:true, rotulo:true, cierre:true, subtitulos:true, musica:true, musica_modo:'auto', mood:'chill', musica_pista:'', musica_desde:''};
 function pulidoHtml(vd){
   const cap = redes.pulido || {};
@@ -4611,20 +4679,20 @@ function pulidoHtml(vd){
         <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button type="button" class="btn-sec" onclick="pulRegenerar()">🔁 Regenerar con mis correcciones</button><small style="color:var(--muted)">Si cambias el texto de una línea, esa línea pierde el resaltado palabra por palabra (no hay tiempos para las palabras nuevas).</small></div>
       </details>` : (pl.transcripcion && pl.transcripcion.sin_audio ? '<small style="display:block;margin-top:6px;color:var(--muted)">El video no trae audio: sin subtítulos; se le puso música de fondo.</small>' : '');
   return `<div style="margin-top:12px;padding:10px 12px;border-radius:12px;border:1px dashed var(--border);background:#fff">
-      <div style="font-size:12.5px;font-weight:700">✨ Pulir con estilo Pichangol</div>
+      <div style="font-size:12.5px;font-weight:700">✨ Pulir con estilo ⟦MARCA⟧</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">Formato</small>${chip('formato','vertical','Vertical 9:16 · Reels')} ${chip('formato','cuadrado','Cuadrado 1:1')} ${chip('formato','original','Original')}</div>
       <div style="margin-top:8px">${chk('logo','Logo')}${chk('intro','Intro')}${chk('rotulo','Rótulo con el título')}${chk('cierre','Cierre con título y web')}${chk('subtitulos','Subtítulos automáticos', {off: subsOff})}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">🎵 Música</small>${chip('musica_modo','auto','Automática')} ${chip('musica_modo','fondo','De fondo')} ${chip('musica_modo','protagonista','Protagonista')} ${chip('musica_modo','no','Sin música')}
         <small style="color:var(--muted);margin-left:4px">${o.musica_modo==='fondo'?'Suave bajo la voz del video (sola si el video es mudo).':o.musica_modo==='protagonista'?'La música manda; el audio original queda de ambiente, bajito.':o.musica_modo==='no'?'Se conserva solo el audio original.':'De fondo si el video trae voz; protagonista si es mudo.'}</small></div>
       ${o.musica_modo!=='no'?`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">Pista</small>
-          <select id="rd_pista" style="padding:6px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:12.5px;max-width:320px" onchange="pulOpt('musica_pista',this.value)" ${ocupado?'disabled':''}><option value="">🎼 Original de Pichangol (sintetizada)</option>${musOpciones(o.musica_pista)}</select>
+          <select id="rd_pista" style="padding:6px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:12.5px;max-width:320px" onchange="pulOpt('musica_pista',this.value)" ${ocupado?'disabled':''}><option value="">🎼 Original de ⟦MARCA⟧ (sintetizada)</option>${musOpciones(o.musica_pista)}</select>
           ${(mus&&mus.items&&mus.items.length)?'':`<small style="color:var(--muted)">Sin pistas propias: conéctalas en <a href="#" onclick="rdUI('tab','conexiones');return false">Conexiones → Mi música</a>.</small>`}
           ${o.musica_pista&&mus&&(mus.items||[]).some(t=>t.id===o.musica_pista)?`<audio controls preload="none" src="${esc((mus.items.find(t=>t.id===o.musica_pista)||{}).url||'')}" style="height:30px;max-width:260px"></audio>`:(o.musica_pista?'<small style="color:var(--muted)">la torre elige la menos usada de ese género</small>':'')}</div>
         ${o.musica_pista?`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px"><small style="color:var(--muted);font-weight:700;margin-right:4px">Empieza en el segundo</small><input id="rd_pista_desde" type="number" min="0" max="600" step="0.5" value="${esc(o.musica_desde===''||o.musica_desde==null?musInicioSugerido(o.musica_pista):o.musica_desde)}" onchange="pulOpt('musica_desde',this.value)" style="width:80px;padding:6px 8px;border:1px solid var(--border);border-radius:10px;font-family:inherit;font-size:12.5px" ${ocupado?'disabled':''}><button type="button" class="btn-sec" style="padding:5px 10px;font-size:12px" onclick="pulDesdeReproductor()" title="Pausa el reproductor donde quieras que arranque y pulsa aquí">📍 Usar donde está el reproductor</button><small style="color:var(--muted)">${musInicioSugerido(o.musica_pista)>0?'La torre detectó que empieza a sonar a los '+musInicioSugerido(o.musica_pista)+' s.':'Empieza a sonar desde el inicio.'}</small></div><small style="display:block;margin-top:4px;color:var(--muted)">La pista se pone en bucle si es más corta que el video y se corta al terminar, con fundido.</small>`:`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center"><small style="color:var(--muted);font-weight:700;margin-right:4px">Estilo</small>${chip('mood','chill','Chill')} ${chip('mood','energetico','Enérgica')} ${chip('mood','epico','Épica')}</div>`}`:''}
       ${subsOff?'<small style="color:#8a5a00">Subtítulos automáticos apagados: falta OPENAI_API_KEY en este ambiente.</small>':''}
       <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
         <button type="button" class="btn-ap" id="rd_pulir" onclick="pulirVideo()" ${ocupado?'disabled':''}>${ocupado?'<span class="rd-spin blanco"></span> Procesando…':(listo?'🎬 Volver a generar':'🎬 Generar versión pulida')}</button>
-        <small style="color:var(--muted)">Usa el título de arriba para el rótulo y el cierre. ${o.musica_pista?'Vas a usar tu propia pista: asegúrate de tener licencia para publicarla en Facebook (una canción comercial puede silenciarse o bloquear el post).':'La música es original de Pichangol (libre de regalías), sin problemas de derechos en Facebook.'}</small>
+        <small style="color:var(--muted)">Usa el título de arriba para el rótulo y el cierre. ${o.musica_pista?'Vas a usar tu propia pista: asegúrate de tener licencia para publicarla en Facebook (una canción comercial puede silenciarse o bloquear el post).':'La música es original de ⟦MARCA⟧ (libre de regalías), sin problemas de derechos en Facebook.'}</small>
       </div>
       ${estado}${usar}${editor}
     </div>`;
@@ -4732,7 +4800,7 @@ async function previsualizarRedes(auto){
 function descargarRedes(){ if(!redesSel.img) return; const a=document.createElement('a'); a.href=redesSel.img; a.download='pichangol-post-'+Date.now()+'.'+(redesSel.ext||'jpg'); a.click(); }
 async function publicarRedes(){
   const esVideo = !!(redesSel.video && redesSel.video.id);
-  if(!confirm(esVideo ? '¿Publicar este VIDEO ahora en la página de Facebook de Pichangol?' : '¿Publicar ahora en la página de Facebook de Pichangol?')) return;
+  if(!confirm(esVideo ? '¿Publicar este VIDEO ahora en la página de Facebook de ⟦MARCA⟧?' : '¿Publicar ahora en la página de Facebook de ⟦MARCA⟧?')) return;
   const msg = document.getElementById('rd_msg'); msg.innerHTML = '<span class="rd-spin chico"></span> ' + (esVideo ? 'Subiendo el video a Facebook por partes… puede tardar según su peso.' : 'Publicando en la página… (componiendo la pieza final y subiéndola a Facebook)');
   botonesRedes('publicando'); veloPrev(true, esVideo ? 'Subiendo el video a Facebook…' : 'Publicando en Facebook…');
   try{
@@ -4930,7 +4998,7 @@ async function cargarCancelacionesWeb(){
     const j = await r.json();
     const cs = j.cancelaciones||[];
     const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-    const ETQ = {reembolsado:['Reembolso Culqi hecho','#1F6E49'], saldo:['Devuelto a su saldo Pichangol','#1F6E49'], reembolsado_manual:['Devuelto a mano','#1F6E49'], manual:['Devolver a mano (pagó en el app)','#946200'],
+    const ETQ = {reembolsado:['Reembolso Culqi hecho','#1F6E49'], saldo:['Devuelto a su saldo ⟦MARCA⟧','#1F6E49'], reembolsado_manual:['Devuelto a mano','#1F6E49'], manual:['Devolver a mano (pagó en el app)','#946200'],
                  fallo:['Culqi rechazó el reembolso: devolver a mano','#C0392B'], sin_reembolso:['Sin devolución (< 6 h)','#667'], no_aplica:['Pagaba en la cancha · sin costo','#667']};
     const mon = c => (c.moneda||'S/')+' '+Number(c.monto||0).toFixed(2);
     if(!cs.length){ box.innerHTML = '<div class="card">Sin cancelaciones desde la web todavía. Se registran cuando un jugador cancela en <code>/mis-reservas</code> o en su comprobante.</div>'; return; }
@@ -5038,7 +5106,7 @@ async function cargarPromos(){
         <div style="font-weight:800;font-size:15px;margin-bottom:4px">🎁 Bono de recarga</div>
         <div style="color:#667;font-size:12.5px;margin-bottom:10px">
           "Recarga S/ ${b.min} o más y te regalamos ${b.pct}% extra (máx S/ ${b.tope})".
-          Lo paga Pichangol. <b>0% = promo apagada.</b></div>
+          Lo paga ⟦MARCA⟧. <b>0% = promo apagada.</b></div>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
           <label style="font-size:12px">% extra<br>
             <input id="promoPct" type="number" min="0" max="100" step="1" value="${b.pct}"
@@ -5107,7 +5175,7 @@ async function desactivarCupon(codigo){
 // --- Tarifas de la PASARELA (Culqi / PayPhone / Libélula) + simulador de margen ---
 // Pedido del director (26-sep-2026): "¿cuánto me descuenta Culqi y cuál es mi
 // comisión?". La torre estima el costo de la pasarela con la tarifa contratada
-// y muestra el margen real (comisión Pichangol − pasarela).
+// y muestra el margen real (comisión ⟦MARCA⟧ − pasarela).
 let tarifasCache = null;
 async function cargarPlanAcademia(){
   const box = document.getElementById('planAcadPanel');
@@ -5130,14 +5198,14 @@ async function cargarPlanAcademia(){
     box.innerHTML = `
       <div class="card" style="margin-bottom:12px;background:#F4FBF7">
         <div style="font-weight:800;font-size:15px;margin-bottom:4px">🎓 Plan Academia · tipo Spotify</div>
-        <div style="color:#667;font-size:12.5px">Las academias pagan una suscripción mensual fija con su saldo y sus alumnos les pagan <b>directo</b> (Yape de la academia + código de seguridad de 3 dígitos que la academia confirma). Pichangol no maneja plata ajena ni cobra comisión. Beneficios: recordatorios automáticos a los alumnos (push + correo), matrícula en línea y panel de cobros. Sin plan vigente la academia queda solo con su ficha pública.</div>
+        <div style="color:#667;font-size:12.5px">Las academias pagan una suscripción mensual fija con su saldo y sus alumnos les pagan <b>directo</b> (Yape de la academia + código de seguridad de 3 dígitos que la academia confirma). ⟦MARCA⟧ no maneja plata ajena ni cobra comisión. Beneficios: recordatorios automáticos a los alumnos (push + correo), matrícula en línea y panel de cobros. Sin plan vigente la academia queda solo con su ficha pública.</div>
       </div>
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:end">
           <label style="font-size:12px">Modelo de academias<br>
             <select id="pa_modelo" style="padding:8px;border-radius:10px;border:1px solid var(--border)">
               <option value="suscripcion" ${c.modelo==='suscripcion'?'selected':''}>Suscripción (alumnos pagan directo)</option>
-              <option value="comision" ${c.modelo==='comision'?'selected':''}>Comisión (cobro en línea por Pichangol)</option>
+              <option value="comision" ${c.modelo==='comision'?'selected':''}>Comisión (cobro en línea por ⟦MARCA⟧)</option>
             </select></label>
           <label style="font-size:12px">Precio S/ al mes<br>${inp('pa_PEN', c.precios.PEN, '0.10')}</label>
           <label style="font-size:12px">Precio $ al mes<br>${inp('pa_USD', c.precios.USD, '0.10')}</label>
@@ -5182,7 +5250,7 @@ async function cargarYapeAuto(){
     box.innerHTML = `
       <div class="card" style="margin-bottom:12px;background:#F7F3FF">
         <div style="font-weight:800;font-size:15px;margin-bottom:4px">📲 Cobros automáticos · Yape (Perú) y QR (Ecuador / Bolivia)</div>
-        <div style="color:#667;font-size:12.5px">El celular Android de la academia lee la notificación de su Yape y Pichangol confirma solo el pago reportado cuyo <b>código de seguridad y monto</b> coinciden (una sola coincidencia, dentro de la ventana). Lo ambiguo o no leído queda para que la academia confirme a mano. En Ecuador y Bolivia el alumno paga el QR de la academia con un <b>monto único</b> (su cuota + 1 a 49 centavos) y la notificación de la app de cobros que eligió la academia (DeUna!, su banco…) lo confirma sola si el monto calza con un solo pago en curso. Las notificaciones de salida de plata (“pagaste”, “enviaste”) se ignoran. Si una app cambia su texto, ajusta aquí las expresiones (no hace falta publicar un APK).</div>
+        <div style="color:#667;font-size:12.5px">El celular Android de la academia lee la notificación de su Yape y ⟦MARCA⟧ confirma solo el pago reportado cuyo <b>código de seguridad y monto</b> coinciden (una sola coincidencia, dentro de la ventana). Lo ambiguo o no leído queda para que la academia confirme a mano. En Ecuador y Bolivia el alumno paga el QR de la academia con un <b>monto único</b> (su cuota + 1 a 49 centavos) y la notificación de la app de cobros que eligió la academia (DeUna!, su banco…) lo confirma sola si el monto calza con un solo pago en curso. Las notificaciones de salida de plata (“pagaste”, “enviaste”) se ignoran. Si una app cambia su texto, ajusta aquí las expresiones (no hace falta publicar un APK).</div>
       </div>
       <div class="kpi-row" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
         <div class="card" style="flex:1;min-width:120px"><small>Celulares vinculados</small><div style="font-size:22px;font-weight:800">${k.dispositivos}</div></div>
@@ -5278,8 +5346,8 @@ async function cargarTarifas(){
     box.innerHTML = `
       <div class="card" style="margin-bottom:12px;background:#F4FBF7">
         <div style="font-weight:800;font-size:15px;margin-bottom:4px">¿Cómo se reparte cada cobro?</div>
-        <div style="color:#667;font-size:12.5px">El jugador paga el <b>bruto</b>. La pasarela se queda con su tarifa (se la cobra a Pichangol, el dueño no la ve).
-          Pichangol cobra su <b>comisión</b> (${j.simulacion.comision_pct}% con mínimo por moneda) y le transfiere el <b>neto</b> al dueño.
+        <div style="color:#667;font-size:12.5px">El jugador paga el <b>bruto</b>. La pasarela se queda con su tarifa (se la cobra a ⟦MARCA⟧, el dueño no la ve).
+          ⟦MARCA⟧ cobra su <b>comisión</b> (${j.simulacion.comision_pct}% con mínimo por moneda) y le transfiere el <b>neto</b> al dueño.
           <b>Margen real = comisión − pasarela.</b> Es una estimación con la tarifa contratada: el número exacto está en el panel de la pasarela.</div>
       </div>
       ${bloques}
@@ -5351,9 +5419,9 @@ function simHtml(x){
   return `<div class="liq-resumen" style="gap:8px">
       <span class="liq-mini">Paga el jugador ${S(x.bruto_soles)}</span>
       <span class="liq-mini" style="background:#FFF4E5;color:#7A4B00">Pasarela (${esc(x.pasarela)} · ${x.medio}) −${S(x.pasarela_soles)}</span>
-      <span class="liq-mini liq-mini-pcg">Comisión Pichangol ${S(x.comision_soles)}</span>
+      <span class="liq-mini liq-mini-pcg">Comisión ⟦MARCA⟧ ${S(x.comision_soles)}</span>
       <span class="liq-mini liq-mini-neto">Al dueño ${S(x.neto_soles)}</span>
-      <span class="liq-mini" style="background:${neg?'#FDE8E8':'#E6F7EE'};color:${neg?'#B3261E':'#0B7A55'};font-weight:800">Margen Pichangol ${S(x.margen_soles)}</span>
+      <span class="liq-mini" style="background:${neg?'#FDE8E8':'#E6F7EE'};color:${neg?'#B3261E':'#0B7A55'};font-weight:800">Margen ⟦MARCA⟧ ${S(x.margen_soles)}</span>
     </div>
     <div style="color:#667;font-size:12.5px;margin-top:8px">Comisión ${x.comision_pct}% con mínimo ${S(x.comision_min)}${neg?' · <b style="color:#B3261E">en este monto la pasarela cuesta más que la comisión: pierdes plata</b>':''}.</div>`;
 }
@@ -5380,14 +5448,14 @@ async function guardarTarifas(){
 
 // --- Modelo de negocio de las reservas (Cobros → 💼 Modelo de negocio) ------
 // Modelo 1 = el de siempre (comisión al dueño + cargo por servicio).
-// Modelo 2 = reparto de la pasarela + comisión Pichangol al jugador y al dueño
+// Modelo 2 = reparto de la pasarela + comisión ⟦MARCA⟧ al jugador y al dueño
 // que pone el operador; lo demás es calculado (`pagos/modelo_negocio.py`).
 let mnCfg = null, mnMon = 'PEN', mnSel = '1', mnMonto = 90, mnTimer = null;
 const MN_CAMPOS_OP = [['reparto_cliente_pct','Costo de Culqi que paga el jugador (%)','El dueño paga el resto'],
-                      ['cliente_pct','Comisión Pichangol al jugador (%)','Sobre lo que paga el jugador antes de la comisión'],
+                      ['cliente_pct','Comisión ⟦MARCA⟧ al jugador (%)','Sobre lo que paga el jugador antes de la comisión'],
                       ['cliente_min','Mínimo por reserva · jugador','Si el % da menos, se cobra este monto: en canchas baratas el % sube solo'],
                       ['cliente_tope_pct','Tope de la comisión al jugador (%)','Máximo % efectivo aunque aplique el mínimo · 0 = sin tope'],
-                      ['dueno_pct','Comisión Pichangol al dueño (%)','Sobre lo que recibe el dueño antes de la comisión'],
+                      ['dueno_pct','Comisión ⟦MARCA⟧ al dueño (%)','Sobre lo que recibe el dueño antes de la comisión'],
                       ['dueno_min','Mínimo por reserva · dueño','0 = sin mínimo · también aplica en efectivo']];
 const MN_MONTO = {cliente_min:1, dueno_min:1, yape_fijo:1, tarjeta_fijo:1};
 // TARIFA POR MEDIO (2-oct-2026): Yape y tarjeta cuestan distinto; el jugador y
@@ -5441,9 +5509,9 @@ function renderModeloNegocio(sim){
       <div class="mn-col">
         <div class="mn-h">Cómo funciona</div>
         <ul class="mn-lista">
-          <li>El <b>dueño</b> paga la comisión de Pichangol: <b>5 %</b> de cada reserva pagada en línea, con mínimo por moneda (S/ 2 · $ 0.50 · Bs 3). Si tiene saldo, sale de su billetera.</li>
+          <li>El <b>dueño</b> paga la comisión de ⟦MARCA⟧: <b>5 %</b> de cada reserva pagada en línea, con mínimo por moneda (S/ 2 · $ 0.50 · Bs 3). Si tiene saldo, sale de su billetera.</li>
           <li>El <b>jugador</b> paga el precio y, si lo encendiste, el <b>cargo por servicio</b> (Cobros → 🧾 Cargo por servicio).</li>
-          <li><b>Pichangol paga la pasarela</b> (Culqi / PayPhone / Libélula) de su comisión.</li>
+          <li><b>⟦MARCA⟧ paga la pasarela</b> (Culqi / PayPhone / Libélula) de su comisión.</li>
           <li>En efectivo: la comisión se descuenta del saldo del dueño.</li>
         </ul>
         <div class="mn-acc">${usar('1')}</div>
@@ -5577,7 +5645,7 @@ function pintarSimModelo(sim){
   const kpis = (x) => `<div class="mn-kpis">
       <div class="mn-kpi"><small>👤 El jugador paga</small><b>${mnF(x.cliente_paga_centimos,s)}</b></div>
       <div class="mn-kpi"><small>🏟️ El dueño recibe</small><b>${mnF(x.dueno_recibe_centimos,s)}</b></div>
-      <div class="mn-kpi"><small>💚 Comisión Pichangol</small><b style="color:#0B8A3E">${mnF(x.ingreso_pcg_centimos,s)}</b></div>
+      <div class="mn-kpi"><small>💚 Comisión ⟦MARCA⟧</small><b style="color:#0B8A3E">${mnF(x.ingreso_pcg_centimos,s)}</b></div>
       ${mnTab==='2' ? `<div class="mn-kpi"><small>Costo de la pasarela (repartido)</small><b>${mnF(x.pasarela_total_centimos,s)}</b></div>`
         : `<div class="mn-kpi"><small>Margen tras la pasarela</small><b style="color:${x.margen_real_centimos<0?'#C0392B':'#0B8A3E'}">${mnF(x.margen_real_centimos,s)}</b></div>`}</div>`;
   if(mnTab==='1'){
@@ -5586,11 +5654,11 @@ function pintarSimModelo(sim){
       ${fila('Precio de la cancha', mnF(sim.monto*100,s))}
       ${fila('Cargo por servicio al jugador', b.cargo_cliente_centimos?('+'+mnF(b.cargo_cliente_centimos,s)):'apagado', 'sub')}
       ${fila('👤 El jugador paga', mnF(b.cliente_paga_centimos,s), 'fuerte')}
-      ${fila('Comisión Pichangol al dueño (5 %, con mínimo)', '−'+mnF(b.descuento_dueno_centimos,s), 'sub')}
+      ${fila('Comisión ⟦MARCA⟧ al dueño (5 %, con mínimo)', '−'+mnF(b.descuento_dueno_centimos,s), 'sub')}
       ${fila('🏟️ El dueño recibe', mnF(b.dueno_recibe_centimos,s), 'fuerte')}
-      ${fila('💚 Ingreso Pichangol (comisión + cargo)', mnF(b.ingreso_pcg_centimos,s), 'fuerte', '#0B8A3E')}
-      ${fila('Pasarela que paga Pichangol (Tarifas de pasarela)', '−'+mnF(b.pasarela_real_centimos,s), 'sub')}
-      ${fila('Margen de Pichangol', mnF(b.margen_real_centimos,s), 'total', b.margen_real_centimos<0?'#C0392B':'#0B8A3E')}
+      ${fila('💚 Ingreso ⟦MARCA⟧ (comisión + cargo)', mnF(b.ingreso_pcg_centimos,s), 'fuerte', '#0B8A3E')}
+      ${fila('Pasarela que paga ⟦MARCA⟧ (Tarifas de pasarela)', '−'+mnF(b.pasarela_real_centimos,s), 'sub')}
+      ${fila('Margen de ⟦MARCA⟧', mnF(b.margen_real_centimos,s), 'total', b.margen_real_centimos<0?'#C0392B':'#0B8A3E')}
     </div>`;
     return;
   }
@@ -5612,13 +5680,13 @@ function pintarSimModelo(sim){
     ${fila('· lo paga el dueño ('+(100-(+a.reparto_pct||0))+' %)', mnF(a.pasarela_dueno_centimos,s), 'sub')}
     ${fila('Dueño recibe antes de comisión PCG', mnF(a.base_dueno_centimos,s), 'sub')}
     ${fila('Jugador paga antes de comisión PCG', mnF(a.base_cliente_centimos,s), 'sub')}
-    ${fila('Comisión Pichangol al jugador'+(a.cliente_min_aplicado?' <small style="color:#B26A00">· mínimo ('+a.cliente_pct_efectivo+' %)</small>':''), mnF(a.pcg_cliente_centimos,s), 'sub')}
-    ${fila('Comisión Pichangol al dueño', mnF(a.pcg_dueno_centimos,s), 'sub')}
+    ${fila('Comisión ⟦MARCA⟧ al jugador'+(a.cliente_min_aplicado?' <small style="color:#B26A00">· mínimo ('+a.cliente_pct_efectivo+' %)</small>':''), mnF(a.pcg_cliente_centimos,s), 'sub')}
+    ${fila('Comisión ⟦MARCA⟧ al dueño', mnF(a.pcg_dueno_centimos,s), 'sub')}
     ${fila('👤 El jugador paga', mnF(a.cliente_paga_centimos,s)+' <small style="color:#889">(+'+mnF(a.cargo_cliente_centimos,s)+')</small>', 'fuerte')}
     ${fila('🏟️ El dueño recibe', mnF(a.dueno_recibe_centimos,s)+' <small style="color:#889">(−'+mnF(a.descuento_dueno_centimos,s)+')</small>', 'fuerte')}
-    ${fila('💚 Comisión Pichangol', mnF(a.ingreso_pcg_centimos,s), 'fuerte', '#0B8A3E')}
+    ${fila('💚 Comisión ⟦MARCA⟧', mnF(a.ingreso_pcg_centimos,s), 'fuerte', '#0B8A3E')}
     ${fila('La pasarela cobra de verdad (sobre lo cobrado)', '−'+mnF(a.pasarela_real_centimos,s), 'sub')}
-    ${fila('Pichangol gana de verdad', mnF(a.margen_real_centimos,s), 'total', a.margen_real_centimos<0?'#C0392B':'#0B8A3E')}
+    ${fila('⟦MARCA⟧ gana de verdad', mnF(a.margen_real_centimos,s), 'total', a.margen_real_centimos<0?'#C0392B':'#0B8A3E')}
   </div>
   ${(sim.curva||[]).length ? `<div class="mn-h" style="margin-top:16px">📈 Según el precio de la cancha <small>(${nom(mnMedio)} · con lo que tienes en pantalla)</small></div>
   <div class="mn-curva"><table><thead><tr><th>Cancha</th><th>Jugador paga</th><th>Comisión jugador</th><th>%</th><th>Dueño recibe</th><th>PCG gana</th></tr></thead><tbody>
@@ -5691,7 +5759,7 @@ async function cargarCargoServicio(){
         </div>`).join('');
       return `<div class="card" style="margin-bottom:12px">
         <div style="font-weight:800;font-size:15px;margin-bottom:4px">ⓘ Desglose que ve el cliente · ${CS_LINEAS[l]}</div>
-        <div style="color:#667;font-size:12.5px;margin-bottom:8px">Describe SOLO lo que Pichangol entrega (nunca mantenimiento ni servicios del local: eso son servicios extra del dueño). Los pesos son referenciales; el cliente paga el total. Se congela en cada pago.</div>
+        <div style="color:#667;font-size:12.5px;margin-bottom:8px">Describe SOLO lo que ⟦MARCA⟧ entrega (nunca mantenimiento ni servicios del local: eso son servicios extra del dueño). Los pesos son referenciales; el cliente paga el total. Se congela en cada pago.</div>
         <div style="font-size:12px;color:#667;display:grid;grid-template-columns:180px 70px 1fr;gap:8px;margin-bottom:4px"><b>Componente</b><b>Peso %</b><b>Qué cubre</b></div>
         ${comps}
         <div style="font-weight:700;font-size:13px;margin:10px 0 4px">Texto del último componente por deporte</div>
@@ -5701,8 +5769,8 @@ async function cargarCargoServicio(){
     box.innerHTML = `
       <div class="card" style="margin-bottom:12px;background:#F4FBF7">
         <div style="font-weight:800;font-size:15px;margin-bottom:4px">Dos lados, como Airbnb</div>
-        <div style="color:#667;font-size:12.5px">Quien RECIBE paga la comisión de siempre (5 % con mínimo). Quien PAGA ve una línea aparte <b>"Cargo por servicio Pichangol"</b>:
-          <b>${esc(cargoCfg.regla.PEN)}</b>. Pichangol absorbe la pasarela: <b>margen = comisión + cargo − pasarela</b>.
+        <div style="color:#667;font-size:12.5px">Quien RECIBE paga la comisión de siempre (5 % con mínimo). Quien PAGA ve una línea aparte <b>"Cargo por servicio ⟦MARCA⟧"</b>:
+          <b>${esc(cargoCfg.regla.PEN)}</b>. ⟦MARCA⟧ absorbe la pasarela: <b>margen = comisión + cargo − pasarela</b>.
           Una sola regla para reservas y academias; un pago = un cargo (pagar en familia sale más barato que por separado).
           Si la línea está APAGADA, el checkout no muestra la línea y todo sigue como hoy.</div>
       </div>
@@ -5746,7 +5814,7 @@ function cargoSimHtml(x){
       <span class="liq-mini liq-mini-neto">Recibe el dueño/academia ${S(x.recibe_soles)}</span>
       <span class="liq-mini liq-mini-pcg">Comisión ${S(x.comision_soles)}</span>
       <span class="liq-mini" style="background:#FFF4E5;color:#7A4B00">Pasarela (${x.medio}) −${S(x.pasarela_soles)}</span>
-      <span class="liq-mini" style="background:${neg?'#FDE8E8':'#E6F7EE'};color:${neg?'#B3261E':'#0B7A55'};font-weight:800">Margen Pichangol ${S(x.margen_soles)}</span>
+      <span class="liq-mini" style="background:${neg?'#FDE8E8':'#E6F7EE'};color:${neg?'#B3261E':'#0B7A55'};font-weight:800">Margen ⟦MARCA⟧ ${S(x.margen_soles)}</span>
     </div>
     <div style="color:#667;font-size:12.5px;margin-top:8px">Regla: ${esc(x.regla)}. Desglose ⓘ: ${(x.desglose||[]).map(d=>esc(d.nombre)+' '+S(d.monto_centimos/100)).join(' · ')}.${neg?' <b style="color:#B3261E">Con esta tarifa de pasarela pierdes plata en este monto.</b>':''}</div>`;
 }
@@ -5875,7 +5943,7 @@ async function resolverDisputa(id, accion){
   if(r.ok){ cargarDisputas(); } else { alert('No se pudo resolver.'); }
 }
 
-// --- Liquidaciones: pagos pendientes de Pichangol al dueño (reservas online) ---
+// --- Liquidaciones: pagos pendientes de ⟦MARCA⟧ al dueño (reservas online) ---
 async function cargarLiquidaciones(){
   const box = document.getElementById('liquidaciones');
   try{
@@ -5900,7 +5968,7 @@ async function cargarLiquidaciones(){
     }
     // Desarma el concepto "Local · Cancha · Jugador · Día hora" para agrupar
     // por LOCAL y sub-agrupar por CANCHA (pedido del director: cuánto se lleva
-    // cada local, cada cancha y cuánto le toca a Pichangol).
+    // cada local, cada cancha y cuánto le toca a ⟦MARCA⟧).
     const partes = c => (c||'').split(' · ');
     const localDe = p => partes(p.concepto)[0] || (p.dueno_id||'—');
     const canchaDe = p => { const s = partes(p.concepto);
@@ -5909,7 +5977,7 @@ async function cargarLiquidaciones(){
       return s.slice(s.length >= 4 ? 2 : 1).join(' · '); };
     const S = n => 'S/ ' + (Math.round(n*100)/100).toFixed(2);
 
-    // Totales GLOBALES (lo que realmente le toca a Pichangol = la comisión).
+    // Totales GLOBALES (lo que realmente le toca a ⟦MARCA⟧ = la comisión).
     let gBruto=0, gCom=0, gNeto=0, gPas=0, gMar=0, gCargo=0;
     const grupos = new Map(); // "local||dueño" → {local, dueno, items}
     for(const p of pend){
@@ -5941,7 +6009,7 @@ async function cargarLiquidaciones(){
             <div class="liq-det">${esc(restoDe(p))} · ${fmtFecha(p.creado_en)}</div>
           </div>
           <div class="liq-der">
-            <div class="liq-monto" title="Bruto ${S(p.bruto_soles||0)} − comisión Pichangol ${S(p.comision_soles||0)} · pasarela ${S(p.pasarela_soles||0)}${p.medio?' ('+esc(p.medio)+')':''} · margen ${S(p.margen_soles||0)}">${S(p.neto_soles||0)}</div>
+            <div class="liq-monto" title="Bruto ${S(p.bruto_soles||0)} − comisión ⟦MARCA⟧ ${S(p.comision_soles||0)} · pasarela ${S(p.pasarela_soles||0)}${p.medio?' ('+esc(p.medio)+')':''} · margen ${S(p.margen_soles||0)}">${S(p.neto_soles||0)}</div>
             <div class="liq-det" style="font-size:11.5px">${(p.cargo_servicio_soles||0)>0?`cargo por servicio ${S(p.cargo_servicio_soles)} · `:''}pasarela −${S(p.pasarela_soles||0)} <span title="${p.pasarela_fuente==='real'?'Comisión real leída de Culqi':(p.pasarela_fuente==='saldo'?'Pagado con saldo: la pasarela se pagó al recargar':'Estimada con la tarifa configurada; Culqi la publica ~12 h después')}" style="color:${p.pasarela_fuente==='real'?'#0B7A55':'#98A2B3'}">${p.pasarela_fuente==='real'?'✓ real':(p.pasarela_fuente==='saldo'?'saldo':'est.')}</span> · margen <b style="color:${(p.margen_soles||0)<0?'#B3261E':'#0B7A55'}">${S(p.margen_soles||0)}</b></div>
             <button class="liq-btn" onclick="pagarLiquidacion('${esc(p.reserva_id)}','${S(p.neto_soles||0)}')">Marcar pagado</button>
           </div>
@@ -5962,7 +6030,7 @@ async function cargarLiquidaciones(){
           </div>
           <div class="liq-grupo-tot">
             <span class="liq-mini">Bruto ${S(bruto)}</span>
-            <span class="liq-mini liq-mini-pcg">Pichangol ${S(com)}</span>
+            <span class="liq-mini liq-mini-pcg">⟦MARCA⟧ ${S(com)}</span>
             <span class="liq-mini" style="background:#FFF4E5;color:#7A4B00">Pasarela −${S(pas)}</span>
             <span class="liq-mini" style="background:${mar<0?'#FDE8E8':'#E6F7EE'};color:${mar<0?'#B3261E':'#0B7A55'}">Margen ${S(mar)}</span>
             <span class="liq-mini liq-mini-neto">Al dueño ${S(neto)}</span>
@@ -5976,7 +6044,7 @@ async function cargarLiquidaciones(){
     const atras = pend.filter(p=>(p.dias||0)>=AVISO);
     const banner = atras.length ? `<div class="card" style="border-left:4px solid #F04438;background:#FFF4F2;padding:12px 16px;margin-bottom:12px">
         <b style="color:#B42318">⏰ ${atras.length} ${atras.length===1?'liquidación lleva':'liquidaciones llevan'} ${AVISO}+ días sin pagar</b>
-        <span style="color:var(--muted);font-size:13px"> · ${S(atras.reduce((a,p)=>a+(p.neto_soles||0),0))} · la más antigua hace ${j.mas_antigua_dias||0} días. Pichangol le debe esta plata a dueños y organizadores: transfiere y marca pagado. El recordatorio diario por WhatsApp sigue hasta que quede en cero.</span>
+        <span style="color:var(--muted);font-size:13px"> · ${S(atras.reduce((a,p)=>a+(p.neto_soles||0),0))} · la más antigua hace ${j.mas_antigua_dias||0} días. ⟦MARCA⟧ le debe esta plata a dueños y organizadores: transfiere y marca pagado. El recordatorio diario por WhatsApp sigue hasta que quede en cero.</span>
       </div>` : '';
     box.innerHTML = `${banner}
       <div class="liq-head">
@@ -5985,10 +6053,10 @@ async function cargarLiquidaciones(){
           <div class="liq-sub">${pend.length===1?'1 pago pendiente':pend.length+' pagos pendientes'} · reservas online, ventas y torneos (🏆) · transfiere el neto (Yape/banco) y márcalo</div>
           <div class="liq-resumen">
             <span class="liq-mini">Bruto cobrado ${S(gBruto)}</span>
-            <span class="liq-mini liq-mini-pcg">Comisión Pichangol ${S(gCom)}</span>
+            <span class="liq-mini liq-mini-pcg">Comisión ⟦MARCA⟧ ${S(gCom)}</span>
             ${gCargo>0?`<span class="liq-mini liq-mini-pcg" title="Cargo por servicio que pagaron los clientes además del precio (Cobros → Cargo por servicio)">Cargo por servicio ${S(gCargo)}</span>`:''}
             <span class="liq-mini" style="background:#FFF4E5;color:#7A4B00" title="Estimado con la tarifa configurada en Cobros → Tarifas de pasarela">Pasarela −${S(gPas)}</span>
-            <span class="liq-mini" style="background:${gMar<0?'#FDE8E8':'#E6F7EE'};color:${gMar<0?'#B3261E':'#0B7A55'}" title="Comisión + cargo por servicio − pasarela">Margen Pichangol ${S(gMar)}</span>
+            <span class="liq-mini" style="background:${gMar<0?'#FDE8E8':'#E6F7EE'};color:${gMar<0?'#B3261E':'#0B7A55'}" title="Comisión + cargo por servicio − pasarela">Margen ⟦MARCA⟧ ${S(gMar)}</span>
             <span class="liq-mini liq-mini-neto">Neto a dueños ${S(gNeto)}</span>
           </div>
         </div>
@@ -6385,7 +6453,7 @@ async function setModo(m){
 }
 // --- Canal de comunicación (qué muestra el APK para contactar al profe) -----
 const CANAL_DESC = {
-  pcg_primero:'Chat Pichangol como botón principal + WhatsApp visible como respaldo. Recomendado en el piloto.',
+  pcg_primero:'Chat ⟦MARCA⟧ como botón principal + WhatsApp visible como respaldo. Recomendado en el piloto.',
   solo_pcg:'Se OCULTA WhatsApp: todos escriben por el chat del app (máxima retención). Úsalo cuando el chat notifique bien al profe.',
   whatsapp_libre:'Chat y WhatsApp visibles por igual. Para nichos que exigen WhatsApp.'
 };
@@ -6486,7 +6554,7 @@ async function cargar(){
 function waLink(tel,nombre,cod){
   let d=(tel||'').replace(/[^0-9]/g,'');
   if(d.length===9 && d[0]==='9') d='51'+d;
-  const msg=encodeURIComponent('Hola, te escribo de Pichangol por el reclamo de "'+(nombre||'')+'". Tu código es '+(cod||'')+'. ¿Validamos que eres el dueño?');
+  const msg=encodeURIComponent('Hola, te escribo de ⟦MARCA⟧ por el reclamo de "'+(nombre||'')+'". Tu código es '+(cod||'')+'. ¿Validamos que eres el dueño?');
   return 'https://wa.me/'+d+'?text='+msg;
 }
 
@@ -6661,4 +6729,4 @@ document.getElementById('pwd').addEventListener('keydown',e=>{ if(e.key==='Enter
 document.getElementById('usr').addEventListener('keydown',e=>{ if(e.key==='Enter') entrar(); });
 </script>
 </body>
-</html>"""
+</html>""").replace('⟦MARCA⟧', MARCA)).replace('⟦MARCA_DOMINIO⟧', MARCA_DOMINIO)

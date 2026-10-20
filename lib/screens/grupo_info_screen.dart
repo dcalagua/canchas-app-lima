@@ -19,6 +19,7 @@ import '../widgets/dialogo_pichangol.dart';
 import '../widgets/responsive.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Inicia la llamada grupal: publica el enlace en el chat del grupo (para que
 /// todos puedan unirse) y abre la sala DENTRO de la app (Jitsi embebido).
 /// Compartido por la ficha y la cabecera. Todos caen en la MISMA sala.
@@ -433,7 +434,7 @@ class _GrupoInfoScreenState extends State<GrupoInfoScreen> {
                   icon: const FaIcon(FontAwesomeIcons.whatsapp,
                       color: Color(0xFF25D366), size: 20),
                   onPressed: () => WhatsAppLink.abrir(
-                      cel, 'Hola, te escribo desde Pichangol.'),
+                      cel, 'Hola, te escribo desde $kBrandName.'),
                 ),
               ],
             )

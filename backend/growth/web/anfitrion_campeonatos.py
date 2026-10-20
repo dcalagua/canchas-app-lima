@@ -36,6 +36,7 @@ from web import campeonatos_logica as L
 from web.anfitrion import JS_PAGAR, _en_segundo_plano, _sesion_o_entrar
 from web.router import PLAY_URL, e
 from pagos import pozos
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["web-anfitrion-campeonatos"])
 _LEAFLET = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
@@ -222,9 +223,9 @@ def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = ""
     boton = (f"<a class='btn' href='{BASE}/nuevo'>＋ Organizar</a>" if pro else
              "<button type='button' class='btn' onclick=\"document.getElementById('modalPro').classList.add('open')\">＋ Organizar</button>")
     modal_pro = ("<div class='modal' id='modalPro' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:460px'>"
-                 "<div class='modal-cab'><button type='button' class='cerrar' onclick=\"this.closest('.modal').classList.remove('open')\">✕</button><h3>Es Pichangol Pro</h3></div>"
-                 "<div class='modal-cuerpo'><section><p class='sub' style='margin:0 0 12px'>Crear y administrar tus propios campeonatos (fixture, inscripciones, resultados) es parte de <b>Pichangol Pro</b>. Actívalo en Perfil → 👑 Pichangol Pro y vuelve aquí.</p>"
-                 f"<a class='btn' href='/pro'>👑 Ver Pichangol Pro</a></section></div></div></div>")
+                 f"<div class='modal-cab'><button type='button' class='cerrar' onclick=\"this.closest('.modal').classList.remove('open')\">✕</button><h3>Es {MARCA} Pro</h3></div>"
+                 f"<div class='modal-cuerpo'><section><p class='sub' style='margin:0 0 12px'>Crear y administrar tus propios campeonatos (fixture, inscripciones, resultados) es parte de <b>{MARCA} Pro</b>. Actívalo en Perfil → 👑 {MARCA} Pro y vuelve aquí.</p>"
+                 f"<a class='btn' href='/pro'>👑 Ver {MARCA} Pro</a></section></div></div></div>")
     if not lista:
         cuerpo = (f"<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>{aviso}<div style='max-width:760px;margin:24px auto 0;text-align:center'>"
                   "<div style='font-size:52px'>🏆</div><h1 class='anf-hola' style='margin-top:8px'>Aún no tienes campeonatos</h1>"
@@ -309,13 +310,14 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
  {"<p class='sub' style='font-size:12.5px'>Actual: " + e(c.get('fechas')) + "</p>" if c.get('fechas') else ''}
  <label for='cierre' id='lblCierre'>Cierre de inscripciones <span class='req' id='cierreAyuda'>{'día y hora · a esa hora se cierran y se sortea solo' if c.get('relampago') else 'opcional · día y hora (sin hora = ese día a las 00:00); se sortea solo'}</span></label>
  <div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><input id='cierre' type='date' value='{e(hasta)}'><input id='cierreHora' type='time' value='{e(hasta_hora)}' placeholder='Hora'></div>
- <label for='sede'>Sede{" <span class='req'>🔎 elige una cancha de Pichangol o búscala en Google Maps</span>" if config.PLACES_API_KEY else " <span class='req'>elige una cancha de Pichangol</span>"}</label>
+ <label for='sede'>Sede{f" <span class='req'>🔎 elige una cancha de {MARCA} o búscala en Google Maps</span>" if config.PLACES_API_KEY else f" <span class='req'>elige una cancha de {MARCA}</span>"}</label>
  <input id='sede' type='text' maxlength='80' value='{e(c.get('sede') or '')}' placeholder='Nombre de la cancha o club' autocomplete='off'><div id='resSede' class='res-busca' hidden></div>
  <div id='mapaSede' class='mapa-sede' style='margin-top:8px;height:220px'></div><div class='sub' id='ubicTxt' style='font-size:12.5px'>{'Sin ubicación: elige una sede para fijar el país y la moneda.' if c.get('sedeLat') is None else f"{float(c['sedeLat']):.5f}, {float(c['sedeLng']):.5f}"}</div>
- <label for='costo'>Costo de inscripción <span class='req'>opcional · se paga desde el saldo Pichangol del jugador</span></label><div class='inp-moneda' style='max-width:220px'><span id='monSpan'>{e(_moneda(c))}</span><input id='costo' type='number' min='0' step='0.5' value='{float(c.get('costoInscripcion') or 0) or ''}' placeholder='0'></div>
+ <label for='costo'>Costo de inscripción <span class='req'>opcional · se paga desde el saldo {MARCA} del jugador</span></label><div class='inp-moneda' style='max-width:220px'><span id='monSpan'>{e(_moneda(c))}</span><input id='costo' type='number' min='0' step='0.5' value='{float(c.get('costoInscripcion') or 0) or ''}' placeholder='0'></div>
  <div class='sw'><label>Exigir <span id='docTxt'>{_DOC.get(iso, 'DNI')}</span> para inscribirse</label><input type='checkbox' id='exigeDni'{' checked' if c.get('exigeDni') else ''}></div>
  <div id='edadBox' class='row' style='grid-template-columns:1fr 1fr;gap:10px'{'' if c.get('exigeDni') else ' hidden'}><div><label for='edadMin' style='margin-top:8px'>Edad mín</label><input id='edadMin' type='number' min='0' max='99' value='{c.get('edadMin') if c.get('edadMin') is not None else ''}'></div><div><label for='edadMax' style='margin-top:8px'>Edad máx</label><input id='edadMax' type='number' min='0' max='99' value='{c.get('edadMax') if c.get('edadMax') is not None else ''}'></div></div>
  <h3 style='margin:22px 0 0'>Publicidad del torneo 📣</h3>
+ <label for='orga'>Organiza <span class='req'>opcional · tu club, academia o tu nombre: tu marca sale primero en la página y el afiche</span></label><input id='orga' type='text' maxlength='60' value='{e(c.get('organizador') or '')}' placeholder='Ej. Club Lawn Tennis de la Exposición'>
  <label for='ausp'>Auspiciador oficial <span class='req'>opcional</span></label><input id='ausp' type='text' maxlength='60' value='{e(c.get('auspiciador') or '')}' placeholder='Ej. JORDI MEAT BOUTIQUE' style='text-transform:uppercase'>
  <label for='premios'>Premios <span class='req'>uno por línea, opcional</span></label><textarea id='premios' rows='4' maxlength='600' placeholder='🥇 Trofeo + S/ 500&#10;🥈 Medalla'>{e(c.get('premios') or '')}</textarea>
  <div class='estado bad' id='errGuardar' style='display:none;margin-top:12px'></div>
@@ -326,7 +328,7 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
                     titulo_tab=f"{'Organizar' if nuevo else 'Editar'} campeonato · Modo anfitrión")
 
 
-_JS_WIZARD = r"""
+_JS_WIZARD = (r"""
 (function(){
 var dep=CFG.deporte, fmt=CFG.formato, logo=CFG.logo, lat=CFG.lat, lng=CFG.lng, iso=CFG.iso, mapa, marker, subiendo=0;
 function $(id){return document.getElementById(id)}
@@ -350,7 +352,7 @@ function topeCierre(){var r=$('relampago').checked,d=$('desde').value;if(r&&d){$
 $('relampago').addEventListener('change',function(){$('hastaJ').disabled=this.checked;$('lblFechas').textContent=this.checked?'Fecha (relámpago, un día)':'Fechas de juego';if(this.checked)$('hastaJ').value=$('desde').value;topeCierre()});
 $('desde').addEventListener('change',function(){if($('relampago').checked||!$('hastaJ').value||$('hastaJ').value<this.value)$('hastaJ').value=this.value;topeCierre()});
 topeCierre();
-// sede: canchas de Pichangol (como `_SelectorSede`) + Google Maps
+// sede: canchas de ⟦MARCA⟧ (como `_SelectorSede`) + Google Maps
 function paisDe(la,ln){var C={PE:[-18.4,-0.03,-81.4,-68.6],EC:[-5.1,1.7,-81.1,-75.1],BO:[-22.95,-9.6,-69.7,-57.4]};for(var k in C){var c=C[k];if(la>=c[0]&&la<=c[1]&&ln>=c[2]&&ln<=c[3])return k}return 'PE'}
 function ponerPunto(la,ln){lat=la;lng=ln;$('ubicTxt').textContent=la.toFixed(5)+', '+ln.toFixed(5);if(mapa){if(marker)marker.setLatLng([la,ln]);else marker=L.marker([la,ln]).addTo(mapa);mapa.setView([la,ln],15)}
   iso=paisDe(la,ln);$('monSpan').textContent=CFG.monedas[iso]||'S/';$('docTxt').textContent=CFG.doc[iso]||'DNI'}
@@ -369,11 +371,11 @@ $('inLogo').addEventListener('change',async function(){var f=this.files&&this.fi
 $('btnGuardar').addEventListener('click',async function(){var err=$('errGuardar');err.style.display='none';if(subiendo>0){pcgToast('Espera a que termine de subir el logo.');return}
   var cat=$('cat').value;if(cat==='otra')cat=$('catOtra').value.trim();
   var body={id:CFG.id,nombre:$('nombre').value,deporte:dep,formato:fmt,minPartidos:minPart,categoria:cat,minJugadoresEquipo:+$('minJug').value||0,maxJugadoresEquipo:+$('maxJug').value||0,desde:$('desde').value,hasta:$('relampago').checked?$('desde').value:$('hastaJ').value,cierre:$('cierre').value,cierreHora:$('cierreHora').value,
-    sede:$('sede').value,lat:lat,lng:lng,costo:parseFloat(String($('costo').value).replace(',','.'))||0,relampago:$('relampago').checked,exigeDni:$('exigeDni').checked,edadMin:$('edadMin').value,edadMax:$('edadMax').value,auspiciador:$('ausp').value,premios:$('premios').value,logoUrl:logo};
+    sede:$('sede').value,lat:lat,lng:lng,costo:parseFloat(String($('costo').value).replace(',','.'))||0,relampago:$('relampago').checked,exigeDni:$('exigeDni').checked,edadMin:$('edadMin').value,edadMax:$('edadMax').value,auspiciador:$('ausp').value,organizador:$('orga').value,premios:$('premios').value,logoUrl:logo};
   this.disabled=true;pcgCargando(CFG.nuevo?'Creando tu campeonato…':'Guardando cambios…');try{var r=await fetch('/anfitrion/campeonatos/guardar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){pcgIr('/anfitrion/campeonatos/'+encodeURIComponent(j.id)+(CFG.nuevo?'?creado=1':'?guardado=1'),'Abriendo tu campeonato…');return}pcgCargando(false);err.textContent=j.error||'No se pudo guardar.';err.style.display='block';if(j.paso)ir(j.paso)}catch(e){pcgCargando(false);err.textContent='No se pudo guardar. Revisa tu conexión.';err.style.display='block'}this.disabled=false});
 })();
-"""
+""").replace('⟦MARCA⟧', MARCA)
 
 
 @router.get(BASE + "/nuevo", response_class=HTMLResponse)
@@ -385,7 +387,7 @@ def pagina_nuevo(request: Request) -> HTMLResponse:
         return HTMLResponse("", status_code=302, headers={"Location": BASE})
     c = {"id": L.nuevo_id(), "academiaId": "", "dueno": ses["email"], "nombre": "", "deporte": "futbol", "formato": "liga", "categoria": "",
          "sede": "", "fechas": "", "costoInscripcion": 0, "inscripcionAbierta": True, "participantes": [], "partidos": [], "cerrado": False,
-         "moneda": "", "relampago": False, "exigeDni": False, "premios": "", "auspiciador": ""}
+         "moneda": "", "relampago": False, "exigeDni": False, "premios": "", "auspiciador": "", "organizador": ""}
     return _editor(ses, c, nuevo=True)
 
 
@@ -490,6 +492,7 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
         "nombre": nombre, "deporte": dep, "formato": fmt, "categoria": re.sub(r"\s+", " ", str(b.get("categoria") or "")).strip()[:40],
         "sede": sede, "fechas": fechas, "costoInscripcion": costo, "moneda": moneda, "relampago": relampago, "exigeDni": exige,
         "premios": str(b.get("premios") or "").strip()[:600], "auspiciador": str(b.get("auspiciador") or "").strip().upper()[:60],
+        "organizador": re.sub(r"\s+", " ", str(b.get("organizador") or "")).strip()[:60],
         "minJugadoresEquipo": min_jug, "maxJugadoresEquipo": max_jug, "minPartidos": min_part,
     })
     if nuevo:
@@ -505,7 +508,7 @@ def _validar(b: dict, actual: dict | None, email: str) -> tuple[dict | None, str
     else:
         data.pop("sedeLat", None); data.pop("sedeLng", None)
     # Claves que `toJson` omite cuando están vacías.
-    for k in ("codigo", "pruebas", "premios", "auspiciador", "auspiciadoresLogos", "fotos", "aficheFondoUrl", "aficheTema"):
+    for k in ("codigo", "pruebas", "premios", "auspiciador", "organizador", "auspiciadoresLogos", "fotos", "aficheFondoUrl", "aficheTema"):
         if not data.get(k):
             data.pop(k, None)
     if not data.get("minJugadoresEquipo"):
@@ -532,7 +535,7 @@ def guardar(request: Request, b: dict | None = Body(None)) -> JSONResponse:
     if actual is None and datos.campeonato_existe(cid):
         return _err("Este campeonato no está a tu nombre.", 404)
     if actual is None and not _pro(ses["email"]):
-        return JSONResponse({"ok": False, "error": "requiere_pro", "mensaje": "Crear campeonatos es parte de Pichangol Pro. Actívalo en Perfil → Pichangol Pro (/pro)."}, status_code=402)
+        return JSONResponse({"ok": False, "error": "requiere_pro", "mensaje": f"Crear campeonatos es parte de {MARCA} Pro. Actívalo en Perfil → {MARCA} Pro (/pro)."}, status_code=402)
     data, msg, paso = _validar(b, actual, ses["email"])
     if data is None:
         return JSONResponse({"ok": False, "error": msg, "paso": paso}, status_code=400)
@@ -571,7 +574,7 @@ def _publicidad(c: dict) -> str:
         lineas.append(f"Gracias a nuestro auspiciador *{c['auspiciador']}*")
     if c.get("codigo"):
         lineas += ["", f"📲 Código para unirte: *{c['codigo']}*"]
-    lineas += [f"👉 Inscríbete aquí: {_enlace(c)}", "", "vía *Pichangol* · Reserva, juega, repite."]
+    lineas += [f"👉 Inscríbete aquí: {_enlace(c)}", "", f"vía *{MARCA}* · Reserva, juega, repite."]
     return "\n".join(lineas)
 
 
@@ -603,7 +606,7 @@ def _resumen(c: dict) -> str:
         for m in c.get("partidos") or []:
             if L.jugado(m):
                 out.append(f"• {(L.participante(c, m.get('aId')) or {}).get('nombre', '')} {m['marcadorA']}-{m['marcadorB']} {(L.participante(c, m.get('bId')) or {}).get('nombre', '')}")
-    out += ["", f"👉 {_enlace(c)}", "vía *Pichangol*"]
+    out += ["", f"👉 {_enlace(c)}", f"vía *{MARCA}*"]
     return "\n".join(out)
 
 
@@ -820,7 +823,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
     return ui.shell(c.get("nombre") or "Campeonato", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab=f"{c.get('nombre') or 'Campeonato'} · Mis campeonatos")
 
 
-_JS_DETALLE = r"""
+_JS_DETALLE = (r"""
 (function(){
 function $(id){return document.getElementById(id)}
 function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;')}
@@ -863,10 +866,10 @@ document.addEventListener('click',async function(ev){var q=ev.target.closest('[d
   var ch=ev.target.closest('.chip.part[data-equipo="1"]');if(ch){var p=CFG.participantes.filter(function(x){return x.id===ch.dataset.pid})[0];if(!p)return;
     var falta=CFG.minJug>0?(p.roster.length>=CFG.minJug?"<span class='pill'>Completo</span>":"<span class='pill' style='background:#FFF1E3;color:#B25E0A'>Faltan "+(CFG.minJug-p.roster.length)+"</span>"):'';
     var enlaceEq=p.codigo?CFG.enlace+'?equipo='+encodeURIComponent(p.codigo):'';
-    var invitar=enlaceEq?"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><button type='button' class='btn sec' data-copiar-eq='"+esc(enlaceEq)+"'>🔗 Copiar enlace del equipo</button><a class='btn sec' target='_blank' rel='noopener' href='https://wa.me/?text="+encodeURIComponent('Únete a mi equipo «'+p.nombre+'» en "'+CFG.nombre+'" (Pichangol). Toca y quedas inscrito: '+enlaceEq)+"'>💬 WhatsApp</a></div><p class='sub' style='margin:6px 0 0;font-size:12px'>Quien abra el enlace con la app entra directo al equipo, sin escribir el código"+(CFG.fixture?" (también con el fixture publicado, mientras la inscripción siga abierta)":"")+".</p>":'';
+    var invitar=enlaceEq?"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><button type='button' class='btn sec' data-copiar-eq='"+esc(enlaceEq)+"'>🔗 Copiar enlace del equipo</button><a class='btn sec' target='_blank' rel='noopener' href='https://wa.me/?text="+encodeURIComponent('Únete a mi equipo «'+p.nombre+'» en "'+CFG.nombre+'" (⟦MARCA⟧). Toca y quedas inscrito: '+enlaceEq)+"'>💬 WhatsApp</a></div><p class='sub' style='margin:6px 0 0;font-size:12px'>Quien abra el enlace con la app entra directo al equipo, sin escribir el código"+(CFG.fixture?" (también con el fixture publicado, mientras la inscripción siga abierta)":"")+".</p>":'';
     var st=CFG.pozos[p.id],pozoHtml='',pago={};
     if(CFG.cuotaEq>0){var pz=st?st.pozo_centimos:0,tot=CFG.cuotaEq,pct=Math.min(100,Math.round(pz*100/tot)),comp=st?st.completo:false;(st?st.aportes:[]).forEach(function(a){pago[(a.email||'').toLowerCase()]=a.centimos});
-      pozoHtml="<section><b>"+(comp?"✅ Equipo inscrito · pozo completo":"💰 Pozo del equipo")+"</b><div style='height:8px;border-radius:999px;background:#EEF1F4;margin:8px 0 6px;overflow:hidden'><div style='height:100%;width:"+pct+"%;background:"+(comp?'#0B8A3E':'#F28C28')+"'></div></div><p class='sub' style='margin:0'>"+esc(CFG.mon)+" "+fmtC(pz)+" de "+fmtC(tot)+" · cada jugador pone "+esc(CFG.mon)+" "+fmtC(CFG.cuotaJug)+(comp?"":" · faltan "+esc(CFG.mon)+" "+fmtC(tot-pz))+(st&&st.liquidado?" · neto "+esc(CFG.mon)+" "+fmtC(st.neto_centimos)+" por recibir: Pichangol te lo transfiere (Ingresos)":"")+"</p></section>"}
+      pozoHtml="<section><b>"+(comp?"✅ Equipo inscrito · pozo completo":"💰 Pozo del equipo")+"</b><div style='height:8px;border-radius:999px;background:#EEF1F4;margin:8px 0 6px;overflow:hidden'><div style='height:100%;width:"+pct+"%;background:"+(comp?'#0B8A3E':'#F28C28')+"'></div></div><p class='sub' style='margin:0'>"+esc(CFG.mon)+" "+fmtC(pz)+" de "+fmtC(tot)+" · cada jugador pone "+esc(CFG.mon)+" "+fmtC(CFG.cuotaJug)+(comp?"":" · faltan "+esc(CFG.mon)+" "+fmtC(tot-pz))+(st&&st.liquidado?" · neto "+esc(CFG.mon)+" "+fmtC(st.neto_centimos)+" por recibir: ⟦MARCA⟧ te lo transfiere (Ingresos)":"")+"</p></section>"}
     modal(p.nombre,"<section><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>Código: "+esc(p.codigo||'—')+"</b>"+falta+"</div><p class='sub' style='margin:6px 0 0'>Capitán: "+esc(p.capitanEmail||'—')+"</p>"+invitar+"</section>"+pozoHtml+"<section><b>Plantel ("+p.roster.length+(CFG.maxJug?"/"+CFG.maxJug:"")+")</b>"+
       (p.roster.map(function(i){var em=(i.email||'').toLowerCase();return "<div class='marca'><span class='pos'>"+(i.email?'✅':'👤')+"</span><span class='nom'>"+esc(i.nombre)+(i.email&&i.email===p.capitanEmail?" <span class='pill'>Capitán</span>":'')+(CFG.cuotaEq>0?(pago[em]?" <span class='pill'>pagó "+esc(CFG.mon)+" "+fmtC(pago[em])+"</span>":" <span class='pill' style='background:#FFF1E3;color:#B25E0A'>sin pagar</span>"):'')+"</span></div>"}).join('')||"<p class='sub'>Sin jugadores aún. Comparte el enlace del equipo: cada jugador entra"+(CFG.cuotaEq>0?" y pone su parte":"")+" desde la app.</p>")+"</section>",null)}});
 function fmtC(c){var v=(c||0)/100;return Math.abs(v-Math.round(v))<0.005?String(Math.round(v)):v.toFixed(2)}
@@ -897,7 +900,7 @@ function armarGrupos(){var ps=CFG.participantes,n=ps.length,maxG=Math.floor(n/2)
   pintar()}
 async function sortear(body){try{var j=await post('/fixture',body,'Sorteando el fixture…');pcgRecargar(j.devueltos?'Fixture listo · '+j.devueltos+' jugador(es) recuperaron su parte':undefined)}catch(e){
   if(e.equipos){var eq=e.equipos;modal('Equipos con el pozo incompleto',"<p class='sub'>Estos equipos aún no cubren la cuota de "+esc(CFG.mon)+" "+fmtC(CFG.cuotaEq)+":</p>"+eq.map(function(q){return "<div class='marca'><span class='pos'>⏳</span><span class='nom'>"+esc(q.nombre)+" · "+esc(CFG.mon)+" "+fmtC(q.pozo_centimos)+" de "+fmtC(CFG.cuotaEq)+"</span></div>"}).join('')+
-    "<div class='acciones' style='margin-top:16px;flex-wrap:wrap'><button type='button' class='btn' id='fxTodos'>Generar con todos</button><button type='button' class='btn sec' id='fxExcluir'>Excluirlos y devolver sus aportes</button></div><p class='sub' style='font-size:12px;margin-top:8px'>Si los excluyes, cada jugador recupera lo que puso en su saldo Pichangol.</p>",null);
+    "<div class='acciones' style='margin-top:16px;flex-wrap:wrap'><button type='button' class='btn' id='fxTodos'>Generar con todos</button><button type='button' class='btn sec' id='fxExcluir'>Excluirlos y devolver sus aportes</button></div><p class='sub' style='font-size:12px;margin-top:8px'>Si los excluyes, cada jugador recupera lo que puso en su saldo ⟦MARCA⟧.</p>",null);
     $('fxTodos').onclick=function(){cerrar();sortear({con_todos:true})};$('fxExcluir').onclick=async function(){cerrar();if(!await pcgConfirmar({titulo:'Excluir '+eq.length+' equipo(s)',mensaje:'Quedan fuera del torneo y sus jugadores recuperan su parte. ¿Continuar?',confirmar:'Excluir y devolver',destructivo:true,icono:'↩️'}))return;sortear({excluir:eq.map(function(q){return q.id})})};return}
   pcgToast(e.message)}}
 // resultado
@@ -918,7 +921,7 @@ document.addEventListener('click',async function(ev){var q=ev.target.closest('[d
 $('btnDuplicar').addEventListener('click',async function(){if(!await pcgConfirmar({titulo:'Nueva edición',mensaje:'Se crea un campeonato nuevo con los mismos datos, sin participantes ni resultados. Luego le pones las fechas.',confirmar:'Crear nueva edición',icono:'📄'}))return;try{var j=await post('/duplicar',{},'Creando la nueva edición…');pcgIr('/anfitrion/campeonatos/'+encodeURIComponent(j.id)+'/editar','Abriendo la nueva edición…')}catch(e){pcgToast(e.message)}});
 $('btnEliminar').addEventListener('click',async function(){if(!await pcgConfirmar({titulo:'Eliminar campeonato',mensaje:'Se borra con sus participantes, fixture y resultados. No se puede deshacer.',confirmar:'Eliminar',destructivo:true}))return;try{await post('/eliminar',{},'Eliminando…');pcgIr('/anfitrion/campeonatos?eliminado=1')}catch(e){pcgToast(e.message)}});
 })();
-"""
+""").replace('⟦MARCA⟧', MARCA)
 
 
 # ── Acciones JSON del organizador ─────────────────────────────────────────────
@@ -1244,10 +1247,10 @@ def duplicar(request: Request, cid: str) -> JSONResponse:
     if err is not None:
         return err
     if not _pro(ses["email"]):
-        return JSONResponse({"ok": False, "error": "Crear campeonatos es parte de Pichangol Pro. Actívalo en Perfil → Pichangol Pro (/pro)."}, status_code=402)
+        return JSONResponse({"ok": False, "error": f"Crear campeonatos es parte de {MARCA} Pro. Actívalo en Perfil → {MARCA} Pro (/pro)."}, status_code=402)
     nuevo = {k: c[k] for k in ("academiaId", "nombre", "deporte", "formato", "categoria", "sede", "sedeLat", "sedeLng", "costoInscripcion", "moneda",
                                "relampago", "exigeDni", "edadMin", "edadMax", "logoUrl", "minJugadoresEquipo", "premios", "auspiciador",
-                               "auspiciadoresLogos", "aficheFondoUrl", "aficheVariante", "aficheTema") if c.get(k) not in (None, "", [], 0, False)}
+                               "organizador", "auspiciadoresLogos", "aficheFondoUrl", "aficheVariante", "aficheTema") if c.get(k) not in (None, "", [], 0, False)}
     nuevo.update({"id": L.nuevo_id(), "dueno": ses["email"], "codigo": L.nuevo_codigo(), "fechas": "", "inscripcionAbierta": True,
                   "participantes": [], "partidos": [], "cerrado": False, "academiaId": c.get("academiaId") or "", "deporte": c.get("deporte"),
                   "formato": L.formato_de(c), "categoria": c.get("categoria") or "", "sede": c.get("sede") or "", "costoInscripcion": float(c.get("costoInscripcion") or 0),

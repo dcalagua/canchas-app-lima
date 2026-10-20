@@ -10,6 +10,7 @@ import 'campeonato_detalle_screen.dart';
 import 'crear_campeonato_screen.dart';
 import 'unirse_campeonato_sheet.dart';
 
+import '../brand.dart';
 /// Lista de campeonatos de una academia. El profe (dueño) puede crear; cualquiera
 /// puede abrir un campeonato para ver llaves/tabla.
 class CampeonatosScreen extends StatelessWidget {
@@ -49,7 +50,7 @@ class CampeonatosScreen extends StatelessWidget {
                   // también para el dueño de la academia (modelo universal).
                   final ok = await exigirPro(context,
                       motivo: 'Crear campeonatos (fixture, inscripciones, '
-                          'resultados) es parte de Pichangol Pro. Hazte Pro '
+                          'resultados) es parte de $kBrandName Pro. Hazte Pro '
                           'para organizar el tuyo.');
                   if (!ok || !context.mounted) return;
                   Navigator.of(context).push(MaterialPageRoute(
@@ -80,7 +81,7 @@ class CampeonatosScreen extends StatelessWidget {
                       // Mismo candado Pro que el botón "Nuevo".
                       final ok = await exigirPro(context,
                           motivo: 'Crear campeonatos (fixture, inscripciones, '
-                              'resultados) es parte de Pichangol Pro. Hazte '
+                              'resultados) es parte de $kBrandName Pro. Hazte '
                               'Pro para organizar el tuyo.');
                       if (!ok || !context.mounted) return;
                       Navigator.of(context).push(MaterialPageRoute(

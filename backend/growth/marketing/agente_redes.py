@@ -39,6 +39,7 @@ from datetime import datetime, timedelta, timezone
 
 import config
 from db.store import stores
+from config import MARCA, MARCA_DOMINIO  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _STATIC = os.path.join(os.path.dirname(_DIR), "static", "brand")
@@ -47,15 +48,15 @@ DIAS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "doming
 AUDIENCIAS = {
     "jugadores": {
         "nombre": "Jugadores",
-        "objetivo": ("Objetivo comercial: que quien lee DESCARGUE la app Pichangol (Android, Play Store: "
+        "objetivo": (f"Objetivo comercial: que quien lee DESCARGUE la app {MARCA} (Android, Play Store: "
                      "https://play.google.com/store/apps/details?id=pe.ebim.pichangol) o RESERVE su cancha en la web "
-                     "www.pichangol.app. Menciona una de las dos opciones de forma natural, no las dos como lista."),
+                     f"{MARCA_DOMINIO}. Menciona una de las dos opciones de forma natural, no las dos como lista."),
     },
     "duenos": {
         "nombre": "Dueños de canchas",
         "objetivo": ("Objetivo comercial: que los DUEÑOS y administradores de canchas o academias registren su local y lo "
-                     "administren GRATIS con Pichangol: agenda de reservas, cobros en línea, clientes nuevos. Se hace en "
-                     "Modo anfitrión en www.pichangol.app o desde la app. Habla de igual a igual, como socio."),
+                     f"administren GRATIS con {MARCA}: agenda de reservas, cobros en línea, clientes nuevos. Se hace en "
+                     f"Modo anfitrión en {MARCA_DOMINIO} o desde la app. Habla de igual a igual, como socio."),
     },
 }
 # Calendario editorial por defecto (índice = weekday(): 0 = lunes). 5 días a jugadores, 2 a dueños.
@@ -78,7 +79,7 @@ DEPORTES_MARCA = ["futbol", "tenis", "padel", "futbol", "pickleball", "tenis", "
 CFG = {"activo": "agente_fb_activo", "hora": "agente_fb_hora", "zona": "agente_fb_zona", "modo": "agente_fb_modo",
        "tono": "agente_fb_tono", "plan": "agente_fb_plan", "ultimo_dia": "agente_fb_ultimo_dia", "ultimo_local": "agente_fb_ultimo_local",
        "destacar_pro": "agente_fb_destacar_pro", "videos": "agente_fb_videos"}
-DEFAULTS = {"activo": "0", "hora": "07:00", "zona": "America/Lima", "modo": "auto", "tono": "cercano", "plan": "", "ultimo_dia": "", "ultimo_local": "",
+DEFAULTS = {"activo": "0", "hora": "07:00", "zona": "America/Lima", "modo": "aprobar", "tono": "cercano", "plan": "", "ultimo_dia": "", "ultimo_local": "",
             "destacar_pro": "0", "videos": "auto"}
 DIAS_VIDEO = {3, 4, 5}          # jue/vie/sáb: si hay un video de la biblioteca sin usar hace 14 días, ese día sale video (con música)
 VIDEO_DESCANSO_DIAS = 14
@@ -93,7 +94,7 @@ def _cfg(k: str) -> str:
 
 
 def configuracion() -> dict:
-    return {"activo": _cfg("activo") == "1", "hora": _cfg("hora"), "zona": _cfg("zona"), "modo": _cfg("modo") if _cfg("modo") in ("auto", "aprobar") else "auto",
+    return {"activo": _cfg("activo") == "1", "hora": _cfg("hora"), "zona": _cfg("zona"), "modo": _cfg("modo") if _cfg("modo") in ("auto", "aprobar") else "aprobar",
             "tono": _cfg("tono"), "plan": plan(), "ultimo_dia": _cfg("ultimo_dia"), "destacar_pro": _cfg("destacar_pro") == "1",
             "videos": _cfg("videos") if _cfg("videos") in ("auto", "nunca") else "auto"}
 
@@ -224,7 +225,11 @@ def _arte_marca(loc: datetime) -> str:
 
 
 def _foto_marca() -> str:
-    """Portada de marca como data URL (cuando aún no hay locales con foto)."""
+    """Portada de marca como data URL (cuando aún no hay locales con foto). Con
+    logo propio configurado en la torre, el logo (la portada lleva el de siempre)."""
+    import marca_logo
+    if marca_logo.personalizado():
+        return "data:image/png;base64," + base64.b64encode(marca_logo.logo_bytes()).decode()
     for nombre in ("portada_facebook.png", "logo_pichangol.png"):
         ruta = os.path.join(_STATIC, nombre)
         if os.path.exists(ruta):
@@ -257,9 +262,9 @@ def planificar(fecha_local: datetime | None = None, *, audiencia: str | None = N
         enf = "beneficio"
     tema = AUDIENCIAS[aud]["objetivo"]
     if aud == "jugadores" and not local:
-        tema += " La publicación es de la MARCA Pichangol: no menciones ningún local ni academia en particular."
+        tema += f" La publicación es de la MARCA {MARCA}: no menciones ningún local ni academia en particular."
     if aud == "jugadores" and local:
-        tema += f" Local Pro destacado del día: {local['local']} ({local.get('zona') or 'la zona'}) ya se reserva en Pichangol; menciónalo con naturalidad."
+        tema += f" Local Pro destacado del día: {local['local']} ({local.get('zona') or 'la zona'}) ya se reserva en {MARCA}; menciónalo con naturalidad."
     if aud == "duenos":
         tema += " No menciones locales ni academias por nombre; habla de la solución y de lo que gana el dueño."
     # ¿Toca VIDEO? Solo de la biblioteca de marca (Google Fotos), en días de video, sin repetir uno reciente, y siempre con música.
@@ -314,7 +319,7 @@ def crear_pieza(brief: dict, *, evitar: list[str] | None = None) -> dict:
             pieza.update(musica_id=brief["pista"]["id"], musica_nombre=brief["pista"].get("nombre", ""))
         pieza["png"] = _poster_video(video, pieza)      # vista previa (frame + marca) para la torre
         return pieza
-    pieza["png"] = _pr.componer(fotos, copy["titulo"] or "Pichangol", copy.get("subtitulo") or "", "www.pichangol.app", pieza["formato"], etiqueta)
+    pieza["png"] = _pr.componer(fotos, copy["titulo"] or MARCA, copy.get("subtitulo") or "", MARCA_DOMINIO, pieza["formato"], etiqueta)
     return pieza
 
 
@@ -342,7 +347,7 @@ def _poster_video(video: dict, pieza: dict) -> bytes:
         frame = _frame_video(ruta)
     except Exception:  # noqa: BLE001
         frame = _foto_marca()
-    return _pr.componer([frame] if frame else [], pieza["titulo"] or "Pichangol", pieza.get("subtitulo") or "", "www.pichangol.app", "cuadrado", "▶ Video")
+    return _pr.componer([frame] if frame else [], pieza["titulo"] or MARCA, pieza.get("subtitulo") or "", MARCA_DOMINIO, "cuadrado", "▶ Video")
 
 
 def render_video(receta: dict) -> str:
@@ -385,7 +390,7 @@ def componer_receta(receta: dict) -> bytes:
         loc = ahora_local()
     fotos = [(_arte_marca(loc) if u in ("brand:arte", "brand:portada") else u) for u in receta.get("fotos") or []]
     fotos = [u for u in fotos if u]
-    return _pr.componer(fotos, receta.get("titulo") or "Pichangol", receta.get("subtitulo") or "", "www.pichangol.app", receta.get("formato") or "cuadrado", receta.get("etiqueta") or "")
+    return _pr.componer(fotos, receta.get("titulo") or MARCA, receta.get("subtitulo") or "", MARCA_DOMINIO, receta.get("formato") or "cuadrado", receta.get("etiqueta") or "")
 
 
 # ── community manager ────────────────────────────────────────────────────────
@@ -561,6 +566,8 @@ def tick() -> bool:
     cfg = configuracion()
     if not cfg["activo"]:
         return False
+    if str(stores.config.get("ai_mkt_activo", "0")) == "1":
+        return False        # el AI Marketing Agent (`marketing/agente_ia`) maneja la página: un solo agente publica
     loc = ahora_local()
     hoy = loc.strftime("%Y-%m-%d")
     if cfg["ultimo_dia"] == hoy:

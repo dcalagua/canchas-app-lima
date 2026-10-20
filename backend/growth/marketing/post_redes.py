@@ -30,6 +30,7 @@ import uuid
 
 import config
 from db.store import stores
+from config import MARCA, MARCA_DOMINIO  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _STATIC = os.path.join(os.path.dirname(_DIR), "static", "brand")
@@ -43,27 +44,27 @@ MAX_BYTES = 12 * 1024 * 1024
 PLANTILLAS = {
     "lanzamiento": {
         "nombre": "Lanzamiento",
-        "titulo": "¡Llegó Pichangol!",
+        "titulo": f"¡Llegó {MARCA}!",
         "subtitulo": "Reserva tu cancha fácil y rápido, donde te encuentres.",
-        "texto": ("🎾⚽ ¡Llegó Pichangol! Reserva canchas de fútbol, tenis, pádel y pickleball en minutos, "
-                  "desde tu celular o en www.pichangol.app.\n\n📍 Ya puedes reservar en {local} ({zona}).\n"
+        "texto": ((("🎾⚽ ¡Llegó ⟦MARCA⟧! Reserva canchas de fútbol, tenis, pádel y pickleball en minutos, "
+                  "desde tu celular o en ⟦MARCA_DOMINIO⟧.\n\n📍 Ya puedes reservar en {local} ({zona}).\n"
                   "✅ Horarios en vivo · Pago en línea · Confirmación al instante.\n\n"
                   "👉 Descarga la app: https://play.google.com/store/apps/details?id=pe.ebim.pichangol\n"
-                  "#Pichangol #ReservaJuegaRepite #{deporte_tag} #Lima"),
+                  "#⟦MARCA⟧ #ReservaJuegaRepite #{deporte_tag} #Lima").replace('⟦MARCA⟧', MARCA)).replace('⟦MARCA_DOMINIO⟧', MARCA_DOMINIO)),
     },
     "nuevo_local": {
         "nombre": "Nuevo local",
-        "titulo": "Nuevo en Pichangol",
+        "titulo": f"Nuevo en {MARCA}",
         "subtitulo": "{local} · {zona}",
-        "texto": ("🆕 {local} ya está en Pichangol.\n{deportes} · desde {precio} la hora.\n"
-                  "Elige tu horario y reserva en segundos: {url}\n\n#Pichangol #ReservaJuegaRepite #{deporte_tag}"),
+        "texto": (("🆕 {local} ya está en ⟦MARCA⟧.\n{deportes} · desde {precio} la hora.\n"
+                  "Elige tu horario y reserva en segundos: {url}\n\n#⟦MARCA⟧ #ReservaJuegaRepite #{deporte_tag}").replace('⟦MARCA⟧', MARCA)),
     },
     "promo": {
         "nombre": "Promoción",
         "titulo": "Juega esta semana",
         "subtitulo": "{local} · desde {precio} la hora",
-        "texto": ("🔥 ¿Ya armaste la pichanga? {local} tiene horarios libres esta semana desde {precio} la hora.\n"
-                  "Reserva en la app o en {url} y paga en línea.\n\n#Pichangol #{deporte_tag} #Lima"),
+        "texto": (("🔥 ¿Ya armaste la pichanga? {local} tiene horarios libres esta semana desde {precio} la hora.\n"
+                  "Reserva en la app o en {url} y paga en línea.\n\n#⟦MARCA⟧ #{deporte_tag} #Lima").replace('⟦MARCA⟧', MARCA)),
     },
     "libre": {"nombre": "Texto libre", "titulo": "", "subtitulo": "", "texto": ""},
 }
@@ -87,8 +88,8 @@ def _limpiar(t: str) -> str:
 
 def _logo_disco(diam: int):
     from PIL import Image, ImageDraw
-    ruta = os.path.join(_STATIC, "logo_pin.png")
-    lg = Image.open(ruta).convert("RGBA").resize((diam - 2 * (diam // 9), diam - 2 * (diam // 9)), Image.LANCZOS)
+    import marca_logo
+    lg = marca_logo.abrir().resize((diam - 2 * (diam // 9), diam - 2 * (diam // 9)), Image.LANCZOS)
     disco = Image.new("RGBA", (diam, diam), (255, 255, 255, 255))
     disco.paste(lg, (diam // 9, diam // 9), lg)
     mask = Image.new("L", (diam * 4, diam * 4), 0)
@@ -141,7 +142,7 @@ MIME = "image/jpeg"
 EXTENSION = "jpg"
 
 
-def componer(fotos_urls: list[str], titulo: str, subtitulo: str = "", pie: str = "www.pichangol.app",
+def componer(fotos_urls: list[str], titulo: str, subtitulo: str = "", pie: str = MARCA_DOMINIO,
              formato: str = "cuadrado", etiqueta: str = "") -> bytes:
     """JPEG de la publicación: fotos reales en collage + franja de marca abajo con
     título, subtítulo y pie; logo en disco arriba a la izquierda; etiqueta
@@ -190,7 +191,7 @@ def componer(fotos_urls: list[str], titulo: str, subtitulo: str = "", pie: str =
     # Marca arriba a la izquierda.
     disco = _logo_disco(int(W * 0.085))
     img.paste(disco, (m, m), disco)
-    d.text((m + disco.width + int(W * 0.015), m + disco.height * 0.16), "Pichangol", font=_font("Bold", int(W * 0.05)), fill=(255, 255, 255),
+    d.text((m + disco.width + int(W * 0.015), m + disco.height * 0.16), MARCA, font=_font("Bold", int(W * 0.05)), fill=(255, 255, 255),
            stroke_width=2, stroke_fill=(0, 0, 0, 90))
     # Etiqueta arriba a la derecha.
     et = _limpiar(etiqueta)
@@ -330,16 +331,16 @@ def rellenar(plantilla: str, cancha: dict | None, campo: str) -> str:
 # banco de variantes por enfoque, rotando, para que QAS siga variando.
 ENFOQUES = {
     "auto": "Elige tú el ángulo más fresco distinto a los recientes.",
-    "beneficio": "Un beneficio CONCRETO de reservar con Pichangol contado desde la vida real del jugador: ver horarios libres al toque, confirmación al instante, sin llamadas ni chats eternos. Nada de 'llegó' ni 'lanzamiento'.",
-    "local": "El LOCAL es el protagonista: qué tiene, dónde queda, para quién es ideal y cuándo conviene ir. Pichangol aparece solo como el lugar donde se reserva.",
+    "beneficio": f"Un beneficio CONCRETO de reservar con {MARCA} contado desde la vida real del jugador: ver horarios libres al toque, confirmación al instante, sin llamadas ni chats eternos. Nada de 'llegó' ni 'lanzamiento'.",
+    "local": f"El LOCAL es el protagonista: qué tiene, dónde queda, para quién es ideal y cuándo conviene ir. {MARCA} aparece solo como el lugar donde se reserva.",
     "comunidad": "Habla a la comunidad de jugadores: una pregunta real, invita a armar el partido, a etiquetar al equipo o a contar su anécdota. Poca venta.",
     "tip": "Un consejo útil y breve del deporte del local (calentamiento, técnica, hidratación, qué llevar) y recién al final conecta con reservar.",
     "finde": "Plan para el fin de semana o la semana: horarios, ganas de jugar, ese partido pendiente. Concreto y con fecha relativa (este sábado, esta semana).",
     "promo": "Comunica el precio o la promo con claridad y sin exagerar (SOLO con los datos dados; si no hay promo, habla del precio por hora).",
-    "duenos": "Dirigido a DUEÑOS de canchas y academias: publicar la cancha en Pichangol es gratis, reciben reservas y cobros en línea, agenda ordenada. Tono de socio, no de vendedor.",
+    "duenos": f"Dirigido a DUEÑOS de canchas y academias: publicar la cancha en {MARCA} es gratis, reciben reservas y cobros en línea, agenda ordenada. Tono de socio, no de vendedor.",
     "academia": "Para madres y padres: clases y academias que forman, valores del deporte en niños y adolescentes, cómo empezar.",
     "humor": "Tono ligero con humor futbolero o tenístico, situaciones reconocibles (el que siempre llega tarde, el arquero rotativo), sin burlarse de nadie.",
-    "historia": "Detrás de Pichangol: una app hecha en Perú para que reservar una cancha sea tan fácil como pedir un taxi; propósito y cercanía, sin inventar hitos ni cifras.",
+    "historia": f"Detrás de {MARCA}: una app hecha en Perú para que reservar una cancha sea tan fácil como pedir un taxi; propósito y cercanía, sin inventar hitos ni cifras.",
 }
 TONOS = {"cercano": "cercano y natural, como un amigo que juega", "divertido": "divertido y con chispa, sin payasadas",
          "informativo": "claro, directo y útil, cero relleno", "motivador": "motivador y energético, sin gritar"}
@@ -347,11 +348,11 @@ _DEPORTE_NOMBRE = {"futbol": "fútbol", "tenis": "tenis", "padel": "pádel", "pi
 _PAIS_NOMBRE = {"PE": "Perú", "BO": "Bolivia", "EC": "Ecuador"}
 
 _SYSTEM_REDACTOR = (
-    "Eres quien maneja la página de Facebook de Pichangol, una app (Android y web www.pichangol.app) para reservar "
+    f"Eres quien maneja la página de Facebook de {MARCA}, una app (Android y web {MARCA_DOMINIO}) para reservar "
     "canchas de fútbol, tenis, pádel y pickleball y matricularse en academias, hecha en Perú y presente también en "
     "Bolivia y Ecuador. Escribes en español latinoamericano natural (peruano si el local está en Perú), como una persona, "
     "no como una marca gritando. REGLAS: (1) cada post debe sonar DISTINTO a los recientes que te paso: otro gancho, otra "
-    "primera frase, otra estructura; prohibido empezar con '¡Llegó Pichangol!' o '¡Ya llegó!' salvo que el enfoque lo pida; "
+    f"primera frase, otra estructura; prohibido empezar con '¡Llegó {MARCA}!' o '¡Ya llegó!' salvo que el enfoque lo pida; "
     "(2) usa SOLO los datos del local que te doy (nombre, zona, deportes, precio, horario); no inventes promociones, "
     "resultados, testimonios ni cifras; (3) 0 a 3 emojis en todo el texto, nunca uno por línea; (4) un solo llamado a la "
     "acción, natural (reserva en la app o en la web); (5) 3 a 6 hashtags al final, en minúsculas, con #pichangol y el "
@@ -427,7 +428,7 @@ def _con_claude_redactor(payload: dict) -> dict | None:
         return None
     try:
         client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-        resp = client.messages.create(model=config.MARKETING_MODEL, max_tokens=900, temperature=1.0, system=_SYSTEM_REDACTOR,
+        resp = client.messages.create(model=config.MARKETING_MODEL, max_tokens=4000, system=_SYSTEM_REDACTOR,
                                       messages=[{"role": "user", "content": "Redacta la publicación (JSON):\n" + json.dumps(payload, ensure_ascii=False)}])
         texto = next((b.text for b in resp.content if getattr(b, "type", "") == "text"), "")
         m = re.search(r"\{.*\}", texto or "", re.DOTALL)
@@ -452,9 +453,9 @@ def _banco(enfoque: str, ctx: dict, tono: str) -> list[dict]:
     B = {
         "beneficio": [
             {"titulo": "Horarios libres, al toque", "subtitulo": f"Mira qué hay en {L} y reserva en un minuto", "etiqueta": "",
-             "texto": f"¿Cuántos mensajes mandas para conseguir cancha un viernes? En Pichangol abres el mapa, ves los horarios libres de {L} ({Z}) y reservas. Confirmación al instante, sin llamadas.\n\nReserva aquí: {url}\n\n{tags}"},
+             "texto": f"¿Cuántos mensajes mandas para conseguir cancha un viernes? En {MARCA} abres el mapa, ves los horarios libres de {L} ({Z}) y reservas. Confirmación al instante, sin llamadas.\n\nReserva aquí: {url}\n\n{tags}"},
             {"titulo": "Sin llamar, sin esperar", "subtitulo": "Elige la hora, confirma y listo", "etiqueta": "",
-             "texto": f"Lo más difícil del partido no debería ser conseguir la cancha. {L} ya tiene sus horarios en Pichangol{(' (' + horario + ')') if horario else ''}: eliges la hora, pagas si quieres y te llega la confirmación.\n\n{url}\n\n{tags}"},
+             "texto": f"Lo más difícil del partido no debería ser conseguir la cancha. {L} ya tiene sus horarios en {MARCA}{(' (' + horario + ')') if horario else ''}: eliges la hora, pagas si quieres y te llega la confirmación.\n\n{url}\n\n{tags}"},
         ],
         "local": [
             {"titulo": L[:36], "subtitulo": f"{' · '.join(x.capitalize() for x in D)} en {Z}", "etiqueta": "Conócelo",
@@ -464,13 +465,13 @@ def _banco(enfoque: str, ctx: dict, tono: str) -> list[dict]:
             {"titulo": "¿Con quién juegas este finde?", "subtitulo": "Etiqueta a tu equipo y arma el partido", "etiqueta": "",
              "texto": f"Confiesa: ¿quién de tu grupo es el que siempre confirma y nunca llega? 😅 Etiquétalo y arma el partido de una vez. En {L} ({Z}) hay horarios libres esta semana.\n\n{url}\n\n{tags}"},
             {"titulo": "Se busca rival", "subtitulo": f"Partidos de {d0} en {Z}", "etiqueta": "",
-             "texto": f"¿Tu equipo necesita rival para el sábado? Comenta la hora y el nivel, y que se arme. La cancha ya está: {L}, en {Z}, con horarios en Pichangol.\n\n{url}\n\n{tags}"},
+             "texto": f"¿Tu equipo necesita rival para el sábado? Comenta la hora y el nivel, y que se arme. La cancha ya está: {L}, en {Z}, con horarios en {MARCA}.\n\n{url}\n\n{tags}"},
         ],
         "tip": [
             {"titulo": "5 minutos que evitan lesiones", "subtitulo": "Calienta antes de entrar a la cancha", "etiqueta": "Tip",
              "texto": f"Antes del primer sprint: 5 minutos de trote suave, movilidad de tobillos y caderas, y dos series cortas de aceleración. Tu cuerpo llega listo y el partido se disfruta entero.\n\n¿Dónde? En {L} ({Z}) hay turnos libres esta semana: {url}\n\n{tags} #calentamiento"},
             {"titulo": "Hidrátate antes, no después", "subtitulo": "Un tip simple que cambia tu partido", "etiqueta": "Tip",
-             "texto": f"Toma agua desde una hora antes de jugar, no solo cuando ya tienes sed. Rinde más el segundo tiempo y baja el riesgo de calambres.\n\nY el turno lo aseguras en Pichangol: {L}, {Z}. {url}\n\n{tags}"},
+             "texto": f"Toma agua desde una hora antes de jugar, no solo cuando ya tienes sed. Rinde más el segundo tiempo y baja el riesgo de calambres.\n\nY el turno lo aseguras en {MARCA}: {L}, {Z}. {url}\n\n{tags}"},
         ],
         "finde": [
             {"titulo": "Este sábado sí se juega", "subtitulo": f"Turnos libres en {L}", "etiqueta": "Este finde",
@@ -482,22 +483,22 @@ def _banco(enfoque: str, ctx: dict, tono: str) -> list[dict]:
         ],
         "duenos": [
             {"titulo": "¿Tienes una cancha?", "subtitulo": "Publícala gratis y recibe reservas", "etiqueta": "Para dueños",
-             "texto": f"Si administras una cancha o una academia, Pichangol te ordena la agenda: publicas gratis, los jugadores ven tus horarios libres y reservan solos; tú recibes el aviso y el cobro en línea si quieres.\n\nEmpieza en www.pichangol.app → Modo anfitrión.\n\n#pichangol #duenosdecancha #canchas"},
+             "texto": f"Si administras una cancha o una academia, {MARCA} te ordena la agenda: publicas gratis, los jugadores ven tus horarios libres y reservan solos; tú recibes el aviso y el cobro en línea si quieres.\n\nEmpieza en {MARCA_DOMINIO} → Modo anfitrión.\n\n#pichangol #duenosdecancha #canchas"},
         ],
         "academia": [
             {"titulo": "Su primera raqueta", "subtitulo": "Academias para niños y adolescentes", "etiqueta": "Academias",
-             "texto": f"El deporte enseña a perder, a esperar el turno y a volver a intentar. En Pichangol encuentras academias de {d0} con sus programas, horarios y tarifas claras, y matriculas desde la app.\n\nwww.pichangol.app/canchas?deporte=academias\n\n#pichangol #academias {dep_tag} #niños"},
+             "texto": f"El deporte enseña a perder, a esperar el turno y a volver a intentar. En {MARCA} encuentras academias de {d0} con sus programas, horarios y tarifas claras, y matriculas desde la app.\n\nwww.pichangol.app/canchas?deporte=academias\n\n#pichangol #academias {dep_tag} #niños"},
         ],
         "humor": ([
-            {"titulo": "\"Esa iba fuera\"", "subtitulo": "Lo único que Pichangol no puede arbitrar", "etiqueta": "",
-             "texto": f"Cosas que Pichangol sí resuelve: encontrar cancha, ver horarios libres, confirmar al instante.\nCosas que no: si esa bola picó dentro o fuera. 🎾\n\n{L} ({Z}) tiene turnos libres esta semana: {url}\n\n{tags}"},
+            {"titulo": "\"Esa iba fuera\"", "subtitulo": f"Lo único que {MARCA} no puede arbitrar", "etiqueta": "",
+             "texto": f"Cosas que {MARCA} sí resuelve: encontrar cancha, ver horarios libres, confirmar al instante.\nCosas que no: si esa bola picó dentro o fuera. 🎾\n\n{L} ({Z}) tiene turnos libres esta semana: {url}\n\n{tags}"},
         ] if d0 in ("tenis", "pádel", "pickleball") else [
-            {"titulo": "El arquero rotativo", "subtitulo": "Una tradición que Pichangol no puede arreglar", "etiqueta": "",
-             "texto": f"Cosas que Pichangol sí resuelve: encontrar cancha, ver horarios libres, confirmar al instante.\nCosas que no: quién va al arco. 🧤\n\n{L} ({Z}) tiene turnos libres esta semana: {url}\n\n{tags}"},
+            {"titulo": "El arquero rotativo", "subtitulo": f"Una tradición que {MARCA} no puede arreglar", "etiqueta": "",
+             "texto": f"Cosas que {MARCA} sí resuelve: encontrar cancha, ver horarios libres, confirmar al instante.\nCosas que no: quién va al arco. 🧤\n\n{L} ({Z}) tiene turnos libres esta semana: {url}\n\n{tags}"},
         ]),
         "historia": [
             {"titulo": "Hecha para jugar más", "subtitulo": "Una app peruana para reservar canchas", "etiqueta": "",
-             "texto": f"Pichangol nació de algo simple: conseguir cancha no debería ser más difícil que pedir un taxi. Por eso juntamos en un mapa las canchas con sus horarios reales, como {L} en {Z}, para que reservar tome un minuto.\n\nwww.pichangol.app\n\n{tags} #hechoenperu"},
+             "texto": f"{MARCA} nació de algo simple: conseguir cancha no debería ser más difícil que pedir un taxi. Por eso juntamos en un mapa las canchas con sus horarios reales, como {L} en {Z}, para que reservar tome un minuto.\n\nwww.pichangol.app\n\n{tags} #hechoenperu"},
         ],
     }
     return B.get(enfoque) or B["beneficio"]

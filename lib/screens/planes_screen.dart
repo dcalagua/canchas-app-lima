@@ -9,6 +9,7 @@ import '../widgets/dialogo_pichangol.dart';
 import 'plan_detalle_screen.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Planes de TRABAJO del profe: la malla de clases por deporte + evaluación de
 /// alumnos. Usa la plantilla de Pichangol (editable) o crea/duplica la suya.
 class PlanesScreen extends StatelessWidget {
@@ -81,7 +82,7 @@ class PlanesScreen extends StatelessWidget {
 
                 // Plantilla Pichangol (si hay para el deporte).
                 if (plantilla != null) ...[
-                  const _Titulo('Plantilla Pichangol'),
+                  const _Titulo('Plantilla $kBrandName'),
                   _CardPlantilla(
                     plan: plantilla,
                     onUsar: () => _usarPlantilla(context, plantilla),

@@ -716,6 +716,11 @@ def insertar_reservas(filas: list[dict]) -> str:
             "hora_fin", "estado", "traida_por_app", "precio", "sena", "pagado",
             "usuario", "deporte", "moneda", "extras", "telefono",
             "grupo_reserva_id", "medio_pago"]
+    # Atribución del AI Marketing Agent (`origen`, `utm`): solo si el SQL
+    # `supabase_ai_marketing.sql` ya agregó las columnas; si no, la reserva
+    # entra igual que siempre.
+    from marketing.agente_ia import esquema as _mkt
+    cols += [c for c in ("origen", "utm") if c in _mkt.columnas_atribucion() and any(f.get(c) for f in filas)]
     sql = (f"INSERT INTO pichangol_reservas ({', '.join(cols)}) VALUES "
            f"({', '.join(['%s'] * len(cols))})")
     try:
@@ -725,6 +730,8 @@ def insertar_reservas(filas: list[dict]) -> str:
                     for f in filas:
                         vals = [f.get(c) for c in cols]
                         vals[cols.index("extras")] = json.dumps(f.get("extras") or [])
+                        if "utm" in cols:
+                            vals[cols.index("utm")] = json.dumps(f["utm"]) if f.get("utm") else None
                         cur.execute(sql, vals)
                 conn.commit()
                 return ""
@@ -1317,6 +1324,27 @@ def participa_en(c: dict, email: str) -> bool:
         if any(str(i.get("email") or "").lower() == email for i in (p.get("roster") or [])):
             return True
     return False
+
+
+def campeonatos_publicos(deportes: tuple[str, ...], limite: int = 12) -> list[dict]:
+    """Torneos vivos de esos deportes para una portada pública (`/tenis`): no
+    eliminados, no cerrados, el más nuevo primero (id descendente)."""
+    if not pg.habilitado or not deportes:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id, academia_id, data FROM pichangol_campeonatos WHERE coalesce(eliminado,false) = false "
+                        "AND data->>'deporte' = ANY(%s) AND coalesce((data->>'cerrado')::boolean, false) = false "
+                        "ORDER BY id DESC LIMIT %s", (list(deportes), int(limite)))
+            out = []
+            for cid, aid, data in cur.fetchall():
+                d = _json_dict(data)
+                d["id"] = cid
+                d.setdefault("academiaId", aid or "")
+                out.append(d)
+            return out
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def campeonato(campeonato_id: str) -> dict | None:

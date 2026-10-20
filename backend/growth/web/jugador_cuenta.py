@@ -42,6 +42,7 @@ from web import almacen, catalogos, datos, sesion, ui
 from web.jugador_liga import (PLAY_URL, _CSS_BASE, _CSS_NIVEL, chip_nivel,
                               niveles_completos, sin_sesion)
 from web.ui import e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter()
 
@@ -321,7 +322,7 @@ def pagina_configuracion(request: Request) -> HTMLResponse:
         "<div class='cf-barra'><button type='button' class='btn' id='cfListo'>Listo</button></div>"
         "<div class='lg-sec' style='margin-top:30px'>Tu cuenta</div>" + cuenta + "</div>"
         "<script>window.CF=" + json.dumps(cfg, ensure_ascii=False).replace("</", "<\\/") + ";</script><script>" + _JS_CONFIG + "</script>")
-    return ui.shell("Configuración de la cuenta", cuerpo, sesion=ses, titulo_tab="Configuración · Pichangol")
+    return ui.shell("Configuración de la cuenta", cuerpo, sesion=ses, titulo_tab=f"Configuración · {MARCA}")
 
 
 @router.post("/web/cuenta/perfil")
@@ -432,7 +433,7 @@ def pagina_identidad(request: Request, pais: str = "") -> HTMLResponse:
         cuerpo = head + ("<div class='lg-card id-ok'><span class='em'>✅</span><div style='font-size:19px;font-weight:800;margin-top:8px'>Identidad verificada</div>"
                          "<p class='sub'>Tu perfil muestra la insignia de jugador verificado. Los dueños de cancha confían más en jugadores verificados.</p>"
                          "<a class='btn' href='/perfil'>Volver a mi perfil</a></div></div>")
-        return ui.shell("Verificar identidad", cuerpo, sesion=ses, titulo_tab="Verificar identidad · Pichangol")
+        return ui.shell("Verificar identidad", cuerpo, sesion=ses, titulo_tab=f"Verificar identidad · {MARCA}")
     iso = pais.upper() if pais.upper() in DOC else partir_celular(perfil_completo(email).get("celular") or "")[0]
     chips = "".join(f"<a class='chip{' sel' if i == iso else ''}' href='/cuenta/identidad?pais={i}'>{e(n)}</a>" for i, n in PAISES)
     doc, largo, registro = DOC[iso]
@@ -452,7 +453,7 @@ def pagina_identidad(request: Request, pais: str = "") -> HTMLResponse:
     cfg = {"pais": iso, "largo": largo, "doc": doc, "play": PLAY_URL}
     cuerpo = (head + f"<div class='lg-chips'>{chips}</div>" + panel + "</div>"
               "<script>window.ID=" + json.dumps(cfg) + ";</script><script>" + _JS_IDENTIDAD + "</script>")
-    return ui.shell("Verificar identidad", cuerpo, sesion=ses, titulo_tab="Verificar identidad · Pichangol")
+    return ui.shell("Verificar identidad", cuerpo, sesion=ses, titulo_tab=f"Verificar identidad · {MARCA}")
 
 
 @router.post("/web/cuenta/identidad")

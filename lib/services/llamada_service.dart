@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/llamada_historial.dart';
+import '../brand.dart';
 import '../widgets/dialogo_pichangol.dart';
 import 'llamada_webrtc.dart';
 
@@ -48,7 +49,7 @@ class LlamadaService {
     required bool audioSolo,
     String nombre = '',
     String email = '',
-    String asunto = 'Pichangol',
+    String asunto = kBrandName,
   }) async {
     try {
       await launchUrl(Uri.parse(enlace(sala, audioSolo: audioSolo)),
@@ -453,8 +454,8 @@ class LlamadaService {
     await _guardarPendiente(room, video, caller, hilo);
     final params = CallKitParams(
       id: room,
-      nameCaller: caller.isEmpty ? 'Pichangol' : caller,
-      appName: 'Pichangol',
+      nameCaller: caller.isEmpty ? kBrandName : caller,
+      appName: kBrandName,
       type: video ? 1 : 0, // 0 = voz, 1 = video
       // Sin notificación de "Llamada perdida / Volver a llamar": el registro de
       // llamadas de la app ya lleva ese historial; el pop-up "Call back" molesta.
@@ -553,8 +554,8 @@ class LlamadaService {
     try {
       await FlutterCallkitIncoming.startCall(CallKitParams(
         id: room,
-        nameCaller: caller.isEmpty ? 'Pichangol' : caller,
-        appName: 'Pichangol',
+        nameCaller: caller.isEmpty ? kBrandName : caller,
+        appName: kBrandName,
         type: video ? 1 : 0,
         extra: <String, dynamic>{'room': room, 'video': video, 'caller': caller},
         android: const AndroidParams(
@@ -700,9 +701,9 @@ class LlamadaService {
       final ok = await confirmarPichangol(
         context,
         titulo: 'Llamadas en pantalla completa',
-        mensaje: 'Para ver las llamadas de Pichangol a pantalla completa (como '
+        mensaje: 'Para ver las llamadas de $kBrandName a pantalla completa (como '
             'WhatsApp), incluso con el teléfono bloqueado, activa '
-            '"Notificaciones a pantalla completa" para Pichangol.',
+            '"Notificaciones a pantalla completa" para $kBrandName.',
         textoConfirmar: 'Activar',
         textoCancelar: 'Ahora no',
         icono: Icons.phone_in_talk,
@@ -738,7 +739,7 @@ class LlamadaService {
     if (delaySeg > 0) await Future.delayed(Duration(seconds: delaySeg));
     await mostrarEntrante(
       room: 'PichangolPrueba',
-      caller: 'Prueba Pichangol',
+      caller: 'Prueba $kBrandName',
       video: false,
     );
   }

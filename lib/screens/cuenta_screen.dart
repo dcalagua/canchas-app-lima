@@ -20,6 +20,7 @@ import '../widgets/dialogo_pichangol.dart';
 import '../widgets/ilustracion_pichangol.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Cuenta del club: saldo prepago (modelo inDrive), recargas y movimientos.
 class CuentaScreen extends StatefulWidget {
   const CuentaScreen({super.key});
@@ -121,7 +122,7 @@ class _CuentaScreenState extends State<CuentaScreen> {
         titulo: 'Cupón canjeado 🎁',
         cuerpo:
             '+${appState.monedaSaldoSimbolo} ${valor.toStringAsFixed(2)} a tu '
-            'saldo Pichangol.',
+            'saldo $kBrandName.',
       );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -226,7 +227,7 @@ class _CuentaScreenState extends State<CuentaScreen> {
                         child: Text(
                           'Tienes ${appState.monedaSaldoSimbolo} '
                           '${appState.saldoRegalo.toStringAsFixed(2)} de saldo '
-                          'de REGALO por unirte a Pichangol: tus comisiones se '
+                          'de REGALO por unirte a $kBrandName: tus comisiones se '
                           'descuentan de aquí primero, sin tocar tu plata.',
                           style: t.bodySmall?.copyWith(
                               color: bosque,
@@ -289,7 +290,7 @@ class _CuentaScreenState extends State<CuentaScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          'Por recibir de reservas online (Pichangol te transfiere aparte).',
+                          'Por recibir de reservas online ($kBrandName te transfiere aparte).',
                           style: t.bodySmall?.copyWith(height: 1.3),
                         ),
                       ),
@@ -510,7 +511,7 @@ class _CuentaScreenState extends State<CuentaScreen> {
                   titulo: 'Por recibir',
                   subtitulo:
                       'Pagos de tus clientes: reservas online, bonos y ventas. '
-                      'Pichangol te transfiere el neto.',
+                      '$kBrandName te transfiere el neto.',
                   icono: Icons.south_west,
                   color: teal,
                   movs: appState.movimientos
@@ -551,7 +552,7 @@ class _CuentaScreenState extends State<CuentaScreen> {
           clave: 'recarga_${DateTime.now().millisecondsSinceEpoch}',
           titulo: 'Recarga acreditada ✅',
           cuerpo:
-              '+${appState.monedaSaldoSimbolo} $monto a tu saldo Pichangol. '
+              '+${appState.monedaSaldoSimbolo} $monto a tu saldo $kBrandName. '
               'Nuevo saldo: ${appState.monedaSaldoSimbolo} ${appState.saldoClub}.',
         );
         if (!context.mounted) return;
@@ -703,7 +704,7 @@ class _TarjetaSaldo extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text('Saldo Pichangol',
+              Text('Saldo $kBrandName',
                   style: t.bodyMedium?.copyWith(color: Colors.white70)),
               const Spacer(),
               Container(
@@ -847,7 +848,7 @@ class _FilaMovimiento extends StatelessWidget {
                               _lineaRecibo(context, 'Cobrado al cliente',
                                   '$sim${montoTxt(m.brutoSoles)}'),
                               const SizedBox(height: 3),
-                              _lineaRecibo(context, 'Comisión Pichangol',
+                              _lineaRecibo(context, 'Comisión $kBrandName',
                                   '−$sim${montoTxt(m.comisionSoles)}',
                                   color: clayOscuro),
                               const Divider(height: 12),
@@ -918,22 +919,22 @@ void _mostrarRecibo(BuildContext context, MovimientoSaldo m) {
 
   // Explicación de la FUENTE (lo que el usuario pedía: "de dónde salió").
   String explicacion() {
-    if (esRecarga) return 'Entró a tu saldo Pichangol.';
+    if (esRecarga) return 'Entró a tu saldo $kBrandName.';
     if (m.tipo == TipoMovimiento.consumo) {
       return m.fuente == 'saldo'
-          ? 'Se descontó de tu saldo Pichangol.'
+          ? 'Se descontó de tu saldo $kBrandName.'
           : 'Salió de tu billetera.';
     }
     // Liquidación (reserva online):
     final transferido = liqPagada
         ? 'Ya te lo transferimos.'
-        : 'Pichangol te lo transferirá (va en "Por recibir").';
+        : '$kBrandName te lo transferirá (va en "Por recibir").';
     if (m.fuente == 'saldo') {
-      return 'Recibes el 100% de la reserva. La comisión de Pichangol se '
+      return 'Recibes el 100% de la reserva. La comisión de $kBrandName se '
           'descontó de tu SALDO (aparece como un movimiento "Comisión" aparte). '
           '$transferido';
     }
-    return 'La comisión de Pichangol se descontó del PAGO del jugador; recibes '
+    return 'La comisión de $kBrandName se descontó del PAGO del jugador; recibes '
         'el neto. $transferido';
   }
 
@@ -983,7 +984,7 @@ void _mostrarRecibo(BuildContext context, MovimientoSaldo m) {
                 fila('Estado', liqPagada ? 'Recibido' : 'Por recibir'),
                 if (m.brutoSoles > 0) fila('Reserva (bruto)', dinero(m.brutoSoles)),
                 if (m.comisionSoles > 0)
-                  fila('Comisión Pichangol', '− ${dinero(m.comisionSoles)}'),
+                  fila('Comisión $kBrandName', '− ${dinero(m.comisionSoles)}'),
                 fila(m.fuente == 'saldo' ? 'Recibes (100%)' : 'Recibes (neto)',
                     dinero(m.montoSoles.abs()),
                     fuerte: true),
@@ -1253,7 +1254,7 @@ Future<void> _descargarEstado(BuildContext context, DateTime desde,
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Column(crossAxisAlignment: pw.CrossAxisAlignment.start, children: [
-              pw.Text('Pichangol',
+              pw.Text('$kBrandName',
                   style: pw.TextStyle(
                       color: PdfColors.white,
                       fontSize: 22,
@@ -1341,7 +1342,7 @@ Future<void> _descargarEstado(BuildContext context, DateTime desde,
       ),
       pw.SizedBox(height: 16),
       pw.Text(
-          'Documento generado por la app Pichangol. No es un comprobante tributario.',
+          'Documento generado por la app $kBrandName. No es un comprobante tributario.',
           style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
     ],
   ));

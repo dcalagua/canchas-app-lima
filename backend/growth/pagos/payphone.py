@@ -33,6 +33,7 @@ import urllib.request
 from urllib.parse import urlsplit
 
 import config
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 log = logging.getLogger("payphone")
 # Uvicorn no configura el logger raíz: sin handler propio, los INFO de este
@@ -125,7 +126,7 @@ def preparar(
         "tip": 0,
         "currency": "USD",
         "clientTransactionId": client_tx_id,
-        "reference": (concepto or "Pago Pichangol")[:100],
+        "reference": (concepto or f"Pago {MARCA}")[:100],
         "responseUrl": response_url,
         "cancellationUrl": cancel_url,
         "storeId": config.PAYPHONE_STORE_ID,

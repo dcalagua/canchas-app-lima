@@ -78,6 +78,7 @@ from db.store import stores
 from pagos import libelula, pasarela_ec
 from web import datos, sesion, ui
 from web.ui import e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter()
 
@@ -264,7 +265,7 @@ def crear_orden(*, email: str, iso: str, monto_centimos: int, concepto: str, acc
     ttl = TTL.get(pas, TTL_EC)
     o = {"id": oid, "email": (email or "").strip().lower(), "nombre": (nombre or "")[:80], "pasarela": pas,
          "moneda": iso, "simbolo": SIMBOLO.get(iso, iso), "monto_centimos": monto_centimos,
-         "concepto": (concepto or "Pago Pichangol")[:120], "accion": dict(accion or {}), "estado": "pendiente",
+         "concepto": (concepto or f"Pago {MARCA}")[:120], "accion": dict(accion or {}), "estado": "pendiente",
          "creado_en": _ahora_iso(), "vence_ts": time.time() + ttl, "ref_pasarela": "", "url_pasarela": "",
          "url_resultado": "", "pagado": False, "accion_hecha": False, "intentos": 0}
     t_acc = o["accion"].get("tipo") or ""
@@ -510,7 +511,7 @@ def devolver_pago(o: dict, motivo: str = "pago_sin_reserva") -> None:
     o["devolucion_motivo"] = motivo
     o["url_resultado"] = f"/web/pago/{o['id']}"
     txt = (f"Tu pago de {sim} {monto / 100.0:.2f} no se aplicó: {det_op}. "
-           + ("Te lo devolvimos a tu saldo Pichangol: ya lo puedes usar." if a_saldo
+           + (f"Te lo devolvimos a tu saldo {MARCA}: ya lo puedes usar." if a_saldo
               else "Te devolvemos el 100 % al mismo medio de pago; te escribimos para coordinar."))
     try:
         _aviso_push_usuario(email, "Pago devuelto 💸", txt, tipo="reserva" if tipo == "reserva" else "pago")
@@ -776,7 +777,7 @@ def recargar_hospedada(request: Request, body: dict = Body(...)) -> JSONResponse
         return JSONResponse({"ok": False, "error": "monto_invalido",
                              "mensaje": f"El monto va entre {P['moneda']} {P['min']} y {P['moneda']} {P['max']}, sin decimales."}, status_code=400)
     r = crear_orden(email=email, iso=P["iso_mon"], monto_centimos=int(monto) * 100,
-                    concepto="Recarga de saldo Pichangol", accion={"tipo": "recarga"},
+                    concepto=f"Recarga de saldo {MARCA}", accion={"tipo": "recarga"},
                     nombre=str(ses.get("nombre") or ""), request=request)
     if not r.get("ok"):
         return JSONResponse({"ok": False, "error": r.get("error"),
@@ -961,9 +962,9 @@ def pagina_orden(oid: str, request: Request):
                   "<style>.aro-mini{width:26px;height:26px;border-radius:50%;border:3px solid #DDE7E2;border-top-color:var(--verde,#0B8A3E);animation:girar .9s linear infinite;flex:none}"
                   "@keyframes girar{to{transform:rotate(360deg)}}</style>"
                   f"<script>window.__orden={json.dumps({'id': oid, 'pasarela': pas})};</script><script>{_JS_ESPERA}</script>")
-        return ui.shell("Confirmando tu pago", cuerpo, sesion=ses, titulo_tab="Confirmando tu pago · Pichangol")
+        return ui.shell("Confirmando tu pago", cuerpo, sesion=ses, titulo_tab=f"Confirmando tu pago · {MARCA}")
     if o.get("estado") == "aprobado_sin_reserva":
-        txt = ("Te lo devolvimos a tu saldo Pichangol: ya lo puedes usar." if o.get("devolucion") == "saldo"
+        txt = (f"Te lo devolvimos a tu saldo {MARCA}: ya lo puedes usar." if o.get("devolucion") == "saldo"
                else "Te devolvemos el 100 % al mismo medio de pago; te escribimos para coordinar.")
         titulo, expl, _det = _MOTIVOS_DEV.get(o.get("devolucion_motivo") or "pago_sin_reserva", _MOTIVOS_DEV["pago_sin_reserva"])
         cuerpo = (f"<div class='panel' style='max-width:560px;margin:32px auto'><h1 style='font-size:22px'>{e(titulo)}</h1>"

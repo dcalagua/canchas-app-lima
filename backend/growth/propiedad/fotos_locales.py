@@ -40,6 +40,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from db.store import stores
 from propiedad import fotos_reclamo
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 CLAVE_MIN = "fotos_local_min"
 CLAVE_PLAZO = "fotos_local_plazo_dias"
@@ -359,7 +360,7 @@ def texto_aviso(est: dict, motivo: str) -> tuple[str, str]:
     fotos = f"{falta} foto{'s' if falta != 1 else ''}"
     if est.get("estado") == "vencido":
         return ("📷 Tu local ya no muestra fotos",
-                f"Venció el plazo: {local} ya no muestra fotos en Pichangol. Sube {fotos} tuyas y vuelve a lucir.")
+                f"Venció el plazo: {local} ya no muestra fotos en {MARCA}. Sube {fotos} tuyas y vuelve a lucir.")
     dias = est.get("dias_restantes")
     cuando = f"antes del {fecha_corta(est.get('vence'))}"
     if dias is not None:
@@ -475,7 +476,7 @@ def aviso_html(est: dict) -> str:
     local = e(est.get("local") or "tu local")
     if est["estado"] == "vencido":
         clase = "err"
-        txt = (f"📷 <b>{local} ya no muestra fotos.</b> Sube {fotos} tuyas del local y vuelve a lucir en Pichangol "
+        txt = (f"📷 <b>{local} ya no muestra fotos.</b> Sube {fotos} tuyas del local y vuelve a lucir en {MARCA} "
                f"(tienes {est['n']} de {est['minimo']}).")
     else:
         d = est.get("dias_restantes") or 0

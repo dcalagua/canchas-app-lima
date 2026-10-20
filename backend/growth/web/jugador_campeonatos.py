@@ -51,6 +51,7 @@ from web import campeonatos_logica as L
 from web import datos, sesion, ui
 from web.anfitrion_campeonatos import _EMOJI, _NOMBRE, _estado_pill, _fecha_hora_corta, _moneda, _pais
 from web.ui import e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["web-jugador-campeonatos"])
 BASE = "/torneo"
@@ -106,7 +107,7 @@ def _sesion_json(request: Request):
 
 def _falta_saldo(c: dict, email: str, requerido: int) -> JSONResponse:
     saldo = stores.saldo_centimos(email)
-    return _err(f"Esto cuesta {_monto(c, requerido)} y se paga de tu saldo Pichangol (tienes {_monto(c, saldo)}). "
+    return _err(f"Esto cuesta {_monto(c, requerido)} y se paga de tu saldo {MARCA} (tienes {_monto(c, saldo)}). "
                 "Recarga y vuelve a intentarlo.", 402, error="falta_saldo", falta_saldo=True,
                 requerido_centimos=requerido, saldo_centimos=saldo, recargar="/mi-billetera#recargar")
 
@@ -123,7 +124,7 @@ def _moneda_billetera_ok(c: dict, email: str) -> str:
     if mb == _iso(c):
         return ""
     sim = paises.simbolo_de_moneda(mb)
-    return (f"Tu saldo Pichangol está en {sim} y este campeonato cobra en {_moneda(c)}. "
+    return (f"Tu saldo {MARCA} está en {sim} y este campeonato cobra en {_moneda(c)}. "
             "Solo se puede pagar con saldo de la misma moneda.")
 
 
@@ -729,7 +730,7 @@ def pagina_torneo(request: Request, cid: str, equipo: str = "") -> HTMLResponse:
     partes = [f"<a class='anf-back' href='/anfitrion/campeonatos' style='text-decoration:none;color:var(--tenue);font-weight:700'>‹ Mis campeonatos</a>",
               f"<div style='margin-top:10px'>{_estado_pill(c)}</div><h1>🏆 {e(c.get('nombre') or 'Campeonato')}</h1>",
               _chips_info(c),
-              f"<div class='saldo'>👛 Tu saldo Pichangol: <b>{e(_monto(c, saldo))}</b> · <a href='/mi-billetera#recargar'>Recargar</a> · "
+              f"<div class='saldo'>👛 Tu saldo {MARCA}: <b>{e(_monto(c, saldo))}</b> · <a href='/mi-billetera#recargar'>Recargar</a> · "
               f"<a href='{pub}'>Ver la página del torneo</a></div>"]
     if es_dueno:
         partes.append(f"<div class='card'><h2>Eres el organizador</h2><p class='sub'>Administra participantes, fixture y resultados desde Mis campeonatos. "
@@ -751,7 +752,7 @@ def pagina_torneo(request: Request, cid: str, equipo: str = "") -> HTMLResponse:
                         "<label class='l'>Nombre del alumno (niño/a)</label><input type='text' maxlength='80' data-f='nombre' autocomplete='off'>")
         partes.append(
             f"<div class='card' id='insc'><h2>{'Inscribir a otro hijo(a)' if hijo_fijo else 'Inscribirme'}</h2>"
-            "<p class='sub'>Se paga de tu saldo Pichangol, como en la app. El organizador recibe tu inscripción al instante.</p>"
+            f"<p class='sub'>Se paga de tu saldo {MARCA}, como en la app. El organizador recibe tu inscripción al instante.</p>"
             "<label class='l'>¿Quién va a competir?</label><div class='seg' data-quien>"
             f"<button type='button' data-q='yo' class='{'' if hijo_fijo else 'sel'}'{' disabled' if hijo_fijo else ''}>Yo</button>"
             f"<button type='button' data-q='hijo' class='{'sel' if hijo_fijo else ''}'>Mi hijo(a)</button></div>"
@@ -809,10 +810,10 @@ def pagina_torneo(request: Request, cid: str, equipo: str = "") -> HTMLResponse:
            "cuotaEquipo": L.cuota_equipo_centimos(c), "cuotaJugador": L.cuota_jugador_centimos(c) if L.tiene_cuota_por_equipo(c) else 0}
     cuerpo = (f"<style>{_CSS}</style><div class='tn'>" + "".join(partes) + "</div>"
               "<script>window.TN=" + json.dumps(cfg).replace("<", "\\u003c") + ";</script><script>" + _JS + "</script>")
-    return ui.shell(str(c.get("nombre") or "Campeonato"), cuerpo, sesion=ses, titulo_tab=f"{c.get('nombre') or 'Campeonato'} · Inscripción · Pichangol")
+    return ui.shell(str(c.get("nombre") or "Campeonato"), cuerpo, sesion=ses, titulo_tab=f"{c.get('nombre') or 'Campeonato'} · Inscripción · {MARCA}")
 
 
-_JS = r"""
+_JS = (r"""
 (function(){
 var C = window.TN || {}, $ = function(i){ return document.getElementById(i); }, tok = {yo: '', hijo: ''};
 function fmt(c){ var v = (c || 0) / 100; return C.moneda + ' ' + (Math.abs(v - Math.round(v)) < 0.005 ? Math.round(v) : v.toFixed(2)); }
@@ -864,7 +865,7 @@ if(bi) bi.addEventListener('click', function(){
   var paso = (quien === 'hijo' && C.exigeDni) ? documento('hijo') : (quien === 'yo' ? docYo() : Promise.resolve(''));
   paso.then(function(t){ if(t === null) return;
     var costo = Number(bi.dataset.costo || 0);
-    var conf = costo > 0 ? pcgConfirmar({titulo: 'Inscribirme · ' + C.nombre, icono: '🏆', mensaje: 'La inscripción cuesta ' + fmt(costo) + ' y se paga de tu saldo Pichangol (tienes ' + fmt(C.saldo) + ').', confirmar: 'Pagar ' + fmt(costo) + ' e inscribirme', cancelar: 'Cancelar'}) : Promise.resolve(true);
+    var conf = costo > 0 ? pcgConfirmar({titulo: 'Inscribirme · ' + C.nombre, icono: '🏆', mensaje: 'La inscripción cuesta ' + fmt(costo) + ' y se paga de tu saldo ⟦MARCA⟧ (tienes ' + fmt(C.saldo) + ').', confirmar: 'Pagar ' + fmt(costo) + ' e inscribirme', cancelar: 'Cancelar'}) : Promise.resolve(true);
     conf.then(function(ok){ if(!ok) return; pcgCargando('Procesando tu inscripción…'); bi.disabled = true;
       post('/web/torneo/' + encodeURIComponent(C.id) + '/inscribir', {quien: quien, nombre: nombre, edad: edad, whatsapp: wa, consiente: cons, doc_token: t || tok[quien] || ''})
         .then(function(j){ bi.disabled = false; if(j.ok) return exito(j, '¡Inscrito! 🏆'); pcgCargando(false); fallo(j, err); })
@@ -885,7 +886,7 @@ if(bc) bc.addEventListener('click', function(){ var err = $('eqErr'); err.textCo
 // ── Fútbol: unirme (código o tocando el equipo) ──
 function unirme(body, nombre, parte, pozo, errEl){
   docYo().then(function(t){ if(t === null) return;
-    var msg = parte < 0 ? (C.cuota ? 'Si al equipo le falta pozo, pones tu parte (hasta ' + fmt(C.cuotaJugador) + ') de tu saldo Pichangol (tienes ' + fmt(C.saldo) + '). Quedas en el plantel con tu cuenta.' : 'Quedarás en el plantel con tu cuenta y tu capitán recibirá el aviso.') : C.cuota ? (parte > 0 ? 'Pones tu parte: ' + fmt(parte) + ' de tu saldo (el equipo lleva ' + fmt(pozo) + ' de ' + fmt(C.cuotaEquipo) + '; tienes ' + fmt(C.saldo) + '). Quedas en el plantel con tu cuenta.' : 'El pozo del equipo ya está completo: entras sin pagar.') : 'Quedarás en el plantel con tu cuenta y tu capitán recibirá el aviso.';
+    var msg = parte < 0 ? (C.cuota ? 'Si al equipo le falta pozo, pones tu parte (hasta ' + fmt(C.cuotaJugador) + ') de tu saldo ⟦MARCA⟧ (tienes ' + fmt(C.saldo) + '). Quedas en el plantel con tu cuenta.' : 'Quedarás en el plantel con tu cuenta y tu capitán recibirá el aviso.') : C.cuota ? (parte > 0 ? 'Pones tu parte: ' + fmt(parte) + ' de tu saldo (el equipo lleva ' + fmt(pozo) + ' de ' + fmt(C.cuotaEquipo) + '; tienes ' + fmt(C.saldo) + '). Quedas en el plantel con tu cuenta.' : 'El pozo del equipo ya está completo: entras sin pagar.') : 'Quedarás en el plantel con tu cuenta y tu capitán recibirá el aviso.';
     pcgConfirmar({titulo: nombre ? 'Unirme a «' + nombre + '»' : 'Unirme al equipo', icono: '🎽', mensaje: msg, confirmar: parte > 0 ? 'Pagar ' + fmt(parte) + ' y unirme' : (parte < 0 && C.cuota ? 'Unirme y pagar mi parte' : 'Unirme'), cancelar: 'Cancelar'}).then(function(ok){
       if(!ok) return; pcgCargando(parte !== 0 && C.cuota ? 'Poniendo tu parte…' : 'Uniéndote…'); body.doc_token = t || tok.yo || '';
       post('/web/torneo/' + encodeURIComponent(C.id) + '/equipo/unirme', body).then(function(j){ if(j.ok) return exito(j, '¡Te uniste! 🎽'); pcgCargando(false); fallo(j, errEl); })
@@ -906,4 +907,4 @@ if(bcod) bcod.addEventListener('click', function(){ var v = ($('codEq').value ||
   if(!v){ $('codErr').textContent = 'Escribe el código del equipo.'; return; }
   unirme({codigo: v}, '', -1, 0, $('codErr')); });
 })();
-"""
+""").replace('⟦MARCA⟧', MARCA)

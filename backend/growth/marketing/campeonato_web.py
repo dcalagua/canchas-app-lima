@@ -21,6 +21,7 @@ import urllib.request
 import urllib.error
 
 import config
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 # Paleta del logo nuevo (la misma del APK).
 _ESMERALDA = "#0E8F67"
@@ -276,6 +277,27 @@ def _url_web(campeonato_id: str, equipo: str = "") -> str:
     return f"/torneo/{urllib.parse.quote(campeonato_id, safe='')}{q}"
 
 
+def organizador_de(c: dict) -> dict:
+    """Marca del ORGANIZADOR (pedido del director, 20-oct-2026: los clubes de
+    tenis quieren SU torneo, no uno "de Pichangol"): {nombre, logo}. Nombre =
+    el campo `organizador` → la academia dueña del torneo → el auspiciador;
+    logo = el del torneo → el de la academia. Vacío = página de plataforma."""
+    nombre = " ".join(str(c.get("organizador") or "").split())[:60]
+    logo = str(c.get("logoUrl") or "").strip()
+    aid = str(c.get("academiaId") or "").strip()
+    if aid and (not nombre or not logo.startswith("http")):
+        try:
+            from web import datos as _datos
+            a = _datos.academia(aid) or {}
+        except Exception:  # noqa: BLE001 — sin base, sigue con lo que hay
+            a = {}
+        nombre = nombre or " ".join(str(a.get("nombre") or "").split())[:60]
+        if not logo.startswith("http"):
+            logo = str(a.get("logoUrl") or "").strip()
+    nombre = nombre or str(c.get("auspiciador") or "").strip()
+    return {"nombre": nombre, "logo": logo if logo.startswith("http") else ""}
+
+
 def equipo_por_codigo(c: dict, codigo: str) -> dict | None:
     """El participante-equipo cuyo `codigo` (6 letras del capitán) coincide."""
     cod = (codigo or "").strip().upper()
@@ -346,13 +368,13 @@ def html_campeonato(c: dict, campeonato_id: str = "",
                 f'<div class="cta"><b>Te invitaron al equipo '
                 f'«{_esc(str(eq.get("nombre") or ""))}»</b>{costo_txt}<br>'
                 f'<span>{plantel} jugador{"es" if plantel != 1 else ""} en el '
-                f'plantel{cap_txt}. Al tocar, Pichangol te une con tu cuenta; '
+                f'plantel{cap_txt}. Al tocar, {MARCA} te une con tu cuenta; '
                 f'sin escribir códigos.{en_juego}</span><br>'
                 f'<div class="ctas"><a class="mapbtn" href="{web}">'
                 f'{emo} Unirme al equipo aquí</a>'
                 f'<a class="mapbtn sec" href="{intent}">📱 Unirme al equipo en la app</a></div>'
                 f'<span style="font-size:12px">Aquí mismo pagas tu parte con tu '
-                f'saldo Pichangol (inicia sesión con Google). En la app: si no '
+                f'saldo {MARCA} (inicia sesión con Google). En la app: si no '
                 f'la tienes, el botón te lleva a descargarla.</span></div>')
         else:
             intent = _intent_unirse(campeonato_id)
@@ -369,16 +391,16 @@ def html_campeonato(c: dict, campeonato_id: str = "",
                 f'{emo} {"Inscribir mi equipo aquí" if c.get("deporte") == "futbol" else "Inscribirme aquí"}</a>'
                 f'<a class="mapbtn sec" href="{intent}">📱 Unirme en la app</a></div>'
                 f'<span style="font-size:12px">Aquí mismo pagas con tu saldo '
-                f'Pichangol (inicia sesión con Google). En la app: si no la '
+                f'{MARCA} (inicia sesión con Google). En la app: si no la '
                 f'tienes, el botón te lleva a descargarla.</span></div>')
     if not inscripcion:
         intent = _intent_unirse(campeonato_id)
         inscripcion = (
-            f'<div class="cta"><b>Sigue el torneo en Pichangol</b><br>'
+            f'<div class="cta"><b>Sigue el torneo en {MARCA}</b><br>'
             f'<span>Resultados, llave y avisos en tu teléfono.</span><br>'
             f'<a class="mapbtn" style="margin-top:10px" href="{intent}">'
             f'{emo} Abrir en la app</a><br>' 
-            f'<span style="font-size:12px">Si no tienes Pichangol, el botón '
+            f'<span style="font-size:12px">Si no tienes {MARCA}, el botón '
             f'te lleva a descargarla.</span></div>')
     # ── Publicidad: premios + auspiciador (espacio de marca) ──
     auspiciador = str(c.get("auspiciador") or "").strip()
@@ -423,10 +445,18 @@ def html_campeonato(c: dict, campeonato_id: str = "",
             f'loading="lazy"></span>' for u in logos_ausp)
         bloque_auspiciador += (
             f'<h2>🤝 Auspician</h2><div class="ausps">{tiles}</div>')
-    byline = (f'<div class="byline">by <b>{_esc(auspiciador)}</b></div>'
-              if auspiciador else "")
+    org = organizador_de(c)
+    org_nombre = org["nombre"]
+    byline = ""
+    if org_nombre and org_nombre != auspiciador:
+        byline = f'<div class="byline">Organiza <b>{_esc(org_nombre)}</b></div>'
+    if auspiciador:
+        byline += f'<div class="byline">by <b>{_esc(auspiciador)}</b></div>'
+    org_logo = (f'<img class="orglogo" src="{_esc(org["logo"])}" alt="{_esc(org_nombre or "organizador")}">'
+                if org["logo"] else "")
     # Vista previa RICA en WhatsApp (og:tags): título, descripción y logo.
     og_titulo = f'🏆 {c.get("nombre", "Campeonato")}' + (
+        f' · {org_nombre}' if org_nombre and org_nombre != auspiciador else '') + (
         f' by {auspiciador}' if auspiciador else '')
     og_desc = " · ".join(x for x in [
         deporte, formato,
@@ -447,7 +477,7 @@ def html_campeonato(c: dict, campeonato_id: str = "",
 
     return f"""<!-- campeonato-web railway v1 --><!doctype html><html lang="es"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{_esc(c.get("nombre", "Campeonato"))} · Pichangol</title>
+<title>{_esc(c.get("nombre", "Campeonato"))} · {_esc(org_nombre or MARCA)}</title>
 <meta property="og:title" content="{_esc(og_titulo)}">
 <meta property="og:description" content="{_esc(og_desc)}">
 <meta property="og:type" content="website">
@@ -487,6 +517,8 @@ def html_campeonato(c: dict, campeonato_id: str = "",
   .cta span{{color:#627080;font-size:13px}}
   .vacio{{color:#627080;padding:16px 4px}}
   .byline{{margin-top:4px;font-size:14px;opacity:.95}}
+  .orglogo{{display:block;width:76px;height:76px;object-fit:contain;background:#fff;border-radius:18px;padding:6px;margin-bottom:12px;box-shadow:0 2px 10px rgba(0,0,0,.18)}}
+  .foot .tec{{display:block;margin-top:6px;font-size:11px;opacity:.85}}
   .premios{{list-style:none;background:#fff;border-radius:14px;padding:12px 16px;font-size:14px;line-height:2}}
   .auspicio{{background:#fff;border-left:4px solid {_ESMERALDA};border-radius:12px;padding:12px 14px;margin-top:12px;font-size:13.5px;color:#333}}
   .podio{{background:linear-gradient(135deg,var(--noche),#0B7A58);color:#fff;border-radius:14px;padding:14px 16px;margin-top:16px;font-size:14px;line-height:1.9}}
@@ -501,6 +533,7 @@ def html_campeonato(c: dict, campeonato_id: str = "",
   .foot a{{color:var(--noche);font-weight:700;text-decoration:none}}
 </style></head><body>
   <div class="hero">
+    {org_logo}
     {cat}
     <h1>🏆 {_esc(c.get("nombre", ""))}</h1>
     {byline}
@@ -525,8 +558,7 @@ def html_campeonato(c: dict, campeonato_id: str = "",
     </tbody></table></div>
   </div>
   <div class="foot">
-    Organizado con <b>Pichangol</b> · Reserva, juega, repite.<br>
-    <a href="{_descarga()}">Descargar la app</a>
+    {f'Torneo de <b>{_esc(org_nombre)}</b><span class="tec">con la tecnología de {MARCA} · <a href="{_descarga()}">Descargar la app</a></span>' if org_nombre else f'Organizado con <b>{MARCA}</b> · Reserva, juega, repite.<br><a href="{_descarga()}">Descargar la app</a>'}
   </div>
   <script>{_js_abrir_app()}</script>
 </body></html>"""

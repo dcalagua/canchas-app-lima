@@ -7,6 +7,7 @@ import '../config/pais.dart';
 import '../services/pagos_service.dart';
 import 'models.dart';
 
+import '../brand.dart';
 /// BOLEADORES (peloteo por turno, sep-2026; `docs/diseno-boleadores.md`).
 ///
 /// Jugadores de la Liga Pichangol se registran como boleadores (categoría 5P…
@@ -151,7 +152,7 @@ class BoleadorPublico {
   String get detalle {
     final partes = [
       ...etiquetas.take(3),
-      aceptadas > 0 ? '$aceptadas boleo${aceptadas == 1 ? '' : 's'}' : 'Nuevo en Pichangol',
+      aceptadas > 0 ? '$aceptadas boleo${aceptadas == 1 ? '' : 's'}' : 'Nuevo en $kBrandName',
     ];
     return partes.join(' · ');
   }

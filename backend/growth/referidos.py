@@ -35,6 +35,7 @@ from pydantic import BaseModel
 import paises
 from db import pg
 from db.store import stores
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(prefix="/referidos", tags=["referidos"])
 
@@ -238,12 +239,12 @@ def _avisar(reg: dict, invitado: str) -> None:
         if reg.get("ref_centimos") and reg.get("referidor"):
             _aviso_push_usuario(
                 reg["referidor"], "¡Un amigo usó tu código! 🎁",
-                f"Te sumamos {_fmt(reg['ref_centimos'], reg['ref_moneda'])} a tu saldo Pichangol.",
+                f"Te sumamos {_fmt(reg['ref_centimos'], reg['ref_moneda'])} a tu saldo {MARCA}.",
                 tipo="saldo")
         if reg.get("inv_centimos"):
             _aviso_push_usuario(
                 invitado, "Bono de bienvenida 🎁",
-                f"Te sumamos {_fmt(reg['inv_centimos'], reg['inv_moneda'])} a tu saldo Pichangol.",
+                f"Te sumamos {_fmt(reg['inv_centimos'], reg['inv_moneda'])} a tu saldo {MARCA}.",
                 tipo="saldo")
     except Exception:  # noqa: BLE001
         pass
@@ -295,7 +296,7 @@ def canjear(invitado: str, codigo: str, origen: str = "app") -> dict:
         ref = referidor_de(cod)
         if not ref:
             return {"ok": False, "error": "codigo_invalido",
-                    "mensaje": "Ese código no corresponde a ninguna cuenta de Pichangol."}
+                    "mensaje": f"Ese código no corresponde a ninguna cuenta de {MARCA}."}
         if ref == inv:
             return {"ok": False, "error": "codigo_propio", "mensaje": "Ese es tu propio código."}
         reg = _registrar_canje(inv, cod, ref, origen)

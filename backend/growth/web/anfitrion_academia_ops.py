@@ -58,6 +58,7 @@ import paises
 from db import pg
 from web import datos, sesion, ui
 from web.router import PLAY_URL, e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["web-anfitrion-academia-ops"])
 
@@ -508,7 +509,7 @@ def _entrar_o_app(request: Request, ruta: str):
     cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'>"
               "<h1 style='font-size:22px'>Mi academia</h1>"
               "<p class='sub'>En esta web aún no está activo el inicio de sesión. Administra tu academia desde la app.</p>"
-              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a></div></div>")
     return None, ui.shell("Mi academia", cuerpo, sesion=None)
 
 
@@ -639,7 +640,7 @@ def _av(m: dict) -> str:
 # ══ ASISTENCIA ════════════════════════════════════════════════════════════════
 
 def _falta_sql(que: str) -> str:
-    return (f"<div class='aviso warn aco-aviso'>⚙️ {que} en la web se activa cuando el equipo de Pichangol termine de "
+    return (f"<div class='aviso warn aco-aviso'>⚙️ {que} en la web se activa cuando el equipo de {MARCA} termine de "
             "configurarla. Mientras tanto, regístrala en la app.</div>")
 
 
@@ -1030,7 +1031,7 @@ def pagina_ranking(request: Request, academia: str = "", sede: str = "", categor
               + (" disabled" if len(mats) < 2 else "") + ">＋ Registrar resultado</button></div>"
               + (f"<div class='tabla aco-rk' style='margin-top:14px'><table><thead><tr><th>#</th><th>Jugador</th><th>Pts</th><th>PJ</th><th>PG</th><th>PP</th><th>%</th><th></th></tr></thead><tbody>{filas}</tbody></table></div>"
                  if tabla else "<div class='anf-vacio' style='margin-top:18px'>Aún no hay alumnos en esta vista.</div>")
-              + f"<p class='aco-n' style='margin-top:8px'>Victoria {PUNTOS_VICTORIA} pts · derrota {PUNTOS_DERROTA} pt. Estos partidos también suman al ranking global de Pichangol.</p>"
+              + f"<p class='aco-n' style='margin-top:8px'>Victoria {PUNTOS_VICTORIA} pts · derrota {PUNTOS_DERROTA} pt. Estos partidos también suman al ranking global de {MARCA}.</p>"
               + f"<div class='aco-card' style='margin-top:16px'><b>Partidos ({len(partidos)})</b>{lista or '<p class=aco-n>Aún no registras partidos.</p>'}</div>")
     cfg = {"alumnos": sorted([{"id": m.get("id"), "nombre": m.get("nombre")} for m in mats], key=lambda x: str(x["nombre"] or "").lower()),
            "sedes": [{"id": s.get("id"), "nombre": s.get("nombre")} for s in sedes] if len(sedes) > 1 else [],
@@ -1275,7 +1276,7 @@ def pagina_reportes(request: Request, academia: str = "", rango_sel: str = "mes"
     pct_ef = (com / bruto * 100) if bruto > 0 else pct
     comision = (f"<div class='aco-card'><b>💳 Cobro digital · es como tu POS</b><div class='aco-n'>Lo que tus alumnos pagan en línea lleva {pct_ef:.1f}% de comisión; el efectivo 0%.</div>"
                 f"<div class='aco-cuota'><span>{int(_num(res.get('cobros')))} cobros en línea</span><b>{e(sim)} {bruto:.2f}</b></div>"
-                f"<div class='aco-cuota'><span>Comisión Pichangol</span><b>− {e(sim)} {com:.2f}</b></div>"
+                f"<div class='aco-cuota'><span>Comisión {MARCA}</span><b>− {e(sim)} {com:.2f}</b></div>"
                 f"<div class='aco-cuota'><span><b>Neto para tu academia</b></span><b>{e(sim)} {neto:.2f}</b></div></div>")
     ret = _num(a.get("retribucionClubPct"))
     club = ""

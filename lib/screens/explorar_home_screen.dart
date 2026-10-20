@@ -1018,7 +1018,7 @@ class _CircuitoBannerExplorar extends StatelessWidget {
                 const SizedBox(width: 10),
                 const Expanded(
                   child: Text(
-                      'Liga de tenis Pichangol · ranking de tu ciudad y retos',
+                      'Liga de tenis $kBrandName · ranking de tu ciudad y retos',
                       style: TextStyle(
                           color: bosque,
                           fontWeight: FontWeight.w700,

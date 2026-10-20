@@ -17,6 +17,7 @@ import urllib.error
 import urllib.request
 
 import config
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 
 def disponible() -> bool:
@@ -122,7 +123,7 @@ def datos_cliente(*, email: str = "", nombre: str = "", apellido: str = "",
     tel = "".join(c for c in (telefono or "") if c.isdigit())
     d = {
         "first_name": _campo(nom, "Cliente", 2, 50),
-        "last_name": _campo(ape, "Pichangol", 2, 50),
+        "last_name": _campo(ape, MARCA, 2, 50),
         "address": dire,
         "address_city": ciu,
         "country_code": iso,
@@ -156,7 +157,7 @@ def crear_cargo(
     # que caracteres especiales o textos cortos generen errores.
     desc = "".join(c for c in descripcion if 32 <= ord(c) < 127).strip()
     if len(desc) < 5:
-        desc = "Pago Pichangol"
+        desc = f"Pago {MARCA}"
     desc = desc[:80]
     body = {
         "amount": int(monto_centimos),
@@ -216,7 +217,7 @@ def crear_customer(*, email: str, nombre: str = "", apellido: str = "",
     solo_digitos = "".join(c for c in (telefono or "") if c.isdigit())
     body = {
         "first_name": _campo(nombre, "Cliente", 2, 50),
-        "last_name": _campo(apellido, "Pichangol", 2, 50),
+        "last_name": _campo(apellido, MARCA, 2, 50),
         "email": (email or "").strip()[:50],
         "address": "Lima - Peru",     # ≥ 5 chars (Culqi lo exige)
         "address_city": "Lima",

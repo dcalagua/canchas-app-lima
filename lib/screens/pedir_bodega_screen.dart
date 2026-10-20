@@ -17,6 +17,7 @@ import '../widgets/dialogo_pichangol.dart';
 import '../widgets/imagen_producto_bodega.dart';
 import 'login_google_sheet.dart';
 
+import '../brand.dart';
 /// PEDIR A LA CANCHA (bodega del local): el jugador, DENTRO del local, arma
 /// su pedido (2 cervezas 🍺), elige a qué zona se lo llevan y lo envía; al
 /// dueño le llega push, confirma y se lo llevan. El PAGO es con el dueño al
@@ -386,7 +387,7 @@ class _PedirBodegaScreenState extends State<PedirBodegaScreen> {
           : '🧃 Pedido a la ${pedido.zona}',
       cuerpo:
           '${pedido.resumen} · $_mon ${pedido.total.toStringAsFixed(2)} · ${pedido.clienteNombre}. '
-          '${conSaldo ? 'Ya está pagado con saldo Pichangol: solo entrégalo.' : 'Confírmalo en Mi bodega.'}',
+          '${conSaldo ? 'Ya está pagado con saldo $kBrandName: solo entrégalo.' : 'Confírmalo en Mi bodega.'}',
       destino: 'dueno',
     );
     setState(() {

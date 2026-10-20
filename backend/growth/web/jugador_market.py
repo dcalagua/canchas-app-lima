@@ -62,6 +62,7 @@ from pagos import culqi
 from pagos.stock_productos import apartar_unidad, devolver_unidad  # noqa: F401 (tests los monkeypatchean aquí)
 from web import catalogos, datos, sesion, ui
 from web.router import PLAY_URL, _moneda_de, _no_encontrada, _pago_web_disponible, _pasarela_web
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter()
 e = ui.e
@@ -269,7 +270,7 @@ def _sin_login(titulo: str, que: str) -> HTMLResponse:
     cuerpo = ("<div class='panel' style='max-width:520px;margin:40px auto;text-align:center'>"
               f"<h1 style='font-size:22px'>{e(titulo)}</h1>"
               f"<p class='sub'>En esta web aún no está activo el inicio de sesión. {e(que)}</p>"
-              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a></div></div>")
     return ui.shell(titulo, cuerpo, sesion=None)
 
 
@@ -354,7 +355,7 @@ def _js_culqi(cfg: dict) -> str:
     hosp = bool(cfg.get("pasarela")) and cfg.get("pasarela") != "culqi"
     return (("" if hosp else "<script src='https://checkout.culqi.com/js/v4'></script>")
             + "<script>window.__mk=" + json.dumps(cfg, ensure_ascii=False) + ";</script><script>"
-            + (sesion.JS_SESION if sesion.activo() else "") + (ph.JS_IR_PASARELA if hosp else "") + r"""
+            + (sesion.JS_SESION if sesion.activo() else "") + (ph.JS_IR_PASARELA if hosp else "") + (r"""
 (function(){
   var C = window.__mk, $ = function(id){ return document.getElementById(id); };
   function error(m){ var el = $('mkErr'); if(el){ el.textContent = m; el.style.display = 'block'; } else if(window.pcgAvisar) pcgAvisar({titulo: 'No se pudo', mensaje: m, icono: '⚠️'}); }
@@ -382,7 +383,7 @@ def _js_culqi(cfg: dict) -> str:
         return;
       }
       Culqi.publicKey = C.pk;
-      Culqi.settings({ title: 'Pichangol', currency: 'PEN', amount: montoC });
+      Culqi.settings({ title: '⟦MARCA⟧', currency: 'PEN', amount: montoC });
       Culqi.options({ lang: 'es', installments: false,
         paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false },
         style: { logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
@@ -407,7 +408,7 @@ def _js_culqi(cfg: dict) -> str:
   }
   document.querySelectorAll('[data-pagar]').forEach(function(b){ b.addEventListener('click', pagar); });
 })();
-</script>""")
+</script>""").replace('⟦MARCA⟧', MARCA))
 
 
 def _login_box(volver: str, texto: str) -> str:
@@ -448,7 +449,7 @@ def pagina_marketplace(request: Request) -> HTMLResponse:
             "<div class='mk-vacio'><div class='em'>🏪</div><b>Aún no hay productos</b>"
             "Cuando los locales publiquen raquetas, pelotas y más, aparecerán aquí.</div>")
     cuerpo = (_CSS
-              + "<div class='mk-h'><div><h1>Marketplace Pichangol</h1>"
+              + f"<div class='mk-h'><div><h1>Marketplace {MARCA}</h1>"
               "<p class='sub'>Raquetas, pelotas e indumentaria de los locales y jugadores verificados. Pagas seguro y coordinas la entrega con el vendedor.</p></div>"
               "<div class='acc'><a class='btn sec' href='/mis-ordenes'>🛍️ Mis compras</a></div></div>"
               "<div class='mk-busca'><span>🔍</span><input id='mkQ' type='search' placeholder='Buscar producto o vendedor…' autocomplete='off' maxlength='60'></div>"
@@ -466,8 +467,8 @@ def pagina_marketplace(request: Request) -> HTMLResponse:
   document.querySelectorAll('#mkCats .chip').forEach(function(c){ c.addEventListener('click', function(){ cat = c.dataset.cat; sel(); filtrar(); }); });
   sel(); filtrar();
 })();</script>""")
-    return ui.shell("Marketplace", cuerpo, sesion=ses, ancho=True, titulo_tab="Marketplace · Pichangol",
-                    desc="Marketplace Pichangol: raquetas, pelotas, calzado e indumentaria deportiva con pago seguro.")
+    return ui.shell("Marketplace", cuerpo, sesion=ses, ancho=True, titulo_tab=f"Marketplace · {MARCA}",
+                    desc=f"Marketplace {MARCA}: raquetas, pelotas, calzado e indumentaria deportiva con pago seguro.")
 
 
 # ── 2) FICHA DEL PRODUCTO + compra ───────────────────────────────────────────
@@ -500,7 +501,7 @@ def pagina_producto(request: Request, producto_id: str) -> HTMLResponse:
              + (f"<p style='margin-top:16px;line-height:1.55;white-space:pre-line'>{e(p.get('descripcion'))}</p>" if p.get("descripcion") else "")
              + f"<div class='mk-vend'><div class='mk-av'>{av}</div><div style='flex:1;min-width:0'><div class='sub' style='margin:0;font-size:12.5px'>Vendedor</div>"
              f"<b>{e(vend)}</b>" + (" <span class='vok'>Vendedor verificado ✓</span>" if verif else "") + "</div></div>"
-             "<div class='mk-prot'><span>🛡️</span><span>Pago protegido por Pichangol: el vendedor recibe tu pago recién cuando confirmas que te llegó el producto. "
+             f"<div class='mk-prot'><span>🛡️</span><span>Pago protegido por {MARCA}: el vendedor recibe tu pago recién cuando confirmas que te llegó el producto. "
              "Después de pagar coordinas la entrega con el vendedor.</span></div>")
     puede = _pago_web_disponible(iso) and p["precio"] >= 1
     from web import pago_hospedado as ph
@@ -517,14 +518,14 @@ def pagina_producto(request: Request, producto_id: str) -> HTMLResponse:
     elif not puede:
         motivo = (f"Este producto se cobra en {e(sim)} y el pago en línea en esa moneda aún no está disponible en la web."
                   if iso != "PEN" else ("El monto mínimo para pagar en línea es S/ 1.00." if p["precio"] < 1 else "El pago en línea desde la web se está habilitando."))
-        panel = (f"<div class='panel'><h3 style='margin-top:0'>Cómpralo en la app</h3><p class='sub'>{motivo} En la app Pichangol pagas con los medios de tu país y coordinas por chat.</p>"
-                 f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+        panel = (f"<div class='panel'><h3 style='margin-top:0'>Cómpralo en la app</h3><p class='sub'>{motivo} En la app {MARCA} pagas con los medios de tu país y coordinas por chat.</p>"
+                 f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a></div></div>")
         barra = ""
     else:
         login = _login_box(f"/marketplace/{p['id']}", "Como en la app: la compra queda a tu nombre y la ves en Mis compras.") if (sesion.activo() and not ses) else ""
         if not sesion.activo():
-            panel = (f"<div class='panel'><h3 style='margin-top:0'>Cómpralo en la app</h3><p class='sub'>Para comprar necesitas tu cuenta: en la app Pichangol pagas y coordinas la entrega por chat.</p>"
-                     f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir Pichangol en Google Play</a></div></div>")
+            panel = (f"<div class='panel'><h3 style='margin-top:0'>Cómpralo en la app</h3><p class='sub'>Para comprar necesitas tu cuenta: en la app {MARCA} pagas y coordinas la entrega por chat.</p>"
+                     f"<div class='acciones'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a></div></div>")
             barra = ""
         else:
             panel = ("<div class='panel'><div class='sub' style='margin:0'>Total a pagar</div>"
@@ -551,8 +552,8 @@ def pagina_producto(request: Request, producto_id: str) -> HTMLResponse:
         if sesion.activo() and not ses:
             head = sesion.GIS_SCRIPT
     return ui.shell(p.get("nombre") or "Producto", cuerpo, sesion=ses, con_barra=bool(barra), extra_head=head,
-                    desc=f"{p.get('nombre')} · {precio} · Marketplace Pichangol",
-                    og_image=p.get("foto_url") or "/static/brand/logo_pichangol.png")
+                    desc=f"{p.get('nombre')} · {precio} · Marketplace {MARCA}",
+                    og_image=p.get("foto_url") or "/marca/logo-og.png")
 
 
 class CompraReq(BaseModel):
@@ -563,7 +564,7 @@ class CompraReq(BaseModel):
 
 def _ses_compra(request: Request | None) -> tuple[dict | None, dict | None]:
     if not sesion.activo():
-        return None, {"ok": False, "error": "sin_login", "mensaje": "Por ahora compras desde la app Pichangol."}
+        return None, {"ok": False, "error": "sin_login", "mensaje": f"Por ahora compras desde la app {MARCA}."}
     ses = sesion.de_request(request)
     if not ses or not ses.get("email"):
         return None, {"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión con Google para comprar."}
@@ -725,7 +726,7 @@ def pagina_mis_ordenes(request: Request, nueva: str = "") -> HTMLResponse:
             fecha = ""
         cel = perf.get(v["vendedor_email"], {}).get("celular") or ""
         wa = _wa_de(cel, _PAIS_POR_ISO[_iso(sim)])
-        coord = (ui.boton_whatsapp(f"Hola {vend}, te compré \"{v.get('producto_nombre')}\" en Pichangol. ¿Coordinamos la entrega?",
+        coord = (ui.boton_whatsapp(f"Hola {vend}, te compré \"{v.get('producto_nombre')}\" en {MARCA}. ¿Coordinamos la entrega?",
                                    etiqueta="💬 WhatsApp del vendedor", clase="btn sec", tel=wa) if wa and v["estado"] in ("pagado", "entregado", "disputado")
                  else "<button type='button' class='btn sec' data-chat>💬 Chat en la app</button>")
         acciones = ""
@@ -761,11 +762,11 @@ def pagina_mis_ordenes(request: Request, nueva: str = "") -> HTMLResponse:
               "<div class='acc'><a class='btn sec' href='/marketplace'>Marketplace</a></div></div>"
               "<div class='estado ok' id='avisoMk' style='display:none'></div>" + aviso_nueva
               + f"<div style='margin-top:14px'>{lista}</div></div>"
-              + "<script>(function(){\n"
+              + ("<script>(function(){\n"
               "try{ var av = sessionStorage.getItem('pcg_aviso'); if(av){ var el = document.getElementById('avisoMk'); el.textContent = av; el.style.display = 'block'; sessionStorage.removeItem('pcg_aviso'); } }catch(e){}\n"
               f"var PLAY = {json.dumps(PLAY_URL)};\n"
               r"""document.querySelectorAll('[data-chat]').forEach(function(b){ b.addEventListener('click', function(){
-  pcgConfirmar({titulo: 'Chat con el vendedor', mensaje: 'El chat para coordinar la entrega está en la app Pichangol, con la misma cuenta.', icono: '💬', confirmar: 'Abrir la app', cancelar: 'Ahora no'})
+  pcgConfirmar({titulo: 'Chat con el vendedor', mensaje: 'El chat para coordinar la entrega está en la app ⟦MARCA⟧, con la misma cuenta.', icono: '💬', confirmar: 'Abrir la app', cancelar: 'Ahora no'})
    .then(function(ok){ if(ok) window.open(PLAY, '_blank', 'noopener'); }); }); });
 function accion(url, msg){ pcgCargando('Guardando…'); fetch(url, {method: 'POST'}).then(function(r){ return r.json(); }).then(function(j){
   if(j.ok){ try{ sessionStorage.setItem('pcg_aviso', msg); }catch(e){} pcgRecargar('Actualizando…'); }
@@ -780,8 +781,8 @@ document.querySelectorAll('[data-problema]').forEach(function(b){ b.addEventList
     mensaje: 'Se marca la compra en disputa y el pago NO se libera hasta que se resuelva. Coordina primero con el vendedor.'})
    .then(function(ok){ if(ok) accion('/web/ordenes/' + b.dataset.problema + '/problema', 'Reportamos el problema. El pago queda retenido.'); }); }); });
 var n = document.querySelector('.orden.nueva'); if(n) n.scrollIntoView({block: 'center'});
-})();</script>""")
-    return ui.shell("Mis compras", cuerpo, sesion=ses, titulo_tab="Mis compras · Pichangol")
+})();</script>""").replace('⟦MARCA⟧', MARCA))
+    return ui.shell("Mis compras", cuerpo, sesion=ses, titulo_tab=f"Mis compras · {MARCA}")
 
 
 def _orden_mia(request: Request | None, venta_id: int) -> tuple[dict | None, object, dict | None]:
@@ -870,7 +871,7 @@ def pagina_mis_bonos(request: Request, nuevo: str = "") -> HTMLResponse:
               "<p class='sub' style='font-size:12.5px;margin-top:14px'>Para usar tus horas, reserva en ese local (aquí en la web con “Ver el local” "
               "o en la app con la misma cuenta) y marca <b>Usar mi bono</b> en el resumen: cada turno descuenta 1 hora. "
               "Si cancelas a tiempo, las horas vuelven a tu bono.</p></div>")
-    return ui.shell("Mis bonos", cuerpo, sesion=ses, titulo_tab="Mis bonos · Pichangol")
+    return ui.shell("Mis bonos", cuerpo, sesion=ses, titulo_tab=f"Mis bonos · {MARCA}")
 
 
 @router.get("/bonos/{cancha_id}", response_class=HTMLResponse)
@@ -913,7 +914,7 @@ def pagina_bonos_local(request: Request, cancha_id: str) -> HTMLResponse:
         nota = (f"<div class='estado warn'>Este local cobra en {e(sim)}: el pago en línea en esa moneda aún no está disponible en la web. "
                 f"<a href='{PLAY_URL}'>Compra tu bono en la app</a>.</div>")
     elif ofertas and not sesion.activo():
-        nota = f"<div class='estado warn'>Compra tu bono desde la app Pichangol. <a href='{PLAY_URL}'>Abrir la app</a></div>"
+        nota = f"<div class='estado warn'>Compra tu bono desde la app {MARCA}. <a href='{PLAY_URL}'>Abrir la app</a></div>"
     elif ofertas and not c.get("verificada"):
         nota = "<div class='estado warn'>Este local aún está en verificación: sus bonos se podrán comprar cuando lo aprobemos.</div>"
     login = _login_box(f"/bonos/{cancha_id}", "Como en la app: el bono queda a tu nombre y lo ves en Mis bonos.") if (puede and not ses and ofertas) else ""
@@ -934,7 +935,7 @@ def pagina_bonos_local(request: Request, cancha_id: str) -> HTMLResponse:
         cuerpo += _js_culqi(cfg)
         if not ses:
             head = sesion.GIS_SCRIPT
-    return ui.shell(f"Bonos · {club}", cuerpo, sesion=ses, extra_head=head, titulo_tab=f"Bonos de horas · {club} · Pichangol")
+    return ui.shell(f"Bonos · {club}", cuerpo, sesion=ses, extra_head=head, titulo_tab=f"Bonos de horas · {club} · {MARCA}")
 
 
 class BonoReq(BaseModel):

@@ -47,6 +47,7 @@ from __future__ import annotations
 import math
 
 from db.store import stores
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 MODELOS = ("1", "2")
 MONEDAS = ("PEN", "USD", "BOB")
@@ -82,8 +83,8 @@ _TOPES = {"cliente_pct": 30.0, "dueno_pct": 30.0, "banco_pct": 15.0, "pasarela_p
           "cliente_min": 100.0, "dueno_min": 100.0, "cliente_tope_pct": 50.0,
           "tarjeta_fijo": 20.0, "yape_pct": 15.0, "yape_fijo": 20.0}
 ETIQUETAS = {
-    "cliente_pct": "Comisión Pichangol al jugador",
-    "dueno_pct": "Comisión Pichangol al dueño",
+    "cliente_pct": f"Comisión {MARCA} al jugador",
+    "dueno_pct": f"Comisión {MARCA} al dueño",
     "banco_pct": "Comisión del banco (tarjeta)",
     "pasarela_pct": "Comisión Culqi (tarjeta)",
     "tarjeta_fijo": "Fijo por cobro con tarjeta",
@@ -273,7 +274,7 @@ def desglose_cliente(c: dict) -> list[dict]:
                                "(el dueño de la cancha paga la otra parte)."
                                + (" Con Yape es más barato." if c.get("medio") == "tarjeta" and c.get("moneda") == "PEN" else "")})
     if c["pcg_cliente_centimos"] > 0:
-        out.append({"clave": "servicio_pichangol", "nombre": "Servicio Pichangol",
+        out.append({"clave": "servicio_pichangol", "nombre": f"Servicio {MARCA}",
                     "pct": 0.0, "monto_centimos": c["cargo_cliente_centimos"] - c["pasarela_cliente_centimos"],
                     "detalle": "Reserva garantizada al instante, comprobante, reembolso según la política y soporte."})
     # Ajuste por redondeo: la suma de las líneas = el cargo exacto.
@@ -288,7 +289,7 @@ def regla_texto(moneda: str, medio: str | None = None) -> str:
     md = medio_de(medio, moneda)
     quien = f"{p['reparto_cliente_pct']:g} % lo paga el jugador"
     pago = f"Costo del pago en línea{' con Yape' if md == 'yape' else (' con tarjeta' if len(p['medios']) > 1 else '')}"
-    return (f"{pago} compartido ({quien}) + {p['cliente_pct']:g} % de servicio Pichangol"
+    return (f"{pago} compartido ({quien}) + {p['cliente_pct']:g} % de servicio {MARCA}"
             + (f" (mínimo {p['simbolo']} {p['cliente_min']:.2f})" if p.get("cliente_min", 0) > 0 else ""))
 
 

@@ -12,6 +12,7 @@ import '../widgets/marcas_pago.dart';
 import '../widgets/sesion_requerida.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 /// Métodos de pago del usuario: tarjetas guardadas (Culqi One Click). El usuario
 /// agrega una tarjeta una vez y luego paga sin re-tipear. No se guarda el número
 /// completo: solo la marca y los últimos 4 (Culqi custodia la tarjeta).
@@ -295,7 +296,7 @@ class _AgregarTarjetaSheetState extends State<_AgregarTarjetaSheet> {
       _exp.text = '09/28';
       _cvv.text = '123';
       if (_nombre.text.trim().isEmpty) {
-        _nombre.text = appState.usuario?.nombre ?? 'Test Pichangol';
+        _nombre.text = appState.usuario?.nombre ?? 'Test $kBrandName';
       }
       _error = null;
     });

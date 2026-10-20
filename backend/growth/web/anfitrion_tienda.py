@@ -17,6 +17,7 @@ import time
 from datetime import datetime, timezone
 
 from starlette.concurrency import run_in_threadpool
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 _JSON_INVALIDO = object()
 
@@ -64,7 +65,7 @@ def _candado(ses: dict) -> HTMLResponse:
               "<div class='panel' style='max-width:640px;margin:22px auto 0;text-align:center'>"
               "<span class='anf-item-ico' style='background:#7B61FF'>🏪</span>"
               "<h2 style='margin-top:12px'>Verifica tu identidad para vender</h2>"
-              "<p class='sub'>En el Marketplace Pichangol venden dueños de canchas y jugadores con identidad verificada "
+              f"<p class='sub'>En el Marketplace {MARCA} venden dueños de canchas y jugadores con identidad verificada "
               "(badge «Vendedor verificado ✓»). Verifícate desde la app: Perfil → Verificar identidad.</p>"
               f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}' rel='noopener'>Abrir en la app</a>"
               "<a class='btn sec' href='/anfitrion'>Volver al menú</a></div></div>")
@@ -117,13 +118,13 @@ def pagina_tienda(request: Request, guardado: str = "") -> HTMLResponse:
         f"<td><span class='pill{' ok' if v.estado in ('pagado', 'liberado', 'entregado') else ''}'>{e(v.estado)}</span></td></tr>" for v in ventas[:100])
     aviso = "<div class='aviso ok' style='margin-top:14px'>✅ Producto guardado. Ya se ve en el Marketplace de la app.</div>" if guardado else ""
     grid = ("".join(_tarjeta(p) for p in prods) if prods else
-            "<div class='anf-vacio' style='grid-column:1/-1'>Aún no publicas productos. Raquetas, pelotas, indumentaria… lo que vendas llega a todos los jugadores de Pichangol.</div>")
+            f"<div class='anf-vacio' style='grid-column:1/-1'>Aún no publicas productos. Raquetas, pelotas, indumentaria… lo que vendas llega a todos los jugadores de {MARCA}.</div>")
     cuerpo = (
         "<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
         "<div style='display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap'>"
         "<div><h1 class='anf-hola' style='margin-top:6px'>Mi tienda</h1>"
         f"<p class='sub'>{len(prods)} producto{'s' if len(prods) != 1 else ''} · {activos} publicado{'s' if activos != 1 else ''} · {len(ventas)} venta{'s' if len(ventas) != 1 else ''}. "
-        "El comprador paga en la app y coordinas la entrega por chat; Pichangol cobra 5 % (mín. por moneda) y el neto queda por recibir.</p></div>"
+        f"El comprador paga en la app y coordinas la entrega por chat; {MARCA} cobra 5 % (mín. por moneda) y el neto queda por recibir.</p></div>"
         "<a class='btn' href='/anfitrion/tienda/nuevo'>＋ Publicar producto</a></div>"
         f"{aviso}"
         f"<div class='prods'>{grid}</div>"
@@ -175,7 +176,7 @@ def _editor(ses: dict, p: dict, *, nuevo: bool) -> HTMLResponse:
     cfg = {"id": p["id"], "foto": p["foto_url"], "nuevo": nuevo, "storage": almacen.disponible()}
     cuerpo = f"""
 <div class='edit-top'><a class='volver-lnk' href='/anfitrion/tienda'>‹ Mi tienda</a>
-<h1 class='anf-hola' style='margin-top:8px'>{'Publicar producto' if nuevo else 'Editar producto'}</h1><p class='sub'>{'Aparece en el Marketplace de todos los jugadores de Pichangol.' if nuevo else e(p['nombre'])}</p></div>
+<h1 class='anf-hola' style='margin-top:8px'>{'Publicar producto' if nuevo else 'Editar producto'}</h1><p class='sub'>{f'Aparece en el Marketplace de todos los jugadores de {MARCA}.' if nuevo else e(p['nombre'])}</p></div>
 <div class='edit-grid'><nav class='edit-nav'><a class='edit-nav-it' href='#sec-foto'>Foto</a><a class='edit-nav-it' href='#sec-datos'>Producto</a><a class='edit-nav-it' href='#sec-precio'>Precio y stock</a></nav>
 <form id='fProd' class='edit-form' autocomplete='off' novalidate>
  <section class='panel edit-sec' id='sec-foto'><h2>Foto</h2><p class='sub'>Una foto clara sobre fondo simple vende más.</p>

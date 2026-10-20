@@ -5,6 +5,16 @@ from __future__ import annotations
 
 import os
 
+# --- Marca (un solo lugar) ----------------------------------------------------
+# Nombre comercial y dominio de marca que ven usuarios y dueños en la web, la
+# torre, los correos, los avisos y las piezas de marketing. Cambiar de nombre =
+# cambiar estas dos variables en Railway (y los logos de static/brand/), sin
+# tocar código. Las tablas `pichangol_*`, el paquete del APK y los ids internos
+# NO dependen de esto.
+MARCA = os.getenv("MARCA_NOMBRE", "").strip() or "Pichangol"
+MARCA_DOMINIO = (os.getenv("MARCA_DOMINIO", "").strip().removeprefix("https://").removeprefix("http://").strip("/")
+                 or "www.pichangol.app")
+
 # URL del módulo de existencia (Capa IA). Si está vacío, se usa el stub.
 EXISTENCIA_API_URL = os.getenv("EXISTENCIA_API_URL", "")
 
@@ -19,6 +29,12 @@ CONCIERGE_MODEL = os.getenv("CONCIERGE_MODEL", "claude-opus-4-8")
 # Modelo para GENERAR posts de redes: por defecto Haiku (barato) porque un copy
 # de Instagram no necesita Opus. Baja mucho el costo por generación → más margen.
 MARKETING_MODEL = os.getenv("MARKETING_MODEL", "claude-haiku-4-5-20251001")
+# AI Marketing Agent (`marketing/agente_ia/`): el ESTRATEGA razona sobre datos
+# (elige oportunidades, pesa aprendizajes) → modelo de más capacidad que el de
+# redacción. Una llamada al día por país: costo marginal.
+MARKETING_STRATEGY_MODEL = os.getenv("MARKETING_STRATEGY_MODEL", "claude-sonnet-5")
+# Copy del AI Marketing Agent; por defecto el mismo modelo de redacción de redes.
+MARKETING_COPY_MODEL = os.getenv("MARKETING_COPY_MODEL", MARKETING_MODEL)
 
 # --- Factiliza (consulta de DNI = identidad del reclamante) -----------------
 # El token nunca va en el APK; se lee aquí. Sin token, la consulta queda
@@ -108,7 +124,7 @@ GOOGLE_OAUTH_CLIENT_IDS = os.getenv("GOOGLE_OAUTH_CLIENT_IDS", "")
 # que muestra el APK. Vacío = la opción no se ofrece en el APK.
 RECARGA_YAPE_QR_URL = os.getenv("RECARGA_YAPE_QR_URL", "")
 RECARGA_YAPE_NUMERO = os.getenv("RECARGA_YAPE_NUMERO", "")
-RECARGA_YAPE_NOMBRE = os.getenv("RECARGA_YAPE_NOMBRE", "Pichangol")
+RECARGA_YAPE_NOMBRE = os.getenv("RECARGA_YAPE_NOMBRE", MARCA)
 # Rate-limit anti-spam de los endpoints con efecto externo (crear reclamo, OTP):
 # máx RECLAMO_RATE_LIMIT solicitudes por IP en una ventana de RATE_WINDOW segundos.
 # 0 = desactivado. Protege el backend (y el costo de Factiliza/WhatsApp) si la URL
@@ -159,6 +175,11 @@ META_TOKEN_KEY = os.getenv("META_TOKEN_KEY", "")
 # repo: va como variable de Railway.
 FB_PAGE_ID = os.getenv("FB_PAGE_ID", "")
 FB_PAGE_TOKEN = os.getenv("FB_PAGE_TOKEN", "")
+# Instagram de Pichangol (cuenta profesional vinculada a la página). El AI
+# Marketing Agent publica ahí con el MISMO token de página (permiso
+# `instagram_content_publish`, requiere App Review de Meta). Vacío = Instagram
+# apagado: el agente solo programa Facebook.
+IG_USER_ID = os.getenv("IG_USER_ID", "")
 
 
 def meta_modo() -> str:
@@ -261,6 +282,13 @@ STORAGE_BARRIDO_HORAS = os.getenv("STORAGE_BARRIDO_HORAS", "24")
 # usa el que esté seteado; ambos vacíos = afiche con gradiente de marca).
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
 REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "").strip()
+# Marketing IA de locales Pro (con la misma OPENAI_API_KEY): edición de la foto
+# real del dueño (el video se arma en casa; la API de Sora cerró el 24-sep-2026).
+IMAGE_EDIT_MODEL = os.getenv("IMAGE_EDIT_MODEL", "gpt-image-1").strip() or "gpt-image-1"
+# Video con IA generativa de Google (Veo, API de Gemini): anima la foto
+# ambientada del local Pro. Sin llave el video se arma en casa con las fotos.
+GEMINI_API_KEY = (os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")).strip()
+VEO_MODEL = os.getenv("VEO_MODEL", "veo-3.1-fast-generate-preview").strip() or "veo-3.1-fast-generate-preview"
 
 # Push "tu cancha fue aprobada": URL de la Edge Function de Supabase
 # (push-aprobacion) y su secreto compartido. Al aprobar un reclamo, el backend

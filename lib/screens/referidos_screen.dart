@@ -10,6 +10,7 @@ import '../widgets/responsive.dart';
 import 'login_google_sheet.dart';
 import '../widgets/icono_vivo.dart';
 
+import '../brand.dart';
 const _kReleaseUrl =
     'https://github.com/dcalagua/canchas-app-lima/releases/tag/v0.1.0';
 
@@ -75,7 +76,7 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
 
   String _mensajeReferido() {
     final cod = appState.codigoReferido;
-    return '¡Juega conmigo en Pichangol! 🎾⚽\n\n'
+    return '¡Juega conmigo en $kBrandName! 🎾⚽\n\n'
         'Reserva canchas de fútbol, tenis y más cerca de ti.\n'
         'Usa mi código *$cod* al registrarte y ambos ganamos un bono. 🎁\n\n'
         'Descárgala: $_kReleaseUrl';
@@ -100,7 +101,7 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
         context,
         titulo: '¡Bono acreditado! 🎁',
         mensaje: cent > 0
-            ? 'Te sumamos $sim $txt a tu saldo Pichangol. Tu amigo también recibe su bono.'
+            ? 'Te sumamos $sim $txt a tu saldo $kBrandName. Tu amigo también recibe su bono.'
             : 'Código canjeado. Tu amigo ya sabe que te uniste.',
         textoBoton: 'Genial',
         icono: Icons.card_giftcard,
@@ -223,7 +224,7 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
                       onPressed: () => CompartirPichangol.compartir(context,
                           texto: _mensajeReferido()),
                       icon: const Icon(Icons.send, color: Colors.white),
-                      label: const Text('Compartir en Pichangol',
+                      label: const Text('Compartir en $kBrandName',
                           style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w800)),
@@ -237,7 +238,7 @@ class _ReferidosScreenState extends State<ReferidosScreen> {
                   _bono > 0
                       ? 'Comparte tu código. Cuando un amigo lo canjea, '
                           '${_monto(_bono)} para cada uno, directo a tu saldo. 🎁'
-                      : 'Comparte tu código con tus amigos para que jueguen contigo en Pichangol.',
+                      : 'Comparte tu código con tus amigos para que jueguen contigo en $kBrandName.',
                   style: t.bodyMedium?.copyWith(color: textoTenueDe(context))),
               if (_ganado > 0) ...[
                 const SizedBox(height: 12),

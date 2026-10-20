@@ -570,7 +570,7 @@ def test_pagina_reservar_trae_tira_de_dias_y_resumen(db):
     html = client.get("/reservar/c_lima").text
     assert "Resumen de tu reserva" in html and 'id="dias"' in html.replace("'", '"')
     assert "Hoy" in html and "Mañana" in html and "application/ld+json" in html
-    assert "/static/brand/logo_pin.png" in html
+    assert "/marca/logo.png?v=" in html  # logo configurable de la torre
 
 
 def test_no_verificadas_no_salen_hasta_ser_aprobadas(db, monkeypatch):
@@ -2283,7 +2283,7 @@ def test_yape_es_la_pestana_principal_del_checkout_web(db, monkeypatch):
         assert "window.pcgResumenPago = function(o)" in html and "pcgResumenPago({moneda: C.moneda, medio: m" in html, url
         assert "Continuar con ' + nomMedio" in html and "o.medio === 'tarjeta' ? 'tarjeta'" in html and "Total a pagar hoy" in html, url
         # El ícono del resumen es el LOGO de Pichangol, no el emoji del celular (pedido del director, 28-sep-2026).
-        assert "html: h, logo: true," in html and "ico.innerHTML = \"<img src='/static/brand/logo_pin.png'" in html, url
+        assert "html: h, logo: true," in html and "ico.innerHTML = \"<img src='/marca/logo.png'" in html, url
         # Responsivo (28-sep-2026, captura del director): en móvil el diálogo es una hoja inferior
         # con el contenido desplazable DENTRO y los botones siempre a la vista.
         assert "id='pcgDlgMsg'" in html and "<div class='msg' id='pcgDlgMsg'>" in html, url
