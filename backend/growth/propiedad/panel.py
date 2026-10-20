@@ -2089,7 +2089,15 @@ def get_canal_publico() -> dict:
         "reclamo_ubicacion_max_m": config.RECLAMO_UBICACION_MAX_M,
         # Campaña de fotos propias de los locales ya verificados (0 = apagada).
         "fotos_local_min": _fotos_local_min(),
+        # Logo de la marca configurable en la torre (vacío = el que trae el APK).
+        **_marca_logo_publico(),
     }
+
+
+def _marca_logo_publico() -> dict:
+    import correos
+    import marca_logo
+    return marca_logo.publico(correos.base_url())
 
 
 def _fotos_local_min() -> int:
@@ -3822,6 +3830,7 @@ async function cargarEmpresa(){
     const j = await r.json();
     empresaCampos = j.campos||[];
     renderEmpresa(j.datos||{}, j.vista||{});
+    cargarLogoMarca();
   }catch(e){ box.innerHTML='<div class="card">Error de red.</div>'; }
 }
 function renderEmpresa(d, v){
@@ -3835,7 +3844,7 @@ function renderEmpresa(d, v){
       <small style="display:block;color:var(--muted);font-weight:400;margin-top:3px">${esc(c.ayuda)}</small>
     </label>`).join('');
   document.getElementById('empresaPanel').innerHTML =
-    `<div class="card"><div class="top"><h3>Datos de la empresa</h3></div>
+    `<div id="logoMarcaBox"></div><div class="card"><div class="top"><h3>Datos de la empresa</h3></div>
       <div class="row">Salen en la portada (Contacto, Términos, Privacidad), en el pie de
         TODAS las páginas web, en <code>/legal/*</code> y en el Libro de Reclamaciones.
         Culqi, INDECOPI y Play revisan que sean los reales. Los cambios se ven al instante,
@@ -3901,6 +3910,63 @@ async function reintentarCorreo(id){
   if(r.status===401){ salir(); return; }
   const j = await r.json().catch(()=>({}));
   if(r.ok) { toast('En cola de nuevo'); cargarCorreos(); } else toast(j.detail||'No se pudo');
+}
+// --- LOGO de la marca (configurable, 20-oct-2026) ------------------------------
+// Un PNG/JPG cuadrado; el servidor lo centra en 512×512 y lo usa en la web, los
+// correos, las piezas de redes y el app (que lo lee de /config/canal).
+async function cargarLogoMarca(){
+  const box = document.getElementById('logoMarcaBox');
+  if(!box) return;
+  try{
+    const r = await fetch('/admin/api/marca/logo',{headers:headers()});
+    if(!r.ok){ box.innerHTML=''; return; }
+    renderLogoMarca(await r.json());
+  }catch(e){ box.innerHTML=''; }
+}
+function renderLogoMarca(j){
+  const box = document.getElementById('logoMarcaBox');
+  if(!box) return;
+  box.innerHTML = `<div class="card"><div class="top"><h3>🎨 Logo de la marca</h3></div>
+    <div class="row">El isotipo (cuadrado) que sale en la cabecera y el ícono de la web, la vista previa de
+      enlaces, los correos de pago, las piezas de Facebook y dentro del app. Sube un <b>PNG con fondo
+      transparente</b> (o JPG) de al menos 512×512 px; se centra solo. Es de <b>este ambiente</b>.
+      <br><small style="color:var(--muted)">El ícono del app en el celular y su pantalla de arranque van dentro del APK: para
+      cambiarlos hay que generar un APK nuevo.</small></div>
+    <div style="display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin-top:10px">
+      <div style="text-align:center"><img id="logoMarcaImg" src="${esc(j.url||'/marca/logo.png')}" alt=""
+        style="width:96px;height:96px;object-fit:contain;border:1px solid var(--border);border-radius:22px;background:#fff;padding:6px">
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">${j.personalizado?'Logo propio':'Logo original'}</div></div>
+      <div style="text-align:center"><div style="width:44px;height:44px;border-radius:12px;overflow:hidden;border:1px solid var(--border);margin:auto">
+        <img src="${esc(j.url||'/marca/logo.png')}" alt="" style="width:100%;height:100%;object-fit:contain;background:#fff"></div>
+        <div style="font-size:12px;color:var(--muted);margin-top:4px">Pequeño</div></div>
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;border:1px solid var(--border);border-radius:14px;background:#fff">
+        <img src="${esc(j.url||'/marca/logo.png')}" alt="" style="width:30px;height:30px;object-fit:contain">
+        <b style="font-size:19px">${esc(j.nombre||'')}</b></div>
+    </div>
+    <div class="actions">
+      <label class="btn-ap" style="cursor:pointer">Subir logo nuevo<input type="file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="subirLogoMarca(this)"></label>
+      ${j.personalizado?'<button class="btn-sec" onclick="quitarLogoMarca()">Volver al logo original</button>':''}
+      <span id="logoMarcaMsg" style="font-size:13px;color:var(--muted)"></span>
+    </div></div>`;
+}
+async function subirLogoMarca(inp){
+  const f = inp.files && inp.files[0]; inp.value='';
+  if(!f) return;
+  const msg = document.getElementById('logoMarcaMsg');
+  if(f.size > 5*1024*1024){ msg.textContent='La imagen pesa más de 5 MB.'; return; }
+  msg.textContent='Subiendo…';
+  const dataUrl = await new Promise((ok,mal)=>{ const fr=new FileReader(); fr.onload=()=>ok(fr.result); fr.onerror=mal; fr.readAsDataURL(f); });
+  try{
+    const r = await fetch('/admin/api/marca/logo',{method:'POST',headers:{...headers(),'Content-Type':'application/json'},body:JSON.stringify({imagen:dataUrl})});
+    const j = await r.json().catch(()=>({}));
+    if(!r.ok){ msg.textContent = j.detail || 'No se pudo guardar.'; return; }
+    toast('Logo actualizado ✅'); cargarLogoMarca();
+  }catch(e){ msg.textContent='Error de red.'; }
+}
+async function quitarLogoMarca(){
+  if(!confirm('¿Volver al logo original?')) return;
+  const r = await fetch('/admin/api/marca/logo/quitar',{method:'POST',headers:headers()});
+  if(r.ok){ toast('Volviste al logo original'); cargarLogoMarca(); } else toast('No se pudo');
 }
 async function guardarEmpresa(){
   const datos = {};

@@ -10,7 +10,7 @@
   "Modo anfitrión" + avatar + ☰ (menú desplegable) · buscador grande centrado
   con desplegable de recientes/zonas; se compacta al hacer scroll.
 - Wordmark **Pichang[o]l** con la 'o' = pelota (SVG esmeralda), pin oficial
-  (`/static/brand/logo_pin.png`), sello "✓ Verificada", chips blancas con
+  (`/marca/logo.png`), sello "✓ Verificada", chips blancas con
   borde suave (seleccionada = tinte), tarjetas radio 16-20 con sombra sutil,
   botones esmeralda radio 12, marcas de pago dibujadas (Yape/Visa/Mastercard).
 
@@ -738,10 +738,17 @@ PELOTA_SVG = (
 
 
 def wordmark(tam: int = 22, href: str = "/") -> str:
-    """Logo oficial: pin verde con la pelota (`/static/brand/logo_pin.png`) +
+    """Logo oficial (el configurable de la torre, `/marca/logo.png`) +
     "Pichangol" en azul noche, peso 800, SIN cursiva (pedido del director)."""
     return (f"<a class='wm' href='{href}' style='font-size:{tam}px' aria-label='{MARCA}'>"
-            f"<img src='/static/brand/logo_pin.png' alt=''><span>{MARCA}</span></a>")
+            f"<img src='{_logo_url()}' alt=''><span>{MARCA}</span></a>")
+
+
+def _logo_url() -> str:
+    """Logo de la marca configurable en la torre (`marca_logo`), con versión
+    para que el navegador lo refresque apenas el operador lo cambie."""
+    import marca_logo
+    return marca_logo.url_publica()
 
 
 def tarjeta_comision(linea: str, simbolo: str = "S/", iso: str = "PEN") -> str:
@@ -1080,7 +1087,7 @@ JS_NAV = (r"""
     document.body.appendChild(d); return d; }
   function abrirDlg(o, conCancelar){ return new Promise(function(res){ var d = dlg(), ok = d.querySelector('#pcgDlgOk'), no = d.querySelector('#pcgDlgNo'), ico = d.querySelector('#pcgDlgIco');
     d.querySelector('#pcgDlgTit').textContent = o.titulo || (conCancelar ? '¿Seguro?' : 'Aviso'); var msgEl = d.querySelector('#pcgDlgMsg'); if(o.html){ msgEl.innerHTML = o.html; } else { msgEl.textContent = o.mensaje || ''; }
-    if(o.logo){ ico.innerHTML = "<img src='/static/brand/logo_pin.png' alt='⟦MARCA⟧'>"; } else { ico.textContent = o.icono || (o.destructivo ? '🗑' : (conCancelar ? '❓' : 'ℹ️')); }
+    if(o.logo){ ico.innerHTML = "<img src='/marca/logo.png' alt='⟦MARCA⟧'>"; } else { ico.textContent = o.icono || (o.destructivo ? '🗑' : (conCancelar ? '❓' : 'ℹ️')); }
     ico.classList.toggle('mal', !!o.destructivo); ico.classList.toggle('marca', !!o.logo);
     ok.textContent = o.confirmar || (conCancelar ? 'Sí, continuar' : 'Entendido'); ok.classList.toggle('mal', !!o.destructivo); no.textContent = o.cancelar || 'Cancelar'; no.style.display = conCancelar ? '' : 'none';
     function fin(v){ d.classList.remove('open'); ok.onclick = no.onclick = d.onclick = null; document.removeEventListener('keydown', esc); res(v); }
@@ -1221,7 +1228,7 @@ JS_ABRIR_APP = (r"""
     var st = document.createElement('style');
     st.textContent = ".abrir-app{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 14px;background:#0A1B3D;color:#fff;font:600 14px/1.25 'DM Sans',system-ui,sans-serif}.abrir-app img{width:36px;height:36px;border-radius:10px;background:#fff;padding:3px;flex:none}.abrir-app .t{flex:1;min-width:0}.abrir-app .t small{display:block;font-weight:500;opacity:.8;font-size:12px}.abrir-app .ir{flex:none;background:#0B8A3E;color:#fff;border:0;border-radius:999px;padding:9px 16px;font:700 14px 'DM Sans',system-ui,sans-serif;width:auto}.abrir-app .x{flex:none;background:transparent;border:0;color:#fff;opacity:.7;font-size:20px;line-height:1;padding:6px;width:auto}@media(min-width:901px){.abrir-app{display:none}}";
     var d = document.createElement('div'); d.id = 'abrirApp'; d.className = 'abrir-app'; d.setAttribute('role', 'region'); d.setAttribute('aria-label', 'Abrir en la app');
-    d.innerHTML = "<img src='/static/brand/logo_pin.png' alt=''><div class='t'>Abrir en la app ⟦MARCA⟧<small>Reserva más rápido y recibe avisos de tus partidos</small></div><button type='button' class='ir' id='abrirAppIr'>Abrir</button><button type='button' class='x' id='abrirAppX' aria-label='Seguir en la web'>&times;</button>";
+    d.innerHTML = "<img src='/marca/logo.png' alt=''><div class='t'>Abrir en la app ⟦MARCA⟧<small>Reserva más rápido y recibe avisos de tus partidos</small></div><button type='button' class='ir' id='abrirAppIr'>Abrir</button><button type='button' class='x' id='abrirAppX' aria-label='Seguir en la web'>&times;</button>";
     document.head.appendChild(st); document.body.insertBefore(d, document.body.firstChild);
     d.querySelector('#abrirAppIr').addEventListener('click', function(){ window.pcgAbrirApp(); });
     d.querySelector('#abrirAppX').addEventListener('click', function(){ ls('pcg_app_banner_off', Date.now()); d.remove(); });
@@ -1238,7 +1245,7 @@ def nav_simple(ses: dict | None = None, volver: str = "/canchas") -> str:
 
 
 def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
-          canonical: str = "", og_image: str = "/static/brand/logo_pichangol.png",
+          canonical: str = "", og_image: str = "/marca/logo-og.png",
           con_barra: bool = False, jsonld: str = "", nav: str = "",
           ancho: bool = False, titulo_tab: str = "", sesion: dict | None = None,
           pantalla: str = "") -> HTMLResponse:
@@ -1264,8 +1271,8 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         f"<meta property='og:image' content='{e(og_image)}'><meta property='og:type' content='website'>"
         + (f"<link rel='canonical' href='{e(canonical)}'><meta property='og:url' content='{e(canonical)}'>" if canonical else "")
         + "<meta name='theme-color' content='#0F1B2D'>"
-        "<link rel='icon' type='image/png' href='/static/brand/logo_pin.png'>"
-        "<link rel='apple-touch-icon' href='/static/brand/logo_pin.png'>"
+        f"<link rel='icon' type='image/png' href='{_logo_url()}'>"
+        f"<link rel='apple-touch-icon' href='{_logo_url()}'>"
         "<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
         "<link href='https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700;9..40,800&display=swap' rel='stylesheet'>"
         f"<style>{CSS}</style>{extra_head}"

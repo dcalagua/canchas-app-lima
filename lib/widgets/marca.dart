@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../brand.dart';
+import '../services/marca_remota.dart';
 import '../theme.dart';
 
 /// La 'o' de la marca convertida en PELOTA (identidad "pichang·o·l": la 'o' es
@@ -29,6 +31,28 @@ class PichangolWordmark extends StatelessWidget {
       fontSize: fontSize, fontWeight: FontWeight.w800, color: color,
       letterSpacing: -0.5, height: 1,
     );
+    return ValueListenableBuilder<String>(
+      valueListenable: MarcaRemota.logoUrl,
+      builder: (_, url, __) {
+        // Logo propio (torre) o nombre distinto: logo + nombre tal cual.
+        if (url.isNotEmpty || kBrandName != 'Pichangol') {
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (url.isNotEmpty) ...[
+                LogoMarcaImagen(width: fontSize * 1.15, height: fontSize * 1.15),
+                SizedBox(width: fontSize * 0.25),
+              ],
+              Text(kBrandName, style: style),
+            ],
+          );
+        }
+        return _clasico(style);
+      },
+    );
+  }
+
+  Widget _clasico(TextStyle style) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -63,10 +87,9 @@ class LogoCuadrado extends StatelessWidget {
         borderRadius: BorderRadius.circular(size * 0.24),
         border: Border.all(color: const Color(0xFFE4E4E4)),
       ),
-      child: Image.asset(
-        'assets/brand/logo_pin.png',
+      child: LogoMarcaImagen(
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
+        error: Container(
           alignment: Alignment.center,
           color: lima,
           child:

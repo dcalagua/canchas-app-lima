@@ -225,7 +225,11 @@ def _arte_marca(loc: datetime) -> str:
 
 
 def _foto_marca() -> str:
-    """Portada de marca como data URL (cuando aún no hay locales con foto)."""
+    """Portada de marca como data URL (cuando aún no hay locales con foto). Con
+    logo propio configurado en la torre, el logo (la portada lleva el de siempre)."""
+    import marca_logo
+    if marca_logo.personalizado():
+        return "data:image/png;base64," + base64.b64encode(marca_logo.logo_bytes()).decode()
     for nombre in ("portada_facebook.png", "logo_pichangol.png"):
         ruta = os.path.join(_STATIC, nombre)
         if os.path.exists(ruta):

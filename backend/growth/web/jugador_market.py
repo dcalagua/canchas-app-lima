@@ -553,7 +553,7 @@ def pagina_producto(request: Request, producto_id: str) -> HTMLResponse:
             head = sesion.GIS_SCRIPT
     return ui.shell(p.get("nombre") or "Producto", cuerpo, sesion=ses, con_barra=bool(barra), extra_head=head,
                     desc=f"{p.get('nombre')} · {precio} · Marketplace {MARCA}",
-                    og_image=p.get("foto_url") or "/static/brand/logo_pichangol.png")
+                    og_image=p.get("foto_url") or "/marca/logo-og.png")
 
 
 class CompraReq(BaseModel):

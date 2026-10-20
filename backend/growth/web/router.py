@@ -2191,7 +2191,7 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
     titulo = _titulo_local(c)
     canonical = (f"{config.PUBLIC_BASE_URL.rstrip('/')}/reservar/{c['id']}"
                  if getattr(config, "PUBLIC_BASE_URL", "") else "")
-    og = _fotos(c)[0] if _fotos(c) else "/static/brand/logo_pichangol.png"
+    og = _fotos(c)[0] if _fotos(c) else "/marca/logo-og.png"
 
     if not datos.reservable(c) or not _pago_web_disponible(iso):
         if not datos.reservable(c):
@@ -3896,7 +3896,7 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         f"Puedes cancelar desde aquí o desde <a href='/mis-reservas'>Mis reservas</a>. Dudas: <a href='mailto:{empresa.datos()['correo']}'>{empresa.datos()['correo']}</a>.</div>"
         "</div>"
         "<div class='panel' style='margin-top:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap'>"
-        "<img src='/static/brand/logo_pin.png' alt='' style='width:56px;height:56px;border-radius:14px;border:1px solid var(--trazo)'>"
+        "<img src='/marca/logo.png' alt='' style='width:56px;height:56px;border-radius:14px;border:1px solid var(--trazo)'>"
         "<div style='flex:1;min-width:200px'><b>Lleva tus reservas contigo</b>"
         "<div class='sub' style='font-size:13px'>Con la app ves tu agenda, acumulas puntos y reservas en dos toques.</div></div>"
         f"<a class='btn' href='{PLAY_URL}'>Descargar la app</a></div>"

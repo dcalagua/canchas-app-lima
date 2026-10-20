@@ -78,6 +78,7 @@ import '../config/pais.dart';
 import '../utils/moneda.dart';
 
 import '../brand.dart';
+import '../services/marca_remota.dart';
 /// Instancia única del estado para toda la app (sin paquetes extra de DI).
 final AppState appState = AppState();
 
@@ -8150,6 +8151,7 @@ class AppState extends ChangeNotifier {
         cambio = true;
       }
     }
+    MarcaRemota.actualizar(j); // logo de la marca configurable en la torre
     final c = (j['canal'] ?? '').toString();
     if (c.isNotEmpty && c != canalComunicacion) {
       canalComunicacion = c;

@@ -26,6 +26,7 @@ import 'services/push_service.dart';
 import 'services/supabase_service.dart';
 import 'state/app_state.dart';
 import 'theme.dart';
+import 'services/marca_remota.dart';
 
 /// Entorno del build (dev | qas | prod), inyectado por `--dart-define=ENTORNO`.
 /// En QAS la app muestra un banner para no confundir con producción.
@@ -36,6 +37,8 @@ void main() async {
   // Moneda correcta desde el primer frame (y offline): recupera el país
   // detectado la última vez. El GPS luego lo confirma/actualiza al abrir Explorar.
   await cargarPaisPersistido();
+  // Logo de la marca configurable en la torre (último conocido, cache-first).
+  await MarcaRemota.cargarCache();
   await SupabaseService.init();
   // Notificaciones push del chat (Etapa B). Fail-safe: sin config de Firebase
   // queda desactivado y la app sigue igual.

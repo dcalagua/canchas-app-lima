@@ -279,7 +279,8 @@ def plantilla(*, titulo: str, saludo: str, intro: str, datos: list[tuple[str, st
     except Exception:  # noqa: BLE001
         e = {}
     base = base_url()
-    logo = f"{base}/static/brand/logo_pin.png"
+    import marca_logo
+    logo = marca_logo.url_publica(base)
     bloque_datos = ""
     if datos:
         bloque_datos = ("<table role='presentation' width='100%' cellpadding='0' cellspacing='0' "

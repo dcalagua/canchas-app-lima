@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/marca_remota.dart';
 
 /// Globo flotante de CHAT interno (siempre a la mano). Con identidad Pichangol:
 /// - Si hay una imagen ([logoUrl]: LOGO de la academia o FOTO de la cancha) →
@@ -28,12 +29,7 @@ class ChatBurbuja extends StatelessWidget {
   Widget _pichangolContenido() => Container(
         color: Colors.white,
         alignment: Alignment.center,
-        child: Image.asset(
-          'assets/brand/logo_pin.png',
-          width: 32,
-          height: 32,
-          filterQuality: FilterQuality.medium,
-        ),
+        child: const LogoMarcaImagen(width: 32, height: 32),
       );
 
   @override

@@ -323,7 +323,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
                  + "</div></div>")
         cuerpo = f"<div style='padding-top:22px'>{ficha}</div>{tarifario}{panel}"
         return ui.shell(a["nombre"], cuerpo, desc=f"{a['nombre']} · academia de {dep_nombre.lower()} · {lugar}", sesion=ses,
-                        og_image=(_fotos_academia(a) or ["/static/brand/logo_pichangol.png"])[0], extra_head=_LEAFLET if con_mapa else "")
+                        og_image=(_fotos_academia(a) or ["/marca/logo-og.png"])[0], extra_head=_LEAFLET if con_mapa else "")
     if not puede:
         motivo = ("Esta academia aún no publicó sus precios." if not _planes(a) else
                   "La matrícula desde la web necesita iniciar sesión con Google." if directo else
@@ -334,7 +334,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
                  + (f"<a class='btn sec' href='https://wa.me/{tel}' target='_blank' rel='noopener'>💬 Escribir a la academia</a>" if tel else "") + "</div></div>")
         cuerpo = f"<div style='padding-top:22px'>{ficha}</div>{tarifario}{panel}"
         return ui.shell(a["nombre"], cuerpo, desc=f"{a['nombre']} · academia de {dep_nombre.lower()} · {lugar}", sesion=ses,
-                        og_image=(_fotos_academia(a) or ["/static/brand/logo_pichangol.png"])[0], extra_head=_LEAFLET if con_mapa else "")
+                        og_image=(_fotos_academia(a) or ["/marca/logo-og.png"])[0], extra_head=_LEAFLET if con_mapa else "")
 
     if sesion.activo():
         quien = ("" if not ses else
@@ -403,7 +403,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
               + ("" if (hosp or directo) else "<script src='https://checkout.culqi.com/js/v4'></script>")
               + f"<script>{sesion.JS_SESION if sesion.activo() else ''}{ph.JS_IR_PASARELA if hosp else ''}{_JS_ACADEMIA}</script>")
     return ui.shell(a["nombre"], cuerpo, con_barra=True, desc=f"{a['nombre']} · academia de {dep_nombre.lower()} · {lugar}. Matricúlate en línea.",
-                    og_image=(_fotos_academia(a) or ["/static/brand/logo_pichangol.png"])[0], sesion=ses,
+                    og_image=(_fotos_academia(a) or ["/marca/logo-og.png"])[0], sesion=ses,
                     extra_head=(_LEAFLET if con_mapa else "") + _CSS_CARRITO + (sesion.GIS_SCRIPT if (sesion.activo() and not ses) else ""))
 
 

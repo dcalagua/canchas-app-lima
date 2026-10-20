@@ -182,7 +182,24 @@ con la tecnología de {MARCA}"; el afiche cambia el pie a "Organiza X" +
 (`web/portal_tenis.py`): canchas aprobadas de tenis/pádel/pickleball por local,
 torneos vivos (`datos.campeonatos_publicos`), Busco partner, Liga, Boleadores,
 Organiza tu torneo y "¿Tienes un club?"; enlazada en el menú ☰ y el pie. Test
-`tests/test_portal_tenis.py`.
+`tests/test_portal_tenis.py`. (4) **LOGO configurable en la torre**
+(`backend/growth/marca_logo.py`, pedido del director el mismo día): torre →
+Comunicación → Datos de la empresa → "🎨 Logo de la marca" (`GET/POST
+/admin/api/marca/logo`, `…/quitar`). El PNG/JPG se normaliza a 512×512 PNG
+(recorta el borde transparente, centra con margen, conserva la transparencia;
+mínimo 128 px, máx. 5 MB), se sube a Storage `canchas/marca/logo_<ms>.png` y la
+URL queda en `stores.config[marca_logo_url]` + `marca_logo_v` (sin Storage,
+base64 en `marca_logo_b64`). TODO lo que muestra el logo lo pide a
+`GET /marca/logo.png` (`?v=` = versión; og:image → `/marca/logo-og.png`):
+cabecera, favicon, diálogos y banner de la web, correos de pago
+(`marca_logo.url_publica(base)`); las piezas Pillow (redes, video, agente)
+usan `marca_logo.abrir()`. **Nunca volver a apuntar a
+`/static/brand/logo_pin.png` en HTML.** APK: `/config/canal` publica
+`marca_logo_url` → `lib/services/marca_remota.dart` (`MarcaRemota`,
+cache-first en SharedPreferences + caché de disco; `LogoMarcaImagen`) usado en
+`LogoCuadrado`, `PichangolWordmark` (logo + `kBrandName`), `LogoPichangolVivo`
+y `ChatBurbuja`. El ícono del celular y el splash nativo siguen compilados en
+el APK (cambiarlos = assets nuevos + build). Test `tests/test_marca_logo.py`.
 
 ## Dominio oficial: `pichangol.app`
 

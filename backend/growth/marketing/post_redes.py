@@ -88,8 +88,8 @@ def _limpiar(t: str) -> str:
 
 def _logo_disco(diam: int):
     from PIL import Image, ImageDraw
-    ruta = os.path.join(_STATIC, "logo_pin.png")
-    lg = Image.open(ruta).convert("RGBA").resize((diam - 2 * (diam // 9), diam - 2 * (diam // 9)), Image.LANCZOS)
+    import marca_logo
+    lg = marca_logo.abrir().resize((diam - 2 * (diam // 9), diam - 2 * (diam // 9)), Image.LANCZOS)
     disco = Image.new("RGBA", (diam, diam), (255, 255, 255, 255))
     disco.paste(lg, (diam // 9, diam // 9), lg)
     mask = Image.new("L", (diam * 4, diam * 4), 0)

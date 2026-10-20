@@ -176,6 +176,8 @@ app.include_router(circuito_router)
 app.include_router(marketing_router)
 app.include_router(agente_ia_router)  # AI Marketing Agent: /admin/api/mkt/* + short-link /go/{codigo}
 app.include_router(legal_router)
+from marca_logo import router as marca_logo_router  # noqa: E402
+app.include_router(marca_logo_router)  # /marca/logo.png + torre → Logo de la marca
 app.include_router(web_router)
 app.include_router(portal_tenis_router)  # /tenis: portada de raqueta (canchas, torneos con marca del organizador, partner, liga)
 app.include_router(academia_web_router)  # ficha pública /academia/{id} + matrícula web
