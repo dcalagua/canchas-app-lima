@@ -9,7 +9,7 @@ módulo de reels) y Pillow:
   fondo desenfocado cuando el encuadre no calza, marca de agua, rótulo con el
   título, subtítulos con palabra resaltada, volumen normalizado, música
   original de fondo si no hay audio)  →  cierre de 3 s con el título y
-  www.pichangol.app.
+  el dominio de la marca.
 
 Subtítulos: `transcribir()` extrae el audio (mono 16 kHz) y lo manda a Whisper
 (`OPENAI_API_KEY`, modelo `whisper-1`, `verbose_json` con palabras). El operador

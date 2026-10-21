@@ -3769,7 +3769,7 @@ def comprobante_ics(ref: str) -> Response:
         except (ValueError, TypeError):
             continue
         ev.append("BEGIN:VEVENT\r\n"
-                  f"UID:{f['id']}@pichangol.app\r\nDTSTAMP:{ahora}\r\n"
+                  f"UID:{f['id']}@{config.MARCA_DOMINIO}\r\nDTSTAMP:{ahora}\r\n"
                   f"DTSTART:{ini.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}\r\n"
                   f"DTEND:{fin.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}\r\n"
                   f"SUMMARY:{MARCA} · {_ics(c.get('nombre') or 'Reserva')}\r\n"

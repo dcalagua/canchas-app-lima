@@ -1,5 +1,14 @@
 """Fixtures comunes de la suite."""
-import pytest
+import os
+
+# La suite se escribió con la marca "Pichangol" en sus asserts. Desde el
+# 21-oct-2026 la marca por defecto es CanchaLibre (www.canchalibre.pe); los
+# tests fijan la vieja por variable ANTES de importar la app, y
+# `test_marca_configurable.py` prueba aparte el valor por defecto y otra marca.
+os.environ.setdefault("MARCA_NOMBRE", "Pichangol")
+os.environ.setdefault("MARCA_DOMINIO", "www.pichangol.app")
+
+import pytest  # noqa: E402
 
 
 @pytest.fixture(autouse=True)

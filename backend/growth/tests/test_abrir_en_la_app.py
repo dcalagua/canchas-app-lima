@@ -48,7 +48,7 @@ def test_rutas_del_script_son_las_del_manifest_y_del_apk():
                 '<application><activity android:name=".MainActivity" android:launchMode="singleTop">'
                 '</activity></application></manifest>')
     out = cp.android_manifest(manifest)
-    for host in ("www.pichangol.app", "pichangol.app", "pg.ebim.pe"):
+    for host in ("www.canchalibre.pe", "canchalibre.pe", "www.pichangol.app", "pichangol.app", "pg.ebim.pe"):
         assert f'android:host="{host}" android:path="/"' in out
         assert f'android:host="{host}" android:path="/canchas"' in out
         for pref in ("/c/", "/reservar/", "/reserva/", "/academia/", "/l/", "/mis-reservas", "/anfitrion"):

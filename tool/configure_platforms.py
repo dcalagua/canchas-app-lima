@@ -41,7 +41,10 @@ def patch(path, fn):
 ENTORNO = os.environ.get("ENTORNO", "dev").strip().lower()
 _ES_QAS = ENTORNO == "qas"
 
-APP_LABEL = "Pichangol QAS" if _ES_QAS else "Pichangol"
+# Marca visible (21-oct-2026: CanchaLibre). Paquete, esquema pichangol:// e ids
+# internos NO cambian.
+MARCA = "CanchaLibre"
+APP_LABEL = f"{MARCA} QAS" if _ES_QAS else MARCA
 # Identidad PERMANENTE de la app en Google Play / App Store. NO cambiar una vez
 # publicada la primera versión (el applicationId es inmutable en la tienda).
 # El paquete de código Dart sigue siendo `canchas_lima`; esto sólo fija el
@@ -146,7 +149,7 @@ def android_manifest(text):
         # director, 28-sep-2026). Exactos: la portada y /canchas; prefijos:
         # ficha de reserva, comprobante, academia, landing, Mis reservas,
         # campeonato y Modo anfitrión. /admin, /legal, /lugar quedan en la web.
-        hosts = ("www.pichangol.app", "pichangol.app", "pg.ebim.pe")
+        hosts = ("www.canchalibre.pe", "canchalibre.pe", "www.pichangol.app", "pichangol.app", "pg.ebim.pe")
         exactos = ("/", "/canchas")
         prefijos = ("/c/", "/reservar/", "/reserva/", "/academia/", "/l/",
                     "/mis-reservas", "/anfitrion")
@@ -219,7 +222,7 @@ def android_manifest(text):
         serv = (
             '        <service\n'
             '            android:name=".YapeListener"\n'
-            '            android:label="Pichangol · pagos de Yape"\n'
+            '            android:label="CanchaLibre · pagos de Yape"\n'
             '            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"\n'
             '            android:exported="false">\n'
             '            <intent-filter>\n'
@@ -288,7 +291,7 @@ def ios_infoplist(text):
     if "NSLocationWhenInUseUsageDescription" not in text:
         block = (
             "\t<key>NSLocationWhenInUseUsageDescription</key>\n"
-            "\t<string>Pichangol usa tu ubicación para mostrarte canchas cercanas.</string>\n"
+            "\t<string>CanchaLibre usa tu ubicación para mostrarte canchas cercanas.</string>\n"
             "</dict>\n</plist>"
         )
         text = text.replace("</dict>\n</plist>", block, 1)
@@ -296,7 +299,7 @@ def ios_infoplist(text):
     if "NSPhotoLibraryUsageDescription" not in text:
         block = (
             "\t<key>NSPhotoLibraryUsageDescription</key>\n"
-            "\t<string>Pichangol usa tus fotos para registrar canchas y detectar el deporte.</string>\n"
+            "\t<string>CanchaLibre usa tus fotos para registrar canchas y detectar el deporte.</string>\n"
             "</dict>\n</plist>"
         )
         text = text.replace("</dict>\n</plist>", block, 1)
@@ -304,7 +307,7 @@ def ios_infoplist(text):
     if "NSMicrophoneUsageDescription" not in text:
         block = (
             "\t<key>NSMicrophoneUsageDescription</key>\n"
-            "\t<string>Pichangol usa el micrófono para enviar notas de voz en el chat.</string>\n"
+            "\t<string>CanchaLibre usa el micrófono para enviar notas de voz en el chat.</string>\n"
             "</dict>\n</plist>"
         )
         text = text.replace("</dict>\n</plist>", block, 1)
@@ -1026,7 +1029,7 @@ def configurar_sonido_notificacion():
         "                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)\n"
         "                    .build()\n"
         "                val canal = NotificationChannel(\n"
-        "                    \"pichan_msgs_v2\", \"Mensajes Pichangol\", NotificationManager.IMPORTANCE_HIGH)\n"
+        "                    \"pichan_msgs_v2\", \"Mensajes CanchaLibre\", NotificationManager.IMPORTANCE_HIGH)\n"
         "                canal.description = \"Notificaciones de mensajes y retos\"\n"
         "                canal.setSound(sonido, attrs)\n"
         "                canal.enableVibration(true)\n"

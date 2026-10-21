@@ -58,6 +58,23 @@ for ruta in ["/", "/legal/terminos", "/legal/privacidad", "/libro-de-reclamacion
     assert not re.search(r"(?<![\w/@.\-])Pichangol(?![\w\-])", t), (ruta, re.findall(r".{0,40}Pichangol.{0,40}", t)[:3])
 print("ok")
 """
-    env = dict(os.environ, MARCA_NOMBRE="CanchaLibre", MARCA_DOMINIO="www.canchalibre.app", DATABASE_URL="")
+    env = dict(os.environ, MARCA_NOMBRE="CanchaLibre", MARCA_DOMINIO="www.canchalibre.pe", DATABASE_URL="")
     r = subprocess.run([sys.executable, "-c", codigo], cwd=RAIZ, env=env, capture_output=True, text=True, timeout=240)
+    assert r.returncode == 0 and "ok" in r.stdout, r.stderr[-2000:]
+
+
+def test_por_defecto_la_marca_es_canchalibre_en_canchalibre_pe():
+    """Decisión del director (21-oct-2026): sin variables, el backend es
+    CanchaLibre en www.canchalibre.pe; el correo sale del dominio ya verificado
+    en Resend hasta que se cambie CORREO_DOMINIO."""
+    codigo = r"""
+import config
+assert config.MARCA == "CanchaLibre", config.MARCA
+assert config.MARCA_DOMINIO == "www.canchalibre.pe" and config.MARCA_URL == "https://www.canchalibre.pe"
+assert config.MARCA_HASHTAG == "#canchalibre"
+assert config.CORREO_DOMINIO == "pichangol.app" and not config.DOMINIOS_VIEJOS
+print("ok")
+"""
+    env = {k: v for k, v in os.environ.items() if k not in ("MARCA_NOMBRE", "MARCA_DOMINIO", "CORREO_DOMINIO", "DOMINIOS_VIEJOS")}
+    r = subprocess.run([sys.executable, "-c", codigo], cwd=RAIZ, env=env, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0 and "ok" in r.stdout, r.stderr[-2000:]

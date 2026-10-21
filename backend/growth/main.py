@@ -111,15 +111,24 @@ if _cambios and pg.habilitado:
 # canónico (SEO, cookies de sesión y el origen autorizado de Google Sign-In).
 # `/.well-known/` NO se redirige: Android verifica los App Links de
 # pichangol.app leyendo assetlinks.json en ese mismo host, sin redirecciones.
-_A_WWW = {h.strip().lower() for h in os.getenv("DOMINIOS_A_WWW", "pichangol.app").split(",") if h.strip()}
+_A_WWW = {h.strip().lower() for h in os.getenv("DOMINIOS_A_WWW", "pichangol.app,canchalibre.pe").split(",") if h.strip()}
 
 
 @app.middleware("http")
 async def _raiz_a_www(request: Request, call_next):
     host = (request.headers.get("host") or "").split(":")[0].strip().lower()
-    if host in _A_WWW and not request.url.path.startswith("/.well-known/"):
-        from fastapi.responses import RedirectResponse
-        destino = f"https://www.{host}{request.url.path}" + (f"?{request.url.query}" if request.url.query else "")
+    if request.url.path.startswith("/.well-known/"):
+        return await call_next(request)
+    from fastapi.responses import RedirectResponse
+    query = f"?{request.url.query}" if request.url.query else ""
+    # CAMBIO DE MARCA (21-oct-2026): pichangol.app → canchalibre.pe. Solo
+    # GET/HEAD: los POST (webhooks de Culqi, callbacks de pasarelas, Meta)
+    # que aún apunten al dominio viejo se atienden aquí mismo, sin perderse.
+    if host in config.DOMINIOS_VIEJOS and host != config.MARCA_DOMINIO.lower().split(":")[0] \
+            and request.method in ("GET", "HEAD"):
+        return RedirectResponse(f"{config.MARCA_URL}{request.url.path}{query}", status_code=301)
+    if host in _A_WWW and host not in config.DOMINIOS_VIEJOS:
+        destino = f"https://www.{host}{request.url.path}{query}"
         return RedirectResponse(destino, status_code=301 if request.method in ("GET", "HEAD") else 308)
     return await call_next(request)
 
