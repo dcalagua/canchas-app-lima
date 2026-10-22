@@ -31,7 +31,7 @@ import config
 import empresa
 from db.store import stores
 from marketing import redes as redes_svc
-from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
+from config import MARCA, MARCA_DOMINIO  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["legal"])
 
@@ -385,7 +385,7 @@ def terminos() -> str:
       <a href="/legal/devoluciones">Política de cambios, cancelaciones y devoluciones</a>.</li>
     </ul>
 
-    <h2>3-bis. Compras en la web (pichangol.app)</h2>
+    <h2>3-bis. Compras en la web ({MARCA_DOMINIO.removeprefix("www.")})</h2>
     <ul>
       <li>Desde la web puedes <b>reservar canchas</b> y <b>matricularte en academias</b>
       con tu cuenta de Google. El <b>precio</b>, la moneda, los extras y el total se
@@ -463,7 +463,7 @@ def devoluciones() -> str:
     cuerpo = f"""
     <p>Esta política es aplicada por <b>{em["razon_social"]}</b> ({em["doc_etiqueta"]}
     {em["ruc"]}, {em["direccion"]}), operadora de la plataforma <b>{MARCA}</b>
-    (web <b>pichangol.app</b> y app), a todas las compras realizadas en ella.</p>
+    (web <b>{MARCA_DOMINIO.removeprefix("www.")}</b> y app), a todas las compras realizadas en ella.</p>
 
     <h2>1. Reservas de canchas</h2>
     <p>Cuando pagas en línea, el total puede incluir un <b>cargo por servicio {MARCA}</b>

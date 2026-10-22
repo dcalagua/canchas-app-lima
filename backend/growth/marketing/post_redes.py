@@ -307,7 +307,7 @@ def rellenar(plantilla: str, cancha: dict | None, campo: str) -> str:
         precio = ""
     deps = [str(x) for x in (c.get("deportes") or ([c["deporte"]] if c.get("deporte") else []))]
     nombres = {"futbol": "Fútbol", "tenis": "Tenis", "padel": "Pádel", "pickleball": "Pickleball", "voley": "Vóley", "basquet": "Básquet", "futsal": "Futsal"}
-    base_url = (config.PUBLIC_BASE_URL or "https://www.pichangol.app").rstrip("/")
+    base_url = (config.PUBLIC_BASE_URL or config.MARCA_URL).rstrip("/")
     valores = {
         "local": (c.get("club") or c.get("nombre") or "tu cancha").strip(),
         "zona": (c.get("barrio") or c.get("distrito") or "").strip() or "tu zona",
@@ -355,7 +355,7 @@ _SYSTEM_REDACTOR = (
     f"primera frase, otra estructura; prohibido empezar con '¡Llegó {MARCA}!' o '¡Ya llegó!' salvo que el enfoque lo pida; "
     "(2) usa SOLO los datos del local que te doy (nombre, zona, deportes, precio, horario); no inventes promociones, "
     "resultados, testimonios ni cifras; (3) 0 a 3 emojis en todo el texto, nunca uno por línea; (4) un solo llamado a la "
-    "acción, natural (reserva en la app o en la web); (5) 3 a 6 hashtags al final, en minúsculas, con #pichangol y el "
+    f"acción, natural (reserva en la app o en la web); (5) 3 a 6 hashtags al final, en minúsculas, con {config.MARCA_HASHTAG} y el "
     "deporte; (6) largo variable: entre 280 y 650 caracteres; (7) moneda y ciudad del país del local; (8) no menciones que "
     "eres una IA ni pongas comillas alrededor del texto. Devuelves SOLO JSON válido: {\"titulo\": \"<= 36 caracteres, va "
     "impreso sobre la foto, sin emoji, con gancho>\", \"subtitulo\": \"<= 80 caracteres, complementa al título>\", "
@@ -381,7 +381,7 @@ def _contexto_local(c: dict | None) -> dict:
     return {"local": (c.get("club") or c.get("nombre") or "").strip(), "zona": (c.get("barrio") or c.get("distrito") or "").strip(),
             "deportes": [_DEPORTE_NOMBRE.get(d, d) for d in deps], "precio": precio, "horario": horario,
             "pais": _PAIS_NOMBRE.get(iso, "Perú"), "iso": iso, "verificada": bool(c.get("verificada", True)),
-            "url": f"{(config.PUBLIC_BASE_URL or 'https://www.pichangol.app').rstrip('/')}/reservar/{c['id']}" if c.get("id") else "https://www.pichangol.app"}
+            "url": f"{(config.PUBLIC_BASE_URL or config.MARCA_URL).rstrip('/')}/reservar/{c['id']}" if c.get("id") else config.MARCA_URL}
 
 
 def _recientes(evitar: list[str] | None, n: int = 10) -> list[str]:
@@ -448,8 +448,8 @@ def _banco(enfoque: str, ctx: dict, tono: str) -> list[dict]:
     dep_tag = "#" + d0.replace("á", "a").replace("ó", "o").replace("ú", "u").replace(" ", "")
     precio = ctx.get("precio") or ""
     horario = ctx.get("horario") or ""
-    url = ctx.get("url") or "https://www.pichangol.app"
-    tags = f"#pichangol {dep_tag} #reservajuegarepite"
+    url = ctx.get("url") or config.MARCA_URL
+    tags = f"{config.MARCA_HASHTAG} {dep_tag} #reservajuegarepite"
     B = {
         "beneficio": [
             {"titulo": "Horarios libres, al toque", "subtitulo": f"Mira qué hay en {L} y reserva en un minuto", "etiqueta": "",
@@ -483,11 +483,11 @@ def _banco(enfoque: str, ctx: dict, tono: str) -> list[dict]:
         ],
         "duenos": [
             {"titulo": "¿Tienes una cancha?", "subtitulo": "Publícala gratis y recibe reservas", "etiqueta": "Para dueños",
-             "texto": f"Si administras una cancha o una academia, {MARCA} te ordena la agenda: publicas gratis, los jugadores ven tus horarios libres y reservan solos; tú recibes el aviso y el cobro en línea si quieres.\n\nEmpieza en {MARCA_DOMINIO} → Modo anfitrión.\n\n#pichangol #duenosdecancha #canchas"},
+             "texto": f"Si administras una cancha o una academia, {MARCA} te ordena la agenda: publicas gratis, los jugadores ven tus horarios libres y reservan solos; tú recibes el aviso y el cobro en línea si quieres.\n\nEmpieza en {MARCA_DOMINIO} → Modo anfitrión.\n\n{config.MARCA_HASHTAG} #duenosdecancha #canchas"},
         ],
         "academia": [
             {"titulo": "Su primera raqueta", "subtitulo": "Academias para niños y adolescentes", "etiqueta": "Academias",
-             "texto": f"El deporte enseña a perder, a esperar el turno y a volver a intentar. En {MARCA} encuentras academias de {d0} con sus programas, horarios y tarifas claras, y matriculas desde la app.\n\nwww.pichangol.app/canchas?deporte=academias\n\n#pichangol #academias {dep_tag} #niños"},
+             "texto": f"El deporte enseña a perder, a esperar el turno y a volver a intentar. En {MARCA} encuentras academias de {d0} con sus programas, horarios y tarifas claras, y matriculas desde la app.\n\n{MARCA_DOMINIO}/canchas?deporte=academias\n\n{config.MARCA_HASHTAG} #academias {dep_tag} #niños"},
         ],
         "humor": ([
             {"titulo": "\"Esa iba fuera\"", "subtitulo": f"Lo único que {MARCA} no puede arbitrar", "etiqueta": "",
@@ -498,7 +498,7 @@ def _banco(enfoque: str, ctx: dict, tono: str) -> list[dict]:
         ]),
         "historia": [
             {"titulo": "Hecha para jugar más", "subtitulo": "Una app peruana para reservar canchas", "etiqueta": "",
-             "texto": f"{MARCA} nació de algo simple: conseguir cancha no debería ser más difícil que pedir un taxi. Por eso juntamos en un mapa las canchas con sus horarios reales, como {L} en {Z}, para que reservar tome un minuto.\n\nwww.pichangol.app\n\n{tags} #hechoenperu"},
+             "texto": f"{MARCA} nació de algo simple: conseguir cancha no debería ser más difícil que pedir un taxi. Por eso juntamos en un mapa las canchas con sus horarios reales, como {L} en {Z}, para que reservar tome un minuto.\n\n{MARCA_DOMINIO}\n\n{tags} #hechoenperu"},
         ],
     }
     return B.get(enfoque) or B["beneficio"]
@@ -540,8 +540,8 @@ def redactar(cancha: dict | None, tono: str = "cercano", enfoque: str = "auto", 
         if (tema or "").strip():
             data["texto"] = data["texto"].rstrip() + f"\n\n{tema.strip()[:200]}"
     texto = str(data.get("texto") or "").strip()
-    if "#pichangol" not in texto.lower():
-        texto = texto.rstrip() + "\n\n#pichangol"
+    if config.MARCA_HASHTAG not in texto.lower():
+        texto = texto.rstrip() + "\n\n" + config.MARCA_HASHTAG
     return {"titulo": _limpiar_campo(data.get("titulo"), 36), "subtitulo": _limpiar_campo(data.get("subtitulo"), 80),
             "etiqueta": _limpiar_campo(data.get("etiqueta"), 14), "texto": texto[:1200],
             "enfoque": str(data.get("enfoque") or elegido) if str(data.get("enfoque") or "") in ENFOQUES else elegido,

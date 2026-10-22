@@ -201,6 +201,29 @@ cache-first en SharedPreferences + caché de disco; `LogoMarcaImagen`) usado en
 y `ChatBurbuja`. El ícono del celular y el splash nativo siguen compilados en
 el APK (cambiarlos = assets nuevos + build). Test `tests/test_marca_logo.py`.
 
+## CAMBIO DE MARCA: CanchaLibre en `www.canchalibre.pe` (21-oct-2026)
+
+Decisión del director: la marca pasa a **CanchaLibre** y el dominio a
+**`www.canchalibre.pe`** (apex `canchalibre.pe` → www); `pichangol.app`
+REDIRIGE al nuevo. Defaults en código: backend `config.MARCA = "CanchaLibre"`,
+`MARCA_DOMINIO = "www.canchalibre.pe"`, `MARCA_URL`, `MARCA_HASHTAG`
+(`#canchalibre`); APK `kBrandName`/`kBrandDominio` + `APP_LABEL`, permisos y
+canal de notificación en `tool/configure_platforms.py`; App Links del manifest
+suman `www.canchalibre.pe` y `canchalibre.pe` (los de pichangol.app siguen).
+**NO cambian:** paquete `pe.ebim.pichangol`, esquema `pichangol://`, tablas
+`pichangol_*`, salas Jitsi, claves de SharedPreferences. **Variables nuevas:**
+`CORREO_DOMINIO` (remitente `no-reply@<dominio>`; default `pichangol.app`, el
+ya verificado en Resend: cambiarlo a `canchalibre.pe` recién cuando Resend lo
+verifique) y `DOMINIOS_VIEJOS` (vacío por defecto; con
+`pichangol.app,www.pichangol.app` todo GET/HEAD a esos hosts salta 301 a la
+misma ruta en `MARCA_URL`; los POST —webhooks, callbacks de pasarela— se
+atienden sin redirigir y `/.well-known/` nunca se redirige). Activarla SOLO
+cuando `www.canchalibre.pe` ya resuelva con SSL en el mismo servicio. La suite
+fija la marca vieja por env en `tests/conftest.py`;
+`test_marca_configurable.py` prueba los defaults nuevos y
+`test_dominio_raiz.py` la redirección. Las referencias a "pichangol.app" de
+más abajo son históricas.
+
 ## Dominio oficial: `pichangol.app`
 
 El dominio de marca **YA ESTÁ REGISTRADO Y VIVO**. En Railway (`pg-backend`) el
@@ -2952,6 +2975,17 @@ off → redeploy inmediato en cada push). URL pública:
     EC/BO siguen ocultas con `acad_paises`="PE"). CAMBIÓ `lib/` → APK/AAB de
     PRD = run 1562 (`workflow_dispatch`, `ref=prd`, `entorno=prod`). OJO: un
     APK anterior no muestra el QR de Yape del dueño ni el pago por QR.
+    **Pase del 20-oct-2026 (autorizado: "pasar a PRD"):** `prd` = 897e319
+    (AI Marketing Agent completo: estratega/creador/guardrails/aprobación/
+    publicación/métricas; locales Pro con foto ambientada, video en casa, Veo de
+    Google y Veo 3 por escenas con presentador IA; marca y logo configurables;
+    torneos con la marca del organizador; portada `/tenis`). SQL
+    `docs/piloto/supabase_ai_marketing.sql` APLICADO en PCG-PRD vía
+    `apply_migration` (`pichangol_ai_marketing`). Variable nueva en
+    `pg-backend-prd`: `GEMINI_API_KEY` como REFERENCIA a QAS. El agente nace
+    APAGADO (`ai_mkt_activo`) y en modo `aprobar`: se enciende en la torre de
+    PRD → Marketing IA. CAMBIÓ `lib/` → APK/AAB de PRD = run 1594
+    (`workflow_dispatch`, `ref=prd`, `entorno=prod`).
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,

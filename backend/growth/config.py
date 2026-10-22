@@ -10,10 +10,23 @@ import os
 # torre, los correos, los avisos y las piezas de marketing. Cambiar de nombre =
 # cambiar estas dos variables en Railway (y los logos de static/brand/), sin
 # tocar código. Las tablas `pichangol_*`, el paquete del APK y los ids internos
-# NO dependen de esto.
-MARCA = os.getenv("MARCA_NOMBRE", "").strip() or "Pichangol"
+# NO dependen de esto. Desde el 21-oct-2026 la marca es CanchaLibre en
+# www.canchalibre.pe (decisión del director); pichangol.app redirige al nuevo.
+MARCA = os.getenv("MARCA_NOMBRE", "").strip() or "CanchaLibre"
 MARCA_DOMINIO = (os.getenv("MARCA_DOMINIO", "").strip().removeprefix("https://").removeprefix("http://").strip("/")
-                 or "www.pichangol.app")
+                 or "www.canchalibre.pe")
+MARCA_URL = f"https://{MARCA_DOMINIO}"
+# Hashtag de la marca en las piezas de redes ("#canchalibre").
+MARCA_HASHTAG = "#" + "".join(ch for ch in MARCA.lower() if ch.isalnum())
+# Dominio del REMITENTE de los correos: va aparte porque el proveedor (Resend)
+# solo envía desde dominios verificados. Se cambia a canchalibre.pe cuando ese
+# dominio esté verificado en Resend; hasta entonces sigue el que ya lo está.
+CORREO_DOMINIO = (os.getenv("CORREO_DOMINIO", "").strip().lstrip("@") or "pichangol.app")
+# Dominios VIEJOS de la marca: toda visita GET/HEAD a estos hosts salta (301) a
+# la MISMA ruta en MARCA_URL. Se activa por variable en Railway cuando el nuevo
+# dominio ya resuelve con SSL (si se activa antes, la web quedaría inaccesible).
+# Ej.: DOMINIOS_VIEJOS="pichangol.app,www.pichangol.app".
+DOMINIOS_VIEJOS = {h.strip().lower() for h in os.getenv("DOMINIOS_VIEJOS", "").split(",") if h.strip()}
 
 # URL del módulo de existencia (Capa IA). Si está vacío, se usa el stub.
 EXISTENCIA_API_URL = os.getenv("EXISTENCIA_API_URL", "")

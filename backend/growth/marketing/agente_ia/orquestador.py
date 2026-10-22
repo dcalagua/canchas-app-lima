@@ -249,7 +249,7 @@ def crear_pieza(op: dict, s: dict, *, estrategia_id: str | None, campana_id: str
     cfg = configuracion()
     pais = s["pais"]
     cid, codigo = nuevo_id("cnt"), nuevo_codigo()
-    base = (config.PUBLIC_BASE_URL or "https://www.pichangol.app").rstrip("/")
+    base = (config.PUBLIC_BASE_URL or config.MARCA_URL).rstrip("/")
     link = f"{base}/go/{codigo}"
     if receta is None:
         receta = elegir_medios(op, s, cfg)

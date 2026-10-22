@@ -1,7 +1,7 @@
 /// Identidad de marca centralizada. Cambiar el nombre aquí lo cambia en toda la app.
-const String kBrandName = 'Pichangol';
+const String kBrandName = 'CanchaLibre';
 /// Dominio de marca (web pública, landings). Cambiarlo aquí lo cambia en la app.
-const String kBrandDominio = 'www.pichangol.app';
+const String kBrandDominio = 'www.canchalibre.pe';
 const String kBrandEslogan = 'Reserva, juega, repite.'; // eslogan oficial (handoff v2)
 const String kBrandTagline = 'Reserva, juega, repite.';
 const String kBrandTaglineShort = '¿Dónde juegas hoy?';

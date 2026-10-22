@@ -15,6 +15,7 @@ import random
 import re
 
 from marketing.agente_ia import guardrails, zonas
+import config
 from config import MARCA, MARCA_DOMINIO  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 CTA = {
@@ -73,7 +74,7 @@ def _excesos(d: dict) -> list[str]:
 
 def hashtags(op: dict) -> list[str]:
     h = op.get("hechos") or {}
-    tags = ["#pichangol"]
+    tags = [config.MARCA_HASHTAG]
     deps = [d for c in [h.get("cancha")] + list(h.get("canchas") or []) if c for d in c.get("deportes") or []]
     if deps:
         tags.append("#" + zonas.norm(_TAG_DEP.get(deps[0], deps[0])).replace(" ", ""))

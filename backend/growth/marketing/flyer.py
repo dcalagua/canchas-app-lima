@@ -17,6 +17,8 @@ import io
 import os
 import random
 
+import config
+
 # Paleta de marca (EBIM/Pichangol).
 _BOSQUE = (20, 70, 58)      # #14463A
 _BOSQUE2 = (7, 34, 27)      # más oscuro para el degradado / scrim
@@ -103,7 +105,7 @@ def _bajar_imagen(url: str):
 
     try:
         req = urllib.request.Request(
-            url, headers={"User-Agent": "PichangolBot/1.0 (+https://www.pichangol.app)"})
+            url, headers={"User-Agent": f"CanchaLibreBot/1.0 (+{config.MARCA_URL})"})
         with urllib.request.urlopen(req, timeout=6) as r:  # noqa: S310
             datos = r.read(8 * 1024 * 1024)
         return Image.open(io.BytesIO(datos))

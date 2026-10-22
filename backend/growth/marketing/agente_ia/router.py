@@ -18,6 +18,8 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel
 
+import config
+
 from marketing.agente_ia import creativo, orquestador as orq
 from marketing.agente_ia.repo import repo
 
@@ -212,7 +214,7 @@ def _visitante(request: Request) -> str:
 @router.get("/go/{codigo}")
 def go(codigo: str, request: Request) -> Response:
     import config
-    base = (config.PUBLIC_BASE_URL or "https://www.pichangol.app").rstrip("/")
+    base = (config.PUBLIC_BASE_URL or config.MARCA_URL).rstrip("/")
     c = repo().contenido_por_codigo(codigo[:20]) if codigo.isalnum() else None
     if not c:
         return RedirectResponse(base + "/", status_code=302)

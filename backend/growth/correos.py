@@ -66,7 +66,7 @@ def _env(nombre: str) -> str:
 
 
 def remitente() -> str:
-    return _env("CORREO_REMITENTE") or f"{MARCA} <no-reply@pichangol.app>"
+    return _env("CORREO_REMITENTE") or f"{MARCA} <no-reply@{config.CORREO_DOMINIO}>"
 
 
 def proveedor() -> str:
@@ -102,7 +102,7 @@ def _de_iso(s: str | None) -> datetime:
 
 def base_url() -> str:
     return config.url_limpia(config.LANDING_BASE_URL) or config.url_limpia(config.PUBLIC_BASE_URL) \
-        or "https://www.pichangol.app"
+        or config.MARCA_URL
 
 
 def _correo_valido(c: str | None) -> bool:
@@ -801,7 +801,7 @@ def _enviar_resend(m: dict) -> str:
                                           "Idempotency-Key": m["clave"][:250],
                                           # Cloudflare (delante de la API de Resend) responde 403 «error code:
                                           # 1010» al User-Agent por defecto de urllib: hay que identificarse.
-                                          "User-Agent": "Pichangol-Backend/1.0 (+https://www.pichangol.app)",
+                                          "User-Agent": f"CanchaLibre-Backend/1.0 (+{config.MARCA_URL})",
                                           "Accept": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
@@ -816,7 +816,7 @@ def _enviar_smtp(m: dict) -> str:
     msg["From"] = remitente()
     msg["To"] = m["para"]
     msg["Subject"] = m["asunto"]
-    msg["Message-ID"] = make_msgid(domain=(parseaddr(remitente())[1].split("@")[-1] or "pichangol.app"))
+    msg["Message-ID"] = make_msgid(domain=(parseaddr(remitente())[1].split("@")[-1] or config.CORREO_DOMINIO))
     resp = _responder_a()
     if resp:
         msg["Reply-To"] = resp

@@ -959,7 +959,7 @@ def _cobrar_y_matricular(a: dict, ses: dict | None, token: str, medio: str, item
     cliente = _st.cliente_de(email, nombre=((ses or {}).get("nombre") or titular.get("nombre") or ""),
                              telefono=str(titular.get("celular") or ""),
                              pais=str(_iso(a) or "").upper())
-    cargo = culqi.crear_cargo(token=token.strip(), monto_centimos=monto_cobro, email=email or "sin-correo@pichangol.app",
+    cargo = culqi.crear_cargo(token=token.strip(), monto_centimos=monto_cobro, email=email or f"sin-correo@{config.CORREO_DOMINIO}",
                               descripcion=concepto[:80], moneda=iso, cliente=cliente,
                               metadata={"canal": "web", "academia_id": a["id"], "plan_id": items[0]["plan"]["id"], "personas": len(items),
                                         "cargo_servicio_centimos": cg["cargo_centimos"]})

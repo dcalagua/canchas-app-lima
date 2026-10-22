@@ -17,13 +17,15 @@ import re
 import urllib.request
 from urllib.parse import urljoin, urlparse
 
+import config
+
 # Caché en memoria: url -> dict. Se limita el tamaño para no crecer sin freno.
 _CACHE: dict[str, dict] = {}
 _CACHE_MAX = 500
 
 _TIMEOUT = 8  # segundos
 _MAX_BYTES = 300_000  # solo leemos el <head> (los OG viven arriba)
-_UA = ("Mozilla/5.0 (compatible; PichangolBot/1.0; +https://www.pichangol.app)")
+_UA = ("Mozilla/5.0 (compatible; CanchaLibreBot/1.0; +" + config.MARCA_URL + ")")
 
 
 def _meta(html: str, clave: str) -> str:

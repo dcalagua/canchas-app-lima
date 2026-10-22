@@ -722,7 +722,7 @@ def _pulir_clip(v: dict, clip: bytes, titulo: str, *, musica: str) -> dict:
 # mismas piezas de la torre de Facebook: las fotos (la ambientada + las reales)
 # con movimiento tipo Ken Burns (`marketing/foto_video.py`) y luego el pulido
 # Pichangol (`video_pulido.pulir`: logo, intro, rótulo con el título, cierre con
-# www.pichangol.app y música original). Es también el RESPALDO de Veo.
+# el dominio de la marca y música original). Es también el RESPALDO de Veo.
 PROVEEDOR_VIDEO = "movimiento"
 SEG_POR_FOTO = (1.5, 16.0)
 
