@@ -1,0 +1,2023 @@
+"""PARTIDOS, PICHANGAS, REFERIDOS, CARNET y LLENAR CANCHA en la web: espejo
+de las pantallas del app (fase 2-3 del lado jugador, pedido del director:
+"en la web implementa las mismas funcionalidades que existen en el app").
+
+· `/partidos` = `partidos_screen.dart` ("Match"): partidos abiertos que
+  publica cualquier jugador en `pichangol_partidos`; el ROSTER y el chat son
+  el GRUPO homónimo (`pichangol_grupos` + `pichangol_grupo_miembros`, mismo
+  id), igual que `PartidosRepo`. Filtro por país (como el app: los que no
+  tienen ubicación salen siempre), Me apunto con el cupo validado en el
+  servidor (con candado de fila: dos a la vez no pasan del cupo), Salir,
+  +1 cupo y Eliminar solo del creador, Coordinar = chat del grupo en
+  `/mensajes`. Crear = `_CrearPartidoSheet` (deporte, sede con los locales
+  conocidos, fecha, hora, total de jugadores con los atajos por deporte,
+  título y nota opcionales). Arriba, el top-3 del Circuito (→ `/liga`) y el
+  acceso a las pichangas de club.
+· `/pichangas` = `convocatorias_screen.dart` + `convocatoria_detalle_screen`
+  + `crear_convocatoria_screen` + `ranking_socios_screen`: llama como
+  funciones a `convocatorias/service.py` (cupos, lista de espera y los 3
+  modos de asignación: orden de llegada, sorteo y equidad) con el correo de
+  la SESIÓN. OJO: `/convocatorias` es la API JSON del APK (router con
+  prefijo), por eso la web vive en `/pichangas` (el nombre que muestra el
+  app). En el APK el "panel del dueño" depende de un login de club heredado
+  que ya no existe (`sesionIniciada` nunca se enciende); aquí el admin de una
+  pichanga es quien la creó o el dueño de un local con ese club (slug =
+  `ConvocatoriasService.slugClub`), y solo un dueño con canchas crea.
+· `/referidos` = `referidos_screen.dart`: código `PCGxxxxxx` (misma fórmula
+  que `AppState.codigoReferido`), invitar por WhatsApp y cuántos usaron tu
+  código y CANJE del código de un amigo: desde el 1-oct-2026 el bono vive en
+  el backend (`referidos.py`, billetera única del correo), igual que el APK.
+· `/jugador/{ref}` = `perfil_global_screen.dart` (carnet): stats
+  consolidadas de academias + retos (`AppState.perfilGlobalDe`), puesto en
+  el ranking global del deporte, PRO, bio, desglose por academia, últimos
+  partidos, Retar (misma acción que `/liga`) e imprimir el carnet. `ref` =
+  correo cifrado de `jugador_liga.ref_de` (el navegador nunca ve correos).
+· `/anfitrion/llenar` = `llenar_cancha_screen.dart` (dueño): horas LIBRES de
+  hoy/mañana de una cancha, descuento REAL por slot
+  (`pichangol_descuentos_slot`, el mismo que cobra la reserva), aviso por el
+  chat de la cancha a los clientes con cuenta y WhatsApp a los demás.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import time
+from datetime import date, datetime, timedelta, timezone
+from urllib.parse import quote
+
+from fastapi import APIRouter, Body, Request
+from fastapi.responses import HTMLResponse, JSONResponse
+
+import config
+import paises
+import juego
+from convocatorias import service as conv
+from db import pg
+from db.store import MODOS_ASIGNACION, stores
+from web import catalogos, datos, horarios, sesion, ui
+from web.jugador_liga import (DEPORTES, DEPORTES_ACTIVOS, DEPORTES_CIRCUITO, PUNTOS_DERROTA,
+                              PUNTOS_VICTORIA, _fernet, aviso_push, avatar, datos_ranking,
+                              deportes_con_ranking, mi_nombre, perfiles, ranking_global, ref_de,
+                              sin_sesion)
+from web.ui import PLAY_URL, e
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
+
+router = APIRouter(tags=["web-jugador-partidos"])
+
+_ID_PARTIDO = re.compile(r"^p_[0-9]{6,20}$")
+_ID_CANCHA = re.compile(r"^[A-Za-z0-9_.\-]{1,120}$")
+_HORA = re.compile(r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
+_MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic"]
+_DIAS = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"]
+
+
+def _ses_o_401(request: Request):
+    ses = sesion.de_request(request)
+    if not ses:
+        return None, JSONResponse({"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión para continuar."}, status_code=401)
+    return ses, None
+
+
+def _low(s) -> str:
+    return str(s or "").strip().lower()
+
+
+def _etq(dep: str) -> str:
+    return DEPORTES.get(dep, (dep.capitalize() if dep else "", ""))[0]
+
+
+def _emo(dep: str) -> str:
+    return DEPORTES.get(dep, ("", "🏅"))[1]
+
+
+def _js(obj) -> str:
+    return json.dumps(obj, ensure_ascii=False).replace("</", "<\\/")
+
+
+def fecha_legible(fecha: str, hora: str = "") -> str:
+    """`_fechaLegible` del app: "vie 18 jul · 20:00"."""
+    try:
+        d = date.fromisoformat(fecha)
+        base = f"{_DIAS[d.weekday()]} {d.day} {_MESES[d.month - 1]}"
+    except ValueError:
+        base = fecha
+    return f"{base} · {hora}" if hora else base
+
+
+# JS común: POST con preloader, avisos con modales (nunca confirm/alert).
+_JS_BASE = r"""
+function jpPost(url, body, msg){
+  pcgCargando(msg || 'Guardando…', {demora: 250});
+  return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})})
+    .then(function(r){ return r.json().catch(function(){ return {ok: false}; }); })
+    .then(function(j){ pcgCargando(false); return j || {ok: false}; })
+    .catch(function(){ pcgCargando(false); return {ok: false, mensaje: 'Sin conexión. Revisa tu internet y reintenta.'}; });
+}
+function jpFallo(j, t){ pcgAvisar({titulo: t || 'No se pudo', mensaje: (j && j.mensaje) || 'Reintenta en un momento.', icono: '⚠️'}); }
+function jpEsc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+"""
+
+_CSS = """
+.jp-wrap{max-width:760px;margin:10px auto 70px;min-width:0}
+.jp-wrap h1{font-size:28px;margin:4px 0 6px;letter-spacing:-.3px}
+.jp-volver{color:#6a6a6a;text-decoration:none;font-size:14px}
+.jp-hero{background:linear-gradient(135deg,#0B8A3E,#067A38);color:#fff;border-radius:22px;padding:20px;margin:8px 0 14px}
+.jp-hero h1{color:#fff;margin:0 0 2px}
+.jp-hero p{margin:0 0 12px;opacity:.92}
+.jp-hero .jp-link{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.18);color:#fff;text-decoration:none;font-weight:700;font-size:13.5px;border-radius:10px;padding:8px 12px;margin:0 8px 6px 0}
+.jp-card{background:#fff;border:1px solid #EBEBEB;border-radius:18px;box-shadow:0 5px 14px rgba(0,0,0,.06);padding:16px;margin:0 0 14px;min-width:0}
+.jp-top{display:flex;align-items:center;gap:12px;min-width:0}
+.jp-dep{width:44px;height:44px;border-radius:50%;background:#EAF7EF;display:inline-flex;align-items:center;justify-content:center;font-size:22px;flex:none}
+.jp-top .t{flex:1;min-width:0}
+.jp-top .t b{display:block;font-size:16.5px;overflow-wrap:anywhere}
+.jp-top .t small{color:#6a6a6a}
+.jp-pill{display:inline-block;border-radius:999px;padding:5px 10px;font-weight:800;font-size:12px;white-space:nowrap}
+.jp-pill.ok{background:#EAF7EF;color:#067A38}.jp-pill.gris{background:#EBEBEB;color:#6a6a6a}
+.jp-pill.warn{background:#FFF6E0;color:#B7791F}.jp-pill.info{background:#EAF2FB;color:#1F5FA8}.jp-pill.bad{background:#FBEAEA;color:#C0392B}
+.jp-lin{display:flex;gap:8px;color:#555;font-size:13.5px;margin:6px 0 0;min-width:0}
+.jp-lin span:last-child{min-width:0;overflow-wrap:anywhere}
+.jp-acc{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.jp-acc .btn{flex:1 1 auto}
+.jp-vacio{text-align:center;color:#6a6a6a;padding:34px 12px}
+.jp-vacio .em{font-size:54px;display:block;margin-bottom:8px}
+.jp-vacio b{display:block;color:#0A1B3D;font-size:18px;margin-bottom:4px}
+.jp-chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px}
+.jp-chips .chip{max-width:100%;white-space:normal}
+.jp-wrap.con-fab{padding-bottom:70px}
+.pcg-dlg .caja .jp-fila .q{text-align:left}
+.jp-fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:15;box-shadow:0 8px 22px rgba(0,0,0,.18);border-radius:999px}
+.jp-sec{font-weight:800;font-size:16px;margin:18px 0 8px}
+.jp-barra{height:8px;border-radius:999px;background:#EBEBEB;overflow:hidden;margin:12px 0 8px}
+.jp-barra i{display:block;height:100%;background:#0B8A3E;border-radius:999px}
+.jp-barra.llena i{background:#F2C94C}
+.jp-cupos{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:13.5px}
+.jp-cupos .der{margin-left:auto;font-weight:800}
+.jp-banner{display:flex;gap:12px;align-items:flex-start;border-radius:14px;padding:14px;margin:12px 0}
+.jp-banner .em{font-size:22px}
+.jp-banner b{display:block}
+.jp-banner small{display:block;opacity:.9}
+.jp-fila{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid #F0F0F0;min-width:0}
+.jp-fila:first-child{border-top:0}
+.jp-fila .q{flex:1;min-width:0}
+.jp-fila .q b{display:block;overflow-wrap:anywhere}
+.jp-fila .q small{color:#6a6a6a}
+.jp-n{width:30px;height:30px;border-radius:50%;background:#EAF7EF;color:#067A38;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.jp-av{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#0E8F67;color:#fff;font-weight:800}
+.jp-form label.l{display:block;font-weight:800;margin:16px 0 6px}
+.jp-form .ayuda{color:#6a6a6a;font-size:12.5px;margin:-2px 0 6px}
+.jp-form input[type=text],.jp-form select,.jp-form input[type=date]{width:100%;padding:12px;border:1px solid #E4E4E4;border-radius:12px;font:inherit;background:#fff}
+.jp-step{display:flex;align-items:center;gap:12px;margin-top:8px}
+.jp-step button{width:44px;height:44px;border-radius:50%;border:1px solid #E4E4E4;background:#fff;font-size:22px;cursor:pointer}
+.jp-step b{flex:1;text-align:center;font-size:26px}
+.jp-modo{display:flex;gap:12px;align-items:flex-start;border:1px solid #E4E4E4;border-radius:14px;padding:12px;margin:0 0 8px;cursor:pointer;background:#fff;width:100%;text-align:left;font:inherit}
+.jp-modo.sel{border:1.5px solid #0B8A3E;background:#EAF7EF}
+.jp-modo .em{font-size:22px}
+.jp-modo b{display:block}
+.jp-modo small{color:#555}
+.jp-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.jp-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}
+.jp-stats div{background:#fff;border:1px solid #EBEBEB;border-radius:14px;padding:10px 6px;text-align:center;min-width:0}
+.jp-stats b{display:block;font-size:20px}
+.jp-stats small{color:#6a6a6a;font-size:11.5px}
+.jp-carnet{background:linear-gradient(135deg,#067A38,#0A1B3D);color:#fff;border-radius:20px;padding:18px;display:flex;gap:14px;align-items:center;min-width:0}
+.jp-carnet .jp-av{width:60px;height:60px;font-size:24px;background:#7CB518}
+.jp-carnet b{font-size:19px;display:block;overflow-wrap:anywhere}
+.jp-carnet small{opacity:.85;display:block}
+.jp-pro{display:inline-block;background:#7CB518;color:#fff;font-weight:900;font-size:10px;border-radius:6px;padding:2px 7px;margin-left:6px;vertical-align:middle}
+.jp-cod{font-size:30px;font-weight:900;letter-spacing:3px;margin:4px 0 12px}
+.jp-slots{display:flex;flex-wrap:wrap;gap:8px}
+.jp-slot{border:1px solid #E4E4E4;background:#fff;border-radius:12px;padding:8px 12px;cursor:pointer;font:inherit;text-align:center;min-width:84px}
+.jp-slot b{display:block}
+.jp-slot small{color:#6a6a6a}
+.jp-slot.sel{background:#0B8A3E;border-color:#0B8A3E;color:#fff}
+.jp-slot.sel small{color:#EAF7EF}
+.jp-mini{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13.5px}
+.jp-mini .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.jp-mini .pt{font-weight:900;color:#067A38}
+.jp-bio{display:flex;gap:10px;padding:6px 0;font-size:14px}
+.jp-bio small{display:block;color:#6a6a6a}
+.pcg-dlg .caja .jp-chk{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #F0F0F0;cursor:pointer}
+.pcg-dlg .caja .jp-chk input{width:auto;flex:none}
+@media (max-width:600px){.jp-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.jp-wrap h1{font-size:24px}}
+@media print{.cab,header,footer,.jp-noprint,.pcg-app-banner,#abrirApp{display:none!important}.jp-wrap{margin:0}}
+"""
+
+
+# ════════════════════════════ PARTIDOS ABIERTOS ═══════════════════════════════
+
+def _fila_partido(cols, f) -> dict:
+    d = dict(zip(cols, f))
+    ets = d.get("etiquetas")
+    if isinstance(ets, str):
+        try:
+            ets = json.loads(ets)
+        except ValueError:
+            ets = []
+    return {"id": str(d.get("id") or ""), "creador_email": _low(d.get("creador_email")),
+            "creador_nombre": str(d.get("creador_nombre") or ""), "deporte": str(d.get("deporte") or "futbol"),
+            "titulo": str(d.get("titulo") or ""), "fecha": str(d.get("fecha") or ""), "hora": str(d.get("hora") or ""),
+            "sede": str(d.get("sede_nombre") or ""),
+            "lat": float(d["lat"]) if d.get("lat") is not None else None,
+            "lng": float(d["lng"]) if d.get("lng") is not None else None,
+            "cupos": int(d.get("cupos") or 10), "nota": str(d.get("nota") or ""),
+            "tipo": str(d.get("tipo") or "partido"), "modalidad": str(d.get("modalidad") or ""),
+            "nivel": str(d.get("nivel") or ""), "etiquetas": [str(x) for x in (ets or []) if x],
+            "cancha_id": str(d.get("cancha_id") or ""),
+            "jugadores": [], "nombres": []}
+
+
+_COLS_P = ["id", "creador_email", "creador_nombre", "deporte", "titulo", "fecha", "hora", "sede_nombre",
+           "lat", "lng", "cupos", "nota"]
+# JUEGA YA (SQL `docs/piloto/supabase_partidos_juega_ya.sql`): tipo, modalidad,
+# nivel, etiquetas y cancha. Se leen/escriben solo si la base ya las tiene.
+_COLS_V2 = ["tipo", "modalidad", "nivel", "etiquetas", "cancha_id"]
+_cols_v2_estado = {"ok": None, "t": 0.0}
+
+
+def cols_v2() -> bool:
+    """¿Corrió el SQL de Juega ya? Un sí se recuerda; un no se re-pregunta a
+    los 5 min (así no hace falta reiniciar el servicio tras correr el SQL)."""
+    est = _cols_v2_estado
+    if est["ok"] or (est["ok"] is False and time.time() - est["t"] < 300):
+        return bool(est["ok"])
+    if not pg.habilitado:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' "
+                        "AND table_name = 'pichangol_partidos' AND column_name = ANY(%s)", (_COLS_V2,))
+            ok = int(cur.fetchone()[0]) == len(_COLS_V2)
+    except Exception:  # noqa: BLE001
+        return False
+    est.update(ok=ok, t=time.time())
+    return ok
+
+
+def _cols_p() -> list[str]:
+    return _COLS_P + (_COLS_V2 if cols_v2() else [])
+
+
+def _roster(cur, ids: list[str]) -> dict[str, list[tuple[str, str]]]:
+    """Miembros por partido, en orden de llegada si la tabla tiene `creado`."""
+    out: dict[str, list[tuple[str, str]]] = {}
+    if not ids:
+        return out
+    try:
+        cur.execute("SELECT grupo_id, email, nombre FROM pichangol_grupo_miembros WHERE grupo_id = ANY(%s) ORDER BY creado", (ids,))
+    except Exception:  # noqa: BLE001  (base sin columna `creado`)
+        cur.connection.rollback()
+        cur.execute("SELECT grupo_id, email, nombre FROM pichangol_grupo_miembros WHERE grupo_id = ANY(%s)", (ids,))
+    for gid, em, nom in cur.fetchall():
+        if gid and em:
+            out.setdefault(str(gid), []).append((_low(em), str(nom or "")))
+    return out
+
+
+def partidos_desde(hoy_iso: str) -> list[dict]:
+    """`PartidosRepo.abiertos`: fecha de hoy en adelante, con su roster."""
+    if not pg.habilitado:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cols = _cols_p()
+            cur.execute(f"SELECT {', '.join(cols)} FROM pichangol_partidos WHERE fecha >= %s ORDER BY fecha, hora", (hoy_iso,))
+            ps = [_fila_partido(cols, f) for f in cur.fetchall()]
+            ros = _roster(cur, [p["id"] for p in ps])
+    except Exception:  # noqa: BLE001
+        return []
+    for p in ps:
+        r = ros.get(p["id"], [])
+        p["jugadores"] = [x[0] for x in r]
+        p["nombres"] = [x[1] for x in r]
+    return ps
+
+
+def partido(pid: str) -> dict | None:
+    if not pg.habilitado or not _ID_PARTIDO.match(pid or ""):
+        return None
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cols = _cols_p()
+            cur.execute(f"SELECT {', '.join(cols)} FROM pichangol_partidos WHERE id = %s", (pid,))
+            f = cur.fetchone()
+            if not f:
+                return None
+            p = _fila_partido(cols, f)
+            r = _roster(cur, [pid]).get(pid, [])
+    except Exception:  # noqa: BLE001
+        return None
+    p["jugadores"] = [x[0] for x in r]
+    p["nombres"] = [x[1] for x in r]
+    return p
+
+
+def partidos_creados_desde(desde: datetime, fecha_min: str) -> list[dict]:
+    """Partidos CREADOS desde `desde` (app, web o APKs viejos) que aún no se
+    jugaron, con su roster: el barrido de avisos de `juego.py`."""
+    if not pg.habilitado:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cols = _cols_p()
+            cur.execute(f"SELECT {', '.join(cols)} FROM pichangol_partidos WHERE creado >= %s AND fecha >= %s "
+                        "ORDER BY creado", (desde, fecha_min))
+            ps = [_fila_partido(cols, f) for f in cur.fetchall()]
+            ros = _roster(cur, [p["id"] for p in ps])
+    except Exception:  # noqa: BLE001
+        return []
+    for p in ps:
+        r = ros.get(p["id"], [])
+        p["jugadores"] = [x[0] for x in r]
+        p["nombres"] = [x[1] for x in r]
+    return ps
+
+
+def crear_partido(p: dict) -> bool:
+    """`PartidosRepo.crear`: fila + grupo de chat homónimo (best-effort) + el
+    creador como primer jugador."""
+    if not pg.habilitado:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cols = ["id", "creador_email", "creador_nombre", "deporte", "titulo", "fecha", "hora",
+                    "sede_nombre", "lat", "lng", "cupos", "nota"]
+            vals = [p["id"], p["creador_email"], p["creador_nombre"], p["deporte"], p["titulo"], p["fecha"], p["hora"],
+                    p["sede"], p.get("lat"), p.get("lng"), p["cupos"], p.get("nota") or ""]
+            if cols_v2():
+                cols += _COLS_V2
+                vals += [p.get("tipo") or "partido", p.get("modalidad") or "", p.get("nivel") or "",
+                         json.dumps(p.get("etiquetas") or []), p.get("cancha_id") or None]
+            marcas = ", ".join("%s::jsonb" if c == "etiquetas" else "%s" for c in cols)
+            cur.execute(f"INSERT INTO pichangol_partidos ({', '.join(cols)}) VALUES ({marcas})", vals)
+            cur.execute("SAVEPOINT g")
+            try:
+                cur.execute("INSERT INTO pichangol_grupos (id, nombre, creador_email) VALUES (%s, %s, %s)",
+                            (p["id"], p["titulo"], p["creador_email"]))
+            except Exception:  # noqa: BLE001
+                cur.execute("ROLLBACK TO SAVEPOINT g")
+            cur.execute("INSERT INTO pichangol_grupo_miembros (grupo_id, email, nombre) VALUES (%s, %s, %s) "
+                        "ON CONFLICT (grupo_id, email) DO UPDATE SET nombre = EXCLUDED.nombre",
+                        (p["id"], p["creador_email"], p["creador_nombre"]))
+            conn.commit()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def apuntarse(pid: str, email: str, nombre: str) -> str:
+    """`PartidosRepo.apuntarse` con el cupo validado EN el servidor: la fila del
+    partido se bloquea (FOR UPDATE), así dos que entran a la vez al último cupo
+    no lo desbordan. 'ok' | 'lleno' | 'no_existe' | 'error'."""
+    if not pg.habilitado:
+        return "error"
+    em = _low(email)
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT cupos FROM pichangol_partidos WHERE id = %s FOR UPDATE", (pid,))
+            f = cur.fetchone()
+            if not f:
+                conn.rollback()
+                return "no_existe"
+            cupos = int(f[0] or 0)
+            cur.execute("SELECT email FROM pichangol_grupo_miembros WHERE grupo_id = %s", (pid,))
+            emails = [_low(x[0]) for x in cur.fetchall()]
+            if em in emails:
+                conn.rollback()
+                return "ok"
+            if cupos > 0 and len(emails) >= cupos:
+                conn.rollback()
+                return "lleno"
+            cur.execute("INSERT INTO pichangol_grupo_miembros (grupo_id, email, nombre) VALUES (%s, %s, %s) "
+                        "ON CONFLICT (grupo_id, email) DO UPDATE SET nombre = EXCLUDED.nombre", (pid, em, nombre))
+            conn.commit()
+            return "ok"
+    except Exception:  # noqa: BLE001
+        return "error"
+
+
+def bajarse(pid: str, email: str) -> bool:
+    if not pg.habilitado:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM pichangol_grupo_miembros WHERE grupo_id = %s AND email = %s", (pid, _low(email)))
+            conn.commit()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def cambiar_cupos(pid: str, creador: str, cupos: int) -> bool:
+    """Solo el CREADOR (el WHERE lo exige)."""
+    if not pg.habilitado:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE pichangol_partidos SET cupos = %s WHERE id = %s AND lower(creador_email) = %s",
+                        (max(2, min(40, int(cupos))), pid, _low(creador)))
+            n = cur.rowcount
+            conn.commit()
+            return n > 0
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def eliminar_partido(pid: str, creador: str) -> bool:
+    """`PartidosRepo.eliminar` (solo el creador): partido + roster + grupo."""
+    if not pg.habilitado:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM pichangol_partidos WHERE id = %s AND lower(creador_email) = %s", (pid, _low(creador)))
+            if cur.rowcount <= 0:
+                conn.rollback()
+                return False
+            cur.execute("DELETE FROM pichangol_grupo_miembros WHERE grupo_id = %s", (pid,))
+            cur.execute("DELETE FROM pichangol_grupos WHERE id = %s", (pid,))
+            conn.commit()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def locales_info() -> dict[str, dict]:
+    """Locales conocidos → {lat, lng, cancha_id}. `cancha_id` (para "Ver
+    cancha") solo si el local es reservable (verificado y con dueño)."""
+    out: dict[str, dict] = {}
+    for c in datos.canchas_publicas():
+        n = (c.get("club") or c.get("nombre") or "").strip()
+        if not n or c.get("lat") is None or c.get("lng") is None:
+            continue
+        reservable = bool(c.get("verificada")) and bool(str(c.get("dueno") or "").strip())
+        cur = out.get(n)
+        if cur is None:
+            out[n] = {"lat": float(c["lat"]), "lng": float(c["lng"]), "cancha_id": str(c.get("id") or "") if reservable else ""}
+        elif not cur["cancha_id"] and reservable:
+            cur["cancha_id"] = str(c.get("id") or "")
+    return out
+
+
+def locales_conocidos() -> dict[str, tuple[float, float]]:
+    """Sedes para "¿Dónde se juega?" (= `Club.agrupar(todasLasCanchas)`): nombre
+    del local → ubicación."""
+    out: dict[str, tuple[float, float]] = {}
+    for c in datos.canchas_publicas():
+        n = (c.get("club") or c.get("nombre") or "").strip()
+        if n and c.get("lat") is not None and c.get("lng") is not None and n not in out:
+            out[n] = (float(c["lat"]), float(c["lng"]))
+    return out
+
+
+# Atajos "jugadores en total" por deporte (`_presetsDe`); incluye al creador.
+PRESETS = {
+    "tenis": [("Singles", 2), ("Dobles", 4)], "padel": [("Singles", 2), ("Dobles", 4)],
+    "pickleball": [("Singles", 2), ("Dobles", 4)],
+    "futbol": [("Fut 5", 10), ("Fut 6", 12), ("Fut 7", 14), ("Fut 8", 16), ("Fut 11", 22)],
+    "voley": [("4 vs 4", 8), ("6 vs 6", 12)], "basquet": [("3 vs 3", 6), ("5 vs 5", 10)], "natacion": [],
+}
+_PAISES = [("PE", "Perú"), ("BO", "Bolivia"), ("EC", "Ecuador")]
+
+
+def _pais_usuario(email: str) -> str:
+    try:
+        from web.jugador_billetera import pais_billetera
+        return pais_billetera(email)[0]
+    except Exception:  # noqa: BLE001
+        return "PE"
+
+
+def _preview_circuito() -> str:
+    """`_CircuitoPreview`: top-3 del primer deporte de raqueta con ranking."""
+    try:
+        d = datos_ranking()
+        deps = [x for x in deportes_con_ranking(d) if x in DEPORTES_CIRCUITO]
+    except Exception:  # noqa: BLE001
+        return ""
+    if not deps:
+        return ""
+    top = ranking_global(d, deps[0])[:3]
+    filas = "".join(
+        f"<div class='jp-mini'><span>{['🥇', '🥈', '🥉'][i]}</span><span class='nm'>{e(f['nombre'] or 'Jugador')}"
+        + ("<span class='jp-pro'>PRO</span>" if f["email"] and stores.pro_activo(f["email"]) else "")
+        + f"</span><small>{f['pj']} PJ</small><span class='pt'>{f['puntos']} pts</span></div>" for i, f in enumerate(top))
+    return (f"<a class='jp-card' href='/liga?deporte={deps[0]}' style='display:block;text-decoration:none;color:inherit'>"
+            f"<div class='jp-top'><span class='jp-dep'>🏆</span><div class='t'><b>Circuito {MARCA}</b>"
+            "<small>Ranking de tu ciudad · rétalos y sube</small></div><span style='font-size:22px;color:#6a6a6a'>›</span></div>"
+            + (f"<div style='margin-top:8px'>{filas}</div>" if filas else "") + "</a>")
+
+
+def _nombre_modalidad(p: dict) -> str:
+    """"Fut 7", "Singles", "Dobles"… según el tipo y los cupos."""
+    if p.get("tipo") == "partner":
+        m = juego.modalidad_partner(p.get("modalidad") or "")
+        return m[1] if m else "Partner"
+    for etq, n in PRESETS.get(p.get("deporte") or "", []):
+        if n == p.get("cupos"):
+            return etq
+    return _etq(p.get("deporte") or "")
+
+
+def titulo_auto(p: dict) -> str:
+    """Título SIN texto libre: "Fut 7 · Sabor Golazo", "Singles de tenis · Club X"."""
+    mod = _nombre_modalidad(p)
+    if p.get("tipo") == "partner":
+        mod = f"{mod} de {_etq(p['deporte']).lower()}"
+    return f"{mod} · {p['sede']}"[:80]
+
+
+def _tarjeta_partido(p: dict, yo: str) -> str:
+    from web.jugador_mensajes import clave_de, hilo_grupo
+    apuntado = yo in p["jugadores"]
+    creador = p["creador_email"] == yo
+    n = len(p["jugadores"])
+    lleno = n >= p["cupos"]
+    faltan = max(0, p["cupos"] - n)
+    partner = p.get("tipo") == "partner"
+    if lleno:
+        chip = "<span class='jp-pill gris'>Completo</span>"
+    elif partner:
+        chip = "<span class='jp-pill info'>Busca partner</span>" if faltan == 1 else f"<span class='jp-pill info'>Faltan {faltan}</span>"
+    else:
+        chip = f"<span class='jp-pill ok'>Faltan {faltan}</span>"
+    lin = ""
+    if p["sede"]:
+        lin += f"<div class='jp-lin'><span>📍</span><span>{e(p['sede'])}<b class='jp-km'></b></span></div>"
+    lin += (f"<div class='jp-lin'><span>👥</span><span>{n} de {p['cupos']} jugadores · {e(_nombre_modalidad(p))}"
+            f"{'' if partner else ' · ' + e(_etq(p['deporte']))}</span></div>")
+    if p.get("nivel"):
+        lin += f"<div class='jp-lin'><span>📊</span><span>Nivel {e(juego.etiqueta_nivel(p['nivel']))}</span></div>"
+    if p.get("etiquetas"):
+        lin += "<div class='jp-ets'>" + "".join(
+            f"<span class='jp-et'>{e(juego.ETIQUETAS[k][0])} {e(juego.ETIQUETAS[k][1])}</span>"
+            for k in p["etiquetas"] if k in juego.ETIQUETAS) + "</div>"
+    elif p["nota"]:   # publicado por un APK anterior (texto libre)
+        lin += f"<div class='jp-lin'><span>🗒️</span><span>{e(p['nota'])}</span></div>"
+    if p["nombres"]:
+        nombres = ", ".join(x.split(" ")[0] for x in p["nombres"][:12] if x) or ""
+        if nombres:
+            lin += f"<div class='jp-lin'><span>🙋</span><span>{e(nombres)}{'…' if len(p['nombres']) > 12 else ''}</span></div>"
+    pid = e(p["id"])
+    if apuntado:
+        acc = f"<a class='btn' href='/mensajes/{quote(clave_de([hilo_grupo(p['id'])]), safe='')}'>💬 Coordinar</a>"
+        if creador:
+            acc += (f"<button type='button' class='btn sec' data-cupo='{pid}' data-n='{p['cupos'] + 1}'>+1 cupo</button>"
+                    f"<button type='button' class='btn sec' style='color:#C0392B' data-eliminar='{pid}'>Eliminar</button>")
+        else:
+            acc += f"<button type='button' class='btn sec' data-salir='{pid}'>Salir</button>"
+    else:
+        acc = ("<button type='button' class='btn' disabled style='background:#BDBDBD'>Completo</button>" if lleno
+               else f"<button type='button' class='btn' data-apuntar='{pid}'>{'🎾 Juego contigo' if partner else '＋ Me apunto'}</button>")
+    if p.get("cancha_id"):
+        acc += f"<a class='btn sec' href='/reservar/{quote(p['cancha_id'], safe='')}'>🏟️ Ver cancha</a>"
+    pais_p = paises.pais_de_coordenadas(p["lat"], p["lng"]) if p["lat"] is not None and p["lng"] is not None else ""
+    attrs = (f" data-dep='{e(p['deporte'])}' data-fecha='{e(p['fecha'])}' data-nivel='{e(p.get('nivel') or '')}' data-pais='{pais_p}'"
+             + (f" data-lat='{p['lat']}' data-lng='{p['lng']}'" if p["lat"] is not None and p["lng"] is not None else ""))
+    return (f"<div class='jp-card jp-p'{attrs}><div class='jp-top'><span class='jp-dep'>{_emo(p['deporte'])}</span>"
+            f"<div class='t'><b>{e(p['titulo'])}</b><small>{e(fecha_legible(p['fecha'], p['hora']))}</small></div>{chip}</div>"
+            f"{lin}<div class='jp-acc'>{acc}</div></div>")
+
+
+def _texto_prefs(pr: dict) -> str:
+    if not pr.get("avisos") and not pr.get("disponible"):
+        return "Te avisamos cuando alguien publique un partido cerca de ti, de tu deporte y a tu hora."
+    partes = []
+    if pr.get("avisos"):
+        partes.append("🔔 Avisos encendidos")
+    if pr.get("disponible"):
+        partes.append("🙋 Apareces como disponible")
+    deps = ", ".join(_etq(d) for d in pr.get("deportes") or [])
+    return " · ".join(partes) + (f" · {deps}" if deps else "") + f" · a {pr.get('radio_km') or juego.RADIO_DEFAULT} km"
+
+
+_CSS_JY = """
+.jp-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:4px 0 6px}
+.jp-tile{display:flex;flex-direction:column;align-items:flex-start;gap:4px;background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:16px;padding:12px;text-decoration:none;font:inherit;text-align:left;cursor:pointer;min-width:0}
+.jp-tile .em{font-size:24px}.jp-tile b{font-size:14.5px}.jp-tile small{opacity:.9;font-size:12px}
+.jp-tile.sel{background:#fff;color:#0A1B3D}
+.jp-av-card{display:flex;gap:12px;align-items:center}
+.jp-av-card .t{flex:1;min-width:0}.jp-av-card .t b{display:block}.jp-av-card .t small{color:#6a6a6a}
+.jp-ubic{display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:#555;font-size:13.5px;margin:4px 0 6px}
+.jp-ubic select{width:auto;padding:6px 10px;border:1px solid #E4E4E4;border-radius:999px;background:#fff;font:inherit}
+.jp-km{font-weight:700;color:#067A38;margin-left:4px}
+.jp-nota{background:#FFF6E0;color:#7A5B00;border-radius:12px;padding:10px 12px;font-size:13px;margin:0 0 10px}
+.jp-ets{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
+.jp-et{background:#F4F7FA;border:1px solid #EBEBEB;border-radius:999px;padding:4px 10px;font-size:12.5px}
+.jp-jug{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid #F0F0F0;min-width:0}
+.jp-jug:first-child{border-top:0}
+.jp-jug .q{flex:1;min-width:0}.jp-jug .q b{display:block;overflow-wrap:anywhere}.jp-jug .q small{color:#6a6a6a}
+.jp-jug .acc{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.jp-jug .acc .btn{padding:8px 12px;font-size:13px}
+.jp-av-img{width:46px;height:46px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#0E8F67;color:#fff;font-weight:800;font-size:18px}
+.jp-sw{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-top:1px solid #F0F0F0;cursor:pointer;text-align:left}
+.jp-sw input{width:auto!important;flex:none;margin-top:3px;transform:scale(1.2)}
+.jp-sw b{display:block}.jp-sw small{color:#6a6a6a}
+@media (max-width:600px){#jpAvisos{flex-wrap:wrap}#jpAvisos .btn{width:100%}.jp-tiles{grid-template-columns:minmax(0,1fr)}.jp-tile{flex-direction:row;align-items:center}.jp-tile small{display:none}
+.jp-jug{flex-wrap:wrap}.jp-jug .acc{width:100%;justify-content:flex-start}}
+"""
+
+
+@router.get("/partidos", response_class=HTMLResponse)
+def pagina_partidos(request: Request, pais: str = "", tab: str = "") -> HTMLResponse:
+    ses = sesion.de_request(request)
+    if not ses:
+        return sin_sesion(request, "/partidos", "Juega ya", "Buscar y organizar partidos")
+    yo = _low(ses["email"])
+    tab = "partner" if tab == "partner" else "partidos"
+    # País: el que el usuario elige (?pais=) o, si no, el de DONDE ESTÁ (lo
+    # decide el navegador con su ubicación); `iso` es solo el respaldo sin GPS.
+    pais_fijo = pais if pais in dict(_PAISES) else ""
+    iso = pais_fijo or _pais_usuario(yo)
+    hoy = horarios.ahora_local(iso).date()
+    todos = partidos_desde((hoy - timedelta(days=1)).isoformat())
+    lista = [p for p in todos if (p.get("tipo") == "partner") == (tab == "partner")]
+    deps = juego.DEPORTES_PARTNER if tab == "partner" else juego.DEPORTES_JUEGO
+    chips = "".join(f"<button type='button' class='chip{' sel' if k == iso else ''}' data-fpais='{k}'>{ui.bandera(k)} {n}</button>" for k, n in _PAISES)
+    vacio_txt = ("<b>Nadie busca partner por ahora</b>Publica “Busco partner” o escríbele a un jugador disponible de abajo."
+                 if tab == "partner" else
+                 "<b>No hay partidos abiertos cerca</b>¿Te falta gente para jugar? Organiza tu partido y deja que otros se apunten; te avisamos a los de la zona.")
+    tarjetas = "".join(_tarjeta_partido(p, yo) for p in lista)
+    vacio = f"<div class='jp-vacio' id='jpVacio' style='{'' if not lista else 'display:none'}'><span class='em'>{'🎾' if tab == 'partner' else '⚽'}</span>{vacio_txt}</div>"
+    pr = juego.prefs_de(yo)
+    niveles = datos.niveles_de(yo)
+    mis_niveles = {n["deporte"]: juego.nivel_banda(n["nivel"]) for n in niveles}
+    dep_ini = juego.deporte_sugerido(tab, pr, niveles)
+    cfg = {"presets": PRESETS, "tab": tab,
+           "deportes": [[d, _etq(d), _emo(d)] for d in juego.DEPORTES_JUEGO],
+           "partner": juego.DEPORTES_PARTNER,
+           "modalidades": [[k, t, n] for k, t, n in juego.MODALIDADES_PARTNER],
+           "niveles": [[k, t] for k, t, _, _ in juego.NIVELES],
+           "etiquetas": [[k, em, tx, deps_ or []] for k, (em, tx, deps_) in juego.ETIQUETAS.items()],
+           "maxEts": juego.MAX_ETIQUETAS, "radios": juego.RADIOS,
+           "franjas": [[k, t] for k, t in juego.FRANJAS], "dias": [[k, t] for k, t in juego.DIAS],
+           "prefs": juego.publicas(pr), "misNiveles": mis_niveles, "nivelSinDato": juego.nivel_banda(None),
+           "paisFijo": pais_fijo, "paisDefault": iso, "cajas": paises._CAJAS, "depIni": dep_ini,
+           "nombresPais": dict(_PAISES),
+           "hoy": hoy.isoformat(), "max": (hoy + timedelta(days=90)).isoformat(),
+           "proximos": [[(hoy + timedelta(days=i)).isoformat(), "Hoy" if i == 0 else "Mañana" if i == 1 else fecha_legible((hoy + timedelta(days=i)).isoformat())] for i in range(7)]}
+    locales = locales_conocidos()
+    opciones = "".join(f"<option value='{e(n)}'>" for n in sorted(locales)[:600])
+    f_deps = f"<button type='button' class='chip{' sel' if not dep_ini else ''}' data-fdep=''>Todos</button>" + "".join(
+        f"<button type='button' class='chip{' sel' if d == dep_ini else ''}' data-fdep='{d}'>{_emo(d)} {e(_etq(d))}</button>" for d in deps)
+    f_cu = "".join(f"<button type='button' class='chip{' sel' if k == 'hoy' else ''}' data-fcu='{k}'>{t}</button>"
+                   for k, t in (("todos", "Cuando sea"), ("hoy", "Hoy"), ("manana", "Mañana"), ("finde", "Este finde")))
+    radios = "".join(f"<option value='{r}'>{r} km</option>" for r in juego.RADIOS)
+    tiles = (f"<a class='jp-tile{' sel' if tab == 'partidos' else ''}' href='/partidos?tab=partidos'><span class='em'>⚽</span><b>Busco partido</b><small>Únete a uno que esté cerca</small></a>"
+             "<button type='button' class='jp-tile' onclick=\"jpCrear('partido')\"><span class='em'>📣</span><b>Organizo un partido</b><small>Publica y completa tu equipo</small></button>"
+             f"<a class='jp-tile{' sel' if tab == 'partner' else ''}' href='/partidos?tab=partner'><span class='em'>🎾</span><b>Busco partner</b><small>Tenis y pickleball</small></a>")
+    seccion_disp = ("" if tab != "partner" else
+                    "<div class='jp-sec'>🙋 Jugadores disponibles cerca</div>"
+                    "<div class='jp-card' id='jpDisp'><div class='jp-vacio' style='padding:18px'>Activa tu ubicación para ver quién quiere jugar cerca de ti.</div></div>")
+    fab = ("<button type='button' class='btn jp-fab' onclick=\"jpCrear('partner')\">＋ Busco partner</button>" if tab == "partner"
+           else "<button type='button' class='btn jp-fab' onclick=\"jpCrear('partido')\">＋ Organizar partido</button>")
+    cuerpo = (f"<style>{_CSS}{_CSS_JY}</style><div class='jp-wrap con-fab'><a class='jp-volver' href='/perfil'>‹ Perfil</a>"
+              "<div class='jp-hero'><h1>Juega ya</h1><p>Encuentra un partido, organiza el tuyo o busca con quién jugar.</p>"
+              f"<div class='jp-tiles'>{tiles}</div>"
+              "<a class='jp-link' href='/pichangas'>📅 Pichangas de mi club ›</a>"
+              "<a class='jp-link' href='/liga'>🏆 Liga y retos ›</a></div>"
+              "<div class='jp-card jp-av-card' id='jpAvisos'><span class='jp-dep'>🔔</span><div class='t'>"
+              f"<b>Avísame partidos cerca</b><small id='jpAvTxt'>{e(_texto_prefs(pr))}</small></div>"
+              "<button type='button' class='btn sec' onclick='jpPrefs()'>Configurar</button></div>"
+              f"<div class='jp-ubic'><span id='jpUbic'>📍 Buscando tu ubicación…</span><select id='jpRadio' aria-label='Radio'>{radios}</select>"
+              "<button type='button' class='chip' id='jpUbicBtn' style='display:none' onclick='jpUbicar(true)'>Usar mi ubicación</button></div>"
+              f"<div class='jp-chips'>{f_deps}</div><div class='jp-chips'>{f_cu}"
+              "<button type='button' class='chip' data-fniv='1'>📊 De mi nivel</button></div>"
+              f"<div class='jp-sec'>{'🎾 Buscan partner' if tab == 'partner' else '⚽ Partidos abiertos'}</div>"
+              "<div class='jp-nota' id='jpNota' style='display:none'></div>"
+              f"{tarjetas}{vacio}{seccion_disp}"
+              f"<div class='jp-chips' style='margin-top:18px'>{chips}</div></div>"
+              f"{fab}<datalist id='jpSedes'>{opciones}</datalist>"
+              f"<script>window.JP={_js(cfg)};</script><script>{_JS_BASE}{_JS_PARTIDOS}</script>")
+    return ui.shell("Juega ya", cuerpo, sesion=ses, titulo_tab=f"Juega ya · {MARCA}")
+
+
+_JS_PARTIDOS = (r"""
+var JY = {yo: null, dep: JP.depIni || '', cu: 'hoy', cuAuto: true, niv: false,
+  pais: JP.paisFijo || JP.paisDefault, paisAuto: !JP.paisFijo, radio: (JP.prefs && JP.prefs.radio_km) || 10};
+try { var _r = +localStorage.getItem('pcg_radio'); if([5,10,20,30].indexOf(_r) >= 0) JY.radio = _r; } catch(e){}
+function jpKm(a, b, c, d){ var R = 6371, r = Math.PI / 180, x = Math.sin((c - a) * r / 2), y = Math.sin((d - b) * r / 2);
+  var h = x * x + Math.cos(a * r) * Math.cos(c * r) * y * y; return 2 * R * Math.asin(Math.min(1, Math.sqrt(h))); }
+function jpFmtKm(k){ return k < 1 ? '< 1' : (Math.round(k * 10) / 10).toString().replace('.', ','); }
+// País de una coordenada (= `paises.pais_de_coordenadas`).
+function jpPaisDe(lat, lng){
+  var dentro = [], todos = [];
+  Object.keys(JP.cajas).forEach(function(k){ var c = JP.cajas[k]; todos.push(k);
+    if(lat >= c[0] && lat <= c[1] && lng >= c[2] && lng <= c[3]) dentro.push(k); });
+  var cand = dentro.length ? dentro : todos;
+  return cand.sort(function(a, b){ var A = JP.cajas[a], B = JP.cajas[b];
+    return Math.hypot(lat - A[4], lng - A[5]) - Math.hypot(lat - B[4], lng - B[5]); })[0];
+}
+function jpEnMiPais(){ return !!JY.yo && jpPaisDe(JY.yo.lat, JY.yo.lng) === JY.pais; }
+function jpHoyLocal(){ var d = new Date(); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+function jpCuando(f){
+  if(JY.cu === 'todos') return true;
+  var hoy = new Date(jpHoyLocal() + 'T12:00:00'), d = new Date(f + 'T12:00:00'), dif = Math.round((d - hoy) / 86400000);
+  if(JY.cu === 'hoy') return dif === 0;
+  if(JY.cu === 'manana') return dif === 1;
+  var wd = d.getDay(); return dif >= 0 && dif <= 7 && (wd === 0 || wd === 6) && (dif <= (6 - hoy.getDay()) + 1);
+}
+function jpSel(attr, val){ document.querySelectorAll('[' + attr + ']').forEach(function(c){ c.classList.toggle('sel', c.getAttribute(attr) === val); }); }
+function jpAplicar(){
+  var n = 0, hoy = jpHoyLocal(), cerca = jpEnMiPais();
+  document.querySelectorAll('.jp-p').forEach(function(c){
+    var ok = c.dataset.fecha >= hoy && (!c.dataset.pais || c.dataset.pais === JY.pais)
+      && (!JY.dep || c.dataset.dep === JY.dep) && jpCuando(c.dataset.fecha);
+    if(ok && JY.niv && c.dataset.nivel){ ok = c.dataset.nivel === (JP.misNiveles[c.dataset.dep] || JP.nivelSinDato); }
+    var kmEl = c.querySelector('.jp-km');
+    if(cerca && c.dataset.lat){
+      var k = jpKm(JY.yo.lat, JY.yo.lng, +c.dataset.lat, +c.dataset.lng);
+      if(kmEl) kmEl.textContent = ' · a ' + jpFmtKm(k) + ' km';
+      if(k > JY.radio) ok = false;
+    } else if(kmEl) kmEl.textContent = '';
+    c.style.display = ok ? '' : 'none'; if(ok) n++;
+  });
+  var nota = document.getElementById('jpNota');
+  // Inteligente: arranca en "Hoy"; si hoy no hay nada, abre a los próximos días.
+  if(!n && JY.cuAuto && JY.cu !== 'todos'){
+    JY.cu = 'todos'; jpSel('data-fcu', 'todos'); jpAplicar();
+    if(nota && document.querySelector('.jp-p:not([style*="none"])')){ nota.textContent = 'Hoy no hay nada cerca: te mostramos los próximos días.'; nota.style.display = ''; }
+    return;
+  }
+  if(nota && (!JY.cuAuto || JY.cu === 'hoy')) nota.style.display = 'none';
+  var v = document.getElementById('jpVacio'); if(v) v.style.display = n ? 'none' : '';
+}
+function jpUbicTxt(){
+  var u = document.getElementById('jpUbic'), r = document.getElementById('jpRadio');
+  var cerca = jpEnMiPais();
+  if(u) u.textContent = cerca ? '📍 Cerca de ti · hasta' : '📍 Viendo todo ' + (JP.nombresPais[JY.pais] || '') + (JY.yo ? '' : ' (sin tu ubicación)');
+  if(r) r.style.display = cerca ? '' : 'none';
+  var b = document.getElementById('jpUbicBtn'); if(b) b.style.display = JY.yo ? 'none' : '';
+  jpSel('data-fpais', JY.pais);
+}
+window.jpUbicar = function(interactivo){
+  if(!navigator.geolocation){ jpUbicTxt(); return; }
+  navigator.geolocation.getCurrentPosition(function(pos){
+    JY.yo = {lat: pos.coords.latitude, lng: pos.coords.longitude};
+    try { localStorage.setItem('pcg_ubic', JSON.stringify(JY.yo)); } catch(e){}
+    if(JY.paisAuto) JY.pais = jpPaisDe(JY.yo.lat, JY.yo.lng);
+    jpUbicTxt(); jpAplicar(); jpDisponibles();
+    if(JP.prefs && (JP.prefs.avisos || JP.prefs.disponible))
+      fetch('/web/juego/tocar', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(JY.yo)}).catch(function(){});
+  }, function(){ jpUbicTxt(); if(interactivo) pcgAvisar({titulo: 'No pudimos leer tu ubicación', icono: '📍', mensaje: 'Revisa el permiso de ubicación del navegador.'}); },
+  {enableHighAccuracy: false, timeout: 8000, maximumAge: 300000});
+};
+function jpDisponibles(){
+  var box = document.getElementById('jpDisp'); if(!box || !JY.yo || !jpEnMiPais()) return;
+  var dep = JY.dep || JP.partner[0];
+  box.innerHTML = "<div class='jp-vacio' style='padding:18px'>Buscando jugadores cerca…</div>";
+  fetch('/web/juego/disponibles?deporte=' + dep + '&lat=' + JY.yo.lat + '&lng=' + JY.yo.lng + '&radio_km=' + JY.radio)
+    .then(function(r){ return r.json(); }).then(function(j){
+      var js = (j && j.jugadores) || [];
+      if(!js.length){
+        box.innerHTML = "<div class='jp-vacio' style='padding:18px'><b>Nadie disponible a " + JY.radio + " km por ahora</b>"
+          + "Márcate como disponible para que otros te encuentren, o publica “Busco partner”.</div>"
+          + "<button type='button' class='btn sec' style='width:100%' onclick='jpPrefs()'>🙋 Aparecer como disponible</button>";
+        return;
+      }
+      box.innerHTML = js.map(function(x){
+        var av = x.foto ? "<img class='jp-av-img' src='" + jpEsc(x.foto) + "' alt='' referrerpolicy='no-referrer'>" : "<span class='jp-av-img'>" + jpEsc((x.nombre || '?').charAt(0).toUpperCase()) + "</span>";
+        var fr = (x.franjas || []).map(function(k){ var f = JP.franjas.filter(function(y){ return y[0] === k; })[0]; return f ? f[1] : ''; }).join(' · ');
+        return "<div class='jp-jug'>" + av + "<div class='q'><b>" + jpEsc(x.nombre) + "</b><small>" + jpEsc(x.nivel_txt)
+          + " · a " + jpFmtKm(x.km) + " km" + (fr ? ' · ' + jpEsc(fr) : '') + "</small></div><div class='acc'>"
+          + "<a class='btn' href='/mensajes/nuevo?persona=" + encodeURIComponent(x.ref) + "'>💬 Escribir</a>"
+          + "<a class='btn sec' href='/jugador/" + encodeURIComponent(x.ref) + "?deporte=" + dep + "'>Ver perfil</a></div></div>";
+      }).join('');
+    }).catch(function(){ box.innerHTML = "<div class='jp-vacio' style='padding:18px'>No se pudo cargar. Reintenta.</div>"; });
+}
+document.getElementById('jpRadio').value = String(JY.radio);
+document.getElementById('jpRadio').addEventListener('change', function(){
+  JY.radio = +this.value; try { localStorage.setItem('pcg_radio', String(JY.radio)); } catch(e){}
+  jpAplicar(); jpDisponibles();
+});
+
+// ── Organizar / Busco partner (todo por selección) ──
+function jpHoras(sel){ var h = ''; for(var i = 6; i <= 23; i++){ ['00','30'].forEach(function(m){ var v = (i < 10 ? '0' : '') + i + ':' + m; h += "<option" + (v === sel ? ' selected' : '') + ">" + v + "</option>"; }); } return h; }
+var F = null, V = null;
+function jpNuevoF(tipo){ var dep = tipo === 'partner' ? (JY.dep && JP.partner.indexOf(JY.dep) >= 0 ? JY.dep : JP.partner[0]) : 'futbol';
+  return {tipo: tipo, dep: dep, cupos: tipo === 'partner' ? 2 : 10, mod: 'singles', nivel: '', ets: []}; }
+function jpPintarForm(){
+  var ps = JP.presets[F.dep] || [], h = '';
+  if(F.tipo === 'partner'){
+    JP.modalidades.forEach(function(m){ h += "<button type='button' class='chip" + (F.mod === m[0] ? ' sel' : '') + "' data-mod='" + m[0] + "' data-c='" + m[2] + "'>" + jpEsc(m[1]) + "</button>"; });
+  } else {
+    ps.forEach(function(p){ h += "<button type='button' class='chip" + (F.cupos === p[1] ? ' sel' : '') + "' data-pre='" + p[1] + "'>" + jpEsc(p[0]) + " (" + p[1] + ")</button>"; });
+  }
+  var box = document.getElementById('jpPre'); if(box) box.innerHTML = h;
+  var st = document.getElementById('jpStep'); if(st) st.style.display = F.tipo === 'partner' ? 'none' : '';
+  var n = document.getElementById('jpN'); if(n) n.textContent = F.cupos;
+  var f = document.getElementById('jpFaltan'); if(f) f.textContent = F.tipo === 'partner' ? (F.cupos === 4 ? 'Buscas 3 jugadores más' : 'Buscas 1 jugador') : 'Tú ya cuentas como 1 · te faltan ' + (F.cupos - 1);
+  var nv = '<button type="button" class="chip' + (F.nivel === '' ? ' sel' : '') + '" data-niv="">Todos los niveles</button>';
+  JP.niveles.forEach(function(x){ nv += "<button type='button' class='chip" + (F.nivel === x[0] ? ' sel' : '') + "' data-niv='" + x[0] + "'>" + jpEsc(x[1]) + "</button>"; });
+  var bn = document.getElementById('jpNiv'); if(bn) bn.innerHTML = nv;
+  var et = '';
+  JP.etiquetas.forEach(function(x){ if(x[3].length && x[3].indexOf(F.dep) < 0) return;
+    et += "<button type='button' class='chip" + (F.ets.indexOf(x[0]) >= 0 ? ' sel' : '') + "' data-et='" + x[0] + "'>" + x[1] + ' ' + jpEsc(x[2]) + "</button>"; });
+  var be = document.getElementById('jpEts'); if(be) be.innerHTML = et;
+  document.querySelectorAll('#jpDeps .chip').forEach(function(c){ c.classList.toggle('sel', c.dataset.dep === F.dep); });
+}
+window.jpCrear = function(tipo, reusar){
+  if(!reusar){ F = jpNuevoF(tipo || 'partido'); V = null; }
+  var lista = F.tipo === 'partner' ? JP.deportes.filter(function(d){ return JP.partner.indexOf(d[0]) >= 0; }) : JP.deportes;
+  var deps = lista.map(function(d){ return "<button type='button' class='chip' data-dep='" + d[0] + "'>" + d[2] + ' ' + jpEsc(d[1]) + "</button>"; }).join('');
+  var dias = JP.proximos.map(function(d){ return "<button type='button' class='chip' data-dia='" + d[0] + "'>" + jpEsc(d[1]) + "</button>"; }).join('');
+  var html = "<div class='jp-form' style='text-align:left'>"
+    + "<label class='l'>Deporte</label><div class='jp-chips' id='jpDeps'>" + deps + "</div>"
+    + "<label class='l'>¿Dónde se juega?</label><div class='ayuda'>Elige un local de ⟦MARCA⟧; si es otro lugar, usamos tu ubicación para avisar a los de la zona.</div>"
+    + "<input type='text' id='jpSede' list='jpSedes' maxlength='80' placeholder='Busca la cancha o el lugar'>"
+    + "<label class='l'>Fecha</label><div class='jp-chips' id='jpDias'>" + dias + "</div>"
+    + "<input type='date' id='jpFecha' min='" + JP.hoy + "' max='" + JP.max + "'>"
+    + "<label class='l'>Hora</label><select id='jpHora'>" + jpHoras('20:00') + "</select>"
+    + "<label class='l'>" + (F.tipo === 'partner' ? '¿Qué buscas?' : 'Jugadores en total') + "</label><div class='ayuda' id='jpFaltan'></div><div class='jp-chips' id='jpPre'></div>"
+    + "<div class='jp-step' id='jpStep'><button type='button' data-paso='-1' aria-label='Menos'>−</button><b id='jpN'></b><button type='button' data-paso='1' aria-label='Más'>+</button></div>"
+    + "<label class='l'>Nivel</label><div class='jp-chips' id='jpNiv'></div>"
+    + "<label class='l'>Detalles (hasta " + JP.maxEts + ")</label><div class='jp-chips' id='jpEts'></div>"
+    + "</div>";
+  pcgConfirmar({titulo: F.tipo === 'partner' ? 'Busco partner' : 'Organizar partido', icono: F.tipo === 'partner' ? '🎾' : '⚽', html: html,
+    confirmar: 'Publicar', cancelar: 'Cancelar'}).then(function(ok){
+    if(!ok) return;
+    V = {sede: document.getElementById('jpSede').value, fecha: document.getElementById('jpFecha').value, hora: document.getElementById('jpHora').value};
+    var body = {tipo: F.tipo, deporte: F.dep, modalidad: F.tipo === 'partner' ? F.mod : '', sede: V.sede, fecha: V.fecha, hora: V.hora,
+      cupos: F.cupos, nivel: F.nivel, etiquetas: F.ets};
+    if(JY.yo){ body.lat = JY.yo.lat; body.lng = JY.yo.lng; }
+    jpPost('/web/partidos/crear', body, 'Publicando…').then(function(j){
+      if(j.ok){ pcgToast(F.tipo === 'partner' ? '¡Publicado! Te avisamos cuando alguien quiera jugar contigo.' : '¡Partido publicado! Avisamos a los jugadores de la zona.');
+        pcgIr('/partidos?tab=' + (F.tipo === 'partner' ? 'partner' : 'partidos'), 'Actualizando…'); return; }
+      if(j.error === 'sesion_requerida'){ jpFallo(j); return; }
+      pcgAvisar({titulo: 'Falta un dato', icono: '⚠️', mensaje: j.mensaje || 'Reintenta en un momento.', confirmar: 'Corregir'}).then(function(){ jpCrear(F.tipo, true); });
+    });
+  });
+  setTimeout(function(){
+    jpPintarForm();
+    if(V){ document.getElementById('jpSede').value = V.sede; document.getElementById('jpFecha').value = V.fecha; document.getElementById('jpHora').value = V.hora; }
+    document.querySelectorAll('#jpDias .chip').forEach(function(c){ c.classList.toggle('sel', !!V && c.dataset.dia === V.fecha); });
+  }, 0);
+};
+
+// ── Preferencias: avisos y disponible ──
+window.jpPrefs = function(){
+  var P = JSON.parse(JSON.stringify(JP.prefs || {}));
+  P.deportes = P.deportes || []; P.franjas = P.franjas || [];
+  if(!P.deportes.length) P.deportes = [JP.tab === 'partner' ? JP.partner[0] : 'futbol'];
+  var deps = JP.deportes.map(function(d){ return "<button type='button' class='chip" + (P.deportes.indexOf(d[0]) >= 0 ? ' sel' : '') + "' data-pdep='" + d[0] + "'>" + d[2] + ' ' + jpEsc(d[1]) + "</button>"; }).join('');
+  var fr = JP.franjas.map(function(f){ return "<button type='button' class='chip" + (P.franjas.indexOf(f[0]) >= 0 ? ' sel' : '') + "' data-pfr='" + f[0] + "'>" + jpEsc(f[1]) + "</button>"; }).join('');
+  var di = JP.dias.map(function(f){ return "<button type='button' class='chip" + ((P.dias || 'todos') === f[0] ? ' sel' : '') + "' data-pdi='" + f[0] + "'>" + jpEsc(f[1]) + "</button>"; }).join('');
+  var ra = JP.radios.map(function(r){ return "<button type='button' class='chip" + ((P.radio_km || 10) === r ? ' sel' : '') + "' data-pra='" + r + "'>" + r + " km</button>"; }).join('');
+  var html = "<div class='jp-form' style='text-align:left'>"
+    + "<label class='jp-sw'><input type='checkbox' id='jpPAv'" + (P.avisos ? ' checked' : '') + "><span><b>🔔 Avísame partidos cerca</b><small>Te llega una notificación cuando alguien publica un partido que te calza (máx. 3 al día).</small></span></label>"
+    + "<label class='jp-sw'><input type='checkbox' id='jpPDi'" + (P.disponible ? ' checked' : '') + "><span><b>🙋 Aparecer como disponible</b><small>Otros jugadores cerca te ven y te pueden escribir para jugar. Solo ven tu nombre, tu nivel y la distancia aproximada.</small></span></label>"
+    + "<label class='l'>Deportes</label><div class='jp-chips'>" + deps + "</div>"
+    + "<label class='l'>¿Hasta qué distancia?</label><div class='jp-chips'>" + ra + "</div>"
+    + "<label class='l'>¿A qué hora juegas?</label><div class='ayuda'>Sin elegir = a cualquier hora.</div><div class='jp-chips'>" + fr + "</div>"
+    + "<label class='l'>¿Qué días?</label><div class='jp-chips'>" + di + "</div></div>";
+  window._jpP = P;
+  pcgConfirmar({titulo: 'Avisos y disponibilidad', icono: '🔔', html: html, confirmar: 'Guardar', cancelar: 'Cancelar'}).then(function(ok){
+    if(!ok) return;
+    P.avisos = document.getElementById('jpPAv').checked; P.disponible = document.getElementById('jpPDi').checked;
+    var enviar = function(u){
+      var b = {deportes: P.deportes, radio_km: P.radio_km || 10, franjas: P.franjas, dias: P.dias || 'todos', avisos: P.avisos, disponible: P.disponible};
+      if(u){ b.lat = u.lat; b.lng = u.lng; }
+      jpPost('/web/juego/prefs', b, 'Guardando…').then(function(j){
+        if(j.ok){ JP.prefs = j.prefs; document.getElementById('jpAvTxt').textContent = j.texto || ''; pcgToast('Listo, guardado.'); jpDisponibles(); }
+        else jpFallo(j, 'No se pudo guardar');
+      });
+    };
+    if((P.avisos || P.disponible) && navigator.geolocation){
+      pcgCargando('Leyendo tu ubicación…');
+      navigator.geolocation.getCurrentPosition(function(pos){ pcgCargando(false); JY.yo = {lat: pos.coords.latitude, lng: pos.coords.longitude}; enviar(JY.yo); },
+        function(){ pcgCargando(false); enviar(JY.yo); }, {enableHighAccuracy: false, timeout: 8000, maximumAge: 300000});
+    } else enviar(JY.yo);
+  });
+};
+
+document.addEventListener('click', function(ev){
+  var t;
+  if((t = ev.target.closest('[data-fdep]'))){ JY.dep = t.dataset.fdep; document.querySelectorAll('[data-fdep]').forEach(function(c){ c.classList.toggle('sel', c === t); }); jpAplicar(); jpDisponibles(); return; }
+  if((t = ev.target.closest('[data-fpais]'))){ JY.pais = t.dataset.fpais; JY.paisAuto = false; jpUbicTxt(); jpAplicar(); jpDisponibles(); return; }
+  if((t = ev.target.closest('[data-fcu]'))){ JY.cu = t.dataset.fcu; JY.cuAuto = false; var nt = document.getElementById('jpNota'); if(nt) nt.style.display = 'none'; document.querySelectorAll('[data-fcu]').forEach(function(c){ c.classList.toggle('sel', c === t); }); jpAplicar(); return; }
+  if((t = ev.target.closest('[data-fniv]'))){ JY.niv = !JY.niv; t.classList.toggle('sel', JY.niv); jpAplicar(); return; }
+  if((t = ev.target.closest('[data-pdep]'))){ var P = window._jpP, d = t.dataset.pdep, i = P.deportes.indexOf(d); if(i >= 0){ if(P.deportes.length > 1) P.deportes.splice(i, 1); } else P.deportes.push(d);
+    document.querySelectorAll('[data-pdep]').forEach(function(c){ c.classList.toggle('sel', P.deportes.indexOf(c.dataset.pdep) >= 0); }); return; }
+  if((t = ev.target.closest('[data-pfr]'))){ var P2 = window._jpP, k = t.dataset.pfr, j2 = P2.franjas.indexOf(k); if(j2 >= 0) P2.franjas.splice(j2, 1); else P2.franjas.push(k);
+    t.classList.toggle('sel', P2.franjas.indexOf(k) >= 0); return; }
+  if((t = ev.target.closest('[data-pdi]'))){ window._jpP.dias = t.dataset.pdi; document.querySelectorAll('[data-pdi]').forEach(function(c){ c.classList.toggle('sel', c === t); }); return; }
+  if((t = ev.target.closest('[data-pra]'))){ window._jpP.radio_km = +t.dataset.pra; document.querySelectorAll('[data-pra]').forEach(function(c){ c.classList.toggle('sel', c === t); }); return; }
+  if((t = ev.target.closest('[data-dep]'))){ F.dep = t.dataset.dep; var ps = JP.presets[F.dep] || []; if(F.tipo !== 'partner' && ps.length) F.cupos = ps[0][1];
+    F.ets = F.ets.filter(function(k){ var x = JP.etiquetas.filter(function(y){ return y[0] === k; })[0]; return x && (!x[3].length || x[3].indexOf(F.dep) >= 0); });
+    jpPintarForm(); return; }
+  if((t = ev.target.closest('[data-mod]'))){ F.mod = t.dataset.mod; F.cupos = +t.dataset.c; jpPintarForm(); return; }
+  if((t = ev.target.closest('[data-pre]'))){ F.cupos = +t.dataset.pre; jpPintarForm(); return; }
+  if((t = ev.target.closest('[data-paso]'))){ F.cupos = Math.max(2, Math.min(40, F.cupos + (+t.dataset.paso))); jpPintarForm(); return; }
+  if((t = ev.target.closest('[data-niv]'))){ F.nivel = t.dataset.niv; jpPintarForm(); return; }
+  if((t = ev.target.closest('[data-et]'))){ var k3 = t.dataset.et, i3 = F.ets.indexOf(k3);
+    if(i3 >= 0) F.ets.splice(i3, 1);
+    else { if(F.ets.length >= JP.maxEts){ pcgToast('Elige hasta ' + JP.maxEts + ' detalles.'); return; }
+      if(k3 === 'mixto') F.ets = F.ets.filter(function(x){ return x !== 'solo_mujeres'; });
+      if(k3 === 'solo_mujeres') F.ets = F.ets.filter(function(x){ return x !== 'mixto'; });
+      F.ets.push(k3); }
+    jpPintarForm(); return; }
+  if((t = ev.target.closest('[data-dia]'))){ document.getElementById('jpFecha').value = t.dataset.dia;
+    document.querySelectorAll('#jpDias .chip').forEach(function(c){ c.classList.toggle('sel', c === t); }); return; }
+  if((t = ev.target.closest('[data-apuntar]'))){
+    jpPost('/web/partidos/' + t.dataset.apuntar + '/apuntarse', {}, 'Apuntándote…').then(function(j){
+      if(j.ok){ pcgToast('¡Te apuntaste! Coordinen por el chat del partido.'); pcgRecargar('Actualizando…'); }
+      else if(j.error === 'lleno') pcgAvisar({titulo: 'El partido ya se llenó', icono: '⛔', mensaje: j.mensaje}).then(function(){ pcgRecargar(); });
+      else jpFallo(j);
+    }); return; }
+  if((t = ev.target.closest('[data-salir]'))){ var id = t.dataset.salir;
+    pcgConfirmar({titulo: '¿Salir del partido?', icono: '🚪', mensaje: 'Dejas tu cupo libre para otro jugador.', confirmar: 'Salir', cancelar: 'Me quedo', destructivo: true}).then(function(ok){
+      if(!ok) return; jpPost('/web/partidos/' + id + '/salir', {}, 'Saliendo…').then(function(j){ if(j.ok){ pcgToast('Te bajaste del partido.'); pcgRecargar(); } else jpFallo(j); });
+    }); return; }
+  if((t = ev.target.closest('[data-cupo]'))){ var n = +t.dataset.n;
+    jpPost('/web/partidos/' + t.dataset.cupo + '/cupo', {cupos: n}, 'Ampliando…').then(function(j){ if(j.ok){ pcgToast('Cupo ampliado a ' + j.cupos + ' jugadores.'); pcgRecargar(); } else jpFallo(j); }); return; }
+  if((t = ev.target.closest('[data-eliminar]'))){ var pid = t.dataset.eliminar;
+    pcgConfirmar({titulo: '¿Eliminar el partido?', icono: '🗑️', mensaje: 'Se borra el partido y su chat de coordinación para todos.', confirmar: 'Eliminar', cancelar: 'Cancelar', destructivo: true}).then(function(ok){
+      if(!ok) return; jpPost('/web/partidos/' + pid + '/eliminar', {}, 'Eliminando…').then(function(j){ if(j.ok){ pcgToast('Partido eliminado.'); pcgRecargar(); } else jpFallo(j); });
+    }); return; }
+});
+try { var _g = JSON.parse(localStorage.getItem('pcg_ubic') || 'null'); if(_g && _g.lat){ JY.yo = _g; if(JY.paisAuto) JY.pais = jpPaisDe(_g.lat, _g.lng); } } catch(e){}
+jpUbicTxt(); jpAplicar(); jpDisponibles(); jpUbicar(false);
+""").replace('⟦MARCA⟧', MARCA)
+
+
+def validar_partido(b: dict, hoy: date) -> tuple[dict | None, str]:
+    """Reglas de `_CrearPartidoSheet._publicar` + Juega ya (tipo, modalidad,
+    nivel y etiquetas por selección; título automático, sin texto libre)."""
+    tipo = str(b.get("tipo") or "partido")
+    dep = str(b.get("deporte") or "")
+    if dep not in DEPORTES_ACTIVOS:
+        return None, "Elige el deporte."
+    fecha, hora = str(b.get("fecha") or ""), str(b.get("hora") or "")
+    try:
+        f = date.fromisoformat(fecha)
+    except ValueError:
+        return None, "Elige la fecha y la hora del partido."
+    if not _HORA.match(hora):
+        return None, "Elige la fecha y la hora del partido."
+    if f < hoy or f > hoy + timedelta(days=90):
+        return None, "La fecha debe ser desde hoy y hasta 90 días."
+    sede = re.sub(r"\s+", " ", str(b.get("sede") or "")).strip()[:80]
+    if not sede:
+        return None, "¿Dónde se juega? Pon la cancha o el lugar."
+    ext, msg = juego.validar_extras(tipo, dep, str(b.get("modalidad") or ""), str(b.get("nivel") or ""), b.get("etiquetas"))
+    if ext is None:
+        return None, msg
+    if ext["tipo"] == "partner":
+        cupos = juego.modalidad_partner(ext["modalidad"])[2]
+    else:
+        try:
+            cupos = int(b.get("cupos") or 0)
+        except (TypeError, ValueError):
+            cupos = 0
+        if not 2 <= cupos <= 40:
+            return None, "El partido es de 2 a 40 jugadores."
+    v = {"deporte": dep, "fecha": fecha, "hora": hora, "sede": sede, "cupos": cupos, "nota": "", **ext}
+    v["titulo"] = titulo_auto(v)
+    return v, ""
+
+
+@router.post("/web/partidos/crear")
+def crear(request: Request, body: dict = Body(default_factory=dict)) -> JSONResponse:
+    ses, err = _ses_o_401(request)
+    if err:
+        return err
+    yo = _low(ses["email"])
+    hoy = horarios.ahora_local(_pais_usuario(yo)).date() - timedelta(days=1)  # tolerancia de zona horaria
+    v, msg = validar_partido(body, hoy)
+    if v is None:
+        return JSONResponse({"ok": False, "mensaje": msg}, status_code=400)
+    info = locales_info().get(v["sede"])
+    lat = lng = None
+    if info:
+        lat, lng = info["lat"], info["lng"]
+        v["cancha_id"] = info["cancha_id"]
+    else:
+        # Otro lugar: la ubicación del organizador (navegador) ubica el partido
+        # para el filtro "cerca de mí" y los avisos a los de la zona.
+        try:
+            la, ln = float(body.get("lat")), float(body.get("lng"))
+            if -60 <= la <= 15 and -95 <= ln <= -30:
+                lat, lng = round(la, 4), round(ln, 4)
+        except (TypeError, ValueError):
+            pass
+    p = {**v, "id": f"p_{time.time_ns() // 1000}", "creador_email": yo, "creador_nombre": mi_nombre(ses),
+         "lat": lat, "lng": lng}
+    if not crear_partido(p):
+        return JSONResponse({"ok": False, "mensaje": "No se pudo publicar. Reintenta."}, status_code=500)
+    return JSONResponse({"ok": True, "id": p["id"]})
+
+
+# ── Juega ya: preferencias y jugadores disponibles (web) ─────────────────────
+
+@router.post("/web/juego/prefs")
+def web_prefs(request: Request, body: dict = Body(default_factory=dict)) -> JSONResponse:
+    ses, err = _ses_o_401(request)
+    if err:
+        return err
+    try:
+        p = juego.guardar_prefs(ses["email"], body, mi_nombre(ses))
+    except ValueError as ex:
+        return JSONResponse({"ok": False, "mensaje": str(ex)}, status_code=400)
+    return JSONResponse({"ok": True, "prefs": juego.publicas(p), "texto": _texto_prefs(p)})
+
+
+@router.post("/web/juego/tocar")
+def web_tocar(request: Request, body: dict = Body(default_factory=dict)) -> JSONResponse:
+    ses, err = _ses_o_401(request)
+    if err:
+        return err
+    juego.tocar(ses["email"], body.get("lat"), body.get("lng"))
+    return JSONResponse({"ok": True})
+
+
+@router.get("/web/juego/disponibles")
+def web_disponibles(request: Request, deporte: str, lat: float, lng: float, radio_km: int = juego.RADIO_DEFAULT) -> JSONResponse:
+    ses, err = _ses_o_401(request)
+    if err:
+        return err
+    js = juego.disponibles(ses["email"], deporte, lat, lng, radio_km)
+    out = [{"ref": ref_de(j["email"]), "nombre": j["nombre"], "foto": j["foto"], "km": j["km"],
+            "nivel_txt": (f"{juego.etiqueta_nivel(j['banda'])} · {j['nivel']:.1f}" if j["nivel"] is not None
+                          else juego.etiqueta_nivel(j["banda"])),
+            "franjas": j["franjas"], "dias": j["dias"]} for j in js]
+    return JSONResponse({"ok": True, "jugadores": out})
+
+
+@router.post("/web/partidos/{pid}/apuntarse")
+def web_apuntarse(request: Request, pid: str) -> JSONResponse:
+    ses, err = _ses_o_401(request)
+    if err:
+        return err
+    if not _ID_PARTIDO.match(pid):
+        return JSONResponse({"ok": False, "mensaje": "Partido no encontrado."}, status_code=404)
+    r = apuntarse(pid, ses["email"], mi_nombre(ses))
+    if r == "ok":
+        return JSONResponse({"ok": True})
+    if r == "lleno":
+        return JSONResponse({"ok": False, "error": "lleno", "mensaje": "Otro jugador tomó el último cupo. Pídele al creador que amplíe los cupos o busca otro partido."}, status_code=409)
+    if r == "no_existe":
+        return JSONResponse({"ok": False, "mensaje": "Este partido ya no existe."}, status_code=404)
+    return JSONResponse({"ok": False, "mensaje": "No se pudo apuntar. Reintenta."}, status_code=500)
+
+
+@router.post("/web/partidos/{pid}/salir")
+def web_salir(request: Request, pid: str) -> JSONResponse:
+    ses, err = _ses_o_401(request)
+    if err:
+        return err
+    p = partido(pid)
+    if p is None:
+        return JSONResponse({"ok": False, "mensaje": "Partido no encontrado."}, status_code=404)
+    if p["creador_email"] == _low(ses["email"]):
+        return JSONResponse({"ok": False, "mensaje": "Eres quien organiza: amplía el cupo o elimina el partido."}, status_code=400)
+    return JSONResponse({"ok": bajarse(pid, ses["email"])})
+
+
+@router.post("/web/partidos/{pid}/cupo")
+def web_cupo(request: Request, pid: str, body: dict = Body(default_factory=dict)) -> JSONResponse:
+    ses, err = _ses_o_401(request)
+    if err:
+        return err
+    p = partido(pid)
+    if p is None or p["creador_email"] != _low(ses["email"]):
+        return JSONResponse({"ok": False, "mensaje": "Solo quien organiza puede cambiar los cupos."}, status_code=404)
+    try:
+        n = max(2, min(40, int(body.get("cupos") or 0)))
+    except (TypeError, ValueError):
+        n = p["cupos"]
+    if not cambiar_cupos(pid, ses["email"], n):
+        return JSONResponse({"ok": False, "mensaje": "No se pudo ampliar el cupo."}, status_code=500)
+    return JSONResponse({"ok": True, "cupos": n})
+
+
+@router.post("/web/partidos/{pid}/eliminar")
+def web_eliminar(request: Request, pid: str) -> JSONResponse:
+    ses, err = _ses_o_401(request)
+    if err:
+        return err
+    if not _ID_PARTIDO.match(pid) or not eliminar_partido(pid, ses["email"]):
+        return JSONResponse({"ok": False, "mensaje": "Solo quien organiza puede eliminar el partido."}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+# ═══════════════════════════ PICHANGAS DE CLUB ════════════════════════════════
+
+def slug_club(nombre: str) -> str:
+    """`ConvocatoriasService.slugClub`."""
+    n = (nombre or "").lower()
+    for pat, rep in (("[áàä]", "a"), ("[éèë]", "e"), ("[íìï]", "i"), ("[óòö]", "o"), ("[úùü]", "u"), ("ñ", "n")):
+        n = re.sub(pat, rep, n)
+    s = re.sub(r"^_+|_+$", "", re.sub(r"[^a-z0-9]+", "_", n))
+    return s or "club"
+
+
+def mis_clubs(email: str) -> dict[str, dict]:
+    """Locales del dueño: slug → {nombre, deportes}."""
+    out: dict[str, dict] = {}
+    for c in datos.canchas_de_dueno(email):
+        nom = (c.get("club") or c.get("nombre") or "").strip()
+        if not nom:
+            continue
+        g = out.setdefault(slug_club(nom), {"nombre": nom, "deportes": []})
+        for d in ([c.get("deporte")] + list(c.get("deportes") or [])):
+            if d and d not in g["deportes"]:
+                g["deportes"].append(str(d))
+    return out
+
+
+def nombres_clubs() -> dict[str, str]:
+    out: dict[str, str] = {}
+    for c in datos.canchas_publicas():
+        nom = (c.get("club") or c.get("nombre") or "").strip()
+        if nom:
+            out.setdefault(slug_club(nom), nom)
+    return out
+
+
+def _nombre_club(slug: str, nombres: dict[str, str]) -> str:
+    return nombres.get(slug) or slug.replace("_", " ").strip().title() or "Club"
+
+
+def es_admin(c: dict, email: str, clubs: dict[str, dict]) -> bool:
+    """Admin de una pichanga = quien la creó o dueño de un local de ese club."""
+    return _low(c.get("creado_por")) == _low(email) or str(c.get("club_id") or "") in clubs
+
+
+def _conv(cid: int) -> dict | None:
+    d = conv.detalle(cid)
+    return d if d.get("ok") else None
+
+
+_MODOS = {"orden_llegada": ("⏱️", "Orden de llegada", "El que se anota primero entra. Confirma al instante."),
+          "sorteo": ("🎲", "Sorteo", "Ventana de inscripción; al cerrar se sortea de forma justa."),
+          "equidad": ("⚖️", "Equidad", "Al cerrar prioriza a quien más quedó fuera y mejor asiste.")}
+_CATEGORIAS = ["master", "menor", "libre"]
+
+
+def _chip_modo(m: str) -> str:
+    ico, nom, _ = _MODOS.get(m, _MODOS["orden_llegada"])
+    return f"<span class='jp-pill ok'>{ico} {nom}</span>"
+
+
+def _barra(total_conf: int, cupos: int, espera: int, libres: int, cerrada: bool) -> str:
+    ratio = min(1.0, total_conf / (cupos or 1))
+    lleno = libres == 0
+    der = "" if cerrada else (f"<span class='der' style='color:{'#B7791F' if lleno else '#067A38'}'>{'Lista llena' if lleno else f'{libres} libres'}</span>")
+    return (f"<div class='jp-barra{' llena' if lleno else ''}'><i style='width:{ratio * 100:.0f}%'></i></div>"
+            f"<div class='jp-cupos'><span>👥 <b>{total_conf}/{cupos}</b> confirmados</span>"
+            + (f"<span style='color:#6a6a6a'>⏳ {espera} en espera</span>" if espera else "") + der + "</div>")
+
+
+def _mi_estado_chip(cid: int, yo: str) -> str:
+    est = conv.estado_socio(cid, yo).get("estado_efectivo")
+    return {"confirmado": "<span class='jp-pill ok'>✅ Estás dentro</span>",
+            "lista_espera": "<span class='jp-pill warn'>⏳ En espera</span>",
+            "en_bolsa": "<span class='jp-pill info'>🎲 En la bolsa</span>"}.get(est, "")
+
+
+@router.get("/pichangas", response_class=HTMLResponse)
+def pagina_pichangas(request: Request, club: str = "") -> HTMLResponse:
+    """`ConvocatoriasScreen`: pichangas de los clubes; el jugador se anota, el
+    dueño crea nuevas y ve el ranking de socios."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return sin_sesion(request, "/pichangas" + (f"?club={quote(club)}" if club else ""), "Pichangas", "Anotarte a las pichangas de tu club")
+    yo = _low(ses["email"])
+    clubs = mis_clubs(yo)
+    nombres = nombres_clubs()
+    for k, v in clubs.items():
+        nombres.setdefault(k, v["nombre"])
+    todas = conv.listar(club or None)
+    slugs = sorted({c["club_id"] for c in conv.listar()}, key=lambda s: _nombre_club(s, nombres).lower())
+    chips = ""
+    if len(slugs) > 1 or club:
+        chips = ("<div class='jp-chips'>" + f"<a class='chip{'' if club else ' sel'}' href='/pichangas'>Todos los clubes</a>"
+                 + "".join(f"<a class='chip{' sel' if s == club else ''}' href='/pichangas?club={quote(s)}'>{e(_nombre_club(s, nombres))}</a>" for s in slugs)
+                 + "</div>")
+    tarj = ""
+    for c in todas:
+        cerrada = c.get("estado") == "cerrada"
+        sub = [f"<span class='jp-pill {'gris' if cerrada else 'ok'}'>{'Cerrada' if cerrada else 'Abierta'}</span>"]
+        if c.get("categoria"):
+            sub.append(f"<span class='jp-pill info'>{e(str(c['categoria']).capitalize())}</span>")
+        sub.append(_chip_modo(c.get("modo_efectivo") or ""))
+        if c.get("fecha_partido"):
+            sub.append(f"<span class='jp-pill gris'>📅 {e(c['fecha_partido'])}</span>")
+        mio = _mi_estado_chip(int(c["id"]), yo)
+        tarj += (f"<a class='jp-card' href='/pichangas/{int(c['id'])}' style='display:block;text-decoration:none;color:inherit'>"
+                 f"<div class='jp-top'><span class='jp-dep'>{_emo(c.get('deporte') or 'futbol')}</span><div class='t'><b>{e(c.get('titulo') or 'Pichanga')}</b>"
+                 f"<small>{e(_nombre_club(c.get('club_id') or '', nombres))}</small></div>{mio}</div>"
+                 f"<div class='jp-chips' style='margin:10px 0 0'>{''.join(sub)}</div>"
+                 + _barra(int(c.get("confirmados_n") or 0), int(c.get("cupos") or 0), int(c.get("espera_n") or 0),
+                          int(c.get("cupos_libres") or 0), cerrada) + "</a>")
+    if not tarj:
+        tarj = ("<div class='jp-vacio'><span class='em'>⚽</span><b>Aún no hay pichangas</b>"
+                + ("Crea la primera convocatoria de tu club." if clubs else "Cuando el club abra una convocatoria, aparecerá acá.") + "</div>")
+    acciones = ""
+    if clubs:
+        acciones = "<div class='jp-acc jp-noprint'><a class='btn' href='/pichangas/nueva" + (f"?club={quote(club)}" if club in clubs else "") + "'>＋ Nueva pichanga</a>"
+        rk = club if club in clubs else next(iter(clubs))
+        acciones += f"<a class='btn sec' href='/pichangas/ranking?club={quote(rk)}'>📊 Ranking de socios</a></div>"
+    titulo_club = f"<p class='sub' style='margin:0'>{e(_nombre_club(club, nombres))}</p>" if club else ""
+    cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap'><a class='jp-volver' href='/partidos'>‹ Partidos</a>"
+              f"<h1>Pichangas</h1>{titulo_club}<p class='sub'>Convocatorias de club con cupos y lista de espera: te anotas y sabes al toque si entras.</p>"
+              f"{acciones}{chips}{tarj}</div>")
+    return ui.shell("Pichangas", cuerpo, sesion=ses, titulo_tab=f"Pichangas · {MARCA}")
+
+
+@router.get("/pichangas/nueva", response_class=HTMLResponse)
+def pagina_nueva_pichanga(request: Request, club: str = "") -> HTMLResponse:
+    """`CrearConvocatoriaScreen`: todo por selección (local, deporte, categoría,
+    cupos, fecha, modo); solo el título se escribe."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return sin_sesion(request, "/pichangas/nueva", "Nueva pichanga", "Crear convocatorias")
+    clubs = mis_clubs(ses["email"])
+    if not clubs:
+        cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap'><a class='jp-volver' href='/pichangas'>‹ Pichangas</a>"
+                  "<div class='jp-vacio'><span class='em'>🏟️</span><b>Las pichangas las organiza el club</b>"
+                  "Para convocar necesitas un local registrado a tu nombre.<div class='jp-acc' style='justify-content:center'>"
+                  "<a class='btn' href='/anfitrion/nueva'>Registrar mi cancha</a></div></div></div>")
+        return ui.shell("Nueva pichanga", cuerpo, sesion=ses)
+    sel = club if club in clubs else next(iter(clubs))
+    hoy = horarios.ahora_local("PE").date()
+    cfg = {"clubs": {k: v for k, v in clubs.items()}, "club": sel,
+           "dias": [[(hoy + timedelta(days=i)).isoformat(), "Hoy" if i == 0 else "Mañana" if i == 1 else fecha_legible((hoy + timedelta(days=i)).isoformat())] for i in range(21)],
+           "min": (hoy - timedelta(days=1)).isoformat(), "max": (hoy + timedelta(days=120)).isoformat(),
+           "etq": {d: [_etq(d), _emo(d)] for d in DEPORTES}}
+    locales = "".join(f"<button type='button' class='chip{' sel' if k == sel else ''}' data-club='{e(k)}'>{e(v['nombre'])}</button>" for k, v in clubs.items())
+    cats = "".join(f"<button type='button' class='chip{' sel' if c == 'master' else ''}' data-cat='{c}'>{c.capitalize()}</button>" for c in _CATEGORIAS)
+    cupos = "".join(f"<button type='button' class='chip{' sel' if n == 14 else ''}' data-cupos='{n}'>{n}</button>" for n in (10, 12, 14, 16, 18, 22))
+    modos = "".join(f"<button type='button' class='jp-modo{' sel' if k == 'orden_llegada' else ''}' data-modo='{k}'><span class='em'>{ico}</span>"
+                    f"<span><b>{nom}</b><small>{d}</small></span></button>" for k, (ico, nom, d) in _MODOS.items())
+    cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap jp-form'><a class='jp-volver' href='/pichangas'>‹ Pichangas</a><h1>Nueva pichanga</h1>"
+              f"<label class='l'>Local</label><div class='jp-chips' id='npClubs'>{locales}</div>"
+              "<label class='l'>Título</label><input type='text' id='npTit' maxlength='60' value='Fulbito' placeholder='Ej. Fulbito Máster'>"
+              "<label class='l'>Deporte</label><div class='jp-chips' id='npDeps'></div>"
+              f"<label class='l'>Categoría</label><div class='jp-chips' id='npCats'>{cats}</div>"
+              f"<label class='l'>Cupos</label><div class='jp-chips' id='npCupos'>{cupos}</div>"
+              "<div class='jp-step'><button type='button' data-np='-1' aria-label='Menos'>−</button><b id='npN'>14</b><button type='button' data-np='1' aria-label='Más'>+</button></div>"
+              "<label class='l'>Fecha del partido (opcional)</label><div class='jp-chips' id='npDias'></div>"
+              "<label class='l'>¿Cómo se reparten los cupos?</label><p class='ayuda'>Elige el modo para esta pichanga. Puedes usar uno distinto en cada una.</p>"
+              f"<div id='npModos'>{modos}</div>"
+              "<div class='jp-acc'><button type='button' class='btn' id='npGo'>✓ Crear convocatoria</button></div></div>"
+              f"<script>window.NP={_js(cfg)};</script><script>{_JS_BASE}{_JS_NUEVA}</script>")
+    return ui.shell("Nueva pichanga", cuerpo, sesion=ses, titulo_tab=f"Nueva pichanga · {MARCA}")
+
+
+_JS_NUEVA = r"""
+var S = {club: NP.club, dep: '', cat: 'master', cupos: 14, fecha: '', modo: 'orden_llegada'};
+function deps(){
+  var ds = (NP.clubs[S.club] || {}).deportes || []; if(!ds.length) ds = ['futbol'];
+  if(ds.indexOf(S.dep) < 0) S.dep = ds.indexOf('futbol') >= 0 ? 'futbol' : ds[0];
+  document.getElementById('npDeps').innerHTML = ds.map(function(d){ var t = NP.etq[d] || [d, '🏅']; return "<button type='button' class='chip" + (d === S.dep ? ' sel' : '') + "' data-dep='" + jpEsc(d) + "'>" + t[1] + ' ' + jpEsc(t[0]) + "</button>"; }).join('');
+}
+function dias(){
+  document.getElementById('npDias').innerHTML = "<button type='button' class='chip" + (S.fecha ? '' : ' sel') + "' data-dia=''>Sin fecha</button>"
+    + NP.dias.map(function(d){ return "<button type='button' class='chip" + (d[0] === S.fecha ? ' sel' : '') + "' data-dia='" + d[0] + "'>" + jpEsc(d[1]) + "</button>"; }).join('');
+}
+function marcar(box, attr, val){ document.querySelectorAll('#' + box + ' [data-' + attr + ']').forEach(function(b){ b.classList.toggle('sel', b.dataset[attr] === String(val)); }); }
+deps(); dias();
+document.addEventListener('click', function(ev){
+  var t;
+  if((t = ev.target.closest('[data-club]'))){ S.club = t.dataset.club; marcar('npClubs', 'club', S.club); deps(); return; }
+  if((t = ev.target.closest('#npDeps [data-dep]'))){ S.dep = t.dataset.dep; marcar('npDeps', 'dep', S.dep); return; }
+  if((t = ev.target.closest('[data-cat]'))){ S.cat = t.dataset.cat; marcar('npCats', 'cat', S.cat); return; }
+  if((t = ev.target.closest('[data-cupos]'))){ S.cupos = +t.dataset.cupos; document.getElementById('npN').textContent = S.cupos; marcar('npCupos', 'cupos', S.cupos); return; }
+  if((t = ev.target.closest('[data-np]'))){ S.cupos = Math.max(2, Math.min(60, S.cupos + (+t.dataset.np))); document.getElementById('npN').textContent = S.cupos; marcar('npCupos', 'cupos', S.cupos); return; }
+  if((t = ev.target.closest('#npDias [data-dia]'))){ S.fecha = t.dataset.dia; dias(); return; }
+  if((t = ev.target.closest('[data-modo]'))){ S.modo = t.dataset.modo; document.querySelectorAll('.jp-modo').forEach(function(b){ b.classList.toggle('sel', b === t); }); return; }
+});
+document.getElementById('npGo').addEventListener('click', function(){
+  var body = {club: S.club, titulo: document.getElementById('npTit').value, deporte: S.dep, categoria: S.cat, cupos: S.cupos, fecha: S.fecha, modo: S.modo};
+  jpPost('/web/pichangas/crear', body, 'Creando convocatoria…').then(function(j){
+    if(j.ok) pcgIr('/pichangas/' + j.id, 'Abriendo…'); else jpFallo(j, 'No se pudo crear');
+  });
+});
+"""
+
+
+def fecha_partido_texto(iso: str) -> str | None:
+    """`_fechaTexto` del app: "Jue 18 sep"."""
+    try:
+        f = date.fromisoformat(iso)
+    except ValueError:
+        return None
+    dias = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+    meses = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+    return f"{dias[f.weekday()]} {f.day} {meses[f.month - 1]}"
+
+
+@router.post("/web/pichangas/crear")
+def crear_pichanga(request: Request, body: dict = Body(default_factory=dict)) -> JSONResponse:
+    ses, err = _ses_o_401(request)
+    if err:
+        return err
+    yo = _low(ses["email"])
+    clubs = mis_clubs(yo)
+    club = str(body.get("club") or "")
+    if club not in clubs:
+        return JSONResponse({"ok": False, "mensaje": "Solo el dueño de un local puede convocar en su club."}, status_code=403)
+    titulo = re.sub(r"\s+", " ", str(body.get("titulo") or "")).strip()[:60]
+    if not titulo:
+        return JSONResponse({"ok": False, "mensaje": "Ponle un título."}, status_code=400)
+    dep = str(body.get("deporte") or "futbol")
+    if dep not in DEPORTES:
+        dep = "futbol"
+    cat = str(body.get("categoria") or "master")
+    if cat not in _CATEGORIAS:
+        return JSONResponse({"ok": False, "mensaje": "Elige la categoría."}, status_code=400)
+    try:
+        cupos = int(body.get("cupos") or 0)
+    except (TypeError, ValueError):
+        cupos = 0
+    if not 1 <= cupos <= 60:
+        return JSONResponse({"ok": False, "mensaje": "Elige el número de cupos."}, status_code=400)
+    modo = str(body.get("modo") or "orden_llegada")
+    if modo not in MODOS_ASIGNACION:
+        return JSONResponse({"ok": False, "mensaje": "Elige cómo se reparten los cupos."}, status_code=400)
+    fecha = str(body.get("fecha") or "")
+    d = conv.crear(club, titulo, dep, cupos, categoria=cat, fecha_partido=fecha_partido_texto(fecha) if fecha else None,
+                   modo_asignacion=modo, creado_por=yo)
+    if not d.get("ok"):
+        return JSONResponse({"ok": False, "mensaje": "No se pudo crear la convocatoria."}, status_code=500)
+    return JSONResponse({"ok": True, "id": d["convocatoria"]["id"]})
+
+
+@router.get("/pichangas/ranking", response_class=HTMLResponse)
+def pagina_ranking_socios(request: Request, club: str = "") -> HTMLResponse:
+    """`RankingSociosScreen`: recurrencia por socio (solo el admin del club)."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return sin_sesion(request, "/pichangas/ranking?club=" + quote(club), "Ranking de socios", "El ranking de socios")
+    clubs = mis_clubs(ses["email"])
+    mias = {str(c.get("club_id")) for c in conv.listar() if _low(c.get("creado_por")) == _low(ses["email"])}
+    if club not in clubs and club not in mias:
+        return HTMLResponse("", status_code=302, headers={"Location": "/pichangas"})
+    nombres = nombres_clubs()
+    nombres.update({k: v["nombre"] for k, v in clubs.items()})
+    filas = conv.ranking_socios(club)
+    medallas = {1: "#F2C94C", 2: "#B8C0C2", 3: "#CD9A6A"}
+    html = ""
+    for i, f in enumerate(filas, start=1):
+        chips = (f"<span class='jp-pill ok'>⚽ {f['jugo']} jugó</span><span class='jp-pill info'>✍️ {f['inscripciones']} inscrito</span>"
+                 + (f"<span class='jp-pill warn'>⏳ {f['lista_espera']} en espera</span>" if f["lista_espera"] else "")
+                 + (f"<span class='jp-pill bad'>🚫 {f['no_show']} no-show</span>" if f["no_show"] else ""))
+        html += (f"<div class='jp-fila'><span class='jp-n' style='background:{medallas.get(i, '#EAF7EF')}'>{i}</span>"
+                 f"<div class='q'><b>{e(f['socio_nombre'] or 'Socio')}</b><div class='jp-chips' style='margin:6px 0 0'>{chips}</div></div></div>")
+    if not html:
+        html = ("<div class='jp-vacio'><span class='em'>📊</span><b>Todavía sin datos</b>"
+                "El ranking se llena a medida que hay convocatorias y asistencia.</div>")
+    else:
+        html = f"<div class='jp-card'>{html}</div>"
+    cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap'><a class='jp-volver' href='/pichangas?club={quote(club)}'>‹ Pichangas</a>"
+              f"<h1>Ranking de socios</h1><p class='sub'>{e(_nombre_club(club, nombres))} · Ordenado por partidos jugados</p>{html}</div>")
+    return ui.shell("Ranking de socios", cuerpo, sesion=ses)
+
+
+def _lista_inscritos(ins: list[dict], yo: str, posicion: bool, cerrada: bool) -> str:
+    if not ins:
+        return "<p class='sub'>Nadie todavía.</p>"
+    h = ""
+    for i, x in enumerate(ins, start=1):
+        yo_ = _low(x.get("socio_id")) == yo
+        extra = ""
+        if cerrada and x.get("asistio") is True:
+            extra = "<span class='jp-pill ok'>Asistió</span>"
+        elif cerrada and x.get("asistio") is False:
+            extra = "<span class='jp-pill bad'>No vino</span>"
+        h += (f"<div class='jp-fila'><span class='jp-n'>{i if posicion else '✓'}</span><div class='q'><b>{e(x.get('socio_nombre') or 'Socio')}"
+              f"{' (tú)' if yo_ else ''}</b></div>{extra}</div>")
+    return h
+
+
+@router.get("/pichangas/{cid}", response_class=HTMLResponse)
+def pagina_pichanga(request: Request, cid: int) -> HTMLResponse:
+    """`ConvocatoriaDetalleScreen`."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return sin_sesion(request, f"/pichangas/{cid}", "Pichanga", "Anotarte a la pichanga")
+    yo = _low(ses["email"])
+    d = _conv(cid)
+    if d is None:
+        cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap'><div class='jp-vacio'><span class='em'>🔎</span><b>Esta pichanga no existe</b>"
+                  "<div class='jp-acc' style='justify-content:center'><a class='btn' href='/pichangas'>Ver pichangas</a></div></div></div>")
+        return ui.shell("Pichanga", cuerpo, sesion=ses)
+    c = d["convocatoria"]
+    cerrada = c.get("estado") == "cerrada"
+    nombres = nombres_clubs()
+    clubs = mis_clubs(yo)
+    admin = es_admin(c, yo, clubs)
+    mi = conv.estado_socio(cid, yo)
+    est = mi.get("estado_efectivo")
+    banner = {
+        "confirmado": ("✅", "¡Estás dentro!", "Tu cupo está confirmado.", "#EAF7EF", "#067A38"),
+        "lista_espera": ("⏳", "En lista de espera", f"Puesto {mi.get('posicion') or '-'}. Si alguien cancela, subes.", "#FFF6E0", "#B7791F"),
+        "en_bolsa": ("🎲", "Anotado — en la bolsa", "Los cupos se definen al cerrar la inscripción.", "#EAF2FB", "#1F5FA8"),
+    }.get(est, ("ℹ️", "No estás anotado", "La inscripción está cerrada." if cerrada else "Anótate mientras haya cupo.", "#F2F2F2", "#555"))
+    anotado = est != "sin_inscripcion"
+    if anotado:
+        acc = ("<button type='button' class='btn sec' style='width:100%' disabled>🔒 Inscripción cerrada</button>" if cerrada
+               else "<button type='button' class='btn sec' style='color:#C0392B;width:100%' data-pc='cancelar'>✕ Cancelar mi inscripción</button>")
+    elif not cerrada:
+        acc = "<button type='button' class='btn' style='width:100%' data-pc='inscribir'>✍️ Anotarme</button>"
+    else:
+        acc = ""
+    panel = ""
+    if admin:
+        if not cerrada:
+            panel = "<button type='button' class='btn' style='width:100%' data-pc='cerrar'>🔒 Cerrar inscripción y asignar cupos</button>"
+        else:
+            panel = ("<button type='button' class='btn' style='width:100%' data-pc='asistencia'>📋 Marcar asistencia</button>"
+                     "<button type='button' class='btn sec' style='width:100%;margin-top:8px' data-pc='reabrir'>🔓 Reabrir inscripción</button>")
+        panel = (f"<div class='jp-card' style='background:#FAFAF7'><b>🛡️ Panel del organizador</b>"
+                 f"<p class='sub' style='margin:4px 0 10px'>Solo tú (y el dueño del local) ven este panel.</p>{panel}"
+                 f"<a class='btn sec' style='width:100%;margin-top:8px' href='/pichangas/ranking?club={quote(str(c.get('club_id') or ''))}'>📊 Ranking de socios</a></div>")
+    chips = [f"<span class='jp-pill {'gris' if cerrada else 'ok'}'>{'Cerrada' if cerrada else 'Abierta'}</span>"]
+    if c.get("categoria"):
+        chips.append(f"<span class='jp-pill info'>{e(str(c['categoria']).capitalize())}</span>")
+    chips.append(_chip_modo(d.get("modo_efectivo") or ""))
+    if c.get("fecha_partido"):
+        chips.append(f"<span class='jp-pill gris'>📅 {e(c['fecha_partido'])}</span>")
+    conf, esp = d["confirmados"], d["lista_espera"]
+    modo = d.get("modo_efectivo") or "orden_llegada"
+    t_conf = "Anotados (en la bolsa)" if (not cerrada and modo != "orden_llegada") else "Confirmados"
+    asis = [{"id": i, "nombre": x.get("socio_nombre") or "Socio",
+             "asistio": x.get("asistio") is not False} for i, x in enumerate(conf)] if admin and cerrada else []
+    cfg = {"id": cid, "asis": asis}
+    cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap'><a class='jp-volver' href='/pichangas?club={quote(str(c.get('club_id') or ''))}'>‹ Pichangas</a>"
+              f"<h1>{e(c.get('titulo') or 'Pichanga')}</h1><p class='sub' style='margin:0 0 8px'>{_emo(c.get('deporte') or 'futbol')} {e(_nombre_club(str(c.get('club_id') or ''), nombres))}</p>"
+              f"<div class='jp-chips'>{''.join(chips)}</div><p class='sub'>{e(_MODOS.get(modo, _MODOS['orden_llegada'])[2])}</p>"
+              + _barra(len(conf) if (cerrada or modo == 'orden_llegada') else 0, int(d.get("cupos") or 0), len(esp), int(d.get("cupos_libres") or 0), cerrada)
+              + f"<div class='jp-banner' style='background:{banner[3]};color:{banner[4]}'><span class='em'>{banner[0]}</span><div><b>{banner[1]}</b><small>{e(banner[2])}</small></div></div>"
+              f"{acc}<div style='height:12px'></div>{panel}"
+              f"<div class='jp-sec'>✅ {t_conf} · {len(conf) if conf else 0}</div><div class='jp-card'>{_lista_inscritos(conf, yo, False, cerrada)}</div>"
+              + (f"<div class='jp-sec'>⏳ {'Lista de espera' if (cerrada or modo == 'orden_llegada') else 'Anotados'} · {len(esp)}</div><div class='jp-card'>{_lista_inscritos(esp, yo, True, cerrada)}</div>" if esp else "")
+              + f"</div><script>window.PC={_js(cfg)};</script><script>{_JS_BASE}{_JS_PICHANGA}</script>")
+    return ui.shell(str(c.get("titulo") or "Pichanga"), cuerpo, sesion=ses, titulo_tab=f"{c.get('titulo') or 'Pichanga'} · {MARCA}")
+
+
+_JS_PICHANGA = r"""
+var TXT = {
+  cancelar: ['¿Cancelar tu inscripción?', 'Si te cancelas, tu cupo pasa al primero de la lista de espera.', 'Sí, cancelar', true, '✋'],
+  cerrar: ['¿Cerrar la inscripción?', 'Se resolverá la asignación final según el modo y no se podrán anotar más socios.', 'Cerrar y asignar', false, '🔒'],
+  reabrir: ['¿Reabrir la convocatoria?', 'Vuelve a estado abierto para recibir inscripciones.', 'Reabrir', false, '🔓']
+};
+function hacer(acc, body){
+  jpPost('/web/pichangas/' + PC.id + '/' + acc, body || {}, acc === 'inscribir' ? 'Anotándote…' : 'Guardando…').then(function(j){
+    if(j.ok){ pcgToast(j.mensaje || 'Listo.'); pcgRecargar('Actualizando…'); } else jpFallo(j);
+  });
+}
+document.addEventListener('click', function(ev){
+  var t = ev.target.closest('[data-pc]'); if(!t) return;
+  var acc = t.dataset.pc;
+  if(acc === 'inscribir'){ hacer('inscribir'); return; }
+  if(acc === 'asistencia'){
+    var h = "<div style='text-align:left'>" + PC.asis.map(function(a){ return "<label class='jp-chk'><input type='checkbox' data-as='" + a.id + "'" + (a.asistio ? ' checked' : '') + "> " + jpEsc(a.nombre) + "</label>"; }).join('') + "</div>";
+    if(!PC.asis.length){ pcgAvisar({titulo: 'Sin confirmados', icono: 'ℹ️', mensaje: 'No hay socios confirmados para marcar.'}); return; }
+    pcgConfirmar({titulo: '¿Quién vino?', icono: '📋', html: "<p>Marca a los que jugaron. Los que no, cuentan como no-show.</p>" + h, confirmar: 'Guardar asistencia', cancelar: 'Cancelar'}).then(function(ok){
+      if(!ok) return;
+      var marcas = PC.asis.map(function(a){ var c = document.querySelector("[data-as='" + a.id + "']"); return {i: a.id, asistio: c ? c.checked : a.asistio}; });
+      hacer('asistencia', {marcas: marcas});
+    });
+    return;
+  }
+  var x = TXT[acc]; if(!x) return;
+  pcgConfirmar({titulo: x[0], mensaje: x[1], confirmar: x[2], cancelar: 'No', destructivo: x[3], icono: x[4]}).then(function(ok){ if(ok) hacer(acc); });
+});
+"""
+
+
+_ERRORES_CONV = {"convocatoria_cerrada": "La inscripción ya está cerrada.", "inscripcion_cerrada": "La inscripción ya cerró.",
+                 "aun_no_abre": "La inscripción aún no abre.", "convocatoria_no_encontrada": "Esta pichanga ya no existe.",
+                 "no_inscrito": "No estabas anotado."}
+
+
+@router.post("/web/pichangas/{cid}/{accion}")
+def accion_pichanga(request: Request, cid: int, accion: str, body: dict = Body(default_factory=dict)) -> JSONResponse:
+    ses, err = _ses_o_401(request)
+    if err:
+        return err
+    yo = _low(ses["email"])
+    d = _conv(cid)
+    if d is None:
+        return JSONResponse({"ok": False, "mensaje": "Esta pichanga ya no existe."}, status_code=404)
+    c = d["convocatoria"]
+    if accion == "inscribir":
+        r = conv.inscribir(cid, yo, mi_nombre(ses))
+        if not r.get("ok"):
+            return JSONResponse({"ok": False, "mensaje": _ERRORES_CONV.get(r.get("error"), "No se pudo anotar. Intenta de nuevo.")}, status_code=400)
+        msg = {"confirmado": "¡Estás dentro! Cupo confirmado.",
+               "lista_espera": f"Entraste a la lista de espera (puesto {r.get('posicion')}).",
+               "en_bolsa": "Anotado. Los cupos se definen al cerrar la inscripción."}.get(r.get("estado_efectivo"), "Anotado.")
+        return JSONResponse({"ok": True, "mensaje": msg, "estado": r.get("estado_efectivo")})
+    if accion == "cancelar":
+        r = conv.cancelar(cid, yo)
+        if not r.get("ok"):
+            return JSONResponse({"ok": False, "mensaje": _ERRORES_CONV.get(r.get("error"), "No se pudo cancelar.")}, status_code=400)
+        _avisar_promovidos(d, conv.detalle(cid))
+        return JSONResponse({"ok": True, "mensaje": "Inscripción cancelada."})
+    if not es_admin(c, yo, mis_clubs(yo)):
+        return JSONResponse({"ok": False, "mensaje": "Solo quien organiza la pichanga puede hacer esto."}, status_code=403)
+    if accion == "cerrar":
+        r = conv.cerrar(cid)
+        if not r.get("ok"):
+            return JSONResponse({"ok": False, "mensaje": "No se pudo cerrar."}, status_code=400)
+        for x in r.get("confirmados") or []:
+            aviso_push(x.get("socio_id") or "", "¡Estás dentro! ⚽", f"Tienes cupo en {c.get('titulo') or 'la pichanga'}.", "aviso")
+        for i, x in enumerate(r.get("lista_espera") or [], start=1):
+            aviso_push(x.get("socio_id") or "", "Quedaste en lista de espera ⏳",
+                       f"{c.get('titulo') or 'Pichanga'}: puesto {i}. Si alguien cancela, subes.", "aviso")
+        return JSONResponse({"ok": True, "mensaje": "Convocatoria cerrada. Cupos asignados."})
+    if accion == "reabrir":
+        r = conv.reabrir(cid)
+        return JSONResponse({"ok": bool(r.get("ok")), "mensaje": "Convocatoria reabierta."})
+    if accion == "asistencia":
+        if c.get("estado") != "cerrada":
+            return JSONResponse({"ok": False, "mensaje": "Primero cierra la inscripción."}, status_code=400)
+        conf = d["confirmados"]
+        marcas = []
+        for m in body.get("marcas") or []:
+            try:
+                i = int(m.get("i"))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            if 0 <= i < len(conf):
+                marcas.append({"socio_id": conf[i]["socio_id"], "asistio": bool(m.get("asistio"))})
+        r = conv.marcar_asistencia(cid, marcas)
+        return JSONResponse({"ok": bool(r.get("ok")), "mensaje": f"Asistencia guardada ({r.get('marcadas', 0)} socios)."})
+    return JSONResponse({"ok": False, "mensaje": "Acción no válida."}, status_code=404)
+
+
+def _avisar_promovidos(antes: dict, despues: dict) -> None:
+    """Tras una cancelación en una pichanga CERRADA, el primero de la espera
+    sube: se le avisa (push best-effort)."""
+    if not despues.get("ok") or antes["convocatoria"].get("estado") != "cerrada":
+        return
+    previos = {x.get("socio_id") for x in antes.get("confirmados") or []}
+    for x in despues.get("confirmados") or []:
+        if x.get("socio_id") not in previos:
+            aviso_push(x.get("socio_id") or "", "¡Te liberaron un cupo! ⚽",
+                       f"Subiste de la lista de espera: juegas {antes['convocatoria'].get('titulo') or 'la pichanga'}.", "aviso")
+
+
+# ════════════════════════════════ REFERIDOS ═══════════════════════════════════
+
+# El código, el canje y los bonos viven en `referidos.py` (backend): el bono
+# se acredita en la billetera única del correo (antes solo en el teléfono).
+from referidos import codigo_referido  # noqa: E402  (reexporta para tests/otros módulos)
+import referidos as _ref  # noqa: E402
+
+
+@router.get("/referidos", response_class=HTMLResponse)
+def pagina_referidos(request: Request) -> HTMLResponse:
+    """`ReferidosScreen` ("Invita y gana"): código, invitar, conteo, lo ganado y
+    el CANJE del código de un amigo (con bono real en la billetera)."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return sin_sesion(request, "/referidos", "Invita y gana", "Tu código de referido")
+    yo = _low(ses["email"])
+    est = _ref.estado(yo)
+    cod = est.get("codigo") or codigo_referido(yo)
+    n = int(est.get("invitados") or 0)
+    sim = est.get("simbolo") or "S/"
+    bono = int(est.get("bono_centimos") or 0)
+    bono_txt = _ref._fmt(bono, est.get("moneda") or "PEN") if bono else ""
+    ganado = int(est.get("ganado_centimos") or 0)
+    msg = (f"¡Juega conmigo en {MARCA}! 🎾⚽\n\nReserva canchas de fútbol, tenis y más cerca de ti.\n"
+           f"Usa mi código *{cod}* al registrarte y ambos ganamos un bono. 🎁\n\nDescárgala: {config.APP_DOWNLOAD_URL}")
+    estado_txt = (f"{n} {'persona ya usó' if n == 1 else 'personas ya usaron'} tu código." if n else "Aún nadie usó tu código. ¡Comparte y gana!")
+    ganado_html = (f"<div class='jp-banner' style='background:#FFF6E0;color:#8a5a00'><span class='em'>🎁</span><div><b>Llevas "
+                   f"{e(_ref._fmt(ganado, est.get('moneda') or 'PEN'))} ganados con Invita y gana</b>"
+                   f"<small>Ya están en tu saldo {MARCA} (Mi billetera).</small></div></div>") if ganado else ""
+    tope_html = ("<div class='jp-banner' style='background:#F4F4F4;color:#555'><span class='em'>ℹ️</span><div><b>Llegaste al tope de invitados con bono</b>"
+                 "<small>Tus amigos igual reciben su bono de bienvenida.</small></div></div>") if est.get("tope_alcanzado") else ""
+    canje = est.get("canjeado") or ""
+    canje_html = (f"<div class='jp-banner' style='background:#EAF7EF;color:#067A38'><span class='em'>✅</span><div><b>Ya canjeaste el código {e(canje)}</b>"
+                  "<small>Solo se puede canjear un código por cuenta.</small></div></div>") if canje else (
+        "<div class='jp-card'><b>¿Tienes el código de un amigo?</b><p class='sub' style='margin:4px 0 10px'>"
+        + (f"Canjéalo y te sumamos {e(bono_txt)} a tu saldo (a tu amigo también). " if bono_txt else "")
+        + "Solo puedes canjear un código una vez, y no el tuyo.</p>"
+        "<div style='display:flex;gap:8px'><input id='rfAmigo' maxlength='12' autocomplete='off' placeholder='PCG······' "
+        "style='flex:1;min-width:0;text-transform:uppercase;letter-spacing:1px'>"
+        "<button type='button' class='btn' id='rfBtn' onclick='rfCanjear()'>Canjear</button></div></div>")
+    regla = (f"Comparte tu código. Cuando un amigo lo canjea, {e(bono_txt)} para cada uno, directo a tu saldo. 🎁"
+             if bono_txt else f"Comparte tu código con tus amigos para que juegue contigo en {MARCA}.")
+    cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap' style='max-width:600px'><a class='jp-volver' href='/perfil'>‹ Perfil</a>"
+              "<h1>Invita y gana</h1>"
+              "<div class='jp-hero' style='text-align:center;background:linear-gradient(135deg,#7CB518,#0B8A3E)'>"
+              "<div style='font-size:40px'>🎁</div><p style='margin:6px 0 0'>Tu código</p>"
+              f"<div class='jp-cod' id='rfCod'>{e(cod)}</div>"
+              + ui.boton_whatsapp(msg, etiqueta="💬 Invitar por WhatsApp", clase="btn", extra="style='background:#fff;color:#0B8A3E;width:100%'")
+              + "<button type='button' class='btn sec' style='margin-top:8px;width:100%;background:transparent;color:#fff;border-color:rgba(255,255,255,.6)' onclick='rfCopiar()'>⧉ Copiar código</button></div>"
+              f"<p class='sub'>{regla}</p>"
+              f"<div class='jp-banner' style='background:#EAF7EF;color:#14463A'><span class='em'>👥</span><div><b>{e(estado_txt)}</b></div></div>"
+              f"{ganado_html}{tope_html}{canje_html}</div>"
+              f"<script>window.RF={_js({'cod': cod, 'sim': sim})};</script><script>{_JS_BASE}"
+              "window.rfCopiar=function(){ try{ navigator.clipboard.writeText(RF.cod).then(function(){ pcgToast('Código copiado'); }); }catch(_){ pcgToast(RF.cod); } };"
+              "window.rfCanjear=function(){ var i=document.getElementById('rfAmigo'); var c=(i&&i.value||'').trim().toUpperCase();"
+              " if(!c){ pcgAvisar({titulo: 'Escribe el código', mensaje: 'Pídele a tu amigo su código PCG…', icono: '🎁'}); return; }"
+              " pcgCargando('Canjeando…'); fetch('/web/referidos/canjear', {method: 'POST', headers: {'Content-Type': 'application/json'}, credentials: 'same-origin', body: JSON.stringify({codigo: c})})"
+              " .then(function(r){ return r.json(); }).then(function(j){ pcgCargando(false);"
+              "  if(j.ok){ pcgAvisar({titulo: '¡Bono acreditado! 🎁', mensaje: j.bono_centimos ? ('Te sumamos ' + RF.sim + ' ' + (j.bono_centimos/100).toFixed(2) + ' a tu saldo. Tu amigo también recibe su bono.') : 'Código canjeado.', icono: '🎁'}).then(function(){ pcgRecargar(); }); }"
+              "  else { pcgAvisar({titulo: 'No se pudo canjear', mensaje: j.mensaje || 'Revisa el código e inténtalo otra vez.', icono: '⚠️'}); } })"
+              " .catch(function(){ pcgCargando(false); pcgAvisar({titulo: 'Sin conexión', mensaje: 'No pudimos canjear. Inténtalo otra vez.', icono: '⚠️'}); }); };"
+              "</script>")
+    return ui.shell("Invita y gana", cuerpo, sesion=ses, titulo_tab=f"Invita y gana · {MARCA}")
+
+
+@router.post("/web/referidos/canjear")
+def api_referidos_canjear(request: Request, body: dict | None = Body(None)) -> JSONResponse:
+    ses = sesion.de_request(request)
+    if not ses:
+        return JSONResponse({"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión para canjear."}, status_code=401)
+    codigo = str((body or {}).get("codigo") or "") if isinstance(body, dict) else ""
+    return JSONResponse(_ref.canjear(ses["email"], codigo, origen="web"))
+
+
+# ═══════════════════════════ CARNET DEL JUGADOR ═══════════════════════════════
+
+_PROMPTS_BIO = [("dedico", "💼", "Me dedico a"), ("juego_desde", "⏳", "Juego desde hace"),
+                ("logro", "🏆", "Mi mayor logro deportivo"), ("estilo", "⚽", "Mi estilo de juego"),
+                ("tiempo", "🕒", "Dedico demasiado tiempo a"), ("musica", "🎵", "Mi música para entrar en calor"),
+                ("horario", "🌅", "Mi horario de juego"), ("idiomas", "🗣️", "Idiomas que hablo")]
+
+
+def email_de_carnet(ref: str) -> str:
+    """El carnet se comparte: el `ref` cifrado vale sin vencimiento (solo lectura;
+    las ACCIONES usan refs frescos con TTL)."""
+    try:
+        v = _fernet().decrypt((ref or "").encode()).decode()
+    except Exception:  # noqa: BLE001
+        return ""
+    return v if "@" in v else ""
+
+
+def bio_de(email: str) -> dict[str, str]:
+    if not pg.habilitado:
+        return {}
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT bio FROM pichangol_perfiles WHERE lower(email) = %s", (_low(email),))
+            f = cur.fetchone()
+    except Exception:  # noqa: BLE001
+        return {}
+    b = f[0] if f else None
+    if isinstance(b, str):
+        try:
+            b = json.loads(b)
+        except ValueError:
+            b = None
+    return {str(k): str(v).strip() for k, v in (b or {}).items() if v is not None and str(v).strip()} if isinstance(b, dict) else {}
+
+
+def _dt(v) -> datetime:
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    try:
+        d = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+        return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
+        return datetime.now(timezone.utc)
+
+
+def perfil_global(email: str, d: dict) -> dict | None:
+    """`AppState.perfilGlobalDe('e:correo')`: partidos de ranking de TODAS las
+    academias + retos jugados; por academia, puntos 3/1 y últimos partidos."""
+    em = _low(email)
+    nombre = categoria = ""
+    pj = pg_ = pp = 0
+    por: dict[str, list[int]] = {}
+    partidos: list[dict] = []
+    for a in d.get("academias") or []:
+        cats = a.get("categorias") or {}
+        an = str(a.get("nombre") or "")
+        for p in a.get("partidos") or []:
+            for jid in (p.get("jugadorAId") or "", p.get("jugadorBId") or ""):
+                if not jid:
+                    continue
+                pe = str((p.get("jugadorAEmail") if jid == p.get("jugadorAId") else p.get("jugadorBEmail")) or "")
+                if _low(pe) != em:
+                    continue
+                gano = p.get("ganadorId") == jid
+                pj += 1
+                pg_ += gano
+                pp += not gano
+                r = por.setdefault(an, [0, 0, 0])
+                r[0] += 1
+                r[1 if gano else 2] += 1
+                nom = str((p.get("jugadorANombre") if jid == p.get("jugadorAId") else p.get("jugadorBNombre")) or "")
+                if nom:
+                    nombre = nom
+                if cats.get(jid):
+                    categoria = str(cats[jid])
+                rival = p.get("jugadorBId") if jid == p.get("jugadorAId") else p.get("jugadorAId")
+                rn = str((p.get("jugadorANombre") if rival == p.get("jugadorAId") else p.get("jugadorBNombre")) or "")
+                partidos.append({"fecha": _dt(p.get("fecha")), "academia": an, "gano": gano, "rival": rn,
+                                 "marcador": str(p.get("marcador") or "")})
+    for r in d.get("retos") or []:
+        for side in ("retador", "retado"):
+            if _low(r.get(f"{side}_email")) != em:
+                continue
+            otro = "retado" if side == "retador" else "retador"
+            gano = _low(r.get("ganador_email")) == em
+            pj += 1
+            pg_ += gano
+            pp += not gano
+            rec = por.setdefault("Retos", [0, 0, 0])
+            rec[0] += 1
+            rec[1 if gano else 2] += 1
+            if r.get(f"{side}_nombre"):
+                nombre = str(r[f"{side}_nombre"])
+            partidos.append({"fecha": _dt(r.get("creado_en")), "academia": "Reto", "gano": gano,
+                             "rival": str(r.get(f"{otro}_nombre") or ""), "marcador": str(r.get("marcador") or "")})
+    if pj == 0:
+        return None
+    partidos.sort(key=lambda x: x["fecha"], reverse=True)
+    por_ac = sorted(({"academia": k, "pj": v[0], "pg": v[1], "pp": v[2], "puntos": v[1] * PUNTOS_VICTORIA + v[2] * PUNTOS_DERROTA}
+                     for k, v in por.items()), key=lambda x: -x["puntos"])
+    return {"nombre": nombre, "categoria": categoria, "email": em, "pj": pj, "pg": pg_, "pp": pp,
+            "puntos": pg_ * PUNTOS_VICTORIA + pp * PUNTOS_DERROTA, "pct": (pg_ / pj * 100) if pj else 0.0,
+            "por_academia": por_ac, "partidos": partidos}
+
+
+@router.get("/jugador/{ref}", response_class=HTMLResponse)
+def pagina_carnet(request: Request, ref: str, deporte: str = "") -> HTMLResponse:
+    """`PerfilGlobalScreen`: carnet del jugador."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return sin_sesion(request, f"/jugador/{ref}" + (f"?deporte={quote(deporte)}" if deporte else ""), "Carnet del jugador", "El carnet del jugador")
+    yo = _low(ses["email"])
+    email = email_de_carnet(ref)
+    d = datos_ranking() if email else {"academias": [], "retos": [], "campeonatos": []}
+    p = perfil_global(email, d) if email else None
+    if p is None:
+        cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap'><a class='jp-volver' href='/liga'>‹ Ranking</a>"
+                  "<div class='jp-vacio'><span class='em'>🪪</span><b>Jugador no encontrado</b>Aún no tiene partidos en el ranking.</div></div>")
+        return ui.shell("Carnet del jugador", cuerpo, sesion=ses)
+    deps = deportes_con_ranking(d)
+    pos = None
+    dep = deporte if deporte in DEPORTES else ""
+    for x in ([dep] if dep else deps):
+        tabla = ranking_global(d, x)
+        i = next((k for k, f in enumerate(tabla) if f["email"] == email), None)
+        if i is not None:
+            dep, pos = x, i + 1
+            break
+    dep = dep or (deps[0] if deps else "tenis")
+    per = perfiles([email]).get(email) or {}
+    nombre = p["nombre"] or per.get("nombre") or "Jugador"
+    pro = stores.pro_activo(email)
+    bio = bio_de(email)
+    primer = nombre.split(" ")[0]
+    stats = (f"<div class='jp-stats'><div><b style='color:#0A1B3D'>{p['puntos']}</b><small>Puntos</small></div>"
+             f"<div><b>{p['pj']}</b><small>Jugados</small></div><div><b style='color:#0B8A3E'>{p['pg']}</b><small>Ganados</small></div>"
+             f"<div><b style='color:#067A38'>{p['pct']:.0f}%</b><small>Efectividad</small></div></div>")
+    acciones = ""
+    if email != yo:
+        acciones += (f"<button type='button' class='btn' style='width:100%' data-retar='{e(ref_de(email))}' data-nombre='{e(nombre)}' data-dep='{e(dep)}'>"
+                     f"⚔️ Retar a {e(primer)}</button>")
+    acciones += "<button type='button' class='btn sec' style='width:100%;margin-top:8px' onclick='window.print()'>🖨️ Guardar carnet (PDF)</button>"
+    acciones += "<button type='button' class='btn sec' style='width:100%;margin-top:8px' onclick='jcCopiar()'>🔗 Copiar enlace del carnet</button>"
+    acad = "".join(f"<div class='jp-fila'><span>{'⚔️' if r['academia'] == 'Retos' else '🎓'}</span><div class='q'><b>{e(r['academia'])}</b></div>"
+                   f"<small style='color:#6a6a6a'>{r['pg']}G-{r['pp']}P</small><b style='color:#0B8A3E;margin-left:8px'>{r['puntos']} pts</b></div>"
+                   for r in p["por_academia"])
+    t_ac = f"Juega en {len(p['por_academia'])} academias" if len(p["por_academia"]) > 1 else "Academia"
+    bio_h = "".join(f"<div class='jp-bio'><span>{ico}</span><div><small>{e(et)}</small>{e(bio[k])}</div></div>"
+                    for k, ico, et in _PROMPTS_BIO if bio.get(k))
+    ult = "".join(f"<div class='jp-fila'><span class='jp-pill {'ok' if x['gano'] else 'bad'}'>{'Ganó' if x['gano'] else 'Perdió'}</span>"
+                  f"<div class='q'><b>vs {e(x['rival'] or 'Rival')}</b><small>{e(x['academia'])} · {x['fecha']:%d/%m/%Y}</small></div>"
+                  + (f"<small style='color:#6a6a6a'>{e(x['marcador'])}</small>" if x["marcador"] else "") + "</div>"
+                  for x in p["partidos"][:12])
+    sub = f"Puesto #{pos} · {_etq(dep)}" if pos else _etq(dep)
+    cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap' style='max-width:640px'><a class='jp-volver jp-noprint' href='/liga?deporte={e(dep)}'>‹ Ranking</a>"
+              "<h1>Carnet del jugador</h1>"
+              f"<div class='jp-carnet'>{avatar(nombre, per.get('foto_url', ''), 'jp-av')}<div style='min-width:0'><b>{e(nombre)}</b>"
+              f"<small>{e(sub)}{'<span class=jp-pro>PRO</span>' if pro else ''}</small>"
+              + (f"<small>{e(p['categoria'])}</small>" if p["categoria"] else "") + "</div></div>"
+              f"{stats}<div class='jp-noprint'>{acciones}</div>"
+              f"<div class='jp-sec'>{e(t_ac)}</div><div class='jp-card'>{acad}</div>"
+              + (f"<div class='jp-sec'>Acerca de {e(primer)}</div><div class='jp-card'>{bio_h}</div>" if bio_h else "")
+              + f"<div class='jp-sec'>Últimos partidos</div><div class='jp-card'>{ult}</div>"
+              f"<p class='sub' style='text-align:center'>Ranking Global {MARCA}</p></div>"
+              f"<script>{_JS_BASE}{_JS_CARNET}</script>")
+    return ui.shell(f"Carnet de {nombre}", cuerpo, sesion=ses, titulo_tab=f"{nombre} · Carnet {MARCA}")
+
+
+_JS_CARNET = r"""
+window.jcCopiar = function(){ try{ navigator.clipboard.writeText(location.href).then(function(){ pcgToast('Enlace copiado'); }); }catch(_){ pcgToast('Copia el enlace de la barra del navegador'); } };
+var enVuelo = false;
+document.addEventListener('click', function(ev){
+  var b = ev.target.closest('[data-retar]'); if(!b || enVuelo) return;
+  pcgConfirmar({titulo: '¿Retar a ' + b.dataset.nombre + '?', icono: '⚔️', mensaje: 'Le llega el reto y un mensaje para coordinar cancha y horario. El resultado suma al ranking.', confirmar: 'Enviar reto', cancelar: 'Cancelar'}).then(function(ok){
+    if(!ok) return; enVuelo = true;
+    jpPost('/web/liga/retar', {ref: b.dataset.retar, nombre: b.dataset.nombre, deporte: b.dataset.dep, zona: ''}, 'Enviando reto…').then(function(j){
+      enVuelo = false;
+      if(j.ok) pcgAvisar({titulo: '¡Reto enviado!', icono: '⚔️', mensaje: j.mensaje}); else jpFallo(j, 'No se pudo retar');
+    });
+  });
+});
+"""
+
+
+# ═══════════════════════════ LLENAR CANCHA (dueño) ════════════════════════════
+
+def clientes_de(canchas: list[dict], hoy: date) -> list[dict]:
+    """`AppState.clientesParaAvisar`: clientes de las reservas de MIS canchas
+    (con correo → app; con teléfono → WhatsApp), deduplicados."""
+    ids = [c["id"] for c in canchas]
+    filas = datos.reservas_de_canchas(ids, (hoy - timedelta(days=365)).isoformat(), (hoy + timedelta(days=120)).isoformat())
+    out: dict[str, dict] = {}
+    for r in filas:
+        em = _low(r.get("usuario"))
+        tel = re.sub(r"\D", "", str(r.get("telefono") or ""))
+        if not em and not tel:
+            continue
+        if str(r.get("medio_pago") or "") == "manual" and not em and not tel:
+            continue
+        k = em or f"t:{tel}"
+        out.setdefault(k, {"nombre": (str(r.get("jugador") or "").strip() or "Cliente"), "email": em, "telefono": tel})
+    return list(out.values())
+
+
+def horas_libres(c: dict, base: date, ahora: datetime) -> list[str]:
+    """`AppState.horasLibresDe`: slots de la sesión (hoy: los que aún no
+    empiezan) sin reserva ni bloqueo, con la FECHA REAL de la madrugada."""
+    desde = ahora.hour * 60 + ahora.minute if base == ahora.date() else None
+    slots = horarios.slots(c.get("hora_apertura") or "07:00", c.get("hora_cierre") or "23:00", int(c.get("duracion_slot_min") or 60), desde)
+    sig = (base + timedelta(days=1)).isoformat()
+    ocup = datos.ocupados(c["id"], [base.isoformat(), sig])  # reservas vigentes + bloqueos
+    libres = []
+    for h in slots:
+        fr = horarios.fecha_real(base.isoformat(), c.get("hora_apertura") or "", c.get("hora_cierre") or "", h)
+        if (fr, h) in ocup:
+            continue
+        libres.append(h)
+    return libres
+
+
+def aplicar_descuento_slot(cancha_id: str, fecha: str, hora: str, pct: int) -> bool:
+    """`DescuentosRepo.aplicar/quitar` (0 = quitar)."""
+    if not pg.habilitado:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            if pct <= 0:
+                cur.execute("DELETE FROM pichangol_descuentos_slot WHERE cancha_id = %s AND fecha = %s AND hora = %s", (cancha_id, fecha, hora))
+            else:
+                cur.execute("INSERT INTO pichangol_descuentos_slot (cancha_id, fecha, hora, pct) VALUES (%s, %s, %s, %s) "
+                            "ON CONFLICT (cancha_id, fecha, hora) DO UPDATE SET pct = EXCLUDED.pct",
+                            (cancha_id, fecha, hora, max(1, min(90, int(pct)))))
+            conn.commit()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def texto_aviso(c: dict, nombre: str, horas: list[str], precios: list[int], dia: str, descuento: int, promo: str, sim: str) -> str:
+    """`_texto` del app."""
+    donde = f"{c['club']} · {c['nombre']}" if c.get("club") else c.get("nombre") or "mi cancha"
+    off = f" 🔥 {descuento}% OFF" if descuento > 0 else ""
+    desde = min(precios) if precios else 0
+    extra = f"\n{promo}" if promo else ""
+    return (f"¡Hola {nombre}! 🎾 Tengo libre {donde} {dia}: {', '.join(sorted(horas))} "
+            f"(desde {sim} {desde}{off}). ¿La quieres? Resérvala en {MARCA} o respóndeme por aquí.{extra}")
+
+
+@router.get("/anfitrion/llenar", response_class=HTMLResponse)
+def pagina_llenar(request: Request, cancha: str = "", dia: int = 0) -> HTMLResponse:
+    from web.anfitrion import _cabecera, _contexto
+    from web.router import _moneda_de, _pais_de
+    ses, canchas, resp = _contexto(request, "/anfitrion/llenar")
+    if resp is not None:
+        return resp
+    c = next((x for x in canchas if x["id"] == cancha), canchas[0])
+    dia = 1 if dia == 1 else 0
+    ahora = horarios.ahora_local(_pais_de(c))
+    base = ahora.date() + timedelta(days=dia)
+    sim = _moneda_de(c)[0]
+    libres = horas_libres(c, base, ahora)
+    desc = datos.descuentos(c["id"], [base.isoformat(), (base + timedelta(days=1)).isoformat()])
+    slots = []
+    for h in libres:
+        fr = horarios.fecha_real(base.isoformat(), c.get("hora_apertura") or "", c.get("hora_cierre") or "", h)
+        slots.append({"h": h, "p0": horarios.precio_turno_de(c, h, 0), "pa": horarios.precio_turno_de(c, h, desc.get((fr, h), 0)),
+                      "d": desc.get((fr, h), 0),
+                      "px": {str(p): horarios.precio_turno_de(c, h, p) for p in (10, 15, 20, 30)}})
+    n_cli = len(clientes_de(canchas, ahora.date()))
+    opts = "".join(f"<a class='chip{' sel' if x['id'] == c['id'] else ''}' href='/anfitrion/llenar?cancha={quote(x['id'])}&dia={dia}'>"
+                   f"{e((x['club'] + ' · ' + x['nombre']) if x.get('club') else x['nombre'])}</a>" for x in canchas)
+    dias = "".join(f"<a class='chip{' sel' if i == dia else ''}' href='/anfitrion/llenar?cancha={quote(c['id'])}&dia={i}'>{t}</a>" for i, t in ((0, "Hoy"), (1, "Mañana")))
+    cfg = {"cancha": c["id"], "dia": dia, "sim": sim, "slots": slots, "n": n_cli}
+    lista = ("<div class='jp-slots' id='llSlots'></div><button type='button' class='btn sec' style='margin-top:10px' id='llTodas'>Seleccionar todas</button>"
+             if slots else f"<p class='sub'>{'No quedan horas libres hoy. 🎉' if dia == 0 else 'No hay horas libres mañana. 🎉'}</p>")
+    descs = "".join(f"<button type='button' class='chip{' sel' if p == 0 else ''}' data-desc='{p}'>{'Sin desc.' if p == 0 else f'{p}%'}</button>" for p in (0, 10, 15, 20, 30))
+    cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap jp-form'><a class='jp-volver' href='/anfitrion/hoy'>‹ Hoy</a>"
+              "<h1>Llenar cancha</h1><p class='sub'>Elige las horas vacías y avísalas a tus clientes: no dejes la cancha sin jugar.</p>"
+              f"<label class='l'>Cancha</label><div class='jp-chips'>{opts}</div>"
+              f"<div class='jp-chips'>{dias}</div><label class='l'>Horas libres</label>{lista}"
+              f"<div id='llDescBox' style='display:none'><label class='l'>Descuento para llenar (opcional)</label><div class='jp-chips' id='llDesc'>{descs}</div>"
+              "<p class='ayuda' id='llDescAyuda'>Sin descuento: precio normal.</p></div>"
+              "<label class='l'>Mensaje o promo (opcional)</label><input type='text' id='llPromo' maxlength='160' placeholder='Ej.: 20% off hoy'>"
+              f"<div class='jp-acc'><button type='button' class='btn' id='llGo' disabled>Elige horas para avisar</button></div></div>"
+              f"<script>window.LL={_js(cfg)};</script><script>{_JS_BASE}{_JS_LLENAR}</script>")
+    return ui.shell("Llenar cancha", cuerpo, nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab=f"Llenar cancha · {MARCA}")
+
+
+_JS_LLENAR = (r"""
+var sel = {}, desc = 0;
+function precio(s){ return (sel[s.h] && desc > 0) ? s.px[String(desc)] : (sel[s.h] ? s.p0 : s.pa); }
+function pintar(){
+  var box = document.getElementById('llSlots');
+  if(box) box.innerHTML = LL.slots.map(function(s){ return "<button type='button' class='jp-slot" + (sel[s.h] ? ' sel' : '') + "' data-h='" + s.h + "'><b>" + s.h + "</b><small>" + jpEsc(LL.sim) + ' ' + precio(s) + (s.d && !sel[s.h] ? ' · −' + s.d + '%' : '') + "</small></button>"; }).join('');
+  var n = Object.keys(sel).length, go = document.getElementById('llGo');
+  go.disabled = !n; go.textContent = n ? 'Avisar a mis clientes (' + LL.n + ')' : 'Elige horas para avisar';
+  document.getElementById('llDescBox').style.display = n ? '' : 'none';
+  var t = document.getElementById('llTodas'); if(t) t.textContent = n === LL.slots.length ? 'Quitar todas' : 'Seleccionar todas';
+  document.getElementById('llDescAyuda').textContent = desc > 0 ? 'Se cobra ' + desc + '% menos en esas horas: es el precio REAL al reservar (no solo el aviso).' : 'Sin descuento: precio normal.';
+  document.querySelectorAll('#llDesc [data-desc]').forEach(function(b){ b.classList.toggle('sel', +b.dataset.desc === desc); });
+}
+document.addEventListener('click', function(ev){
+  var t;
+  if((t = ev.target.closest('[data-h]'))){ if(sel[t.dataset.h]) delete sel[t.dataset.h]; else sel[t.dataset.h] = 1; pintar(); return; }
+  if((t = ev.target.closest('#llTodas'))){ if(Object.keys(sel).length === LL.slots.length) sel = {}; else LL.slots.forEach(function(s){ sel[s.h] = 1; }); pintar(); return; }
+  if((t = ev.target.closest('[data-desc]'))){ desc = +t.dataset.desc; pintar(); return; }
+});
+document.getElementById('llGo').addEventListener('click', function(){
+  var horas = Object.keys(sel); if(!horas.length) return;
+  if(!LL.n){ pcgAvisar({titulo: 'Aún sin clientes', icono: 'ℹ️', mensaje: 'Aún no tienes clientes registrados para avisar.'}); return; }
+  pcgConfirmar({titulo: 'Avisar a tus clientes', icono: '📣', mensaje: 'Se aplicará el precio elegido a ' + horas.length + ' hora(s) y se avisará a tus ' + LL.n + ' cliente(s): por el chat de ⟦MARCA⟧ a los que tienen la app y por WhatsApp a los demás.', confirmar: 'Avisar', cancelar: 'Cancelar'}).then(function(ok){
+    if(!ok) return;
+    jpPost('/anfitrion/llenar/avisar', {cancha_id: LL.cancha, dia: LL.dia, horas: horas, descuento: desc, promo: document.getElementById('llPromo').value}, 'Avisando…').then(function(j){
+      if(!j.ok){ jpFallo(j); return; }
+      var msg = j.enviados > 0 ? '✅ Avisé a ' + j.enviados + ' cliente(s) por la app 📲' : (j.whatsapp.length ? 'Ningún cliente tiene la app aún.' : 'Listo.');
+      if(!j.whatsapp.length){ pcgAvisar({titulo: 'Aviso enviado', icono: '📣', mensaje: msg}).then(function(){ pcgRecargar(); }); return; }
+      var h = "<p>" + jpEsc(msg) + "</p><p><b>Avisar por WhatsApp</b><br><small>Clientes sin la app. Toca para abrir el chat con el mensaje listo.</small></p>"
+        + j.whatsapp.map(function(c){ return "<div class='jp-fila'><span class='jp-av'>" + jpEsc((c.nombre || '?').charAt(0).toUpperCase()) + "</span><div class='q'><b>" + jpEsc(c.nombre) + "</b></div><a class='btn chico' style='width:auto;flex:none;margin:0;padding:8px 14px' target='_blank' rel='noopener' href='" + jpEsc(c.url) + "' data-wa-movil='" + jpEsc(c.movil) + "'>WhatsApp</a></div>"; }).join('');
+      pcgAvisar({titulo: 'Aviso enviado', icono: '📣', html: h, confirmar: 'Listo'}).then(function(){ pcgRecargar(); });
+    });
+  });
+});
+pintar();
+""").replace('⟦MARCA⟧', MARCA)
+
+
+@router.post("/anfitrion/llenar/avisar")
+def avisar_libres(request: Request, body: dict = Body(default_factory=dict)) -> JSONResponse:
+    """`_avisar`: aplica el descuento REAL a cada hora elegida y avisa por el
+    chat de la cancha (hilo `cancha_<dueño>|<cliente>`, push por el trigger) a
+    los clientes con cuenta; devuelve los enlaces de WhatsApp de los demás."""
+    ses, err = _ses_o_401(request)
+    if err:
+        return err
+    from web.jugador_mensajes import hilo_cancha, insertar_mensaje
+    from web.router import _moneda_de, _pais_de
+    yo = _low(ses["email"])
+    canchas = datos.canchas_de_dueno(yo)
+    c = next((x for x in canchas if x["id"] == str(body.get("cancha_id") or "")), None)
+    if c is None:
+        return JSONResponse({"ok": False, "mensaje": "Cancha no encontrada."}, status_code=404)
+    try:
+        dia = 1 if int(body.get("dia") or 0) == 1 else 0
+        pct = int(body.get("descuento") or 0)
+    except (TypeError, ValueError):
+        return JSONResponse({"ok": False, "mensaje": "Datos inválidos."}, status_code=400)
+    if pct not in (0, 10, 15, 20, 30):
+        return JSONResponse({"ok": False, "mensaje": "Descuento inválido."}, status_code=400)
+    ahora = horarios.ahora_local(_pais_de(c))
+    base = ahora.date() + timedelta(days=dia)
+    libres = set(horas_libres(c, base, ahora))
+    horas = sorted({str(h) for h in (body.get("horas") or []) if str(h) in libres})
+    if not horas:
+        return JSONResponse({"ok": False, "mensaje": "Elige al menos una hora libre (las elegidas ya no están libres)."}, status_code=400)
+    clientes = clientes_de(canchas, ahora.date())
+    if not clientes:
+        return JSONResponse({"ok": False, "mensaje": "Aún no tienes clientes registrados para avisar."}, status_code=400)
+    promo = re.sub(r"\s+", " ", str(body.get("promo") or "")).strip()[:160]
+    precios = []
+    for h in horas:
+        fr = horarios.fecha_real(base.isoformat(), c.get("hora_apertura") or "", c.get("hora_cierre") or "", h)
+        aplicar_descuento_slot(c["id"], fr, h, pct)
+        precios.append(horarios.precio_turno_de(c, h, pct))
+    sim = _moneda_de(c)[0]
+    dia_txt = "hoy" if dia == 0 else "mañana"
+    minom = mi_nombre(ses)
+    enviados = 0
+    wa = []
+    iso = _pais_de(c)
+    for i, cli in enumerate(clientes):
+        txt = texto_aviso(c, cli["nombre"], horas, precios, dia_txt, pct, promo, sim)
+        if cli["email"]:
+            if cli["email"] == yo:
+                continue
+            fila = {"id": f"msg_{time.time_ns() // 1000}_{i}", "hilo": hilo_cancha(yo, cli["email"]), "tipo": "cancha",
+                    "ref_id": yo, "cuenta_email": cli["email"], "autor_email": yo, "autor_nombre": minom,
+                    "es_profe": True, "texto": txt}
+            if insertar_mensaje(fila):
+                enviados += 1
+        elif cli["telefono"]:
+            tel = cli["telefono"]
+            pref = catalogos.TEL_PREFIJO.get(iso, "51")
+            if len(tel) <= catalogos.TEL_LONGITUD.get(iso, 9):
+                tel = pref + tel
+            wa.append({"nombre": cli["nombre"], "url": ui.enlace_whatsapp(txt, tel, pc=True), "movil": ui.enlace_whatsapp(txt, tel)})
+    return JSONResponse({"ok": True, "enviados": enviados, "whatsapp": wa, "horas": horas})

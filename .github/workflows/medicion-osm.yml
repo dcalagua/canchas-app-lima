@@ -1,0 +1,12 @@
+name: Medición OpenStreetMap
+on:
+  push:
+    branches: [claude/apk-google-maps-setup-fvpl9w]
+    paths: [tool/medicion_osm.py, .github/workflows/medicion-osm.yml]
+jobs:
+  medir:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tool/medicion_osm.py
