@@ -2986,6 +2986,13 @@ off → redeploy inmediato en cada push). URL pública:
     APAGADO (`ai_mkt_activo`) y en modo `aprobar`: se enciende en la torre de
     PRD → Marketing IA. CAMBIÓ `lib/` → APK/AAB de PRD = run 1594
     (`workflow_dispatch`, `ref=prd`, `entorno=prod`).
+    **Pase del 22-oct-2026 (autorizado: "pasar a prd"):** `prd` = 5ff55e8
+    (marca CanchaLibre en www.canchalibre.pe + modo anfitrión web sin canchas).
+    Sin SQL ni Edge. Hecho durante la caída de Railway: el conector no estaba
+    autorizado, así que NO se tocaron variables de `pg-backend-prd`
+    (`PUBLIC_BASE_URL`/`LANDING_BASE_URL` siguen en pichangol.app y
+    `DOMINIOS_VIEJOS` vacía hasta que `www.canchalibre.pe` tenga SSL). CAMBIÓ
+    `lib/` → APK/AAB de PRD = run 1601.
     **Culqi en PRD (22-sep-2026, decisión del director):** mientras Culqi
     entrega las llaves live, `pg-backend-prd` lleva `CULQI_PUBLIC_KEY` y
     `CULQI_SECRET_KEY` como REFERENCIAS a QAS (`${{pg-backend.CULQI_*}}`,
