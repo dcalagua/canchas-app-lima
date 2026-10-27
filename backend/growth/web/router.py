@@ -49,6 +49,7 @@ from pagos import culqi
 from pagos import cargo_servicio as _cs
 from pagos import devoluciones as _dev
 from web import beneficios, catalogos, datos, descubrir, horarios, marca, osm, pago_hospedado, sesion, ui
+from reservas import reglas as _reglas
 from web.ui import e
 import academia_plan as _ap
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
@@ -1449,14 +1450,21 @@ def _fechas_validas(pais: str) -> tuple[str, str]:
 
 
 def _slots_del_dia(c: dict, fecha: str) -> list[dict]:
-    """Slots del día con precio y estado. Hoy: se omiten los que ya pasaron."""
+    """Slots del día con precio y estado. Hoy: se omiten los que ya pasaron.
+    Con REGLAS DE RESERVA del dueño (`reservas.reglas`): horario de ese día de
+    la semana, cierres especiales, franjas de precio, recargo de luz y
+    ventana de anticipación."""
     pais = _pais_de(c)
     ahora = horarios.ahora_local(pais)
+    c = _reglas.cancha_del_dia(c, fecha)
     desde = None
     if fecha == ahora.date().isoformat():
         desde = ahora.hour * 60 + ahora.minute + 1
     paso = c["duracion_slot_min"]
-    horas = horarios.slots(c["hora_apertura"], c["hora_cierre"], paso, desde)
+    horas = horarios.slots_de(c, desde)
+    if c.get("_reglas"):
+        horas = [h for h in horas if not _reglas.validar_inicio(
+            c, horarios.fecha_real(fecha, c["hora_apertura"], c["hora_cierre"], h), h, ahora)]
     fechas = sorted({horarios.fecha_real(fecha, c["hora_apertura"], c["hora_cierre"], h) for h in horas} | {fecha})
     ocup = datos.ocupados(c["id"], fechas)
     desc = datos.descuentos(c["id"], fechas)
@@ -1484,8 +1492,10 @@ def disponibilidad(cancha_id: str, fecha: str = "") -> dict:
     if not (d_min <= fecha <= d_max):
         return {"ok": False, "error": "fecha_fuera_de_rango", "min": d_min, "max": d_max}
     sim, iso = _moneda_de(c)
+    cd = _reglas.cancha_del_dia(c, fecha)
     return {"ok": True, "fecha": fecha, "moneda": sim, "moneda_iso": iso,
-            "slots": _slots_del_dia(c, fecha)}
+            "slots": _slots_del_dia(c, fecha), "cerrado": cd.get("_cerrado", ""),
+            "politica": _reglas.resumen_publico(c)}
 
 
 def _hora_libre(c: dict, fecha: str, hora: str, ocup: set[tuple[str, str]]) -> bool:
@@ -1494,6 +1504,7 @@ def _hora_libre(c: dict, fecha: str, hora: str, ocup: set[tuple[str, str]]) -> b
     h = horarios.hora_en_minutos(hora)
     if h is None:
         return False
+    c = _reglas.cancha_del_dia(c, fecha)
     ap, ci = c["hora_apertura"], c["hora_cierre"]
     ini = horarios.hora_en_minutos(ap)
     if ini is not None and h < ini and horarios.slot_es_madrugada(ap, ci, hora):
@@ -1501,7 +1512,7 @@ def _hora_libre(c: dict, fecha: str, hora: str, ocup: set[tuple[str, str]]) -> b
     ahora = horarios.ahora_local(_pais_de(c))
     desde = ahora.hour * 60 + ahora.minute + 1 if fecha == ahora.date().isoformat() else None
     paso = c["duracion_slot_min"]
-    for s_ in horarios.slots(ap, ci, paso, desde):
+    for s_ in horarios.slots_de(c, desde):
         m = horarios.hora_en_minutos(s_)
         if m is None:
             continue
@@ -2496,6 +2507,17 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
         if not s or s["ocupado"]:
             return {"ok": False, "error": "ocupado" if s else "hora_invalida"}
         total += s["precio"]
+    # REGLAS DEL DUEÑO: turnos seguidos mín./máx. y tope de reservas por día.
+    err = _reglas.validar_bloque(c, len(pedidos))
+    if err:
+        return {"ok": False, "error": err}
+    tope = _reglas.de_cancha(c).get("max_reservas_dia_jugador")
+    if tope:
+        dias_pedidos = {f for f, _h in pedidos}
+        ya = [r for r in datos.reservas_de_usuario(email) if r.get("cancha_id") == c["id"]
+              and r.get("fecha") in dias_pedidos and r.get("estado") != "noShow"]
+        if len({r.get("grupo_reserva_id") or r.get("id") for r in ya}) >= tope:
+            return {"ok": False, "error": "tope_reservas_dia"}
     # FIDELIDAD DEL LOCAL (sep-2026): si el jugador pidió usar su premio y de
     # verdad lo tiene, el descuento sale del precio de la cancha (hora gratis =
     # el turno más barato a 0; descuento = % por turno). El servidor decide.
@@ -3054,7 +3076,8 @@ def estado_cancelacion(filas: list[dict], c: dict | None, email: str, cancela_an
     precio = precio_c // 100 if precio_c % 100 == 0 else precio_c / 100.0
     pol = _dev.resumen(pagado=pagado, horas_para_inicio=horas,
                        horas_desde_pago=_horas_desde_pago(cobro if cobro is not None else (cargo_app or liq)),
-                       precio_centimos=precio_c, cargo_centimos=cargo_c, simbolo=sim, cancela_anfitrion=cancela_anfitrion)
+                       precio_centimos=precio_c, cargo_centimos=cargo_c, simbolo=sim, cancela_anfitrion=cancela_anfitrion,
+                       cancha=c)
     # ¿La devolución al medio original sale sola por Culqi (tenemos el cargo)
     # o la coordina el operador (pago viejo del app sin cargo ligado, o pago
     # por una pasarela hospedada —Ecuador / Bolivia— sin reembolso por API)?
@@ -3079,7 +3102,7 @@ def estado_cancelacion(filas: list[dict], c: dict | None, email: str, cancela_an
         pol["opciones"] = []  # todo con bono: no hay plata que devolver, solo horas
     return {"puede": True, "horas": round(horas, 1), "pagado": pagado, "pagado_online": pagado_online,
             "bono_horas": aj["bono_horas"], "puntos": aj["puntos"],
-            "reembolsable": reembolsable, "minimo_horas": config.WEB_CANCELACION_HORAS,
+            "reembolsable": reembolsable, "minimo_horas": _dev.horas_minimas(c),
             "monto": precio, "monto_centimos": precio_c, "moneda": sim, "cargo_centimos": cargo_c,
             "total_pagado": (precio_c + cargo_c) / 100.0,
             "reembolso_directo": directo, "politica": pol}
@@ -3244,7 +3267,7 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
                "manual": f"Te devolvemos {dev_txt}; te escribimos para coordinar.",
                "fallo": "Tu devolución está en proceso; te escribimos en breve.",
                "bono": "",
-               "sin_reembolso": f"Cancelaste con menos de {int(_dev.horas_minimas())} horas: sin devolución.", "no_aplica": ""}[reembolso]
+               "sin_reembolso": f"Cancelaste con menos de {int(_dev.horas_minimas(c))} horas: sin devolución.", "no_aplica": ""}[reembolso]
         if ben_dev["horas"]:
             txt = (txt + f" Te devolvimos {ben_dev['horas']} h a tu bono de este local.").strip()
         if ben_dev["puntos"]:
@@ -3509,7 +3532,7 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
         + f"<details class='viajes-det'{' open' if canceladas else ''}><summary><span class='ico'>🗓️</span> Reservaciones canceladas <small>· {len(canceladas)}</small></summary>"
         + ("".join(_fila_cancel(x) for x in canceladas) if canceladas else "<p class='sub' style='padding:8px 4px 2px'>No has cancelado ninguna reserva.</p>")
         + "</details>"
-        f"<p class='sub' style='font-size:12.5px;margin-top:18px'>Cancelación con más de {int(config.WEB_CANCELACION_HORAS)} horas de anticipación: devolución del 100 % al mismo medio de pago. "
+        f"<p class='sub' style='font-size:12.5px;margin-top:18px'>Salvo que el club indique otra política en tu comprobante: cancelación con más de {int(config.WEB_CANCELACION_HORAS)} horas de anticipación: devolución del 100 % al mismo medio de pago. "
         f"Dudas: <a href='mailto:{empresa.datos()['correo']}'>{empresa.datos()['correo']}</a>.</p>"
         "</div><aside class='viajes-mapa'><div class='mapa' id='mapaViajes' aria-label='Mapa de tus reservas'></div></aside></div>"
         + _MODAL_CANCELAR
@@ -3892,7 +3915,7 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         + boton_wa
         + "</div>"
         + (f"<div class='acciones'>{_boton_cancelar(filas, c, ses, 'btn sec')}</div>" if _boton_cancelar(filas, c, ses) else "")
-        + f"<div class='estado ok' style='text-align:left'>Cancelación con más de {int(config.WEB_CANCELACION_HORAS)} horas de anticipación: devolución del 100 % al mismo medio de pago. "
+        + f"<div class='estado ok' style='text-align:left'>Cancelación con más de {int(_dev.horas_minimas(c))} horas de anticipación: devolución del 100 % al mismo medio de pago. "
         f"Puedes cancelar desde aquí o desde <a href='/mis-reservas'>Mis reservas</a>. Dudas: <a href='mailto:{empresa.datos()['correo']}'>{empresa.datos()['correo']}</a>.</div>"
         "</div>"
         "<div class='panel' style='margin-top:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap'>"

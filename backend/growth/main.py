@@ -25,6 +25,7 @@ from entrenador.router import router as entrenador_router
 from db.store import seed_verificadores, stores
 from legal.router import router as legal_router
 from web.router import router as web_router
+from reservas.router import router as reservas_router
 from web.portal_tenis import router as portal_tenis_router
 from web.anfitrion import router as anfitrion_router
 from web.anfitrion_academia import router as anfitrion_academia_router
@@ -189,6 +190,7 @@ app.include_router(legal_router)
 from marca_logo import router as marca_logo_router  # noqa: E402
 app.include_router(marca_logo_router)  # /marca/logo.png + torre → Logo de la marca
 app.include_router(web_router)
+app.include_router(reservas_router)
 app.include_router(portal_tenis_router)  # /tenis: portada de raqueta (canchas, torneos con marca del organizador, partner, liga)
 app.include_router(academia_web_router)  # ficha pública /academia/{id} + matrícula web
 app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}

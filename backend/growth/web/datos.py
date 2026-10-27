@@ -55,9 +55,15 @@ def col_precio_turno_disponible() -> bool:
     return _col_cancha_existe("precio_turno")
 
 
+def col_reglas_disponible() -> bool:
+    """REGLAS DE RESERVA del dueño (migración `0002_reglas_reserva.sql`)."""
+    return _col_cancha_existe("reglas_reserva")
+
+
 def _cols_cancha() -> list[str]:
     return (_COLS + (["fidelidad"] if col_fidelidad_disponible() else [])
-            + (["precio_turno"] if col_precio_turno_disponible() else []))
+            + (["precio_turno"] if col_precio_turno_disponible() else [])
+            + (["reglas_reserva"] if col_reglas_disponible() else []))
 
 
 def _sel_cancha() -> str:
@@ -121,6 +127,7 @@ def _json_dict(v) -> dict:
 def _norm_cancha(d: dict) -> dict:
     d = dict(d)
     d["fidelidad"] = _json_dict(d.get("fidelidad"))
+    d["reglas_reserva"] = _json_dict(d.get("reglas_reserva"))
     d["deportes"] = _json_list(d.get("deportes"))
     d["fotos"] = _json_list(d.get("fotos"))
     d["servicios_extra"] = [
@@ -461,6 +468,25 @@ def fotos_de_cancha(cancha_id: str) -> list[str] | None:
     """Fotos de UNA cancha (ver `fotos_de_canchas`)."""
     r = fotos_de_canchas([cancha_id])
     return None if r is None else r.get(str(cancha_id or "").strip(), [])
+
+
+def guardar_reglas(cancha_ids: list[str], dueno: str, reglas: dict) -> int:
+    """Guarda las reglas de reserva (ya normalizadas) en las canchas del DUEÑO
+    (`dueno` = correo verificado). Devuelve cuántas filas cambió; 0 si no son
+    suyas o la columna aún no existe."""
+    if not pg.habilitado or not cancha_ids or not dueno or not col_reglas_disponible():
+        return 0
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE pichangol_canchas SET reglas_reserva = %s::jsonb "
+                        "WHERE id = ANY(%s) AND lower(dueno) = lower(%s) AND NOT coalesce(eliminada, false)",
+                        (json.dumps(reglas or {}), list(cancha_ids), dueno))
+            n = cur.rowcount
+            conn.commit()
+            return n
+    except Exception as e:  # noqa: BLE001
+        print("datos.guardar_reglas error:", e)
+        return 0
 
 
 def bloquear(cancha_id: str, fecha: str, hora: str, bloquear: bool = True) -> bool:

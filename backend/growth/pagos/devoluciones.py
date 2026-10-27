@@ -35,14 +35,21 @@ ARREPENTIMIENTO_MIN_HORAS_TURNO = float(os.getenv("ARREPENTIMIENTO_MIN_HORAS_TUR
 MEDIOS = ("saldo", "original")
 
 
-def horas_minimas() -> float:
-    return float(getattr(config, "WEB_CANCELACION_HORAS", 6) or 6)
+def horas_minimas(cancha: dict | None = None) -> float:
+    """Horas mínimas de anticipación para cancelar con devolución: las del
+    CLUB si configuró su política (`reglas_reserva.cancelacion_horas`), si no
+    la global `WEB_CANCELACION_HORAS`."""
+    por_defecto = float(getattr(config, "WEB_CANCELACION_HORAS", 6) or 6)
+    if cancha:
+        from reservas import reglas
+        return reglas.cancelacion_horas(cancha, por_defecto)
+    return por_defecto
 
 
 def motivo(*, pagado: bool, horas_para_inicio: float, horas_desde_pago: float | None = None,
-           cancela_anfitrion: bool = False) -> str:
+           cancela_anfitrion: bool = False, cancha: dict | None = None) -> str:
     """Clasifica la cancelación: no_pagado · anfitrion · arrepentimiento ·
-    plazo · tarde."""
+    plazo · tarde. `cancha` aplica la política del club."""
     if not pagado:
         return "no_pagado"
     if cancela_anfitrion:
@@ -50,7 +57,7 @@ def motivo(*, pagado: bool, horas_para_inicio: float, horas_desde_pago: float | 
     if (horas_desde_pago is not None and 0 <= horas_desde_pago <= ARREPENTIMIENTO_HORAS
             and horas_para_inicio > ARREPENTIMIENTO_MIN_HORAS_TURNO):
         return "arrepentimiento"
-    if horas_para_inicio >= horas_minimas():
+    if horas_para_inicio >= horas_minimas(cancha):
         return "plazo"
     return "tarde"
 
@@ -92,16 +99,17 @@ def opciones(mot: str, precio_centimos: int, cargo_centimos: int, simbolo: str =
 
 
 def resumen(*, pagado: bool, horas_para_inicio: float, horas_desde_pago: float | None, precio_centimos: int,
-            cargo_centimos: int, simbolo: str = "S/", cancela_anfitrion: bool = False) -> dict:
+            cargo_centimos: int, simbolo: str = "S/", cancela_anfitrion: bool = False,
+            cancha: dict | None = None) -> dict:
     """Todo lo que la pantalla de cancelar necesita explicar."""
     mot = motivo(pagado=pagado, horas_para_inicio=horas_para_inicio, horas_desde_pago=horas_desde_pago,
-                 cancela_anfitrion=cancela_anfitrion)
+                 cancela_anfitrion=cancela_anfitrion, cancha=cancha)
     return {
         "motivo": mot,
         "precio_centimos": int(precio_centimos or 0),
         "cargo_centimos": int(cargo_centimos or 0),
         "opciones": opciones(mot, precio_centimos, cargo_centimos, simbolo),
-        "horas_minimas": horas_minimas(),
+        "horas_minimas": horas_minimas(cancha),
         "arrepentimiento_horas": ARREPENTIMIENTO_HORAS,
         "arrepentimiento_min_horas_turno": ARREPENTIMIENTO_MIN_HORAS_TURNO,
         "costo_anfitrion": mot == "anfitrion",
