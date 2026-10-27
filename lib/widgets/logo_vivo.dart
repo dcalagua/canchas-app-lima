@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../services/marca_remota.dart';
 import 'marca.dart';
 
-const _navyLogo = Color(0xFF0A1F3C); // azul marino de la pelota del logo
 
 /// El LOGO "EN VIVO" de la marca (CanchaLibre) (regla del director para todo preload): el
 /// pin del logo quieto y la PELOTA DE ADENTRO cambiando de deporte (fútbol →
