@@ -1,3 +1,4 @@
+import 'pagos_service.dart';
 import 'dart:convert';
 
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -106,7 +107,8 @@ class PropiedadService {
       if (solicitante != null && solicitante.isNotEmpty) {
         uri = uri.replace(queryParameters: {'solicitante': solicitante});
       }
-      final resp = await http.get(uri, headers: _appHeaders()).timeout(const Duration(seconds: 12));
+      // Identidad VERIFICADA (C1): el backend calcula `es_mio` con el token.
+      final resp = await http.get(uri, headers: await PagosService.headersUsuario()).timeout(const Duration(seconds: 12));
       if (resp.statusCode != 200) return null;
       return Map<String, dynamic>.from(jsonDecode(resp.body) as Map);
     } catch (_) {

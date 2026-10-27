@@ -162,8 +162,14 @@ def post_reclamo(req: ReclamoRequest) -> dict:
 
 
 @router.get("/reclamo/{cancha_id}", dependencies=_APP)
-def get_reclamo(cancha_id: str, solicitante: str = "") -> dict:
-    return reclamos.estado(cancha_id, solicitante or None)
+def get_reclamo(cancha_id: str, request: Request, solicitante: str = "") -> dict:
+    """Estado del reclamo. `es_mio` decide en el APK si la cancha es de quien
+    pregunta: con `X-User-Token` el solicitante es el correo VERIFICADO (C1);
+    un `solicitante` distinto al del token → 403."""
+    import auth_usuario
+    quien = auth_usuario.correo_del_cliente(request, solicitante) if (solicitante or
+                                                                     request.headers.get("X-User-Token")) else ""
+    return reclamos.estado(cancha_id, quien or None)
 
 
 class BorrarMisReclamosRequest(BaseModel):

@@ -63,3 +63,33 @@ def requiere_usuario(request: Request, x_user_token: str | None = Header(default
 
 
 APP = [Depends(requiere_app_key)]
+
+
+def exigir_token() -> bool:
+    """`AUTH_USUARIO_ESTRICTO=1`: los endpoints legados que reciben un correo en
+    el cuerpo/URL EXIGEN además el ID token y que coincidan. Apagado (default)
+    mientras quedan APKs viejos que no mandan `X-User-Token`; prenderlo cuando
+    el APK nuevo esté distribuido. El token, si viene, SIEMPRE se valida."""
+    import os
+    return os.getenv("AUTH_USUARIO_ESTRICTO", "0").strip().lower() in ("1", "true", "on")
+
+
+def correo_del_cliente(request: Request | None, declarado: str | None,
+                       x_user_token: str | None = None) -> str:
+    """Correo con el que actúa un endpoint LEGADO que recibe `email` del cliente:
+    - con `X-User-Token` válido → el correo VERIFICADO (si declaró otro → 403);
+    - token inválido → 401 (nunca se cae al correo declarado);
+    - sin token → el declarado, solo si no estamos en modo estricto (401 si sí)."""
+    tok = (x_user_token if x_user_token is not None else
+           (request.headers.get("X-User-Token") if request is not None else None)) or ""
+    dec = (declarado or "").strip().lower()
+    if tok.strip():
+        email = usuario_de(None, tok)
+        if not email:
+            raise HTTPException(status_code=401, detail="token_invalido")
+        if dec and dec != email:
+            raise HTTPException(status_code=403, detail="usuario_no_autorizado")
+        return email
+    if exigir_token():
+        raise HTTPException(status_code=401, detail="sesion_requerida")
+    return dec
