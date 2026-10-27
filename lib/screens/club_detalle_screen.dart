@@ -85,6 +85,14 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   /// Horas reservables reales de la cancha elegida (apertura→cierre, paso = duración).
   /// Para "Hoy" se omiten las horas que ya pasaron.
   List<String> get _horas {
+    // REGLAS DEL DUEÑO: el día (horario de ese día de la semana, cierres,
+    // anticipación) lo decide el servidor; mientras llega, la grilla local.
+    if (_cancha.tieneReglas) {
+      final srv = appState.diaServidor(_cancha, _fechaIso);
+      if (srv != null) return srv.horas;
+      final c = _cancha, f = _fechaIso;
+      Future.microtask(() => appState.cargarDiaServidor(c, f));
+    }
     int? desde;
     if (_dia == 'Hoy') {
       final n = DateTime.now();
@@ -92,6 +100,22 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     }
     return _cancha.horariosSlots(desdeMinutos: desde);
   }
+
+  /// La grilla del día con REGLAS llega del servidor: redibuja al llegar.
+  void _alCambiarApp() {
+    if (mounted && _cancha.tieneReglas) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    appState.removeListener(_alCambiarApp);
+    super.dispose();
+  }
+
+  /// Motivo si el club NO atiende el día elegido (reglas del dueño).
+  String get _cerradoHoy => _cancha.tieneReglas ? (appState.diaServidor(_cancha, _fechaIso)?.cerrado ?? '') : '';
+  String get _textoCerrado =>
+      _cerradoHoy == 'cerrado' ? 'El club no atiende este día.' : 'El club no atiende este día: $_cerradoHoy.';
 
   /// Fecha real (ISO) según el día elegido; "Hoy/Mañana" es solo la etiqueta.
   String get _fechaIso {
@@ -105,6 +129,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   @override
   void initState() {
     super.initState();
+    appState.addListener(_alCambiarApp);
     // Refresca el snapshot con la versión MÁS FRESCA (por si el dueño acaba de
     // editar duración de slot / precio / horario): el jugador debe ver el
     // cambio al instante, no el snapshot con el que se abrió la ficha.
@@ -1312,9 +1337,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     const SizedBox(height: 14),
                     if (_horas.isEmpty)
                       Text(
-                          _dia == 'Hoy'
-                              ? 'No quedan horas para hoy. Elige "Mañana".'
-                              : 'Sin horas configuradas.',
+                          _cerradoHoy.isNotEmpty
+                              ? _textoCerrado
+                              : _dia == 'Hoy'
+                                  ? 'No quedan horas para hoy. Elige "Mañana".'
+                                  : 'Sin horas configuradas.',
                           style: t.bodyMedium
                               ?.copyWith(color: textoTenueDe(context)))
                     else
@@ -1444,9 +1471,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     ],
                     if (_horas.isEmpty)
                       Text(
-                        _dia == 'Hoy'
-                            ? 'No quedan horarios para hoy. Elige "Mañana".'
-                            : 'Sin horarios disponibles.',
+                        _cerradoHoy.isNotEmpty
+                            ? _textoCerrado
+                            : _dia == 'Hoy'
+                                ? 'No quedan horarios para hoy. Elige "Mañana".'
+                                : 'Sin horarios disponibles.',
                         style: t.bodyMedium?.copyWith(color: textoTenueDe(context)),
                       )
                     else ...[

@@ -399,6 +399,13 @@ class Cancha {
   /// local. Se lee con `FidelidadConfig.de(fidelidad)`. Columna `fidelidad`.
   final Map<String, dynamic> fidelidad;
 
+  /// REGLAS DE RESERVA del dueño (oct-2026, columna `reglas_reserva`): horario
+  /// por día, franjas de precio, cierres, ventana… Las ESCRIBE solo el backend
+  /// (`PUT /reservas/reglas`) y las APLICA el backend: si hay reglas, la grilla
+  /// de horas y precios del día se pide al servidor (`AppState.cargarDiaServidor`).
+  final Map<String, dynamic> reglasReserva;
+  bool get tieneReglas => reglasReserva.isNotEmpty;
+
   /// PRECIO POR TURNO (pedido del director, 29-sep-2026: "cobrar 15 soles la
   /// hora o 15 por 1.5 h"). > 0 = la cancha cobra este monto por CADA turno
   /// (`duracionSlotMin`); 0 = cobra por hora (`precioHora` × duración / 60).
@@ -526,6 +533,7 @@ class Cancha {
     this.serviciosExtra = const [],
     this.permiteBoleadores = true,
     this.fidelidad = const {},
+    this.reglasReserva = const {},
     this.precioTurno = 0,
     this.descuentoValle = 0,
     this.valleDesde = '',
@@ -727,6 +735,7 @@ class Cancha {
       serviciosExtra: serviciosExtra ?? this.serviciosExtra,
       permiteBoleadores: permiteBoleadores ?? this.permiteBoleadores,
       fidelidad: fidelidad ?? this.fidelidad,
+      reglasReserva: reglasReserva,
       precioTurno: precioTurno ?? this.precioTurno,
       descuentoValle: descuentoValle ?? this.descuentoValle,
       valleDesde: valleDesde ?? this.valleDesde,
@@ -764,6 +773,7 @@ class Cancha {
         'serviciosExtra': serviciosExtra.map((s) => s.toJson()).toList(),
         'permiteBoleadores': permiteBoleadores,
         'fidelidad': fidelidad,
+        'reglasReserva': reglasReserva,
         'precioTurno': precioTurno,
         'descuentoValle': descuentoValle,
         'valleDesde': valleDesde,
@@ -809,6 +819,9 @@ class Cancha {
         permiteBoleadores: (j['permiteBoleadores'] ?? true) as bool,
         fidelidad: j['fidelidad'] is Map
             ? Map<String, dynamic>.from(j['fidelidad'] as Map)
+            : const {},
+        reglasReserva: j['reglasReserva'] is Map
+            ? Map<String, dynamic>.from(j['reglasReserva'] as Map)
             : const {},
         precioTurno: ((j['precioTurno'] ?? 0) as num).toDouble(),
         descuentoValle: (j['descuentoValle'] ?? 0) as int,

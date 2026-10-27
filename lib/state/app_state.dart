@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+
+import 'package:http/http.dart' as http;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -5696,7 +5698,49 @@ class AppState extends ChangeNotifier {
   /// turno manda sobre la hora feliz). Espejo exacto de la web
   /// (`horarios.precio_turno_de`); test `test_precio_por_turno.py`.
   int precioSlotEfectivo(Cancha c, String fecha, String hora) =>
+      _preciosServidor['${c.id}|$fecha|$hora'] ??
       c.precioTurnoEn(hora, pctSlot: descuentoSlotPct(c.id, fecha, hora));
+
+  // ── DÍA DEL SERVIDOR (reglas de reserva del dueño, oct-2026) ──
+  // Con reglas (horario por día, franjas, cierres, ventana) la grilla y los
+  // precios los calcula el backend (`GET /web/disponibilidad`): el APK no
+  // duplica esa lógica. Clave del día: "<canchaId>|<fecha base ISO>"; precio
+  // por "<canchaId>|<fecha REAL del turno>|<hora>" (madrugada = día siguiente).
+  final Map<String, ({List<String> horas, String cerrado})> _diasServidor = {};
+  final Map<String, int> _preciosServidor = {};
+  final Set<String> _diasCargando = {};
+
+  ({List<String> horas, String cerrado})? diaServidor(Cancha c, String fecha) =>
+      _diasServidor['${c.id}|$fecha'];
+
+  /// Pide al backend la grilla del día de una cancha CON REGLAS (sin reglas,
+  /// no hace nada: la grilla local es idéntica). Fail-safe: sin red queda la
+  /// grilla local y el servidor igual valida al apartar.
+  Future<void> cargarDiaServidor(Cancha c, String fecha) async {
+    final k = '${c.id}|$fecha';
+    if (!c.tieneReglas || !PagosService.disponible || _diasCargando.contains(k)) return;
+    _diasCargando.add(k);
+    try {
+      final uri = Uri.parse('${PagosService.baseUrl}/web/disponibilidad/${Uri.encodeComponent(c.id)}?fecha=$fecha');
+      final r = await http.get(uri).timeout(const Duration(seconds: 10));
+      if (r.statusCode != 200) return;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      if (j['ok'] != true) return;
+      final horas = <String>[];
+      for (final x in (j['slots'] as List? ?? [])) {
+        final m = Map<String, dynamic>.from(x as Map);
+        final h = m['hora'].toString();
+        horas.add(h);
+        _preciosServidor['${c.id}|${m['fecha']}|$h'] = (m['precio'] as num).toInt();
+      }
+      _diasServidor[k] = (horas: horas, cerrado: (j['cerrado'] ?? '').toString());
+      notifyListeners();
+    } catch (_) {
+      // sin red: grilla local
+    } finally {
+      _diasCargando.remove(k);
+    }
+  }
 
   /// El dueño aplica (pct>0) o quita (pct<=0) el descuento de un slot. Persiste
   /// local + nube para que valga en todos los dispositivos.
