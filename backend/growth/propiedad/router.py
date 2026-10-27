@@ -169,7 +169,10 @@ def get_reclamo(cancha_id: str, request: Request, solicitante: str = "") -> dict
     import auth_usuario
     quien = auth_usuario.correo_del_cliente(request, solicitante) if (solicitante or
                                                                      request.headers.get("X-User-Token")) else ""
-    return reclamos.estado(cancha_id, quien or None)
+    out = reclamos.estado(cancha_id, quien or None)
+    if quien and request.headers.get("X-User-Token") and out.get("es_mio"):
+        reclamos.reflejar_aprobacion_propia(cancha_id, quien)
+    return out
 
 
 class BorrarMisReclamosRequest(BaseModel):

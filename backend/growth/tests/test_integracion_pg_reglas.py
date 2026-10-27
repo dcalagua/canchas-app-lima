@@ -65,3 +65,27 @@ def test_comision_reserva_solo_del_dueno_real(pg_local, monkeypatch):
     assert com("it_r1", "dueno@x.com", 60)["ok"]
     _sql(pg, "delete from pichangol_reservas where id like 'it_%%'")
     _sql(pg, "delete from pichangol_canchas where id like 'it_%%'")
+
+
+def test_anon_no_se_apropia_de_canchas(pg_local):
+    """Migración 0004: con la anon key no se sube `verificada` ni se cambia un
+    `dueno` ya asignado; el backend (rol postgres) sí."""
+    pg = pg_local
+    _sql(pg, "delete from pichangol_canchas where id like 'it_%%'")
+    _sql(pg, "insert into pichangol_canchas (id, nombre, club, dueno, verificada, registrada) values "
+             "('it_p','P','Club','dueno@x.com',false,true), ('it_l','L','Club','',false,true)")
+    _sql(pg, "grant select, insert, update on pichangol_canchas to anon")
+    with pg.conexion() as conn, conn.cursor() as cur:
+        cur.execute("set local role anon")
+        cur.execute("update pichangol_canchas set verificada = true, dueno = 'atacante@x.com', nombre = 'P2' where id = 'it_p'")
+        cur.execute("update pichangol_canchas set dueno = 'nuevo@x.com', verificada = true where id = 'it_l'")
+        cur.execute("insert into pichangol_canchas (id, nombre, club, dueno, verificada, registrada) "
+                    "values ('it_n','N','Club','x@x.com',true,true)")
+        conn.commit()
+    filas = {r[0]: r[1:] for r in _sql(pg, "select id, dueno, verificada, nombre from pichangol_canchas where id like 'it_%%'")}
+    assert filas["it_p"] == ("dueno@x.com", False, "P2")       # edita lo suyo, no se apropia
+    assert filas["it_l"] == ("nuevo@x.com", False, "L")        # reclama un legado, sin verificarse solo
+    assert filas["it_n"][1] is False                           # nunca nace verificada
+    from web import datos
+    assert datos.marcar_verificada("it_p", "dueno@x.com", True) == 1   # la torre (backend) sí
+    _sql(pg, "delete from pichangol_canchas where id like 'it_%%'")
