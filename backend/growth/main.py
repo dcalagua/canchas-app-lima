@@ -26,6 +26,7 @@ from db.store import seed_verificadores, stores
 from legal.router import router as legal_router
 from web.router import router as web_router
 from reservas.router import router as reservas_router
+from web.cobro_directo_web import router as cobro_directo_router
 from web.portal_tenis import router as portal_tenis_router
 from web.anfitrion import router as anfitrion_router
 from web.anfitrion_academia import router as anfitrion_academia_router
@@ -191,6 +192,7 @@ from marca_logo import router as marca_logo_router  # noqa: E402
 app.include_router(marca_logo_router)  # /marca/logo.png + torre → Logo de la marca
 app.include_router(web_router)
 app.include_router(reservas_router)
+app.include_router(cobro_directo_router)
 app.include_router(portal_tenis_router)  # /tenis: portada de raqueta (canchas, torneos con marca del organizador, partner, liga)
 app.include_router(academia_web_router)  # ficha pública /academia/{id} + matrícula web
 app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}
@@ -242,6 +244,17 @@ async def _iniciar_correos() -> None:
     # Conexiones del pool siempre "tibias" (la base está lejos: abrir una nueva
     # cuesta ~1 s; ver `pg._mantener_tibias`).
     pg.iniciar_tibias()
+
+
+@app.on_event("startup")
+async def _iniciar_cron_vouchers() -> None:
+    """Cobro directo al club (plan A5): cada minuto vencen los vouchers que el
+    club no revisó a tiempo y se suelta el horario. En los tests no corre."""
+    import sys
+    if "pytest" in sys.modules:
+        return
+    from web import cobro_directo_web
+    cobro_directo_web.arrancar_cron()
 
 
 @app.on_event("startup")

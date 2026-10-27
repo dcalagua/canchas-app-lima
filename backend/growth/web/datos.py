@@ -79,10 +79,16 @@ PREFIJO_ID_WEB = "web_"
 # 10 min: lo suelta el barrido de órdenes cuando la orden vence/se rechaza.
 # Tope de seguridad por si la orden se perdiera: HOLD_PASARELA_MAX_SEGUNDOS.
 MEDIO_HOLD_PASARELA = "web_pasarela"
+# PAGO MANUAL CON VOUCHER (cobro directo al club, plan A5): mientras el club
+# revisa el voucher el apartado lleva `medio_pago = 'voucher'` y no vence a los
+# 10 min; lo suelta el barrido de vouchers (`cobro_directo_web.vencer`) al
+# rechazar/vencer, con tope duro HOLD_VOUCHER_MAX_SEGUNDOS.
+MEDIO_HOLD_VOUCHER = "voucher"
 _SQL_HOLD_VENCIDO = (
     "(coalesce(estado,'') = 'nueva' AND NOT coalesce(pagado,false) AND id LIKE 'web\\_%%' "
     "AND (CASE WHEN split_part(id, '_', 2) ~ '^[0-9]+$' THEN split_part(id, '_', 2)::bigint ELSE NULL END) "
-    "< (CASE WHEN coalesce(medio_pago,'') = 'web_pasarela' THEN %s ELSE %s END))")
+    "< (CASE WHEN coalesce(medio_pago,'') = 'web_pasarela' THEN %s "
+    "WHEN coalesce(medio_pago,'') = 'voucher' THEN %s ELSE %s END))")
 _SQL_SIN_HOLD_VENCIDO = " AND NOT " + _SQL_HOLD_VENCIDO
 
 
@@ -90,10 +96,18 @@ def _corte_hold() -> int:
     return int((time.time() - HOLD_SEGUNDOS) * 1000)
 
 
-def _cortes_hold() -> tuple[int, int]:
-    """(corte de un apartado en pasarela, corte de un apartado normal), en ms:
-    los parámetros de `_SQL_HOLD_VENCIDO` en ese orden."""
-    return int((time.time() - HOLD_PASARELA_MAX_SEGUNDOS) * 1000), _corte_hold()
+def _cortes_hold() -> tuple[int, int, int]:
+    """(corte de un apartado en pasarela, corte de uno con voucher en revisión,
+    corte de un apartado normal), en ms: los parámetros de `_SQL_HOLD_VENCIDO`
+    en ese orden."""
+    return (int((time.time() - HOLD_PASARELA_MAX_SEGUNDOS) * 1000),
+            int((time.time() - hold_voucher_max_segundos()) * 1000), _corte_hold())
+
+
+def hold_voucher_max_segundos() -> int:
+    """Tope duro de un apartado con voucher: el plazo de revisión + 10 min."""
+    import config
+    return (int(config.VOUCHER_PLAZO_MIN) + 10) * 60
 
 
 HOLD_SEGUNDOS = 10 * 60  # una reserva web sin pagar se libera a los 10 min
@@ -711,6 +725,24 @@ def liberar_holds_vencidos_todos() -> list[dict]:
     except Exception as ex:  # noqa: BLE001
         print(f"[holds] no se pudo liberar: {ex}", flush=True)
         return []
+
+
+def marcar_hold_voucher(ids: list[str]) -> bool:
+    """El jugador subió su voucher: el apartado espera la revisión del club."""
+    if not pg.habilitado or not ids:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE pichangol_reservas SET medio_pago = %s WHERE id = ANY(%s) "
+                        "AND estado = 'nueva' AND NOT coalesce(pagado, false)", (MEDIO_HOLD_VOUCHER, ids))
+            n = cur.rowcount
+            if n != len(set(ids)):
+                conn.rollback()
+                return False
+            conn.commit()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def marcar_hold_pasarela(ids: list[str]) -> bool:

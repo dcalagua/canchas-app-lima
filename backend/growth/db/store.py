@@ -866,8 +866,17 @@ class Stores:
         return self.saldos.get(dueno_id, 0)
 
     def acreditar(self, dueno_id: str, centimos: int) -> int:
-        """Suma [centimos] al saldo del dueño y devuelve el nuevo saldo."""
+        """Suma [centimos] al saldo del dueño y devuelve el nuevo saldo. Si el
+        dueño debe comisiones de COBRO DIRECTO (plan A6), la plata que entra
+        las salda primero (`cobro_directo.saldar_deudas`)."""
         self.saldos[dueno_id] = self.saldos.get(dueno_id, 0) + int(centimos)
+        if int(centimos) > 0 and any(p.tipo == "comision_deuda" and p.estado == "pendiente"
+                                     and p.dueno_id == dueno_id for p in self.pagos):
+            try:
+                from pagos import cobro_directo
+                cobro_directo.saldar_deudas(dueno_id)
+            except Exception as e:  # noqa: BLE001 — saldar nunca rompe una recarga
+                print("store.acreditar: no se saldó la deuda:", e)
         return self.saldos[dueno_id]
 
     def debitar(self, dueno_id: str, centimos: int) -> int:

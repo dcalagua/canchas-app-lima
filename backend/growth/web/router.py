@@ -50,6 +50,7 @@ from pagos import cargo_servicio as _cs
 from pagos import devoluciones as _dev
 from web import beneficios, catalogos, datos, descubrir, horarios, marca, osm, pago_hospedado, sesion, ui
 from reservas import reglas as _reglas
+from pagos import cobro_directo as _cd
 from web.ui import e
 import academia_plan as _ap
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
@@ -2431,6 +2432,22 @@ def sena_de(precio_turno: int, pct: int) -> int:
     return int(precio_turno * min(pct, 100) / 100 + 0.5)
 
 
+def _sesion_o_token(request: Request | None) -> dict | None:
+    """Sesión web (cookie) o, desde el APK, el ID token de Google VERIFICADO
+    (`X-User-Token`): así el APK usa el MISMO flujo server-side que la web
+    (montos calculados aquí, nunca en el teléfono)."""
+    ses = sesion.de_request(request) if (sesion.activo() and request is not None) else None
+    if ses:
+        return ses
+    tok = request.headers.get("X-User-Token") if request is not None else None
+    if tok:
+        import auth_usuario
+        email = auth_usuario.usuario_de(None, tok)
+        if email:
+            return {"email": email, "nombre": "", "via": "app"}
+    return None
+
+
 @router.post("/web/asegurar")
 def asegurar(req: AsegurarReq, request: Request = None) -> dict:
     """Toma los slots (INSERT 'nueva') ANTES de cobrar, igual que el APK
@@ -2442,12 +2459,16 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
     if not datos.reservable(c):
         return {"ok": False, "error": "no_verificada"}
     sim, iso = _moneda_de(c)
-    if not _pago_web_disponible(iso):
+    # COBRO DIRECTO AL CLUB (plan A4-A5): si el club tiene su Culqi o sus
+    # medios manuales, se cobra a SU cuenta (sin cargo por servicio de la
+    # plataforma; la comisión sale de su saldo).
+    directo = _cd.checkout(c, iso)
+    if not _pago_web_disponible(iso) and not directo.get("directo"):
         return {"ok": False, "error": "pago_no_disponible"}
     # Con login configurado, la reserva es del CORREO de la sesión de Google
     # (como en el app); sin sesión no se reserva.
-    ses = sesion.de_request(request) if sesion.activo() else None
-    if sesion.activo() and not ses:
+    ses = _sesion_o_token(request)
+    if (sesion.activo() or directo.get("directo")) and not ses:
         return {"ok": False, "error": "sesion_requerida"}
     nombre = (req.nombre.strip() or (ses or {}).get("nombre", ""))[:80]
     email = (ses["email"] if ses else req.email.strip().lower())[:120]
@@ -2587,6 +2608,10 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
     # PUNTOS (= `canjea` del app): 100 pts = S/ 3, pagando TODO en línea en
     # soles, sin seña, sin premio de fidelidad, sin bono y con total > S/ 3.
     con_puntos = False
+    if req.puntos and directo.get("directo"):
+        # El descuento de puntos lo absorbe la plataforma; con cobro directo
+        # no hay de dónde compensárselo al club.
+        return {"ok": False, "error": "puntos_no_disponibles"}
     if req.puntos:
         _g, disp = beneficios.puntos_disponibles(email)
         if not beneficios.puede_canjear_puntos(iso=iso, total=a_cobrar, desc_fidelidad=desc_total, con_sena=con_sena,
@@ -2626,7 +2651,9 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
     # total 0 (hora gratis sin extras) no hay cargo ni pasarela.
     sena_total = sum(int(f["sena"]) for f in filas)
     base_cobro = sena_total if con_sena else (a_cobrar - (beneficios.DESCUENTO_PUNTOS if con_puntos else 0))
-    if base_cobro > 0:
+    if base_cobro > 0 and directo.get("directo"):
+        total_c, cargo_c, cargo_d = int(base_cobro) * 100, 0, None
+    elif base_cobro > 0:
         cot = _cotizacion_reserva(c, base_cobro, deporte, req.medio if req.medio in ("yape", "tarjeta") else None)
         total_c, cargo_c, cargo_d = cot.total_centimos, cot.cargo_centimos, (cot.dict() if cot.activo else None)
     else:
@@ -2637,7 +2664,8 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
             "total": total, "total_centimos": total_c, "moneda": sim,
             "cargo_centimos": cargo_c, "cargo": cargo_d,
             "fidelidad": fid_out, "bono": bono_out, "puntos": puntos_out, "a_pagar": base_cobro,
-            "sin_pago": total_c == 0, "hold_segundos": datos.HOLD_SEGUNDOS}
+            "sin_pago": total_c == 0, "hold_segundos": datos.HOLD_SEGUNDOS,
+            "directo": directo if directo.get("directo") else None}
 
 
 @router.get("/web/fidelidad")
@@ -2700,7 +2728,7 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
     En dólares / bolivianos el cobro va por la pasarela HOSPEDADA del país
     (`POST /web/pago/reserva`, `web/pago_hospedado.py`); aquí solo llegan,
     en esas monedas, las reservas sin cobro (hora gratis / bono sin extras)."""
-    ses = sesion.de_request(request) if sesion.activo() else None
+    ses = _sesion_o_token(request)
     if sesion.activo() and not ses:
         return {"ok": False, "error": "sesion_requerida",
                 "mensaje": "Inicia sesión con Google para pagar tu reserva."}
@@ -2747,6 +2775,18 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
         # la pasarela de su país) se paga en `POST /web/pago/reserva`.
         return {"ok": False, "error": "usa_pasarela",
                 "mensaje": "Esta reserva se paga con la pasarela de su país. Vuelve a la ficha e inténtalo otra vez."}
+    directo = _cd.checkout(c, iso)
+    if directo.get("directo"):
+        # COBRO DIRECTO con la cuenta Culqi DEL CLUB (plan A4).
+        if not ses:
+            return {"ok": False, "error": "sesion_requerida", "mensaje": "Inicia sesión para pagar tu reserva."}
+        if not directo.get("culqi_public_key"):
+            return {"ok": False, "error": "usa_voucher",
+                    "mensaje": "Este club recibe el pago por Yape, Plin o transferencia: sube tu comprobante."}
+        from web import cobro_directo_web as _cdw
+        return _cdw.pagar_con_culqi_del_club(filas, c, email, plan=plan, token=req.token.strip(),
+                                             medio="yape" if req.medio == "yape" else "tarjeta",
+                                             nombre=((ses or {}).get("nombre") or filas[0].get("jugador") or ""))
     # Cargo por servicio: se RECALCULA aquí (misma regla que en /web/asegurar);
     # lo que se cobra = precio + cargo. El dueño recibe sobre el precio.
     # SEÑA: la fijó /web/asegurar en cada fila; se cobra solo eso (+ su cargo
@@ -2927,11 +2967,17 @@ def _inicio_reserva(filas: list[dict], pais: str) -> datetime | None:
 
 
 def _cobro_web(ref: str):
+    """Cobro de la reserva en el libro: `cobro_web` (cuenta de la plataforma)
+    o `cobro_directo` (cuenta Culqi / voucher del CLUB, plan A4-A5)."""
     from db.store import stores as _st
     for p in reversed(_st.pagos):
-        if p.tipo == "cobro_web" and p.concepto == f"web:{ref}":
+        if p.tipo in ("cobro_web", "cobro_directo") and p.concepto == f"web:{ref}":
             return p
     return None
+
+
+def _es_directo(cobro) -> bool:
+    return cobro is not None and getattr(cobro, "tipo", "") == "cobro_directo"
 
 
 def _cargo_pagado(filas: list[dict], cobro) -> tuple[int, list]:
@@ -3083,10 +3129,14 @@ def estado_cancelacion(filas: list[dict], c: dict | None, email: str, cancela_an
     # por una pasarela hospedada —Ecuador / Bolivia— sin reembolso por API)?
     directo = (cobro is not None and _es_cargo_culqi(cobro)) or cargo_app is not None
     iso_c = _moneda_de(c)[1] if c else "PEN"
-    if pagado and not _saldo_en_moneda(email, iso_c):
+    if pagado and (not _saldo_en_moneda(email, iso_c) or _es_directo(cobro)):
         # Devolver a SALDO solo si la billetera es de la moneda de la reserva
-        # (nunca se mezclan $ o Bs en un saldo en soles, ni al revés).
+        # (nunca se mezclan $ o Bs en un saldo en soles, ni al revés). Un
+        # COBRO DIRECTO al club nunca va a saldo: la plata está en la cuenta
+        # del club, no en la plataforma.
         pol["opciones"] = [o for o in pol.get("opciones") or [] if o.get("medio") != "saldo"]
+    if pagado and _es_directo(cobro) and not str(cobro.culqi_charge_id or "").startswith("chr_"):
+        directo = False  # voucher: lo devuelve el club (se le avisa)
     if iso_c != "PEN":
         for o in pol.get("opciones") or []:
             if o.get("medio") == "original":
@@ -3153,6 +3203,8 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
         monto_dev = min(monto_dev, int(fila_cargo.monto_centimos))
     reembolso, refund_id, detalle = "no_aplica", None, ""
     medio_pago = str(filas[0].get("medio_pago") or "")
+    if est["pagado"] and monto_dev > 0 and _es_directo(fila_cargo) and medio == "saldo":
+        medio = "original"  # la plata está en la cuenta del club: nunca a saldo
     if est["pagado"] and monto_dev > 0:
         if medio == "saldo":
             # A la billetera del JUGADOR, al instante y sin pasar por Culqi.
@@ -3164,8 +3216,12 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
             if fila_cargo is not None and fila_cargo.estado == "aprobado":
                 fila_cargo.estado = "devuelto_saldo"
             reembolso = "saldo"
-        elif fila_cargo is not None and _es_cargo_culqi(fila_cargo) and fila_cargo.estado == "aprobado":
-            r = culqi.reembolsar(charge_id=fila_cargo.culqi_charge_id, monto_centimos=min(monto_dev, fila_cargo.monto_centimos))
+        elif fila_cargo is not None and _es_cargo_culqi(fila_cargo) and fila_cargo.estado == "aprobado" and (
+                not _es_directo(fila_cargo) or _cd.llave_secreta(fila_cargo.dueno_id or "")):
+            # Cobro DIRECTO: se devuelve desde la cuenta Culqi del CLUB.
+            kw = {"llave": _cd.llave_secreta(fila_cargo.dueno_id or "")} if _es_directo(fila_cargo) else {}
+            r = culqi.reembolsar(charge_id=fila_cargo.culqi_charge_id, monto_centimos=min(monto_dev, fila_cargo.monto_centimos),
+                                 **kw)
             if r.get("ok"):
                 reembolso, refund_id = "reembolsado", r.get("refund_id")
                 fila_cargo.estado = "reembolsado"
@@ -3198,6 +3254,18 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
     deuda = 0
     costo_pasarela = 0
     dueno = (c.get("dueno") or "").strip().lower() if c else ""
+    if _es_directo(fila_cargo) and reembolso in ("reembolsado", "manual"):
+        # Cobro directo devuelto: la comisión de la plataforma vuelve al club.
+        _cd.revertir_comision(ref)
+        if reembolso == "manual" and dueno:
+            try:
+                from pagos.router import _aviso_push_usuario
+                _aviso_push_usuario(dueno, "Devuelve un pago 💸",
+                                    f"{filas[0].get('jugador') or email} canceló a tiempo {(c or {}).get('nombre', '')} "
+                                    f"{filas[0]['fecha']} {filas[0]['hora_inicio']}: devuélvele {sim} {monto_dev / 100.0:.2f} "
+                                    "por el mismo medio con el que te pagó.", tipo="reserva")
+            except Exception:  # noqa: BLE001
+                pass
     if reembolso in ("reembolsado", "fallo", "manual", "saldo") and dueno:
         liq = _st.pago_por_charge(ids[0])
         if liq is not None and liq.tipo in ("liquidacion_online", "liquidacion_full") and liq.estado == "aprobado":
