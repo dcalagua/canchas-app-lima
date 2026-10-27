@@ -5,7 +5,6 @@ import 'package:canchas_lima/screens/club_pagos_screen.dart';
 import 'package:canchas_lima/screens/pagos_por_confirmar_screen.dart';
 import 'package:canchas_lima/screens/reglas_reserva_screen.dart';
 import 'package:canchas_lima/services/club_pagos_service.dart';
-import 'package:canchas_lima/ui/ds.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';

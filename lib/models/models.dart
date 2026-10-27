@@ -79,7 +79,9 @@ bool aplicarDeportesActivos(List<dynamic>? nombres) {
     for (final n in nombres)
       if (deportePorNombre(n?.toString()) case final d?)
         if (d != Deporte.natacion) d,
-  ].toSet().toList();
+  ];
+  final vistos = <Deporte>{};
+  nueva.retainWhere(vistos.add); // sin repetidos, en el orden de la torre
   if (nueva.isEmpty) return false;
   final igual = nueva.length == deportesActivos.length &&
       [for (var i = 0; i < nueva.length; i++) nueva[i] == deportesActivos[i]]
