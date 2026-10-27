@@ -565,7 +565,19 @@ def robots_txt():
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True}
+    """Vivo + estado de la base (C4): "ok" | "error" | "off" (sin DATABASE_URL).
+    Siempre 200 para que un corte de la base no reinicie el servicio en bucle;
+    el monitoreo mira el campo `db`."""
+    db = "off"
+    if pg.habilitado:
+        try:
+            with pg.conexion() as conn, conn.cursor() as cur:
+                cur.execute("select 1")
+                cur.fetchone()
+            db = "ok"
+        except Exception:  # noqa: BLE001
+            db = "error"
+    return {"ok": True, "db": db}
 
 
 # --- config_incentivos (configurable en caliente; nada hardcodeado) ---

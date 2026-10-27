@@ -64,7 +64,9 @@ _rate_hits: dict[str, "deque[float]"] = defaultdict(deque)
 def _client_ip(request: Request) -> str:
     xff = request.headers.get("x-forwarded-for", "")
     if xff:
-        return xff.split(",")[0].strip()
+        # El ÚLTIMO valor lo agrega el proxy de Railway (IP real); los primeros
+        # los controla el cliente y servían para evadir el rate limit (C4).
+        return xff.split(",")[-1].strip()
     return request.client.host if request.client else "?"
 
 

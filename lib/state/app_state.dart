@@ -7583,24 +7583,6 @@ class AppState extends ChangeNotifier {
     _persistirDatos();
   }
 
-  /// Descuenta la comisión del saldo cuando entra una reserva a una cancha del
-  /// club activo. No llama notifyListeners (lo hace el método que la invoca).
-  void _consumirComision(Cancha cancha) {
-    if (cancha.club != SampleData.clubActivo) return;
-    if (saldoClub <= 0) return;
-    final c = comisionDe(cancha.precioHora, moneda: cancha.moneda);
-    saldoClub = (saldoClub - c).clamp(0, 1 << 31);
-    movimientos.insert(
-      0,
-      MovimientoSaldo(
-          tipo: TipoMovimiento.consumo,
-          monto: c,
-          concepto: 'Comisión · ${cancha.nombre}',
-          cuando: 'Ahora'),
-    );
-  }
-
-  int _contadorDemo = 1;
   int _contadorJugador = 1;
 
   static const _kUsuario = 'usuario_json';
@@ -10261,40 +10243,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Simula que ENTRA una reserva nueva por la app en un bloque valle libre.
-  /// Es el momento "mágico" del pitch de demo: que el dueño la vea entrar en vivo.
-  String? simularReservaEntrante() {
-    int idx = agenda.indexWhere(
-        (b) => b.reservaId == null && b.disponible && b.esHoraValle);
-    if (idx < 0) {
-      idx = agenda.indexWhere((b) => b.reservaId == null && b.disponible);
-    }
-    if (idx < 0) return null;
-
-    final bloque = agenda[idx];
-    final cancha = SampleData.canchaPorId(bloque.canchaId);
-    if (cancha == null) return null;
-
-    final nueva = Reserva(
-      id: 'demo${_contadorDemo++}',
-      canchaId: cancha.id,
-      jugador: 'Reserva por la app',
-      nivel: 'Intermedio 3.5',
-      dia: 'Hoy',
-      horaInicio: bloque.hora,
-      horaFin: _siguienteHora(bloque.hora),
-      estado: EstadoReserva.nueva,
-      traidaPorApp: true,
-      precio: cancha.precioHora.round(),
-      sena: (cancha.precioHora * 0.3).round(),
-    );
-    reservas.insert(0, nueva);
-    agenda[idx] = bloque.copyWith(reservaId: nueva.id);
-    _consumirComision(cancha);
-    notifyListeners();
-    _persistirDatos();
-    return '${cancha.nombre} · ${nueva.horaInicio} · +$monedaSimbolo ${nueva.precio}';
-  }
 
   String _siguienteHora(String hora) {
     final h = int.tryParse(hora.split(':').first);

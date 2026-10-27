@@ -1,3 +1,6 @@
+@Tags(['golden'])
+library;
+
 // Goldens de las pantallas NUEVAS del rediseño (cobros del club, bandeja de
 // vouchers, reglas de reserva). Regenerar: flutter test --update-goldens test/goldens
 import 'package:canchas_lima/models/models.dart';
