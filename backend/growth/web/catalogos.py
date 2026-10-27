@@ -12,6 +12,15 @@ from __future__ import annotations
 # Deportes que el app OFRECE al dueño (`deportesActivos`): pádel se retiró del
 # piloto pero sigue en datos viejos, por eso se acepta si la cancha ya lo tenía.
 DEPORTES_ACTIVOS = ["futbol", "tenis", "pickleball", "voley", "basquet"]
+
+
+def deportes_activos() -> list[str]:
+    """Los que la torre tiene prendidos (`deportes_activos`, plan A1)."""
+    try:
+        from propiedad.panel import deportes_activos as _da
+        return _da()
+    except Exception:  # noqa: BLE001
+        return list(DEPORTES_ACTIVOS)
 DEPORTES_LEGADO = ["padel"]
 
 # Tipo de piso por deporte (`superficiesDe`). Se guarda la ETIQUETA (texto) en

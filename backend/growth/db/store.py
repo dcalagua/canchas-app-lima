@@ -167,6 +167,8 @@ CONFIG_DEFAULT: dict[str, str] = {
     # del admin, activa al instante) | "nuevo_flujo" (exige validación en sitio
     # antes de activar). Se puede sobreescribir por cancha (modo_aprobacion_overrides).
     "modo_aprobacion": "marcha_blanca",
+    # Deportes que la app ofrece (plan A1, `GET /config/canal`): coma, en orden.
+    "deportes_activos": "futbol,tenis,pickleball,voley,basquet",
     # Si "1", el admin sólo puede APROBAR un reclamo si el GPS del dispositivo
     # desde donde se envió coincide con la ubicación de la cancha (anti-fraude
     # ligero: "estar en el lugar" al reclamar). "0" = no se exige (piloto).

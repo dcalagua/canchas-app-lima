@@ -2091,7 +2091,21 @@ def get_canal_publico() -> dict:
         "fotos_local_min": _fotos_local_min(),
         # Logo de la marca configurable en la torre (vacío = el que trae el APK).
         **_marca_logo_publico(),
+        # DEPORTES que la app ofrece (plan A1): el operador los prende/apaga
+        # en la torre (`deportes_activos`, coma) sin publicar un APK nuevo;
+        # p. ej. reactivar pádel. El APK ignora los que no conoce.
+        "deportes_activos": deportes_activos(),
     }
+
+
+DEPORTES_CONOCIDOS = ("futbol", "tenis", "padel", "pickleball", "voley", "basquet")
+
+
+def deportes_activos() -> list[str]:
+    from db.store import stores
+    raw = str(stores.config.get("deportes_activos") or "futbol,tenis,pickleball,voley,basquet")
+    out = [d for d in (x.strip().lower() for x in raw.split(",")) if d in DEPORTES_CONOCIDOS]
+    return list(dict.fromkeys(out)) or ["futbol"]
 
 
 def _marca_logo_publico() -> dict:

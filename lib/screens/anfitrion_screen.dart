@@ -1,3 +1,4 @@
+import 'club_pagos_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -137,6 +138,15 @@ class AnfitrionScreen extends StatelessWidget {
                   subtitle:
                       'Registra y administra: canchas, agenda, reservas, cuenta',
                   onTap: () => _abrirPanel(context),
+                ),
+                _Tile(
+                  icon: Icons.payments_rounded,
+                  color: lima,
+                  title: 'Cobros y reglas',
+                  subtitle:
+                      'Tu Culqi, Yape/Plin, pagos por confirmar y reglas de reserva',
+                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const ClubPagosScreen())),
                 ),
                 // Mi academia solo en los países habilitados (ocultas en BO/EC);
                 // quien ya tiene una academia la sigue viendo.

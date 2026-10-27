@@ -229,3 +229,14 @@ def test_webhook_del_club_confirma_un_cobro_que_quedo_sin_confirmar(directo, mon
     assert directo["db"].reservas[ref]["estado"] == "confirmada"
     # Repetido: idempotente.
     assert client.post(f"/pagos/culqi/webhook/club/{ref_wh}", json={"data": {"id": "chr_perdido"}}).json()["duplicado"]
+
+
+def test_checkout_publico_del_club(directo):
+    assert client.get("/club/pagos/checkout/c_lima").json() == {"ok": True, "directo": False}
+    _medios_yape()
+    j = client.get("/club/pagos/checkout/c_lima").json()
+    assert j["directo"] and j["medios"][0]["etiqueta"] == "Yape" and j["culqi_public_key"] == ""
+    client.put("/club/pagos/culqi", headers=DUENO, json={"public_key": PK, "secret_key": SK})
+    j = client.get("/club/pagos/checkout/c_lima").json()
+    assert j["culqi_public_key"] == PK and SK not in str(j)
+    assert client.get("/club/pagos/checkout/no_existe").status_code == 404

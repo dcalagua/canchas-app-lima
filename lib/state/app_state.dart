@@ -8102,6 +8102,9 @@ class AppState extends ChangeNotifier {
           reclamoUbicacionMaxM = cacheDist;
           cambioCache = true;
         }
+        if (aplicarDeportesActivos(prefs.getStringList('deportes_activos'))) {
+          cambioCache = true;
+        }
         if (cambioCache) notifyListeners();
       }
     } catch (_) {}
@@ -8152,6 +8155,14 @@ class AppState extends ChangeNotifier {
       }
     }
     MarcaRemota.actualizar(j); // logo de la marca configurable en la torre
+    final deps = j['deportes_activos'];
+    if (deps is List && aplicarDeportesActivos(deps)) {
+      try {
+        await prefs?.setStringList(
+            'deportes_activos', [for (final d in deportesActivos) d.name]);
+      } catch (_) {}
+      cambio = true;
+    }
     final c = (j['canal'] ?? '').toString();
     if (c.isNotEmpty && c != canalComunicacion) {
       canalComunicacion = c;

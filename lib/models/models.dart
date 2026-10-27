@@ -57,13 +57,37 @@ Deporte? deportePorNombre(String? s) {
 /// Pádel se retiró del piloto: sigue en el enum para no romper datos antiguos
 /// al cargarlos, pero no se muestra ni se puede elegir. Muchos locales alquilan
 /// también vóley y básquet (misma loza multiuso), por eso entran al catálogo.
-const List<Deporte> deportesActivos = [
+///
+/// Desde oct-2026 la lista la decide la TORRE (`GET /config/canal` →
+/// `deportes_activos`, ver [aplicarDeportesActivos]): así se reactiva pádel o se
+/// suma un deporte sin publicar un APK nuevo. Sin respuesta, queda esta base.
+const List<Deporte> deportesActivosBase = [
   Deporte.futbol,
   Deporte.tenis,
   Deporte.pickleball,
   Deporte.voley,
   Deporte.basquet,
 ];
+
+List<Deporte> deportesActivos = List.of(deportesActivosBase);
+
+/// Aplica la lista de la torre (nombres de [Deporte]); ignora los que este APK
+/// no conoce y nunca deja la lista vacía. Devuelve true si cambió.
+bool aplicarDeportesActivos(List<dynamic>? nombres) {
+  if (nombres == null) return false;
+  final nueva = <Deporte>[
+    for (final n in nombres)
+      if (deportePorNombre(n?.toString()) case final d?)
+        if (d != Deporte.natacion) d,
+  ].toSet().toList();
+  if (nueva.isEmpty) return false;
+  final igual = nueva.length == deportesActivos.length &&
+      [for (var i = 0; i < nueva.length; i++) nueva[i] == deportesActivos[i]]
+          .every((x) => x);
+  if (igual) return false;
+  deportesActivos = nueva;
+  return true;
+}
 
 /// Deportes ofrecibles al crear una ACADEMIA. Incluye natación (disciplina de
 /// academia/clases, no de cancha reservable), por eso va aparte de

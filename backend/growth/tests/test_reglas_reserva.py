@@ -225,3 +225,15 @@ def test_reglas_sin_columna_responde_503(db, monkeypatch):
     r = client.put("/reservas/reglas", json={"cancha_ids": ["c_lima"], "reglas": {}},
                    headers={"X-User-Token": "tok-dueno"})
     assert r.status_code == 503
+
+
+# ── A1: deportes activables desde la torre ───────────────────────────────────
+
+def test_deportes_activos_configurables_en_la_torre(monkeypatch):
+    from db.store import stores
+    j = client.get("/config/canal").json()
+    assert j["deportes_activos"] == ["futbol", "tenis", "pickleball", "voley", "basquet"]
+    monkeypatch.setitem(stores.config, "deportes_activos", "padel, futbol,xxx,padel")
+    assert client.get("/config/canal").json()["deportes_activos"] == ["padel", "futbol"]
+    monkeypatch.setitem(stores.config, "deportes_activos", "nada")
+    assert client.get("/config/canal").json()["deportes_activos"] == ["futbol"]

@@ -183,6 +183,18 @@ def subir_voucher(req: VoucherReq, request: Request) -> dict:
             "mensaje": "Recibimos tu comprobante. El club lo confirmará en breve; te avisamos."}
 
 
+@router.get("/club/pagos/checkout/{cancha_id}", dependencies=auth_usuario.APP)
+def checkout_publico(cancha_id: str) -> dict:
+    """Qué medios de cobro DIRECTO ofrece el club de esta cancha (lo que el
+    jugador ve antes de apartar). Solo datos que el club publica para cobrar:
+    llave PÚBLICA de Culqi y sus medios manuales."""
+    c = datos.cancha(cancha_id)
+    if not c or c.get("eliminada"):
+        raise HTTPException(status_code=404, detail="no_encontrada")
+    _sim, iso = _wr()._moneda_de(c)
+    return {"ok": True, **cd.checkout(c, iso)}
+
+
 # ── dueño ────────────────────────────────────────────────────────────────────
 
 class CulqiClubReq(BaseModel):
