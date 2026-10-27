@@ -12,10 +12,11 @@ import time
 
 import asyncio
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
 import config
+import config_publica
 from compliance.consent import consent_store
 from concierge.router import router as concierge_router
 from convocatorias.router import router as convocatorias_router
@@ -554,15 +555,24 @@ def health() -> dict:
 
 # --- config_incentivos (configurable en caliente; nada hardcodeado) ---
 @app.get("/config/incentivos")
-def get_config() -> dict:
-    return dict(stores.config)
+def get_config(request: Request) -> dict:
+    """Reglas de negocio editables. Anónimo: solo la lista blanca pública. Con
+    X-Admin-Token válido: todo lo editable. Los secretos (2FA de la torre,
+    cuenta BCP, tokens) NUNCA salen por aquí (ver `config_publica`)."""
+    from propiedad.admin_auth import token_admin_valido
+    if token_admin_valido(request.headers.get("X-Admin-Token")):
+        return config_publica.para_admin(stores.config)
+    return config_publica.publica(stores.config)
 
 
 @app.put("/config/incentivos/{clave}", dependencies=[Depends(_require_admin)])
 def put_config(clave: str, req: ConfigRequest) -> dict:
     """ADMIN: reescribe una clave de config (modo_aprobacion, exigir_ubicacion,
     topes de puntos, etc.). Protegido por token: mutar esto sin auth permitía a
-    cualquiera cambiar reglas del sistema."""
+    cualquiera cambiar reglas del sistema. Las claves sensibles (secretos 2FA,
+    cuenta BCP) no se tocan por esta vía genérica."""
+    if config_publica.es_sensible(clave):
+        raise HTTPException(status_code=403, detail="clave_protegida")
     stores.config[clave] = req.valor
     return {"clave": clave, "valor": req.valor}
 
