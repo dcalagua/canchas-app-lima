@@ -802,7 +802,8 @@ def test_reservar_exige_login_con_google_como_el_app(db, monkeypatch):
     assert r["ok"]
     fila = db.reservas[r["ids"][0]]
     assert fila["usuario"] == "ana@gmail.com" and fila["jugador"] == "Ana"
-    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: {"ok": True, "charge_id": "chr_g", "email": kw["email"]})
+    ids_cargo = iter(["chr_g", "chr_g2", "chr_g3", "chr_g4"])  # Culqi nunca repite un id de cargo
+    monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: {"ok": True, "charge_id": next(ids_cargo), "email": kw["email"]})
     import pagos.router as pr
     monkeypatch.setattr(pr, "_aviso_push_usuario", lambda *a, **k: None)
     p = cli.post("/web/pagar", json={"ids": r["ids"], "firma": r["firma"], "token": "tkn", "medio": "yape",
@@ -825,7 +826,7 @@ def test_reservar_exige_login_con_google_como_el_app(db, monkeypatch):
     # El cargo web quedó en el libro, ligado a la reserva (es lo que se reembolsa).
     ref2 = db.reservas[r2["ids"][0]].get("grupo_reserva_id") or r2["ids"][0]
     cobro = next(x for x in stores.pagos if x.tipo == "cobro_web" and x.concepto == f"web:{ref2}")
-    assert cobro.monto_centimos == 12000 and cobro.culqi_charge_id == "chr_g"
+    assert cobro.monto_centimos == 12000 and cobro.culqi_charge_id == "chr_g2"
     liq = stores.pago_por_charge(r2["ids"][0]); assert liq is not None and liq.estado == "aprobado"
     # CANCELAR desde la web con más de 6 h: reembolso Culqi + reversa de la liquidación del dueño.
     reembolsos = []
@@ -833,7 +834,7 @@ def test_reservar_exige_login_con_google_como_el_app(db, monkeypatch):
     assert cli.post("/web/cancelar", json={"ref": "grp_nada"}).json()["error"] == "sin_reserva"
     j = cli.post("/web/cancelar", json={"ref": ref2}).json()
     assert j["ok"] and j["reembolso"] == "reembolsado" and j["monto"] == 120 and j["refund_id"] == "ref_1"
-    assert reembolsos == [{"charge_id": "chr_g", "monto_centimos": 12000}]
+    assert reembolsos == [{"charge_id": "chr_g2", "monto_centimos": 12000}]
     assert all(i not in db.reservas for i in r2["ids"])              # horario liberado (como el app)
     assert liq.estado == "anulado" and cobro.estado == "reembolsado"  # el dueño ya no tiene ese "por recibir"
     reg = stores.cancelaciones_web[-1]

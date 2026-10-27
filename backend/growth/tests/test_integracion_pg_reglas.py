@@ -38,3 +38,30 @@ def test_guardar_reglas_solo_del_dueno_y_anon_no_las_pisa(pg_local):
     c = datos.cancha("it_a")
     assert c["nombre"] == "A2" and c["reglas_reserva"] == {"min_turnos": 2}
     _sql(pg, "delete from pichangol_canchas where id like 'it_%%'")
+
+
+def test_comision_reserva_solo_del_dueno_real(pg_local, monkeypatch):
+    """Seguridad C2 con base REAL: /pagos/comision-reserva no descuenta del
+    saldo de un dueño que no es el de esa reserva, ni más de lo que vale."""
+    from fastapi.testclient import TestClient
+    import config
+    from main import app
+    monkeypatch.setattr(config, "APP_API_KEY", "")
+    pg = pg_local
+    _sql(pg, "delete from pichangol_reservas where id like 'it_%%'")
+    _sql(pg, "delete from pichangol_canchas where id like 'it_%%'")
+    _sql(pg, "insert into pichangol_canchas (id, nombre, club, dueno, verificada, registrada) "
+             "values ('it_c','C','Club','dueno@x.com',true,true)")
+    _sql(pg, "insert into pichangol_reservas (id, cancha_id, jugador, fecha, dia, hora_inicio, hora_fin, estado, "
+             "precio, sena, pagado, usuario) values ('it_r1','it_c','Ana','2030-01-01','x','10:00','11:00',"
+             "'confirmada',60,0,false,'ana@x.com')")
+    cli = TestClient(app)
+    def com(rid, dueno, monto):
+        return cli.post("/pagos/comision-reserva", json={"dueno_id": dueno, "monto_soles": monto,
+                                                         "reserva_id": rid, "moneda": "PEN"}).json()
+    assert com("it_no_existe", "dueno@x.com", 60)["error"] == "reserva_no_encontrada"
+    assert com("it_r1", "victima@x.com", 60)["error"] == "no_es_el_dueno"
+    assert com("it_r1", "dueno@x.com", 5000)["error"] == "monto_mayor_a_la_reserva"
+    assert com("it_r1", "dueno@x.com", 60)["ok"]
+    _sql(pg, "delete from pichangol_reservas where id like 'it_%%'")
+    _sql(pg, "delete from pichangol_canchas where id like 'it_%%'")

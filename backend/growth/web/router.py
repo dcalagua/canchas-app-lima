@@ -2813,6 +2813,13 @@ def pagar(req: PagarReq, request: Request = None) -> dict:
                 "mensaje": "El pago fue rechazado por tu banco o billetera. No se te cobró nada y el "
                            "horario quedó libre para que lo intentes de nuevo." + (f" ({msg[:80]})" if msg else "")}
     medio = "yape" if req.medio == "yape" else "tarjeta"
+    if len(datos.reservas_de(req.ids)) != len(req.ids):
+        # Carrera (auditoría C2): el apartado venció/se liberó MIENTRAS Culqi
+        # cobraba. Antes quedaba cobrado sin reserva; ahora se devuelve ya.
+        r = culqi.reembolsar(charge_id=str(cargo.get("charge_id") or ""), monto_centimos=monto_cobro)
+        print(f"[pagar] {req.ids[0]} cobrado sin apartado → reembolso {'ok' if r.get('ok') else r.get('error')}", flush=True)
+        return {"ok": False, "error": "hold_vencido",
+                "mensaje": "Tu horario se liberó antes de confirmar el pago. Te devolvimos el dinero."}
     confirmar_reserva_pagada(filas, c, email, plan=plan, charge_id=str(cargo.get("charge_id") or ""), medio=medio,
                              monto_cobro=monto_cobro, cargo_centimos=cot.cargo_centimos,
                              cargo_desglose=list(cot.desglose or []), cargo_ajuste=cot.ajuste_seguridad_centimos)
