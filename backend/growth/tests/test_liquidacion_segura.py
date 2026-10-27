@@ -51,3 +51,26 @@ def test_apk_viejo_sin_cargo_queda_en_revision_hasta_que_el_operador_aprueba(mon
     r = client.post("/pagos/liquidacion/r_viejo/aprobar-revision", headers={"X-Admin-Token": "adm"})
     assert r.json() == {"ok": True, "aprobadas": 1}
     assert len(stores.liquidaciones(solo_pendientes=True)) == 1
+
+
+def test_reembolso_del_apk_lo_hace_el_servidor(monkeypatch):
+    from pagos import culqi
+    from pagos import router as pr
+    monkeypatch.setattr(config, "APP_API_KEY", "")
+    monkeypatch.setattr(stores, "pagos", [])
+    monkeypatch.setattr(pr, "_email_de_token", lambda t: {"tok-ana": "ana@x.com"}.get(t))
+    devueltos = []
+    monkeypatch.setattr(culqi, "reembolsar", lambda **kw: devueltos.append(kw) or {"ok": True, "refund_id": "ref_9"})
+    stores.registrar_pago(tipo="fee_reserva", monto_centimos=6000, moneda="PEN", estado="aprobado",
+                          culqi_charge_id="chr_ana", email="ana@x.com")
+    stores.registrar_pago(tipo="fee_reserva", monto_centimos=6000, moneda="PEN", estado="aprobado",
+                          culqi_charge_id="chr_beto", email="beto@x.com")
+    H = {"X-User-Token": "tok-ana"}
+    assert client.post("/pagos/reembolso-app", json={"charge_id": "chr_ana"}).status_code == 401
+    # Cargo AJENO: no se devuelve; queda para el operador.
+    j = client.post("/pagos/reembolso-app", json={"charge_id": "chr_beto", "monto_soles": 60}, headers=H).json()
+    assert j["manual"] and devueltos == []
+    # El propio: Culqi devuelve todo, una sola vez.
+    assert client.post("/pagos/reembolso-app", json={"charge_id": "chr_ana"}, headers=H).json()["reembolsado"]
+    assert client.post("/pagos/reembolso-app", json={"charge_id": "chr_ana"}, headers=H).json()["duplicado"]
+    assert devueltos == [{"charge_id": "chr_ana", "monto_centimos": 6000}]

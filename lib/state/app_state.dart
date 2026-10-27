@@ -1229,6 +1229,7 @@ class AppState extends ChangeNotifier {
   Future<void> flushContabilidad() async {
     // Solicitudes de boleador que no llegaron al backend (el cliente ya pagó).
     unawaited(Boleadores.flushPendientes());
+    unawaited(_enviarReembolsos());
     if (_contaPend.isEmpty || !PagosService.disponible) return;
     var cambios = false;
     for (final e in [..._contaPend]) {
@@ -1269,15 +1270,49 @@ class AppState extends ChangeNotifier {
     if (cambios) await _persistirContabilidad();
   }
 
-  void _registrarReembolso(String reservaId, double monto, String motivo) {
+  void _registrarReembolso(String reservaId, double monto, String motivo,
+      {String chargeId = ''}) {
     if (monto <= 0) return;
     _reembolsosPend.add({
       'reserva_id': reservaId,
       'email': (usuario?.email ?? '').toLowerCase(),
       'monto': monto,
       'motivo': motivo,
+      // Cargo de Culqi: con él el BACKEND devuelve la plata (antes el
+      // reembolso quedaba solo en este teléfono).
+      'charge_id': chargeId,
     });
     unawaited(_persistirContabilidad());
+    unawaited(_enviarReembolsos());
+  }
+
+  /// Manda al backend los reembolsos en cola (`POST /pagos/reembolso-app`):
+  /// él verifica el cargo con la identidad del usuario y lo devuelve por Culqi
+  /// (o lo deja al operador). Un 200 saca la entrada de la cola.
+  Future<void> _enviarReembolsos() async {
+    if (_reembolsosPend.isEmpty || !PagosService.disponible) return;
+    var cambios = false;
+    for (final e in [..._reembolsosPend]) {
+      try {
+        final r = await http
+            .post(Uri.parse('${PagosService.baseUrl}/pagos/reembolso-app'),
+                headers: await PagosService.headersUsuario(json: true),
+                body: jsonEncode({
+                  'charge_id': (e['charge_id'] ?? '').toString(),
+                  'referencia': (e['reserva_id'] ?? '').toString(),
+                  'monto_soles': (e['monto'] as num?)?.toDouble() ?? 0,
+                  'motivo': (e['motivo'] ?? '').toString(),
+                }))
+            .timeout(const Duration(seconds: 20));
+        if (r.statusCode == 200) {
+          _reembolsosPend.remove(e);
+          cambios = true;
+        }
+      } catch (_) {
+        break; // sin red: se reintenta en el próximo flush
+      }
+    }
+    if (cambios) await _persistirContabilidad();
   }
 
   /// Una reserva pendiente (offline) que NO llegó a confirmarse: si su pago fue
@@ -1287,7 +1322,8 @@ class AppState extends ChangeNotifier {
     if (accion == null) return;
     if (accion['online'] == true) {
       _registrarReembolso(
-          reservaId, (accion['monto'] as num?)?.toDouble() ?? 0, motivo);
+          reservaId, (accion['monto'] as num?)?.toDouble() ?? 0, motivo,
+          chargeId: (accion['charge_id'] ?? '').toString());
     }
     unawaited(_persistirContabilidad());
   }
@@ -8725,7 +8761,8 @@ class AppState extends ChangeNotifier {
         r.id != asegurada?.id);
     if (yaLocal) {
       _reembolsoSiPagado(cobro, cancha, fecha, hora, sena,
-          extrasPagados: bonoConExtras ? extras : const []);
+          extrasPagados: bonoConExtras ? extras : const [],
+          chargeId: operacionId);
       if (avisarJugador) {
         _avisarJugadorReserva(
           clave: '${cancha.id}_${fecha}_$hora',
@@ -8799,7 +8836,8 @@ class AppState extends ChangeNotifier {
       // Se cobró por adelantado (online/seña) pero el slot ya lo tomó otro →
       // registra el reembolso (no nos quedamos la plata).
       _reembolsoSiPagado(cobro, cancha, fecha, hora, sena,
-          extrasPagados: bonoConExtras ? extras : const []);
+          extrasPagados: bonoConExtras ? extras : const [],
+          chargeId: operacionId);
       if (avisarJugador) {
         _avisarJugadorReserva(
           clave: '${cancha.id}_${fecha}_$hora',
@@ -8912,13 +8950,14 @@ class AppState extends ChangeNotifier {
   /// plata del jugador.
   void _reembolsoSiPagado(
       String cobro, Cancha cancha, String fecha, String hora, int sena,
-      {List<ServicioExtra> extrasPagados = const []}) {
+      {List<ServicioExtra> extrasPagados = const [], String chargeId = ''}) {
     if (cobro == 'bono') {
       // Bono: los turnos no se pagaron ahora; solo los extras en línea.
       final m = extrasPagados.fold(0.0, (a, s) => a + s.precio);
       if (m > 0) {
         _registrarReembolso('ocupado_${cancha.id}_${fecha}_$hora', m,
-            'Horario ya tomado (servicios extra pagados con el bono)');
+            'Horario ya tomado (servicios extra pagados con el bono)',
+            chargeId: chargeId);
       }
       return;
     }
@@ -8927,7 +8966,8 @@ class AppState extends ChangeNotifier {
         ? sena.toDouble()
         : precioSlotEfectivo(cancha, fecha, hora).toDouble();
     _registrarReembolso('ocupado_${cancha.id}_${fecha}_$hora', monto,
-        'Horario ya tomado (pagado por adelantado)');
+        'Horario ya tomado (pagado por adelantado)',
+        chargeId: chargeId);
   }
 
   /// RESERVA DE VARIAS HORAS SEGUIDAS (ej. 18:00–20:00 = 2 Reservas del mismo

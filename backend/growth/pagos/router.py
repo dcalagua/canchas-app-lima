@@ -2001,6 +2001,54 @@ def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
     return out
 
 
+class ReembolsoAppReq(BaseModel):
+    charge_id: str = ""
+    referencia: str = ""          # id local del APK (auditoría)
+    monto_soles: float = 0
+    motivo: str = ""
+
+
+@router.post("/reembolso-app", dependencies=_APP)
+def post_reembolso_app(req: ReembolsoAppReq, request: Request) -> dict:
+    """C2 (auditoría 26-oct-2026): el APK cobró y el turno lo ganó otro. Antes
+    el "reembolso" quedaba SOLO en el teléfono; ahora el backend lo hace:
+    - el cobro debe ser REAL, del usuario VERIFICADO (token) y sin una
+      liquidación ligada (si la hay, la reserva sí existió: no se devuelve);
+    - Culqi devuelve el monto cobrado (todo); idempotente por cargo.
+    Si no se puede automatizar (sin cargo, otra pasarela, falla), queda un
+    `reembolso_manual` pendiente para el operador. Siempre 200: el APK limpia
+    su cola."""
+    import auth_usuario
+    email = auth_usuario.usuario_de(request, request.headers.get("X-User-Token"))
+    if not email:
+        raise HTTPException(status_code=401, detail="sesion_requerida")
+    cid = (req.charge_id or "").strip()
+    p = stores.pago_por_charge(cid) if cid else None
+
+    def manual(motivo: str) -> dict:
+        clave = f"rm:{cid or req.referencia}"
+        if stores.pago_por_charge(clave) is None:
+            stores.registrar_pago(tipo="reembolso_manual", monto_centimos=_soles_a_centimos(max(req.monto_soles, 0)),
+                                  moneda="PEN", estado="pendiente", email=email, culqi_charge_id=clave,
+                                  concepto=f"{req.motivo[:80]} · {motivo}"[:160])
+        print(f"[reembolso-app] MANUAL {clave} {email}: {motivo}", flush=True)
+        return {"ok": True, "manual": True, "motivo": motivo}
+
+    if p is None or (p.email or "").strip().lower() != email:
+        return manual("cargo_no_verificado")
+    if p.estado == "reembolsado":
+        return {"ok": True, "duplicado": True}
+    if any(x.tipo in _TIPOS_LIQ and x.cargo_id == cid and x.estado in ("aprobado", "en_revision") for x in stores.pagos):
+        return manual("cargo_con_reserva")
+    if not cid.startswith("chr_") or p.estado != "aprobado":
+        return manual("no_automatico")
+    r = culqi.reembolsar(charge_id=cid, monto_centimos=int(p.monto_centimos))
+    if not r.get("ok"):
+        return manual(f"culqi:{r.get('error')}")
+    p.estado = "reembolsado"
+    return {"ok": True, "reembolsado": True, "refund_id": r.get("refund_id")}
+
+
 @router.post("/liquidacion/{reserva_id}/aprobar-revision", dependencies=[Depends(_require_admin)])
 def post_aprobar_liquidacion_revision(reserva_id: str) -> dict:
     """OPERADOR: aprueba una liquidación que llegó SIN cobro ligado (APK viejo)
