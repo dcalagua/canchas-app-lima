@@ -1,6 +1,7 @@
 // Goldens de las pantallas NUEVAS del rediseño (cobros del club, bandeja de
 // vouchers, reglas de reserva). Regenerar: flutter test --update-goldens test/goldens
 import 'package:canchas_lima/models/models.dart';
+import 'package:canchas_lima/screens/checkout_directo_screen.dart';
 import 'package:canchas_lima/screens/club_pagos_screen.dart';
 import 'package:canchas_lima/screens/pagos_por_confirmar_screen.dart';
 import 'package:canchas_lima/screens/reglas_reserva_screen.dart';
@@ -49,8 +50,21 @@ Future<RespuestaClub> _sim(String metodo, String ruta, Object? cuerpo) async {
         'anticipacion_min_horas': 2, 'cancelacion_horas': 24,
       }});
   }
+  if (ruta == '/web/asegurar') {
+    return const RespuestaClub(true, {'ok': true, 'ids': ['web_1'], 'firma': 'f', 'total_centimos': 9000,
+      'moneda': 'S/', 'hold_segundos': 600});
+  }
   return const RespuestaClub(false, {}, 'error');
 }
+
+const _checkout = {
+  'directo': true, 'culqi_public_key': 'pk_test_abc',
+  'medios': [
+    {'tipo': 'yape', 'etiqueta': 'Yape', 'titular': 'Club Raqueta SAC', 'numero': '987654321', 'nota': ''},
+    {'tipo': 'transferencia', 'etiqueta': 'Transferencia bancaria', 'titular': 'Club Raqueta SAC',
+     'banco': 'BCP', 'cuenta': '191-1234567-0-12', 'cci': '00219100123456701254', 'nota': ''},
+  ],
+};
 
 const _cancha = Cancha(
   id: 'c1', nombre: 'Cancha 1', club: 'Club Raqueta', distrito: Distrito.sanBorja,
@@ -77,4 +91,22 @@ void main() {
   testWidgets('cobros del club (oscuro)', (t) async => foto(t, const ClubPagosScreen(), 'cobros_club_oscuro', oscuro: true));
   testWidgets('pagos por confirmar', (t) async => foto(t, const PagosPorConfirmarScreen(), 'pagos_por_confirmar', alto: 900));
   testWidgets('reglas de reserva', (t) async => foto(t, const ReglasReservaScreen(cancha: _cancha), 'reglas_reserva', alto: 2200));
+  testWidgets('checkout directo: datos y pago', (t) async {
+    tamanoTelefono(t, alto: 1500);
+    await t.pumpWidget(envolver(const CheckoutDirectoScreen(
+      cancha: _cancha, horas: [(fecha: '2026-11-07', hora: '18:00')], fechaTexto: 'Sáb 7 nov', checkout: _checkout)));
+    await t.pump();
+    await t.enterText(find.byType(TextField).at(0), 'Ana Pérez');
+    await t.enterText(find.byType(TextField).at(1), '987654321');
+    await t.pump();
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('png/checkout_datos.png'));
+    await t.tap(find.text('Apartar horario'));
+    await t.pump();
+    await t.pump(const Duration(milliseconds: 50));
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('png/checkout_pago_yape.png'));
+    await t.tap(find.text('Transferencia bancaria'));
+    await t.pump();
+    await expectLater(find.byType(MaterialApp), matchesGoldenFile('png/checkout_pago_voucher.png'));
+    await t.pumpWidget(const SizedBox());
+  });
 }

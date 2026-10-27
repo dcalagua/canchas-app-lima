@@ -555,6 +555,8 @@ class CLCampo extends StatelessWidget {
             style: Tipo.cuerpo(context),
             decoration: InputDecoration(
               helperText: ayuda,
+              helperMaxLines: 3,
+              errorMaxLines: 3,
               errorText: error,
               counterText: '',
               prefixText: prefijo,

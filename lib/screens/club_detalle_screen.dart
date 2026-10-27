@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../services/club_pagos_service.dart';
+import 'checkout_directo_screen.dart';
 import '../data/reservas_repo.dart';
 import '../models/club.dart';
 import '../models/fotos_propias.dart';
@@ -599,6 +601,27 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     }
     if (!mounted) return;
     final slots = _slotsOrd; // bloque contiguo ordenado (1 o varias horas)
+    // COBRO DIRECTO AL CLUB (plan A4/A5): si el club cobra con su propio
+    // Culqi o con sus medios manuales, la reserva va por el flujo del SERVIDOR
+    // (precio con las reglas del club, apartado con vencimiento, pago a la
+    // cuenta del club). Sin eso, el flujo de siempre.
+    final dir = await ClubPagosService.checkout(_cancha.id);
+    if (!mounted) return;
+    if (dir.ok && dir.datos['directo'] == true) {
+      final res = await CheckoutDirectoScreen.abrir(
+        context,
+        cancha: _cancha,
+        horas: [for (final h in slots) (fecha: _fechaSlot(h), hora: h)],
+        fechaTexto: _dia,
+        checkout: dir.datos,
+        deporte: _deporteEfectivo.name,
+      );
+      if (!mounted) return;
+      if (res == ResultadoCheckout.confirmada || res == ResultadoCheckout.enRevision) {
+        setState(() => _slots.clear());
+      }
+      return;
+    }
     // Total del bloque = SUMA del precio efectivo de cada hora (respeta valle/
     // descuento por hora, así 2 h no es un simple ×2). La comisión de Pichangol
     // es 100% del lado del dueño; nunca se le suma al jugador.
