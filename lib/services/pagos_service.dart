@@ -1978,7 +1978,7 @@ class PagosService {
       final uri = Uri.parse('$_baseUrl$ruta')
           .replace(queryParameters: query == null || query.isEmpty ? null : query);
       final r = await http
-          .get(uri, headers: _appHeaders())
+          .get(uri, headers: await _headersUsuario())
           .timeout(const Duration(seconds: 15));
       if (r.statusCode != 200) return null;
       return Map<String, dynamic>.from(jsonDecode(r.body) as Map);
@@ -1993,7 +1993,7 @@ class PagosService {
     try {
       final r = await http
           .post(Uri.parse('$_baseUrl$ruta'),
-              headers: _appHeaders(json: true), body: jsonEncode(body))
+              headers: await _headersUsuario(json: true), body: jsonEncode(body))
           .timeout(const Duration(seconds: 20));
       if (r.statusCode != 200) return null;
       return Map<String, dynamic>.from(jsonDecode(r.body) as Map);

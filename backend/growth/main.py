@@ -12,10 +12,11 @@ import time
 
 import asyncio
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
 import config
+import config_publica
 from compliance.consent import consent_store
 from concierge.router import router as concierge_router
 from convocatorias.router import router as convocatorias_router
@@ -24,6 +25,8 @@ from entrenador.router import router as entrenador_router
 from db.store import seed_verificadores, stores
 from legal.router import router as legal_router
 from web.router import router as web_router
+from reservas.router import router as reservas_router
+from web.cobro_directo_web import router as cobro_directo_router
 from web.portal_tenis import router as portal_tenis_router
 from web.anfitrion import router as anfitrion_router
 from web.anfitrion_academia import router as anfitrion_academia_router
@@ -188,6 +191,8 @@ app.include_router(legal_router)
 from marca_logo import router as marca_logo_router  # noqa: E402
 app.include_router(marca_logo_router)  # /marca/logo.png + torre → Logo de la marca
 app.include_router(web_router)
+app.include_router(reservas_router)
+app.include_router(cobro_directo_router)
 app.include_router(portal_tenis_router)  # /tenis: portada de raqueta (canchas, torneos con marca del organizador, partner, liga)
 app.include_router(academia_web_router)  # ficha pública /academia/{id} + matrícula web
 app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}
@@ -239,6 +244,17 @@ async def _iniciar_correos() -> None:
     # Conexiones del pool siempre "tibias" (la base está lejos: abrir una nueva
     # cuesta ~1 s; ver `pg._mantener_tibias`).
     pg.iniciar_tibias()
+
+
+@app.on_event("startup")
+async def _iniciar_cron_vouchers() -> None:
+    """Cobro directo al club (plan A5): cada minuto vencen los vouchers que el
+    club no revisó a tiempo y se suelta el horario. En los tests no corre."""
+    import sys
+    if "pytest" in sys.modules:
+        return
+    from web import cobro_directo_web
+    cobro_directo_web.arrancar_cron()
 
 
 @app.on_event("startup")
@@ -549,20 +565,41 @@ def robots_txt():
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True}
+    """Vivo + estado de la base (C4): "ok" | "error" | "off" (sin DATABASE_URL).
+    Siempre 200 para que un corte de la base no reinicie el servicio en bucle;
+    el monitoreo mira el campo `db`."""
+    db = "off"
+    if pg.habilitado:
+        try:
+            with pg.conexion() as conn, conn.cursor() as cur:
+                cur.execute("select 1")
+                cur.fetchone()
+            db = "ok"
+        except Exception:  # noqa: BLE001
+            db = "error"
+    return {"ok": True, "db": db}
 
 
 # --- config_incentivos (configurable en caliente; nada hardcodeado) ---
 @app.get("/config/incentivos")
-def get_config() -> dict:
-    return dict(stores.config)
+def get_config(request: Request) -> dict:
+    """Reglas de negocio editables. Anónimo: solo la lista blanca pública. Con
+    X-Admin-Token válido: todo lo editable. Los secretos (2FA de la torre,
+    cuenta BCP, tokens) NUNCA salen por aquí (ver `config_publica`)."""
+    from propiedad.admin_auth import token_admin_valido
+    if token_admin_valido(request.headers.get("X-Admin-Token")):
+        return config_publica.para_admin(stores.config)
+    return config_publica.publica(stores.config)
 
 
 @app.put("/config/incentivos/{clave}", dependencies=[Depends(_require_admin)])
 def put_config(clave: str, req: ConfigRequest) -> dict:
     """ADMIN: reescribe una clave de config (modo_aprobacion, exigir_ubicacion,
     topes de puntos, etc.). Protegido por token: mutar esto sin auth permitía a
-    cualquiera cambiar reglas del sistema."""
+    cualquiera cambiar reglas del sistema. Las claves sensibles (secretos 2FA,
+    cuenta BCP) no se tocan por esta vía genérica."""
+    if config_publica.es_sensible(clave):
+        raise HTTPException(status_code=403, detail="clave_protegida")
     stores.config[clave] = req.valor
     return {"clave": clave, "valor": req.valor}
 

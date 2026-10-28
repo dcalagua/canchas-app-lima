@@ -4014,6 +4014,40 @@ Reemplaza al calendario fijo de `agente_redes.py` (al activarlo se apaga
   `AGENTE_IA_PG_URL=postgresql://... python3 -m pytest tests/test_agente_ia.py -k pg`
   (crear antes las tablas base con `tests/fixtures/pichangol_base.sql` + el SQL).
 
+## Noche CanchaLibre (27-oct-2026, rama `feat/noche-canchalibre`)
+
+Decisiones del usuario: el dinero de la reserva va **DIRECTO al club** (su Culqi
+o sus medios manuales) y la plataforma vive **solo de la comisión por reserva**.
+Detalle y acciones pendientes: `docs/plan/BITACORA_NOCHE.md`.
+- **Migraciones versionadas:** `backend/growth/migraciones/NNNN_*.sql` +
+  `python -m db.migrar [--estado|--local]` (tabla `cl_schema_migraciones`). Postgres
+  local: `docker-compose.dev.yml` (55432). Tests de integración con
+  `TEST_DATABASE_URL` (fixture `tests/conftest_pg.py`; sin la variable se saltan).
+- **Identidad:** `auth_usuario.py` — `requiere_usuario` (ID token de Google
+  `X-User-Token` o cookie web) para TODO endpoint nuevo; `correo_del_cliente`
+  para legados que reciben `email` (`AUTH_USUARIO_ESTRICTO=1` exige token).
+- **Reglas de reserva:** `reservas/reglas.py` (columna `reglas_reserva`, 0002) →
+  "cancha efectiva del día" que usan `horarios.slots_de`/`precio_turno_de`;
+  endpoints `/reservas/politica|reglas`; el APK pide el día al servidor si la
+  cancha tiene reglas (`AppState.cargarDiaServidor`).
+- **Cobro directo:** `pagos/cobro_directo.py` + `web/cobro_directo_web.py`
+  (0003): Culqi del club con sk cifrada (`PAGOS_ENC_KEY`, fail-closed),
+  `culqi.*(llave=)`, vouchers (`/web/voucher`, `/club/pagos/*`, cron de
+  vencimiento), webhook `/pagos/culqi/webhook/club/{ref}`, comisión desde saldo
+  o `comision_deuda` (se salda en `stores.acreditar`; tope
+  `comision_deuda_tope_<ISO>` suspende cobros directos). `/web/asegurar` y
+  `/web/pagar` aceptan el token del APK (mismo flujo server-side).
+- **Seguridad:** `config_publica.py` (lista blanca de `/config/incentivos`);
+  liquidaciones solo con cobro real (`liq_exige_cargo`, sin cargo → en revisión);
+  `/pagos/reembolso-app`; 0004 impide a anon tocar `verificada`/`dueno`.
+- **APK:** sistema de diseño `lib/ui/ds.dart` (usar SIEMPRE en pantallas nuevas),
+  CTA `#0B7A57` (AA), **DM Sans** única (los `TextStyle` del tema heredan la
+  familia), `doradoTexto` para texto dorado. Pantallas: `club_pagos_screen`,
+  `pagos_por_confirmar_screen`, `reglas_reserva_screen`, `checkout_directo_screen`.
+  Goldens: `flutter test --update-goldens test/goldens` (tag `golden`, CI los excluye).
+- **CI:** job `backend` (Python 3.11 + Postgres + migraciones + pytest) y
+  `flutter test --exclude-tags golden`.
+
 ## Pendientes / backlog
 
 - **MODELO DE NEGOCIO DE LAS RESERVAS ELEGIBLE EN LA TORRE (decisión del

@@ -1866,6 +1866,29 @@ def get_pozo_equipo(campeonato_id: str, equipo_id: str, cuota_equipo_soles: floa
     return {"ok": True, "pozo": pozos.de_equipo(campeonato_id, equipo_id, cuota_equipo_soles, cupo)}
 
 
+def _validar_reserva_de_dueno(reserva_id: str, dueno_id: str, monto_soles: float) -> str:
+    """'' si la reserva existe, su cancha es de `dueno_id` y el monto no supera
+    lo que vale la reserva (turnos del grupo + extras); si no, código de error."""
+    from db import pg
+    from web import datos as _dw
+    if not pg.habilitado:
+        return ""
+    filas = _dw.reservas_de([reserva_id])
+    if not filas:
+        return "reserva_no_encontrada"
+    f = filas[0]
+    c = _dw.cancha(str(f.get("cancha_id") or ""))
+    if not c or (c.get("dueno") or "").strip().lower() != (dueno_id or "").strip().lower():
+        return "no_es_el_dueno"
+    grupo = str(f.get("grupo_reserva_id") or "")
+    todas = _dw.reservas_por_grupo(grupo) if grupo else filas
+    valor = sum(float(x.get("precio") or 0) for x in todas) + sum(
+        float((e or {}).get("precio") or 0) for x in todas for e in (x.get("extras") or []) if isinstance(e, dict))
+    if float(monto_soles) > valor + 0.01:
+        return "monto_mayor_a_la_reserva"
+    return ""
+
+
 @router.post("/comision-reserva", dependencies=_APP)
 def post_comision_reserva(req: ComisionReservaReq) -> dict:
     """Descuenta la comisión de Pichangol del SALDO del dueño cuando entra una
@@ -1873,6 +1896,13 @@ def post_comision_reserva(req: ComisionReservaReq) -> dict:
     del saldo prepago del dueño). Es la contraparte de que el efectivo solo se
     ofrece al jugador si el dueño tiene saldo. Idempotente por `reserva_id`: no
     cobra dos veces la misma reserva."""
+    # Seguridad C2: la comisión se descuenta del saldo del DUEÑO REAL de una
+    # reserva REAL (antes cualquiera con la X-App-Key vaciaba el saldo de otro
+    # mandando su correo). Sin base de datos (tests/local) no se puede mirar.
+    err = _validar_reserva_de_dueno(req.reserva_id, req.dueno_id, req.monto_soles)
+    if err:
+        print(f"[comision-reserva] RECHAZADA {req.reserva_id} dueño={req.dueno_id}: {err}", flush=True)
+        return {"ok": False, "error": err}
     # Sale del saldo → aplica la tarifa configurable de billetera (torre).
     iso = moneda_iso(req.moneda)
     comision = comision_saldo_centimos(req.monto_soles, iso)
@@ -1922,8 +1952,118 @@ def _medio_pasarela(req: "LiquidacionOnlineReq") -> str:
     return "tarjeta"
 
 
+_TIPOS_LIQ = ("liquidacion_online", "liquidacion_full")
+# Tipos de fila que NO son un cobro al jugador (no pueden respaldar una liquidación).
+_NO_COBRO = _TIPOS_LIQ + ("comision_reserva", "comision_deuda", "cobro_directo", "venta_producto",
+                          "venta_bodega", "liquidacion_boleador", "devolucion_saldo")
+
+
+def _verificar_cargo_liquidacion(req: "LiquidacionOnlineReq") -> str:
+    """Seguridad C2 (auditoría 26-oct-2026): una liquidación online SOLO se
+    acepta respaldada por un COBRO REAL registrado por el backend (`/pagos/cobrar`,
+    `cobro_web`, pasarela hospedada): antes el APK mandaba dueño + monto + id y
+    cualquiera con la X-App-Key se fabricaba un "por recibir" que el lote BCP
+    pagaba. Devuelve "" (verificado), "revision" (APK viejo sin `charge_id`:
+    se registra EN REVISIÓN y el lote no la paga hasta que el operador la
+    apruebe) o un código de error (cargo falso / ya usado / monto mayor)."""
+    if str(stores.config.get("liq_exige_cargo", "1")).strip() not in ("1", "true", "on"):
+        return ""
+    cid = (req.charge_id or "").strip()
+    if not cid:
+        return "revision"
+    p = stores.pago_por_charge(cid)
+    if p is None or p.estado != "aprobado" or p.tipo in _NO_COBRO:
+        return "cargo_no_verificado"
+    if any(x.tipo in _TIPOS_LIQ and x.cargo_id == cid and x.culqi_charge_id != req.reserva_id
+           for x in stores.pagos):
+        return "cargo_ya_liquidado"
+    # Con PUNTOS el jugador paga S/ 3 menos y el dueño recibe el precio completo.
+    tolerancia = 300 if moneda_iso(req.moneda) == "PEN" else 0
+    if _soles_a_centimos(req.monto_soles) > int(p.monto_centimos or 0) + tolerancia:
+        return "monto_mayor_al_cargo"
+    return ""
+
+
 @router.post("/liquidacion-online", dependencies=_APP)
 def post_liquidacion_online(req: LiquidacionOnlineReq) -> dict:
+    """Ver `_liquidacion_online` (contabilidad) y `_verificar_cargo_liquidacion`
+    (respaldo por un cobro real)."""
+    ver = _verificar_cargo_liquidacion(req)
+    if ver not in ("", "revision"):
+        print(f"[liquidacion] RECHAZADA {req.reserva_id} dueño={req.dueno_id} cargo={req.charge_id!r}: {ver}", flush=True)
+        return {"ok": False, "error": ver}
+    out = _liquidacion_online(req)
+    if ver == "revision" and not out.get("duplicada"):
+        for x in stores.pagos:
+            if x.tipo in _TIPOS_LIQ and x.culqi_charge_id == req.reserva_id and x.estado == "aprobado":
+                x.estado = "en_revision"
+        out["en_revision"] = True
+    return out
+
+
+class ReembolsoAppReq(BaseModel):
+    charge_id: str = ""
+    referencia: str = ""          # id local del APK (auditoría)
+    monto_soles: float = 0
+    motivo: str = ""
+
+
+@router.post("/reembolso-app", dependencies=_APP)
+def post_reembolso_app(req: ReembolsoAppReq, request: Request) -> dict:
+    """C2 (auditoría 26-oct-2026): el APK cobró y el turno lo ganó otro. Antes
+    el "reembolso" quedaba SOLO en el teléfono; ahora el backend lo hace:
+    - el cobro debe ser REAL, del usuario VERIFICADO (token) y sin una
+      liquidación ligada (si la hay, la reserva sí existió: no se devuelve);
+    - Culqi devuelve el monto cobrado (todo); idempotente por cargo.
+    Si no se puede automatizar (sin cargo, otra pasarela, falla), queda un
+    `reembolso_manual` pendiente para el operador. Siempre 200: el APK limpia
+    su cola."""
+    import auth_usuario
+    email = auth_usuario.usuario_de(request, request.headers.get("X-User-Token"))
+    if not email:
+        raise HTTPException(status_code=401, detail="sesion_requerida")
+    cid = (req.charge_id or "").strip()
+    p = stores.pago_por_charge(cid) if cid else None
+
+    def manual(motivo: str) -> dict:
+        clave = f"rm:{cid or req.referencia}"
+        if stores.pago_por_charge(clave) is None:
+            stores.registrar_pago(tipo="reembolso_manual", monto_centimos=_soles_a_centimos(max(req.monto_soles, 0)),
+                                  moneda="PEN", estado="pendiente", email=email, culqi_charge_id=clave,
+                                  concepto=f"{req.motivo[:80]} · {motivo}"[:160])
+        print(f"[reembolso-app] MANUAL {clave} {email}: {motivo}", flush=True)
+        return {"ok": True, "manual": True, "motivo": motivo}
+
+    if p is None or (p.email or "").strip().lower() != email:
+        return manual("cargo_no_verificado")
+    if p.estado == "reembolsado":
+        return {"ok": True, "duplicado": True}
+    if any(x.tipo in _TIPOS_LIQ and x.cargo_id == cid and x.estado in ("aprobado", "en_revision") for x in stores.pagos):
+        return manual("cargo_con_reserva")
+    if not cid.startswith("chr_") or p.estado != "aprobado":
+        return manual("no_automatico")
+    r = culqi.reembolsar(charge_id=cid, monto_centimos=int(p.monto_centimos))
+    if not r.get("ok"):
+        return manual(f"culqi:{r.get('error')}")
+    p.estado = "reembolsado"
+    return {"ok": True, "reembolsado": True, "refund_id": r.get("refund_id")}
+
+
+@router.post("/liquidacion/{reserva_id}/aprobar-revision", dependencies=[Depends(_require_admin)])
+def post_aprobar_liquidacion_revision(reserva_id: str) -> dict:
+    """OPERADOR: aprueba una liquidación que llegó SIN cobro ligado (APK viejo)
+    después de comprobar el cobro en el panel de Culqi; recién ahí entra al lote."""
+    n = 0
+    for x in stores.pagos:
+        if x.tipo in _TIPOS_LIQ and x.culqi_charge_id == reserva_id and x.estado == "en_revision":
+            x.estado = "aprobado"
+            n += 1
+    if not n:
+        raise HTTPException(status_code=404, detail="no_en_revision")
+    return {"ok": True, "aprobadas": n}
+
+
+def _liquidacion_online(req: LiquidacionOnlineReq) -> dict:
     """Reserva pagada ONLINE, modelo **BILLETERA-FIRST**:
 
     - Si el dueño tiene SALDO suficiente: la comisión sale de su **billetera

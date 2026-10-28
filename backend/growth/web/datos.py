@@ -55,9 +55,15 @@ def col_precio_turno_disponible() -> bool:
     return _col_cancha_existe("precio_turno")
 
 
+def col_reglas_disponible() -> bool:
+    """REGLAS DE RESERVA del dueño (migración `0002_reglas_reserva.sql`)."""
+    return _col_cancha_existe("reglas_reserva")
+
+
 def _cols_cancha() -> list[str]:
     return (_COLS + (["fidelidad"] if col_fidelidad_disponible() else [])
-            + (["precio_turno"] if col_precio_turno_disponible() else []))
+            + (["precio_turno"] if col_precio_turno_disponible() else [])
+            + (["reglas_reserva"] if col_reglas_disponible() else []))
 
 
 def _sel_cancha() -> str:
@@ -73,10 +79,16 @@ PREFIJO_ID_WEB = "web_"
 # 10 min: lo suelta el barrido de órdenes cuando la orden vence/se rechaza.
 # Tope de seguridad por si la orden se perdiera: HOLD_PASARELA_MAX_SEGUNDOS.
 MEDIO_HOLD_PASARELA = "web_pasarela"
+# PAGO MANUAL CON VOUCHER (cobro directo al club, plan A5): mientras el club
+# revisa el voucher el apartado lleva `medio_pago = 'voucher'` y no vence a los
+# 10 min; lo suelta el barrido de vouchers (`cobro_directo_web.vencer`) al
+# rechazar/vencer, con tope duro HOLD_VOUCHER_MAX_SEGUNDOS.
+MEDIO_HOLD_VOUCHER = "voucher"
 _SQL_HOLD_VENCIDO = (
     "(coalesce(estado,'') = 'nueva' AND NOT coalesce(pagado,false) AND id LIKE 'web\\_%%' "
     "AND (CASE WHEN split_part(id, '_', 2) ~ '^[0-9]+$' THEN split_part(id, '_', 2)::bigint ELSE NULL END) "
-    "< (CASE WHEN coalesce(medio_pago,'') = 'web_pasarela' THEN %s ELSE %s END))")
+    "< (CASE WHEN coalesce(medio_pago,'') = 'web_pasarela' THEN %s "
+    "WHEN coalesce(medio_pago,'') = 'voucher' THEN %s ELSE %s END))")
 _SQL_SIN_HOLD_VENCIDO = " AND NOT " + _SQL_HOLD_VENCIDO
 
 
@@ -84,10 +96,18 @@ def _corte_hold() -> int:
     return int((time.time() - HOLD_SEGUNDOS) * 1000)
 
 
-def _cortes_hold() -> tuple[int, int]:
-    """(corte de un apartado en pasarela, corte de un apartado normal), en ms:
-    los parámetros de `_SQL_HOLD_VENCIDO` en ese orden."""
-    return int((time.time() - HOLD_PASARELA_MAX_SEGUNDOS) * 1000), _corte_hold()
+def _cortes_hold() -> tuple[int, int, int]:
+    """(corte de un apartado en pasarela, corte de uno con voucher en revisión,
+    corte de un apartado normal), en ms: los parámetros de `_SQL_HOLD_VENCIDO`
+    en ese orden."""
+    return (int((time.time() - HOLD_PASARELA_MAX_SEGUNDOS) * 1000),
+            int((time.time() - hold_voucher_max_segundos()) * 1000), _corte_hold())
+
+
+def hold_voucher_max_segundos() -> int:
+    """Tope duro de un apartado con voucher: el plazo de revisión + 10 min."""
+    import config
+    return (int(config.VOUCHER_PLAZO_MIN) + 10) * 60
 
 
 HOLD_SEGUNDOS = 10 * 60  # una reserva web sin pagar se libera a los 10 min
@@ -121,6 +141,7 @@ def _json_dict(v) -> dict:
 def _norm_cancha(d: dict) -> dict:
     d = dict(d)
     d["fidelidad"] = _json_dict(d.get("fidelidad"))
+    d["reglas_reserva"] = _json_dict(d.get("reglas_reserva"))
     d["deportes"] = _json_list(d.get("deportes"))
     d["fotos"] = _json_list(d.get("fotos"))
     d["servicios_extra"] = [
@@ -463,6 +484,25 @@ def fotos_de_cancha(cancha_id: str) -> list[str] | None:
     return None if r is None else r.get(str(cancha_id or "").strip(), [])
 
 
+def guardar_reglas(cancha_ids: list[str], dueno: str, reglas: dict) -> int:
+    """Guarda las reglas de reserva (ya normalizadas) en las canchas del DUEÑO
+    (`dueno` = correo verificado). Devuelve cuántas filas cambió; 0 si no son
+    suyas o la columna aún no existe."""
+    if not pg.habilitado or not cancha_ids or not dueno or not col_reglas_disponible():
+        return 0
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE pichangol_canchas SET reglas_reserva = %s::jsonb "
+                        "WHERE id = ANY(%s) AND lower(dueno) = lower(%s) AND NOT coalesce(eliminada, false)",
+                        (json.dumps(reglas or {}), list(cancha_ids), dueno))
+            n = cur.rowcount
+            conn.commit()
+            return n
+    except Exception as e:  # noqa: BLE001
+        print("datos.guardar_reglas error:", e)
+        return 0
+
+
 def bloquear(cancha_id: str, fecha: str, hora: str, bloquear: bool = True) -> bool:
     """Bloqueo de un turno por el dueño (misma tabla y clave que
     `BloqueosRepo` del app: PK (cancha_id, fecha, hora)). Idempotente."""
@@ -685,6 +725,24 @@ def liberar_holds_vencidos_todos() -> list[dict]:
     except Exception as ex:  # noqa: BLE001
         print(f"[holds] no se pudo liberar: {ex}", flush=True)
         return []
+
+
+def marcar_hold_voucher(ids: list[str]) -> bool:
+    """El jugador subió su voucher: el apartado espera la revisión del club."""
+    if not pg.habilitado or not ids:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("UPDATE pichangol_reservas SET medio_pago = %s WHERE id = ANY(%s) "
+                        "AND estado = 'nueva' AND NOT coalesce(pagado, false)", (MEDIO_HOLD_VOUCHER, ids))
+            n = cur.rowcount
+            if n != len(set(ids)):
+                conn.rollback()
+                return False
+            conn.commit()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def marcar_hold_pasarela(ids: list[str]) -> bool:

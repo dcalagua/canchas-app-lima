@@ -59,7 +59,9 @@ ACCESOS_MAX = 200
 def _ip_de(request: Request) -> str:
     xff = request.headers.get("x-forwarded-for", "")
     if xff:
-        return xff.split(",")[0].strip()[:64] or "?"
+        # El ÚLTIMO valor lo agrega el proxy de Railway (IP real); los primeros
+        # los controla el cliente y servían para evadir el rate limit (C4).
+        return xff.split(",")[-1].strip()[:64] or "?"
     return (request.client.host if request.client else "?")[:64]
 
 
@@ -1568,8 +1570,16 @@ def reset_total_admin(
     reclamos de propiedad (las canchas dejan de estar reclamadas/verificadas) y la
     config del operador. Deja el backend como recién instalado. Combínalo con el
     SQL dejar_virgen_total.sql (Supabase) y con limpiar los datos de la app en cada
-    dispositivo. El snapshot vacío se persiste por el middleware tras este POST."""
+    dispositivo. El snapshot vacío se persiste por el middleware tras este POST.
+
+    NUNCA en producción (C4): bloqueado con `PICHANGOL_ENTORNO=PRD` o con llaves
+    `sk_live` de Culqi (plata real), salvo `PERMITIR_RESET_TOTAL=1` explícito."""
     _check(x_admin_token)
+    import os as _os
+    from pagos import culqi as _culqi
+    prod = config.PICHANGOL_ENTORNO in ("PRD", "PROD", "PRODUCCION") or _culqi.modo() == "live"
+    if prod and _os.getenv("PERMITIR_RESET_TOTAL", "0") != "1":
+        raise HTTPException(status_code=403, detail="reset_bloqueado_en_produccion")
     antes = {
         "reclamos": len(stores.reclamos),
         "canchas": len(stores.canchas),
@@ -2091,7 +2101,21 @@ def get_canal_publico() -> dict:
         "fotos_local_min": _fotos_local_min(),
         # Logo de la marca configurable en la torre (vacío = el que trae el APK).
         **_marca_logo_publico(),
+        # DEPORTES que la app ofrece (plan A1): el operador los prende/apaga
+        # en la torre (`deportes_activos`, coma) sin publicar un APK nuevo;
+        # p. ej. reactivar pádel. El APK ignora los que no conoce.
+        "deportes_activos": deportes_activos(),
     }
+
+
+DEPORTES_CONOCIDOS = ("futbol", "tenis", "padel", "pickleball", "voley", "basquet")
+
+
+def deportes_activos() -> list[str]:
+    from db.store import stores
+    raw = str(stores.config.get("deportes_activos") or "futbol,tenis,pickleball,voley,basquet")
+    out = [d for d in (x.strip().lower() for x in raw.split(",")) if d in DEPORTES_CONOCIDOS]
+    return list(dict.fromkeys(out)) or ["futbol"]
 
 
 def _marca_logo_publico() -> dict:

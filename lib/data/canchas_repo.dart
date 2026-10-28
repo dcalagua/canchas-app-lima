@@ -287,6 +287,11 @@ class CanchasRepo {
         fidelidad: r['fidelidad'] is Map
             ? Map<String, dynamic>.from(r['fidelidad'] as Map)
             : const {},
+        // Solo lectura en el APK: el trigger de la migración 0002 impide que
+        // la anon key la pise; la escribe el backend.
+        reglasReserva: r['reglas_reserva'] is Map
+            ? Map<String, dynamic>.from(r['reglas_reserva'] as Map)
+            : const {},
         descuentoValle: ((r['descuento_valle'] ?? 0) as num).toInt(),
         valleDesde: (r['valle_desde'] ?? '') as String,
         valleHasta: (r['valle_hasta'] ?? '') as String,

@@ -380,7 +380,7 @@ class _ReservaDestacada extends StatelessWidget {
               const Spacer(),
               if (appState.reservaPendienteSync(reserva.id) ||
                   appState.reservaNoConfirmada(reserva.id))
-                _EstadoChip(estado: reserva.estado, reservaId: reserva.id)
+                _EstadoChip(estado: reserva.estado, reservaId: reserva.id, medioPago: reserva.medioPago)
               else
                 Text(_estadoLabel(reserva.estado),
                     style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
@@ -509,7 +509,7 @@ class _ReservaCard extends StatelessWidget {
                   style: t.bodySmall?.copyWith(color: textoTenueDe(context)),
                 ),
                 const SizedBox(height: 6),
-                _EstadoChip(estado: reserva.estado, reservaId: reserva.id),
+                _EstadoChip(estado: reserva.estado, reservaId: reserva.id, medioPago: reserva.medioPago),
               ],
             ),
           ),
@@ -1138,7 +1138,7 @@ void _mostrarPase(BuildContext context, Reserva reserva, Cancha? cancha) {
                       ],
                     ),
                   ),
-                  _EstadoChip(estado: reserva.estado, reservaId: reserva.id),
+                  _EstadoChip(estado: reserva.estado, reservaId: reserva.id, medioPago: reserva.medioPago),
                 ],
               ),
               const SizedBox(height: 18),
@@ -1261,19 +1261,28 @@ class _PaseFila extends StatelessWidget {
 /// refleja el estado de SINCRONIZACIÓN offline: "Pendiente de confirmar" (aún no
 /// llegó al servidor) o "No se confirmó" (el slot lo tomó otro / sincronizó tarde).
 class _EstadoChip extends StatelessWidget {
-  const _EstadoChip({required this.estado, this.reservaId = ''});
+  const _EstadoChip({required this.estado, this.reservaId = '', this.medioPago = ''});
   final EstadoReserva estado;
   final String reservaId;
+  final String medioPago;
 
   @override
   Widget build(BuildContext context) {
     // Estado de sincronización tiene prioridad sobre el estado del booking.
     if (reservaId.isNotEmpty && appState.reservaPendienteSync(reservaId)) {
-      return _pill('⏳  Pendiente de confirmar',
+      return _pill(context, '⏳  Pendiente de confirmar',
           const Color(0xFFFBEAD2), const Color(0xFF8A5A00));
     }
     if (reservaId.isNotEmpty && appState.reservaNoConfirmada(reservaId)) {
-      return _pill('⚠️  No se confirmó', estadoBadBg, estadoBadFg);
+      return _pill(context, '⚠️  No se confirmó', estadoBadBg, estadoBadFg);
+    }
+    // Una reserva `nueva` NO está confirmada: o el club revisa el voucher del
+    // jugador (cobro directo) o es un apartado que aún no se paga. Antes se
+    // pintaba "✅ Confirmada" y el jugador creía tener la cancha asegurada.
+    if (estado == EstadoReserva.nueva) {
+      return medioPago == 'voucher'
+          ? _pill(context, '🧾  Pago en revisión del club', estadoWarnBg, estadoWarnFg)
+          : _pill(context, '⏳  Apartada · falta pagar', estadoWarnBg, estadoWarnFg);
     }
     final (bg, fg) = switch (estado) {
       EstadoReserva.confirmada || EstadoReserva.nueva => (estadoOkBg, estadoOkFg),
@@ -1286,16 +1295,16 @@ class _EstadoChip extends StatelessWidget {
       EstadoReserva.completada => '🏁',
       EstadoReserva.noShow => '🚫',
     };
-    return _pill('$emoji  ${_estadoLabel(estado)}', bg, fg);
+    return _pill(context, '$emoji  ${_estadoLabel(estado)}', bg, fg);
   }
 
-  static Widget _pill(String texto, Color bg, Color fg) => Container(
+  static Widget _pill(BuildContext context, String texto, Color bg, Color fg) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
         decoration:
             BoxDecoration(color: bg, borderRadius: BorderRadius.circular(999)),
         child: Text(texto,
-            style:
-                TextStyle(color: fg, fontSize: 11, fontWeight: FontWeight.w700)),
+            style: (Theme.of(context).textTheme.labelSmall ?? const TextStyle())
+                .copyWith(color: fg, fontSize: 11.5, fontWeight: FontWeight.w700)),
       );
 }
 

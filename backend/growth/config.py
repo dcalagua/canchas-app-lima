@@ -346,6 +346,14 @@ COINCIDENCIA_MAX_M = float(os.getenv("VERIF_COINCIDENCIA_MAX_M", "200"))
 CULQI_SECRET_KEY = os.getenv("CULQI_SECRET_KEY", "")
 CULQI_PUBLIC_KEY = os.getenv("CULQI_PUBLIC_KEY", "")
 CULQI_API_BASE = os.getenv("CULQI_API_BASE", "https://api.culqi.com/v2")
+# COBRO DIRECTO AL CLUB (plan A4): clave Fernet con la que se CIFRAN las llaves
+# secretas de Culqi de cada club en `cl_pasarela_club`. Sin ella NO se puede
+# guardar una cuenta (falla cerrado). Generar: `python -c "from cryptography.
+# fernet import Fernet; print(Fernet.generate_key().decode())"`. Rotarla obliga
+# a que cada club vuelva a cargar su llave.
+PAGOS_ENC_KEY = os.getenv("PAGOS_ENC_KEY", "")
+# Minutos que un apartado espera la revisión del VOUCHER por el club (A5).
+VOUCHER_PLAZO_MIN = int(os.getenv("VOUCHER_PLAZO_MIN", "60"))
 # Cancelación desde la web: horas mínimas de anticipación para devolver el 100 %.
 WEB_CANCELACION_HORAS = float(os.getenv("WEB_CANCELACION_HORAS", "6"))
 # Token compartido opcional para el webhook de Culqi: se pasa como ?t=<token> en

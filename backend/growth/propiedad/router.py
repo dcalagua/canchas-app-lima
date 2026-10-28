@@ -64,7 +64,9 @@ _rate_hits: dict[str, "deque[float]"] = defaultdict(deque)
 def _client_ip(request: Request) -> str:
     xff = request.headers.get("x-forwarded-for", "")
     if xff:
-        return xff.split(",")[0].strip()
+        # El ÚLTIMO valor lo agrega el proxy de Railway (IP real); los primeros
+        # los controla el cliente y servían para evadir el rate limit (C4).
+        return xff.split(",")[-1].strip()
     return request.client.host if request.client else "?"
 
 
@@ -162,8 +164,17 @@ def post_reclamo(req: ReclamoRequest) -> dict:
 
 
 @router.get("/reclamo/{cancha_id}", dependencies=_APP)
-def get_reclamo(cancha_id: str, solicitante: str = "") -> dict:
-    return reclamos.estado(cancha_id, solicitante or None)
+def get_reclamo(cancha_id: str, request: Request, solicitante: str = "") -> dict:
+    """Estado del reclamo. `es_mio` decide en el APK si la cancha es de quien
+    pregunta: con `X-User-Token` el solicitante es el correo VERIFICADO (C1);
+    un `solicitante` distinto al del token → 403."""
+    import auth_usuario
+    quien = auth_usuario.correo_del_cliente(request, solicitante) if (solicitante or
+                                                                     request.headers.get("X-User-Token")) else ""
+    out = reclamos.estado(cancha_id, quien or None)
+    if quien and request.headers.get("X-User-Token") and out.get("es_mio"):
+        reclamos.reflejar_aprobacion_propia(cancha_id, quien)
+    return out
 
 
 class BorrarMisReclamosRequest(BaseModel):

@@ -20,27 +20,43 @@ import config
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 
-def disponible() -> bool:
-    return bool(config.CULQI_SECRET_KEY)
+def disponible(llave: str | None = None) -> bool:
+    """¿Hay llave secreta? `llave` = la del CLUB (cobro directo, plan A4); sin
+    ella, la de la plataforma (`CULQI_SECRET_KEY`)."""
+    return bool(llave or config.CULQI_SECRET_KEY)
 
 
-def modo() -> str:
+def modo(llave: str | None = None) -> str:
     """'live' | 'test' | 'off' según el prefijo de la llave secreta."""
-    k = config.CULQI_SECRET_KEY
+    k = llave or config.CULQI_SECRET_KEY
     if not k:
         return "off"
     return "live" if k.startswith("sk_live") else "test"
 
 
-def _request(metodo: str, path: str, body: dict | None = None) -> dict:
-    """Llama a la API de Culqi. Devuelve {ok, data} o {ok: False, error, ...}."""
+def _disp(llave: str | None) -> bool:
+    """Con llave del club basta tenerla; sin ella, la de la plataforma."""
+    return bool(llave) if llave else disponible()
+
+
+def _req(metodo: str, path: str, body: dict | None = None, llave: str | None = None) -> dict:
+    """`_request` pasando la llave del club SOLO si la hay (la firma de
+    siempre sigue intacta para la cuenta de la plataforma)."""
+    if llave:
+        return _request(metodo, path, body, llave=llave)
+    return _request(metodo, path, body) if body is not None else _request(metodo, path)
+
+
+def _request(metodo: str, path: str, body: dict | None = None, llave: str | None = None) -> dict:
+    """Llama a la API de Culqi con la llave del club (`llave`) o la de la
+    plataforma. Devuelve {ok, data} o {ok: False, error, ...}."""
     url = f"{config.CULQI_API_BASE}{path}"
     datos = json.dumps(body).encode("utf-8") if body is not None else None
     req = urllib.request.Request(
         url,
         data=datos,
         headers={
-            "Authorization": f"Bearer {config.CULQI_SECRET_KEY}",
+            "Authorization": f"Bearer {llave or config.CULQI_SECRET_KEY}",
             "Content-Type": "application/json",
             "Accept": "application/json",
         },
@@ -142,14 +158,16 @@ def crear_cargo(
     metadata: dict | None = None,
     moneda: str = "PEN",
     cliente: dict | None = None,
+    llave: str | None = None,
 ) -> dict:
     """Crea un cargo en Culqi. Devuelve {ok, charge_id, capturado, raw} o
     {ok: False, error}. El `token` es el source_id que generó el APK (tarjeta o
     Yape) con la llave pública. `cliente` = {nombre, apellido, telefono,
     direccion, ciudad, pais} (lo que se sepa) → viaja como `antifraud_details`
     para que el panel de Culqi muestre a la persona real y no "first_last_name";
-    si es None se arma igual a partir del correo."""
-    if not disponible():
+    si es None se arma igual a partir del correo. `llave` = sk del CLUB
+    (cobro directo); sin ella cobra la cuenta de la plataforma."""
+    if not _disp(llave):
         return {"ok": False, "error": "culqi_no_configurado"}
     if monto_centimos < 100:  # Culqi exige mínimo S/ 1.00 (100 céntimos)
         return {"ok": False, "error": "monto_minimo_1_sol"}
@@ -174,7 +192,7 @@ def crear_cargo(
         email=email, nombre=str(c.get("nombre") or ""), apellido=str(c.get("apellido") or ""),
         telefono=str(c.get("telefono") or ""), direccion=str(c.get("direccion") or ""),
         ciudad=str(c.get("ciudad") or ""), pais=str(c.get("pais") or ""), moneda=moneda)
-    r = _request("POST", "/charges", body)
+    r = _req("POST", "/charges", body, llave=llave)
     if not r["ok"]:
         return r
     data = r["data"]
@@ -187,16 +205,17 @@ def crear_cargo(
 
 
 def reembolsar(*, charge_id: str, monto_centimos: int,
-               motivo: str = "solicitud_comprador") -> dict:
+               motivo: str = "solicitud_comprador", llave: str | None = None) -> dict:
     """Devuelve [monto_centimos] de un cargo (total o parcial). Culqi acepta
     reembolsos sobre cargos capturados, en test y en live. Devuelve
-    {ok, refund_id, raw} o {ok: False, error}."""
-    if not disponible():
+    {ok, refund_id, raw} o {ok: False, error}. Un cargo de un CLUB se
+    devuelve con SU llave (`llave`)."""
+    if not _disp(llave):
         return {"ok": False, "error": "culqi_no_configurado"}
     if not charge_id or monto_centimos <= 0:
         return {"ok": False, "error": "reembolso_invalido"}
-    r = _request("POST", "/refunds", {
-        "amount": int(monto_centimos), "charge_id": charge_id, "reason": motivo})
+    r = _req("POST", "/refunds", {
+        "amount": int(monto_centimos), "charge_id": charge_id, "reason": motivo}, llave=llave)
     if not r["ok"]:
         return r
     data = r["data"]
@@ -261,12 +280,12 @@ def eliminar_card(card_id: str) -> dict:
     return {"ok": r["ok"], "error": r.get("error")}
 
 
-def obtener_cargo(charge_id: str) -> dict:
+def obtener_cargo(charge_id: str, llave: str | None = None) -> dict:
     """Re-consulta un cargo (fuente de verdad para el webhook). Devuelve
     {ok, charge_id, capturado, monto_centimos, metadata, raw}."""
-    if not disponible():
+    if not _disp(llave):
         return {"ok": False, "error": "culqi_no_configurado"}
-    r = _request("GET", f"/charges/{charge_id}")
+    r = _req("GET", f"/charges/{charge_id}", llave=llave)
     if not r["ok"]:
         return r
     data = r["data"]
@@ -322,3 +341,14 @@ def comision_real(charge_id: str) -> dict:
                 "detalle": info.get("fee_details") or {}}
     return {"ok": True, "conocida": True, "monto_centimos": monto, "pasarela_centimos": pas, "neto_centimos": monto - pas,
             "detalle": info.get("fee_details") or {}}
+
+
+def verificar_llave(llave: str) -> dict:
+    """¿Culqi acepta esta llave secreta? (al guardar la cuenta de un club).
+    {ok, valida, error}. `valida=None` = no se pudo comprobar (red)."""
+    r = _req("GET", "/charges?limit=1", llave=llave)
+    if r.get("ok"):
+        return {"ok": True, "valida": True}
+    if r.get("status") in (401, 403):
+        return {"ok": True, "valida": False, "error": "llave_rechazada"}
+    return {"ok": False, "valida": None, "error": r.get("error") or "sin_conexion"}

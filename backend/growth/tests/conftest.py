@@ -28,3 +28,15 @@ def _academias_en_los_tres_paises(monkeypatch):
     prueba la regla real."""
     from db.store import stores
     monkeypatch.setitem(stores.config, "acad_paises", "PE,EC,BO")
+
+
+@pytest.fixture(autouse=True)
+def _liquidaciones_sin_exigir_cargo(monkeypatch, request):
+    """La suite histórica de contabilidad registra liquidaciones sin un cobro
+    real detrás; la regla de seguridad C2 (`liq_exige_cargo`, default "1" en
+    producción) se prueba aparte en `test_liquidacion_segura.py` y en los
+    tests marcados `cargo_real`."""
+    if "cargo_real" in request.keywords or request.module.__name__.endswith(("test_liquidacion_segura", "test_web_reservas")):
+        return
+    from pagos import router as pr
+    monkeypatch.setattr(pr, "_verificar_cargo_liquidacion", lambda req: "")

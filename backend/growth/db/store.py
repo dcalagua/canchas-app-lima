@@ -167,6 +167,8 @@ CONFIG_DEFAULT: dict[str, str] = {
     # del admin, activa al instante) | "nuevo_flujo" (exige validación en sitio
     # antes de activar). Se puede sobreescribir por cancha (modo_aprobacion_overrides).
     "modo_aprobacion": "marcha_blanca",
+    # Deportes que la app ofrece (plan A1, `GET /config/canal`): coma, en orden.
+    "deportes_activos": "futbol,tenis,pickleball,voley,basquet",
     # Si "1", el admin sólo puede APROBAR un reclamo si el GPS del dispositivo
     # desde donde se envió coincide con la ubicación de la cancha (anti-fraude
     # ligero: "estar en el lugar" al reclamar). "0" = no se exige (piloto).
@@ -866,8 +868,17 @@ class Stores:
         return self.saldos.get(dueno_id, 0)
 
     def acreditar(self, dueno_id: str, centimos: int) -> int:
-        """Suma [centimos] al saldo del dueño y devuelve el nuevo saldo."""
+        """Suma [centimos] al saldo del dueño y devuelve el nuevo saldo. Si el
+        dueño debe comisiones de COBRO DIRECTO (plan A6), la plata que entra
+        las salda primero (`cobro_directo.saldar_deudas`)."""
         self.saldos[dueno_id] = self.saldos.get(dueno_id, 0) + int(centimos)
+        if int(centimos) > 0 and any(p.tipo == "comision_deuda" and p.estado == "pendiente"
+                                     and p.dueno_id == dueno_id for p in self.pagos):
+            try:
+                from pagos import cobro_directo
+                cobro_directo.saldar_deudas(dueno_id)
+            except Exception as e:  # noqa: BLE001 — saldar nunca rompe una recarga
+                print("store.acreditar: no se saldó la deuda:", e)
         return self.saldos[dueno_id]
 
     def debitar(self, dueno_id: str, centimos: int) -> int:
