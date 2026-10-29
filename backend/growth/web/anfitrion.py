@@ -6,10 +6,12 @@ mañana, próximos 7 días y las de efectivo por cobrar), **Calendario** (agenda
 semanal por cancha: reservas, bloqueos y turnos libres), **Reservas** (todas,
 agrupadas por día), **Ingresos** (saldo, saldo de regalo, por recibir,
 liquidaciones y movimientos del backend) y **Canchas** (sus locales con su
-ficha pública). Sin canchas a su nombre → página "Pon tu cancha" (el registro
-y la verificación siguen en el app). **Editar la cancha** (fotos, nombre,
-deportes, precio, horario, servicios) SÍ se hace aquí, con el mismo formulario
-que el app; reserva manual y bloqueos siguen en el app por ahora.
+ficha pública). Sin canchas a su nombre → onboarding con "Registrar mi
+cancha" (el registro y el reclamo también se hacen aquí). Editar la cancha y
+el local, reserva manual, bloqueos y marcar pagado se hacen aquí con el mismo
+formulario y las mismas filas que el app; el calendario respeta las REGLAS DE
+RESERVA del club (`reservas.reglas.cancha_del_dia`). Cobros del club, Pagos
+por confirmar y el editor de Reglas viven en `web/anfitrion_cobros_club.py`.
 """
 
 from __future__ import annotations
@@ -41,6 +43,7 @@ import servicios_extra as _se
 import fidelidad as _fid
 from db.store import stores
 from propiedad import fotos_locales, fotos_reclamo, reclamos
+from reservas import reglas as _reglas
 from web import almacen, catalogos, datos, horarios, sesion, ui
 from web.router import (PLAY_URL, _deporte, _deportes_de, _fotos, _fotos_crudas, _maps, _moneda_de, _pais_de,
                         _zona, e)
@@ -52,32 +55,85 @@ SECCIONES = [("hoy", "Hoy", "/anfitrion/mis-canchas", "📅"), ("calendario", "C
              ("reservas", "Reservas", "/anfitrion/reservas", "📋"), ("ingresos", "Ingresos", "/anfitrion/ingresos", "💰"),
              ("canchas", "Canchas", "/anfitrion/canchas", "🏟️")]
 
-# Menú del modo anfitrión: EL MISMO del app (explorar_home_screen → Modo
-# anfitrión): ícono en círculo de color, título, descripción y chevron.
-MENU = [
-    ("mis-canchas", "Mis canchas", "Registra y administra: canchas, agenda, reservas, cuenta", "#0B7A55", "🏬", "/anfitrion/mis-canchas", True),
-    ("reportes", "Reportes", "Resumen, ocupación, cobros y cancelaciones", "#2F6FDE", "📊", "/anfitrion/reportes", True),
-    ("llenar", "Llenar cancha", "Horas libres de hoy y mañana: ponles promo y avisa a tus clientes", "#F28C28", "📣", "/anfitrion/llenar", True),
-    ("recordatorios", "Recordar reservas", "Avisa a tus clientes de hoy y mañana por chat o WhatsApp", "#2F6FDE", "🔔", "/anfitrion/recordatorios", True),
-    ("caja", "Caja del día", "Cobrado, por cobrar y cierre de caja", "#0B8A3E", "🧾", "/anfitrion/caja", True),
-    ("clientes", "Clientes", "Tu base de clientes: frecuentes, VIP, en riesgo y deudores", "#7B61FF", "👥", "/anfitrion/clientes", True),
-    ("bonos", "Bonos", "Packs de horas prepagadas de tu local", "#E07A3F", "🎟️", "/anfitrion/bonos", True),
-    ("fijas", "Reservas fijas", "Pensionados: el mismo día y hora, cada semana", "#067A38", "🔁", "/anfitrion/fijas", True),
-    ("disponibilidad", "Disponibilidad", "Abre o cierra turnos de tus canchas", "#7CB518", "🟢", "/anfitrion/disponibilidad", True),
-    ("academia", "Mi academia", "Soy profe: alumnos, cuotas y cobros", "#E07A3F", "📣", "/anfitrion/academia", True),
-    ("cobros", "Cobros de academia", "Quién debe, recordatorios y cobro en efectivo", "#D4B048", "💳", "/anfitrion/cobros", True),
-    ("plan-academia", "Plan Academia", "Tu suscripción: prueba gratis, precio fijo al mes y tus alumnos te pagan directo", "#742284", "🎓", "/anfitrion/academia/plan", True),
-    ("campeonatos", "Mis campeonatos", "Organiza torneos (fútbol, tenis…), invita y sortea", "#D4B048", "🏆", "/anfitrion/campeonatos", True),
-    ("tienda", "Mi tienda", f"Vende en el Marketplace {MARCA}: raquetas, pelotas y más", "#7B61FF", "🏪", "/anfitrion/tienda", True),
-    ("bodega", "Mi bodega", "Caja rápida, stock, pedidos a la cancha y carta con QR (Pro)", "#E07A3F", "🧃", "/anfitrion/bodega", True),
-    ("boleador", "Soy boleador", "Peloteo por turno: pon tu categoría, tu tarifa y dónde atiendes", "#0E8F67", "🎾", "/anfitrion/boleador", True),
-    ("verificador", "Verificador", "Rol de campo: visitas con foto, GPS y firma", "#0E8F67", "🛡️", "/anfitrion/verificador", True),
+# Menú del modo anfitrión: los mismos módulos del app (ícono en círculo de
+# color, título, descripción y chevron), AGRUPADOS por tema. "Mi club" va
+# arriba con los cobros y las reglas. Tupla: (clave, título, descripción,
+# color, ícono, enlace, hecho_en_web).
+GRUPOS_MENU = [
+    ("Mi club", [
+        ("mis-canchas", "Mis canchas", "Registra y administra: canchas, agenda, reservas, cuenta", "#0B7A57", "🏬", "/anfitrion/mis-canchas", True),
+        ("cobros-club", "Cobros del club", "Tu Culqi, tus medios de pago manuales y la comisión", "#0B7A57", "💸", "/anfitrion/cobros-club", True),
+        ("pagos-por-confirmar", "Pagos por confirmar", "Comprobantes de Yape, Plin o transferencia que debes revisar", "#946200", "🧾", "/anfitrion/pagos-por-confirmar", True),
+        ("reglas", "Reglas de reserva", "Horario por día, días cerrados, precios por franja y cancelación", "#2F6FDE", "⚙️", "/anfitrion/reglas", True),
+        ("disponibilidad", "Disponibilidad", "Abre o cierra turnos de tus canchas", "#7CB518", "🟢", "/anfitrion/disponibilidad", True),
+        ("fijas", "Reservas fijas", "Pensionados: el mismo día y hora, cada semana", "#08654A", "🔁", "/anfitrion/fijas", True),
+    ]),
+    ("Negocio", [
+        ("reportes", "Reportes", "Resumen, ocupación, cobros y cancelaciones", "#2F6FDE", "📊", "/anfitrion/reportes", True),
+        ("caja", "Caja del día", "Cobrado, por cobrar y cierre de caja", "#0B7A57", "💵", "/anfitrion/caja", True),
+        ("clientes", "Clientes", "Tu base de clientes: frecuentes, VIP, en riesgo y deudores", "#7B61FF", "👥", "/anfitrion/clientes", True),
+        ("llenar", "Llenar cancha", "Horas libres de hoy y mañana: ponles promo y avisa a tus clientes", "#F28C28", "📣", "/anfitrion/llenar", True),
+        ("recordatorios", "Recordar reservas", "Avisa a tus clientes de hoy y mañana por chat o WhatsApp", "#2F6FDE", "🔔", "/anfitrion/recordatorios", True),
+        ("bonos", "Bonos", "Packs de horas prepagadas de tu local", "#E07A3F", "🎟️", "/anfitrion/bonos", True),
+        ("campeonatos", "Mis campeonatos", "Organiza torneos (fútbol, tenis…), invita y sortea", "#D4B048", "🏆", "/anfitrion/campeonatos", True),
+    ]),
+    ("Academia", [
+        ("academia", "Mi academia", "Soy profe: alumnos, cuotas y cobros", "#E07A3F", "🎓", "/anfitrion/academia", True),
+        ("cobros", "Cobros de academia", "Quién debe, recordatorios y cobro en efectivo", "#D4B048", "💳", "/anfitrion/cobros", True),
+        ("plan-academia", "Plan Academia", "Tu suscripción: prueba gratis, precio fijo al mes y tus alumnos te pagan directo", "#742284", "🗓️", "/anfitrion/academia/plan", True),
+    ]),
+    ("Comercio", [
+        ("tienda", "Mi tienda", f"Vende en el Marketplace {MARCA}: raquetas, pelotas y más", "#7B61FF", "🏪", "/anfitrion/tienda", True),
+        ("bodega", "Mi bodega", "Caja rápida, stock, pedidos a la cancha y carta con QR (Pro)", "#E07A3F", "🧃", "/anfitrion/bodega", True),
+    ]),
+    ("Roles", [
+        ("boleador", "Soy boleador", "Peloteo por turno: pon tu categoría, tu tarifa y dónde atiendes", "#0B7A57", "🎾", "/anfitrion/boleador", True),
+        ("verificador", "Verificador", "Rol de campo: visitas con foto, GPS y firma", "#0B7A57", "🛡️", "/anfitrion/verificador", True),
+    ]),
 ]
+MENU = [it for _g, items in GRUPOS_MENU for it in items]
 
 
 def _plan_academia_activo() -> bool:
     import academia_plan
     return academia_plan.es_suscripcion()
+
+
+def _sim_de_iso(iso: str | None, por_defecto: str = "S/") -> str:
+    """Símbolo de la moneda de UN movimiento (no la de la primera cancha)."""
+    return {"PEN": "S/", "USD": "$", "BOB": "Bs"}.get((iso or "").upper(), por_defecto)
+
+
+def _pendientes_vouchers(email: str) -> int:
+    try:
+        from web import cobro_directo_web as _cdw
+        return _cdw.pendientes_de(email)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def _banner_cobros(email: str) -> str:
+    """Hoy: cobros directos suspendidos por deuda de comisión y/o vouchers por
+    revisar (la misma fuente que Cobros del club)."""
+    try:
+        from web import cobro_directo_web as _cdw
+        est = _cdw.estado_club(email)
+    except Exception:  # noqa: BLE001
+        return ""
+    out = ""
+    com = est.get("comision") or {}
+    if com.get("suspendido"):
+        sim = {"PEN": "S/", "USD": "$", "BOB": "Bs"}.get(est.get("moneda"), "S/")
+        out += ("<div class='cl-aviso bad' role='alert' style='margin-top:14px'><b>Tus cobros en línea están pausados</b>"
+                f"<span>Debes {e(sim)} {int(com.get('deuda_centimos') or 0) / 100.0:.2f} de comisiones. Recarga tu saldo y se paga sola; "
+                "el pago en la cancha sigue funcionando.</span>"
+                "<span><a class='btn' href='/mi-billetera#recargar'>Recargar saldo</a> <a class='btn sec' href='/anfitrion/cobros-club'>Ver cobros del club</a></span></div>")
+    n = int(est.get("pendientes") or 0)
+    if n:
+        out += (f"<div class='cl-aviso warn' style='margin-top:14px'><b>🧾 {n} pago{'s' if n != 1 else ''} por confirmar</b>"
+                "<span>Revisa los comprobantes antes de que venzan o la reserva se libera sola.</span>"
+                "<span><a class='btn' href='/anfitrion/pagos-por-confirmar'>Revisar ahora</a></span></div>")
+    return out
 
 
 def _cabecera(seccion: str, ses: dict | None, tabs_visibles: bool = True) -> str:
@@ -107,15 +163,26 @@ def pagina_menu(request: Request) -> HTMLResponse:
     ses, resp = _sesion_o_entrar(request, "/anfitrion")
     if resp is not None:
         return resp
-    items = "".join(
-        f"<a class='anf-item' href='{href}'><span class='ico' style='background:{color}'>{ico}</span>"
-        f"<span class='txt'><b>{e(titulo)}</b><small>{e(desc)}</small></span>"
-        + ("" if web else "<span class='pill gris'>En la app</span>")
-        + "<span class='chev'>›</span></a>" for _k, titulo, desc, color, ico, href, web in MENU
-        if _k != "plan-academia" or _plan_academia_activo())
+    insignias = {"pagos-por-confirmar": _pendientes_vouchers(ses["email"])}
+
+    def item(k: str, titulo: str, desc: str, color: str, ico: str, href: str, web: bool) -> str:
+        n = insignias.get(k) or 0
+        return (f"<a class='anf-item' href='{href}'><span class='ico' style='background:{color}' aria-hidden='true'>{ico}</span>"
+                f"<span class='txt'><b>{e(titulo)}</b><small>{e(desc)}</small></span>"
+                + (f"<span class='pill bad anf-insignia' aria-label='{n} por revisar'>{n}</span>" if n else "")
+                + ("" if web else "<span class='pill gris'>En la app</span>")
+                + "<span class='chev' aria-hidden='true'>›</span></a>")
+    grupos = ""
+    for nombre, its in GRUPOS_MENU:
+        html_its = "".join(item(*it) for it in its if it[0] != "plan-academia" or _plan_academia_activo())
+        if html_its:
+            grupos += f"<section class='anf-grupo' aria-label='{e(nombre)}'><h2>{e(nombre)}</h2>{html_its}</section>"
     cuerpo = ("<div class='anf-hero'><a class='volver' href='/' aria-label='Volver'>‹</a><h1>Modo anfitrión</h1>"
               "<p>Publica tu cancha o academia y recibe reservas y alumnos.</p></div>"
-              f"<div class='anf-menu'>{items}</div>")
+              f"<div class='anf-menu'>{grupos}</div>"
+              "<style>.anf-grupo{display:flex;flex-direction:column;gap:14px}.anf-grupo h2{margin:12px 0 0;font-size:15px;"
+              "text-transform:uppercase;letter-spacing:.06em;color:var(--tenue)}.anf-insignia{display:inline-flex!important;min-width:28px;"
+              "justify-content:center;font-weight:800}.anf-item:focus-visible{outline:3px solid var(--esmeralda);outline-offset:2px}</style>")
     return ui.shell("Modo anfitrión", cuerpo, nav=_cabecera("", ses, tabs_visibles=False), sesion=ses, ancho=True,
                     titulo_tab=f"Modo anfitrión · {MARCA}")
 
@@ -241,7 +308,7 @@ def pagina_hoy(request: Request) -> HTMLResponse:
         f"<h1 class='anf-hola' style='margin-top:6px'>¡Hola, {e((ses.get('nombre') or ses.get('email') or '').split(' ')[0])}!</h1>"
         f"<p class='sub'>{len(canchas)} cancha{'s' if len(canchas) != 1 else ''} · {n_ver} verificada{'s' if n_ver != 1 else ''} · "
         f"{len(grupos['hoy'])} reserva{'s' if len(grupos['hoy']) != 1 else ''} hoy</p>"
-        f"{_aviso_verificacion(canchas, ses['email'])}{fotos_locales.avisos_dueno(ses['email'], canchas)}"
+        f"{_banner_cobros(ses['email'])}{_aviso_verificacion(canchas, ses['email'])}{fotos_locales.avisos_dueno(ses['email'], canchas)}"
         f"<h2 style='margin-top:22px'>Tus reservas</h2><div class='anf-tabs' id='anfTabs'>{tabs}</div>{paneles}"
         "<h2 style='margin-top:30px'>Atajos</h2><div class='kpis'>"
         "<a class='kpi' href='/anfitrion/calendario' style='text-decoration:none'><small>Agenda</small><b style='font-size:16px'>Ver el calendario semanal</b></a>"
@@ -369,23 +436,47 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
     filas = datos.reservas_de_canchas([c["id"]], isos[0], sig_dia)
     bloq = datos.bloqueos_de([c["id"]], isos + [sig_dia])
     desc = datos.descuentos(c["id"], isos + [sig_dia])
-    slots = horarios.slots(c["hora_apertura"], c["hora_cierre"], c["duracion_slot_min"])
     paso = c["duracion_slot_min"]
+    # REGLAS DE RESERVA del club: cada día tiene su cancha EFECTIVA (horario
+    # de ese día de la semana, cierres especiales, franjas y recargo de luz),
+    # igual que la ficha pública. Las filas son la unión de los turnos de la
+    # semana; un turno que ese día no existe sale como "fuera de horario".
+    cdias = {d: _reglas.cancha_del_dia(c, d.isoformat()) for d in dias}
+    orden: dict[str, int] = {}
+    for d in dias:
+        for h in horarios.slots_de(cdias[d]):
+            k = _orden_turno(cdias[d], h)
+            orden[h] = min(orden.get(h, k), k)
+    slots = sorted(orden, key=lambda h: orden[h])
     ocup = {(str(r.get("fecha")), str(r.get("hora_inicio"))): r for r in filas}
     ahora = horarios.ahora_local(_pais_de(c))
     chips = "".join(f"<a class='chip{' sel' if x['id'] == c['id'] else ''}' href='/anfitrion/calendario?cancha={e(x['id'])}&desde={isos[0]}'>{e(x['nombre'])}</a>" for x in canchas)
-    cab = "".join(f"<th class='{'hoy' if d == hoy else ''}'>{horarios.DIAS[d.weekday()]}<br>{d.day} {horarios.MESES[d.month - 1]}</th>" for d in dias)
+
+    def _cab_dia(i: int, d: date) -> str:
+        mot = cdias[d].get("_cerrado")
+        extra = f"<small class='cal-cerr'>{e(_motivo_cierre(mot))}</small>" if mot else ""
+        return (f"<th data-col='{i}' class='{'hoy' if d == hoy else ''}{' cerr' if mot else ''}'>"
+                f"{horarios.DIAS[d.weekday()]}<br>{d.day} {horarios.MESES[d.month - 1]}{extra}</th>")
+    cab = "".join(_cab_dia(i, d) for i, d in enumerate(dias))
+    dias_chips = "".join(
+        f"<button type='button' class='chip{' sel' if d == (hoy if hoy in dias else dias[0]) else ''}' data-dia='{i}'"
+        f" aria-pressed='{'true' if d == (hoy if hoy in dias else dias[0]) else 'false'}'>{horarios.DIAS[d.weekday()]} {d.day}"
+        + (" · cerrado" if cdias[d].get("_cerrado") else "") + "</button>" for i, d in enumerate(dias))
+    dia_ini = dias.index(hoy) if hoy in dias else 0
     res_json: dict[str, dict] = {}
     filas_html = ""
     for h in slots:
         filas_html += f"<tr><td>{e(h)}</td>"
         fin = horarios.hora_fin(h, paso)
-        for d in dias:
-            fr = horarios.fecha_real(d.isoformat(), c["hora_apertura"], c["hora_cierre"], h)
+        for i, d in enumerate(dias):
+            cd = cdias[d]
+            col = f" data-col='{i}'"
+            en_dia = h in horarios.slots_de(cd)
+            fr = horarios.fecha_real(d.isoformat(), cd["hora_apertura"], cd["hora_cierre"], h) if en_dia else d.isoformat()
             r = ocup.get((fr, h))
             m = horarios.hora_en_minutos(h) or 0
             pasado = fr < hoy.isoformat() or (fr == hoy.isoformat() and m < ahora.hour * 60 + ahora.minute)
-            precio = horarios.precio_turno_de(c, h, desc.get((fr, h), 0))
+            precio = horarios.precio_turno_de(cd, h, desc.get((fr, h), 0)) if en_dia else 0
             base = f" data-b='{d.isoformat()}' data-f='{fr}' data-h='{h}' data-fin='{fin}' data-p='{precio}'"
             if r is not None:
                 pag = bool(r.get("pagado"))
@@ -393,14 +484,16 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
                 res_json[rid] = {"id": rid, "jugador": r.get("jugador") or "", "usuario": r.get("usuario") or "", "telefono": str(r.get("telefono") or ""),
                                  "precio": int(r.get("precio") or 0), "pagado": pag, "medio": str(r.get("medio_pago") or ""), "fecha": fr, "ini": h,
                                  "fin": str(r.get("hora_fin") or fin), "web": rid.startswith("web_")}
-                filas_html += (f"<td class='res{' pasado' if pasado else ''}' data-t='res' data-rid='{e(rid)}'{base}><div class='oc{'' if pag else ' ef'}' title='{e(r.get('usuario') or '')}'>{e((r.get('jugador') or r.get('usuario') or 'Reserva').split(' ')[0])}"
+                filas_html += (f"<td{col} class='res{' pasado' if pasado else ''}' data-t='res' data-rid='{e(rid)}'{base}><div class='oc{'' if pag else ' ef'}' title='{e(r.get('usuario') or '')}'>{e((r.get('jugador') or r.get('usuario') or 'Reserva').split(' ')[0])}"
                                f"<small>{'pagada' if pag else 'cobrar en cancha'}</small></div></td>")
+            elif not en_dia:
+                filas_html += (f"<td{col} class='fuera'><span class='vh'>{'Cerrado' if cd.get('_cerrado') else 'Fuera de horario'}</span></td>")
             elif (c["id"], fr, h) in bloq:
-                filas_html += f"<td class='bloq{' pasado' if pasado else ''}' data-t='bloq'{base}><div class='bl'>Bloqueado</div></td>"
+                filas_html += f"<td{col} class='bloq{' pasado' if pasado else ''}' data-t='bloq'{base}><div class='bl'>Bloqueado</div></td>"
             elif pasado:
-                filas_html += "<td class='pasado'></td>"
+                filas_html += f"<td{col} class='pasado'></td>"
             else:
-                filas_html += f"<td class='libre' data-t='libre'{base}><div class='li'><small>{e(sim)} {precio}</small></div></td>"
+                filas_html += f"<td{col} class='libre' data-t='libre'{base}><div class='li'><small>{e(sim)} {precio}</small></div></td>"
         filas_html += "</tr>"
     # Clientes recientes (para no tipear: mismo criterio que el selector del app).
     hist = datos.reservas_de_canchas([x["id"] for x in canchas], (hoy - timedelta(days=180)).isoformat(), (hoy + timedelta(days=60)).isoformat())
@@ -451,12 +544,83 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
         f"<div class='cal-nav2'><a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}&desde={ant}'>‹ Semana anterior</a>"
         f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}&desde={hoy.isoformat()}'>Hoy</a>"
         f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}&desde={sig}'>Semana siguiente ›</a>"
-        f"<span class='sub' style='margin:0 0 0 auto'>{e(c['nombre'])} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min</span></div>"
-        f"<div class='cal-sem cal-act'><table><thead><tr><th></th>{cab}</tr></thead><tbody>{filas_html}</tbody></table></div>"
+        f"<span class='sub' style='margin:0 0 0 auto'>{e(c['nombre'])} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min"
+        + (f" · <a href='/anfitrion/reglas/{e(c['id'])}'>con reglas del club</a>" if _reglas.de_cancha(c) else f" · <a href='/anfitrion/reglas/{e(c['id'])}'>Reglas de reserva</a>")
+        + "</span></div>"
+        f"<div class='chips cal-dias' id='calDias' role='group' aria-label='Día'>{dias_chips}</div>"
+        f"<div class='cal-sem cal-act' id='calSem' data-dia='{dia_ini}'><table><thead><tr><th></th>{cab}</tr></thead><tbody>{filas_html}</tbody></table></div>"
+        f"<style>{_CSS_CAL}</style>"
         + ("" if cfg["pro"] else f"<p class='aviso warn' style='margin-top:12px'>📝 La reserva manual y el bloqueo de horas son parte de <b>{MARCA} Pro</b>. Actívalo en Perfil → 👑 {MARCA} Pro.</p>")
         + modal
-        + f"<script>var CAL={json.dumps(cfg, ensure_ascii=False)};var RES={json.dumps(res_json, ensure_ascii=False)};</script><script>{_JS_CAL}</script>")
+        + f"<script>var CAL={ui.json_js(cfg, ensure_ascii=False)};var RES={ui.json_js(res_json, ensure_ascii=False)};</script><script>{_JS_CAL}{_JS_CAL_DIAS}</script>")
     return ui.shell("Calendario", cuerpo, nav=_cabecera("calendario", ses), sesion=ses, ancho=True, titulo_tab="Calendario · Modo anfitrión")
+
+
+MOTIVOS_CIERRE = {"cerrado": "Cerrado", "feriado": "Feriado", "mantenimiento": "Mantenimiento",
+                  "evento": "Evento privado", "otro": "Cerrado"}
+
+
+def _motivo_cierre(mot: str) -> str:
+    """"Cerrado · Feriado" (el motivo viene de las reglas del club)."""
+    m = (mot or "").strip()
+    nombre = MOTIVOS_CIERRE.get(m.lower(), m)
+    return "Cerrado" if nombre in ("", "Cerrado") else f"Cerrado · {nombre}"
+
+
+def _orden_turno(cd: dict, h: str) -> int:
+    """Minutos para ordenar un turno: los de madrugada (cancha 18:00→02:00)
+    van DESPUÉS de los de la noche."""
+    m = horarios.hora_en_minutos(h) or 0
+    return m + 24 * 60 if horarios.slot_es_madrugada(cd.get("hora_apertura") or "07:00", cd.get("hora_cierre") or "23:00", h) else m
+
+
+def turno_del_dia(c: dict, base: str, hora: str) -> dict | None:
+    """Cancha EFECTIVA del día `base` si `hora` es un turno real ese día
+    (horario por día, cierres especiales); None si no existe."""
+    cd = _reglas.cancha_del_dia(c, base)
+    return cd if hora in horarios.slots_de(cd) else None
+
+
+def base_de_turno(c: dict, fecha: str, hora: str, base: str = "") -> tuple[str, dict | None]:
+    """El calendario y Disponibilidad mandan la fecha REAL del turno (la
+    madrugada es del día siguiente). Devuelve (día base, cancha del día) del
+    turno, o ("", None) si ese turno no existe con las reglas del club."""
+    try:
+        f = date.fromisoformat(fecha)
+    except ValueError:
+        return "", None
+    candidatos = [base] if base else [f.isoformat(), (f - timedelta(days=1)).isoformat()]
+    for b in candidatos:
+        cd = turno_del_dia(c, b, hora)
+        if cd is not None and horarios.fecha_real(b, cd["hora_apertura"], cd["hora_cierre"], hora) == f.isoformat():
+            return b, cd
+    return "", None
+
+
+_CSS_CAL = (
+    ".cal-dias{display:none;margin-top:12px;flex-wrap:nowrap;overflow-x:auto;gap:8px;padding-bottom:4px}"
+    ".cal-dias .chip{flex:none;min-height:44px}"
+    ".cal-sem td:first-child,.cal-sem th:first-child{position:sticky;left:0;z-index:1;background:var(--blanco)}"
+    ".cal-sem th:first-child{z-index:2}"
+    ".cal-sem td.fuera{background:repeating-linear-gradient(45deg,var(--gris) 0 6px,var(--blanco) 6px 12px)}"
+    ".cal-sem th.cerr{color:var(--tenue)}"
+    ".cal-cerr{display:block;font-size:11.5px;font-weight:700;color:var(--bad-fg);margin-top:2px}"
+    ".cal-sem td[data-t]{cursor:pointer}.cal-sem td[data-t]:focus-visible{outline:3px solid var(--esmeralda);outline-offset:-3px}"
+    ".vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}"
+    ".cal-act td[data-t]:focus-visible .li{opacity:1}"
+    "@media(max-width:600px){.cal-dias{display:flex}.cal-sem table{min-width:0}.cal-sem td{min-width:0}.cal-act td .li{opacity:1}"
+    ".cal-sem [data-col]{display:none}"
+    + ",".join(f".cal-sem[data-dia='{i}'] [data-col='{i}']" for i in range(7)) + "{display:table-cell}}"
+)
+
+_JS_CAL_DIAS = r"""
+(function(){var t=document.getElementById('calDias'),s=document.getElementById('calSem');if(!t||!s)return;
+t.addEventListener('click',function(ev){var b=ev.target.closest('[data-dia]');if(!b)return;s.dataset.dia=b.dataset.dia;
+t.querySelectorAll('[data-dia]').forEach(function(x){var on=x===b;x.classList.toggle('sel',on);x.setAttribute('aria-pressed',on?'true':'false');});});
+document.querySelectorAll('.cal-act td[data-t]').forEach(function(td){td.tabIndex=0;});
+document.querySelector('.cal-act').addEventListener('keydown',function(ev){if((ev.key==='Enter'||ev.key===' ')&&ev.target.matches('td[data-t]')){ev.preventDefault();ev.target.click();}});
+})();
+"""
 
 
 _JS_CAL = (r"""
@@ -495,7 +659,7 @@ async function post(url,body){var r=await fetch(url,{method:'POST',headers:{'Con
 $('calSi').addEventListener('click',async function(){if(!cel)return;var b=this;b.disabled=true;err('');
   try{var j;
     if(modo==='bloq')j=await post('/anfitrion/bloqueo',{cancha_id:CAL.cancha,fecha:cel.dataset.f,hora:cel.dataset.h,bloquear:false});
-    else if(acc==='bloq')j=await post('/anfitrion/bloqueo',{cancha_id:CAL.cancha,fecha:cel.dataset.f,hora:cel.dataset.h,bloquear:true});
+    else if(acc==='bloq')j=await post('/anfitrion/bloqueo',{cancha_id:CAL.cancha,fecha:cel.dataset.f,base:cel.dataset.b,hora:cel.dataset.h,bloquear:true});
     else j=await post('/anfitrion/reserva-manual',{cancha_id:CAL.cancha,fecha:cel.dataset.b,hora:cel.dataset.h,nombre:$('mNom').value,telefono:$('mTel').value,email:$('mEm').value,precio:parseFloat($('mPre').value),pagado:$('mPag').checked});
     if(j.ok){location.reload();return} err(j.mensaje||j.error||'No se pudo guardar.')}
   catch(e){err('No se pudo guardar. Revisa tu conexión.')} b.disabled=false});
@@ -543,9 +707,18 @@ def _bloquear_turno(request: Request, _cuerpo_json) -> JSONResponse:
         date.fromisoformat(fecha)
     except ValueError:
         return JSONResponse({"ok": False, "error": "Fecha inválida."}, status_code=400)
-    if hora not in horarios.slots(c["hora_apertura"], c["hora_cierre"], c["duracion_slot_min"]):
-        return JSONResponse({"ok": False, "error": "Ese turno no existe en el horario de la cancha."}, status_code=400)
     bloquear = bool(b.get("bloquear", True))
+    if bloquear:
+        # Con las reglas del club: no se bloquea un turno que ese día no existe
+        # (día cerrado, horario distinto por día de la semana).
+        base_b, _cd = base_de_turno(c, fecha, hora, str(b.get("base") or ""))
+        if not base_b:
+            mot = _reglas.cancha_del_dia(c, fecha).get("_cerrado")
+            msg = (f"Ese día el club está cerrado ({_motivo_cierre(mot)}): no hay turnos que bloquear." if mot
+                   else "Ese turno no existe en el horario de la cancha.")
+            return JSONResponse({"ok": False, "error": msg}, status_code=400)
+    elif horarios.hora_en_minutos(hora) is None:
+        return JSONResponse({"ok": False, "error": "Hora inválida."}, status_code=400)
     if bloquear and (fecha, hora) in datos.ocupados(c["id"], [fecha]):
         return JSONResponse({"ok": False, "error": "Ese turno ya tiene una reserva."}, status_code=409)
     if not datos.bloquear(c["id"], fecha, hora, bloquear):
@@ -585,9 +758,14 @@ def _reserva_manual(request: Request, _cuerpo_json) -> JSONResponse:
     except ValueError:
         return JSONResponse({"ok": False, "error": "Fecha inválida."}, status_code=400)
     paso = c["duracion_slot_min"]
-    if hora not in horarios.slots(c["hora_apertura"], c["hora_cierre"], paso):
+    # Cancha EFECTIVA de ese día (reglas del club): horario del día, cierres,
+    # franjas y recargo de luz para el precio sugerido.
+    cd = _reglas.cancha_del_dia(c, base)
+    if cd.get("_cerrado"):
+        return JSONResponse({"ok": False, "error": f"Ese día el club está cerrado ({_motivo_cierre(cd['_cerrado'])})."}, status_code=400)
+    if hora not in horarios.slots_de(cd):
         return JSONResponse({"ok": False, "error": "Ese turno no existe en el horario de la cancha."}, status_code=400)
-    fr = horarios.fecha_real(base, c["hora_apertura"], c["hora_cierre"], hora)
+    fr = horarios.fecha_real(base, cd["hora_apertura"], cd["hora_cierre"], hora)
     ahora = horarios.ahora_local(_pais_de(c))
     hoy = ahora.date().isoformat()
     m = horarios.hora_en_minutos(hora) or 0
@@ -600,7 +778,7 @@ def _reserva_manual(request: Request, _cuerpo_json) -> JSONResponse:
         return JSONResponse({"ok": False, "error": "El correo del cliente no es válido."}, status_code=400)
     sim, _iso = _moneda_de(c)
     desc = datos.descuentos(c["id"], [fr])
-    sugerido = horarios.precio_turno_de(c, hora, desc.get((fr, hora), 0))
+    sugerido = horarios.precio_turno_de(cd, hora, desc.get((fr, hora), 0))
     try:
         precio = int(round(float(b.get("precio")))) if b.get("precio") not in (None, "") else sugerido
     except (TypeError, ValueError):
@@ -762,7 +940,8 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
     res_cta = _cc.resumen(cuenta)
     saldo = stores.saldo_centimos(email) / 100.0
     promo = stores.saldo_promo_centimos(email) / 100.0
-    liqs = [_liquidacion_dict(p) | {"liquidado": p.liquidado, "liquidado_en": p.liquidado_en.isoformat() if p.liquidado_en else "", "medio": p.medio or ""}
+    liqs = [_liquidacion_dict(p) | {"liquidado": p.liquidado, "liquidado_en": p.liquidado_en.isoformat() if p.liquidado_en else "", "medio": p.medio or "",
+                                    "sim_mov": _sim_de_iso(p.moneda, sim)}
             for p in stores.liquidaciones(email)]
     pend = [x for x in liqs if not x["liquidado"]]
     pagadas = [x for x in liqs if x["liquidado"]][::-1][:20]
@@ -771,11 +950,26 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
     def fila_liq(x: dict) -> str:
         return (f"<div class='mov'><div><b>{e(x['concepto'])}</b><small>{e(x['creado_en'][:10])}{(' · pagada ' + e(x['liquidado_en'][:10])) if x.get('liquidado') else ''}"
                 f"{(' · ' + e(x['medio'])) if x.get('medio') else ''}</small></div>"
-                f"<div style='text-align:right'><b>{e(sim)} {x['neto_soles']:.2f}</b><small>bruto {x['bruto_soles']:.2f} · comisión {x['comision_soles']:.2f}{(' · cargo por servicio del jugador ' + format(x.get('cargo_servicio_soles') or 0, '.2f')) if x.get('cargo_servicio_soles') else ''}</small></div></div>")
+                f"<div style='text-align:right'><b>{e(x.get('sim_mov') or sim)} {x['neto_soles']:.2f}</b><small>bruto {x['bruto_soles']:.2f} · comisión {x['comision_soles']:.2f}{(' · cargo por servicio del jugador ' + format(x.get('cargo_servicio_soles') or 0, '.2f')) if x.get('cargo_servicio_soles') else ''}</small></div></div>")
     def fila_mov(p) -> str:
-        signo = "+" if p.tipo in ("recarga", "bono_recarga", "bono_bienvenida", "cupon", "bono_referido") else ("−" if p.tipo in ("comision_reserva", "comision_efectivo", "pro", "suscripcion") else "")
-        return (f"<div class='mov'><div><b>{e(p.concepto or p.tipo)}</b><small>{e(p.tipo)} · {e(p.creado_en.isoformat()[:10])} · {e(p.estado)}</small></div>"
-                f"<b>{signo}{e(sim)} {p.monto_centimos / 100.0:.2f}</b></div>")
+        signo = "+" if p.tipo in ("recarga", "bono_recarga", "bono_bienvenida", "cupon", "bono_referido") else (
+            "−" if p.tipo in ("comision_reserva", "comision_efectivo", "comision_deuda", "pro", "suscripcion") else "")
+        estado = {"pendiente": "por pagar", "saldada": "pagada", "anulada": "anulada"}.get(p.estado, p.estado) if p.tipo == "comision_deuda" else p.estado
+        return (f"<div class='mov'><div><b>{e(p.concepto or p.tipo)}</b><small>{e(p.tipo)} · {e(p.creado_en.isoformat()[:10])} · {e(estado)}</small></div>"
+                f"<b>{signo}{e(_sim_de_iso(p.moneda, sim))} {p.monto_centimos / 100.0:.2f}</b></div>")
+    # Cobro DIRECTO al club: deuda de comisión, tope y suspensión (misma
+    # fuente que Cobros del club y el APK: `cobro_directo_web.estado_club`).
+    bloque_directo = ""
+    try:
+        from web import cobro_directo_web as _cdw
+        from web.anfitrion_cobros_club import tarjeta_comision
+        est = _cdw.estado_club(email)
+        com = est.get("comision") or {}
+        if canchas and (com.get("deuda_centimos") or com.get("suspendido") or est.get("medios")
+                        or (est.get("culqi") or {}).get("configurada")):
+            bloque_directo = tarjeta_comision(est, email, est.get("moneda") or "PEN")
+    except Exception as ex:  # noqa: BLE001
+        print(f"[ingresos-web] sin estado de cobro directo: {ex}", flush=True)
     cuerpo = (
         "<h1 class='anf-hola'>Ingresos</h1><p class='sub'>La misma billetera que ves en la app.</p>"
         "<div class='kpis'>"
@@ -783,7 +977,8 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
         f"<div class='kpi'><small>Saldo {MARCA}</small><b>{e(sim)} {saldo:.2f}</b><small>de aquí sale la comisión</small></div>"
         + (f"<div class='kpi'><small>Saldo de regalo 🎁</small><b>{e(sim)} {promo:.2f}</b><small>cubre comisiones</small></div>" if promo > 0 else "")
         + "</div>"
-        f"<p style='margin-top:14px'><a class='btn sec' href='{PLAY_URL}' rel='noopener' style='padding:10px 16px;font-size:14px'>Recargar saldo en la app</a></p>"
+        f"<p style='margin-top:14px'><a class='btn sec' href='/mi-billetera#recargar' style='padding:10px 16px;font-size:14px'>Recargar saldo</a></p>"
+        + bloque_directo
         + _tarjeta_cuenta_cobro(cuenta, res_cta, pais_iso, ses, por_recibir > 0)
         + ui.tarjeta_comision('reservas', sim, {'PE': 'PEN', 'EC': 'USD', 'BO': 'BOB'}.get(pais_iso, 'PEN'))
         + "<h2 style='margin-top:28px'>Por recibir</h2>"
@@ -792,7 +987,7 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
         + ("".join(fila_liq(x) for x in pagadas) if pagadas else "<div class='anf-vacio'>Aún no te hemos transferido liquidaciones.</div>")
         + "<h2 style='margin-top:28px'>Últimos movimientos</h2>"
         + ("".join(fila_mov(p) for p in movs) if movs else "<div class='anf-vacio'>Sin movimientos todavía.</div>"))
-    return ui.shell("Ingresos", cuerpo + f"<script>window.__cc={json.dumps({'catalogo': _cc.catalogo(), 'pais': pais_iso, 'cuenta': cuenta or {}, 'nombre': ses.get('nombre') or ''}, ensure_ascii=False)};</script><script>{_JS_CUENTA_COBRO}</script>",
+    return ui.shell("Ingresos", cuerpo + f"<script>window.__cc={ui.json_js({'catalogo': _cc.catalogo(), 'pais': pais_iso, 'cuenta': cuenta or {}, 'nombre': ses.get('nombre') or ''}, ensure_ascii=False)};</script><script>{_JS_CUENTA_COBRO}</script>",
                     nav=_cabecera("ingresos", ses), sesion=ses, ancho=True, titulo_tab="Ingresos · Modo anfitrión")
 
 
@@ -905,6 +1100,7 @@ def _fila_cancha_local(c: dict) -> str:
         "<div class='acciones' style='margin-top:8px'>"
         f"<a class='btn sec' href='/reservar/{e(c['id'])}'>Ver ficha pública</a>"
         f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}'>Calendario</a>"
+        f"<a class='btn sec' href='/anfitrion/reglas/{e(c['id'])}'>⚙️ Reglas de reserva</a>"
         f"<a class='btn' href='/anfitrion/cancha/{e(c['id'])}/editar'>✏️ Editar</a>"
         "</div></div></div>")
 
@@ -1196,7 +1392,7 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
 </div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Los cambios se ven al instante en la ficha pública y en la app.</span>
 <button type='button' class='btn' id='btnGuardar'>Guardar cambios</button></div></div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script>
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script>
 <script>{JS_PRECIO}</script><script>{_JS_EDITAR}</script>"""
     return ui.shell("Editar cancha", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True,
                     titulo_tab=f"Editar {c['nombre']} · Modo anfitrión")
@@ -1476,7 +1672,7 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
 </div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Se aplica a las {len(hermanas)} cancha{'s' if len(hermanas) != 1 else ''} del local.</span>
 <button type='button' class='btn' id='btnGuardar'>Guardar local</button></div></div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_LOCAL}</script>"""
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_LOCAL}</script>"""
     return ui.shell("Editar local", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True,
                     titulo_tab=f"Editar {local} · Modo anfitrión")
 
@@ -1932,7 +2128,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
 </form></div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Al enviar, tu cancha queda <b>en verificación</b> y te avisamos por WhatsApp y en la app cuando esté activa.</span>
 <button type='button' class='btn' id='btnGuardar'>{'Reclamar mi cancha' if existente else 'Registrar mi cancha'}</button></div></div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{JS_PRECIO}</script><script>{_JS_NUEVA}</script>"""
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{JS_PRECIO}</script><script>{_JS_NUEVA}</script>"""
     return ui.shell("Pon tu cancha", cuerpo, nav=_cabecera("canchas", ses, tabs_visibles=False), sesion=ses, ancho=True,
                     extra_head=_LEAFLET, titulo_tab=f"Pon tu cancha · {MARCA}")
 
@@ -2355,7 +2551,7 @@ def pagina_agregar_cancha(request: Request, cancha_id: str, deporte: str = "") -
 </form></div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>{'Queda activa al instante.' if activo else 'Se activa junto con el local.'}</span>
 <button type='button' class='btn' id='btnGuardar'>Agregar cancha</button></div></div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{JS_PRECIO}</script><script>{_JS_AGREGAR}</script>"""
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{JS_PRECIO}</script><script>{_JS_AGREGAR}</script>"""
     return ui.shell("Agregar cancha", cuerpo, nav=_cabecera("canchas", ses, tabs_visibles=False), sesion=ses, ancho=True,
                     titulo_tab=f"Agregar cancha · {local}")
 

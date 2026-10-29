@@ -218,6 +218,7 @@ app.include_router(anfitrion_campeonatos_router)  # antes del comodín /anfitrio
 app.include_router(anfitrion_boleadores_router)  # antes del comodín /anfitrion/{modulo}
 app.include_router(anfitrion_negocio_router)  # reportes, caja, clientes, bonos, fijas, disponibilidad, cobros (antes del comodín)
 app.include_router(anfitrion_verificador_router)  # /anfitrion/verificador, /anfitrion/verificacion/{id} (antes del comodín)
+app.include_router(__import__("web.anfitrion_cobros_club", fromlist=["router"]).router)  # cobros del club, pagos por confirmar y reglas (antes del comodín)
 app.include_router(anfitrion_router)
 app.include_router(boleadores_router)  # /boleadores/* (APK + ficha web)
 app.include_router(fidelidad_router)

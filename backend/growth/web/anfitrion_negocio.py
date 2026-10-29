@@ -51,8 +51,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from db import pg
 from db.store import stores
+from reservas import reglas as _reglas
 from web import datos, horarios, sesion, ui
-from web.anfitrion import (JS_PAGAR, _cabecera, _contexto, _en_segundo_plano, _pais_de, _sesion_o_entrar)
+from web.anfitrion import (JS_PAGAR, _cabecera, _contexto, _en_segundo_plano, _motivo_cierre, _pais_de, _sesion_o_entrar)
 from web.router import PLAY_URL, _moneda_de, e
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
@@ -311,7 +312,7 @@ def marcar_cuota_cobrada(academia_id: str, alumno_id: str, cuota_id: str) -> dic
                 conn.rollback()
                 return None
             cur.execute("UPDATE pichangol_matriculas SET data = %s::jsonb, updated_at = now() WHERE id = %s",
-                        (json.dumps(data), alumno_id))
+                        (ui.json_js(data), alumno_id))
             conn.commit()
             return hecha
     except Exception as ex:  # noqa: BLE001
@@ -455,8 +456,8 @@ def crear_fija(email: str, canchas: list[dict], body: dict, fid: str = "") -> di
     if not 1 <= dia <= 7:
         raise ErrNegocio("Elige el día de la semana.")
     hora = str(body.get("hora") or "")
-    if hora not in _slots(c):
-        raise ErrNegocio("Elige la hora.")
+    if hora not in _slots_dia_semana(c, dia):
+        raise ErrNegocio("Elige la hora." if hora not in _slots(c) else "Ese día la cancha no atiende a esa hora (reglas del club).")
     nombre = re.sub(r"\s+", " ", str(body.get("nombre") or "")).strip()[:80]
     if not nombre:
         raise ErrNegocio("Escribe el nombre del cliente.")
@@ -598,6 +599,27 @@ def _hoy_de(canchas: list[dict]) -> datetime:
 
 def _slots(c: dict) -> list[str]:
     return horarios.slots(c.get("hora_apertura") or "07:00", c.get("hora_cierre") or "23:00", int(c.get("duracion_slot_min") or 60))
+
+
+def _slots_dia_semana(c: dict, dia: int) -> list[str]:
+    """Turnos del día de la semana `dia` (1 = lunes) con el horario por día
+    de las REGLAS del club (`null` = cerrado ese día); sin regla, el general."""
+    hs = (_reglas.de_cancha(c).get("horario_semana") or {})
+    clave = _reglas.DIAS_SEMANA[(dia - 1) % 7]
+    if clave not in hs:
+        return _slots(c)
+    if hs[clave] is None:
+        return []
+    return horarios.slots(hs[clave]["apertura"], hs[clave]["cierre"], int(c.get("duracion_slot_min") or 60))
+
+
+def _slots_semana(c: dict) -> list[str]:
+    """Todas las horas que la cancha ofrece en algún día de la semana."""
+    vistos: dict[str, None] = {}
+    for d in range(1, 8):
+        for h in _slots_dia_semana(c, d):
+            vistos.setdefault(h, None)
+    return list(vistos) or _slots(c)
 
 
 def _fecha_bonita(iso: str, hoy: date) -> str:
@@ -1132,9 +1154,9 @@ def pagina_caja(request: Request, fecha: str = "", m: str = "") -> HTMLResponse:
     por_id = {c["id"]: c for c in canchas}
     filas = reservas_dueno(ids, min(dia, hoy - timedelta(days=45)).isoformat(), max(dia, hoy).isoformat())
     neg = _negocio(ses["email"])
-    antes = json.dumps(neg["cierres"], sort_keys=True)
+    antes = ui.json_js(neg["cierres"], sort_keys=True)
     _autocerrar(neg, filas, canchas, iso_mon, ahora)
-    if json.dumps(neg["cierres"], sort_keys=True) != antes:
+    if ui.json_js(neg["cierres"], sort_keys=True) != antes:
         _persistir()
     c = caja_dia(filas, dia.isoformat(), canchas)
     pais = _pais_de(canchas[0]) if canchas else "PE"
@@ -1189,7 +1211,7 @@ def pagina_caja(request: Request, fecha: str = "", m: str = "") -> HTMLResponse:
         "<h2 class='ng-h2'>Reservas del día</h2>"
         + (f"<div class='ng-lista'>{lista}</div>" if lista else "<div class='anf-vacio'>No hay reservas este día.</div>")
         + (f"<h2 class='ng-h2'>Cierres anteriores</h2><div class='ng-lista'>{historial}</div>" if historial else "")
-        + f"<script>window.__caja={json.dumps(cfg, ensure_ascii=False)};{JS_PAGAR}{JS_CAJA}</script>")
+        + f"<script>window.__caja={ui.json_js(cfg, ensure_ascii=False)};{JS_PAGAR}{JS_CAJA}</script>")
     return _pagina("Caja del día", cuerpo, ses, "caja")
 
 
@@ -1242,7 +1264,7 @@ def reserva_noshow(request: Request, res_id: str) -> JSONResponse:
 
 SEGMENTOS = [("todos", "Todos"), ("vip", "VIP"), ("recurrente", "Recurrentes"), ("nuevo", "Nuevos"),
              ("riesgo", "En riesgo"), ("moroso", "Deudores")]
-SEG_COLOR = {"vip": "#B8860B", "recurrente": "#0B8A3E", "nuevo": "#2F6FDE", "riesgo": "#C0392B", "moroso": "#946200"}
+SEG_COLOR = {"vip": "#B8860B", "recurrente": "#0B7A57", "nuevo": "#2F6FDE", "riesgo": "#C0392B", "moroso": "#946200"}
 DIAS_RIESGO = 30
 MEDIOS_LABEL = {"yape": "Yape", "tarjeta": "Tarjeta", "efectivo": "Efectivo", "sena": "Seña + saldo", "manual": "Manual", "online": "Online", "bono": "Bono"}
 
@@ -1380,7 +1402,7 @@ def pagina_clientes(request: Request, seg: str = "todos", orden: str = "frecuent
         + (f"<div class='ng-clis' id='listaCli'>{tarjetas}</div><div class='anf-vacio' id='cliVacio' style='display:none'>Ningún cliente coincide con tu búsqueda.</div>"
            if lista else "<div class='anf-vacio' style='margin-top:14px'>" + ("Aún no tienes clientes: aparecen cuando alguien reserva en tus canchas."
                                                                                if not todos else "Nadie en este segmento por ahora.") + "</div>")
-        + f"<script>window.__cli={json.dumps(fichas, ensure_ascii=False)};{JS_CLIENTES}</script>")
+        + f"<script>window.__cli={ui.json_js(fichas, ensure_ascii=False)};{JS_CLIENTES}</script>")
     return _pagina("Clientes", cuerpo, ses, "clientes")
 
 
@@ -1422,7 +1444,7 @@ def pagina_bonos(request: Request, local: str = "") -> HTMLResponse:
     chips = ("<div class='chips' style='margin-top:12px'>" + "".join(
         f"<a class='chip{' sel' if c == club else ''}' href='?local={quote(c)}'>{e(c)}</a>" for c, _ in locs) + "</div>") if len(locs) > 1 else ""
     tarj = "".join(
-        f"<div class='ng-bono{'' if b['activo'] else ' pausa'}' data-bono='{e(json.dumps({'id': b['id'], 'nombre': b['nombre'], 'horas': b['horas'], 'precio': b['precio']}))}'>"
+        f"<div class='ng-bono{'' if b['activo'] else ' pausa'}' data-bono='{e(ui.json_js({'id': b['id'], 'nombre': b['nombre'], 'horas': b['horas'], 'precio': b['precio']}))}'>"
         f"<div class='ng-bono-h'>{b['horas']}h</div><div style='min-width:0;flex:1'><b>{e(b['nombre'] or str(b['horas']) + ' horas')}</b>"
         f"<small>{e(_m(b['precio'], sim))} · {e(_m(b['precio'] / b['horas'] if b['horas'] else b['precio'], sim))}/hora</small>"
         f"<span class='pill {'ok' if b['activo'] else 'gris'}'>{'A la venta' if b['activo'] else 'Pausado'}</span></div>"
@@ -1445,7 +1467,7 @@ def pagina_bonos(request: Request, local: str = "") -> HTMLResponse:
            "bono, NO vuelve a pagarte: descuenta de estas horas.</p>"
            f"<div class='kpis'>{_kpi('Vendido', e(_m(total, sim)))}{_kpi('Horas usadas', f'{hu} / {hv}')}</div><div class='ng-lista' style='margin-top:12px'>{vendidos}</div>"
            if vend else "")
-        + f"<script>window.__bonos={json.dumps({'club': club, 'moneda': sim}, ensure_ascii=False)};{JS_BONOS}</script>")
+        + f"<script>window.__bonos={ui.json_js({'club': club, 'moneda': sim}, ensure_ascii=False)};{JS_BONOS}</script>")
     return _pagina("Bonos", cuerpo, ses, "bonos")
 
 
@@ -1515,9 +1537,6 @@ def generar_fijas(email: str, canchas: list[dict], semanas: int = 4, solo: str =
         if c is None:
             continue
         hora = str(f.get("hora") or "")
-        if hora not in _slots(c):
-            omitidas.append("hora fuera del horario")
-            continue
         ahora = horarios.ahora_local(_pais_de(c))
         hoy = ahora.date()
         delta = (int(f.get("diaSemana") or 1) - 1 - hoy.weekday()) % 7
@@ -1527,7 +1546,16 @@ def generar_fijas(email: str, canchas: list[dict], semanas: int = 4, solo: str =
             base = (hoy + timedelta(days=delta + 7 * w)).isoformat()
             if base in hechas:
                 continue
-            fr = horarios.fecha_real(base, c["hora_apertura"], c["hora_cierre"], hora)
+            # Cancha EFECTIVA del día (reglas del club): un día cerrado o sin
+            # ese turno no genera reserva (se reintenta si el club lo abre).
+            cd = _reglas.cancha_del_dia(c, base)
+            if cd.get("_cerrado"):
+                omitidas.append(f"{horarios.fecha_larga(base)} cerrado")
+                continue
+            if hora not in horarios.slots_de(cd):
+                omitidas.append("hora fuera del horario")
+                continue
+            fr = horarios.fecha_real(base, cd["hora_apertura"], cd["hora_cierre"], hora)
             mins = horarios.hora_en_minutos(hora) or 0
             if fr < hoy.isoformat() or (fr == hoy.isoformat() and mins < ahora.hour * 60 + ahora.minute):
                 continue
@@ -1536,7 +1564,7 @@ def generar_fijas(email: str, canchas: list[dict], semanas: int = 4, solo: str =
                 hechas.add(base)
                 continue
             paso = int(c.get("duracion_slot_min") or 60)
-            precio = horarios.precio_turno_de(c, hora, datos.descuentos(c["id"], [fr]).get((fr, hora), 0))
+            precio = horarios.precio_turno_de(cd, hora, datos.descuentos(c["id"], [fr]).get((fr, hora), 0))
             fila = {"id": f"man_{int(time.time() * 1000)}_f{w}", "cancha_id": c["id"], "jugador": f.get("clienteNombre") or "Cliente",
                     "nivel": "", "fecha": fr, "dia": horarios.etiqueta_dia(fr, hoy), "hora_inicio": hora,
                     "hora_fin": horarios.hora_fin(hora, paso), "estado": "confirmada", "traida_por_app": False, "precio": precio,
@@ -1584,7 +1612,7 @@ def pagina_fijas(request: Request) -> HTMLResponse:
         f"<label class='ng-sw' title='{'Activa' if f.get('activo', True) else 'Pausada'}'><input type='checkbox' data-acc='activo' {'checked' if f.get('activo', True) else ''}><i></i></label>"
         "<button type='button' class='btn sec mini-b' data-acc='quitar' aria-label='Quitar'>Quitar</button></div>"
         for f in neg["fijas"] if f.get("canchaId") in por_id)
-    cfg = {"canchas": [{"id": c["id"], "nombre": nom(c["id"]), "slots": _slots(c)} for c in canchas],
+    cfg = {"canchas": [{"id": c["id"], "nombre": nom(c["id"]), "slots": _slots_semana(c)} for c in canchas],
            "hoy": _hoy_de(canchas).date().weekday() + 1}
     aviso = (f"<div class='ng-ok'>✅ Se crearon {res['creadas']} reserva{'s' if res['creadas'] != 1 else ''} de tus clientes fijos para las próximas semanas.</div>"
              if res["creadas"] else "")
@@ -1593,7 +1621,7 @@ def pagina_fijas(request: Request) -> HTMLResponse:
         "Se crean solas sus reservas de las próximas 4 semanas (respetando lo ocupado y tus bloqueos).</p>" + aviso
         + "<p style='margin-top:14px'><button type='button' class='btn' id='nuevaFija'>＋ Cliente fijo</button></p>"
         + (f"<div class='ng-lista'>{filas}</div>" if filas else "<div class='anf-vacio' style='margin-top:14px'>🔁 Aún no tienes clientes fijos.</div>")
-        + f"<script>window.__fijas={json.dumps(cfg, ensure_ascii=False)};{JS_FIJAS}</script>")
+        + f"<script>window.__fijas={ui.json_js(cfg, ensure_ascii=False)};{JS_FIJAS}</script>")
     return _pagina("Reservas fijas", cuerpo, ses, "fijas")
 
 
@@ -1647,15 +1675,18 @@ def pagina_disponibilidad(request: Request, cancha: str = "", fecha: str = "") -
     except ValueError:
         dia = hoy
     base = dia.isoformat()
-    sl = _slots(c)
-    fechas = sorted({horarios.fecha_real(base, c["hora_apertura"], c["hora_cierre"], h) for h in sl} | {base})
+    # Cancha EFECTIVA del día con las reglas del club (horario del día,
+    # cierres especiales): un día cerrado no tiene turnos que abrir.
+    cd = _reglas.cancha_del_dia(c, base)
+    sl = horarios.slots_de(cd)
+    fechas = sorted({horarios.fecha_real(base, cd["hora_apertura"], cd["hora_cierre"], h) for h in sl} | {base})
     reservadas = {(r["fecha"], r["hora_inicio"]) for r in reservas_dueno([c["id"]], fechas[0], fechas[-1]) if not es_noshow(r)}
     bloq = {(f, h) for (_cid, f, h) in datos.bloqueos_de([c["id"]], fechas)}
     valle_cfg = int(c.get("descuento_valle") or 0) > 0
     filas = ""
     abiertas = 0
     for h in sl:
-        fr = horarios.fecha_real(base, c["hora_apertura"], c["hora_cierre"], h)
+        fr = horarios.fecha_real(base, cd["hora_apertura"], cd["hora_cierre"], h)
         pasado = fr < hoy.isoformat() or (fr == hoy.isoformat() and (horarios.hora_en_minutos(h) or 0) < ahora.hour * 60 + ahora.minute)
         valle = horarios.es_valle(h, c.get("valle_desde") or "", c.get("valle_hasta") or "") if valle_cfg else (horarios.hora_en_minutos(h) or 0) < 12 * 60
         ocupada = (fr, h) in reservadas
@@ -1681,8 +1712,11 @@ def pagina_disponibilidad(request: Request, cancha: str = "", fecha: str = "") -
         f"<a class='ng-flecha' href='?cancha={e(c['id'])}&fecha={(dia + timedelta(days=1)).isoformat()}' aria-label='Día siguiente'>›</a></div>"
         f"<p class='sub'>{abiertas} turno{'s' if abiertas != 1 else ''} abierto{'s' if abiertas != 1 else ''} · "
         f"{e(horarios.duracion_texto(int(c.get('duracion_slot_min') or 60)))} por turno</p>"
-        + (f"<div class='ng-card ng-dispo'>{filas}</div>" if filas else "<div class='anf-vacio'>Configura el horario de esta cancha.</div>")
-        + f"<script>window.__dispo={json.dumps({'cancha': c['id']})};{JS_DISPO}</script>")
+        + (f"<div class='ng-card ng-dispo'>{filas}</div>" if filas else
+           (f"<div class='anf-vacio'>🚫 {e(_motivo_cierre(cd['_cerrado']))}: ese día no hay turnos. "
+            f"<a href='/anfitrion/reglas/{e(c['id'])}'>Ver reglas de reserva</a></div>" if cd.get("_cerrado")
+            else f"<div class='anf-vacio'>Configura el horario de esta cancha. <a href='/anfitrion/reglas/{e(c['id'])}'>Reglas de reserva</a></div>"))
+        + f"<script>window.__dispo={ui.json_js({'cancha': c['id'], 'base': base})};{JS_DISPO}</script>")
     return _pagina("Disponibilidad", cuerpo, ses, "disponibilidad")
 
 
@@ -1784,7 +1818,7 @@ def pagina_cobros(request: Request, academia: str = "") -> HTMLResponse:
         + (f"<div class='ng-lista' id='morosos'>{filas}</div>" if filas else "<div class='anf-vacio'>Todos al día 🎉</div>")
         + f"<p style='margin-top:16px;display:flex;gap:10px;flex-wrap:wrap'><a class='btn' href='/anfitrion/cobros/agregar?academia={e(a['id'])}'>➕ Agregar cuota</a>"
           f"<a class='btn sec' href='/anfitrion/academia/alumnos?academia={e(a['id'])}'>Ver todos los alumnos</a></p>"
-        + f"<script>window.__cob={json.dumps({'academia': a['id'], 'moneda': sim, 'fichas': fichas, 'porRecordar': [t[0]['id'] for t in por_recordar]}, ensure_ascii=False)};{JS_COBROS}</script>")
+        + f"<script>window.__cob={ui.json_js({'academia': a['id'], 'moneda': sim, 'fichas': fichas, 'porRecordar': [t[0]['id'] for t in por_recordar]}, ensure_ascii=False)};{JS_COBROS}</script>")
     return _pagina("Cobros de academia", cuerpo, ses, "cobros")
 
 
@@ -1911,7 +1945,7 @@ def agregar_cuotas_db(email: str, academia_id: str, alumno_id: str, armar) -> li
                 return None
             data["cuotas"] = [c for c in (data.get("cuotas") or []) if isinstance(c, dict)] + nuevas
             cur.execute("UPDATE pichangol_matriculas SET data = %s::jsonb, updated_at = now() WHERE id = %s",
-                        (json.dumps(data), alumno_id))
+                        (ui.json_js(data), alumno_id))
             conn.commit()
             return nuevas
     except Exception as ex:  # noqa: BLE001
@@ -1983,7 +2017,7 @@ def pagina_agregar_cuota(request: Request, academia: str = "", alumno: str = "")
           ".ag-op{display:flex;gap:10px;align-items:center;border:1px solid var(--trazo);border-radius:14px;padding:11px 13px;margin-bottom:8px;cursor:pointer;min-width:0}"
           ".ag-op input{width:auto;flex:none}.ag-op small{display:block;color:var(--tenue)}.ag-op:has(input:checked){background:#EBEBEB;border-color:#D8D8D8}"
           ".ag-prev{margin-top:14px;background:#EEF7E3;color:#14463A;border-radius:14px;padding:12px;font-size:14px;line-height:1.45}</style>"
-        + f"<script>window.__ag={json.dumps(cfg, ensure_ascii=False)};{JS_AGREGAR_CUOTA}</script>")
+        + f"<script>window.__ag={ui.json_js(cfg, ensure_ascii=False)};{JS_AGREGAR_CUOTA}</script>")
     return _pagina("Agregar cuota", cuerpo, ses, "cobros")
 
 
@@ -2122,7 +2156,7 @@ CSS = r"""
 .ng-flecha{width:38px;height:38px;border-radius:50%;border:1px solid var(--trazo);display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:var(--noche);font-size:22px;background:var(--blanco);box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .ng-cierre-box{margin-top:16px}.ng-cierre{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--ok-bg);border-radius:16px;padding:12px 16px}
 .ng-cierre.auto{background:var(--warn-bg)}.ng-cierre>div{flex:1;min-width:180px}.ng-cierre small{display:block;color:var(--tenue)}
-.ng-av{width:42px;height:42px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#0E8F67;color:#fff;font-weight:800;font-size:17px}
+.ng-av{width:42px;height:42px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#0B7A57;color:#fff;font-weight:800;font-size:17px}
 .ng-busca{display:flex;flex-direction:column;gap:10px;margin:14px 0 4px}
 .ng-clis{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(280px,100%),1fr));gap:12px;margin-top:12px}
 .ng-cli{position:relative;text-align:left;background:var(--blanco);border:1px solid var(--trazo);border-radius:18px;padding:14px 16px;box-shadow:var(--sombra);cursor:pointer;font:inherit;color:inherit;min-width:0}
@@ -2249,7 +2283,7 @@ document.addEventListener('click',async function(ev){var b=ev.target.closest('.n
 
 JS_DISPO = (r"""
 document.addEventListener('change',async function(ev){var i=ev.target.closest('.ng-dispo input[type=checkbox]');if(!i)return;var abrir=i.checked;
-  var j=await ngPost('/anfitrion/bloqueo',{cancha_id:window.__dispo.cancha,fecha:i.dataset.f,hora:i.dataset.h,bloquear:!abrir},abrir?'Abriendo…':'Cerrando…');
+  var j=await ngPost('/anfitrion/bloqueo',{cancha_id:window.__dispo.cancha,fecha:i.dataset.f,base:window.__dispo.base,hora:i.dataset.h,bloquear:!abrir},abrir?'Abriendo…':'Cerrando…');
   if(j&&j.ok){pcgToast(abrir?'Turno abierto ✅':'Turno cerrado');}else{i.checked=!abrir;if(j)pcgAvisar({titulo:j.error==='requiere_pro'?'Es ⟦MARCA⟧ Pro':'No se pudo',mensaje:j.mensaje||j.error||'Reintenta.'});}});
 """).replace('⟦MARCA⟧', MARCA)
 
