@@ -218,7 +218,7 @@ def mutar_matricula(alumno_id: str, dueno: str, fn):
                 conn.rollback()
                 return None
             cur.execute("UPDATE pichangol_matriculas SET data = %s::jsonb, updated_at = now() WHERE id = %s",
-                        (json.dumps(data), alumno_id))
+                        (ui.json_js(data), alumno_id))
             conn.commit()
             return res
     except Exception as ex:  # noqa: BLE001
@@ -245,7 +245,7 @@ def mutar_academia(aid: str, dueno: str, fn):
                 conn.rollback()
                 return None
             cur.execute("UPDATE pichangol_academias SET data = %s::jsonb, updated_at = now() WHERE id = %s",
-                        (json.dumps(data), aid))
+                        (ui.json_js(data), aid))
             conn.commit()
             return res
     except Exception as ex:  # noqa: BLE001
@@ -542,7 +542,7 @@ def _pagina(ses: dict, acads: list[dict], a: dict, sel: str, titulo: str, sub: s
     if not apw.beneficios(a):
         # PLAN ACADEMIA vencido: la gestión se pausa; los pagos reportados siguen en Cobros.
         cuerpo, js, extra_head = apw.paywall(a), "", ""
-    cfg = json.dumps({"aid": a["id"], "sim": _sim(a)}, ensure_ascii=False).replace("</", "<\\/")
+    cfg = ui.json_js({"aid": a["id"], "sim": _sim(a)}, ensure_ascii=False).replace("</", "<\\/")
     html = ("<a class='anf-back' href='/anfitrion/academia'>‹ Mi academia</a>"
             f"<h1 class='anf-hola' style='margin-top:6px'>{e(titulo)}</h1><p class='sub'>{e(a.get('nombre') or 'Academia')} · {sub}</p>"
             f"{_secciones(sel, a['id'])}{_chips_academia(acads, a, ruta)}{cuerpo}"
@@ -684,7 +684,7 @@ def pagina_asistencia(request: Request, academia: str = "", dia: str = "") -> HT
                  f"<button class='btn' id='acoAvisar' {'disabled' if not activa else ''}>🔔 Avisar a los padres</button></div>"
                  f"<div style='display:grid;gap:10px;margin-top:14px'>{filas}</div>" if mats else
                  "<div class='anf-vacio' style='margin-top:18px'>Aún no tienes alumnos en esta academia.</div>"))
-    js = "window.ACO.dia=" + json.dumps(clave) + ";window.ACO.ids=" + json.dumps([m.get("id") for m in mats]) + ";" + _JS_ASIS
+    js = "window.ACO.dia=" + ui.json_js(clave) + ";window.ACO.ids=" + ui.json_js([m.get("id") for m in mats]) + ";" + _JS_ASIS
     return _pagina(ses, acads, a, "asistencia", "Asistencia", "Marca quién vino y avisa a los padres.", cuerpo, js)
 
 
@@ -885,7 +885,7 @@ def pagina_evaluaciones(request: Request, academia: str = "", alumno: str = "", 
               + (bit or "<p class='aco-n'>Aún no registras clases de este alumno.</p>") + "</div>")
     cfg = {"alumno": sel.get("id"), "plan": plan["id"], "sesiones": plan["sesiones"], "obs": OBSERVACIONES,
            "desemp": {k: v[0] for k, v in DESEMPENOS.items()}}
-    js = "Object.assign(window.ACO," + json.dumps(cfg, ensure_ascii=False).replace("</", "<\\/") + ");" + _JS_EVAL
+    js = "Object.assign(window.ACO," + ui.json_js(cfg, ensure_ascii=False).replace("</", "<\\/") + ");" + _JS_EVAL
     return _pagina(ses, acads, a, "evaluaciones", "Evaluación", "Rúbrica por habilidad y bitácora de clases.", cuerpo, js)
 
 
@@ -1036,7 +1036,7 @@ def pagina_ranking(request: Request, academia: str = "", sede: str = "", categor
     cfg = {"alumnos": sorted([{"id": m.get("id"), "nombre": m.get("nombre")} for m in mats], key=lambda x: str(x["nombre"] or "").lower()),
            "sedes": [{"id": s.get("id"), "nombre": s.get("nombre")} for s in sedes] if len(sedes) > 1 else [],
            "cats": sorted(set(CATEGORIAS_RANKING) | set(cats_usadas), key=lambda c: (c not in CATEGORIAS_RANKING, CATEGORIAS_RANKING.index(c) if c in CATEGORIAS_RANKING else 0, c))}
-    js = "Object.assign(window.ACO," + json.dumps(cfg, ensure_ascii=False).replace("</", "<\\/") + ");" + _JS_RANK
+    js = "Object.assign(window.ACO," + ui.json_js(cfg, ensure_ascii=False).replace("</", "<\\/") + ");" + _JS_RANK
     return _pagina(ses, acads, a, "ranking", "Ranking", "Tabla de posiciones de tus alumnos.", cuerpo, js)
 
 
@@ -1443,7 +1443,7 @@ def pagina_sedes(request: Request, academia: str = "") -> HTMLResponse:
               "<button class='btn' id='acoSedesGuardar'>Guardar cambios</button></div>")
     lf = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
           "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>")
-    js = "Object.assign(window.ACO," + json.dumps(cfg, ensure_ascii=False).replace("</", "<\\/") + ");" + _JS_SEDES
+    js = "Object.assign(window.ACO," + ui.json_js(cfg, ensure_ascii=False).replace("</", "<\\/") + ");" + _JS_SEDES
     return _pagina(ses, acads, a, "sedes", "Sedes y horarios", "Sedes, horario por programa y precio por sede.", cuerpo, js, extra_head=lf)
 
 

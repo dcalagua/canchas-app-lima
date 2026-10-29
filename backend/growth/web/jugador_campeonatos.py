@@ -150,7 +150,7 @@ def _leer_token_doc(tok, email: str, cid: str, para: str) -> dict | None:
         return None
     cuerpo, firma = tok.rsplit(".", 1)
     import hmac
-    if not hmac.compare_digest(sesion._firmar(("doc:" + cuerpo).encode()), firma):
+    if not sesion.firma_valida(("doc:" + cuerpo).encode(), firma):
         return None
     try:
         d = json.loads(base64.urlsafe_b64decode(cuerpo + "=" * (-len(cuerpo) % 4)).decode())
@@ -809,7 +809,7 @@ def pagina_torneo(request: Request, cid: str, equipo: str = "") -> HTMLResponse:
            "costo": int(round(float(c.get("costoInscripcion") or 0) * 100)), "cuota": L.tiene_cuota_por_equipo(c),
            "cuotaEquipo": L.cuota_equipo_centimos(c), "cuotaJugador": L.cuota_jugador_centimos(c) if L.tiene_cuota_por_equipo(c) else 0}
     cuerpo = (f"<style>{_CSS}</style><div class='tn'>" + "".join(partes) + "</div>"
-              "<script>window.TN=" + json.dumps(cfg).replace("<", "\\u003c") + ";</script><script>" + _JS + "</script>")
+              "<script>window.TN=" + ui.json_js(cfg).replace("<", "\\u003c") + ";</script><script>" + _JS + "</script>")
     return ui.shell(str(c.get("nombre") or "Campeonato"), cuerpo, sesion=ses, titulo_tab=f"{c.get('nombre') or 'Campeonato'} · Inscripción · {MARCA}")
 
 
@@ -880,7 +880,7 @@ if(bc) bc.addEventListener('click', function(){ var err = $('eqErr'); err.textCo
       post('/web/torneo/' + encodeURIComponent(C.id) + '/equipo/crear', {nombre: n, doc_token: t || tok.yo || ''}).then(function(j){ bc.disabled = false; pcgCargando(false);
         if(!j.ok) return fallo(j, err);
         var url = location.origin + '/torneo/' + encodeURIComponent(C.id) + '?equipo=' + encodeURIComponent(j.codigo || '');
-        pcgAvisar({titulo: '¡Equipo creado! ⚽', icono: '🏆', confirmar: 'Listo', html: "<p class='sub'>Comparte este código con tus jugadores para que se unan a tu equipo:</p><div style='font-size:30px;font-weight:900;letter-spacing:4px;color:#067A38;margin:8px 0'>" + esc(j.codigo) + "</div><p class='sub' style='overflow-wrap:anywhere'>" + esc(url) + "</p>"})
+        pcgAvisar({titulo: '¡Equipo creado! ⚽', icono: '🏆', confirmar: 'Listo', html: "<p class='sub'>Comparte este código con tus jugadores para que se unan a tu equipo:</p><div style='font-size:30px;font-weight:900;letter-spacing:4px;color:#08654A;margin:8px 0'>" + esc(j.codigo) + "</div><p class='sub' style='overflow-wrap:anywhere'>" + esc(url) + "</p>"})
           .then(function(){ pcgRecargar('Actualizando…'); });
       }).catch(function(){ bc.disabled = false; pcgCargando(false); fallo(null, err); }); }); }); });
 // ── Fútbol: unirme (código o tocando el equipo) ──

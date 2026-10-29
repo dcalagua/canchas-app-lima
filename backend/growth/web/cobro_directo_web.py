@@ -214,29 +214,120 @@ def _iso_dueno(email: str) -> str:
     return {"PE": "PEN", "EC": "USD", "BO": "BOB"}.get(_pais_del_dueno(email), "PEN")
 
 
-@router.get("/club/pagos", dependencies=auth_usuario.APP)
-def mi_config(email: str = Depends(auth_usuario.requiere_usuario)) -> dict:
+def estado_club(email: str, base_url: str = "") -> dict:
+    """Configuración de cobro directo del club + estado de la comisión. La
+    usan el APK (`GET /club/pagos`) y la web del anfitrión (Cobros del club,
+    Ingresos, banner de Hoy): una sola fuente."""
     iso = _iso_dueno(email)
     pais = _pais_del_dueno(email)
     pend = cd.repo().pagos_manuales_de(email, ("en_revision",)) if cd.disponible() else []
     return {"ok": True, "disponible": cd.disponible(), "cifrado": cd.cifrado_disponible(),
             "pais": pais, "moneda": iso, "medios_permitidos": list(cd.MEDIOS_POR_PAIS.get(pais, ())),
-            "culqi": cd.resumen_pasarela(email) if iso == "PEN" else {"configurada": False, "no_aplica": True},
+            "culqi": (cd.resumen_pasarela(email, base_url) if iso == "PEN"
+                      else {"configurada": False, "no_aplica": True}),
             "medios": cd.medios_publicos(email),
             "comision": {"deuda_centimos": cd.deuda_centimos(email, iso), "suspendido": cd.suspendido(email, iso),
                          "tope_centimos": cd._tope_deuda_centimos(iso)},
             "pendientes": len(pend)}
 
 
+def pendientes_de(email: str) -> int:
+    """Vouchers del club esperando revisión (insignia del modo anfitrión).
+    Nunca lanza: sin base o con error = 0."""
+    try:
+        return len(cd.repo().pagos_manuales_de(email, ("en_revision",))) if cd.disponible() else 0
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def conectar_culqi(email: str, public_key: str, secret_key: str) -> tuple[int, dict]:
+    """(status HTTP, respuesta). Mismas reglas para el APK y la web: solo
+    Perú, solo dueños con canchas, llaves verificadas con Culqi y la secreta
+    cifrada (`cd.guardar_culqi`)."""
+    if _iso_dueno(email) != "PEN":
+        return 400, {"ok": False, "error": "culqi_solo_peru"}
+    if not datos.canchas_de_dueno(email):
+        return 403, {"ok": False, "error": "sin_canchas"}
+    r = cd.guardar_culqi(email, public_key, secret_key)
+    if not r.get("ok"):
+        return (503 if r["error"] == "cifrado_no_configurado" else 400), r
+    return 200, r
+
+
+def guardar_medios_club(email: str, medios: list) -> tuple[int, dict]:
+    """(status HTTP, respuesta) de guardar los medios manuales del club."""
+    if not datos.canchas_de_dueno(email):
+        return 403, {"ok": False, "error": "sin_canchas"}
+    r = cd.guardar_medios(email, medios, _pais_del_dueno(email))
+    if not r.get("ok"):
+        return 400, r
+    return 200, r
+
+
+def bandeja_de(email: str, estado: str = "en_revision") -> list[dict]:
+    estados = ("en_revision",) if estado == "en_revision" else ("aprobado", "rechazado", "vencido")
+    pagos = cd.repo().pagos_manuales_de(email, estados) if cd.disponible() else []
+    return [cd.vista_pago(p) for p in pagos]
+
+
+def pago_del_dueno(pid: str, email: str) -> dict | None:
+    """El voucher `pid` si es de un club de `email`; None si no existe o es
+    de otro (los dos casos responden igual: 404)."""
+    p = cd.repo().pago_manual(pid) if cd.disponible() else None
+    if not p or p["dueno"] != email:
+        return None
+    return p
+
+
+def aprobar_voucher(p: dict, email: str) -> dict:
+    """El club confirma el pago: se confirma el apartado, se registra el
+    cobro directo y se cobra la comisión (saldo o deuda)."""
+    pid = p["id"]
+    filas = datos.reservas_de(list(p["reserva_ids"]))
+    if not filas or len(filas) != len(p["reserva_ids"]):
+        cd.repo().resolver_pago_manual(pid, "vencido", email, "apartado_perdido")
+        return {"ok": False, "error": "hold_vencido"}
+    if not cd.repo().resolver_pago_manual(pid, "aprobado", email):
+        return {"ok": False, "error": "ya_resuelto"}
+    c = datos.cancha(p["cancha_id"]) or {}
+    plan = _wr().plan_cobro_reserva(filas)
+    out = confirmar_directo(filas, c, p["jugador_email"], plan=plan, medio=f"voucher_{p['medio']}",
+                            cobro_id=f"pm:{pid}", monto_centimos=int(p["monto_centimos"]))
+    _avisar(p["jugador_email"], "¡Reserva confirmada! ✅",
+            f"{c.get('nombre', 'El club')} confirmó tu pago · {filas[0]['fecha']} {filas[0]['hora_inicio']}.")
+    return {"ok": True, "comision": out.get("comision")}
+
+
+# Motivos de rechazo por SELECCIÓN (web del anfitrión). Se guarda la CLAVE;
+# el lado jugador la traduce (`web/router.py` MOTIVO_RECHAZO). Un motivo que
+# no es clave (APK con texto) se muestra tal cual.
+MOTIVOS_RECHAZO = {"no_llego": "No llegó el pago", "monto": "Monto distinto",
+                   "ilegible": "Comprobante ilegible", "otro": "Otro motivo"}
+
+
+def rechazar_voucher(p: dict, email: str, motivo: str = "") -> dict:
+    """El club no reconoce el pago: el horario queda libre y se avisa al jugador."""
+    motivo = (motivo or "").strip()
+    if not cd.repo().resolver_pago_manual(p["id"], "rechazado", email, motivo):
+        return {"ok": False, "error": "ya_resuelto"}
+    _wr().soltar_bloque(list(p["reserva_ids"]))
+    texto = "" if motivo == "otro" else MOTIVOS_RECHAZO.get(motivo, motivo)
+    _avisar(p["jugador_email"], "Pago no confirmado",
+            "El club no pudo confirmar tu pago" + (f": {texto.lower() if motivo in MOTIVOS_RECHAZO else texto}" if texto else "")
+            + ". El horario quedó libre; si ya pagaste, escríbele al club.")
+    return {"ok": True}
+
+
+@router.get("/club/pagos", dependencies=auth_usuario.APP)
+def mi_config(email: str = Depends(auth_usuario.requiere_usuario)) -> dict:
+    return estado_club(email)
+
+
 @router.put("/club/pagos/culqi", dependencies=auth_usuario.APP)
 def guardar_culqi(req: CulqiClubReq, email: str = Depends(auth_usuario.requiere_usuario)) -> dict:
-    if _iso_dueno(email) != "PEN":
-        raise HTTPException(status_code=400, detail="culqi_solo_peru")
-    if not datos.canchas_de_dueno(email):
-        raise HTTPException(status_code=403, detail="sin_canchas")
-    r = cd.guardar_culqi(email, req.public_key, req.secret_key)
-    if not r.get("ok"):
-        raise HTTPException(status_code=400 if r["error"] != "cifrado_no_configurado" else 503, detail=r["error"])
+    status, r = conectar_culqi(email, req.public_key, req.secret_key)
+    if status != 200:
+        raise HTTPException(status_code=status, detail=r["error"])
     return r
 
 
@@ -247,24 +338,20 @@ def borrar_culqi(email: str = Depends(auth_usuario.requiere_usuario)) -> dict:
 
 @router.put("/club/pagos/medios", dependencies=auth_usuario.APP)
 def guardar_medios(req: MediosReq, email: str = Depends(auth_usuario.requiere_usuario)) -> dict:
-    if not datos.canchas_de_dueno(email):
-        raise HTTPException(status_code=403, detail="sin_canchas")
-    r = cd.guardar_medios(email, req.medios, _pais_del_dueno(email))
-    if not r.get("ok"):
-        raise HTTPException(status_code=400, detail=r["error"])
+    status, r = guardar_medios_club(email, req.medios)
+    if status != 200:
+        raise HTTPException(status_code=status, detail=r["error"])
     return r
 
 
 @router.get("/club/pagos/vouchers", dependencies=auth_usuario.APP)
 def bandeja(estado: str = "en_revision", email: str = Depends(auth_usuario.requiere_usuario)) -> dict:
-    estados = ("en_revision",) if estado == "en_revision" else ("aprobado", "rechazado", "vencido")
-    pagos = cd.repo().pagos_manuales_de(email, estados) if cd.disponible() else []
-    return {"ok": True, "pagos": [cd.vista_pago(p) for p in pagos]}
+    return {"ok": True, "pagos": bandeja_de(email, estado)}
 
 
 def _pago_del_dueno(pid: str, email: str) -> dict:
-    p = cd.repo().pago_manual(pid) if cd.disponible() else None
-    if not p or p["dueno"] != email:
+    p = pago_del_dueno(pid, email)
+    if p is None:
         raise HTTPException(status_code=404, detail="no_encontrado")
     return p
 
@@ -281,32 +368,12 @@ def imagen(pid: str, email: str = Depends(auth_usuario.requiere_usuario)) -> Res
 
 @router.post("/club/pagos/vouchers/{pid}/aprobar", dependencies=auth_usuario.APP)
 def aprobar(pid: str, email: str = Depends(auth_usuario.requiere_usuario)) -> dict:
-    p = _pago_del_dueno(pid, email)
-    filas = datos.reservas_de(list(p["reserva_ids"]))
-    if not filas or len(filas) != len(p["reserva_ids"]):
-        cd.repo().resolver_pago_manual(pid, "vencido", email, "apartado_perdido")
-        return {"ok": False, "error": "hold_vencido"}
-    if not cd.repo().resolver_pago_manual(pid, "aprobado", email):
-        return {"ok": False, "error": "ya_resuelto"}
-    c = datos.cancha(p["cancha_id"]) or {}
-    plan = _wr().plan_cobro_reserva(filas)
-    out = confirmar_directo(filas, c, p["jugador_email"], plan=plan, medio=f"voucher_{p['medio']}",
-                            cobro_id=f"pm:{pid}", monto_centimos=int(p["monto_centimos"]))
-    _avisar(p["jugador_email"], "¡Reserva confirmada! ✅",
-            f"{c.get('nombre', 'El club')} confirmó tu pago · {filas[0]['fecha']} {filas[0]['hora_inicio']}.")
-    return {"ok": True, "comision": out.get("comision")}
+    return aprobar_voucher(_pago_del_dueno(pid, email), email)
 
 
 @router.post("/club/pagos/vouchers/{pid}/rechazar", dependencies=auth_usuario.APP)
 def rechazar(pid: str, req: RechazoReq, email: str = Depends(auth_usuario.requiere_usuario)) -> dict:
-    p = _pago_del_dueno(pid, email)
-    if not cd.repo().resolver_pago_manual(pid, "rechazado", email, req.motivo.strip()):
-        return {"ok": False, "error": "ya_resuelto"}
-    _wr().soltar_bloque(list(p["reserva_ids"]))
-    _avisar(p["jugador_email"], "Pago no confirmado",
-            "El club no pudo confirmar tu pago" + (f": {req.motivo.strip()}" if req.motivo.strip() else "")
-            + ". El horario quedó libre; si ya pagaste, escríbele al club.")
-    return {"ok": True}
+    return rechazar_voucher(_pago_del_dueno(pid, email), email, req.motivo)
 
 
 # ── vencimiento y conciliación ───────────────────────────────────────────────

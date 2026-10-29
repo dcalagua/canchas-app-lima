@@ -4,7 +4,7 @@
 - Tipografía **DM Sans** (la equivalente libre de Airbnb Cereal, que es
   propietaria y no se puede descargar), pesos 500/600/700/800.
 - Paleta del logo nuevo: blanco, azul noche `#0F1B2D` (texto/oscuros),
-  esmeralda `#0E8F67` (CTA/acento), dorado `#D9B45A`, papel `#F4F7FA`,
+  esmeralda `#0B7A57` (CTA/acento), dorado `#D9B45A`, papel `#F4F7FA`,
   trazo `#DDE5EF`, texto tenue `#627080`, tinte esmeralda `#E7F4EF`.
 - Cabecera tal cual airbnb.com (`cabecera()`): logo · pestañas con ícono ·
   "Modo anfitrión" + avatar + ☰ (menú desplegable) · buscador grande centrado
@@ -22,14 +22,19 @@ from __future__ import annotations
 
 import html as _html
 
+import re
+
 from fastapi.responses import HTMLResponse
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 TOKENS = ("""
 :root{
   /* Paleta del LOGO oficial (pin verde + pelota + arco naranja + "⟦MARCA⟧" azul noche) */
-  --blanco:#FFFFFF;--noche:#0A1B3D;--esmeralda:#0B8A3E;--teal:#067A38;--lima:#7CB518;--naranja:#F28C28;--dorado:#D9B45A;
-  --papel:#FFFFFF;--trazo:#DDE5E0;--tenue:#5F6F7A;--tinte:#E6F4EA;--gris:#EDF1EE;
+  --blanco:#FFFFFF;--noche:#0A1B3D;--esmeralda:#0B7A57;--teal:#08654A;--lima:#7CB518;--naranja:#F28C28;--dorado:#D9B45A;
+  --papel:#FFFFFF;--trazo:#DDE5EF;--tenue:#627080;--tinte:#E7F4EF;--gris:#EEF1F1;--gris-txt:#5C6B6C;
+  /* = tokens del APK (lib/theme.dart · lib/ui/ds.dart): CTA AA, texto dorado legible, foco visible */
+  --verde:var(--esmeralda);--borde:var(--trazo);--dorado-txt:#8A6A12;--info-bg:#E7F0FB;--info-fg:#1E5FB0;--foco:0 0 0 3px rgba(11,122,87,.35);
+  --esp-1:4px;--esp-2:8px;--esp-3:12px;--esp-4:16px;--esp-5:24px;--esp-6:32px;--r-sm:10px;--r-pill:999px;--dur:.18s;
   --ok-bg:#E9F4EE;--ok-fg:#1F6E49;--warn-bg:#FDF2D6;--warn-fg:#946200;--bad-bg:#FBE7E7;--bad-fg:#C0392B;
   --rojo:#C13515;--sombra:0 2px 14px rgba(15,27,45,.06);--sombra2:0 10px 30px rgba(15,27,45,.10);
   --r:16px;--r-lg:20px;--r-btn:12px;
@@ -127,7 +132,10 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 .slot .dia{font-size:11px;font-weight:700;color:var(--tenue)}
 .slot.sel{background:var(--noche);border-color:var(--noche)}.slot.sel b,.slot.sel b small,.slot.sel .pr,.slot.sel .dia{color:#fff}
 .slot.sel .tag{background:rgba(255,255,255,.18);color:#fff}
-.slot.off{opacity:.45;cursor:not-allowed;background:var(--gris)}.slot.off b{text-decoration:line-through}
+.slot.off{opacity:.6;cursor:not-allowed;background:var(--gris)}.slot.off b{text-decoration:line-through}
+button.slot{font:inherit;color:inherit;text-align:left;width:100%;min-height:44px}
+.cl-aviso{display:flex;flex-direction:column;gap:4px;padding:14px 16px;border-radius:var(--r);background:var(--tinte);color:var(--ok-fg);font-size:14px}.cl-aviso b{font-size:15px}.cl-aviso.warn{background:var(--warn-bg);color:var(--warn-fg)}.cl-aviso.bad{background:var(--bad-bg);color:var(--bad-fg)}
+.politica{margin:18px 0 6px;border:1px solid var(--trazo);border-radius:var(--r);padding:0 16px}.politica summary{cursor:pointer;font-weight:800;padding:14px 0;min-height:44px;list-style-position:inside}.politica ul{list-style:none;margin:0;padding:0 0 8px}.politica li{display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--gris);font-size:14px}.politica li span:first-child{flex:none;width:22px;text-align:center}.politica a{display:inline-block;margin:4px 0 14px;font-size:13px}
 .slots-nota{font-size:12.5px;color:var(--tenue);font-weight:600;margin:8px 0 0}
 
 .strip{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 8px;min-width:0;max-width:100%;scrollbar-width:none;-webkit-overflow-scrolling:touch}.strip::-webkit-scrollbar{display:none}
@@ -192,7 +200,7 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .mc i:first-child{left:0;background:#EB001B}.mc i:last-child{left:13px;background:#F79E1B;opacity:.92}
 .candado{display:inline-flex;align-items:center;gap:6px;background:var(--noche);color:#fff;font-size:12px;font-weight:700;padding:6px 10px;border-radius:10px}
 .medio-pago .mp-t{font-weight:800;font-size:14px;margin-bottom:8px}.medio-pago .chip{padding:9px 12px}.medio-pago .chip small{font-size:11px;font-weight:800;color:var(--esmeralda)}
-.mp-mini{display:inline-flex;align-items:center;gap:6px;background:var(--blanco);border:1px solid var(--trazo);border-radius:999px;padding:6px 10px;cursor:pointer;font:inherit;flex:none}.mp-mini b{color:var(--gris);font-weight:700}
+.mp-mini{display:inline-flex;align-items:center;gap:6px;background:var(--blanco);border:1px solid var(--trazo);border-radius:999px;padding:6px 10px;cursor:pointer;font:inherit;flex:none}.mp-mini b{color:var(--tenue);font-weight:700}
 .pcg-rp{text-align:left;display:grid;gap:7px;margin:2px 0 6px}.pcg-rp .rp-l{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:12px;font-size:14px;color:var(--noche)}.pcg-rp .rp-l span{min-width:0;overflow-wrap:anywhere;line-height:1.3}.pcg-rp .rp-l b{white-space:nowrap}
 .pcg-rp .rp-t{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:12px;border-top:1px solid var(--trazo);padding-top:10px;margin-top:4px;font-size:17px;font-weight:800;color:var(--noche)}
 .pcg-rp .rp-d{font-size:12.5px;color:#717171;margin-top:-2px}.pcg-rp .rp-d summary{cursor:pointer;color:var(--esmeralda);font-weight:700;list-style:none}.pcg-rp .rp-d summary::-webkit-details-marker{display:none}.pcg-rp .rp-d summary::before{content:'ⓘ ';}.pcg-rp .rp-d[open] summary{margin-bottom:6px}
@@ -257,6 +265,10 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .cab-logo{grid-area:logo;display:flex;align-items:center;height:64px}
 .cab-tabs{grid-area:tabs;display:flex;justify-content:center;justify-content:safe center;align-items:flex-end;gap:4px;min-width:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .cab-tabs::-webkit-scrollbar{display:none}
+/* Pestañas que no caben: un degradado en el borde avisa que hay más (antes "Pickleball" salía cortado sin pista) */
+.cab-tabs.mas-der{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 48px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 48px),transparent)}
+.cab-tabs.mas-izq{-webkit-mask-image:linear-gradient(90deg,transparent,#000 48px);mask-image:linear-gradient(90deg,transparent,#000 48px)}
+.cab-tabs.mas-izq.mas-der{-webkit-mask-image:linear-gradient(90deg,transparent,#000 48px,#000 calc(100% - 48px),transparent);mask-image:linear-gradient(90deg,transparent,#000 48px,#000 calc(100% - 48px),transparent)}
 .cab-der{grid-area:der;display:flex;justify-content:flex-end;align-items:center;gap:6px;height:64px}
 .cab-busq{grid-area:busq;display:flex;justify-content:center;margin-top:2px}
 .cat{display:flex;align-items:center;gap:7px;padding:14px 10px 12px;border-bottom:2px solid transparent;color:var(--tenue);font-size:13.5px;font-weight:600;white-space:nowrap;cursor:pointer;text-decoration:none;user-select:none;transition:color .15s;position:relative}
@@ -542,6 +554,30 @@ body.sin-scroll{overflow:hidden}
 .modal-cuerpo{overflow-y:auto;padding:8px 24px 16px;flex:1;min-height:0}
 .modal-cuerpo section{padding:22px 0;border-bottom:1px solid var(--trazo)}.modal-cuerpo section:last-child{border-bottom:0}
 .modal-cuerpo h4{margin:0 0 14px;font-size:18px;font-weight:600}
+/* Accesibilidad (W2.7): foco visible en TODO lo interactivo, no solo en inputs */
+a:focus-visible,button:focus-visible,summary:focus-visible,[role=button]:focus-visible,.chip:focus-visible,[tabindex]:focus-visible{outline:3px solid var(--esmeralda);outline-offset:2px}
+button.btn,a.btn,button.chip,a.chip,.redondo{min-height:44px}.redondo{min-width:44px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+/* Pago con comprobante (cobro directo al club) */
+.vch-ov{position:fixed;inset:0;background:rgba(10,27,61,.5);z-index:78;display:flex;align-items:center;justify-content:center;padding:24px 16px}
+.vch{background:var(--blanco);border-radius:var(--r-lg);max-width:520px;width:100%;max-height:calc(100dvh - 48px);overflow-y:auto;padding:20px 22px;box-shadow:var(--sombra2)}
+.vch-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.vch-cab h3{margin:2px 0 0;font-size:22px}
+.vch-k{font-size:12px;font-weight:700;color:var(--ok-fg);text-transform:uppercase;letter-spacing:.04em}
+.vch-x{width:44px;height:44px;border-radius:50%;border:1px solid var(--trazo);background:var(--blanco);font-size:16px;cursor:pointer;flex:none}
+.vch-reloj{margin:12px 0 4px;padding:10px 12px;border-radius:var(--r-btn);background:var(--warn-bg);color:var(--warn-fg);font-size:14px}
+.vch-pasos{padding-left:20px;margin:10px 0 0}.vch-pasos>li{margin:0 0 16px;font-size:15px}.vch-pasos input[type=text],.vch-pasos input:not([type]){margin-top:6px}
+.vch-medio{border:1px solid var(--trazo);border-radius:var(--r);padding:12px 14px;margin:10px 0}
+.vch-mt{font-weight:800}.vch-tit{font-size:14px;color:var(--tenue);margin:2px 0 6px}
+.vch-dato{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px dashed var(--trazo)}.vch-dato span{font-size:13px;color:var(--tenue);min-width:58px}
+.vch-dato b{flex:1;min-width:0;overflow-wrap:anywhere;font-size:16px}
+.vch-copiar{min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--trazo);background:var(--blanco);font-weight:700;cursor:pointer}
+.vch-qr{display:block;max-width:200px;width:100%;margin:8px auto 0;border-radius:var(--r-btn)}
+.vch-nota{font-size:13px;color:var(--tenue);margin-top:6px}
+.vch-foto{display:flex;align-items:center;justify-content:center;min-height:52px;margin-top:6px;border:2px dashed var(--trazo);border-radius:var(--r);cursor:pointer;font-weight:700}
+.vch-foto input{position:absolute;opacity:0;width:1px;height:1px}.vch-foto:focus-within{outline:3px solid var(--esmeralda);outline-offset:2px}
+.vch-prev{display:block;max-height:220px;max-width:100%;margin:10px auto 0;border-radius:var(--r-btn)}
+.vch-pie{font-size:12.5px;margin-top:10px}
+@media (max-width:600px){.vch-ov{align-items:flex-end;padding:0}.vch{border-radius:22px 22px 0 0;max-height:92dvh;padding:16px 18px calc(16px + env(safe-area-inset-bottom,0px))}}
 .pcg-dlg{display:none;position:fixed;inset:0;background:rgba(10,27,61,.5);z-index:80;align-items:center;justify-content:center;padding:24px 16px}.pcg-dlg.open{display:flex}
 .pcg-dlg .caja{background:var(--blanco);border-radius:24px;width:100%;max-width:420px;padding:28px 24px 20px;text-align:center;box-shadow:0 12px 40px rgba(10,27,61,.3);animation:pop .18s ease-out;display:flex;flex-direction:column;align-items:center;max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px)}
 .pcg-dlg .ico{width:56px;height:56px;border-radius:50%;background:var(--tinte);display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:12px;flex:none}.pcg-dlg .ico.mal{background:#FDECE8}
@@ -637,7 +673,7 @@ body.sin-scroll{overflow:hidden}
 .lst.pend .foto img,.lst.pend .foto .sinfoto{filter:saturate(.55)}
 .btn-mapa{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:25;background:var(--noche);color:#fff;border:0;border-radius:999px;padding:13px 20px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 8px 24px rgba(15,27,45,.28);display:inline-flex;align-items:center;gap:8px;font-family:inherit}
 .btn-mapa:hover{transform:translateX(-50%) scale(1.03)}
-.ubic-mini{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13.5px;font-weight:600;color:var(--tenue);padding:14px 0 0}
+.ubic-mini{display:flex;align-items:flex-start;gap:8px;flex-wrap:nowrap;font-size:13.5px;font-weight:600;color:var(--tenue);padding:14px 0 0}.ubic-mini>span:first-child{flex:none}.ubic-mini #ubicTxt{flex:1;min-width:0}.ubic-mini select{width:auto;display:inline-block;padding:4px 8px;border:1px solid var(--trazo);border-radius:999px;font:inherit;font-weight:700;background:var(--blanco);min-height:32px}
 .ubic-mini button{border:0;background:transparent;color:var(--esmeralda);font-weight:800;cursor:pointer;font-family:inherit;font-size:13.5px;padding:0;text-decoration:underline}
 .vacio{padding:40px 0;text-align:center;color:var(--tenue);font-weight:600}
 /* sesión con Google */
@@ -730,7 +766,7 @@ def boton_whatsapp(texto: str, etiqueta: str = "💬 WhatsApp", clase: str = "bt
 
 
 PELOTA_SVG = (
-    "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='12' cy='12' r='10' fill='#0E8F67'/>"
+    "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='12' cy='12' r='10' fill='#0B7A57'/>"
     "<path fill='#fff' d='M12 6.2l3.3 2.4-1.3 3.9H10l-1.3-3.9L12 6.2z'/>"
     "<path fill='none' stroke='#fff' stroke-width='1.4' d='M12 6.2V3.5M15.3 8.6l2.6-.9M14 12.5l1.9 2.3M10 12.5l-1.9 2.3M8.7 8.6l-2.6-.9'/>"
     "<path fill='#fff' opacity='.9' d='M6.2 8.5l2.5-.8.9 2.6-2.3 1.8-1.7-1.3zM17.8 8.5l-2.5-.8-.9 2.6 2.3 1.8 1.7-1.3zM9.1 15.6h5.8l.8 2.6-3.7 1.9-3.7-1.9z'/></svg>"
@@ -861,6 +897,51 @@ def medio_pago_mini(pasarela: str = "culqi") -> str:
     return f"<button type='button' class='mp-mini' id='medioPagoMini' data-medio='{e(m)}' aria-label='Medio de pago'></button>"
 
 
+_PLUS_CODE = re.compile(r"^\s*[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}\b[,\s]*", re.I)
+
+
+def direccion_legible(texto: str) -> str:
+    """Dirección para personas: Google a veces la da como Plus Code
+    ("373R+J63, Lurigancho-Chosica 15468, …"), que nadie entiende; se quita."""
+    t = _PLUS_CODE.sub("", str(texto or "")).strip(" ,")
+    return t or str(texto or "").strip()
+
+
+def js_seguro(texto: str) -> str:
+    """Texto JSON listo para ir DENTRO de un <script>: `</script>` (o `<!--`)
+    en un dato de usuario —nombre de club, de jugador, nota de un medio de
+    pago— no puede cerrar el script e inyectar HTML (XSS persistente)."""
+    return (str(texto).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+
+def json_js(obj, **kw) -> str:
+    """`json.dumps` seguro para incrustar en HTML/JS (ver `js_seguro`)."""
+    import json as _json
+    return js_seguro(_json.dumps(obj, **kw))
+
+
+def selector_medio_directo(directo: dict) -> str:
+    """Selector del checkout cuando el club cobra DIRECTO (el dinero va a su
+    cuenta): Yape / Tarjeta con el Culqi DEL CLUB si lo conectó y, si publicó
+    medios manuales, "Pagar con comprobante" (Yape, Plin, transferencia… y se
+    sube el voucher). `pcgMedioPago()` devuelve 'yape' | 'tarjeta' | 'voucher'."""
+    culqi = bool(directo.get("culqi_public_key"))
+    medios = directo.get("medios") or []
+    nombres = " · ".join(dict.fromkeys(e(m.get("etiqueta") or m.get("tipo") or "") for m in medios if m))
+    chips = ""
+    if culqi:
+        chips += ("<button type='button' class='chip sel' data-medio='yape'><span class='yape'>Yape</span> Yape <small>Recomendado</small></button>"
+                  "<button type='button' class='chip' data-medio='tarjeta'><span class='visa'>VISA</span><span class='mc'><i></i><i></i></span> Tarjeta</button>")
+    if medios:
+        chips += (f"<button type='button' class='chip{'' if culqi else ' sel'}' data-medio='voucher' data-nombre='comprobante' "
+                  f"data-corto='🧾 Comprobante'>🧾 Pagar con comprobante</button>")
+    pie = ("🔒 Pagas directo al club" + (" · Culqi" if culqi else "")
+           + (f". Con comprobante: {nombres}; el club lo confirma." if medios else "."))
+    return ("<div class='medio-pago' id='medioPago'><div class='mp-t'>¿Cómo quieres pagar?</div>"
+            f"<div class='chips'>{chips}</div><div class='sub' style='font-size:12px;margin-top:8px'>{pie}</div></div>")
+
+
 _FLAGS = {
     "PE": "<svg class='flag' viewBox='0 0 3 2'><rect width='3' height='2' fill='#D91023'/><rect x='1' width='1' height='2' fill='#fff'/></svg>",
     "EC": "<svg class='flag' viewBox='0 0 4 2'><rect width='4' height='2' fill='#FFD100'/><rect y='1' width='4' height='.5' fill='#0057B8'/><rect y='1.5' width='4' height='.5' fill='#D91023'/></svg>",
@@ -878,7 +959,7 @@ def sello_verificada() -> str:
 
 
 def check_svg() -> str:
-    return ("<div class='check'><svg viewBox='0 0 24 24'><path fill='none' stroke='#0E8F67' stroke-width='3' "
+    return ("<div class='check'><svg viewBox='0 0 24 24'><path fill='none' stroke='#0B7A57' stroke-width='3' "
             "stroke-linecap='round' stroke-linejoin='round' d='M5 12.5l4.5 4.5L19 7'/></svg></div>")
 
 
@@ -1035,7 +1116,7 @@ def cabecera(*, tabs: str = "", busq: str = "", ses: dict | None = None, volver:
             + ("" if modo == "anfitrion" else f"<div class='cab-mini'>{busq_mini('#', 'busqMini') if busq else busq_mini('/canchas')}</div>")
             + f"{menu_cuenta(ses, volver, modo)}"
             + (f"<div class='cab-busq'>{busq}</div>" if busq else "")
-            + f"</div></header><script>{JS_NAV}</script>")
+            + f"</div></header><script src='{_seg().url_nav()}'></script>")
 
 
 # JS de la cabecera: menú ☰ (abre/cierra, se cierra al hacer clic fuera o con
@@ -1060,6 +1141,28 @@ JS_NAV = (r"""
     var b = ev.target.closest && ev.target.closest('#medioPago [data-medio]'); if(b){ mpSet(b.dataset.medio); return; }
     var mini = ev.target.closest && ev.target.closest('#medioPagoMini'); if(mini && (mini.dataset.medio === 'yape' || mini.dataset.medio === 'tarjeta')){ mpSet(mini.dataset.medio === 'yape' ? 'tarjeta' : 'yape'); }
   });
+  // FOTOS QUE NUNCA SE VEN ROTAS (W2.2): una URL de Google caducada (o cualquier imagen que falle)
+  // se reemplaza por un fondo neutro con el ícono del deporte, en vez del ícono de imagen rota.
+  var FOTO_RESPALDO = "data:image/svg+xml;charset=utf-8," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'><rect width='400' height='300' fill='#E7F4EF'/><rect x='110' y='85' width='180' height='130' rx='10' fill='none' stroke='#B9D9CC' stroke-width='6'/><line x1='200' y1='85' x2='200' y2='215' stroke='#B9D9CC' stroke-width='6'/><circle cx='200' cy='150' r='26' fill='none' stroke='#B9D9CC' stroke-width='6'/></svg>");
+  function fotoRota(img){
+    if(!img || img.tagName !== 'IMG' || img.dataset.fallo || img.src.indexOf('data:') === 0) return;
+    if(img.closest && img.closest('.vch, .pcg-dlg, #pcgDlg')) return;   // vistas previas propias
+    img.dataset.fallo = '1'; img.removeAttribute('srcset'); img.src = FOTO_RESPALDO; img.classList.add('foto-respaldo');
+    if(!img.getAttribute('alt')) img.setAttribute('alt', '');
+  }
+  document.addEventListener('error', function(ev){ fotoRota(ev.target); }, true);
+  document.addEventListener('DOMContentLoaded', function(){
+    Array.prototype.forEach.call(document.images, function(i){ if(i.complete && i.naturalWidth === 0 && i.getAttribute('src')) fotoRota(i); });
+  });
+  function bordesTabs(){
+    document.querySelectorAll('.cab-tabs').forEach(function(t){
+      var mas = t.scrollWidth > t.clientWidth + 2;
+      t.classList.toggle('mas-izq', mas && t.scrollLeft > 4);
+      t.classList.toggle('mas-der', mas && t.scrollLeft + t.clientWidth < t.scrollWidth - 4);
+      if(!t.dataset.bordes){ t.dataset.bordes = '1'; t.addEventListener('scroll', bordesTabs, {passive: true}); }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', bordesTabs); window.addEventListener('resize', bordesTabs);
   window.pcgMedioPago = function(){ var s = document.querySelector('#medioPago [data-medio].sel'); return s ? s.dataset.medio : 'yape'; };
   document.addEventListener('DOMContentLoaded', function(){ if(document.getElementById('medioPagoMini')) mpSet(window.pcgMedioPago()); });
   // WhatsApp: en móvil se usa el texto con emojis (data-wa-movil); en escritorio queda el href sin emojis (WhatsApp Windows los rompe).
@@ -1069,7 +1172,7 @@ JS_NAV = (r"""
   if(b && p){
     b.addEventListener('click', function(ev){ ev.stopPropagation(); var on = !p.classList.contains('open'); p.classList.toggle('open', on); b.setAttribute('aria-expanded', on ? 'true' : 'false'); });
     document.addEventListener('click', function(ev){ if(!p.contains(ev.target)){ p.classList.remove('open'); b.setAttribute('aria-expanded', 'false'); } });
-    document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape'){ p.classList.remove('open'); document.querySelectorAll('.sug.open').forEach(function(s){ s.classList.remove('open'); }); } });
+    document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape'){ var abierto = p.classList.contains('open'); p.classList.remove('open'); b.setAttribute('aria-expanded', 'false'); if(abierto) b.focus(); document.querySelectorAll('.sug.open').forEach(function(s){ s.classList.remove('open'); }); } });
   }
   // Al hacer scroll la cabecera se compacta (pastilla chica al centro); al tocarla vuelve el buscador grande.
   var cab = document.querySelector('.cab:not(.simple)'), mini = document.getElementById('busqMini');
@@ -1082,7 +1185,7 @@ JS_NAV = (r"""
   window.pcgSalir = function(){ pcgCargando('Cerrando sesión…'); fetch('/web/salir', {method: 'POST'}).then(function(){ location.reload(); }); };
   // ── Diálogos y preloader de TODA la web (regla del director, sep-2026: nada de confirm()/alert() del navegador) ──
   // pcgConfirmar({titulo, mensaje, confirmar, cancelar, destructivo, icono}) → Promise<bool>; pcgAvisar({...}) → Promise; mismo formato que dialogo_pichangol.dart.
-  function dlg(){ var d = document.getElementById('pcgDlg'); if(d) return d; d = document.createElement('div'); d.id = 'pcgDlg'; d.className = 'pcg-dlg'; d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true');
+  function dlg(){ var d = document.getElementById('pcgDlg'); if(d) return d; d = document.createElement('div'); d.id = 'pcgDlg'; d.className = 'pcg-dlg'; d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true'); d.setAttribute('aria-labelledby', 'pcgDlgTit'); d.setAttribute('aria-describedby', 'pcgDlgMsg');
     d.innerHTML = "<div class='caja'><div class='ico' id='pcgDlgIco'></div><h3 id='pcgDlgTit'></h3><div class='msg' id='pcgDlgMsg'></div><button type='button' class='btn' id='pcgDlgOk'></button><button type='button' class='txt' id='pcgDlgNo'></button></div>";
     document.body.appendChild(d); return d; }
   function abrirDlg(o, conCancelar){ return new Promise(function(res){ var d = dlg(), ok = d.querySelector('#pcgDlgOk'), no = d.querySelector('#pcgDlgNo'), ico = d.querySelector('#pcgDlgIco');
@@ -1090,8 +1193,18 @@ JS_NAV = (r"""
     if(o.logo){ ico.innerHTML = "<img src='/marca/logo.png' alt='⟦MARCA⟧'>"; } else { ico.textContent = o.icono || (o.destructivo ? '🗑' : (conCancelar ? '❓' : 'ℹ️')); }
     ico.classList.toggle('mal', !!o.destructivo); ico.classList.toggle('marca', !!o.logo);
     ok.textContent = o.confirmar || (conCancelar ? 'Sí, continuar' : 'Entendido'); ok.classList.toggle('mal', !!o.destructivo); no.textContent = o.cancelar || 'Cancelar'; no.style.display = conCancelar ? '' : 'none';
-    function fin(v){ d.classList.remove('open'); ok.onclick = no.onclick = d.onclick = null; document.removeEventListener('keydown', esc); res(v); }
-    function esc(ev){ if(ev.key === 'Escape') fin(false); }
+    // Accesible: el foco queda DENTRO del diálogo (Tab da la vuelta) y vuelve al botón que lo abrió.
+    var antes = document.activeElement;
+    function fin(v){ d.classList.remove('open'); ok.onclick = no.onclick = d.onclick = null; document.removeEventListener('keydown', esc); try { if(antes && antes.focus) antes.focus(); } catch(e){} res(v); }
+    function esc(ev){
+      if(ev.key === 'Escape'){ fin(false); return; }
+      if(ev.key === 'Tab'){
+        var f = Array.prototype.filter.call(d.querySelectorAll('button,a[href],summary,input,select,textarea,[tabindex]:not([tabindex="-1"])'), function(x){ return x.offsetParent !== null && !x.disabled; });
+        if(!f.length) return; var pri = f[0], ult = f[f.length - 1];
+        if(ev.shiftKey && document.activeElement === pri){ ev.preventDefault(); ult.focus(); }
+        else if(!ev.shiftKey && document.activeElement === ult){ ev.preventDefault(); pri.focus(); }
+      }
+    }
     ok.onclick = function(){ fin(true); }; no.onclick = function(){ fin(false); }; d.onclick = function(ev){ if(ev.target === d) fin(false); };
     document.addEventListener('keydown', esc); d.classList.add('open'); setTimeout(function(){ (conCancelar && o.destructivo ? no : ok).focus(); }, 40); }); }
   window.pcgConfirmar = function(o){ return abrirDlg(o || {}, true); };
@@ -1226,7 +1339,7 @@ JS_ABRIR_APP = (r"""
   function banner(){
     if(document.getElementById('abrirApp')) return;
     var st = document.createElement('style');
-    st.textContent = ".abrir-app{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 14px;background:#0A1B3D;color:#fff;font:600 14px/1.25 'DM Sans',system-ui,sans-serif}.abrir-app img{width:36px;height:36px;border-radius:10px;background:#fff;padding:3px;flex:none}.abrir-app .t{flex:1;min-width:0}.abrir-app .t small{display:block;font-weight:500;opacity:.8;font-size:12px}.abrir-app .ir{flex:none;background:#0B8A3E;color:#fff;border:0;border-radius:999px;padding:9px 16px;font:700 14px 'DM Sans',system-ui,sans-serif;width:auto}.abrir-app .x{flex:none;background:transparent;border:0;color:#fff;opacity:.7;font-size:20px;line-height:1;padding:6px;width:auto}@media(min-width:901px){.abrir-app{display:none}}";
+    st.textContent = ".abrir-app{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 14px;background:#0A1B3D;color:#fff;font:600 14px/1.25 'DM Sans',system-ui,sans-serif}.abrir-app img{width:36px;height:36px;border-radius:10px;background:#fff;padding:3px;flex:none}.abrir-app .t{flex:1;min-width:0}.abrir-app .t small{display:block;font-weight:500;opacity:.8;font-size:12px}.abrir-app .ir{flex:none;background:#0B7A57;color:#fff;border:0;border-radius:999px;padding:9px 16px;font:700 14px 'DM Sans',system-ui,sans-serif;width:auto}.abrir-app .x{flex:none;background:transparent;border:0;color:#fff;opacity:.7;font-size:20px;line-height:1;padding:6px;width:auto}@media(min-width:901px){.abrir-app{display:none}}";
     var d = document.createElement('div'); d.id = 'abrirApp'; d.className = 'abrir-app'; d.setAttribute('role', 'region'); d.setAttribute('aria-label', 'Abrir en la app');
     d.innerHTML = "<img src='/marca/logo.png' alt=''><div class='t'>Abrir en la app ⟦MARCA⟧<small>Reserva más rápido y recibe avisos de tus partidos</small></div><button type='button' class='ir' id='abrirAppIr'>Abrir</button><button type='button' class='x' id='abrirAppX' aria-label='Seguir en la web'>&times;</button>";
     document.head.appendChild(st); document.body.insertBefore(d, document.body.firstChild);
@@ -1275,8 +1388,8 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         f"<link rel='apple-touch-icon' href='{_logo_url()}'>"
         "<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
         "<link href='https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700;9..40,800&display=swap' rel='stylesheet'>"
-        f"<style>{CSS}</style>{extra_head}"
-        + (f"<script type='application/ld+json'>{jsonld}</script>" if jsonld else "")
+        f"<link rel='stylesheet' href='{_seg().url_css()}'>{extra_head}"
+        + (f"<script type='application/ld+json'>{js_seguro(jsonld)}</script>" if jsonld else "")
         + "</head><body" + (f" class='{clases}'" if clases else "") + ">"
         f"{nav or nav_simple(sesion)}"
         f"<main class='{'wrap-xl' if ancho else 'wrap'}'>{cuerpo}</main>"
@@ -1286,4 +1399,12 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         # Badge de no leídos (mensajería web): pinta el último valor y lo refresca.
         from web.jugador_mensajes import JS_BADGE_MENSAJES
         page = page.replace("</body></html>", JS_BADGE_MENSAJES + "</body></html>")
-    return HTMLResponse(page, headers={"Cache-Control": "no-store"})
+    # private + no-cache: nada se guarda en cachés compartidas y el navegador
+    # revalida siempre, pero el botón "atrás" puede usar su copia en memoria
+    # (con no-store, cada "atrás" recargaba la página entera).
+    return HTMLResponse(page, headers={"Cache-Control": "private, no-cache"})
+
+
+def _seg():
+    from web import seguridad_web
+    return seguridad_web

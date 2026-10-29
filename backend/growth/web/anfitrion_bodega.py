@@ -458,7 +458,7 @@ def pagina_bodega(request: Request, tab: str = "caja") -> HTMLResponse:
         "<div class='modal' id='bModal' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:480px'>"
         "<div class='modal-cab'><button type='button' class='cerrar' data-cerrar-modal>✕</button><h3 id='bModalTit'></h3></div>"
         "<div class='modal-cuerpo' id='bModalCuerpo'></div></div></div>"
-        f"<script>var BOD={json.dumps(cfg_js, ensure_ascii=False)};</script><script>{JS}</script>")
+        f"<script>var BOD={ui.json_js(cfg_js, ensure_ascii=False)};</script><script>{JS}</script>")
     return ui.shell("Mi bodega", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mi bodega · Modo anfitrión",
                     extra_head=f"<style>{CSS}</style>")
 

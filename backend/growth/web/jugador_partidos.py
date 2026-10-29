@@ -92,7 +92,7 @@ def _emo(dep: str) -> str:
 
 
 def _js(obj) -> str:
-    return json.dumps(obj, ensure_ascii=False).replace("</", "<\\/")
+    return ui.json_js(obj, ensure_ascii=False).replace("</", "<\\/")
 
 
 def fecha_legible(fecha: str, hora: str = "") -> str:
@@ -122,7 +122,7 @@ _CSS = """
 .jp-wrap{max-width:760px;margin:10px auto 70px;min-width:0}
 .jp-wrap h1{font-size:28px;margin:4px 0 6px;letter-spacing:-.3px}
 .jp-volver{color:#6a6a6a;text-decoration:none;font-size:14px}
-.jp-hero{background:linear-gradient(135deg,#0B8A3E,#067A38);color:#fff;border-radius:22px;padding:20px;margin:8px 0 14px}
+.jp-hero{background:linear-gradient(135deg,#0B7A57,#08654A);color:#fff;border-radius:22px;padding:20px;margin:8px 0 14px}
 .jp-hero h1{color:#fff;margin:0 0 2px}
 .jp-hero p{margin:0 0 12px;opacity:.92}
 .jp-hero .jp-link{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.18);color:#fff;text-decoration:none;font-weight:700;font-size:13.5px;border-radius:10px;padding:8px 12px;margin:0 8px 6px 0}
@@ -133,7 +133,7 @@ _CSS = """
 .jp-top .t b{display:block;font-size:16.5px;overflow-wrap:anywhere}
 .jp-top .t small{color:#6a6a6a}
 .jp-pill{display:inline-block;border-radius:999px;padding:5px 10px;font-weight:800;font-size:12px;white-space:nowrap}
-.jp-pill.ok{background:#EAF7EF;color:#067A38}.jp-pill.gris{background:#EBEBEB;color:#6a6a6a}
+.jp-pill.ok{background:#EAF7EF;color:#08654A}.jp-pill.gris{background:#EBEBEB;color:#6a6a6a}
 .jp-pill.warn{background:#FFF6E0;color:#B7791F}.jp-pill.info{background:#EAF2FB;color:#1F5FA8}.jp-pill.bad{background:#FBEAEA;color:#C0392B}
 .jp-lin{display:flex;gap:8px;color:#555;font-size:13.5px;margin:6px 0 0;min-width:0}
 .jp-lin span:last-child{min-width:0;overflow-wrap:anywhere}
@@ -149,7 +149,7 @@ _CSS = """
 .jp-fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:15;box-shadow:0 8px 22px rgba(0,0,0,.18);border-radius:999px}
 .jp-sec{font-weight:800;font-size:16px;margin:18px 0 8px}
 .jp-barra{height:8px;border-radius:999px;background:#EBEBEB;overflow:hidden;margin:12px 0 8px}
-.jp-barra i{display:block;height:100%;background:#0B8A3E;border-radius:999px}
+.jp-barra i{display:block;height:100%;background:#0B7A57;border-radius:999px}
 .jp-barra.llena i{background:#F2C94C}
 .jp-cupos{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:13.5px}
 .jp-cupos .der{margin-left:auto;font-weight:800}
@@ -162,8 +162,8 @@ _CSS = """
 .jp-fila .q{flex:1;min-width:0}
 .jp-fila .q b{display:block;overflow-wrap:anywhere}
 .jp-fila .q small{color:#6a6a6a}
-.jp-n{width:30px;height:30px;border-radius:50%;background:#EAF7EF;color:#067A38;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none}
-.jp-av{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#0E8F67;color:#fff;font-weight:800}
+.jp-n{width:30px;height:30px;border-radius:50%;background:#EAF7EF;color:#08654A;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.jp-av{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#0B7A57;color:#fff;font-weight:800}
 .jp-form label.l{display:block;font-weight:800;margin:16px 0 6px}
 .jp-form .ayuda{color:#6a6a6a;font-size:12.5px;margin:-2px 0 6px}
 .jp-form input[type=text],.jp-form select,.jp-form input[type=date]{width:100%;padding:12px;border:1px solid #E4E4E4;border-radius:12px;font:inherit;background:#fff}
@@ -171,7 +171,7 @@ _CSS = """
 .jp-step button{width:44px;height:44px;border-radius:50%;border:1px solid #E4E4E4;background:#fff;font-size:22px;cursor:pointer}
 .jp-step b{flex:1;text-align:center;font-size:26px}
 .jp-modo{display:flex;gap:12px;align-items:flex-start;border:1px solid #E4E4E4;border-radius:14px;padding:12px;margin:0 0 8px;cursor:pointer;background:#fff;width:100%;text-align:left;font:inherit}
-.jp-modo.sel{border:1.5px solid #0B8A3E;background:#EAF7EF}
+.jp-modo.sel{border:1.5px solid #0B7A57;background:#EAF7EF}
 .jp-modo .em{font-size:22px}
 .jp-modo b{display:block}
 .jp-modo small{color:#555}
@@ -180,7 +180,7 @@ _CSS = """
 .jp-stats div{background:#fff;border:1px solid #EBEBEB;border-radius:14px;padding:10px 6px;text-align:center;min-width:0}
 .jp-stats b{display:block;font-size:20px}
 .jp-stats small{color:#6a6a6a;font-size:11.5px}
-.jp-carnet{background:linear-gradient(135deg,#067A38,#0A1B3D);color:#fff;border-radius:20px;padding:18px;display:flex;gap:14px;align-items:center;min-width:0}
+.jp-carnet{background:linear-gradient(135deg,#08654A,#0A1B3D);color:#fff;border-radius:20px;padding:18px;display:flex;gap:14px;align-items:center;min-width:0}
 .jp-carnet .jp-av{width:60px;height:60px;font-size:24px;background:#7CB518}
 .jp-carnet b{font-size:19px;display:block;overflow-wrap:anywhere}
 .jp-carnet small{opacity:.85;display:block}
@@ -190,11 +190,11 @@ _CSS = """
 .jp-slot{border:1px solid #E4E4E4;background:#fff;border-radius:12px;padding:8px 12px;cursor:pointer;font:inherit;text-align:center;min-width:84px}
 .jp-slot b{display:block}
 .jp-slot small{color:#6a6a6a}
-.jp-slot.sel{background:#0B8A3E;border-color:#0B8A3E;color:#fff}
+.jp-slot.sel{background:#0B7A57;border-color:#0B7A57;color:#fff}
 .jp-slot.sel small{color:#EAF7EF}
 .jp-mini{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13.5px}
 .jp-mini .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
-.jp-mini .pt{font-weight:900;color:#067A38}
+.jp-mini .pt{font-weight:900;color:#08654A}
 .jp-bio{display:flex;gap:10px;padding:6px 0;font-size:14px}
 .jp-bio small{display:block;color:#6a6a6a}
 .pcg-dlg .caja .jp-chk{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #F0F0F0;cursor:pointer}
@@ -347,7 +347,7 @@ def crear_partido(p: dict) -> bool:
             if cols_v2():
                 cols += _COLS_V2
                 vals += [p.get("tipo") or "partido", p.get("modalidad") or "", p.get("nivel") or "",
-                         json.dumps(p.get("etiquetas") or []), p.get("cancha_id") or None]
+                         ui.json_js(p.get("etiquetas") or []), p.get("cancha_id") or None]
             marcas = ", ".join("%s::jsonb" if c == "etiquetas" else "%s" for c in cols)
             cur.execute(f"INSERT INTO pichangol_partidos ({', '.join(cols)}) VALUES ({marcas})", vals)
             cur.execute("SAVEPOINT g")
@@ -599,7 +599,7 @@ _CSS_JY = """
 .jp-av-card .t{flex:1;min-width:0}.jp-av-card .t b{display:block}.jp-av-card .t small{color:#6a6a6a}
 .jp-ubic{display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:#555;font-size:13.5px;margin:4px 0 6px}
 .jp-ubic select{width:auto;padding:6px 10px;border:1px solid #E4E4E4;border-radius:999px;background:#fff;font:inherit}
-.jp-km{font-weight:700;color:#067A38;margin-left:4px}
+.jp-km{font-weight:700;color:#08654A;margin-left:4px}
 .jp-nota{background:#FFF6E0;color:#7A5B00;border-radius:12px;padding:10px 12px;font-size:13px;margin:0 0 10px}
 .jp-ets{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
 .jp-et{background:#F4F7FA;border:1px solid #EBEBEB;border-radius:999px;padding:4px 10px;font-size:12.5px}
@@ -608,7 +608,7 @@ _CSS_JY = """
 .jp-jug .q{flex:1;min-width:0}.jp-jug .q b{display:block;overflow-wrap:anywhere}.jp-jug .q small{color:#6a6a6a}
 .jp-jug .acc{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .jp-jug .acc .btn{padding:8px 12px;font-size:13px}
-.jp-av-img{width:46px;height:46px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#0E8F67;color:#fff;font-weight:800;font-size:18px}
+.jp-av-img{width:46px;height:46px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#0B7A57;color:#fff;font-weight:800;font-size:18px}
 .jp-sw{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-top:1px solid #F0F0F0;cursor:pointer;text-align:left}
 .jp-sw input{width:auto!important;flex:none;margin-top:3px;transform:scale(1.2)}
 .jp-sw b{display:block}.jp-sw small{color:#6a6a6a}
@@ -1161,7 +1161,7 @@ def _chip_modo(m: str) -> str:
 def _barra(total_conf: int, cupos: int, espera: int, libres: int, cerrada: bool) -> str:
     ratio = min(1.0, total_conf / (cupos or 1))
     lleno = libres == 0
-    der = "" if cerrada else (f"<span class='der' style='color:{'#B7791F' if lleno else '#067A38'}'>{'Lista llena' if lleno else f'{libres} libres'}</span>")
+    der = "" if cerrada else (f"<span class='der' style='color:{'#B7791F' if lleno else '#08654A'}'>{'Lista llena' if lleno else f'{libres} libres'}</span>")
     return (f"<div class='jp-barra{' llena' if lleno else ''}'><i style='width:{ratio * 100:.0f}%'></i></div>"
             f"<div class='jp-cupos'><span>👥 <b>{total_conf}/{cupos}</b> confirmados</span>"
             + (f"<span style='color:#6a6a6a'>⏳ {espera} en espera</span>" if espera else "") + der + "</div>")
@@ -1410,7 +1410,7 @@ def pagina_pichanga(request: Request, cid: int) -> HTMLResponse:
     mi = conv.estado_socio(cid, yo)
     est = mi.get("estado_efectivo")
     banner = {
-        "confirmado": ("✅", "¡Estás dentro!", "Tu cupo está confirmado.", "#EAF7EF", "#067A38"),
+        "confirmado": ("✅", "¡Estás dentro!", "Tu cupo está confirmado.", "#EAF7EF", "#08654A"),
         "lista_espera": ("⏳", "En lista de espera", f"Puesto {mi.get('posicion') or '-'}. Si alguien cancela, subes.", "#FFF6E0", "#B7791F"),
         "en_bolsa": ("🎲", "Anotado — en la bolsa", "Los cupos se definen al cerrar la inscripción.", "#EAF2FB", "#1F5FA8"),
     }.get(est, ("ℹ️", "No estás anotado", "La inscripción está cerrada." if cerrada else "Anótate mientras haya cupo.", "#F2F2F2", "#555"))
@@ -1592,7 +1592,7 @@ def pagina_referidos(request: Request) -> HTMLResponse:
     tope_html = ("<div class='jp-banner' style='background:#F4F4F4;color:#555'><span class='em'>ℹ️</span><div><b>Llegaste al tope de invitados con bono</b>"
                  "<small>Tus amigos igual reciben su bono de bienvenida.</small></div></div>") if est.get("tope_alcanzado") else ""
     canje = est.get("canjeado") or ""
-    canje_html = (f"<div class='jp-banner' style='background:#EAF7EF;color:#067A38'><span class='em'>✅</span><div><b>Ya canjeaste el código {e(canje)}</b>"
+    canje_html = (f"<div class='jp-banner' style='background:#EAF7EF;color:#08654A'><span class='em'>✅</span><div><b>Ya canjeaste el código {e(canje)}</b>"
                   "<small>Solo se puede canjear un código por cuenta.</small></div></div>") if canje else (
         "<div class='jp-card'><b>¿Tienes el código de un amigo?</b><p class='sub' style='margin:4px 0 10px'>"
         + (f"Canjéalo y te sumamos {e(bono_txt)} a tu saldo (a tu amigo también). " if bono_txt else "")
@@ -1604,10 +1604,10 @@ def pagina_referidos(request: Request) -> HTMLResponse:
              if bono_txt else f"Comparte tu código con tus amigos para que juegue contigo en {MARCA}.")
     cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap' style='max-width:600px'><a class='jp-volver' href='/perfil'>‹ Perfil</a>"
               "<h1>Invita y gana</h1>"
-              "<div class='jp-hero' style='text-align:center;background:linear-gradient(135deg,#7CB518,#0B8A3E)'>"
+              "<div class='jp-hero' style='text-align:center;background:linear-gradient(135deg,#7CB518,#0B7A57)'>"
               "<div style='font-size:40px'>🎁</div><p style='margin:6px 0 0'>Tu código</p>"
               f"<div class='jp-cod' id='rfCod'>{e(cod)}</div>"
-              + ui.boton_whatsapp(msg, etiqueta="💬 Invitar por WhatsApp", clase="btn", extra="style='background:#fff;color:#0B8A3E;width:100%'")
+              + ui.boton_whatsapp(msg, etiqueta="💬 Invitar por WhatsApp", clase="btn", extra="style='background:#fff;color:#0B7A57;width:100%'")
               + "<button type='button' class='btn sec' style='margin-top:8px;width:100%;background:transparent;color:#fff;border-color:rgba(255,255,255,.6)' onclick='rfCopiar()'>⧉ Copiar código</button></div>"
               f"<p class='sub'>{regla}</p>"
               f"<div class='jp-banner' style='background:#EAF7EF;color:#14463A'><span class='em'>👥</span><div><b>{e(estado_txt)}</b></div></div>"
@@ -1770,8 +1770,8 @@ def pagina_carnet(request: Request, ref: str, deporte: str = "") -> HTMLResponse
     bio = bio_de(email)
     primer = nombre.split(" ")[0]
     stats = (f"<div class='jp-stats'><div><b style='color:#0A1B3D'>{p['puntos']}</b><small>Puntos</small></div>"
-             f"<div><b>{p['pj']}</b><small>Jugados</small></div><div><b style='color:#0B8A3E'>{p['pg']}</b><small>Ganados</small></div>"
-             f"<div><b style='color:#067A38'>{p['pct']:.0f}%</b><small>Efectividad</small></div></div>")
+             f"<div><b>{p['pj']}</b><small>Jugados</small></div><div><b style='color:#0B7A57'>{p['pg']}</b><small>Ganados</small></div>"
+             f"<div><b style='color:#08654A'>{p['pct']:.0f}%</b><small>Efectividad</small></div></div>")
     acciones = ""
     if email != yo:
         acciones += (f"<button type='button' class='btn' style='width:100%' data-retar='{e(ref_de(email))}' data-nombre='{e(nombre)}' data-dep='{e(dep)}'>"
@@ -1779,7 +1779,7 @@ def pagina_carnet(request: Request, ref: str, deporte: str = "") -> HTMLResponse
     acciones += "<button type='button' class='btn sec' style='width:100%;margin-top:8px' onclick='window.print()'>🖨️ Guardar carnet (PDF)</button>"
     acciones += "<button type='button' class='btn sec' style='width:100%;margin-top:8px' onclick='jcCopiar()'>🔗 Copiar enlace del carnet</button>"
     acad = "".join(f"<div class='jp-fila'><span>{'⚔️' if r['academia'] == 'Retos' else '🎓'}</span><div class='q'><b>{e(r['academia'])}</b></div>"
-                   f"<small style='color:#6a6a6a'>{r['pg']}G-{r['pp']}P</small><b style='color:#0B8A3E;margin-left:8px'>{r['puntos']} pts</b></div>"
+                   f"<small style='color:#6a6a6a'>{r['pg']}G-{r['pp']}P</small><b style='color:#0B7A57;margin-left:8px'>{r['puntos']} pts</b></div>"
                    for r in p["por_academia"])
     t_ac = f"Juega en {len(p['por_academia'])} academias" if len(p["por_academia"]) > 1 else "Academia"
     bio_h = "".join(f"<div class='jp-bio'><span>{ico}</span><div><small>{e(et)}</small>{e(bio[k])}</div></div>"
@@ -1920,7 +1920,7 @@ def pagina_llenar(request: Request, cancha: str = "", dia: int = 0) -> HTMLRespo
               "<label class='l'>Mensaje o promo (opcional)</label><input type='text' id='llPromo' maxlength='160' placeholder='Ej.: 20% off hoy'>"
               f"<div class='jp-acc'><button type='button' class='btn' id='llGo' disabled>Elige horas para avisar</button></div></div>"
               f"<script>window.LL={_js(cfg)};</script><script>{_JS_BASE}{_JS_LLENAR}</script>")
-    return ui.shell("Llenar cancha", cuerpo, nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab=f"Llenar cancha · {MARCA}")
+    return ui.shell("Llenar cancha", cuerpo, nav=_cabecera("", ses), sesion=ses, ancho=True, titulo_tab=f"Llenar cancha · {MARCA}")
 
 
 _JS_LLENAR = (r"""

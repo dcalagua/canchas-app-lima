@@ -140,7 +140,7 @@ def _hora(v) -> str:
 
 def _estado_pill(c: dict) -> str:
     clave, txt, color = L.estado(c)
-    col = {"teal": "background:#E6F4EF;color:#0B7A55", "morado": "background:#EFE9FF;color:#5B3FD8",
+    col = {"teal": "background:#E6F4EF;color:#0B7A57", "morado": "background:#EFE9FF;color:#5B3FD8",
            "naranja": "background:#FFF1E3;color:#B25E0A", "lima": "background:#EAF7E1;color:#3E7A16"}[color]
     return f"<span class='pill' style='{col}'>{txt}</span>"
 
@@ -323,7 +323,7 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
  <div class='estado bad' id='errGuardar' style='display:none;margin-top:12px'></div>
  <div class='pie'><button type='button' class='btn sec' data-ir='2'>Atrás</button><button type='button' class='btn' id='btnGuardar'>{'Crear campeonato' if nuevo else 'Guardar cambios'}</button></div></div>
 </div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_WIZARD}</script>"""
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_WIZARD}</script>"""
     return ui.shell("Campeonato", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, extra_head=_LEAFLET,
                     titulo_tab=f"{'Organizar' if nuevo else 'Editar'} campeonato · Modo anfitrión")
 
@@ -789,7 +789,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
 <style>
 .det{{max-width:920px;margin:0 auto}}.det .panel{{margin-top:14px;padding:18px 20px}}.det h3{{margin:0 0 8px;font-size:17px}}
 .cab-camp{{display:flex;gap:16px;align-items:center;flex-wrap:wrap}}.cab-camp .logo-pick{{cursor:pointer}}.cab-camp h1{{margin:0;font-size:26px}}
-.podio{{background:#E6F4EF;border:0;text-align:center;font-size:17px}}.podio b{{display:block;color:#0B7A55;margin-bottom:6px}}
+.podio{{background:#E6F4EF;border:0;text-align:center;font-size:17px}}.podio b{{display:block;color:#0B7A57;margin-bottom:6px}}
 .codigo{{font-family:ui-monospace,Menlo,monospace;font-size:34px;font-weight:800;letter-spacing:.14em;text-align:center;background:var(--gris);border-radius:16px;padding:14px;cursor:pointer;user-select:all}}
 .chip.part{{position:relative;padding-right:34px}}.chip.part.ok{{background:#EAF7E1;border-color:#9CD47A}}.chip.part .x{{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:transparent;font-weight:800;cursor:pointer;color:var(--tenue);font-family:inherit}}
 .partido{{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;border:1px solid var(--trazo);border-radius:12px;padding:10px 14px;margin-top:8px}}.partido.clic{{cursor:pointer}}.partido.clic:hover{{border-color:var(--noche)}}
@@ -819,7 +819,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
 <div class='acciones' style='margin-top:18px;flex-wrap:wrap'><a class='btn' href='{BASE}/{e(c['id'])}/editar'>✏️ Editar campeonato</a><button type='button' class='btn sec' id='btnDuplicar'>📄 Duplicar campeonato (nueva edición)</button><button type='button' class='btn sec' id='btnEliminar' style='color:var(--rojo)'>🗑 Eliminar campeonato</button></div>
 </div>
 <div class='modal' id='modal' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:520px'><div class='modal-cab'><button type='button' class='cerrar' id='modalCerrar'>✕</button><h3 id='modalTit'></h3></div><div class='modal-cuerpo mod-form' id='modalCuerpo'></div></div></div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_DETALLE}</script>"""
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_DETALLE}</script>"""
     return ui.shell(c.get("nombre") or "Campeonato", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab=f"{c.get('nombre') or 'Campeonato'} · Mis campeonatos")
 
 
@@ -869,7 +869,7 @@ document.addEventListener('click',async function(ev){var q=ev.target.closest('[d
     var invitar=enlaceEq?"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><button type='button' class='btn sec' data-copiar-eq='"+esc(enlaceEq)+"'>🔗 Copiar enlace del equipo</button><a class='btn sec' target='_blank' rel='noopener' href='https://wa.me/?text="+encodeURIComponent('Únete a mi equipo «'+p.nombre+'» en "'+CFG.nombre+'" (⟦MARCA⟧). Toca y quedas inscrito: '+enlaceEq)+"'>💬 WhatsApp</a></div><p class='sub' style='margin:6px 0 0;font-size:12px'>Quien abra el enlace con la app entra directo al equipo, sin escribir el código"+(CFG.fixture?" (también con el fixture publicado, mientras la inscripción siga abierta)":"")+".</p>":'';
     var st=CFG.pozos[p.id],pozoHtml='',pago={};
     if(CFG.cuotaEq>0){var pz=st?st.pozo_centimos:0,tot=CFG.cuotaEq,pct=Math.min(100,Math.round(pz*100/tot)),comp=st?st.completo:false;(st?st.aportes:[]).forEach(function(a){pago[(a.email||'').toLowerCase()]=a.centimos});
-      pozoHtml="<section><b>"+(comp?"✅ Equipo inscrito · pozo completo":"💰 Pozo del equipo")+"</b><div style='height:8px;border-radius:999px;background:#EEF1F4;margin:8px 0 6px;overflow:hidden'><div style='height:100%;width:"+pct+"%;background:"+(comp?'#0B8A3E':'#F28C28')+"'></div></div><p class='sub' style='margin:0'>"+esc(CFG.mon)+" "+fmtC(pz)+" de "+fmtC(tot)+" · cada jugador pone "+esc(CFG.mon)+" "+fmtC(CFG.cuotaJug)+(comp?"":" · faltan "+esc(CFG.mon)+" "+fmtC(tot-pz))+(st&&st.liquidado?" · neto "+esc(CFG.mon)+" "+fmtC(st.neto_centimos)+" por recibir: ⟦MARCA⟧ te lo transfiere (Ingresos)":"")+"</p></section>"}
+      pozoHtml="<section><b>"+(comp?"✅ Equipo inscrito · pozo completo":"💰 Pozo del equipo")+"</b><div style='height:8px;border-radius:999px;background:#EEF1F4;margin:8px 0 6px;overflow:hidden'><div style='height:100%;width:"+pct+"%;background:"+(comp?'#0B7A57':'#F28C28')+"'></div></div><p class='sub' style='margin:0'>"+esc(CFG.mon)+" "+fmtC(pz)+" de "+fmtC(tot)+" · cada jugador pone "+esc(CFG.mon)+" "+fmtC(CFG.cuotaJug)+(comp?"":" · faltan "+esc(CFG.mon)+" "+fmtC(tot-pz))+(st&&st.liquidado?" · neto "+esc(CFG.mon)+" "+fmtC(st.neto_centimos)+" por recibir: ⟦MARCA⟧ te lo transfiere (Ingresos)":"")+"</p></section>"}
     modal(p.nombre,"<section><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>Código: "+esc(p.codigo||'—')+"</b>"+falta+"</div><p class='sub' style='margin:6px 0 0'>Capitán: "+esc(p.capitanEmail||'—')+"</p>"+invitar+"</section>"+pozoHtml+"<section><b>Plantel ("+p.roster.length+(CFG.maxJug?"/"+CFG.maxJug:"")+")</b>"+
       (p.roster.map(function(i){var em=(i.email||'').toLowerCase();return "<div class='marca'><span class='pos'>"+(i.email?'✅':'👤')+"</span><span class='nom'>"+esc(i.nombre)+(i.email&&i.email===p.capitanEmail?" <span class='pill'>Capitán</span>":'')+(CFG.cuotaEq>0?(pago[em]?" <span class='pill'>pagó "+esc(CFG.mon)+" "+fmtC(pago[em])+"</span>":" <span class='pill' style='background:#FFF1E3;color:#B25E0A'>sin pagar</span>"):'')+"</span></div>"}).join('')||"<p class='sub'>Sin jugadores aún. Comparte el enlace del equipo: cada jugador entra"+(CFG.cuotaEq>0?" y pone su parte":"")+" desde la app.</p>")+"</section>",null)}});
 function fmtC(c){var v=(c||0)/100;return Math.abs(v-Math.round(v))<0.005?String(Math.round(v)):v.toFixed(2)}

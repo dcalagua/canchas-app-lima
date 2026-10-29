@@ -414,7 +414,8 @@ def test_chat_web_pantalla_completa_en_movil_como_whatsapp(monkeypatch, fk):
     assert "<footer class='pie'>" not in html                       # sin pie del sitio
     assert "class='vol' href='/mensajes'" in html and "Club Sabor Golazo" in html  # ‹ + contacto
     assert "--mj-vh" in html and "visualViewport" in html            # el teclado no tapa el compositor
-    assert "body.pcg-chat header.nav" in html                        # cabecera del sitio fuera en móvil
+    from tests.conftest import con_assets
+    assert "body.pcg-chat header.nav" in con_assets(cli, html)       # cabecera del sitio fuera en móvil
     # Bandeja / nuevo: cabecera en una fila sin la pastilla en móvil; el pie se queda.
     for ruta in ("/mensajes", "/mensajes/nuevo"):
         h = cli.get(ruta).text

@@ -35,7 +35,7 @@ def _cab(ses: dict | None) -> str:
 def _candado(ses: dict, nombre: str) -> HTMLResponse:
     cuerpo = ("<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
               "<div class='panel' style='max-width:640px;margin:22px auto 0;text-align:center'>"
-              "<span class='anf-item-ico' style='background:#0E8F67'>🎾</span>"
+              "<span class='anf-item-ico' style='background:#0B7A57'>🎾</span>"
               f"<h2 style='margin-top:12px'>Verifica tu identidad para ser {nombre.lower()}</h2>"
               f"<p class='sub'>Vas a estar en una cancha con jugadores que no te conocen: por eso todo {nombre.lower()} de {MARCA} tiene "
               "identidad verificada (DNI validado). Verifícate desde la app: Perfil → Verificar identidad. Toma un minuto.</p>"
@@ -178,7 +178,7 @@ def pagina_boleador(request: Request) -> HTMLResponse:
     hist = [s for s in sols if s["estado"] not in ("pendiente", "aceptada")][:20]
     b = b or {}
     disp = b.get("disponibilidad") or {}
-    js_cfg = json.dumps({"deportes": cfg["deportes"], "categorias": cfg["categorias"], "tarifas": cfg["tarifas"], "simbolo": sim,
+    js_cfg = ui.json_js({"deportes": cfg["deportes"], "categorias": cfg["categorias"], "tarifas": cfg["tarifas"], "simbolo": sim,
                          "etiquetas": cfg["etiquetas"], "deporte": b.get("deporte") or "tenis", "categoria": b.get("categoria") or "",
                          "tarifa": b.get("tarifa") or 0, "canchas": b.get("canchas") or [], "disponibilidad": disp,
                          "etiquetasSel": b.get("etiquetas") or []}, ensure_ascii=False)
@@ -210,7 +210,7 @@ def pagina_boleador(request: Request) -> HTMLResponse:
         + ("<h2 style='margin-top:26px'>Historial</h2><div style='display:grid;gap:10px'>"
            + "".join(_tarjeta_sol(s, paises.simbolo_de_moneda(s['moneda'])) for s in hist) + "</div>" if hist else "")
         + f"<script>window.__bol={js_cfg};</script><script>{_JS_BOL}</script>"
-        f"<script>document.getElementById('desde').value={json.dumps(disp.get('desde') or '06:00')};document.getElementById('hasta').value={json.dumps(disp.get('hasta') or '23:00')};</script>")
+        f"<script>document.getElementById('desde').value={ui.json_js(disp.get('desde') or '06:00')};document.getElementById('hasta').value={ui.json_js(disp.get('hasta') or '23:00')};</script>")
     return ui.shell(f"Soy {nombre.lower()}", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab=f"Soy {nombre.lower()} · Modo anfitrión")
 
 

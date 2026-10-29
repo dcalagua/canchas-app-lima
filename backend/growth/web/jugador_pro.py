@@ -177,7 +177,7 @@ def pagina_pro(request: Request) -> HTMLResponse:
         + renov + nota
         + f"<button type='button' class='btn pr-cta' id='btnPro'>{e(boton)}</button>"
         + "</div>"
-        + f"<style>{CSS}</style><script>window.__pro={json.dumps(cfg, ensure_ascii=False)};{JS_PRO}</script>")
+        + f"<style>{CSS}</style><script>window.__pro={ui.json_js(cfg, ensure_ascii=False)};{JS_PRO}</script>")
     return ui.shell(f"{MARCA} Pro", cuerpo, sesion=ses, titulo_tab=f"{MARCA} Pro",
                     desc=f"Membresía {MARCA} Pro: carnet oficial, ranking y retos sin límite.")
 
@@ -278,7 +278,7 @@ def pagina_tarjetas(request: Request) -> HTMLResponse:
               + (f"<div class='pr-lista' id='tjs'>{filas}</div>" if filas else vacio) + agregar
               + f"<p class='pr-seg'>🔒 Tus tarjetas se guardan de forma segura en Culqi. {MARCA} nunca ve ni guarda el número completo: "
                 "solo la marca y los últimos 4 dígitos.</p></div>"
-              + f"<style>{CSS}</style><script>window.__tj={json.dumps({'pk': config.CULQI_PUBLIC_KEY if disponible else ''})};{JS_TARJETAS}</script>")
+              + f"<style>{CSS}</style><script>window.__tj={ui.json_js({'pk': config.CULQI_PUBLIC_KEY if disponible else ''})};{JS_TARJETAS}</script>")
     head = "<script src='https://checkout.culqi.com/js/v4'></script>" if disponible else ""
     return ui.shell("Métodos de pago", cuerpo, sesion=ses, titulo_tab="Métodos de pago", extra_head=head)
 
@@ -601,7 +601,7 @@ def pagina_recordatorios(request: Request, dia: str = "manana") -> HTMLResponse:
               f"de {dlab}. A quien tiene la app le llega por el chat; a los demás, por WhatsApp.</p>" + chips + banner
               + (f"<div class='ng-lista' id='recLista'>{items}</div>" if items else
                  f"<div class='anf-vacio' style='margin-top:16px'>No tienes reservas para {dlab}.</div>")
-              + f"<style>{CSS}</style><script>window.__rec={json.dumps({'fecha': iso, 'fichas': fichas})};{JS_RECORDAR}</script>")
+              + f"<style>{CSS}</style><script>window.__rec={ui.json_js({'fecha': iso, 'fichas': fichas})};{JS_RECORDAR}</script>")
     return _pagina("Recordar reservas", cuerpo, ses, "")
 
 
@@ -686,16 +686,16 @@ CSS = r"""
 .pr-ben{list-style:none;margin:0;padding:0;display:grid;gap:12px}
 .pr-ben li{display:flex;gap:12px;align-items:flex-start}.pr-ben b{display:block;font-size:15px}.pr-ben small{color:var(--tenue)}
 .pr-ic{width:40px;height:40px;flex:none;border-radius:12px;background:#F4F1FF;display:grid;place-items:center;font-size:21px}
-.pr-link a{font-weight:800;color:var(--esmeralda,#0B8A3E)}
+.pr-link a{font-weight:800;color:var(--esmeralda,#0B7A57)}
 .pr-card{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:#fff;border:1px solid var(--trazo);border-radius:18px;padding:14px 16px;margin-top:16px;box-shadow:var(--sombra)}
 .pr-card.warn{background:#FFF8EC;border-color:#F2C77E}.pr-card small{display:block;color:var(--tenue);margin-top:3px}.pr-card-t{flex:1 1 240px;min-width:0}
 .pr-nota{display:flex;gap:10px;align-items:flex-start;background:#EEF7E3;color:#14463A;border-radius:14px;padding:12px;margin-top:16px;font-size:13.5px;line-height:1.4}
-.pr-nota a{font-weight:800;color:#067A38}.pr-bur{width:32px;height:32px;flex:none;border-radius:50%;background:#7CB518;display:grid;place-items:center}
+.pr-nota a{font-weight:800;color:#08654A}.pr-bur{width:32px;height:32px;flex:none;border-radius:50%;background:#7CB518;display:grid;place-items:center}
 .btn.pr-cta{display:block;width:100%;margin-top:20px;padding:15px;font-size:16px;text-align:center;box-sizing:border-box}
 .pr-tabla{border:1px solid var(--trazo);border-radius:18px;overflow:hidden;background:#fff;margin-top:14px}
 .pr-fila{display:grid;grid-template-columns:minmax(0,1fr) 92px 92px;gap:8px;align-items:center;padding:12px 14px;border-top:1px solid var(--trazo)}
 .pr-fila.cab{border-top:0;background:#F7F7F7;font-weight:800}.pr-f-t{display:flex;gap:8px;min-width:0;overflow-wrap:anywhere}
-.pr-c{text-align:center;font-size:13.5px}.pr-c.pro{font-weight:800}.pr-si{color:#0B8A3E;font-weight:900;font-size:17px}.pr-no{color:#B0B0B0}
+.pr-c{text-align:center;font-size:13.5px}.pr-c.pro{font-weight:800}.pr-si{color:#0B7A57;font-weight:900;font-size:17px}.pr-no{color:#B0B0B0}
 .pr-lista{display:grid;gap:10px;margin-top:14px}
 .pr-tj{display:flex;gap:12px;align-items:center;background:#fff;border:1px solid var(--trazo);border-radius:16px;padding:12px 14px;box-shadow:var(--sombra)}
 .pr-tj-ic{width:44px;height:30px;border-radius:7px;display:grid;place-items:center;flex:none}.pr-tj-t{flex:1;min-width:0}.pr-tj-t small{display:block;color:var(--tenue)}
@@ -714,7 +714,7 @@ CSS = r"""
 .pr-sug-f{width:84px;height:84px;flex:none;border-radius:14px;overflow:hidden;background:#EEF3EE;display:grid;place-items:center;font-size:32px}
 .pr-sug-f img{width:100%;height:100%;object-fit:cover}.pr-sug-t{flex:1;min-width:0}.pr-sug-t b{display:block;overflow-wrap:anywhere}
 .pr-sug-t small{display:block;color:var(--tenue);font-size:12.5px;overflow-wrap:anywhere}.pr-sug-p{display:block;margin-top:4px;font-size:13px}
-.pr-sug-b{flex:none;font-weight:800;color:#0B8A3E;font-size:13px}
+.pr-sug-b{flex:none;font-weight:800;color:#0B7A57;font-size:13px}
 .pr-ini{width:38px;height:38px;border-radius:50%;background:#0F8F7E;color:#fff;display:grid;place-items:center;font-weight:800;flex:none}
 @media (max-width:600px){.pr-fila{grid-template-columns:minmax(0,1fr) 64px 70px;padding:11px 10px}.pr-sug-b{display:none}.pr-sug-f{width:72px;height:72px}}
 """
@@ -792,7 +792,7 @@ JS_TARJETAS = r"""
         Culqi.settings({title: 'Guardar tarjeta', currency: 'PEN', amount: 100});
         Culqi.options({lang: 'es', installments: false,
           paymentMethods: {tarjeta: true, yape: false, bancaMovil: false, agente: false, billetera: false, cuotealo: false},
-          style: {logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Guardar tarjeta', buttonTextColor: '#FFFFFF'}});
+          style: {logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0B7A57', buttonText: 'Guardar tarjeta', buttonTextColor: '#FFFFFF'}});
         window.culqi = function(){
           if(Culqi.token){
             var token = Culqi.token.id;

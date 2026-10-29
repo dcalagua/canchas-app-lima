@@ -112,7 +112,7 @@ def guardar_perfil(email: str, nombre: str, celular: str, bio: dict) -> bool:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute("INSERT INTO pichangol_perfiles (email, nombre, celular, bio, actualizado) VALUES (%s, %s, %s, %s::jsonb, now()) "
                         "ON CONFLICT (email) DO UPDATE SET nombre = EXCLUDED.nombre, celular = EXCLUDED.celular, "
-                        "bio = EXCLUDED.bio, actualizado = now()", (em, nombre, celular, json.dumps(bio, ensure_ascii=False)))
+                        "bio = EXCLUDED.bio, actualizado = now()", (em, nombre, celular, ui.json_js(bio, ensure_ascii=False)))
             conn.commit()
             return True
     except Exception:  # noqa: BLE001
@@ -231,7 +231,7 @@ def _cookie_actualizada(resp: JSONResponse, ses: dict, nombre: str | None = None
 
 _CSS_CUENTA = """
 .cf-av{position:relative;width:152px;height:152px;margin:8px auto 30px}
-.cf-av img,.cf-av .ini{width:152px;height:152px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;background:#EAF7EF;color:#067A38;font-size:60px;font-weight:800}
+.cf-av img,.cf-av .ini{width:152px;height:152px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;background:#EAF7EF;color:#08654A;font-size:60px;font-weight:800}
 .cf-av .ed{position:absolute;left:50%;transform:translateX(-50%);bottom:-14px;background:#fff;border:0;border-radius:99px;box-shadow:0 3px 10px rgba(0,0,0,.18);padding:9px 16px;font:inherit;font-weight:800;cursor:pointer;white-space:nowrap}
 .cf-lbl{display:block;font-size:12.5px;font-weight:700;color:#6a6a6a;margin:14px 0 6px}
 .cf-cel{display:flex;gap:8px;align-items:center}
@@ -251,7 +251,7 @@ _CSS_CUENTA = """
 .cf-it .em{font-size:22px;width:28px;text-align:center;flex:none}
 .cf-it .tx{flex:1;min-width:0}
 .cf-it small{display:block;color:#6a6a6a;font-size:13px;margin-top:2px}
-.cf-it .app{font-size:11.5px;font-weight:700;color:#067A38;background:#E9F6EE;border-radius:99px;padding:3px 9px;white-space:nowrap}
+.cf-it .app{font-size:11.5px;font-weight:700;color:#08654A;background:#E9F6EE;border-radius:99px;padding:3px 9px;white-space:nowrap}
 .cf-it .chev{color:#b0b0b0;font-size:20px}
 .cf-it.rojo{color:#C0392B}
 .pcg-dlg .caja .cf-op{display:flex;flex-wrap:wrap;gap:8px;text-align:left}
@@ -321,7 +321,7 @@ def pagina_configuracion(request: Request) -> HTMLResponse:
         "<a class='btn sec' href='/mi-nivel' style='margin:0'>✏️ Edita tus deportes</a>"
         "<div class='cf-barra'><button type='button' class='btn' id='cfListo'>Listo</button></div>"
         "<div class='lg-sec' style='margin-top:30px'>Tu cuenta</div>" + cuenta + "</div>"
-        "<script>window.CF=" + json.dumps(cfg, ensure_ascii=False).replace("</", "<\\/") + ";</script><script>" + _JS_CONFIG + "</script>")
+        "<script>window.CF=" + ui.json_js(cfg, ensure_ascii=False).replace("</", "<\\/") + ";</script><script>" + _JS_CONFIG + "</script>")
     return ui.shell("Configuración de la cuenta", cuerpo, sesion=ses, titulo_tab=f"Configuración · {MARCA}")
 
 
@@ -452,7 +452,7 @@ def pagina_identidad(request: Request, pais: str = "") -> HTMLResponse:
                  f"<div class='id-nota'><span>🔒</span><span>Solo usamos tu {doc} para confirmar tu identidad y tu edad. No guardamos foto de tu documento ni lo mostramos a nadie.</span></div></div>")
     cfg = {"pais": iso, "largo": largo, "doc": doc, "play": PLAY_URL}
     cuerpo = (head + f"<div class='lg-chips'>{chips}</div>" + panel + "</div>"
-              "<script>window.ID=" + json.dumps(cfg) + ";</script><script>" + _JS_IDENTIDAD + "</script>")
+              "<script>window.ID=" + ui.json_js(cfg) + ";</script><script>" + _JS_IDENTIDAD + "</script>")
     return ui.shell("Verificar identidad", cuerpo, sesion=ses, titulo_tab=f"Verificar identidad · {MARCA}")
 
 

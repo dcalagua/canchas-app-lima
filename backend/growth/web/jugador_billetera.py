@@ -376,7 +376,7 @@ _CSS = """
 .bil-saldo .pill{margin-left:auto;background:rgba(255,255,255,.16);color:#fff;border-radius:99px;padding:5px 10px;font-size:12px;font-weight:800;white-space:nowrap}
 .bil-saldo .monto{font-size:38px;font-weight:800;margin:14px 0 4px;overflow-wrap:anywhere}
 .bil-saldo .txt{opacity:.7;font-size:13px;line-height:1.4}
-.bil-saldo .btn{width:100%;margin-top:18px;background:#fff;color:#0B8A3E}
+.bil-saldo .btn{width:100%;margin-top:18px;background:#fff;color:#0B7A57}
 .bil-card{border-radius:16px;padding:14px;display:flex;gap:10px;align-items:center;margin-top:12px;border:1px solid var(--trazo);background:#fff;color:inherit;text-decoration:none;min-width:0}
 .bil-card .em{font-size:22px;flex:none}
 .bil-card .tx{flex:1;min-width:0;font-size:13.5px;line-height:1.35}
@@ -385,7 +385,7 @@ _CSS = """
 .bil-card.regalo{background:#EEF8E4;border-color:#7CB518;color:#14463A;font-weight:600}
 .bil-card.bajo{background:#FFF1EC;border-color:#F3B8A5;color:#8F2A10}
 .bil-card.recibir{background:#E6F4EA;border-color:#9ED2B0}
-.bil-card.recibir .val{color:#067A38}
+.bil-card.recibir .val{color:#08654A}
 .bil-card.warn{background:var(--warn-bg);border-color:#EAD28F;color:var(--warn-fg)}
 .bil-card.promo{background:linear-gradient(90deg,#FFF6D8,#FFEFC2);border-color:#E8D9A0;color:#7A5C00;font-weight:800}
 .bil-acc{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:18px 0 6px}
@@ -511,7 +511,7 @@ def _fila_mov(m: dict) -> str:
     rec = m["clase"] == "recarga"
     pagada = liq and m["liquidado"]
     con_recibo = liq and m["bruto"] > 0
-    color = "#7CB518" if rec else (("#0B8A3E" if pagada else "#067A38") if liq else "#C13515")
+    color = "#7CB518" if rec else (("#0B7A57" if pagada else "#08654A") if liq else "#C13515")
     ic = "⬇️" if rec else (("✅" if pagada else "👛") if liq else "⬆️")
     signo = "+" if (rec or liq) else "−"
     medio = f" · {_MEDIO[m['medio']]}" if m["medio"] in _MEDIO else ""
@@ -572,7 +572,7 @@ _JS_BILLETERA = (r"""
         Culqi.settings({title: '⟦MARCA⟧', currency: 'PEN', amount: Math.round(monto * 100)});
         Culqi.options({lang: 'es', installments: false,
           paymentMethods: {yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false},
-          style: {logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF'}});
+          style: {logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0B7A57', buttonText: 'Pagar', buttonTextColor: '#FFFFFF'}});
         window.culqi = function(){
           if(Culqi.token){
             var token = Culqi.token.id, medio = (Culqi.token.iin && Culqi.token.iin.card_brand) ? 'tarjeta' : 'yape';
@@ -701,7 +701,7 @@ def pagina_billetera(request: Request) -> HTMLResponse:
         "<a href='/cuenta/tarjetas'>"
         "<span class='bur' style='background:#14463A1F'>💳</span><small>Tarjetas</small></a>"
         f"<a href='/mis-puntos'><span class='bur' style='background:#B089081F'>⭐</span>{ins}<small>Puntos</small></a>"
-        "<a href='/mi-billetera/estado-de-cuenta'><span class='bur' style='background:#067A381F'>🧾</span><small>Estado<br>de cuenta</small></a>"
+        "<a href='/mi-billetera/estado-de-cuenta'><span class='bur' style='background:#08654A1F'>🧾</span><small>Estado<br>de cuenta</small></a>"
         "</div>")
     cupon = ("<details class='bil-cupon'><summary>🎟️ ¿Tienes un cupón? Canjéalo aquí</summary>"
              "<form id='formCupon' autocomplete='off'><input id='codCupon' maxlength='24' placeholder='CÓDIGO' aria-label='Código del cupón'>"
@@ -771,7 +771,7 @@ def pagina_billetera(request: Request) -> HTMLResponse:
               + f"<h2 style='margin-top:30px'>Movimientos</h2>{lista}"
               + "<p class='sub' style='font-size:13px;margin-top:18px'>¿Buscas lo que pagaste en reservas y academias? "
                 "Está en <a href='/mis-pagos'>Mis pagos</a>.</p></div>"
-              + f"<script>window.__billetera={json.dumps(cfg)};</script><script>{_JS_BILLETERA}</script>")
+              + f"<script>window.__billetera={ui.json_js(cfg)};</script><script>{_JS_BILLETERA}</script>")
     head = "<script src='https://checkout.culqi.com/js/v4'></script>" if ("btnRecargar" in recargar and P["pasarela"] == "culqi") else ""
     return ui.shell("Mi billetera", cuerpo, sesion=ses, titulo_tab=f"Mi billetera · {MARCA}", extra_head=head)
 
@@ -975,13 +975,13 @@ def _hoy() -> date:
 def _tarjeta_pago(p: dict) -> str:
     sim = p["moneda"]
     if p["estado"] == "bono":
-        color, ic, mt, sub = "#067A38", "🎟️", "Con bono", f"{p['sub']} · descontado de tu bono"
+        color, ic, mt, sub = "#08654A", "🎟️", "Con bono", f"{p['sub']} · descontado de tu bono"
     elif p["estado"] == "pendiente":
         color, ic, mt, sub = "#C13515", "⏳", _dinero(sim, p["monto"]), f"{p['sub']} · por pagar en la cancha"
     elif p["estado"] == "pendiente_aca":
         color, ic, mt, sub = "#C13515", "⏳", _dinero(sim, p["monto"]), f"{p['sub']} · por pagar" if p["sub"] else "Por pagar"
     else:
-        color, ic, mt, sub = "#0B8A3E", p.get("em") or "✅", f"− {_dinero(sim, p['monto'])}", p["sub"]
+        color, ic, mt, sub = "#0B7A57", p.get("em") or "✅", f"− {_dinero(sim, p['monto'])}", p["sub"]
     inner = (f"<span class='ic' style='background:{color}1F'>{ic}</span><span class='tx'><b>{e(p['titulo'])}</b>"
              f"<small>{e(sub)}</small></span><span class='mt' style='color:{color}'>{e(mt)}"
              + ("<small>Comprobante ›</small>" if p["href"] and p["href"] != "/mi-billetera" else "") + "</span>")

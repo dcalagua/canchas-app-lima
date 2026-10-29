@@ -134,10 +134,10 @@ label.pd-f{cursor:pointer}label.pd-f:hover{background:#F7F7F7}
 .pd-enviar{width:100%;margin-top:12px;background:#742284}
 .pd-nota{color:var(--tenue);font-size:12px;margin-top:8px}
 .pq-app{display:flex;gap:12px;align-items:center;background:#EEF6F1;border-radius:16px;padding:12px 14px;margin-top:12px}
-.pq-app .logo{width:46px;height:46px;border-radius:12px;background:#0B8A3E;color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;flex:none}
+.pq-app .logo{width:46px;height:46px;border-radius:12px;background:#0B7A57;color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;flex:none}
 .pq-app .tx{min-width:0;flex:1}.pq-app b{display:block;overflow-wrap:anywhere}.pq-app small{color:var(--tenue);font-size:12.5px}
 .pq-iniciar{width:100%;margin-top:12px}
-.pq-panel{margin-top:14px;border:2px solid #0B8A3E;border-radius:18px;padding:16px;text-align:center;background:#fff}
+.pq-panel{margin-top:14px;border:2px solid #0B7A57;border-radius:18px;padding:16px;text-align:center;background:#fff}
 .pq-panel img{width:100%;max-width:260px;aspect-ratio:1;object-fit:contain;border-radius:14px;border:1px solid var(--trazo);background:#fff}
 .pq-monto{font-size:34px;font-weight:900;color:#0A1B3D;margin:8px 0 0;letter-spacing:.3px}
 .pq-extra{font-size:12.5px;color:#5b6575;margin:2px 0 8px}
@@ -145,7 +145,7 @@ label.pd-f{cursor:pointer}label.pd-f:hover{background:#F7F7F7}
 .pq-pasos{text-align:left;margin:10px auto 0;max-width:420px;padding-left:20px;font-size:14px;line-height:1.55}
 .pq-acc{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:12px}.pq-acc .btn{flex:1 1 150px}
 .pq-est{display:flex;gap:8px;align-items:center;justify-content:center;font-size:13px;color:#344054;margin-top:12px}
-.pq-est .sp{width:14px;height:14px;border-radius:50%;border:2px solid #CFE7D8;border-top-color:#0B8A3E;animation:pqg 1s linear infinite;flex:none}
+.pq-est .sp{width:14px;height:14px;border-radius:50%;border:2px solid #CFE7D8;border-top-color:#0B7A57;animation:pqg 1s linear infinite;flex:none}
 @keyframes pqg{to{transform:rotate(360deg)}}
 @media(max-width:560px){.pd-pasos{grid-template-columns:minmax(0,1fr)}.pd-mock{margin:0 auto}.pd-form{grid-template-columns:minmax(0,1fr)}}
 """
@@ -474,7 +474,7 @@ def qr_estado(iid: str, request: Request) -> JSONResponse:
 
 CSS_PLAN = """
 .pl-card{background:#fff;border:1px solid var(--trazo);border-radius:22px;box-shadow:var(--sombra2);overflow:hidden;max-width:620px;margin:18px auto 0}
-.pl-top{background:linear-gradient(135deg,#0A1B3D,#067A38);color:#fff;padding:20px 22px}
+.pl-top{background:linear-gradient(135deg,#0A1B3D,#08654A);color:#fff;padding:20px 22px}
 .pl-top .pill{background:rgba(255,255,255,.18);color:#fff}
 .pl-top h2{margin:10px 0 2px;font-size:22px;color:#fff;overflow-wrap:anywhere}
 .pl-precio{font-size:34px;font-weight:900;margin-top:10px}.pl-precio small{font-size:15px;font-weight:600;opacity:.85}
@@ -734,10 +734,10 @@ def seccion_por_confirmar(acads: list[dict]) -> str:
                         f"<div class='sub' style='margin:10px 0 0;font-size:12px;text-align:center'>Código de seguridad</div><div class='pc-cod'>{e(g['codigo'])}</div>")
                      + (f"<div class='sub' style='margin:0;font-size:12.5px;text-align:center'>N.º de operación: <b>{e(g['operacion'])}</b></div>" if g.get("operacion") else "")
                      + f"<div class='sub' style='margin:4px 0 0;font-size:12px;text-align:center'>Reportado el {e(ap.fecha_txt(g.get('fecha')))}</div>"
-                     f"<div class='pc-acc'><button type='button' class='btn' data-pc-ok='{e(json.dumps(dato, ensure_ascii=False))}'>✅ Confirmar</button>"
-                     f"<button type='button' class='btn sec' data-pc-no='{e(json.dumps(dato, ensure_ascii=False))}'>No lo encontré</button></div></div>")
-    motivos = json.dumps(MOTIVOS_RECHAZO, ensure_ascii=False)
-    motivos_qr = json.dumps(MOTIVOS_RECHAZO_QR, ensure_ascii=False)
+                     f"<div class='pc-acc'><button type='button' class='btn' data-pc-ok='{e(ui.json_js(dato, ensure_ascii=False))}'>✅ Confirmar</button>"
+                     f"<button type='button' class='btn sec' data-pc-no='{e(ui.json_js(dato, ensure_ascii=False))}'>No lo encontré</button></div></div>")
+    motivos = ui.json_js(MOTIVOS_RECHAZO, ensure_ascii=False)
+    motivos_qr = ui.json_js(MOTIVOS_RECHAZO_QR, ensure_ascii=False)
     return (f"<style>{CSS_PLAN}</style><section id='porConfirmar' style='margin-top:16px'><h2 class='ng-h2' style='margin-bottom:2px'>💜 Pagos por confirmar</h2>"
             "<p class='sub' style='margin:0'>Tus alumnos te pagaron directo. Compara el código (Yape) o el monto exacto (QR) con la notificación de tu app y confirma con un toque.</p>"
             f"<div class='pc-grid'>{tarjetas}</div></section><script>window.__pcMotivos={motivos};window.__pcMotivosQr={motivos_qr};{JS_POR_CONFIRMAR}</script>")

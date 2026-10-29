@@ -198,7 +198,7 @@ def _editor(ses: dict, p: dict, *, nuevo: bool) -> HTMLResponse:
 </form></div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Se guarda en el Marketplace al instante.</span>
 <button type='button' class='btn' id='btnGuardar'>{'Publicar' if nuevo else 'Guardar cambios'}</button></div></div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{_JS_EDITOR}</script>"""
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{_JS_EDITOR}</script>"""
     return ui.shell("Producto", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Producto · Mi tienda")
 
 

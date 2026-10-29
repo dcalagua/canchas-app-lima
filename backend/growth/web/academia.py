@@ -47,6 +47,7 @@ from web import catalogos, datos, sesion, ui
 from web.router import (PLAY_URL, _RED_SVG, _deporte, _maps, _no_encontrada, _pago_web_disponible,
                         _pasarela_web, _url_red, e)
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
+from urllib.parse import quote  # noqa: E402
 
 router = APIRouter()
 
@@ -291,7 +292,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
         datos_li += (f"<li>📍 <span>{e(lugar or 'Sede en la app')}"
                      + (f" · <a href='#mapaFicha' id='btnLlegar'>Cómo llegar</a>" if con_mapa else "") + "</span></li>")
     if tel:
-        datos_li += f"<li>💬 <span><a href='https://wa.me/{tel}?text=Hola,%20vi%20tu%20academia%20en%20Pichangol' target='_blank' rel='noopener'>WhatsApp de la academia</a></span></li>"
+        datos_li += f"<li>💬 <span><a href='https://wa.me/{tel}?text={quote(f'Hola, vi tu academia en {MARCA}')}' target='_blank' rel='noopener'>WhatsApp de la academia</a></span></li>"
     if (a.get("dueno") or "").strip().lower() and (a.get("dueno") or "").strip().lower() != ((ses or {}).get("email") or "").lower():
         datos_li += f"<li>✉️ <span><a href='/mensajes/nuevo?academia={e(academia_id)}'>Escribir al profe por {MARCA}</a></span></li>"
     if a.get("horarioTexto"):
@@ -354,7 +355,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
         "<div class='sub' id='planElegido'>Toca «Matricularme» en el tarifario de arriba.</div>"
         "<div class='paso'><span>2</span> ¿Para quién es?</div>"
         "<div class='chips'><button type='button' class='chip sel' data-quien='yo'>Para mí</button><button type='button' class='chip' data-quien='hijo'>Para mi hijo(a)</button><button type='button' class='chip' data-quien='familiar'>Para otra persona</button></div>"
-        "<div class='sub' id='dtoFamBox' hidden style='margin-top:8px;color:#0B7A55'></div>"
+        "<div class='sub' id='dtoFamBox' hidden style='margin-top:8px;color:#0B7A57'></div>"
         f"<div class='paso'><span>3</span> Tus datos</div>{login}"
         f"<div id='datosBox'{datos_box_ini}>{quien}"
         "<div class='row'><div><label for='nombre' id='lblNombre'>Nombre del alumno</label>"
@@ -387,7 +388,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
         "</div></aside></div>"
         f"<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0'>{'A pagar a la academia' if directo else 'Pagas hoy'}</div><div class='t' id='totBarra'>—</div></div>"
         f"{'' if directo else ui.medio_pago_mini(pasarela)}<button class='btn' id='btnPagarBarra' disabled>Elige un programa</button></div>")
-    cfg = json.dumps({"id": academia_id, "moneda": sim, "pk": "" if (hosp or directo) else config.CULQI_PUBLIC_KEY, "planes": _planes(a),
+    cfg = ui.json_js({"id": academia_id, "moneda": sim, "pk": "" if (hosp or directo) else config.CULQI_PUBLIC_KEY, "planes": _planes(a),
                       # PLAN ACADEMIA: matrícula sin cobro (el alumno le paga directo a la academia).
                       "directo": directo,
                       # COBRO EN $ / Bs (fase 2 parte 2): pasarela hospedada del país, sin débito automático.
@@ -410,7 +411,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
 # Carrito en el resumen: una tarjeta por persona guardada con ✕ para quitarla.
 _CSS_CARRITO = ("<style>.cart-it{border:1px solid var(--trazo);border-radius:14px;padding:10px 12px;margin-bottom:8px;background:#fff}"
                 ".cart-it .ci-t{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.cart-it .ci-t .sub{margin:0;font-size:12.5px}"
-                ".cart-it .ci-d{display:flex;align-items:center;gap:8px;white-space:nowrap}.cart-it .ok{color:#0B7A55;font-weight:700}"
+                ".cart-it .ci-d{display:flex;align-items:center;gap:8px;white-space:nowrap}.cart-it .ok{color:#0B7A57;font-weight:700}"
                 ".cart-it .quitar{border:0;background:#F4F7FA;color:#555;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:13px;line-height:26px;padding:0}"
                 ".cart-it .quitar:hover{background:#FDE8E8;color:#B3261E}.cart-h{font-weight:800;margin:12px 0 4px;font-size:14px}.cart-h .sub{font-weight:600;font-size:12.5px}"
                 "[data-quien]:disabled{opacity:.45;cursor:not-allowed}</style>")
@@ -678,7 +679,7 @@ _JS_ACADEMIA = (r"""
     Culqi.settings({ title: '⟦MARCA⟧', currency: 'PEN', amount: montoC });
     Culqi.options({ lang: 'es', installments: false,
       paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false },
-      style: { logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
+      style: { logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0B7A57', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
     window.culqi = function(){
       if(Culqi.token){
         var token = Culqi.token.id, medio = (Culqi.token.iin && Culqi.token.iin.card_brand) ? 'tarjeta' : 'yape';
@@ -1227,7 +1228,7 @@ def matricular_pasarela(req: MatricularPasarelaReq, request: Request = None) -> 
         return error
     sim, iso = _moneda(a)
     cg = _cotizar_matricula(a, items, iso)
-    clave = a["id"] + "|" + json.dumps([p.model_dump() for p in req.personas], sort_keys=True, ensure_ascii=False)
+    clave = a["id"] + "|" + ui.json_js([p.model_dump() for p in req.personas], sort_keys=True, ensure_ascii=False)
     accion = {"academia_id": a["id"], "items": items, "cg": cg, "base_us": int(time.time() * 1_000_000),
               "ses_nombre": (ses or {}).get("nombre") or "", "ses_foto": (ses or {}).get("foto") or ""}
     return ph.abrir_orden(email=email, tipo="matricula", clave=clave, iso=iso, monto_centimos=cg["total_centimos"],
@@ -1288,6 +1289,7 @@ def comprobante_matricula(request: Request, academia_id: str, alumno_id: str) ->
         f"{' · pagada' if c.get('pagada') else ' · vence ' + e(str(c.get('vencimiento'))[:10])}</span></li>" for c in cuotas)
     op = next((c.get("operacionId") for c in pagadas if c.get("operacionId")), "")
     tel = _wa(a)
+    msg_wa = f"Hola, acabo de matricular a {m.get('nombre', '')} por {MARCA}"
     cuerpo = ("<div class='panel' style='margin-top:24px'><div class='check-ok'>✓</div><h1 style='text-align:center'>¡Matrícula registrada!</h1>"
               f"<p class='sub' style='text-align:center'>{e(m.get('nombre'))} ya es alumno de <b>{e(a['nombre'])}</b>. El profe lo ve en su lista y tú en la app (Mis academias).</p>"
               f"<ul class='datos'>{filas}</ul>"
@@ -1298,7 +1300,7 @@ def comprobante_matricula(request: Request, academia_id: str, alumno_id: str) ->
               + (f"<p class='sub' style='font-size:12.5px'>N.º de operación: {e(op)}{_pasarela_txt(pw)}</p>" if op else "")
               + _nota_sin_debito(pw, cuotas)
               + "<div class='acciones' style='margin-top:14px'>"
-              + (f"<a class='btn' href='https://wa.me/{tel}?text=Hola,%20acabo%20de%20matricular%20a%20{e(m.get('nombre', ''))}%20por%20Pichangol' target='_blank' rel='noopener'>💬 Escribir a la academia</a>" if tel else "")
+              + (f"<a class='btn' href='https://wa.me/{tel}?text={quote(msg_wa)}' target='_blank' rel='noopener'>💬 Escribir a la academia</a>" if tel else "")
               + f"<a class='btn sec' href='/academia/{e(academia_id)}'>Ver la academia</a><a class='btn sec' href='{PLAY_URL}'>Abrir en la app</a></div></div>")
     return ui.shell("Matrícula registrada", cuerpo, sesion=ses)
 
@@ -1336,7 +1338,7 @@ def _cargo_comprobante(pw: dict, sim: str, *, individual: bool) -> tuple[str, fl
                 f"por las {personas} personas de la familia; lo ves en el comprobante familiar.</p>"), 0.0
     ahorro = float(pw.get("cargoAhorro") or 0)
     html = (f"<div class='linea'><span>Cargo por servicio {MARCA}</span><span>{e(sim)} {cargo:.2f}</span></div>"
-            + (f"<p class='sub' style='font-size:13px;color:#0B7A55'>🎉 Ahorraste {e(sim)} {ahorro:.2f} en el cargo por pagar en familia (un solo cobro).</p>" if ahorro > 0 else "")
+            + (f"<p class='sub' style='font-size:13px;color:#0B7A57'>🎉 Ahorraste {e(sim)} {ahorro:.2f} en el cargo por pagar en familia (un solo cobro).</p>" if ahorro > 0 else "")
             + "<details style='margin-top:6px'><summary class='sub' style='cursor:pointer;font-size:13px'>Qué incluye el cargo por servicio</summary>"
             + ui.desglose_cargo_html(pw.get("cargoDesglose") or [], sim, str(pw.get("cargoRegla") or "")) + "</details>")
     return html, cargo
@@ -1388,7 +1390,7 @@ def comprobante_matriculas(request: Request, academia_id: str, ids: str = "") ->
             f"<li>{'✅' if c.get('pagada') else '⏳'} <span>{e(c.get('concepto'))} · {e(sim)} {float(c.get('monto') or 0):.2f}"
             f"{' · pagada' if c.get('pagada') else ' · vence ' + e(str(c.get('vencimiento'))[:10])}</span></li>" for c in cuotas)
         bloques += (f"<div class='cart-it' style='margin-top:12px'><div class='ci-t'><div><b>{e(m.get('nombre'))}</b> <span class='sub'>{quien}</span>"
-                    + (f"<div class='sub' style='color:#0B7A55'>🎉 Descuento familiar −{dto:.0f} % ({'2.º' if int(m.get('ordenHermano') or 1) == 2 else '3.º o más'} de tu familia)</div>" if dto > 0 else "")
+                    + (f"<div class='sub' style='color:#0B7A57'>🎉 Descuento familiar −{dto:.0f} % ({'2.º' if int(m.get('ordenHermano') or 1) == 2 else '3.º o más'} de tu familia)</div>" if dto > 0 else "")
                     + f"</div><div class='ci-d'><b>{e(sim)} {t:.2f}</b></div></div><ul class='datos' style='margin-top:8px'>{filas}</ul></div>")
     pw0 = ms[0].get("pagoWeb") if isinstance(ms[0].get("pagoWeb"), dict) else {}
     cargo_html, cargo_fam = _cargo_comprobante(pw0, sim, individual=False)
@@ -1430,8 +1432,8 @@ def _comprobante_directo(a: dict, ms: list[dict], ses: dict | None) -> HTMLRespo
             f"<li style='align-items:flex-start'><span style='min-width:0'>{e(c.get('concepto'))} · {e(sim)} {float(c.get('monto') or 0):.2f}"
             f"{'' if c.get('pagada') else ' · vence ' + e(str(c.get('vencimiento'))[:10])}<br>{apw.pill_cuota(c)}</span></li>" for c in cuotas)
         bloques += (f"<div class='cart-it' style='margin-top:12px'><div class='ci-t'><div><b>{e(m.get('nombre'))}</b> <span class='sub'>{quien}</span>"
-                    + (f"<div class='sub' style='color:#0B7A55'>🎉 Descuento familiar −{dto:.0f} % ({'2.º' if int(m.get('ordenHermano') or 1) == 2 else '3.º o más'} de tu familia)</div>" if dto > 0 else "")
-                    + (f"<div class='sub' style='color:#0B7A55'>Ahorras {e(sim)} {float(pd.get('ahorro') or 0):.2f} en descuentos</div>" if float(pd.get("ahorro") or 0) > 0 and dto <= 0 else "")
+                    + (f"<div class='sub' style='color:#0B7A57'>🎉 Descuento familiar −{dto:.0f} % ({'2.º' if int(m.get('ordenHermano') or 1) == 2 else '3.º o más'} de tu familia)</div>" if dto > 0 else "")
+                    + (f"<div class='sub' style='color:#0B7A57'>Ahorras {e(sim)} {float(pd.get('ahorro') or 0):.2f} en descuentos</div>" if float(pd.get("ahorro") or 0) > 0 and dto <= 0 else "")
                     + f"</div></div><ul class='datos' style='margin-top:8px'>{filas}</ul></div>")
     nombres = ", ".join(str(m.get("nombre") or "") for m in ms)
     varios = len(ms) > 1

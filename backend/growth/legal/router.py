@@ -312,7 +312,7 @@ def eliminar_cuenta() -> str:
     <b>Perfil → Eliminar mi cuenta</b>, confirma, y se borra al momento.</div>
     <p><b>Si ya no tienes la app instalada</b>, escríbenos:</p>
     <ol>
-      <li>Envía un correo a <a href="mailto:{CONTACTO}?subject=Eliminar%20mi%20cuenta%20Pichangol">{CONTACTO}</a>
+      <li>Envía un correo a <a href="mailto:{CONTACTO}?subject=Eliminar%20mi%20cuenta%20{MARCA}">{CONTACTO}</a>
       desde <b>el mismo correo con el que ingresas</b> a {MARCA}, con el asunto
       «Eliminar mi cuenta».</li>
       <li>Verificamos que la solicitud venga de tu cuenta y la procesamos.</li>

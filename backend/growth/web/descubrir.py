@@ -118,7 +118,7 @@ def a_cancha(p: dict) -> dict | None:
     if not dep:
         return None
     fotos = [str(u) for u in (p.get("fotos") or []) if str(u).startswith("http")]
-    return {"id": f"gp_{pid}", "nombre": str(nombre), "direccion": p.get("formattedAddress") or "",
+    return {"id": f"gp_{pid}", "nombre": str(nombre), "direccion": _dir_legible(p.get("formattedAddress") or ""),
             "lat": lat, "lng": lng, "deporte": dep, "fotos": fotos[:3]}
 
 
@@ -369,7 +369,7 @@ def leer_cosecha(lat: float, lng: float, radio_m: float = RADIO_M) -> list[dict]
     for f in filas:
         if not f[0] or not f[1] or f[3] is None or f[4] is None:
             continue
-        out.append({"id": str(f[0]), "nombre": str(f[1]), "direccion": str(f[2] or ""),
+        out.append({"id": str(f[0]), "nombre": str(f[1]), "direccion": _dir_legible(str(f[2] or "")),
                     "lat": float(f[3]), "lng": float(f[4]), "deporte": str(f[5] or "futbol"),
                     "fotos": []})
     return out
@@ -549,7 +549,7 @@ def buscar_lugares(q: str, lat: float | None, lng: float | None, region: str = "
             continue
         if not pid or not nombre:
             continue
-        out.append({"id": f"gp_{pid}", "nombre": str(nombre), "direccion": p.get("formattedAddress") or "",
+        out.append({"id": f"gp_{pid}", "nombre": str(nombre), "direccion": _dir_legible(p.get("formattedAddress") or ""),
                     "lat": plat, "lng": plng, "deporte": deporte_de(str(nombre), p.get("types") or []) or "",
                     "km": round(_km(la, ln, plat, plng), 1) if la is not None else None})
     _busq_cache[key] = (ahora, out)
@@ -732,3 +732,8 @@ def limpiar_cache() -> None:
         _sin_foto_visto.clear()
         _fotos_edge.clear()
         _edge_cosechadas.clear()
+
+
+def _dir_legible(t: str) -> str:
+    from web.ui import direccion_legible
+    return direccion_legible(t)

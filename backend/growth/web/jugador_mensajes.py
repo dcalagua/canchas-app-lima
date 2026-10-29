@@ -1303,7 +1303,7 @@ def pagina_mensajes(request: Request) -> HTMLResponse:
     inicial = {"ok": True, "filas": [fila_json(f) for f in b["filas"]], "archivadas": [fila_json(f) for f in b["archivadas"]]}
     cfg = {"cache": _clave_cache(yo), "inicial": inicial, "fresca": True, "cada": 12000}
     cuerpo = (_CSS + "<div class='mj-panel' style='max-width:760px'>" + _cabecera_bandeja() + _lista_html(b) + "</div>"
-              + f"<script>window.MJ = {json.dumps(cfg, ensure_ascii=False)};</script>" + _JS_COMUN + _JS_BANDEJA)
+              + f"<script>window.MJ = {ui.json_js(cfg, ensure_ascii=False)};</script>" + _JS_COMUN + _JS_BANDEJA)
     return ui.shell("Mensajes", cuerpo, sesion=ses, titulo_tab=f"Mensajes · {MARCA}", pantalla="mensajes")
 
 
@@ -1637,7 +1637,7 @@ def pagina_info_grupo(request: Request, grupo_id: str):
               "<div class='mj-res' id='mjRes'></div>" + (f"<div class='mj-res'>{cand}</div>" if cand else "")
               + "<div class='acciones' style='margin-top:18px'><button type='button' class='btn sec' id='mjGLlamar' onclick='mjLlamadas()'>📹 Llamada grupal (en la app)</button>"
               "<button type='button' class='btn sec' id='mjGSalir' style='color:var(--rojo)'>🚪 Salir del grupo</button></div></div></div>"
-              f"<script>window.MJG = {json.dumps(cfg)};</script>" + _JS_COMUN + _JS_BUSCAR.replace("__MODO__", "grupo") + _JS_GRUPO_INFO)
+              f"<script>window.MJG = {ui.json_js(cfg)};</script>" + _JS_COMUN + _JS_BUSCAR.replace("__MODO__", "grupo") + _JS_GRUPO_INFO)
     return ui.shell("Info del grupo", cuerpo, sesion=ses, titulo_tab=f"{g['nombre'] or 'Grupo'} · {MARCA}", pantalla="mensajes")
 
 
@@ -1709,8 +1709,8 @@ def pagina_chat(request: Request, clave: str):
     cfg_b = {"cache": _clave_cache(yo), "inicial": {"ok": True, "filas": [fila_json(f) for f in b["filas"]],
                                                      "archivadas": [fila_json(f) for f in b["archivadas"]]}, "fresca": True, "cada": 15000}
     cuerpo = (_CSS + "<div class='mj dos'>" + lista + chat + "</div>"
-              + f"<script>window.MJ = {json.dumps(cfg_b, ensure_ascii=False)}; window.MJC = {json.dumps(cfg, ensure_ascii=False)}; "
-              + f"window.MJ_ABIERTA = {json.dumps(fila_json(fila)['k'] if fila else '')};</script>"
+              + f"<script>window.MJ = {ui.json_js(cfg_b, ensure_ascii=False)}; window.MJC = {ui.json_js(cfg, ensure_ascii=False)}; "
+              + f"window.MJ_ABIERTA = {ui.json_js(fila_json(fila)['k'] if fila else '')};</script>"
               + _JS_COMUN + _JS_BANDEJA + _JS_CHAT)
     return ui.shell(tit["titulo"], cuerpo, sesion=ses, titulo_tab=f"{tit['titulo']} · Mensajes · {MARCA}",
                     pantalla="chat")

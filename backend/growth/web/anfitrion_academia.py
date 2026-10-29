@@ -364,7 +364,7 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
 </form></div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Los cambios se ven al instante en la app y en tu landing.</span>
 {'' if nueva else "<button type='button' class='btn sec' id='btnEliminar' style='color:var(--rojo);margin-right:8px'>🗑 Eliminar</button>"}<button type='button' class='btn' id='btnGuardar'>{'Crear academia' if nueva else 'Guardar cambios'}</button></div></div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_EDITOR}</script>"""
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_EDITOR}</script>"""
     return ui.shell("Academia", cuerpo, nav=_cab(ses, "academias"), sesion=ses, ancho=True, extra_head=_LEAFLET,
                     titulo_tab=f"{'Crear' if nueva else 'Editar'} academia · Modo anfitrión")
 

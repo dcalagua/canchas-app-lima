@@ -702,6 +702,13 @@ def pagar_reserva_hospedada(request: Request, body: dict = Body(...)) -> JSONRes
     email = ((ses or {}).get("email") or filas[0].get("usuario") or "").strip().lower()
     if any((f.get("usuario") or "").strip().lower() != email for f in filas):
         return JSONResponse({"ok": False, "error": "ajena", "mensaje": "Ese horario no está apartado a tu nombre."})
+    c = datos.cancha(filas[0].get("cancha_id")) or {}
+    _sim, iso = R._moneda_de(c)
+    if R._cd.checkout(c, iso).get("directo"):
+        # COBRO DIRECTO: el dinero va a la cuenta del club, nunca a la pasarela
+        # de la plataforma (se paga con su Culqi o con comprobante en la ficha).
+        return JSONResponse({"ok": False, "error": "usa_directo",
+                             "mensaje": "Este club recibe el pago directo. Vuelve a la ficha y paga con sus medios."})
     clave = "|".join(sorted(ids))
     with _LOCK:
         previa = orden_de_ids(ids)
@@ -959,9 +966,9 @@ def pagina_orden(oid: str, request: Request):
                   f"<p class='sub'>Completa el pago en la página de {e(pas)}. Si ya pagaste, en unos segundos lo confirmamos y te llevamos a tu "
                   + _DESTINO.get(tipo, "comprobante") + "." + _MIENTRAS.get(tipo, "") + "</p>"
                   f"<div class='acciones' style='flex-wrap:wrap'>{ir}<button type='button' class='btn sec' id='btnCancelarOrden'>Cancelar este pago</button></div></div>"
-                  "<style>.aro-mini{width:26px;height:26px;border-radius:50%;border:3px solid #DDE7E2;border-top-color:var(--verde,#0B8A3E);animation:girar .9s linear infinite;flex:none}"
+                  "<style>.aro-mini{width:26px;height:26px;border-radius:50%;border:3px solid #DDE7E2;border-top-color:var(--verde,#0B7A57);animation:girar .9s linear infinite;flex:none}"
                   "@keyframes girar{to{transform:rotate(360deg)}}</style>"
-                  f"<script>window.__orden={json.dumps({'id': oid, 'pasarela': pas})};</script><script>{_JS_ESPERA}</script>")
+                  f"<script>window.__orden={ui.json_js({'id': oid, 'pasarela': pas})};</script><script>{_JS_ESPERA}</script>")
         return ui.shell("Confirmando tu pago", cuerpo, sesion=ses, titulo_tab=f"Confirmando tu pago · {MARCA}")
     if o.get("estado") == "aprobado_sin_reserva":
         txt = (f"Te lo devolvimos a tu saldo {MARCA}: ya lo puedes usar." if o.get("devolucion") == "saldo"
@@ -1019,7 +1026,7 @@ def pagina_simulada(oid: str, request: Request):
               "<div class='acciones' style='flex-direction:column;align-items:stretch;gap:10px'>"
               "<button type='button' class='btn lg' id='simOk'>✅ Aprobar pago de prueba</button>"
               "<button type='button' class='btn sec' id='simNo'>Rechazar (simular tarjeta rechazada)</button></div></div>"
-              f"<script>window.__orden={json.dumps({'id': oid})};</script><script>{_JS_SIM}</script>")
+              f"<script>window.__orden={ui.json_js({'id': oid})};</script><script>{_JS_SIM}</script>")
     return ui.shell("Pago de prueba · QAS", cuerpo, sesion=ses, titulo_tab="Pago de prueba · QAS")
 
 
