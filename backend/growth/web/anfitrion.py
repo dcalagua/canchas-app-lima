@@ -522,7 +522,7 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
     <div class='row'><div><label for='mTel'>Teléfono <span class='req'>opcional</span></label><input id='mTel' inputmode='tel' maxlength='20' placeholder='999 888 777'></div>
     <div><label for='mEm'>Correo de su cuenta <span class='req'>opcional</span></label><input id='mEm' type='email' maxlength='120' placeholder='para que la vea en su app'></div></div>
     <label for='mPre'>Precio</label><div class='inp-moneda'><span>{e(sim)}</span><input id='mPre' type='number' min='0' step='0.5' inputmode='decimal'></div>
-    <label class='chk' style='margin-top:14px'><input type='checkbox' id='mPag'> Ya pagó <small>(si no, queda "por cobrar" en tu caja)</small></label>
+    <label class='chk' style='margin-top:14px'><input type='checkbox' id='mPag' aria-label='Ya pagó'> Ya pagó <small>(si no, queda "por cobrar" en tu caja)</small></label>
     <p class='sub' style='font-size:12.5px;margin-top:10px'>Cliente propio: sin comisión. No entra a tu billetera {MARCA}, sí a tu caja del día.</p>
    </div>
    <div id='calBloq' hidden style='margin-top:14px'><p class='sub' style='margin:0'>El turno deja de aparecer libre en la app y en la web (mantenimiento, uso propio, clases…). Puedes desbloquearlo cuando quieras.</p></div>
@@ -1013,7 +1013,7 @@ def _tarjeta_cuenta_cobro(cuenta: dict | None, res: dict, pais_iso: str, ses: di
             "<div id='ccCciBox' hidden><label for='ccCci'>CCI <span class='req'>código interbancario de 20 dígitos · en tu app del banco</span></label><input id='ccCci' inputmode='numeric' autocomplete='off' maxlength='26'></div>"
             "<label for='ccTitular'>Titular <span class='req'>tal como figura en la cuenta</span></label><input id='ccTitular' maxlength='80' autocomplete='name'>"
             "<label>Documento del titular</label><div class='chips' id='ccDoc'></div>"
-            "<input id='ccDocNum' inputmode='numeric' autocomplete='off' maxlength='15' placeholder='Número de documento' style='margin-top:6px'>"
+            "<input id='ccDocNum' aria-label='Número de documento' inputmode='numeric' autocomplete='off' maxlength='15' placeholder='Número de documento' style='margin-top:6px'>"
             "<div class='err' id='ccErr' style='display:none'></div>"
             "<div class='acciones' style='margin-top:12px'><button type='submit' class='btn' id='ccGuardar'>Guardar cuenta de cobro</button>"
             "<button type='button' class='btn sec' id='ccCancelar'>Cancelar</button></div>"
@@ -1318,7 +1318,7 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
                        f"<button type='button' class='chip{' sel' if on else ''}' data-g='servicios' data-v='{e(k)}'>{x['emoji']} {e(x['nombre'])}</button>"
                        f"<span class='sub' style='margin:0;font-size:12px'>{_se.etiqueta_tipo(x['tipo'])}</span>"
                        f"<label class='precio-serv'{'' if on else ' hidden'}><span>{e(sim)}</span>"
-                       f"<input type='number' name='serv_{e(k)}' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
+                       f"<input type='number' name='serv_{e(k)}' aria-label='Precio del servicio' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
     local_nombre = (c.get("club") or "").strip() or c["nombre"]
     amen_txt = " · ".join(f"{catalogos.AMENIDADES[a][1]} {catalogos.AMENIDADES[a][0]}" for a in (c.get("amenidades") or []) if a in catalogos.AMENIDADES) or "ninguno configurado"
     loc_txt = " · ".join(f"{x['emoji']} {e(x['nombre'])} {e(sim)} {float(x['precio']):.2f} {_se.etiqueta_tipo(x['tipo'])}" for x in del_local) or "ninguno configurado"
@@ -1603,7 +1603,7 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
                        f"<button type='button' class='chip{' sel' if on else ''}' data-g='servicios' data-v='{e(k)}'>{x['emoji']} {e(x['nombre'])}</button>"
                        f"<span class='sub' style='margin:0;font-size:12px'>{_se.etiqueta_tipo(x['tipo'])}</span>"
                        f"<label class='precio-serv'{'' if on else ' hidden'}><span>{e(sim)}</span>"
-                       f"<input type='number' name='serv_{e(k)}' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
+                       f"<input type='number' name='serv_{e(k)}' aria-label='Precio del servicio' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
     lista = "".join(f"<li>{_deporte(h.get('deporte'))[1]} <a href='/anfitrion/cancha/{e(h['id'])}/editar'>{e(h['nombre'])}</a> · {e(_deporte(h.get('deporte'))[0])}</li>" for h in hermanas)
     # TARJETA DE FIDELIDAD del local (sep-2026): cada N reservas pagadas, una
     # hora gratis o un % de descuento. Se guarda igual en todas las canchas.
@@ -2092,7 +2092,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
   <div id='mapaSede' class='mapa-sede' style='margin-top:6px'></div>
   <div class='acciones' style='margin-top:8px'><button type='button' class='btn sec' id='btnUbic'>📍 Usar mi ubicación</button><span class='sub' id='ubicTxt' style='margin:0'>{'Toca el mapa para fijar tu cancha.' if la is None else f'{la:.5f}, {ln:.5f}'}</span></div>
   <label>Zona</label>
-  <div class='row' id='geoRow' style='grid-template-columns:1fr 1fr 1fr'><select id='g1'><option value=''>—</option></select><select id='g2'><option value=''>—</option></select><select id='g3'><option value=''>—</option></select></div>
+  <div class='row' id='geoRow' style='grid-template-columns:1fr 1fr 1fr'><select id='g1' aria-label='Zona: nivel 1'><option value=''>—</option></select><select id='g2' aria-label='Zona: nivel 2'><option value=''>—</option></select><select id='g3' aria-label='Zona: nivel 3'><option value=''>—</option></select></div>
  </section>
  <section class='panel edit-sec' id='sec-deportes'><h2>Deportes y tipo de piso</h2><p class='sub'>Marca todo lo que se juega en tu local.</p>
   {_chips('deportes', dep_ops, set(pre['deportes']), multi=True)}

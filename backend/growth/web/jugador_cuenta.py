@@ -294,8 +294,8 @@ def pagina_configuracion(request: Request) -> HTMLResponse:
         f"{'Tu perfil muestra la insignia de jugador verificado' if verificado else 'Da confianza a los dueños y reserva sin fricción'}</small></span><span class='chev'>›</span></a>"
         "<button type='button' class='cf-it' data-app='La última vez, en línea y las confirmaciones de lectura del chat se configuran en tu teléfono, desde la app.' data-titulo='Privacidad' data-em='🔒'>"
         "<span class='em'>🔒</span><span class='tx'>Privacidad<small>Última vez, en línea y confirmaciones de lectura</small></span><span class='app'>En la app</span><span class='chev'>›</span></button>"
-        "<button type='button' class='cf-it' data-app='Tu código de invitado y los bonos por referir amigos están en la app.' data-titulo='Invita y gana' data-em='🎁'>"
-        "<span class='em'>🎁</span><span class='tx'>Invita y gana<small>Comparte tu código; tú y tu amigo ganan un bono</small></span><span class='app'>En la app</span><span class='chev'>›</span></button>"
+        "<a class='cf-it' href='/referidos'>"
+        "<span class='em'>🎁</span><span class='tx'>Invita y gana<small>Comparte tu código; tú y tu amigo ganan un bono</small></span><span class='chev'>›</span></a>"
         "<button type='button' class='cf-it' onclick='window.pcgSalir&&pcgSalir()'><span class='em'>🚪</span><span class='tx'>Cierra la sesión</span><span class='chev'>›</span></button>"
         "<a class='cf-it rojo' href='/legal/eliminar-cuenta'><span class='em'>🗑️</span><span class='tx'>Eliminar mi cuenta</span><span class='chev'>›</span></a>")
     cfg = {"bio": bio, "prompts": [[c, em, et, ops, mu] for c, em, et, ops, mu in PROMPTS_BIO],

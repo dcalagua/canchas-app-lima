@@ -4056,6 +4056,16 @@ Detalle y acciones pendientes: `docs/plan/BITACORA_NOCHE.md`.
   `conftest.con_assets`); `web/seguridad_web.py` = gzip, anti-iframe, CSP
   solo-reporte, CSRF por origen y límites por IP (apagados en la suite);
   colores = tokens del APK (`--esmeralda #0B7A57`), nunca hex sueltos nuevos.
+- **Web ronda 2 (29-oct, `docs/plan/PLAN_MEJORAS_WEB_2.md`):** 404/500 con la
+  marca para el navegador (`web/errores.py`; la API sigue en JSON);
+  `datos.canchas_publicas()` con caché de 30 s (`CANCHAS_TTL`, se borra en cada
+  escritura vía `@_invalida_canchas`; en tests va en 0); pestañas, títulos,
+  `/tenis` y pie salen de los deportes activos de la torre (`catalogos.
+  frase_deportes`, `titulo_raquetas`); **favoritos en la cuenta**
+  (`web/jugador_favoritos.py`, `stores.favoritos_web` en el snapshot,
+  `/mis-favoritos`); **calificar desde la web** (`web/jugador_resenas.py`, misma
+  `pichangol_resenas` del APK, solo si jugaste en el local, estrellas + chips sin
+  texto libre); `ui.monto`, `ui.unir_lugar`, `ui.codigo_corto`.
 
 ## Pendientes / backlog
 

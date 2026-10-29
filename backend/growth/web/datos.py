@@ -10,6 +10,7 @@ de `pichangol_reservas`: el mismo que usa el APK (`insertarSegura`).
 
 from __future__ import annotations
 
+import copy
 import json
 import time
 
@@ -222,22 +223,104 @@ def ratings(ids: list[str]) -> dict[str, tuple[float, int]]:
         return {}
 
 
+def resenas_de(ids: list[str], limite: int = 6) -> list[dict]:
+    """Últimas reseñas de esas canchas (las del APK y las de la web)."""
+    ids = [i for i in ids if i]
+    if not pg.habilitado or not ids:
+        return []
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT cancha_id, autor_nombre, estrellas, coalesce(comentario,''), creado FROM pichangol_resenas "
+                        "WHERE cancha_id = ANY(%s) AND estrellas BETWEEN 1 AND 5 ORDER BY creado DESC LIMIT %s", (ids, int(limite)))
+            return [{"cancha_id": str(r[0]), "autor_nombre": r[1] or "", "estrellas": int(r[2]), "comentario": r[3],
+                     "creado": r[4]} for r in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def mis_resenas(email: str, ids: list[str]) -> dict[str, int]:
+    """{cancha_id: estrellas} de lo que ESTE correo ya calificó."""
+    ids = [i for i in ids if i]
+    if not pg.habilitado or not ids or not email:
+        return {}
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT cancha_id, estrellas FROM pichangol_resenas WHERE lower(autor_email) = %s AND cancha_id = ANY(%s)",
+                        (email.strip().lower(), ids))
+            return {str(r[0]): int(r[1]) for r in cur.fetchall()}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def guardar_resena(cancha_id: str, email: str, nombre: str, estrellas: int, comentario: str) -> bool:
+    """Una reseña por (cancha, autor), como `ResenasRepo.enviar` del APK
+    (upsert por `cancha_id,autor_email`): calificar de nuevo la reemplaza."""
+    if not pg.habilitado:
+        return False
+    import zlib
+    email = email.strip().lower()
+    rid = f"res_{zlib.crc32(email.encode()) & 0xFFFFF:x}_{cancha_id}"
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO pichangol_resenas (id, cancha_id, autor_email, autor_nombre, estrellas, comentario) "
+                        "VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (cancha_id, autor_email) DO UPDATE SET "
+                        "estrellas = EXCLUDED.estrellas, comentario = EXCLUDED.comentario, autor_nombre = EXCLUDED.autor_nombre, "
+                        "creado = now()", (rid, cancha_id, email, (nombre or "")[:80], int(estrellas), (comentario or "")[:400]))
+        return True
+    except Exception as ex:  # noqa: BLE001
+        print(f"[resena] no se pudo guardar {cancha_id}: {ex}", flush=True)
+        return False
+
+
+# Caché corta de `canchas_publicas()` (revisión de QAS, 29-oct-2026: cada visita
+# consultaba TODAS las canchas y la ficha lo repetía; 0,6–0,9 s antes del primer
+# byte). Se borra al escribir desde la web; lo que el APK escribe directo en
+# Supabase aparece a más tardar en CANCHAS_TTL segundos.
+CANCHAS_TTL = 30
+_cache_canchas: dict = {"t": 0.0, "v": None}
+
+
+def invalidar_canchas() -> None:
+    _cache_canchas.update(t=0.0, v=None)
+
+
+def _invalida_canchas(fn):
+    """Decorador para los que escriben `pichangol_canchas`: tras escribir, la
+    próxima lectura vuelve a la base."""
+    import functools
+
+    @functools.wraps(fn)
+    def envuelta(*a, **k):
+        try:
+            return fn(*a, **k)
+        finally:
+            invalidar_canchas()
+    return envuelta
+
+
 def canchas_publicas() -> list[dict]:
     """TODAS las canchas publicables en la web: registradas y no eliminadas.
     Las verificadas con dueño son reservables en línea; las demás (aún sin
     verificar) se muestran con "Reservar en la app" (decisión del director,
-    sep-2026: la web enseña el mismo mapa que el APK). Verificadas primero."""
+    sep-2026: la web enseña el mismo mapa que el APK). Verificadas primero.
+    Cada llamada recibe COPIAS (quien las modifica no ensucia la caché)."""
     if not pg.habilitado:
         return []
+    ahora = time.monotonic()
+    v = _cache_canchas["v"]
+    if v is not None and ahora - _cache_canchas["t"] < CANCHAS_TTL:
+        return copy.deepcopy(v)
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
                 f"SELECT {_sel_cancha()} FROM pichangol_canchas "
                 "WHERE coalesce(registrada,true) AND NOT coalesce(eliminada,false) "
                 "ORDER BY (coalesce(verificada,false) AND coalesce(dueno,'') <> '') DESC, club, nombre")
-            return [_norm_cancha(pg._fila_a_dict(_cols_cancha(), f)) for f in cur.fetchall()]
+            v = [_norm_cancha(pg._fila_a_dict(_cols_cancha(), f)) for f in cur.fetchall()]
     except Exception:  # noqa: BLE001
         return []
+    _cache_canchas.update(t=ahora, v=v)
+    return copy.deepcopy(v)
 
 
 def reservable(c: dict) -> bool:
@@ -276,6 +359,7 @@ COLS_EDITABLES = {
 _COLS_JSON = {"deportes", "amenidades", "servicios_extra", "fotos", "fidelidad"}
 
 
+@_invalida_canchas
 def actualizar_cancha(cancha_id: str, dueno: str, campos: dict) -> bool:
     """UPDATE de la cancha del DUEÑO (modo anfitrión web). Solo toca la fila
     si `lower(dueno)` = correo de la sesión y no está eliminada: nadie edita
@@ -314,6 +398,7 @@ COLS_REGISTRO = [
 ]
 
 
+@_invalida_canchas
 def insertar_canchas(filas: list[dict]) -> bool:
     """INSERT de las canchas recién REGISTRADAS desde la web (una por deporte
     si son canchas separadas). Todo o nada: si una falla, ninguna queda."""
@@ -333,6 +418,7 @@ def insertar_canchas(filas: list[dict]) -> bool:
         return False
 
 
+@_invalida_canchas
 def borrar_canchas(ids: list[str], dueno: str) -> int:
     """DELETE físico de canchas del dueño recién registradas (se revierte un
     registro que la torre no aceptó, p. ej. el lugar ya tenía reclamo ajeno).
@@ -356,6 +442,7 @@ COLS_ADOPCION = {"nombre", "club", "deporte", "deportes", "superficie", "precio_
                  "duracion_slot_min", "barrio", "direccion", "fotos", "foto_url", "moneda", "precio_turno"}
 
 
+@_invalida_canchas
 def adoptar_cancha(cancha_id: str, dueno: str, campos: dict) -> bool:
     """RECLAMO de una cancha ya registrada SIN dueño (legado reclamable, mismo
     criterio que `AppState.misCanchas`): la pone a nombre del correo y actualiza
@@ -382,6 +469,7 @@ def adoptar_cancha(cancha_id: str, dueno: str, campos: dict) -> bool:
         return False
 
 
+@_invalida_canchas
 def desadoptar_cancha(cancha_id: str, dueno: str) -> bool:
     """Revierte `adoptar_cancha` (el reclamo no se pudo crear)."""
     dueno = (dueno or "").strip().lower()
@@ -398,6 +486,7 @@ def desadoptar_cancha(cancha_id: str, dueno: str) -> bool:
         return False
 
 
+@_invalida_canchas
 def marcar_verificada(cancha_id: str, dueno: str, verificada: bool, lat: float | None = None, lng: float | None = None) -> int:
     """La torre aprobó (o rechazó) el reclamo: refleja `verificada` en la
     NUBE para la cancha reclamada y sus HERMANAS: mismo registro (`u<ts>` /
@@ -424,6 +513,7 @@ def marcar_verificada(cancha_id: str, dueno: str, verificada: bool, lat: float |
         return 0
 
 
+@_invalida_canchas
 def quedar_solo_fotos_propias(cancha_id: str, dueno: str, lat: float | None = None, lng: float | None = None) -> int:
     """Al aprobar un reclamo: en la cancha y sus HERMANAS (mismo criterio que
     `marcar_verificada`) deja solo las fotos PROPIAS del dueño (bucket de cada
@@ -484,6 +574,7 @@ def fotos_de_cancha(cancha_id: str) -> list[str] | None:
     return None if r is None else r.get(str(cancha_id or "").strip(), [])
 
 
+@_invalida_canchas
 def guardar_reglas(cancha_ids: list[str], dueno: str, reglas: dict) -> int:
     """Guarda las reglas de reserva (ya normalizadas) en las canchas del DUEÑO
     (`dueno` = correo verificado). Devuelve cuántas filas cambió; 0 si no son

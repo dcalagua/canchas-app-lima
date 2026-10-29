@@ -572,6 +572,11 @@ def _pasos(r, modo: str, verificada: bool, otp) -> str:
     def li(clase: str, n: str, tit: str, txt: str) -> str:
         return f"<li class='{clase}'><span class='n'>{n}</span><div><b>{tit}</b><small>{txt}</small></div></li>"
 
+    if verificada and not r:
+        # Verificada sin reclamo guardado (aprobada por la torre o legado):
+        # no tiene sentido decir "aún no hay solicitud".
+        return ("<ol class='vf-pasos'>" + li("hecho", "✓", "Propiedad confirmada", "Tu cancha está verificada por el equipo.")
+                + li("hecho", "✓", "Activa: recibe reservas", "Tu cancha ya acepta reservas en línea.") + "</ol>")
     pasos = [li("hecho" if r else "actual", "✓" if r else "1", "Solicitud enviada",
                 f"El {e(_fecha(r.creado_en))}" if r else "Aún no hay una solicitud a tu nombre en el servidor.")]
     if otp is not None:

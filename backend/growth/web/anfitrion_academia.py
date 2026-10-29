@@ -304,7 +304,7 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
     redes = {k: str(v) for k, v in (a.get("redes") or {}).items() if v}
     redes_html = "".join(
         f"<div class='serv{' sel' if k in redes else ''}' data-red='{k}'><button type='button' class='chip{' sel' if k in redes else ''}' data-g='redes' data-v='{k}'>{e(n)}</button>"
-        f"<label class='precio-serv'{'' if k in redes else ' hidden'}><input type='text' name='red_{k}' maxlength='120' value='{e(redes.get(k, ''))}' placeholder='{'https://…' if k == 'web' else '@usuario o enlace'}' style='width:260px'></label></div>"
+        f"<label class='precio-serv'{'' if k in redes else ' hidden'}><input type='text' name='red_{k}' aria-label='Usuario o enlace de {e(k)}' maxlength='120' value='{e(redes.get(k, ''))}' placeholder='{'https://…' if k == 'web' else '@usuario o enlace'}' style='width:260px'></label></div>"
         for k, n in catalogos.REDES.items())
     cfg = {"qr": str((a.get("cobroDirecto") or {}).get("qr_url") or "") if isinstance(a.get("cobroDirecto"), dict) else "",
            "id": a["id"], "nueva": nueva, "lat": a.get("lat"), "lng": a.get("lng"), "iso": iso, "zona": a.get("zona") or "", "buscar": bool(config.PLACES_API_KEY), "recargo": float(a.get("recargoInvitado") or 0),
@@ -337,7 +337,7 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
   <label>Ubicación de la sede</label><div id='mapaSede' class='mapa-sede' style='margin-top:6px'></div>
   <div class='acciones' style='margin-top:8px'><button type='button' class='btn sec' id='btnUbic'>📍 Usar mi ubicación</button><span class='sub' id='ubicTxt' style='margin:0'>{'Toca el mapa para fijar la sede.' if a.get('lat') is None else f"{float(a['lat']):.5f}, {float(a['lng']):.5f}"}</span></div>
   <label>Zona <span class='req'>para el ranking por ciudad</span></label>
-  <div class='row' id='geoRow' style='grid-template-columns:1fr 1fr 1fr'><select id='g1'><option value=''>—</option></select><select id='g2'><option value=''>—</option></select><select id='g3'><option value=''>—</option></select></div>
+  <div class='row' id='geoRow' style='grid-template-columns:1fr 1fr 1fr'><select id='g1' aria-label='Zona: nivel 1'><option value=''>—</option></select><select id='g2' aria-label='Zona: nivel 2'><option value=''>—</option></select><select id='g3' aria-label='Zona: nivel 3'><option value=''>—</option></select></div>
   <label for='wa'>WhatsApp de contacto</label><div class='inp-moneda' style='max-width:300px'><span id='telPre'>+{catalogos.TEL_PREFIJO.get(iso, '51')}</span><input id='wa' inputmode='tel' maxlength='15' value='{e(a.get('whatsapp') or '')}' placeholder='999 888 777'></div>
  </section>
  <section class='panel edit-sec' id='sec-fotos'><h2>Fotos</h2><p class='sub'>Feed de tu academia dentro de {MARCA} (hasta 8).</p>
@@ -447,12 +447,12 @@ var agr=agrupar(planes), programas=agr.programas, sueltos=agr.sueltos;
 function pintarProgramas(){
   $('programas').innerHTML=programas.length?programas.map(function(g,i){return "<div class='prog-card' data-i='"+i+"'>"+
     "<div class='prog-head'><b class='prog-tit'>"+(g.nombre?esc(g.nombre):'Programa '+(i+1))+"</b><button type='button' class='mini' data-quitar-prog='"+i+"' title='Quitar programa'>✕</button></div>"+
-    "<label>Programa</label><input data-k='nombre' maxlength='60' value='"+esc(g.nombre)+"' placeholder='Ej. Bola Roja y Naranja'>"+
-    "<label>Etapa / edad</label><input data-k='etapaEdad' maxlength='80' value='"+esc(g.etapaEdad)+"' placeholder='Ej. Iniciación e intermedio · 5 a 10 años'>"+
+    "<label>Programa</label><input data-k='nombre' aria-label='Nombre del programa' maxlength='60' value='"+esc(g.nombre)+"' placeholder='Ej. Bola Roja y Naranja'>"+
+    "<label>Etapa / edad</label><input data-k='etapaEdad' aria-label='Etapa o edad del programa' maxlength='80' value='"+esc(g.etapaEdad)+"' placeholder='Ej. Iniciación e intermedio · 5 a 10 años'>"+
     "<label>Duración de clase</label>"+chips('prog_dur_'+i,[''].concat(CFG.durs),g.duracionClase||'',function(v){return v||'—'})+
-    "<label>Días y horario <span class='req'>opcional · cuándo son las clases de este programa</span></label><input data-k='horario' maxlength='80' value='"+esc(g.horario)+"' placeholder='Ej. Lun, Mié y Vie · 5:00–6:30 pm'>"+
+    "<label>Días y horario <span class='req'>opcional · cuándo son las clases de este programa</span></label><input data-k='horario' aria-label='Días y horario del programa' maxlength='80' value='"+esc(g.horario)+"' placeholder='Ej. Lun, Mié y Vie · 5:00–6:30 pm'>"+
     "<label style='margin-top:14px'>Precio socio por frecuencia <span class='req'>veces por semana · deja en blanco las que no ofreces</span></label>"+
-    "<div class='frecs'>"+FRECS.map(function(f){return "<div class='frec'><b>"+f+"x/sem</b><div class='inp-moneda'><span>"+esc(CFG.moneda)+"</span><input data-f='"+f+"' type='number' min='0' step='1' inputmode='numeric' placeholder='socio / mes' value='"+(g.precios[f]>0?esc(g.precios[f]):'')+"'></div></div>"}).join('')+"</div>"+
+    "<div class='frecs'>"+FRECS.map(function(f){return "<div class='frec'><b>"+f+"x/sem</b><div class='inp-moneda'><span>"+esc(CFG.moneda)+"</span><input data-f='"+f+"' aria-label='Precio socio por mes, "+f+" veces por semana' type='number' min='0' step='1' inputmode='numeric' placeholder='socio / mes' value='"+(g.precios[f]>0?esc(g.precios[f]):'')+"'></div></div>"}).join('')+"</div>"+
     (CFG.recargo>0?"<p class='sub' style='margin:8px 0 0;font-size:12.5px'>El precio de invitado se calcula sumando el recargo de la academia ("+esc(CFG.moneda)+" "+esc(CFG.recargo)+").</p>":"")+"</div>"}).join('')
   :"<div class='anf-vacio'>Aún no agregas programas. Ejemplo: «Bola Roja y Naranja» con precio para 2x y 3x por semana.</div>";
   var sb=$('sueltos');if(sb){sb.hidden=!sueltos.length;sb.innerHTML=sueltos.length?"<label>Planes sueltos <span class='req'>creados con el editor anterior; vuelve a armarlos como programa y quítalos</span></label>"+sueltos.map(function(p,i){return "<div class='suelto'><span><b>"+esc(p.nombre||'Plan')+"</b> · "+esc(CFG.moneda)+" "+esc(p.precioMes||0)+(p.programa?" · "+esc(p.programa):"")+"</span><button type='button' class='mini' data-quitar-suelto='"+i+"' title='Quitar'>✕</button></div>"}).join(''):''}}

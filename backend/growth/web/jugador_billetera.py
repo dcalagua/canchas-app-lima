@@ -444,6 +444,8 @@ _CSS = """
 .pts-pend{background:#FBEAD2;color:#8A5A00;border-radius:12px;padding:10px 12px;font-weight:700;font-size:13px;margin-top:10px;line-height:1.35}
 .pts-como{background:#EEF8E4;border-radius:14px;padding:14px;margin-top:14px;font-size:13px;line-height:1.55}
 .pts-como b{font-size:14px}
+.pts-como summary{cursor:pointer;list-style:none;min-height:32px;display:flex;align-items:center}.pts-como summary::after{content:'⌄';margin-left:auto;font-size:18px}
+.pts-como[open] summary{margin-bottom:6px}
 .pts-it{display:flex;gap:10px;align-items:center;border:1px solid var(--trazo);border-radius:12px;padding:10px 14px;margin-bottom:8px;background:#fff}
 .pts-it .em{font-size:20px;flex:none}
 .pts-it .tx{flex:1;min-width:0}
@@ -660,10 +662,15 @@ def pagina_billetera(request: Request) -> HTMLResponse:
     except Exception:  # noqa: BLE001
         puntos = 0
 
+    # "Destacado" es de los DUEÑOS (sus canchas salen arriba mientras tengan
+    # saldo); a quien solo juega el sello "⏸ Pausado" no le decía nada.
     destacado = saldo > 0
+    sello = ""
+    if canchas:
+        sello = ("<span class='pill' title='Con saldo, tus canchas salen destacadas en el explorador.'>"
+                 + ("⭐ Tus canchas destacadas" if destacado else "⏸ Canchas sin destacar") + "</span>")
     tarjeta = (
-        f"<div class='bil-saldo'><div class='top'><span>Saldo {MARCA}</span>"
-        f"<span class='pill'>{'⭐ Destacado' if destacado else '⏸ Pausado'}</span></div>"
+        f"<div class='bil-saldo'><div class='top'><span>Saldo {MARCA}</span>{sello}</div>"
         f"<div class='monto'>{e(_dinero(sim, saldo))}</div>"
         "<div class='txt'>Es tu saldo único: el mismo de la app, para tus reservas, tus canchas y academias. "
         "Las comisiones de cada reserva se descuentan de aquí.</div>"
@@ -674,8 +681,9 @@ def pagina_billetera(request: Request) -> HTMLResponse:
                    f"de REGALO por unirte a {MARCA}: tus comisiones se descuentan de aquí primero, sin tocar tu plata.</span></div>")
     # "Saldo bajo" habla de salir destacado: solo aplica a quien tiene canchas.
     if canchas and saldo <= SALDO_BAJO and regalo <= 0:
-        avisos += ("<div class='bil-card bajo'><span class='em'>⚠️</span><span class='tx'>Saldo bajo: si llega a 0 dejas de "
-                   "aparecer destacado. Recarga para seguir recibiendo reservas.</span></div>")
+        avisos += ("<div class='bil-card warn'><span class='em'>💡</span><span class='tx'><b>Tu saldo está bajo</b>"
+                   "Con saldo, tus canchas salen destacadas y las comisiones se descuentan solas. "
+                   "<a href='#recargar'>Recargar ›</a></span></div>")
     for mon, v in pend.items():
         avisos += (f"<a class='bil-card recibir' href='/anfitrion/ingresos'><span class='em'>👛</span><span class='tx'>"
                    f"<b>Por recibir</b>De reservas online, ventas y torneos ({MARCA} te transfiere aparte).</span>"
@@ -803,9 +811,13 @@ def pagina_estado_cuenta(request: Request) -> HTMLResponse:
         + f"</td><td>{'Por recibir' if m['clase'] == 'liquidacion' and not m['liquidado'] else ('Recibido' if m['clase'] == 'liquidacion' else ('Gasto' if m['clase'] == 'consumo' else 'Ingreso'))}</td>"
         f"<td class='m'>{'−' if m['clase'] == 'consumo' else '+'} {e(_dinero(m['moneda'], m['monto']))}</td></tr>" for m in movs)
     tabla = (f"<div class='est-wrap'><table class='est-tabla'><thead><tr><th>Fecha</th><th>Concepto</th><th>Tipo</th><th style='text-align:right'>Monto</th></tr></thead>"
-             f"<tbody>{filas}</tbody></table></div>") if movs else "<div class='bil-vacio'><span class='em'>👛</span><b>Aún no hay movimientos</b></div>"
+             f"<tbody>{filas}</tbody></table></div>") if movs else (
+                 "<div class='bil-vacio'><span class='em'>👛</span><b>Tu saldo aún no tiene movimientos</b>"
+                 "<span class='sub'>Lo que pagaste con tarjeta o Yape está en <a href='/mis-pagos'>Mis pagos</a>.</span></div>")
     cuerpo = (f"<style>{_CSS}</style><div class='bil'>{_nav('billetera')}<h1>Estado de cuenta</h1>"
               f"<p class='sub'>{e(ses.get('nombre') or email)} · {e(email)} · generado el {e(_fecha_larga(_ahora().isoformat()))}</p>"
+              "<p class='sub no-print' style='margin-top:-4px'>Movimientos de tu <b>saldo</b>: recargas, comisiones, devoluciones y bonos. "
+              "Tus reservas y compras pagadas con tarjeta o Yape están en <a href='/mis-pagos'>Mis pagos</a>.</p>"
               f"<div class='pag-res'><div><small>Saldo</small><b>{e(_dinero(sim, stores.saldo_centimos(email) / 100.0))}</b></div>"
               f"<div><small>Regalo</small><b>{e(_dinero(sim, stores.saldo_promo_centimos(email) / 100.0))}</b></div>"
               f"<div><small>Movimientos</small><b>{len(movs)}</b></div></div>"
@@ -1086,18 +1098,19 @@ def pagina_mis_puntos(request: Request) -> HTMLResponse:
     cuerpo = (
         f"<style>{_CSS}</style><div class='bil'>{_nav('puntos')}<h1>Mis puntos</h1>"
         f"<div class='pts-top'><div class='t'>⭐ Puntos {MARCA}</div><div class='n'>{disponibles}</div>"
-        f"<div class='v'>Valen S/ {valor:.2f} en descuentos al reservar en línea</div>"
+        + (f"<div class='v'>Valen S/ {valor:.2f} en descuentos al reservar en línea</div>" if iso == "PE"
+           else "<div class='v'>Se canjean como descuento en reservas pagadas en línea en soles (Perú)</div>")
         + (f"<div class='c'>Ya canjeaste {canjeados} puntos 🎉</div>" if canjeados > 0 else "") + "</div>"
         + (f"<div class='pts-pend'>⏳ +{pendientes} por confirmar: pídele al local que marque tu pago en efectivo para acreditarlos.</div>"
            if pendientes > 0 else "")
-        + "<div class='pts-como'><b>Cómo funcionan</b><br>"
+        + "<details class='pts-como'><summary><b>Cómo funcionan</b></summary>"
           "• Ganas 1 punto por cada S/ 1 que pagas por la app o la web (últimos 12 meses).<br>"
           "• Pago en línea: puntos al instante. Efectivo: cuando el local confirma tu pago.<br>"
           f"• Los pedidos de bodega pagados con tu SALDO {MARCA} también suman (al entregarse). En efectivo no acumulan.<br>"
           "• Cada 100 puntos = S/ 3 de descuento al pagar en línea tu próxima reserva, en la web o en la app: marca “Usar 100 puntos” en el resumen "
           f"(un canje por reserva; no aplica con seña, bono ni premio de fidelidad). El descuento lo pone {MARCA}, no el local.<br>"
           "• Si cancelas a tiempo una reserva en la que usaste puntos, los recuperas."
-        + otra + "</div>"
+        + otra + "</details>"
         "<h2>Historial (últimos 12 meses)</h2>" + lista
         + "<p class='sub' style='font-size:13px;margin-top:18px'><a href='/mis-reservas'>Mis reservas</a> · "
           "<a href='/mi-billetera'>Mi billetera</a></p></div>")

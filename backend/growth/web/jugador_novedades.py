@@ -1466,7 +1466,7 @@ def pagina_canales(request: Request) -> HTMLResponse:
     yo = _low(ses["email"])
     cfg = {"cache": _clave_cache(yo, "canales"), "inicial": datos_canales(yo)}
     cuerpo = (_CSS + "<div class='nv-wrap'><div class='nv-top'><h1>Canales</h1><a class='btn' href='/canales/nuevo'>＋ Crear canal</a></div>"
-              "<input class='nv-buscar' id='nvBuscar' type='search' placeholder='Buscar' autocomplete='off'>"
+              "<input class='nv-buscar' id='nvBuscar' type='search' aria-label='Buscar canales' placeholder='Buscar' autocomplete='off'>"
               "<div id='nvCanales'></div><p style='margin-top:18px'><a href='/novedades'>‹ Volver a Novedades</a></p></div>"
               + f"<script>window.NV_CAN = {_js(cfg)};</script>" + _JS_COMUN + _JS_CANALES)
     return ui.shell("Canales", cuerpo, sesion=ses, titulo_tab=f"Canales · {MARCA}")

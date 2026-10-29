@@ -46,6 +46,8 @@ from web.academia_plan_web import router as academia_plan_web_router
 from web.jugador_clases import router as jugador_clases_router
 from web.jugador_market import router as jugador_market_router
 from web.jugador_billetera import router as jugador_billetera_router
+from web.jugador_favoritos import router as jugador_favoritos_router
+from web.jugador_resenas import router as jugador_resenas_router
 from web.pago_hospedado import router as pago_hospedado_router
 from web.jugador_liga import router as jugador_liga_router
 from web.jugador_campeonatos import router as jugador_campeonatos_router
@@ -178,6 +180,8 @@ def _persistir_al_apagar() -> None:
 # anti-iframe, CSP en modo reporte, CSRF y límites por IP): web/seguridad_web.py.
 from web import seguridad_web as _seguridad_web  # noqa: E402
 _seguridad_web.instalar(app)
+from web import errores as _errores  # noqa: E402  — 404/500 con la marca para el navegador
+_errores.instalar(app)
 
 app.include_router(puntos_router)
 app.include_router(entrenador_router)
@@ -203,6 +207,8 @@ app.include_router(academia_web_router)  # ficha pública /academia/{id} + matr�
 app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}
 app.include_router(jugador_clases_router)  # /mis-clases: Mis clases y pagos del jugador
 app.include_router(jugador_billetera_router)  # /mi-billetera, /mis-pagos, /mis-puntos, /mi-pais
+app.include_router(jugador_resenas_router)  # POST /web/resena: calificar después de jugar
+app.include_router(jugador_favoritos_router)  # /mis-favoritos + /web/favoritos (♥ en la cuenta)
 app.include_router(pago_hospedado_router)  # /web/pago/*: cobro web en USD/BOB por pasarela hospedada (Ecuador / Bolivia)
 app.include_router(jugador_liga_router)  # /mi-nivel, /liga
 app.include_router(jugador_campeonatos_router)  # /torneo/{id}: inscribirse / crear o unirse a un equipo pagando con saldo

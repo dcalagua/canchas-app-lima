@@ -197,7 +197,8 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .barra-fija{display:none}
 @media(max-width:900px){
   .barra-fija{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--blanco);border-top:1px solid var(--trazo);padding:12px 16px calc(12px + env(safe-area-inset-bottom));gap:12px;align-items:center;justify-content:space-between;z-index:30;box-shadow:0 -6px 20px rgba(15,27,45,.08)}
-  .barra-fija .t{font-weight:800;font-size:18px}.barra-fija .btn{flex:1;max-width:60%}
+  .barra-fija .t{font-weight:800;font-size:18px;white-space:nowrap}.barra-fija>div:first-child{flex:none}
+  .barra-fija .btn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:12px;padding-right:12px}
   body.con-barra{padding-bottom:88px}
 }
 /* marcas de pago */
@@ -221,7 +222,8 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .galeria.una{grid-template-columns:1fr;grid-template-rows:300px}.galeria.una .principal{grid-row:auto}
 @media(max-width:640px){.galeria.una{grid-template-rows:220px}}
 .galeria .principal{grid-row:1/3}
-@media(max-width:640px){.galeria{grid-template-columns:1fr;grid-template-rows:220px}.galeria .principal{grid-row:auto}.galeria>*:not(.principal){display:none}}
+/* Celular: carrusel deslizable; la siguiente foto asoma para que se note que hay más. */
+@media(max-width:640px){.galeria:not(.una){display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;border-radius:var(--r-lg);gap:8px}.galeria:not(.una)::-webkit-scrollbar{display:none}.galeria:not(.una)>*{flex:0 0 86%;height:230px;scroll-snap-align:start;border-radius:var(--r-lg)}.galeria .principal{grid-row:auto}}
 ul.datos{list-style:none;padding:0;margin:10px 0 0;font-size:14px;color:var(--tenue);font-weight:600}
 ul.datos li{margin:6px 0;display:flex;gap:8px;align-items:flex-start}
 .amen{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.amen span{background:var(--gris);border-radius:999px;padding:5px 10px;font-size:12.5px;font-weight:700;color:var(--tenue)}
@@ -928,6 +930,21 @@ def medio_pago_mini(pasarela: str = "culqi") -> str:
 _PLUS_CODE = re.compile(r"^\s*[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}\b[,\s]*", re.I)
 
 
+def codigo_corto(ref: str) -> str:
+    """Código legible y estable de una reserva ("CL-7K2P9Q", siglas de la marca) para el
+    comprobante, en vez del id interno (`web_1787…_0`, `grp_…`). El id real
+    sigue en la URL y en el title, para soporte."""
+    import zlib
+    n = zlib.crc32(str(ref or "").encode()) or 1
+    alfabeto = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"   # sin 0/O ni 1/I
+    out = ""
+    while n and len(out) < 6:
+        n, r = divmod(n, len(alfabeto))
+        out += alfabeto[r]
+    pref = "".join(ch for ch in MARCA if ch.isupper())[:3] or "R"   # CanchaLibre → "CL"
+    return f"{pref}-" + out.ljust(6, "2")
+
+
 def monto(v: float, sim: str = "S/", dec: int = 2) -> str:
     """"S/ 56 070.00": separador de miles con espacio (igual en toda la web)."""
     return f"{sim} {float(v or 0):,.{dec}f}".replace(",", " ")
@@ -1124,7 +1141,7 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
     if ses:
         nombre = ses.get("nombre") or ses.get("email") or ""
         cuenta = (f"<div class='yo'>{_avatar(ses)}<div><b>{e(nombre)}</b><small>{e(ses.get('email'))}</small></div></div>"
-                  "<hr><a class='b' href='/perfil'>👤 Perfil</a><a class='b' href='/mensajes'>💬 Mensajes <span class='bdg-msj' data-badge-mensajes hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:11px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/buscar'>🔎 Busca tu cancha</a><a class='b' href='/novedades'>📰 Novedades</a><a class='b' href='/canales'>📢 Canales</a><a class='b' href='/partidos'>⚽ Juega ya</a><a class='b' href='/mis-reservas'>📅 Mis reservas</a>"
+                  "<hr><a class='b' href='/perfil'>👤 Perfil</a><a class='b' href='/mensajes'>💬 Mensajes <span class='bdg-msj' data-badge-mensajes hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:11px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/buscar'>🔎 Busca tu cancha</a><a class='b' href='/novedades'>📰 Novedades</a><a class='b' href='/canales'>📢 Canales</a><a class='b' href='/partidos'>⚽ Juega ya</a><a class='b' href='/mis-reservas'>📅 Mis reservas</a><a class='b' href='/mis-favoritos'>♥ Mis favoritos</a>"
                   "<button type='button' onclick='window.pcgSalir&&pcgSalir()'>Cerrar sesión</button>")
         avatar = f"<a class='redondo' href='/perfil' title='{e(ses.get('email'))}' aria-label='Tu perfil'>{_avatar(ses)}</a>"
     else:
@@ -1337,7 +1354,7 @@ JS_NAV = (r"""
     setTimeout(function(){ if(!e.defaultPrevented) navegando(); }, 0);
   });
   document.addEventListener('submit', function(e){ if(!e.defaultPrevented && !(e.target.target && e.target.target !== '_self')) navegando(); });
-  var FONDO = /\/web\/(mensajes\/(no-leidos|hilo|bandeja)|foto|descubrir|sesion$|pago\/[^\/]+\/estado)|\/static\//;
+  var FONDO = /\/web\/(mensajes\/(no-leidos|hilo|bandeja)|foto|descubrir|favoritos$|sesion$|pago\/[^\/]+\/estado)|\/static\//;
   if(window.fetch && !window.fetch.__pcg){ var f0 = window.fetch; var fw = function(rec, op){ var url = typeof rec === 'string' ? rec : ((rec && rec.url) || '');
       if(FONDO.test(url)) return f0.apply(this, arguments);
       nBar++; var t = setTimeout(function(){ if(nBar > 0) barra(true); }, 250);

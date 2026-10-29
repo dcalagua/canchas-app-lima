@@ -264,10 +264,26 @@ _JS_EXPLORAR = (r"""
   document.addEventListener('click', function(ev){
     var b = ev.target.closest('.corazon'); if(!b) return;
     ev.preventDefault(); ev.stopPropagation();
-    var id = b.closest('.lst').dataset.id; if(favs[id]) delete favs[id]; else favs[id] = 1;
+    var id = b.closest('.lst').dataset.id, on = !favs[id]; if(on) favs[id] = 1; else delete favs[id];
     try { localStorage.setItem('pcg_fav', JSON.stringify(favs)); } catch(e){}
     pintarFavs();
+    // Con sesión, el ♥ queda en la CUENTA (se ve en cualquier equipo y en /mis-favoritos).
+    if(conCuenta) fetch('/web/favoritos', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: id, on: on})}).catch(function(){});
+    if(on && window.pcgToast) pcgToast(conCuenta ? 'Guardado en tus favoritos ♥' : 'Guardado en este navegador. Inicia sesión para tenerlo en tu cuenta.');
   });
+  // Al cargar: trae los de la cuenta y le suma los que este navegador guardó antes de iniciar sesión.
+  var conCuenta = false;
+  fetch('/web/favoritos').then(function(r){ return r.ok ? r.json() : null; }).then(function(j){
+    if(!j || !j.ok) return;
+    conCuenta = true;
+    var locales = Object.keys(favs), nube = {};
+    (j.ids || []).forEach(function(i){ nube[i] = 1; });
+    var faltan = locales.filter(function(i){ return !nube[i]; });
+    if(faltan.length) fetch('/web/favoritos/unir', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ids: faltan})}).catch(function(){});
+    Object.keys(nube).forEach(function(i){ favs[i] = 1; });
+    try { localStorage.setItem('pcg_fav', JSON.stringify(favs)); } catch(e){}
+    pintarFavs();
+  }).catch(function(){});
   // ── carrusel de fotos de cada tarjeta ──
   document.addEventListener('click', function(ev){
     var f = ev.target.closest('.flecha'); if(!f) return;
@@ -1205,7 +1221,11 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
         lst = por_pais.get(pais) or []
         if not lst:
             continue
-        cards = "".join(_tarjeta(grupo, ratings, fecha) for grupo in _agrupar_locales(lst))  # una tarjeta por LOCAL, como el app
+        # Una tarjeta por LOCAL, como el app. Sin ubicación todavía (el JS
+        # reordena por cercanía al tenerla), los locales con foto van primero:
+        # la portada no abre con un cuadro vacío.
+        grupos = sorted(_agrupar_locales(lst), key=lambda g: 0 if any(_fotos(x) for x in g) else 1)
+        cards = "".join(_tarjeta(grupo, ratings, fecha) for grupo in grupos)
         cuerpo += (f"<section class='grupo-pais' data-pais='{pais}'><div class='tit'><h2>{ui.bandera(pais)} Canchas en {NOMBRE_PAIS[pais]}"
                    f"<span class='cerca'></span></h2></div><div class='lst-grid'>{cards}</div></section>")
     cuerpo += "</div>"
@@ -1846,7 +1866,9 @@ _JS_RESERVA = (r"""
     $('tot').textContent = fmt(tt); $('totBarra').textContent = fmt(tt);
     $('totLbl').textContent = sn > 0 ? 'A pagar hoy' : 'Total'; if($('totBarraLbl')) $('totBarraLbl').textContent = sn > 0 ? 'Seña hoy' : 'Total';
     var txt = n ? (sn > 0 ? ('Pagar seña ' + fmt(tt) + ' y reservar') : tt > 0 ? ('Reservar y pagar ' + fmt(tt)) : (bonoActivo() ? 'Reservar con mi bono 🎟️' : 'Reservar gratis 🎁')) : 'Elige un horario';
-    ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = !n; $(id).textContent = txt; });
+    var corto = n ? (sn > 0 ? 'Pagar seña' : tt > 0 ? 'Reservar' : (bonoActivo() ? 'Usar mi bono 🎟️' : 'Reservar gratis 🎁')) : 'Elige un horario';
+    $('btnPagar').disabled = !n; $('btnPagar').textContent = txt;
+    $('btnPagarBarra').disabled = !n; $('btnPagarBarra').textContent = corto;
   }
   function pintarDias(){
     $('dias').innerHTML = C.dias.map(function(d){
@@ -1972,7 +1994,7 @@ _JS_RESERVA = (r"""
     var extras = extrasSel().map(function(x){ return {clave: x.clave, cantidad: x.cantidad}; });
     var horas = Object.keys(sel).map(function(k){ return {fecha: sel[k].fecha, hora: sel[k].hora}; });
     var deporte = ($('deporte') && $('deporte').value) || '';
-    ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = true; $(id).textContent = 'Reservando tu horario…'; });
+    ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = true; $(id).textContent = id === 'btnPagar' ? 'Reservando tu horario…' : 'Reservando…'; });
     var blSel = bolLinea();
     fetch('/web/asegurar', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({cancha_id: C.id, horas: horas, extras: extras, deporte: deporte, nombre: d.nombre, celular: d.celular, email: d.email, boleador: blSel ? blSel.slug : '', fidelidad: fidDescuento() > 0, pago: esSena() ? 'sena' : 'total', bono: bonoActivo(), puntos: puntosDesc() > 0, medio: (window.pcgMedioPago ? pcgMedioPago() : '')})})
@@ -1998,7 +2020,7 @@ _JS_RESERVA = (r"""
         if(j.sin_pago){
           // RESERVA GRATIS (hora gratis sin extras): no se abre Culqi; se confirma directo.
           var confirmarGratis = function(){
-            ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).textContent = 'Confirmando tu reserva…'; });
+            ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).textContent = id === 'btnPagar' ? 'Confirmando tu reserva…' : 'Confirmando…'; });
             var h0 = hold; hold = null;
             fetch('/web/pagar', {method:'POST', headers:{'Content-Type':'application/json'},
               body: JSON.stringify({ids: h0.ids, firma: h0.firma, token: '', medio: j.bono ? 'bono' : 'fidelidad', email: d.email})})
@@ -2030,7 +2052,7 @@ _JS_RESERVA = (r"""
         // COBRO EN USD / BOB: se crea la orden en el servidor (monto recalculado allí) y el navegador va a
         // la página de la pasarela; al volver, /web/pago/{orden} confirma y lleva al comprobante.
         var irPasarela = function(){
-          ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).textContent = 'Abriendo ' + C.pasarelaNombre + '…'; });
+          ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).textContent = id === 'btnPagar' ? 'Abriendo ' + C.pasarelaNombre + '…' : 'Abriendo…'; });
           pcgCargando('Abriendo el pago seguro de ' + C.pasarelaNombre + '…');
           var h = hold;
           fetch('/web/pago/reserva', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ids: h.ids, firma: h.firma})})
@@ -2055,7 +2077,7 @@ _JS_RESERVA = (r"""
           if(Culqi.token){
             var token = Culqi.token.id, medio = (Culqi.token.iin && Culqi.token.iin.card_brand) ? 'tarjeta' : 'yape';
             Culqi.close();
-            ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).textContent = 'Confirmando tu pago…'; });
+            ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).textContent = id === 'btnPagar' ? 'Confirmando tu pago…' : 'Confirmando…'; });
             var h = hold; hold = null;
             fetch('/web/pagar', {method:'POST', headers:{'Content-Type':'application/json'},
               body: JSON.stringify({ids: h.ids, firma: h.firma, token: token, medio: medio, email: d.email})})
@@ -2350,6 +2372,12 @@ def _ayuda_turnos(c: dict) -> str:
     return f"{rango} por pedido. Toca un horario para agregarlo; vuelve a tocarlo para quitarlo."
 
 
+def _resenas_ficha(hermanas: list[dict]) -> str:
+    from web import jugador_resenas as _jr
+    html = _jr.seccion_ficha([h["id"] for h in hermanas])
+    return f"<style>{_jr.CSS}</style>{html}" if html else ""
+
+
 def _politica_html(c: dict, sim: str) -> str:
     """POLÍTICA DEL CLUB en la ficha (lo que el jugador debe saber ANTES de
     pagar): cancelación con las horas del club, horarios especiales, cierres,
@@ -2611,6 +2639,7 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
         f"<div class='sub' id='ayudaTurnos' style='margin:6px 0 12px;font-size:13px'>{_ayuda_turnos(c)}</div>"
         "<div id='slots'></div>"
         f"{_politica_html(c, sim)}"
+        f"{_resenas_ficha(hermanas)}"
         f"{paso_datos}"
         f"{extras_html}"
         "<div class='estado bad' id='err'></div>"
@@ -3795,7 +3824,18 @@ ESTADO_RESERVA = {"confirmada": ("Confirmada", "ok"), "cancelada": ("Cancelada",
                   "nueva": ("Pendiente de pago", "warn"), "completada": ("Jugada", "ok")}
 
 
-def _tarjeta_viaje(r: dict, c: dict | None, hoy: str, ses: dict | None, pago_club: dict | None = None) -> str:
+def _jr_css() -> str:
+    from web import jugador_resenas
+    return jugador_resenas.CSS
+
+
+def _jr_js() -> str:
+    from web import jugador_resenas
+    return jugador_resenas.js()
+
+
+def _tarjeta_viaje(r: dict, c: dict | None, hoy: str, ses: dict | None, pago_club: dict | None = None,
+                   mis_est: dict | None = None) -> str:
     """Tarjeta tipo "Viajes" de Airbnb: foto cuadrada · cancha · fecha y hora ·
     avatar del jugador · estado; clic = detalle/comprobante. Las próximas llevan
     "Cancelar"."""
@@ -3832,6 +3872,9 @@ def _tarjeta_viaje(r: dict, c: dict | None, hoy: str, ses: dict | None, pago_clu
         cuando += f" · {r['turnos']} turnos"
     filas_r = r.get("_filas") or [r]
     cancelar = _boton_cancelar(filas_r, c, ses, "lnk") if (not pasada and not en_revision) else ""
+    if pasada and c and mis_est is not None and estado not in ("noShow", "cancelada", "nueva"):
+        from web import jugador_resenas as _jr
+        cancelar = _jr.boton(c["id"], _titulo_local(c), int(mis_est.get(c["id"]) or 0))
     return (f"<a class='viaje{' pasada' if pasada else ''}' href='{href}' data-lat='{(c or {}).get('lat') or ''}' data-lng='{(c or {}).get('lng') or ''}' "
             f"data-nombre='{e(nombre)}' data-cuando='{e(cuando)}'>"
             f"<div class='vfoto'>{foto}</div>"
@@ -3905,7 +3948,8 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
         "<div class='viaje-vacio'><b>Todavía no tienes reservas próximas</b>"
         "<p class='sub'>Cuando reserves una cancha, aparecerá aquí con su mapa y su comprobante.</p>"
         "<a class='btn' href='/canchas'>Explorar canchas</a></div>")
-    pasadas_html = "".join(_tarjeta_viaje(r, canchas.get(r.get("cancha_id")), _hoy(r), ses) for r in pasadas)
+    mis_est = datos.mis_resenas(email, list({str(r.get("cancha_id")) for r in pasadas})) if pasadas else {}
+    pasadas_html = "".join(_tarjeta_viaje(r, canchas.get(r.get("cancha_id")), _hoy(r), ses, mis_est=mis_est) for r in pasadas)
     def _fila_voucher(v: dict) -> str:
         c_v = canchas.get(v.get("cancha_id")) or datos.cancha(str(v.get("cancha_id") or "")) or {}
         sim_v = simbolo_de_moneda(v.get("moneda") or "PEN")
@@ -3942,6 +3986,7 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
         f"Dudas: <a href='mailto:{empresa.datos()['correo']}'>{empresa.datos()['correo']}</a>.</p>"
         "</div><aside class='viajes-mapa'><div class='mapa' id='mapaViajes' aria-label='Mapa de tus reservas'></div></aside></div>"
         + _MODAL_CANCELAR
+        + (f"<style>{_jr_css()}</style><script>{_jr_js()}</script>" if pasadas else "")
         + "<script>" + JS_CANCELAR + r"""
 (function(){
   try { var av = sessionStorage.getItem('pcg_aviso'); if(av){ var el = document.getElementById('avisoCancel'); el.textContent = av; el.style.display = 'block'; sessionStorage.removeItem('pcg_aviso'); } } catch(e){}
@@ -4253,6 +4298,20 @@ def _ics(s) -> str:
     return str(s or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
 
 
+def _calificar_comprobante(filas: list[dict], c: dict | None, ses: dict | None, es_titular: bool) -> str:
+    """En el comprobante de una reserva YA jugada: "⭐ Califica tu partido"."""
+    if not (c and ses and es_titular and sesion.activo()):
+        return ""
+    hoy = horarios.ahora_local(_pais_de(c)).date().isoformat()
+    if str(filas[0].get("fecha") or "") >= hoy or str(filas[0].get("estado") or "") in ("noShow", "cancelada", "nueva"):
+        return ""
+    from web import jugador_resenas as _jr
+    est = datos.mis_resenas(ses["email"], [c["id"]]).get(c["id"], 0)
+    btn = _jr.boton(c["id"], _titulo_local(c), est).replace("class='lnk calificar'", "class='btn sec calificar'")
+    return (f"<div class='acciones'>{btn}</div>"
+            f"<style>{_jr.CSS}</style><script>{_jr.js()}</script>")
+
+
 @router.get("/reserva/{ref}", response_class=HTMLResponse)
 def pagina_comprobante(ref: str, request: Request = None, enviado: str = "") -> HTMLResponse:
     ses = sesion.de_request(request)
@@ -4355,7 +4414,7 @@ def pagina_comprobante(ref: str, request: Request = None, enviado: str = "") -> 
            "<span>Te avisamos apenas el club lo confirme.</span></div>" if (enviado and en_revision) else "")
         + f"<div class='panel' style='text-align:center'>"
         + (_cabecera_revision(ref, voucher) if en_revision else
-           f"{ui.check_svg()}<h1>¡Reserva confirmada!</h1><p class='sub'>Comprobante <b>{e(ref)}</b> · pagado con {e(medio)}</p>")
+           f"{ui.check_svg()}<h1>¡Reserva confirmada!</h1><p class='sub'>Comprobante <b title='{e(ref)}'>{e(ui.codigo_corto(ref))}</b> · pagado con {e(medio)}</p>")
         +
         f"<h3 style='margin-top:16px'>{e(c.get('nombre') or 'Cancha')}</h3>"
         f"<div class='sub'>{e(c.get('club'))}{(' · ' + e(lugar)) if lugar else ''}</div>"
@@ -4375,6 +4434,7 @@ def pagina_comprobante(ref: str, request: Request = None, enviado: str = "") -> 
         + boton_wa
         + "</div>"
         + (f"<div class='acciones'>{_boton_cancelar(filas, c, ses, 'btn sec')}</div>" if (not en_revision and _boton_cancelar(filas, c, ses)) else "")
+        + _calificar_comprobante(filas, c, ses, es_titular)
         + f"<div class='estado ok' style='text-align:left'>Política del club: cancelación con más de {_num_txt(_dev.horas_minimas(c))} h de anticipación, devolución del 100 % al mismo medio de pago. "
         f"Puedes cancelar desde aquí o desde <a href='/mis-reservas'>Mis reservas</a>. Dudas: <a href='mailto:{empresa.datos()['correo']}'>{empresa.datos()['correo']}</a>.</div>"
         "</div>"

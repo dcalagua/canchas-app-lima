@@ -206,7 +206,8 @@ def unirme_por_codigo(request: Request, codigo: str = "") -> RedirectResponse:
 
 
 @router.get(BASE, response_class=HTMLResponse)
-def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = "", no_encontrado: str = "") -> HTMLResponse:
+def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = "", no_encontrado: str = "",
+                       pro: str = "") -> HTMLResponse:
     ses, resp = _sesion_o_entrar(request, BASE)
     if resp is not None:
         return resp
@@ -222,7 +223,7 @@ def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = ""
     pro = _pro(ses["email"])
     boton = (f"<a class='btn' href='{BASE}/nuevo'>＋ Organizar</a>" if pro else
              "<button type='button' class='btn' onclick=\"document.getElementById('modalPro').classList.add('open')\">＋ Organizar</button>")
-    modal_pro = ("<div class='modal' id='modalPro' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:460px'>"
+    modal_pro = (f"<div class='modal{' open' if pro else ''}' id='modalPro' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:460px'>"
                  f"<div class='modal-cab'><button type='button' class='cerrar' onclick=\"this.closest('.modal').classList.remove('open')\">✕</button><h3>Es {MARCA} Pro</h3></div>"
                  f"<div class='modal-cuerpo'><section><p class='sub' style='margin:0 0 12px'>Crear y administrar tus propios campeonatos (fixture, inscripciones, resultados) es parte de <b>{MARCA} Pro</b>. Actívalo en Perfil → 👑 {MARCA} Pro y vuelve aquí.</p>"
                  f"<a class='btn' href='/pro'>👑 Ver {MARCA} Pro</a></section></div></div></div>")
@@ -384,7 +385,7 @@ def pagina_nuevo(request: Request) -> HTMLResponse:
     if resp is not None:
         return resp
     if not _pro(ses["email"]):
-        return HTMLResponse("", status_code=302, headers={"Location": BASE})
+        return HTMLResponse("", status_code=302, headers={"Location": BASE + "?pro=1"})   # abre el aviso "Es Pro"
     c = {"id": L.nuevo_id(), "academiaId": "", "dueno": ses["email"], "nombre": "", "deporte": "futbol", "formato": "liga", "categoria": "",
          "sede": "", "fechas": "", "costoInscripcion": 0, "inscripcionAbierta": True, "participantes": [], "partidos": [], "cerrado": False,
          "moneda": "", "relampago": False, "exigeDni": False, "premios": "", "auspiciador": "", "organizador": ""}
