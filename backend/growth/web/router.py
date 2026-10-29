@@ -307,7 +307,14 @@ _JS_EXPLORAR = (r"""
       g.style.display = vis ? '' : 'none';
     });
     var sd = $('descubiertas'); if(sd){ var ls = sd.querySelectorAll('.lst');
-      if(ls.length) sd.style.display = Array.prototype.some.call(ls, function(c){ return c.style.display !== 'none'; }) ? '' : 'none'; }
+      if(ls.length) sd.style.display = Array.prototype.some.call(ls, function(c){ return c.style.display !== 'none'; }) ? '' : 'none';
+      // Solo las DESC_MAX más cercanas; el resto con "Ver más" (con búsqueda por nombre, todas).
+      var visD = Array.prototype.filter.call(ls, function(c){ return c.style.display !== 'none'; });
+      var abiertoD = descAbierto || !!filtro.q;
+      visD.forEach(function(c, i){ c.classList.toggle('desc-extra', !abiertoD && i >= DESC_MAX); });
+      var bm = $('descMas'), restoD = visD.length - DESC_MAX;
+      if(bm){ bm.style.display = (!abiertoD && restoD > 0) ? '' : 'none';
+        if(restoD > 0) $('btnDescMas').textContent = 'Ver ' + restoD + ' cancha' + (restoD === 1 ? '' : 's') + ' más'; } }
     var v = $('vacio'); if(v){ v.style.display = n ? 'none' : '';
       if(!n && v.dataset.base !== undefined){
         var why = (yo && !filtro.q && !filtro.hora) ? (C.dep === 'academias' ? 'No hay academias a ' + radio + ' km de ti.' : 'No hay canchas a ' + radio + ' km de ti.') + (radio < 30 ? ' Amplía la distancia o busca otra zona.' : ' Busca otra zona por nombre.')
@@ -659,6 +666,8 @@ _JS_EXPLORAR = (r"""
   // Las descubiertas se ACUMULAN por id entre búsquedas (cada celda que se
   // explora suma; la distancia se recalcula desde el usuario o el centro del mapa).
   var descAcum = {};
+  var DESC_MAX = 8, descAbierto = false;
+  document.addEventListener('click', function(ev){ if(!ev.target.closest('#btnDescMas')) return; descAbierto = true; aplicar(); });
   function kmEntre(a, b, c, d){ var R = 6371, x = (c - a) * Math.PI / 180, y = (d - b) * Math.PI / 180; var h = Math.sin(x/2)*Math.sin(x/2) + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)*Math.sin(y/2); return 2 * R * Math.asin(Math.sqrt(h)); }
   // Pin de una cancha descubierta: ícono del deporte + NOMBRE del local
   // (recortado por CSS; con el mapa alejado queda solo el ícono, así no se
@@ -819,9 +828,12 @@ def _nav_explorar(dep: str, ses: dict | None = None, zonas: list[tuple[str, int]
     (centradas) · "Modo dueño" + avatar + ☰ · buscador grande centrado
     (Dónde · Deporte · Cuándo · Buscar) con desplegable de búsquedas
     recientes y zonas sugeridas bajo "Dónde"."""
-    ops = "".join(f"<option value='{k}'{' selected' if k == dep else ''}>{n}</option>" for k, n, _ in CATEGORIAS if k != "academias" or _ap.paises_habilitados())
     hoy = date.today().isoformat()
-    cats = [c for c in CATEGORIAS if c[0] != "academias" or _ap.paises_habilitados()]
+    # Pestañas: solo los deportes prendidos en la torre (y la que llegó por URL).
+    activos = set(catalogos.deportes_activos())
+    cats = [c for c in CATEGORIAS if (c[0] in ("", "academias") or c[0] in activos or c[0] == dep)
+            and (c[0] != "academias" or _ap.paises_habilitados())]
+    ops = "".join(f"<option value='{k}'{' selected' if k == dep else ''}>{n}</option>" for k, n, _ in cats)
     tabs = "".join(f"<a class='cat{' sel' if k == dep else ''}' href='/canchas{('?deporte=' + k) if k else ''}' data-dep='{k}'>"
                    f"<span class='ico'>{ico}</span>{n}</a>" for k, n, ico in cats)
     sug_zonas = "".join(
@@ -1142,7 +1154,7 @@ def _tarjeta_academia(a: dict) -> str:
     # OJO: la tarjeta ya es un <a>; un <a> anidado rompe el HTML (el navegador parte la tarjeta). Va como <span> con manejador, igual que "Cómo llegar".
     wa = (f" <span class='app'>💬 <span class='wa' data-wa='https://wa.me/{tel}?text=' + quote(f'Hola, vi tu academia en {MARCA}') + '>WhatsApp</span></span>" if tel else "")
     ir = (f" <span class='app'>📍 <span class='ir' data-lat='{a.get('lat')}' data-lng='{a.get('lng')}'>Cómo llegar</span></span>" if a.get("lat") or a.get("lng") else "")
-    sub = " · ".join(x for x in (a.get("sedeClub"), a.get("zona")) if x)
+    sub = ui.unir_lugar(a.get("sedeClub"), a.get("zona"), sep=" · ")
     n_prog = len([x for x in programas if x])
     texto = f"{a.get('nombre', '')} {a.get('sedeClub', '')} {a.get('zona', '')} {dep_nombre} academia clases".lower()
     # La tarjeta abre la FICHA WEB /academia/{id} (programas, tarifario y
@@ -1226,7 +1238,9 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     if not solo_aca:
         cuerpo += ("<section id='descubiertas' style='display:none'><div class='tit'><h2>Más canchas cerca de ti</h2></div>"
                    f"<p class='sub' style='margin:-4px 0 12px'>Locales que aún no están en {MARCA}. Reserva desde la app o, si es tu "
-                   "cancha, ¡Reclámala! y empieza a recibir reservas.</p><div class='lst-grid' id='gridDesc'></div></section>")
+                   "cancha, ¡Reclámala! y empieza a recibir reservas.</p><div class='lst-grid' id='gridDesc'></div>"
+                   "<div class='desc-mas' id='descMas' style='display:none'><button type='button' class='btn sec' id='btnDescMas'>"
+                   "Ver más</button></div></section>")
     cuerpo += "</div><aside class='mapa-lado'><div class='mapa' id='mapa' aria-label='Mapa de canchas'></div></aside></div>"
     cuerpo += "<button class='btn-mapa' id='btnMapa'><span>Mostrar mapa</span> 🗺️</button>"
     css_m, html_m, js_m = marca.secciones()
@@ -1248,10 +1262,12 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
         cuerpo += f"<script>{js_m}</script>"
     canonical = f"{config.PUBLIC_BASE_URL.rstrip('/')}/" if getattr(config, "PUBLIC_BASE_URL", "") else ""
     ses = sesion.de_request(request)
+    deps = catalogos.frase_deportes(catalogos.deportes_activos())
     titulo_tab = (f"{MARCA} · Academias deportivas cerca de ti" if solo_aca
-                  else f"{MARCA} · Reserva canchas de fútbol, tenis y pádel")
-    desc = ("Academias de tenis, fútbol, pádel y más cerca de ti: programas, tarifario y matrícula en línea." if solo_aca
-            else "Reserva canchas de fútbol, tenis y pádel cerca de ti y paga con Yape o tarjeta. Perú, Ecuador y Bolivia.")
+                  else f"{MARCA} · Reserva canchas de {deps}")
+    desc = (f"Academias de {catalogos.frase_deportes(catalogos.deportes_activos()[:3])} y más cerca de ti: programas, "
+            "tarifario y matrícula en línea." if solo_aca
+            else f"Reserva canchas de {deps} cerca de ti y paga con Yape o tarjeta. Perú, Ecuador y Bolivia.")
     return ui.shell(MARCA, cuerpo, extra_head=head, nav=_nav_explorar(dep, ses, _zonas_sugeridas(lista)), ancho=True, sesion=ses,
                     titulo_tab=titulo_tab, canonical=canonical, desc=desc)
 
@@ -1354,6 +1370,33 @@ def ver_sesion(request: Request) -> dict:
     return {"ok": True, "activo": sesion.activo(), "sesion": u}
 
 
+# Título de /entrar según a dónde vuelve (antes siempre decía "para reservar").
+_MOTIVOS_ENTRAR = [
+    ("/anfitrion", "Inicia sesión para entrar al modo anfitrión",
+     "Usa la cuenta de Google con la que registraste tu cancha o academia."),
+    ("/mis-reservas", "Inicia sesión para ver tus reservas", ""),
+    ("/partidos", "Inicia sesión para jugar", "Busca partido, organiza el tuyo o encuentra partner cerca."),
+    ("/pichangas", "Inicia sesión para jugar", "Únete a las pichangas de tu club."),
+    ("/liga", "Inicia sesión para entrar a la liga", "Ranking por nivel, retos y temporadas."),
+    ("/mensajes", "Inicia sesión para ver tus mensajes", ""),
+    ("/mi-billetera", "Inicia sesión para ver tu billetera", ""),
+    ("/perfil", "Inicia sesión", ""),
+    ("/torneo", "Inicia sesión para inscribirte", ""),
+    ("/academia", "Inicia sesión para matricularte", ""),
+]
+
+
+def _motivo_entrar(volver: str) -> tuple[str, str]:
+    base = ("Usa tu cuenta de Google, la misma del app: tus reservas quedan en "
+            "\"Mis reservas\" y el comprobante llega a tu correo.")
+    for pref, titulo, sub in _MOTIVOS_ENTRAR:
+        if volver == pref or volver.startswith(pref + "/") or volver.startswith(pref + "?"):
+            if "Google" in sub:
+                return titulo, sub
+            return titulo, (sub + " " if sub else "") + "Usa tu cuenta de Google, la misma del app."
+    return "Inicia sesión para reservar", base
+
+
 def _volver_seguro(volver: str) -> str:
     v = (volver or "").strip()
     return v if v.startswith("/") and not v.startswith("//") else "/"
@@ -1367,11 +1410,11 @@ def pagina_entrar(request: Request, volver: str = "/") -> HTMLResponse:
     ses = sesion.de_request(request)
     if ses or not sesion.activo():
         return HTMLResponse("", status_code=302, headers={"Location": v})
+    titulo, sub = _motivo_entrar(v)
     cuerpo = ("<div class='panel' style='max-width:460px;margin:40px auto;text-align:center'>"
               f"<div style='margin-bottom:8px'>{ui.wordmark(26, '/')}</div>"
-              "<h1 style='font-size:22px'>Inicia sesión para reservar</h1>"
-              "<p class='sub'>Usa tu cuenta de Google, la misma del app: tus reservas quedan en "
-              "\"Mis reservas\" y el comprobante llega a tu correo.</p>"
+              f"<h1 style='font-size:22px'>{e(titulo)}</h1>"
+              f"<p class='sub'>{e(sub)}</p>"
               f"<div style='display:flex;justify-content:center;margin:22px 0 10px'>{sesion.boton_google()}</div>"
               "<div class='estado bad' id='sesionErr'></div>"
               "<p class='sub' style='font-size:12.5px'>Al continuar aceptas los <a href='/legal/terminos'>términos</a> y la "
@@ -1660,7 +1703,7 @@ _JS_RESERVA = (r"""
   }
   function pintarFidelidad(){
     var box = $('fidBox'); if(!box || !C.fidelidad) return;
-    var f = C.fidelidad, h = '<b>🎁 Tarjeta de fidelidad de ' + esc(fid && fid.local ? fid.local : '') + '</b>';
+    var f = C.fidelidad, h = '<b>🎁 Tarjeta de fidelidad de ' + esc((fid && fid.local) || f.local || '') + '</b>';
     if(!fid){ h += '<div class="sub" style="margin:2px 0 0">Cada ' + f.meta + ' reservas pagadas, ' + esc(f.nombrePremio) + '. Inicia sesión para ver tu progreso.</div>'; box.innerHTML = h; return; }
     var sellos = ''; for(var i = 0; i < fid.meta; i++) sellos += '<span class="sello' + (i < fid.conteo ? ' on' : '') + '">' + (i < fid.conteo ? '✓' : '') + '</span>';
     h += '<div class="sellos">' + sellos + '</div>';
@@ -2226,9 +2269,17 @@ def _acciones_local(c: dict, ses: dict | None) -> str:
     if not datos.reservable(c) or not dueno or dueno == yo:
         return ""
     cid = quote(c["id"], safe="")
-    return ("<div class='acciones' style='margin:6px 0 14px'>"
+    # "Bodega del local" solo si el dueño la abrió a pedidos (si no, el botón
+    # llevaba a una pantalla que decía "este local no recibe pedidos").
+    try:
+        from web import bodega_datos
+        con_bodega = bool(bodega_datos.config_de(dueno).get("acepta_pedidos"))
+    except Exception:  # noqa: BLE001
+        con_bodega = False
+    return ("<div class='acciones acc-local'>"
             f"<a class='btn sec' href='/mensajes/nuevo?cancha={cid}'>💬 Escribir al local</a>"
-            f"<a class='btn sec' href='/bodega/{cid}/pedir'>🧃 Bodega del local</a></div>")
+            + (f"<a class='btn sec' href='/bodega/{cid}/pedir'>🧃 Bodega del local</a>" if con_bodega else "")
+            + "</div>")
 
 
 def _ficha(c: dict, sim: str, pais: str, verificada: bool = True, hermanas: list[dict] | None = None,
@@ -2238,7 +2289,7 @@ def _ficha(c: dict, sim: str, pais: str, verificada: bool = True, hermanas: list
     y el local chico; queja del director, sep-2026). Con varias canchas en el
     local, chips para cambiar de cancha."""
     sello = ui.sello_verificada() if verificada else "<span class='pill gris'>Aún sin verificar</span>"
-    lugar = ", ".join(x for x in (ui.direccion_legible(c.get("direccion") or ""), _zona(c)) if x)
+    lugar = ui.unir_lugar(ui.direccion_legible(c.get("direccion") or ""), _zona(c))
     deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c))
     amen = "".join(f"<span>{e(AMENIDAD_NOMBRE.get(str(a).lower(), str(a).replace('_', ' ').capitalize()))}</span>"
                    for a in (c.get("amenidades") or [])[:8])
@@ -2462,9 +2513,9 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
         # "Por persona" (piscina, entrada general): el jugador elige cuántas.
         cant = ("<select class='cant' data-for='" + e(clave) + "' disabled aria-label='Cantidad de personas'>"
                 + "".join(f"<option value='{i}'>{i} persona{'s' if i > 1 else ''}</option>" for i in range(1, 13)) + "</select>") if tipo == "persona" else ""
-        filas += (f"<label class='extra' style='display:flex;gap:10px;align-items:center;font-weight:600;margin:8px 0;flex-wrap:wrap'>"
-                  f"<input type='checkbox' name='extra' value='{precio:.2f}' data-clave='{e(clave)}' data-nombre='{e(nombre)}' data-tipo='{e(tipo)}' style='width:auto'>"
-                  f"{s['emoji']} {e(nombre)} <small style='color:var(--tenue)'>+ {e(sim)} {precio:.2f}{sufijo}</small>{cant}</label>")
+        filas += (f"<label class='extra'>"
+                  f"<input type='checkbox' name='extra' value='{precio:.2f}' data-clave='{e(clave)}' data-nombre='{e(nombre)}' data-tipo='{e(tipo)}'>"
+                  f"<span class='ex-n'>{s['emoji']} {e(nombre)}</span><small>+ {e(sim)} {precio:.2f}{sufijo}</small>{cant}</label>")
     if filas:
         extras_html = f"<div class='paso'><span>3</span> Servicios extra <small style='color:var(--tenue);font-weight:600'>(opcional)</small></div>{filas}"
     # BOLEADOR / SPARRING (sep-2026): solo canchas de tenis/pádel cuyo local lo
@@ -2513,7 +2564,7 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
                       # Pasarela del checkout: 'culqi' (soles, en la página) o la HOSPEDADA del país
                       # ($ / Bs: se va a pagar a su página y vuelve a /web/pago/{orden}).
                       "pasarela": pasarela, "pasarelaNombre": ("" if pasarela == "culqi" else pago_hospedado.nombre_pasarela(pasarela)),
-                      "boleadores": con_bol, "nombreBoleador": nombre_bol, "fidelidad": fid_cfg, "beneficios": con_ben,
+                      "boleadores": con_bol, "nombreBoleador": nombre_bol, "fidelidad": dict(fid_cfg, local=_titulo_local(c)) if fid_cfg else None, "beneficios": con_ben,
                       "logo": "", "hoy": dias[0]["iso"], "dias": dias, "etiquetas": etiquetas,
                       # Cargo por servicio (fase 2): con el flag apagado el JS no cotiza ni pinta la línea.
                       "cargo": _cs.activo("reservas") and not directo, "deporteBase": (_deportes_de(c) or [""])[0],
@@ -2553,7 +2604,9 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
         "<div class='dos' style='margin-top:22px'>"
         "<div class='panel'>"
         "<div class='paso' style='margin-top:0'><span>1</span> Elige el día y el horario</div>"
+        "<div class='strip-wrap'><button type='button' class='strip-fl izq' aria-label='Días anteriores' hidden>‹</button>"
         "<div class='strip' id='dias'></div>"
+        "<button type='button' class='strip-fl der' aria-label='Más días'>›</button></div>"
         f"{selector_dep}"
         f"<div class='sub' id='ayudaTurnos' style='margin:6px 0 12px;font-size:13px'>{_ayuda_turnos(c)}</div>"
         "<div id='slots'></div>"
@@ -4282,7 +4335,7 @@ def pagina_comprobante(ref: str, request: Request = None, enviado: str = "") -> 
         _s, _iso_c = _moneda_de(c) if c else (sim, _cs.moneda_iso(sim))
         detalle_cargo = ("<details style='margin-top:8px;text-align:left'><summary class='sub' style='cursor:pointer;font-size:13px'>Qué incluye el cargo por servicio</summary>"
                          f"{ui.desglose_cargo_html(desglose_guardado, sim, _cs.regla_texto(_iso_c))}</details>")
-    lugar = ", ".join(x for x in (ui.direccion_legible(c.get("direccion") or ""), _zona(c)) if x)
+    lugar = ui.unir_lugar(ui.direccion_legible(c.get("direccion") or ""), _zona(c))
     base = (config.PUBLIC_BASE_URL or "").rstrip("/")
     boton_wa = ui.boton_whatsapp(
         f"Reservé en {c.get('nombre', 'una cancha')} por {MARCA}: "

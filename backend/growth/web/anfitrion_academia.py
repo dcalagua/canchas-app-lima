@@ -251,9 +251,9 @@ def pagina_alumnos(request: Request, academia: str = "") -> HTMLResponse:
               f"<div class='chips' style='margin-top:12px'>{chips}</div>"
               "<div class='kpis' style='margin-top:16px'>"
               f"<div class='kpi'><small>Alumnos</small><b>{len(mats)}</b></div>"
-              f"<div class='kpi'><small>Cobrado este mes</small><b>{e(sim)} {cobrado_mes:.2f}</b></div>"
-              f"<div class='kpi'><small>Por cobrar</small><b>{e(sim)} {por_cobrar:.2f}</b></div>"
-              f"<div class='kpi'><small>Vencido</small><b style='color:var(--bad-fg)'>{e(sim)} {vencido:.2f}</b></div></div>"
+              f"<div class='kpi'><small>Cobrado este mes</small><b>{e(ui.monto(cobrado_mes, sim))}</b></div>"
+              f"<div class='kpi'><small>Por cobrar</small><b>{e(ui.monto(por_cobrar, sim))}</b></div>"
+              f"<div class='kpi'><small>Vencido</small><b style='color:var(--bad-fg)'>{e(ui.monto(vencido, sim))}</b></div></div>"
               + (f"<div class='tabla' style='margin-top:18px'><table><thead><tr><th>Alumno</th><th>Edad</th><th>WhatsApp</th><th>Cuotas pagadas</th><th>Deuda</th><th>Estado</th><th></th></tr></thead><tbody>{filas}</tbody></table></div>"
                  if mats else "<div class='anf-vacio' style='margin-top:18px'>Aún no hay alumnos matriculados en esta academia. Matricúlalos desde la app (Mi academia → Alumnos).</div>")
               + f"<p style='margin-top:18px'><a class='btn' href='/anfitrion/cobros?academia={quote(a['id'], safe='')}'>💳 Cobros</a></p>")

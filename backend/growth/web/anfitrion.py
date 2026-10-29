@@ -265,7 +265,7 @@ def _tarjeta_res(r: dict, c: dict | None, hoy: date) -> str:
             f"<div class='quien'><span class='av'>{e(ini)}</span><div style='min-width:0'><b>{e(jugador)}</b>"
             f"<div class='sub' style='margin:0;font-size:12.5px'>{e(r.get('usuario') or '')}{(' · ' + e(tel)) if tel else ''}{' · reserva web' if web else ''}</div></div>"
             f"<b style='margin-left:auto;white-space:nowrap'>{e(sim)} {int(r.get('precio') or 0):.2f}</b></div>"
-            f"<div class='acc'>{pill}" + (f"<span class='pill gris'>{medio_txt}</span>" if medio_txt else "")
+            f"<div class='acc'>{pill}" + (f"<span class='pill gris'>{medio_txt}</span>" if medio_txt and not (pagado and medio in ("yape", "tarjeta")) else "")
             + (f"<a class='btn sec' href='https://wa.me/{e(''.join(ch for ch in tel if ch.isdigit()))}' target='_blank' rel='noopener'>💬 WhatsApp</a>" if tel else "")
             + ("" if noshow else (f"<button type='button' class='btn' data-pagar='{e(r.get('id'))}' data-v='1'>✅ Marcar pagada</button>" if not pagado
                else (f"<button type='button' class='btn sec' data-pagar='{e(r.get('id'))}' data-v='0'>↩ Marcar por cobrar</button>" if medio not in ("yape", "tarjeta") else "")))
@@ -353,8 +353,8 @@ def pagina_reservas(request: Request) -> HTMLResponse:
     filtros = ("<div class='chips' id='filMedio' style='margin-top:14px'>" + "".join(
         f"<button type='button' class='chip{' sel' if k == 'todos' else ''}' data-medio='{k}'>{n}</button>"
         for k, n in (("todos", "Todos"), ("online", "Online"), ("efectivo", "Efectivo"), ("manual", "Manual"))) + "</div>"
-        f"<div class='kpis'><div class='kpi'><small>Cobrado</small><b>{e(sim)} {cobrado}</b></div>"
-        f"<div class='kpi'><small>Por cobrar</small><b>{e(sim)} {pend}</b></div></div>")
+        f"<div class='kpis'><div class='kpi'><small>Cobrado</small><b>{e(ui.monto(cobrado, sim, 0))}</b></div>"
+        f"<div class='kpi'><small>Por cobrar</small><b>{e(ui.monto(pend, sim, 0))}</b></div></div>")
     cuerpo = ("<h1 class='anf-hola'>Reservas</h1><p class='sub'>Las reservas de tus canchas: en línea (web y app) y las que registraste a mano.</p>"
               + filtros + bloque("Próximas", prox, "Sin reservas próximas.") + bloque("Pasadas (30 días)", pas, "Sin reservas en los últimos 30 días.")
               + f"<script>{JS_PAGAR}{JS_FILTRO_RESERVAS}</script>")

@@ -749,7 +749,7 @@ var V=window.__vv||{},motivo='';
 async function post(url,body){var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});var j={};try{j=await r.json()}catch(e){}return j}
 function quitar(pid){var a=document.querySelector(".vv[data-pid='"+pid+"']");if(a)a.remove();if(!document.querySelector('.vv'))pcgRecargar()}
 function vence(){document.querySelectorAll('[data-vence]').forEach(function(el){var t=Date.parse(el.dataset.vence);if(isNaN(t))return;var m=Math.round((t-Date.now())/60000);
-  el.classList.toggle('tarde',m<=10);el.textContent=m>0?('Vence en '+(m>=60?(Math.floor(m/60)+' h '+(m%60)+' min'):(m+' min'))+' · si no lo revisas, la reserva se libera'):'Venció: la reserva se liberará'})}
+  el.classList.toggle('tarde',m<=10);el.textContent=m>0?('Vence en '+(m>=1440?(Math.floor(m/1440)+' día'+(m>=2880?'s':'')+(Math.floor(m%1440/60)?' '+Math.floor(m%1440/60)+' h':'')):m>=60?(Math.floor(m/60)+' h '+(m%60)+' min'):(m+' min'))+' · si no lo revisas, la reserva se libera'):'Venció: la reserva se liberará'})}
 vence();setInterval(vence,30000);
 document.addEventListener('click',async function(ev){
   var z=ev.target.closest('[data-zoom]');if(z){pcgAvisar({titulo:'Comprobante',html:"<img class='vv-zoom' src='/anfitrion/pagos-por-confirmar/"+encodeURIComponent(z.dataset.zoom)+"/imagen' alt='Comprobante en grande'>",confirmar:'Cerrar'});return}

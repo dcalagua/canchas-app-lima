@@ -1437,6 +1437,9 @@ def pagina_bonos(request: Request, local: str = "") -> HTMLResponse:
     if resp is not None:
         return resp
     locs = _locales(canchas)
+    if not local and len(locs) > 1:   # sin elegir: el primer local que ya tiene bonos
+        con_bonos = {b["club"] for b in ofertas_de_dueno(email)}
+        local = next((c for c, _s in locs if c in con_bonos), "")
     club, sim = next(((c, s) for c, s in locs if c == local), locs[0] if locs else ("", "S/"))
     email = ses["email"].lower()
     bonos = [b for b in ofertas_de_dueno(email) if b["club"] == club]

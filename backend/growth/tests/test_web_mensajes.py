@@ -239,7 +239,9 @@ def test_eliminar_reaparece_con_mensaje_nuevo_y_acciones_en_la_nube(monkeypatch,
     assert all(fk.prefs[(YO, h)]["oculto_en"] for h in (hc, hd)) and M.bandeja(YO)["filas"] == []
     assert len(fk.msgs) == 2
     # Llega algo más nuevo → reaparece SOLO ese hilo y la nube se limpia (como `chatOculto`).
-    fk.add(hc, "dueno@x.com", "¿Sigues interesada?", 60 * 24 * 30)
+    # Siempre DESPUÉS de "ahora": el borrado se marca con la hora real (un desfase
+    # fijo desde T0 dejó de ser futuro el 29-oct-2026 a las 15:00 UTC).
+    fk.add(hc, "dueno@x.com", "¿Sigues interesada?", int((datetime.now(timezone.utc) - T0).total_seconds() // 60) + 60)
     filas = M.bandeja(YO)["filas"]
     assert len(filas) == 1 and filas[0]["hilos"] == [hc] and filas[0]["preview"] == "¿Sigues interesada?"
     assert fk.prefs[(YO, hc)]["oculto_en"] is None and fk.prefs[(YO, hd)]["oculto_en"] is not None

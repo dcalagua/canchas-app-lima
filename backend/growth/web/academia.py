@@ -263,7 +263,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
     pais = _iso(a)
     dep = (a.get("deporte") or "").lower()
     dep_nombre, emoji = _deporte(dep) if dep else ("Academia", "🎓")
-    lugar = " · ".join(x for x in (a.get("sedeClub"), a.get("zona")) if x)
+    lugar = ui.unir_lugar(a.get("sedeClub"), a.get("zona"), sep=" · ")
     tel = _wa(a)
     con_mapa = bool(a.get("lat") or a.get("lng"))
     # PLAN ACADEMIA (suscripción, 10-oct-2026): los alumnos le pagan DIRECTO a
