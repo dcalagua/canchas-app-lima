@@ -92,7 +92,7 @@ def _emo(dep: str) -> str:
 
 
 def _js(obj) -> str:
-    return json.dumps(obj, ensure_ascii=False).replace("</", "<\\/")
+    return ui.json_js(obj, ensure_ascii=False).replace("</", "<\\/")
 
 
 def fecha_legible(fecha: str, hora: str = "") -> str:
@@ -347,7 +347,7 @@ def crear_partido(p: dict) -> bool:
             if cols_v2():
                 cols += _COLS_V2
                 vals += [p.get("tipo") or "partido", p.get("modalidad") or "", p.get("nivel") or "",
-                         json.dumps(p.get("etiquetas") or []), p.get("cancha_id") or None]
+                         ui.json_js(p.get("etiquetas") or []), p.get("cancha_id") or None]
             marcas = ", ".join("%s::jsonb" if c == "etiquetas" else "%s" for c in cols)
             cur.execute(f"INSERT INTO pichangol_partidos ({', '.join(cols)}) VALUES ({marcas})", vals)
             cur.execute("SAVEPOINT g")

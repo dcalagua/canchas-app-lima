@@ -387,7 +387,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
         "</div></aside></div>"
         f"<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0'>{'A pagar a la academia' if directo else 'Pagas hoy'}</div><div class='t' id='totBarra'>—</div></div>"
         f"{'' if directo else ui.medio_pago_mini(pasarela)}<button class='btn' id='btnPagarBarra' disabled>Elige un programa</button></div>")
-    cfg = json.dumps({"id": academia_id, "moneda": sim, "pk": "" if (hosp or directo) else config.CULQI_PUBLIC_KEY, "planes": _planes(a),
+    cfg = ui.json_js({"id": academia_id, "moneda": sim, "pk": "" if (hosp or directo) else config.CULQI_PUBLIC_KEY, "planes": _planes(a),
                       # PLAN ACADEMIA: matrícula sin cobro (el alumno le paga directo a la academia).
                       "directo": directo,
                       # COBRO EN $ / Bs (fase 2 parte 2): pasarela hospedada del país, sin débito automático.
@@ -1227,7 +1227,7 @@ def matricular_pasarela(req: MatricularPasarelaReq, request: Request = None) -> 
         return error
     sim, iso = _moneda(a)
     cg = _cotizar_matricula(a, items, iso)
-    clave = a["id"] + "|" + json.dumps([p.model_dump() for p in req.personas], sort_keys=True, ensure_ascii=False)
+    clave = a["id"] + "|" + ui.json_js([p.model_dump() for p in req.personas], sort_keys=True, ensure_ascii=False)
     accion = {"academia_id": a["id"], "items": items, "cg": cg, "base_us": int(time.time() * 1_000_000),
               "ses_nombre": (ses or {}).get("nombre") or "", "ses_foto": (ses or {}).get("foto") or ""}
     return ph.abrir_orden(email=email, tipo="matricula", clave=clave, iso=iso, monto_centimos=cg["total_centimos"],

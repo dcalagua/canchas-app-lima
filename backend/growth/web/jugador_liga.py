@@ -138,7 +138,7 @@ def aviso_push(email: str, titulo: str, cuerpo: str, tipo: str = "aviso", data: 
             with pg.conexion() as conn, conn.cursor() as cur:
                 if data:
                     cur.execute("INSERT INTO pichangol_avisos (email, titulo, cuerpo, tipo, data, creado) "
-                                "VALUES (%s, %s, %s, %s, %s::jsonb, now())", (em, titulo, cuerpo, tipo, json.dumps(data)))
+                                "VALUES (%s, %s, %s, %s, %s::jsonb, now())", (em, titulo, cuerpo, tipo, ui.json_js(data)))
                 else:
                     cur.execute("INSERT INTO pichangol_avisos (email, titulo, cuerpo, tipo, creado) VALUES (%s, %s, %s, %s, now())",
                                 (em, titulo, cuerpo, tipo))
@@ -344,7 +344,7 @@ def pagina_mi_nivel(request: Request, deporte: str = "") -> HTMLResponse:
         "<button type='button' class='btn sec' id='nvOtro'>Evaluar otro deporte</button></div></div>"
         "</div>"
         "<script>(function(){\n"
-        "var dep=" + json.dumps(dep0) + ",$=function(i){return document.getElementById(i)};\n"
+        "var dep=" + ui.json_js(dep0) + ",$=function(i){return document.getElementById(i)};\n"
         "function pinta(){var a=+$('nvAn').value,f=+$('nvFr').value;$('nvAnT').textContent=a+' '+(a===1?'año':'años')+(a>=10?'+':'');$('nvFrT').textContent=f+(f>=5?'+':'')+' por semana'}\n"
         "$('nvAn').oninput=pinta;$('nvFr').oninput=pinta;pinta();\n"
         "$('nvDep').addEventListener('click',function(ev){var b=ev.target.closest('[data-dep]');if(!b)return;dep=b.dataset.dep;"
@@ -885,7 +885,7 @@ def pagina_liga(request: Request, tab: str = "ranking", deporte: str = "", modal
     cuerpo = (f"<style>{_CSS_BASE}{_CSS_NIVEL}{_CSS_LIGA}</style><div class='lg-wrap'>"
               "<a class='sub' href='/perfil' style='text-decoration:none'>‹ Perfil</a>"
               + hero + tabs + contenido + "</div>"
-              "<script>window.LG=" + json.dumps(cfg).replace("</", "<\\/") + ";</script><script>" + _JS_LIGA + "</script>")
+              "<script>window.LG=" + ui.json_js(cfg).replace("</", "<\\/") + ";</script><script>" + _JS_LIGA + "</script>")
     return ui.shell(f"Liga de tenis {MARCA}", cuerpo, sesion=ses, titulo_tab=f"Liga de tenis · {MARCA}")
 
 

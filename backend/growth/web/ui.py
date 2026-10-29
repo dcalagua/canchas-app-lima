@@ -127,7 +127,10 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 .slot .dia{font-size:11px;font-weight:700;color:var(--tenue)}
 .slot.sel{background:var(--noche);border-color:var(--noche)}.slot.sel b,.slot.sel b small,.slot.sel .pr,.slot.sel .dia{color:#fff}
 .slot.sel .tag{background:rgba(255,255,255,.18);color:#fff}
-.slot.off{opacity:.45;cursor:not-allowed;background:var(--gris)}.slot.off b{text-decoration:line-through}
+.slot.off{opacity:.6;cursor:not-allowed;background:var(--gris)}.slot.off b{text-decoration:line-through}
+button.slot{font:inherit;color:inherit;text-align:left;width:100%;min-height:44px}
+.cl-aviso{display:flex;flex-direction:column;gap:4px;padding:14px 16px;border-radius:var(--r);background:var(--tinte);color:var(--ok-fg);font-size:14px}.cl-aviso b{font-size:15px}.cl-aviso.warn{background:var(--warn-bg);color:var(--warn-fg)}.cl-aviso.bad{background:var(--bad-bg);color:var(--bad-fg)}
+.politica{margin:18px 0 6px;border:1px solid var(--trazo);border-radius:var(--r);padding:0 16px}.politica summary{cursor:pointer;font-weight:800;padding:14px 0;min-height:44px;list-style-position:inside}.politica ul{list-style:none;margin:0;padding:0 0 8px}.politica li{display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--gris);font-size:14px}.politica li span:first-child{flex:none;width:22px;text-align:center}.politica a{display:inline-block;margin:4px 0 14px;font-size:13px}
 .slots-nota{font-size:12.5px;color:var(--tenue);font-weight:600;margin:8px 0 0}
 
 .strip{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 8px;min-width:0;max-width:100%;scrollbar-width:none;-webkit-overflow-scrolling:touch}.strip::-webkit-scrollbar{display:none}
@@ -542,6 +545,26 @@ body.sin-scroll{overflow:hidden}
 .modal-cuerpo{overflow-y:auto;padding:8px 24px 16px;flex:1;min-height:0}
 .modal-cuerpo section{padding:22px 0;border-bottom:1px solid var(--trazo)}.modal-cuerpo section:last-child{border-bottom:0}
 .modal-cuerpo h4{margin:0 0 14px;font-size:18px;font-weight:600}
+/* Pago con comprobante (cobro directo al club) */
+.vch-ov{position:fixed;inset:0;background:rgba(10,27,61,.5);z-index:85;display:flex;align-items:center;justify-content:center;padding:24px 16px}
+.vch{background:var(--blanco);border-radius:var(--r-lg);max-width:520px;width:100%;max-height:calc(100dvh - 48px);overflow-y:auto;padding:20px 22px;box-shadow:var(--sombra2)}
+.vch-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.vch-cab h3{margin:2px 0 0;font-size:22px}
+.vch-k{font-size:12px;font-weight:700;color:var(--ok-fg);text-transform:uppercase;letter-spacing:.04em}
+.vch-x{width:44px;height:44px;border-radius:50%;border:1px solid var(--trazo);background:var(--blanco);font-size:16px;cursor:pointer;flex:none}
+.vch-reloj{margin:12px 0 4px;padding:10px 12px;border-radius:var(--r-btn);background:var(--warn-bg);color:var(--warn-fg);font-size:14px}
+.vch-pasos{padding-left:20px;margin:10px 0 0}.vch-pasos>li{margin:0 0 16px;font-size:15px}.vch-pasos input[type=text],.vch-pasos input:not([type]){margin-top:6px}
+.vch-medio{border:1px solid var(--trazo);border-radius:var(--r);padding:12px 14px;margin:10px 0}
+.vch-mt{font-weight:800}.vch-tit{font-size:14px;color:var(--tenue);margin:2px 0 6px}
+.vch-dato{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px dashed var(--trazo)}.vch-dato span{font-size:13px;color:var(--tenue);min-width:58px}
+.vch-dato b{flex:1;min-width:0;overflow-wrap:anywhere;font-size:16px}
+.vch-copiar{min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--trazo);background:var(--blanco);font-weight:700;cursor:pointer}
+.vch-qr{display:block;max-width:200px;width:100%;margin:8px auto 0;border-radius:var(--r-btn)}
+.vch-nota{font-size:13px;color:var(--tenue);margin-top:6px}
+.vch-foto{display:flex;align-items:center;justify-content:center;min-height:52px;margin-top:6px;border:2px dashed var(--trazo);border-radius:var(--r);cursor:pointer;font-weight:700}
+.vch-foto input{position:absolute;opacity:0;width:1px;height:1px}.vch-foto:focus-within{outline:3px solid var(--esmeralda);outline-offset:2px}
+.vch-prev{display:block;max-height:220px;max-width:100%;margin:10px auto 0;border-radius:var(--r-btn)}
+.vch-pie{font-size:12.5px;margin-top:10px}
+@media (max-width:600px){.vch-ov{align-items:flex-end;padding:0}.vch{border-radius:22px 22px 0 0;max-height:92dvh;padding:16px 18px calc(16px + env(safe-area-inset-bottom,0px))}}
 .pcg-dlg{display:none;position:fixed;inset:0;background:rgba(10,27,61,.5);z-index:80;align-items:center;justify-content:center;padding:24px 16px}.pcg-dlg.open{display:flex}
 .pcg-dlg .caja{background:var(--blanco);border-radius:24px;width:100%;max-width:420px;padding:28px 24px 20px;text-align:center;box-shadow:0 12px 40px rgba(10,27,61,.3);animation:pop .18s ease-out;display:flex;flex-direction:column;align-items:center;max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px)}
 .pcg-dlg .ico{width:56px;height:56px;border-radius:50%;background:var(--tinte);display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:12px;flex:none}.pcg-dlg .ico.mal{background:#FDECE8}
@@ -859,6 +882,41 @@ def medio_pago_mini(pasarela: str = "culqi") -> str:
     `selector_medio_pago`). Con una pasarela hospedada solo la muestra."""
     m = "yape" if not pasarela or pasarela == "culqi" else pasarela
     return f"<button type='button' class='mp-mini' id='medioPagoMini' data-medio='{e(m)}' aria-label='Medio de pago'></button>"
+
+
+def js_seguro(texto: str) -> str:
+    """Texto JSON listo para ir DENTRO de un <script>: `</script>` (o `<!--`)
+    en un dato de usuario —nombre de club, de jugador, nota de un medio de
+    pago— no puede cerrar el script e inyectar HTML (XSS persistente)."""
+    return (str(texto).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+
+def json_js(obj, **kw) -> str:
+    """`json.dumps` seguro para incrustar en HTML/JS (ver `js_seguro`)."""
+    import json as _json
+    return js_seguro(_json.dumps(obj, **kw))
+
+
+def selector_medio_directo(directo: dict) -> str:
+    """Selector del checkout cuando el club cobra DIRECTO (el dinero va a su
+    cuenta): Yape / Tarjeta con el Culqi DEL CLUB si lo conectó y, si publicó
+    medios manuales, "Pagar con comprobante" (Yape, Plin, transferencia… y se
+    sube el voucher). `pcgMedioPago()` devuelve 'yape' | 'tarjeta' | 'voucher'."""
+    culqi = bool(directo.get("culqi_public_key"))
+    medios = directo.get("medios") or []
+    nombres = " · ".join(dict.fromkeys(e(m.get("etiqueta") or m.get("tipo") or "") for m in medios if m))
+    chips = ""
+    if culqi:
+        chips += ("<button type='button' class='chip sel' data-medio='yape'><span class='yape'>Yape</span> Yape <small>Recomendado</small></button>"
+                  "<button type='button' class='chip' data-medio='tarjeta'><span class='visa'>VISA</span><span class='mc'><i></i><i></i></span> Tarjeta</button>")
+    if medios:
+        chips += (f"<button type='button' class='chip{'' if culqi else ' sel'}' data-medio='voucher' data-nombre='comprobante' "
+                  f"data-corto='🧾 Comprobante'>🧾 Pagar con comprobante</button>")
+    pie = ("🔒 Pagas directo al club" + (" · Culqi" if culqi else "")
+           + (f". Con comprobante: {nombres}; el club lo confirma." if medios else "."))
+    return ("<div class='medio-pago' id='medioPago'><div class='mp-t'>¿Cómo quieres pagar?</div>"
+            f"<div class='chips'>{chips}</div><div class='sub' style='font-size:12px;margin-top:8px'>{pie}</div></div>")
 
 
 _FLAGS = {
@@ -1276,7 +1334,7 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         "<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
         "<link href='https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700;9..40,800&display=swap' rel='stylesheet'>"
         f"<style>{CSS}</style>{extra_head}"
-        + (f"<script type='application/ld+json'>{jsonld}</script>" if jsonld else "")
+        + (f"<script type='application/ld+json'>{js_seguro(jsonld)}</script>" if jsonld else "")
         + "</head><body" + (f" class='{clases}'" if clases else "") + ">"
         f"{nav or nav_simple(sesion)}"
         f"<main class='{'wrap-xl' if ancho else 'wrap'}'>{cuerpo}</main>"

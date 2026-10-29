@@ -259,7 +259,7 @@ def pagina_pedir(request: Request, cancha_id: str) -> HTMLResponse:
         "prods": [{"id": p["id"], "nombre": p["nombre"], "precio": p["precio"], "stock": p["stock"], "moneda": p["moneda"]} for p in prods],
         "firma": [[p["id"], p["estado"]] for p in activos],
     }
-    partes.append(f"<script>var BJ={json.dumps(cfg_js, ensure_ascii=False)};</script><script>{JS}</script>")
+    partes.append(f"<script>var BJ={ui.json_js(cfg_js, ensure_ascii=False)};</script><script>{JS}</script>")
     return ui.shell(f"Bodega · {local}", "".join(partes), sesion=ses, nav=ui.nav_simple(ses),
                     titulo_tab=f"Bodega · {local}", extra_head=f"<style>{CSS}</style>")
 
@@ -431,7 +431,7 @@ def pagina_mis_pedidos(request: Request) -> HTMLResponse:
         partes.append(f"<div class='bj-local'><h2>Pedir otra vez</h2></div><div class='chips'>{enlaces}</div>")
     partes.append("</div>")
     cfg_js = {"firma": [[p["id"], p["estado"]] for p in activos], "global": True}
-    partes.append(f"<script>var BJ={json.dumps(cfg_js)};</script><script>{JS}</script>")
+    partes.append(f"<script>var BJ={ui.json_js(cfg_js)};</script><script>{JS}</script>")
     return ui.shell("Mis pedidos a la cancha", "".join(partes), sesion=ses, nav=ui.nav_simple(ses),
                     extra_head=f"<style>{CSS}</style>")
 

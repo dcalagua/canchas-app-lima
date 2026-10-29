@@ -354,7 +354,7 @@ def _js_culqi(cfg: dict) -> str:
     from web import pago_hospedado as ph
     hosp = bool(cfg.get("pasarela")) and cfg.get("pasarela") != "culqi"
     return (("" if hosp else "<script src='https://checkout.culqi.com/js/v4'></script>")
-            + "<script>window.__mk=" + json.dumps(cfg, ensure_ascii=False) + ";</script><script>"
+            + "<script>window.__mk=" + ui.json_js(cfg, ensure_ascii=False) + ";</script><script>"
             + (sesion.JS_SESION if sesion.activo() else "") + (ph.JS_IR_PASARELA if hosp else "") + (r"""
 (function(){
   var C = window.__mk, $ = function(id){ return document.getElementById(id); };
@@ -764,7 +764,7 @@ def pagina_mis_ordenes(request: Request, nueva: str = "") -> HTMLResponse:
               + f"<div style='margin-top:14px'>{lista}</div></div>"
               + ("<script>(function(){\n"
               "try{ var av = sessionStorage.getItem('pcg_aviso'); if(av){ var el = document.getElementById('avisoMk'); el.textContent = av; el.style.display = 'block'; sessionStorage.removeItem('pcg_aviso'); } }catch(e){}\n"
-              f"var PLAY = {json.dumps(PLAY_URL)};\n"
+              f"var PLAY = {ui.json_js(PLAY_URL)};\n"
               r"""document.querySelectorAll('[data-chat]').forEach(function(b){ b.addEventListener('click', function(){
   pcgConfirmar({titulo: 'Chat con el vendedor', mensaje: 'El chat para coordinar la entrega está en la app ⟦MARCA⟧, con la misma cuenta.', icono: '💬', confirmar: 'Abrir la app', cancelar: 'Ahora no'})
    .then(function(ok){ if(ok) window.open(PLAY, '_blank', 'noopener'); }); }); });

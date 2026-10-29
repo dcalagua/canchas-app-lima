@@ -893,7 +893,7 @@ _JS_COMUN = r"""<script>
 
 def _js(obj) -> str:
     """JSON seguro dentro de <script> (sin cerrar la etiqueta)."""
-    return json.dumps(obj, ensure_ascii=False).replace("</", "<\\/")
+    return ui.json_js(obj, ensure_ascii=False).replace("</", "<\\/")
 
 
 def _sin_login(request: Request, ruta: str, titulo: str, que: str) -> HTMLResponse:
@@ -1426,7 +1426,7 @@ def pagina_nuevo_estado(request: Request, tipo: str = "texto") -> HTMLResponse:
               "<div id='nvMusBox'></div>"
               "<p class='nv-ayuda'>Tu estado dura 24 horas y lo ven tus contactos.</p>"
               "<div class='nv-acc'><button type='button' class='btn lg' id='nvPublicar'>Publicar estado</button></div></div>"
-              + f"<script>window.NV_COMP = {json.dumps(cfg)};</script>" + _JS_COMUN + _JS_COMPOSER)
+              + f"<script>window.NV_COMP = {ui.json_js(cfg)};</script>" + _JS_COMUN + _JS_COMPOSER)
     return ui.shell("Nuevo estado", cuerpo, sesion=ses, titulo_tab=f"Nuevo estado · {MARCA}")
 
 
@@ -1515,7 +1515,7 @@ def _form_canal(ses: dict, c: dict | None) -> HTMLResponse:
               "<small class='nv-ayuda' id='nvDescC' style='display:block;text-align:right'></small>"
               + ("" if c else "<p class='nv-ayuda'>Tú serás el administrador. Solo tú publicas; los seguidores ven tus novedades y pueden reaccionar.</p>")
               + f"<div class='nv-acc'><button type='button' class='btn lg' id='nvGuardar'>{'Guardar cambios' if c else '📢 Crear canal'}</button></div></div></div>"
-              + f"<script>window.NV_FC = {json.dumps({'id': (c or {}).get('id') or ''})};</script>" + _JS_COMUN + _JS_FORM_CANAL)
+              + f"<script>window.NV_FC = {ui.json_js({'id': (c or {}).get('id') or ''})};</script>" + _JS_COMUN + _JS_FORM_CANAL)
     return ui.shell(titulo, cuerpo, sesion=ses, titulo_tab=f"{titulo} · {MARCA}")
 
 

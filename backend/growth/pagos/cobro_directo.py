@@ -147,6 +147,10 @@ class RepoMemoria:
         return next(({k: v for k, v in p.items() if k != "voucher_img"} for p in self.pagos.values()
                      if p["reserva_ref"] == ref and p["estado"] in ("en_revision", "aprobado")), None)
 
+    def pagos_manuales_de_jugador(self, email, limite=50):
+        return sorted(({k: v for k, v in p.items() if k != "voucher_img"} for p in self.pagos.values()
+                       if p["jugador_email"] == email), key=lambda p: p["creado_en"], reverse=True)[:limite]
+
     def pagos_manuales_de(self, dueno, estados):
         return sorted(({k: v for k, v in p.items() if k != "voucher_img"} for p in self.pagos.values()
                        if p["dueno"] == dueno and p["estado"] in estados),
@@ -277,6 +281,9 @@ class RepoPG:
     def pago_manual_de_ref(self, ref):
         f = self._pm("reserva_ref = %s and estado in ('en_revision', 'aprobado')", (ref,))
         return f[0] if f else None
+
+    def pagos_manuales_de_jugador(self, email, limite=50):
+        return self._pm("jugador_email = %s order by creado_en desc limit %s", (email, int(limite)))
 
     def pagos_manuales_de(self, dueno, estados):
         return self._pm("dueno = %s and estado = any(%s) order by creado_en desc limit 200", (dueno, list(estados)))
@@ -571,6 +578,24 @@ def _normalizar_imagen(datos: bytes) -> tuple[bytes, str, str]:
         return out.getvalue(), "image/jpeg", huella
     except Exception as e:  # noqa: BLE001
         raise ValueError("imagen_invalida") from e
+
+
+def pagos_del_jugador(email: str, limite: int = 50) -> list[dict]:
+    """Comprobantes que subió el jugador (todos los estados, el más nuevo
+    primero), sin la imagen. Para "Mis reservas" y el comprobante web."""
+    email = (email or "").strip().lower()
+    if not email or not disponible():
+        return []
+    try:
+        return _repo.pagos_manuales_de_jugador(email, limite)
+    except Exception:  # noqa: BLE001 — sin la tabla (0003) no hay comprobantes
+        return []
+
+
+def estado_pago_de_ref(email: str, ref: str) -> dict | None:
+    """El ÚLTIMO comprobante del jugador para esa reserva (en revisión,
+    aprobado, rechazado o vencido) o None."""
+    return next((p for p in pagos_del_jugador(email) if p.get("reserva_ref") == ref), None)
 
 
 def normalizar_operacion(op: str) -> str:

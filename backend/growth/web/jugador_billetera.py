@@ -771,7 +771,7 @@ def pagina_billetera(request: Request) -> HTMLResponse:
               + f"<h2 style='margin-top:30px'>Movimientos</h2>{lista}"
               + "<p class='sub' style='font-size:13px;margin-top:18px'>¿Buscas lo que pagaste en reservas y academias? "
                 "Está en <a href='/mis-pagos'>Mis pagos</a>.</p></div>"
-              + f"<script>window.__billetera={json.dumps(cfg)};</script><script>{_JS_BILLETERA}</script>")
+              + f"<script>window.__billetera={ui.json_js(cfg)};</script><script>{_JS_BILLETERA}</script>")
     head = "<script src='https://checkout.culqi.com/js/v4'></script>" if ("btnRecargar" in recargar and P["pasarela"] == "culqi") else ""
     return ui.shell("Mi billetera", cuerpo, sesion=ses, titulo_tab=f"Mi billetera · {MARCA}", extra_head=head)
 

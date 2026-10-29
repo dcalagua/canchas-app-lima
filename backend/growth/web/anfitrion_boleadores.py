@@ -178,7 +178,7 @@ def pagina_boleador(request: Request) -> HTMLResponse:
     hist = [s for s in sols if s["estado"] not in ("pendiente", "aceptada")][:20]
     b = b or {}
     disp = b.get("disponibilidad") or {}
-    js_cfg = json.dumps({"deportes": cfg["deportes"], "categorias": cfg["categorias"], "tarifas": cfg["tarifas"], "simbolo": sim,
+    js_cfg = ui.json_js({"deportes": cfg["deportes"], "categorias": cfg["categorias"], "tarifas": cfg["tarifas"], "simbolo": sim,
                          "etiquetas": cfg["etiquetas"], "deporte": b.get("deporte") or "tenis", "categoria": b.get("categoria") or "",
                          "tarifa": b.get("tarifa") or 0, "canchas": b.get("canchas") or [], "disponibilidad": disp,
                          "etiquetasSel": b.get("etiquetas") or []}, ensure_ascii=False)
@@ -210,7 +210,7 @@ def pagina_boleador(request: Request) -> HTMLResponse:
         + ("<h2 style='margin-top:26px'>Historial</h2><div style='display:grid;gap:10px'>"
            + "".join(_tarjeta_sol(s, paises.simbolo_de_moneda(s['moneda'])) for s in hist) + "</div>" if hist else "")
         + f"<script>window.__bol={js_cfg};</script><script>{_JS_BOL}</script>"
-        f"<script>document.getElementById('desde').value={json.dumps(disp.get('desde') or '06:00')};document.getElementById('hasta').value={json.dumps(disp.get('hasta') or '23:00')};</script>")
+        f"<script>document.getElementById('desde').value={ui.json_js(disp.get('desde') or '06:00')};document.getElementById('hasta').value={ui.json_js(disp.get('hasta') or '23:00')};</script>")
     return ui.shell(f"Soy {nombre.lower()}", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab=f"Soy {nombre.lower()} · Modo anfitrión")
 
 

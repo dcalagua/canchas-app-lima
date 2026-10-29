@@ -401,7 +401,7 @@ def pagina_verificador(request: Request) -> HTMLResponse:
     ses, resp = _sesion_o_entrar(request, "/anfitrion/verificador")
     if resp is not None:
         return resp
-    cfg = json.dumps({"radios": list(RADIOS), "radio": 50, "maxFotos": MAX_FOTOS, "storage": almacen.disponible()})
+    cfg = ui.json_js({"radios": list(RADIOS), "radio": 50, "maxFotos": MAX_FOTOS, "storage": almacen.disponible()})
     cuerpo = (
         _CSS + "<div class='vf-wrap'><a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
         "<h1 class='anf-hola' style='margin-top:6px'>Verificador</h1>"
@@ -705,7 +705,7 @@ def pagina_verificacion(cancha_id: str, request: Request) -> HTMLResponse:
                 "<div class='vf-acc'><button type='button' class='btn' id='btnOtpOk'>Confirmar código</button>"
                 "<button type='button' class='btn sec' id='btnOtpOtro'>Cambiar número</button></div></div>"
                 "<div class='vf-msg' id='otpMsg'></div></div>")
-    cfg = json.dumps({"base": f"/anfitrion/verificacion/{cancha_id}", "telLen": catalogos.TEL_LONGITUD.get(iso, 9)})
+    cfg = ui.json_js({"base": f"/anfitrion/verificacion/{cancha_id}", "telLen": catalogos.TEL_LONGITUD.get(iso, 9)})
     cuerpo = (
         _CSS + "<div class='vf-wrap'><a class='anf-back' href='/anfitrion/canchas'>‹ Mis canchas</a>"
         f"<h1 class='anf-hola' style='margin-top:6px;overflow-wrap:anywhere'>{e(nombre)}</h1>"

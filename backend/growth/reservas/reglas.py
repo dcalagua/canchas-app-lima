@@ -209,20 +209,38 @@ def cancha_del_dia(c: dict, fecha_iso: str) -> dict:
     return out
 
 
+def _franja_y_luz(c: dict, hora: str) -> tuple[dict | None, bool]:
+    """(franja que aplica, ¿lleva recargo de luz?) de un turno de la cancha
+    efectiva del día (`cancha_del_dia`)."""
+    r = c.get("_reglas") or {}
+    fecha = c.get("_fecha") or ""
+    ap, ci = c.get("hora_apertura") or "07:00", c.get("hora_cierre") or "23:00"
+    # Un turno de madrugada (cancha 18:00→02:00, 00:30) es del día siguiente.
+    fr = franja_de(r, horarios.fecha_real(fecha, ap, ci, hora), hora) if (fecha and r) else None
+    rl = r.get("recargo_luz")
+    luz = bool(rl) and (horarios.slot_es_madrugada(ap, ci, hora) or
+                        (horarios.hora_en_minutos(hora) or 0) >= (horarios.hora_en_minutos(rl["desde"]) or 0))
+    return fr, luz
+
+
+def etiqueta_turno(c: dict, hora: str) -> dict:
+    """Lo que la ficha muestra en cada turno: nombre de la franja del club y
+    si el precio incluye el recargo de luz (vacío sin reglas)."""
+    if not c.get("_reglas"):
+        return {}
+    fr, luz = _franja_y_luz(c, hora)
+    return {"franja": (fr or {}).get("nombre") or "", "luz": luz}
+
+
 def precio_turno(c: dict, hora: str, descuento_slot: int = 0) -> int | None:
     """Precio con reglas (franja + recargo) o None si no hay reglas que
     apliquen a este turno (el llamador usa el precio de siempre)."""
     r = c.get("_reglas")
     if not r:
         return None
-    fecha = c.get("_fecha") or ""
     paso = int(c.get("duracion_slot_min") or 60)
-    ap, ci = c.get("hora_apertura") or "07:00", c.get("hora_cierre") or "23:00"
-    # Un turno de madrugada (cancha 18:00→02:00, 00:30) es del día siguiente.
-    fr = franja_de(r, horarios.fecha_real(fecha, ap, ci, hora), hora) if fecha else None
+    fr, luz = _franja_y_luz(c, hora)
     rl = r.get("recargo_luz")
-    luz = bool(rl) and (horarios.slot_es_madrugada(ap, ci, hora) or
-                        (horarios.hora_en_minutos(hora) or 0) >= (horarios.hora_en_minutos(rl["desde"]) or 0))
     if not fr and not luz:
         return None
     if fr:

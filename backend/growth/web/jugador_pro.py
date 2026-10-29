@@ -177,7 +177,7 @@ def pagina_pro(request: Request) -> HTMLResponse:
         + renov + nota
         + f"<button type='button' class='btn pr-cta' id='btnPro'>{e(boton)}</button>"
         + "</div>"
-        + f"<style>{CSS}</style><script>window.__pro={json.dumps(cfg, ensure_ascii=False)};{JS_PRO}</script>")
+        + f"<style>{CSS}</style><script>window.__pro={ui.json_js(cfg, ensure_ascii=False)};{JS_PRO}</script>")
     return ui.shell(f"{MARCA} Pro", cuerpo, sesion=ses, titulo_tab=f"{MARCA} Pro",
                     desc=f"Membresía {MARCA} Pro: carnet oficial, ranking y retos sin límite.")
 
@@ -278,7 +278,7 @@ def pagina_tarjetas(request: Request) -> HTMLResponse:
               + (f"<div class='pr-lista' id='tjs'>{filas}</div>" if filas else vacio) + agregar
               + f"<p class='pr-seg'>🔒 Tus tarjetas se guardan de forma segura en Culqi. {MARCA} nunca ve ni guarda el número completo: "
                 "solo la marca y los últimos 4 dígitos.</p></div>"
-              + f"<style>{CSS}</style><script>window.__tj={json.dumps({'pk': config.CULQI_PUBLIC_KEY if disponible else ''})};{JS_TARJETAS}</script>")
+              + f"<style>{CSS}</style><script>window.__tj={ui.json_js({'pk': config.CULQI_PUBLIC_KEY if disponible else ''})};{JS_TARJETAS}</script>")
     head = "<script src='https://checkout.culqi.com/js/v4'></script>" if disponible else ""
     return ui.shell("Métodos de pago", cuerpo, sesion=ses, titulo_tab="Métodos de pago", extra_head=head)
 
@@ -601,7 +601,7 @@ def pagina_recordatorios(request: Request, dia: str = "manana") -> HTMLResponse:
               f"de {dlab}. A quien tiene la app le llega por el chat; a los demás, por WhatsApp.</p>" + chips + banner
               + (f"<div class='ng-lista' id='recLista'>{items}</div>" if items else
                  f"<div class='anf-vacio' style='margin-top:16px'>No tienes reservas para {dlab}.</div>")
-              + f"<style>{CSS}</style><script>window.__rec={json.dumps({'fecha': iso, 'fichas': fichas})};{JS_RECORDAR}</script>")
+              + f"<style>{CSS}</style><script>window.__rec={ui.json_js({'fecha': iso, 'fichas': fichas})};{JS_RECORDAR}</script>")
     return _pagina("Recordar reservas", cuerpo, ses, "")
 
 

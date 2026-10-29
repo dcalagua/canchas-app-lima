@@ -182,7 +182,7 @@ def marcar_cuotas_pagadas(alumno_id: str, email: str, marcas: dict[str, dict], r
                 conn.rollback()
                 return []
             cur.execute("UPDATE pichangol_matriculas SET data = %s::jsonb, updated_at = now() WHERE id = %s",
-                        (json.dumps(data), alumno_id))
+                        (ui.json_js(data), alumno_id))
             conn.commit()
             return hechas
     except Exception as ex:  # noqa: BLE001
@@ -510,7 +510,7 @@ def _tarjeta_matricula(m: dict, a: dict | None, email: str, hoy: str, directo: b
                "moneda": sim, "logo": str((a or {}).get("logoUrl") or ""),
                "url": f"/mis-clases/comprobante/{m['id']}/{c['id']}"}
         h += (f"<button type='button' class='mc-f comp' style='width:100%;border:0;background:none;font:inherit;text-align:left;color:inherit' "
-              f"data-comp='{e(json.dumps(det, ensure_ascii=False))}'><span class='ic'>🧾</span><span class='tx'><b>{e(c.get('concepto'))}</b>"
+              f"data-comp='{e(ui.json_js(det, ensure_ascii=False))}'><span class='ic'>🧾</span><span class='tx'><b>{e(c.get('concepto'))}</b>"
               f"<small>Pagado {_fecha_txt(c.get('fechaPago') or c.get('vencimiento'))}</small></span>"
               f"<span class='m ok'>{e(sim)} {c['monto']:.2f}</span></button>")
     tel = _wa_academia(a) if a else ""
@@ -556,7 +556,7 @@ def pagina_mis_clases(request: Request, pagado: str = "") -> HTMLResponse:
     n_hosp = html_pagos.count("data-pasarela=")
     hay_culqi = n_pagar > n_hosp
     medio = (f"<div class='mc-card mc-medio' style='padding:14px 16px'>{ui.selector_medio_pago()}</div>" if hay_culqi else "")
-    cfg = json.dumps({"pk": config.CULQI_PUBLIC_KEY, "cargo": _cs.activo("academias"),
+    cfg = ui.json_js({"pk": config.CULQI_PUBLIC_KEY, "cargo": _cs.activo("academias"),
                       "correo": empresa.valores()["empresa_correo"]}, ensure_ascii=False)
     # Volvió de la pasarela con el pago aplicado: aviso con el N.º de operación.
     aviso_ok = ""
@@ -1022,7 +1022,7 @@ def marcar_cuotas_atomico(email: str, pedidas: list[dict], sus_activas: set[str]
                 return res
             for aid in res["cambiadas"]:
                 cur.execute("UPDATE pichangol_matriculas SET data = %s::jsonb, updated_at = now() WHERE id = %s",
-                            (json.dumps(filas[aid]), aid))
+                            (ui.json_js(filas[aid]), aid))
             conn.commit()
             return res
     except Exception as ex:  # noqa: BLE001

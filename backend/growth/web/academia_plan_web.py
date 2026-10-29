@@ -734,10 +734,10 @@ def seccion_por_confirmar(acads: list[dict]) -> str:
                         f"<div class='sub' style='margin:10px 0 0;font-size:12px;text-align:center'>Código de seguridad</div><div class='pc-cod'>{e(g['codigo'])}</div>")
                      + (f"<div class='sub' style='margin:0;font-size:12.5px;text-align:center'>N.º de operación: <b>{e(g['operacion'])}</b></div>" if g.get("operacion") else "")
                      + f"<div class='sub' style='margin:4px 0 0;font-size:12px;text-align:center'>Reportado el {e(ap.fecha_txt(g.get('fecha')))}</div>"
-                     f"<div class='pc-acc'><button type='button' class='btn' data-pc-ok='{e(json.dumps(dato, ensure_ascii=False))}'>✅ Confirmar</button>"
-                     f"<button type='button' class='btn sec' data-pc-no='{e(json.dumps(dato, ensure_ascii=False))}'>No lo encontré</button></div></div>")
-    motivos = json.dumps(MOTIVOS_RECHAZO, ensure_ascii=False)
-    motivos_qr = json.dumps(MOTIVOS_RECHAZO_QR, ensure_ascii=False)
+                     f"<div class='pc-acc'><button type='button' class='btn' data-pc-ok='{e(ui.json_js(dato, ensure_ascii=False))}'>✅ Confirmar</button>"
+                     f"<button type='button' class='btn sec' data-pc-no='{e(ui.json_js(dato, ensure_ascii=False))}'>No lo encontré</button></div></div>")
+    motivos = ui.json_js(MOTIVOS_RECHAZO, ensure_ascii=False)
+    motivos_qr = ui.json_js(MOTIVOS_RECHAZO_QR, ensure_ascii=False)
     return (f"<style>{CSS_PLAN}</style><section id='porConfirmar' style='margin-top:16px'><h2 class='ng-h2' style='margin-bottom:2px'>💜 Pagos por confirmar</h2>"
             "<p class='sub' style='margin:0'>Tus alumnos te pagaron directo. Compara el código (Yape) o el monto exacto (QR) con la notificación de tu app y confirma con un toque.</p>"
             f"<div class='pc-grid'>{tarjetas}</div></section><script>window.__pcMotivos={motivos};window.__pcMotivosQr={motivos_qr};{JS_POR_CONFIRMAR}</script>")

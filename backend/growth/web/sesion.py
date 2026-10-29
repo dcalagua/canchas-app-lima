@@ -22,6 +22,8 @@ import base64
 import hashlib
 import hmac
 import json
+import os
+import secrets
 import time
 import urllib.parse
 import urllib.request
@@ -38,12 +40,45 @@ def activo() -> bool:
     return bool(config.GOOGLE_WEB_CLIENT_ID)
 
 
+# Sin NINGÚN secreto configurado se usa uno aleatorio de este proceso: las
+# sesiones mueren al reiniciar, pero nadie puede falsificarlas (antes caía a
+# una constante conocida y cualquiera podía fabricar la cookie de otro).
+_EFIMERO = secrets.token_bytes(32)
+_avisado = {"v": False}
+
+
 def _secreto() -> bytes:
-    return (config.ADMIN_PANEL_TOKEN or config.APP_API_KEY or "pichangol-web").encode()
+    """Clave ESTABLE derivada de los secretos de siempre. Además de firmar
+    sesiones viejas, la usan módulos que necesitan refs deterministas
+    (mensajes, novedades, liga): por eso no cambia al agregar
+    `WEB_SESION_SECRETO`."""
+    v = config.ADMIN_PANEL_TOKEN or config.APP_API_KEY
+    if v:
+        return v.encode()
+    if not _avisado["v"]:
+        _avisado["v"] = True
+        print("[sesion] ⚠️ sin WEB_SESION_SECRETO / ADMIN_PANEL_TOKEN / APP_API_KEY: "
+              "las sesiones web usan una clave temporal (se cierran al reiniciar)", flush=True)
+    return _EFIMERO
 
 
-def _firmar(cuerpo: bytes) -> str:
-    return hmac.new(_secreto(), cuerpo, hashlib.sha256).hexdigest()[:40]
+def _claves_firma() -> list[bytes]:
+    """La 1.ª firma lo nuevo; todas verifican (rotar a `WEB_SESION_SECRETO`
+    no cierra las sesiones vigentes, que siguen firmadas con la de antes)."""
+    propia = (os.getenv("WEB_SESION_SECRETO") or "").strip()
+    claves = [propia.encode()] if propia else []
+    base = _secreto()
+    if base not in claves:
+        claves.append(base)
+    return claves
+
+
+def _firmar(cuerpo: bytes, clave: bytes | None = None) -> str:
+    return hmac.new(clave or _claves_firma()[0], cuerpo, hashlib.sha256).hexdigest()[:40]
+
+
+def firma_valida(cuerpo: bytes, firma: str) -> bool:
+    return any(hmac.compare_digest(_firmar(cuerpo, k), firma or "") for k in _claves_firma())
 
 
 def emitir(datos: dict) -> str:
@@ -61,7 +96,7 @@ def leer(valor: str | None) -> dict | None:
     if not valor or "." not in valor:
         return None
     cuerpo, firma = valor.rsplit(".", 1)
-    if not hmac.compare_digest(_firmar(cuerpo.encode()), firma):
+    if not firma_valida(cuerpo.encode(), firma):
         return None
     try:
         pad = "=" * (-len(cuerpo) % 4)

@@ -279,7 +279,8 @@ class FakeDB:
 
     def reservas_de_usuario(self, email, limite=200):
         return sorted([dict(r) for r in self.reservas.values()
-                       if (r.get("usuario") or "").lower() == email.lower() and not (r["estado"] == "nueva" and not r.get("pagado"))],
+                       if (r.get("usuario") or "").lower() == email.lower()
+                       and not (r["estado"] == "nueva" and not r.get("pagado") and r.get("medio_pago") != "voucher")],
                       key=lambda r: (r["fecha"], r["hora_inicio"]), reverse=True)
 
     def reservas_por_grupo(self, g):

@@ -112,7 +112,7 @@ def guardar_perfil(email: str, nombre: str, celular: str, bio: dict) -> bool:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute("INSERT INTO pichangol_perfiles (email, nombre, celular, bio, actualizado) VALUES (%s, %s, %s, %s::jsonb, now()) "
                         "ON CONFLICT (email) DO UPDATE SET nombre = EXCLUDED.nombre, celular = EXCLUDED.celular, "
-                        "bio = EXCLUDED.bio, actualizado = now()", (em, nombre, celular, json.dumps(bio, ensure_ascii=False)))
+                        "bio = EXCLUDED.bio, actualizado = now()", (em, nombre, celular, ui.json_js(bio, ensure_ascii=False)))
             conn.commit()
             return True
     except Exception:  # noqa: BLE001
@@ -321,7 +321,7 @@ def pagina_configuracion(request: Request) -> HTMLResponse:
         "<a class='btn sec' href='/mi-nivel' style='margin:0'>✏️ Edita tus deportes</a>"
         "<div class='cf-barra'><button type='button' class='btn' id='cfListo'>Listo</button></div>"
         "<div class='lg-sec' style='margin-top:30px'>Tu cuenta</div>" + cuenta + "</div>"
-        "<script>window.CF=" + json.dumps(cfg, ensure_ascii=False).replace("</", "<\\/") + ";</script><script>" + _JS_CONFIG + "</script>")
+        "<script>window.CF=" + ui.json_js(cfg, ensure_ascii=False).replace("</", "<\\/") + ";</script><script>" + _JS_CONFIG + "</script>")
     return ui.shell("Configuración de la cuenta", cuerpo, sesion=ses, titulo_tab=f"Configuración · {MARCA}")
 
 
@@ -452,7 +452,7 @@ def pagina_identidad(request: Request, pais: str = "") -> HTMLResponse:
                  f"<div class='id-nota'><span>🔒</span><span>Solo usamos tu {doc} para confirmar tu identidad y tu edad. No guardamos foto de tu documento ni lo mostramos a nadie.</span></div></div>")
     cfg = {"pais": iso, "largo": largo, "doc": doc, "play": PLAY_URL}
     cuerpo = (head + f"<div class='lg-chips'>{chips}</div>" + panel + "</div>"
-              "<script>window.ID=" + json.dumps(cfg) + ";</script><script>" + _JS_IDENTIDAD + "</script>")
+              "<script>window.ID=" + ui.json_js(cfg) + ";</script><script>" + _JS_IDENTIDAD + "</script>")
     return ui.shell("Verificar identidad", cuerpo, sesion=ses, titulo_tab=f"Verificar identidad · {MARCA}")
 
 

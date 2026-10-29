@@ -1235,7 +1235,7 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     if c0:
         centro = [c0.get("lat") or centro[0], c0.get("lng") or centro[1]]
     hora = hora if horarios.hora_en_minutos(hora) is not None else ""
-    cfg = json.dumps({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro, "play": PLAY_URL, "dep": dep,
+    cfg = ui.json_js({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro, "play": PLAY_URL, "dep": dep,
                       "fecha": fecha, "hora": hora, "diasAdelante": DIAS_ADELANTE, "lugares": bool(config.PLACES_API_KEY),
                       "acadPaises": _ap.paises_habilitados()})
     head = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
@@ -1384,7 +1384,7 @@ def pagina_entrar(request: Request, volver: str = "/") -> HTMLResponse:
                   "<button type='button' class='btn' style='width:100%' onclick='entrarRevision()'>Entrar como revisor</button>"
                   "<div class='estado bad' id='revErr'></div></div>") if sesion.revision_activa() else "")
               + "</div>"
-              f"<script>window.alIniciarSesion=function(){{location.href={json.dumps(v)};}};{sesion.JS_SESION}"
+              f"<script>window.alIniciarSesion=function(){{location.href={ui.json_js(v)};}};{sesion.JS_SESION}"
               "window.entrarRevision=function(){var u=document.getElementById('revUsr').value.trim(),c=document.getElementById('revPwd').value,er=document.getElementById('revErr');er.textContent='';"
               "fetch('/web/sesion/prueba',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({usuario:u,clave:c})}).then(function(r){return r.json();})"
               ".then(function(j){if(j&&j.ok){window.alIniciarSesion(j);}else{er.textContent=j&&j.error==='demasiados_intentos'?'Demasiados intentos. Espera 5 minutos.':'Usuario o contraseña incorrectos.';er.style.display='block';}})"
@@ -1478,6 +1478,7 @@ def _slots_del_dia(c: dict, fecha: str) -> list[dict]:
             "ocupado": (fr, h) in ocup,
             "valle": c["descuento_valle"] > 0 and horarios.es_valle(h, c["valle_desde"], c["valle_hasta"]),
             "promo": desc.get((fr, h), 0),
+            **_reglas.etiqueta_turno(c, h),
         })
     return out
 
@@ -1569,7 +1570,22 @@ _JS_RESERVA = (r"""
   function senaTotal(){ var t = 0; Object.keys(sel).forEach(function(k){ t += Math.floor(sel[k].precio * C.senaPct / 100 + 0.5); }); return t; }
   var $ = function(id){ return document.getElementById(id); };
   var fmt = function(n){ return C.moneda + ' ' + Number(n).toFixed(2); };
-  var esc = function(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+  var esc = function(s){ return String(s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+  // Errores de las REGLAS DEL CLUB (`reservas/reglas.py`) con un mensaje que se entiende.
+  var ERR_REGLAS = {
+    min_turnos: 'Este club pide reservar al menos ' + (C.minSlots || 2) + ' turnos seguidos.',
+    max_turnos: 'Este club acepta hasta ' + C.maxSlots + (C.maxSlots === 1 ? ' turno' : ' turnos') + ' por reserva.',
+    tope_reservas_dia: 'Ya tienes el máximo de reservas que este club permite por día. Elige otro día.',
+    anticipacion_minima: 'Ese horario está muy próximo: el club pide reservar con más anticipación.',
+    anticipacion_maxima: 'Ese día todavía no abre para reservas. Elige una fecha más cercana.',
+    cerrado: 'El club está cerrado ese día. Elige otra fecha.',
+    hora_invalida: 'Ese horario ya no está disponible. Elige otro.',
+    fecha_fuera_de_rango: 'Esa fecha no está disponible para reservar.',
+    puntos_no_disponibles: 'Este club recibe el pago directo: el canje de puntos no aplica aquí.',
+    pago_no_disponible: 'El pago en línea de este club no está disponible ahora. Prueba más tarde o escribe al local.',
+    no_verificada: 'Esta cancha aún está en verificación y no recibe reservas.',
+    monto_invalido: 'Esa reserva no tiene un monto válido. Revisa los turnos elegidos.'
+  };
   function extrasSel(){
     // precio = TOTAL de la línea: por persona × cantidad elegida, por turno × turnos reservados.
     var n = Object.keys(sel).length || 1;
@@ -1804,6 +1820,8 @@ _JS_RESERVA = (r"""
         if(!j.ok){ $('slots').innerHTML = '<span class="sub">No pudimos cargar los horarios de ese día.</span>'; return; }
         slots = j.slots;
         var libres = slots.filter(function(s){ return !s.ocupado; }).length;
+        if(j.cerrado){
+          $('slots').innerHTML = '<div class="cl-aviso warn" role="status"><b>🚫 El club está cerrado este día</b><span>' + esc(j.cerrado === 'cerrado' ? 'No atiende este día.' : j.cerrado) + ' Prueba otra fecha.</span></div>'; return; }
         if(!slots.length){
           if(fechaSel === C.hoy && !C.fecha && !C._salto && C.dias[1]){ C._salto = true; fechaSel = C.dias[1].iso; pintarDias(); cargar(); return; }
           $('slots').innerHTML = '<span class="sub">No quedan turnos para este día. Prueba otra fecha.</span>'; return; }
@@ -1819,9 +1837,11 @@ _JS_RESERVA = (r"""
           html += '<div class="slots-grupo"><h5>' + f[1] + ' ' + f[0] + ' <small>· ' + (lib ? lib + ' libre' + (lib === 1 ? '' : 's') : 'sin turnos libres') + '</small></h5><div class="slots-grid">';
           grupos[g].forEach(function(x){ var s = x[0], i = x[1];
             var dia = s.fecha !== fechaSel ? '<span class="dia">' + esc(C.etiquetas[s.fecha] || '') + ' · madrugada</span>' : '';
-            var tag = s.promo ? '<span class="tag">−' + s.promo + ' % promo</span>' : (s.valle ? '<span class="tag">⚡ hora feliz</span>' : '');
-            html += '<div class="slot' + (s.ocupado ? ' off' : '') + '" data-i="' + i + '" title="' + (s.ocupado ? 'Ocupado' : 'Disponible') + '">' +
-                    dia + '<b>' + s.hora + ' <small>– ' + s.fin + '</small></b><span class="pr">' + (s.ocupado ? 'Ocupado' : fmt(s.precio)) + '</span>' + tag + '</div>';
+            var tag = s.promo ? '<span class="tag">−' + s.promo + ' % promo</span>' : (s.franja ? '<span class="tag">⭐ ' + esc(s.franja) + '</span>' : (s.valle ? '<span class="tag">⚡ hora feliz</span>' : ''));
+            if(s.luz) tag += '<span class="tag">💡 incluye luz</span>';
+            html += '<button type="button" class="slot' + (s.ocupado ? ' off' : '') + '" data-i="' + i + '" aria-pressed="false"' + (s.ocupado ? ' disabled' : '') +
+                    ' aria-label="' + s.hora + ' a ' + s.fin + ', ' + (s.ocupado ? 'ocupado' : fmt(s.precio)) + '">' +
+                    dia + '<b>' + s.hora + ' <small>– ' + s.fin + '</small></b><span class="pr">' + (s.ocupado ? 'Ocupado' : fmt(s.precio)) + '</span>' + tag + '</button>';
           });
           html += '</div></div>';
         });
@@ -1832,10 +1852,10 @@ _JS_RESERVA = (r"""
             var s = slots[parseInt(el.dataset.i)];
             if(s.ocupado) return;
             var k = s.fecha + '|' + s.hora;
-            if(sel[k]){ delete sel[k]; el.classList.remove('sel'); }
+            if(sel[k]){ delete sel[k]; el.classList.remove('sel'); el.setAttribute('aria-pressed', 'false'); }
             else {
-              if(Object.keys(sel).length >= C.maxSlots){ mostrarError('Puedes reservar hasta ' + C.maxSlots + ' turnos por pedido.'); return; }
-              sel[k] = s; el.classList.add('sel'); ocultarError();
+              if(Object.keys(sel).length >= C.maxSlots){ mostrarError('Este club acepta hasta ' + C.maxSlots + (C.maxSlots === 1 ? ' turno' : ' turnos') + ' por reserva.'); return; }
+              sel[k] = s; el.classList.add('sel'); el.setAttribute('aria-pressed', 'true'); ocultarError();
             }
             pintarResumen();
           });
@@ -1887,6 +1907,7 @@ _JS_RESERVA = (r"""
   };
   function validar(d){
     if(!Object.keys(sel).length) return 'Elige al menos un horario.';
+    if(C.minSlots > 1 && Object.keys(sel).length < C.minSlots) return ERR_REGLAS.min_turnos;
     if(C.login && !C.sesion) return 'Inicia sesión con Google para reservar.';
     if(d.nombre.length < 3) return 'Escribe tu nombre.';
     if(d.celular.replace(/\D/g,'').length < 8) return 'Escribe un celular válido.';
@@ -1920,6 +1941,7 @@ _JS_RESERVA = (r"""
           else if(j.error === 'sin_premio'){ fid = null; usarFid = false; mostrarError('Tu premio de fidelidad ya no está disponible. Revisa el total y vuelve a intentar.'); cargarFidelidad(); }
           else if(j.error === 'sin_bono'){ usarBono = false; mostrarError('Tu bono ya no alcanza para esos turnos (¿lo usaste en otra pestaña?). Revisa el total y vuelve a intentar.'); cargarBeneficios(); }
           else if(j.error === 'sin_puntos'){ usarPts = false; mostrarError('Tus puntos ya no alcanzan para el canje o no aplican a esta reserva. Revisa el total y vuelve a intentar.'); cargarBeneficios(); }
+          else if(ERR_REGLAS[j.error]){ mostrarError(ERR_REGLAS[j.error]); if(j.error === 'hora_invalida' || j.error === 'cerrado') cargar(); }
           else if(j.error === 'bono_con_boleador'){ mostrarError('Con tu bono no se puede contratar ' + C.nombreBoleador.toLowerCase() + ': quítalo o reserva sin el bono.'); }
           else mostrarError('No pudimos reservar el horario. Inténtalo de nuevo.');
           return;
@@ -1950,12 +1972,16 @@ _JS_RESERVA = (r"""
             .then(function(ok){ if(ok){ confirmarGratis(); } else { liberar(); pintarResumen(); } });
           return;
         }
-        var hosp = !!(C.pasarela && C.pasarela !== 'culqi');
-        if(!hosp && !C.pk){ mostrarError('El pago en línea no está disponible por ahora.'); liberar(); pintarResumen(); return; }
+        // COBRO DIRECTO: el dinero va a la cuenta DEL CLUB. Con su Culqi se abre con SU llave pública
+        // (el servidor cobra con su llave secreta); con comprobante se muestran sus datos de pago.
+        var esVoucher = !!(j.directo && (!j.directo.culqi_public_key || (window.pcgMedioPago && pcgMedioPago() === 'voucher')));
+        var hosp = !j.directo && !!(C.pasarela && C.pasarela !== 'culqi');
+        var pkPago = (j.directo && j.directo.culqi_public_key) || C.pk;
+        if(!esVoucher && !hosp && !pkPago){ mostrarError('El pago en línea no está disponible por ahora.'); liberar(); pintarResumen(); return; }
         // El medio se elige en la página (Yape por defecto) y Culqi se abre SOLO con ese método:
         // el Checkout v4 siempre abría en Tarjeta aunque Yape fuera primero (pedido del director, 27-sep-2026).
         // En $ / Bs el medio es la pasarela HOSPEDADA del país (PayPhone, Libélula o la de prueba en QAS).
-        var m = hosp ? C.pasarela : (window.pcgMedioPago ? pcgMedioPago() : 'yape');
+        var m = esVoucher ? 'voucher' : hosp ? C.pasarela : (window.pcgMedioPago ? pcgMedioPago() : 'yape');
         // COBRO EN USD / BOB: se crea la orden en el servidor (monto recalculado allí) y el navegador va a
         // la página de la pasarela; al volver, /web/pago/{orden} confirma y lleva al comprobante.
         var irPasarela = function(){
@@ -1975,7 +2001,7 @@ _JS_RESERVA = (r"""
         // confirma el detalle (turnos, extras, cargo por servicio con desglose y total, tal cual lo
         // cobrará el servidor). "Volver" libera la retención del horario.
         var abrirCulqi = function(){
-        Culqi.publicKey = C.pk;
+        Culqi.publicKey = pkPago;
         Culqi.settings({ title: '⟦MARCA⟧', currency: 'PEN', amount: j.total_centimos });
         Culqi.options({ lang: 'es', installments: false,
           paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false },
@@ -2006,7 +2032,7 @@ _JS_RESERVA = (r"""
           if(!hold) clearInterval(chk);
         }, 1500);
         };
-        var abrirPago = hosp ? irPasarela : abrirCulqi;
+        var abrirPago = esVoucher ? function(){ pcgVoucher(j); } : hosp ? irPasarela : abrirCulqi;
         if(!window.pcgResumenPago){ abrirPago(); return; }
         var lineas = Object.keys(sel).sort().map(function(k){ var s = sel[k]; return {t: esc(C.etiquetas[s.fecha] || s.fecha) + ' · ' + s.hora + '–' + s.fin, m: s.precio}; });
         extrasSel().forEach(function(x){ lineas.push({t: esc(x.nombre) + (x.cantidad > 1 ? ' × ' + x.cantidad : ''), m: x.precio}); });
@@ -2017,7 +2043,8 @@ _JS_RESERVA = (r"""
         if(j.pago === 'sena') lineas = [{t: 'Seña ' + j.sena_pct + ' % de ' + fmt(j.total) + ' (asegura tu hora)', m: j.sena}];
         var cj = j.cargo && j.cargo_centimos > 0 ? {monto: j.cargo_centimos / 100, titulo: j.cargo.titulo, html: htmlDesglose(j.cargo)} : null;
         pcgResumenPago({moneda: C.moneda, medio: m, medioNombre: hosp ? C.pasarelaNombre : '', lineas: lineas, cargo: cj, total: j.total_centimos / 100,
-                        nota: (j.pago === 'sena' ? 'El resto (' + fmt(j.resto) + ') lo pagas en la cancha. ' : '') + (j.bono ? 'Tus turnos van con tu bono (te quedan ' + j.bono.quedan + ' h); pagas solo los servicios extra. ' : '') + (j.puntos ? 'Los ' + j.puntos.puntos + ' puntos se descuentan solo si el pago entra. ' : '') + (hosp ? 'Te llevamos a la página segura de ' + C.pasarelaNombre + '; el horario queda apartado para ti mientras pagas.' : 'El horario queda reservado para ti mientras pagas (' + Math.round((j.hold_segundos || 600) / 60) + ' min).') + (blSel ? ' El ' + C.nombreBoleador.toLowerCase() + ' confirma después; si no puede, te devolvemos su parte.' : '')})
+                        confirmar: esVoucher ? ('Ver cómo pagar · ' + fmt(j.total_centimos / 100)) : '',
+                        nota: (esVoucher ? 'Pagas directo al club y subes tu comprobante; el club lo confirma. ' : '') + (j.pago === 'sena' ? 'El resto (' + fmt(j.resto) + ') lo pagas en la cancha. ' : '') + (j.bono ? 'Tus turnos van con tu bono (te quedan ' + j.bono.quedan + ' h); pagas solo los servicios extra. ' : '') + (j.puntos ? 'Los ' + j.puntos.puntos + ' puntos se descuentan solo si el pago entra. ' : '') + (hosp ? 'Te llevamos a la página segura de ' + C.pasarelaNombre + '; el horario queda apartado para ti mientras pagas.' : 'El horario queda reservado para ti mientras pagas (' + Math.round((j.hold_segundos || 600) / 60) + ' min).') + (blSel ? ' El ' + C.nombreBoleador.toLowerCase() + ' confirma después; si no puede, te devolvemos su parte.' : '')})
           .then(function(ok){ if(ok){ abrirPago(); } else { liberar(); pintarResumen(); } });
       }).catch(function(){ pintarResumen(); mostrarError('No pudimos reservar el horario. Inténtalo de nuevo.'); });
   }
@@ -2037,7 +2064,116 @@ _JS_RESERVA = (r"""
         .then(function(ok){ if(ok) window.location.href = '/web/pago/' + encodeURIComponent(oid); });
     }).catch(function(){});
   }
-  if(C.pasarela && C.pasarela !== 'culqi'){ ordenEnCurso(); window.addEventListener('pageshow', function(ev){ if(ev.persisted){ pintarResumen(); ordenEnCurso(); } }); }
+  // PAGO CON COMPROBANTE (cobro directo al club, como checkout_directo_screen del app): el jugador
+  // paga al Yape / Plin / cuenta DEL CLUB, sube la foto y el N.º de operación; el club lo confirma.
+  // El horario sigue apartado mientras lo sube y, ya enviado, hasta que el club lo revise.
+  var VCH_ERR = {
+    sesion_requerida: 'Tu sesión venció. Inicia sesión con Google y vuelve a intentarlo.',
+    hold_vencido: 'Se acabó el tiempo para apartar este horario. Elige uno de nuevo.',
+    firma: 'No pudimos validar tu reserva. Recarga la página e inténtalo de nuevo.',
+    medio_no_disponible: 'Elige el medio con el que pagaste.',
+    operacion_requerida: 'Escribe el número de operación que figura en tu comprobante.',
+    imagen_invalida: 'La foto no es válida. Sube una captura o foto del comprobante (máx. 6 MB).',
+    operacion_repetida: 'Ese número de operación ya se usó en otro pago. Revísalo.',
+    voucher_repetido: 'Esa misma imagen ya se subió en otro pago. Sube el comprobante de este pago.',
+    club_suspendido: 'Este club no está recibiendo pagos ahora. Elige otro horario o escribe al local.',
+    monto_invalido: 'Esta reserva no tiene monto a pagar.'
+  };
+  function comprimir(file, cb){
+    // Foto del comprobante: hasta 1600 px en JPEG (el servidor la vuelve a normalizar).
+    var fr = new FileReader();
+    fr.onload = function(){
+      var img = new Image();
+      img.onload = function(){
+        var k = Math.min(1, 1600 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        cb(cv.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = function(){ cb(null); };
+      img.src = fr.result;
+    };
+    fr.onerror = function(){ cb(null); };
+    fr.readAsDataURL(file);
+  }
+  function datoMedio(m){
+    var filas = [];
+    function f(et, v){ if(v) filas.push("<div class='vch-dato'><span>" + et + "</span><b>" + esc(v) + "</b><button type='button' class='vch-copiar' data-copiar='" + esc(v) + "' aria-label='Copiar " + et + "'>Copiar</button></div>"); }
+    f(m.tipo === 'transferencia' ? 'Cuenta' : 'Número', m.numero || m.cuenta);
+    if(m.numero && m.cuenta) f('Cuenta', m.cuenta);
+    f('CCI', m.cci);
+    var h = "<div class='vch-medio'><div class='vch-mt'>" + esc(m.etiqueta || m.tipo) + (m.banco ? ' · ' + esc(m.banco) : '') + "</div>"
+          + (m.titular ? "<div class='vch-tit'>A nombre de <b>" + esc(m.titular) + "</b></div>" : '') + filas.join('')
+          + (m.qr_url ? "<img class='vch-qr' src='" + esc(m.qr_url) + "' alt='QR de " + esc(m.etiqueta || m.tipo) + " del club' loading='lazy'>" : '')
+          + (m.nota ? "<div class='vch-nota'>" + esc(m.nota) + "</div>" : '') + "</div>";
+    return h;
+  }
+  function pcgVoucher(j){
+    var medios = (j.directo && j.directo.medios) || [];
+    var monto = j.total_centimos / 100, fin = Date.now() + (j.hold_segundos || 600) * 1000, foto = null, elegido = medios.length === 1 ? medios[0].tipo : '';
+    var ov = document.createElement('div');
+    ov.className = 'vch-ov'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-modal', 'true'); ov.setAttribute('aria-labelledby', 'vchTit');
+    ov.innerHTML = "<div class='vch'><div class='vch-cab'><div><div class='vch-k'>Pago directo al club</div><h3 id='vchTit'>Paga " + fmt(monto) + "</h3></div>"
+      + "<button type='button' class='vch-x' aria-label='Cancelar y soltar el horario'>✕</button></div>"
+      + "<div class='vch-reloj' role='timer' aria-live='off'>⏳ Tu horario está apartado <b id='vchReloj'></b></div>"
+      + "<ol class='vch-pasos'><li><b>Paga " + fmt(monto) + "</b> con uno de estos medios del club:"
+      + medios.map(datoMedio).join('') + "</li>"
+      + "<li><b>¿Con qué pagaste?</b><div class='chips' id='vchMedios'>" + medios.map(function(m){ return "<button type='button' class='chip" + (m.tipo === elegido ? ' sel' : '') + "' data-t='" + esc(m.tipo) + "' aria-pressed='" + (m.tipo === elegido) + "'>" + esc(m.etiqueta || m.tipo) + "</button>"; }).join('') + "</div></li>"
+      + "<li><label for='vchOp'><b>Número de operación</b></label><input id='vchOp' inputmode='text' autocomplete='off' maxlength='30' placeholder='Figura en tu comprobante'></li>"
+      + "<li><b>Foto o captura del comprobante</b><label class='vch-foto' id='vchFotoLbl'><input type='file' id='vchFoto' accept='image/*'><span id='vchFotoTxt'>📷 Elegir foto</span></label><img id='vchPrev' class='vch-prev' alt='Vista previa del comprobante' hidden></li></ol>"
+      + "<div class='estado bad' id='vchErr' role='alert'></div>"
+      + "<button type='button' class='btn lg' id='vchEnviar'>Enviar comprobante</button>"
+      + "<div class='sub vch-pie'>El club revisa tu pago y te avisamos. Si no lo confirma, el horario se libera y no se te cobra nada por la plataforma.</div></div>";
+    document.body.appendChild(ov); document.body.style.overflow = 'hidden';
+    var reloj = setInterval(function(){
+      var r = Math.max(0, Math.round((fin - Date.now()) / 1000)), el = document.getElementById('vchReloj');
+      if(el) el.textContent = Math.floor(r / 60) + ':' + ('0' + (r % 60)).slice(-2);
+      if(r <= 0){ clearInterval(reloj); cerrar(true); mostrarError(VCH_ERR.hold_vencido); cargar(); }
+    }, 1000);
+    function err(t){ var e = document.getElementById('vchErr'); e.textContent = t; e.style.display = t ? 'block' : 'none'; }
+    function cerrar(soltar){ clearInterval(reloj); ov.remove(); document.body.style.overflow = ''; if(soltar){ liberar(); pintarResumen(); } }
+    ov.querySelector('.vch-x').addEventListener('click', function(){
+      pcgConfirmar({titulo: '¿Cancelar el pago?', mensaje: 'Se libera el horario que apartaste.', confirmar: 'Sí, cancelar', cancelar: 'Seguir pagando', destructivo: true})
+        .then(function(ok){ if(ok) cerrar(true); });
+    });
+    ov.addEventListener('click', function(ev){
+      var cp = ev.target.closest('[data-copiar]');
+      if(cp){ try { navigator.clipboard.writeText(cp.dataset.copiar); cp.textContent = 'Copiado ✓'; setTimeout(function(){ cp.textContent = 'Copiar'; }, 1500); } catch(e){} return; }
+      var ch = ev.target.closest('#vchMedios [data-t]');
+      if(ch){ elegido = ch.dataset.t; ov.querySelectorAll('#vchMedios [data-t]').forEach(function(x){ x.classList.toggle('sel', x === ch); x.setAttribute('aria-pressed', x === ch); }); }
+    });
+    document.getElementById('vchFoto').addEventListener('change', function(ev){
+      var f = ev.target.files && ev.target.files[0]; if(!f) return;
+      document.getElementById('vchFotoTxt').textContent = 'Procesando…';
+      comprimir(f, function(u){
+        foto = u;
+        document.getElementById('vchFotoTxt').textContent = u ? '📷 Cambiar foto' : '📷 Elegir foto';
+        var pv = document.getElementById('vchPrev'); if(u){ pv.src = u; pv.hidden = false; } else { pv.hidden = true; err(VCH_ERR.imagen_invalida); }
+      });
+    });
+    document.getElementById('vchEnviar').addEventListener('click', function(){
+      var op = (document.getElementById('vchOp').value || '').trim();
+      if(!elegido) return err(VCH_ERR.medio_no_disponible);
+      if(op.replace(/[^0-9A-Za-z]/g, '').length < 4) return err(VCH_ERR.operacion_requerida);
+      if(!foto) return err('Sube la foto o captura de tu comprobante.');
+      err(''); var b = this; b.disabled = true; b.textContent = 'Enviando…'; pcgCargando('Enviando tu comprobante…');
+      fetch('/web/voucher', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids: j.ids, firma: j.firma, medio: elegido, operacion: op, imagen: foto})})
+        .then(function(r){ return r.json(); })
+        .then(function(p){
+          if(p.ok){
+            hold = null; clearInterval(reloj);
+            pcgIr('/reserva/' + encodeURIComponent(j.grupo || j.ids[0]) + '?enviado=1', 'Listo, el club revisará tu pago…');
+            return;
+          }
+          pcgCargando(false); b.disabled = false; b.textContent = 'Enviar comprobante';
+          err(VCH_ERR[p.error] || 'No pudimos enviar tu comprobante. Inténtalo de nuevo.');
+          if(p.error === 'hold_vencido'){ cerrar(false); hold = null; mostrarError(VCH_ERR.hold_vencido); cargar(); }
+        }).catch(function(){ pcgCargando(false); b.disabled = false; b.textContent = 'Enviar comprobante'; err('Sin conexión. Inténtalo de nuevo.'); });
+    });
+    setTimeout(function(){ var x = ov.querySelector('.vch-x'); if(x) x.focus(); }, 50);
+  }
+  if(C.pasarela && C.pasarela !== 'culqi' && C.pasarela !== 'directo'){ ordenEnCurso(); window.addEventListener('pageshow', function(ev){ if(ev.persisted){ pintarResumen(); ordenEnCurso(); } }); }
   pintarDias(); cargar(); cargarFidelidad(); cargarBeneficios();
 })();
 """).replace('⟦MARCA⟧', MARCA)
@@ -2131,8 +2267,84 @@ def _ficha(c: dict, sim: str, pais: str, verificada: bool = True, hermanas: list
             + (f"<div class='amen'>{amen}</div>" if amen else ""))
 
 
+_DIA_NOMBRE = {"lun": "Lunes", "mar": "Martes", "mie": "Miércoles", "jue": "Jueves", "vie": "Viernes",
+               "sab": "Sábado", "dom": "Domingo"}
+_MESES_CORTOS = ("ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "set", "oct", "nov", "dic")
+
+
+def _num_txt(v) -> str:
+    v = float(v or 0)
+    return str(int(v)) if v == int(v) else f"{v:g}"
+
+
+def _rango_dias(dias: list[str]) -> str:
+    orden = list(_DIA_NOMBRE)
+    if len(dias) == 7:
+        return "todos los días"
+    idx = sorted(orden.index(d) for d in dias if d in orden)
+    if idx and idx == list(range(idx[0], idx[-1] + 1)) and len(idx) > 2:
+        return f"{_DIA_NOMBRE[orden[idx[0]]].lower()} a {_DIA_NOMBRE[orden[idx[-1]]].lower()}"
+    return ", ".join(_DIA_NOMBRE[orden[i]].lower()[:3] for i in idx)
+
+
+def _ayuda_turnos(c: dict) -> str:
+    """'Hasta N turnos por pedido…' con los límites del CLUB (no el 4 fijo)."""
+    pol = _reglas.de_cancha(c)
+    mx = min(MAX_SLOTS, int(pol.get("max_turnos") or MAX_SLOTS))
+    mn = int(pol.get("min_turnos") or 0)
+    rango = f"Entre {mn} y {mx} turnos seguidos" if mn > 1 else f"Hasta {mx} turno{'s' if mx != 1 else ''}"
+    return f"{rango} por pedido. Toca un horario para agregarlo; vuelve a tocarlo para quitarlo."
+
+
+def _politica_html(c: dict, sim: str) -> str:
+    """POLÍTICA DEL CLUB en la ficha (lo que el jugador debe saber ANTES de
+    pagar): cancelación con las horas del club, horarios especiales, cierres,
+    franjas, luz, anticipación y límites. Sin reglas, solo la cancelación."""
+    pol = _reglas.resumen_publico(c)
+    items = []
+    horas = _dev.horas_minimas(c)
+    items.append(("↩️", f"Cancela con más de {_num_txt(horas)} h de anticipación y te devolvemos el 100 %."))
+    for ci in pol.get("cierres") or []:
+        try:
+            d = date.fromisoformat(ci["fecha"])
+            f = f"{d.day} {_MESES_CORTOS[d.month - 1]}"
+        except ValueError:
+            continue
+        items.append(("🚫", f"Cerrado el {f}" + (f" · {e(ci['motivo'])}" if ci.get("motivo") else "")))
+    semana = pol.get("horario_semana") or {}
+    for d, v in semana.items():
+        if d in _DIA_NOMBRE:
+            items.append(("🗓️", f"{_DIA_NOMBRE[d]}: " + ("cerrado" if not v else f"{v['apertura']} a {v['cierre']}")))
+    for fr in pol.get("franjas") or []:
+        precio = (f"{sim} {fr['precio_turno']:.2f} por turno" if fr.get("precio_turno")
+                  else f"{sim} {fr['precio_hora']:.2f} por hora")
+        items.append(("⭐", f"{e(fr.get('nombre') or 'Tarifa especial')}: {_rango_dias(fr.get('dias') or [])}, "
+                            f"{fr['desde']} a {fr['hasta']} · {precio}"))
+    rl = pol.get("recargo_luz")
+    if rl:
+        items.append(("💡", f"Desde las {rl['desde']} cada turno suma {sim} {float(rl['monto']):.2f} de iluminación."))
+    if pol.get("anticipacion_min_horas"):
+        items.append(("⏱️", f"Reserva con al menos {_num_txt(pol['anticipacion_min_horas'])} h de anticipación."))
+    if pol.get("anticipacion_max_dias"):
+        items.append(("📆", f"Puedes reservar hasta {_num_txt(pol['anticipacion_max_dias'])} días antes."))
+    mn, mx = pol.get("min_turnos"), pol.get("max_turnos")
+    if mn and mx:
+        items.append(("🔢", f"Entre {mn} y {mx} turnos seguidos por reserva."))
+    elif mn:
+        items.append(("🔢", f"Mínimo {mn} turnos seguidos por reserva."))
+    elif mx:
+        items.append(("🔢", f"Máximo {mx} turnos seguidos por reserva."))
+    if pol.get("max_reservas_dia_jugador"):
+        n = pol["max_reservas_dia_jugador"]
+        items.append(("👤", f"Hasta {n} reserva{'s' if n != 1 else ''} por día por jugador."))
+    lis = "".join(f"<li><span aria-hidden='true'>{i}</span><span>{t}</span></li>" for i, t in items)
+    return (f"<details class='politica' id='politica'{' open' if len(items) > 1 else ''}>"
+            "<summary>Política del club</summary>"
+            f"<ul>{lis}</ul><a href='/legal/devoluciones'>Cómo funcionan las devoluciones</a></details>")
+
+
 def _jsonld_cancha(c: dict, sim: str) -> str:
-    return json.dumps({
+    return ui.json_js({
         "@context": "https://schema.org", "@type": "SportsActivityLocation",
         "name": (f"{c['club']} · {c['nombre']}" if (c.get("club") or "").strip() else c["nombre"]), "image": _fotos(c)[:1],
         "address": {"@type": "PostalAddress", "streetAddress": c.get("direccion") or "",
@@ -2278,15 +2490,30 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
     con_ben = sesion.activo() and beneficios.disponible()
     if con_ben:
         extras_html = "<div id='benBox' class='fid-box ben-box' style='display:none'></div>" + extras_html
-    pasarela = _pasarela_web(iso)
-    cfg = json.dumps({"id": c["id"], "moneda": sim, "pk": config.CULQI_PUBLIC_KEY if pasarela == "culqi" else "", "maxSlots": MAX_SLOTS,
+    # COBRO DIRECTO (el dinero va a la cuenta DEL CLUB): con su Culqi el
+    # checkout se abre con la llave pública DEL CLUB (el servidor cobra con su
+    # llave secreta); con medios manuales el jugador sube su comprobante. Sin
+    # cargo por servicio ni puntos (no hay de dónde compensarlos al club).
+    dir_info = _cd.checkout(c, iso)
+    directo = dir_info if dir_info.get("directo") else None
+    if directo:
+        pasarela = "culqi" if directo.get("culqi_public_key") else "directo"
+        pk_ficha = directo.get("culqi_public_key") or ""
+    else:
+        pasarela = _pasarela_web(iso)
+        pk_ficha = config.CULQI_PUBLIC_KEY if pasarela == "culqi" else ""
+    cfg = ui.json_js({"id": c["id"], "moneda": sim, "pk": pk_ficha,
+                      "maxSlots": min(MAX_SLOTS, int(_reglas.de_cancha(c).get("max_turnos") or MAX_SLOTS)),
+                      "minSlots": int(_reglas.de_cancha(c).get("min_turnos") or 0),
+                      "directo": ({"culqi": bool(directo.get("culqi_public_key")), "medios": directo.get("medios") or [],
+                                   "plazo": int(directo.get("voucher_plazo_min") or 0)} if directo else None),
                       # Pasarela del checkout: 'culqi' (soles, en la página) o la HOSPEDADA del país
                       # ($ / Bs: se va a pagar a su página y vuelve a /web/pago/{orden}).
                       "pasarela": pasarela, "pasarelaNombre": ("" if pasarela == "culqi" else pago_hospedado.nombre_pasarela(pasarela)),
                       "boleadores": con_bol, "nombreBoleador": nombre_bol, "fidelidad": fid_cfg, "beneficios": con_ben,
                       "logo": "", "hoy": dias[0]["iso"], "dias": dias, "etiquetas": etiquetas,
                       # Cargo por servicio (fase 2): con el flag apagado el JS no cotiza ni pinta la línea.
-                      "cargo": _cs.activo("reservas"), "deporteBase": (_deportes_de(c) or [""])[0],
+                      "cargo": _cs.activo("reservas") and not directo, "deporteBase": (_deportes_de(c) or [""])[0],
                       # SEÑA que configuró el dueño (% del precio de los turnos), como el app.
                       "senaPct": int(c.get("sena_pct") or 0),
                       # Día preseleccionado desde el buscador de la portada (solo si cae en la tira).
@@ -2325,8 +2552,9 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
         "<div class='paso' style='margin-top:0'><span>1</span> Elige el día y el horario</div>"
         "<div class='strip' id='dias'></div>"
         f"{selector_dep}"
-        f"<div class='sub' style='margin:6px 0 12px;font-size:13px'>Hasta {MAX_SLOTS} turnos por pedido. Toca un horario para agregarlo; vuelve a tocarlo para quitarlo.</div>"
+        f"<div class='sub' id='ayudaTurnos' style='margin:6px 0 12px;font-size:13px'>{_ayuda_turnos(c)}</div>"
         "<div id='slots'></div>"
+        f"{_politica_html(c, sim)}"
         f"{paso_datos}"
         f"{extras_html}"
         "<div class='estado bad' id='err'></div>"
@@ -2336,14 +2564,15 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
         f"<div class='sub' style='margin-bottom:10px'>{e(c['nombre'])}{(' · ' + e(c.get('club'))) if c.get('club') else ''}</div>"
         "<div id='lineas'></div>"
         "<div class='total'><span id='totLbl'>Total</span><span id='tot'></span></div>"
-        f"<div style='margin-top:14px'>{ui.selector_medio_pago() if pasarela == 'culqi' else pago_hospedado.selector(pasarela)}</div>"
+        f"<div style='margin-top:14px'>{ui.selector_medio_directo(directo) if directo else (ui.selector_medio_pago() if pasarela == 'culqi' else pago_hospedado.selector(pasarela))}</div>"
         "<div style='margin-top:14px'><button class='btn lg' id='btnPagar' disabled>Elige un horario</button></div>"
-        "<div class='sub' style='font-size:12.5px;margin-top:12px'>Reserva confirmada al instante; el local la ve en su agenda. "
-        "Cancelación con más de 6 horas de anticipación: devolución del 100 %. <a href='/#devoluciones'>Ver política</a>.</div>"
+        "<div class='sub' style='font-size:12.5px;margin-top:12px'>"
+        + ("El club confirma tu pago y la reserva aparece en su agenda." if directo else "Reserva confirmada al instante; el local la ve en su agenda.")
+        + f" Cancelación con más de {_num_txt(_dev.horas_minimas(c))} h de anticipación: devolución del 100 %. <a href='#politica'>Ver política del club</a>.</div>"
         "</div></aside></div>"
         "<div class='barra-fija'><div><div class='sub' style='font-size:12px;margin:0' id='totBarraLbl'>Total</div><div class='t' id='totBarra'></div></div>"
-        f"{ui.medio_pago_mini(pasarela)}<button class='btn' id='btnPagarBarra' disabled>Elige un horario</button></div>"
-        f"<script>window.__cancha={cfg};var CORREO_SOPORTE={json.dumps(empresa.valores()['empresa_correo'])};</script>"
+        f"{ui.medio_pago_mini('voucher' if pasarela == 'directo' else pasarela)}<button class='btn' id='btnPagarBarra' disabled>Elige un horario</button></div>"
+        f"<script>window.__cancha={cfg};var CORREO_SOPORTE={ui.json_js(empresa.valores()['empresa_correo'])};</script>"
         + ("<script src='https://checkout.culqi.com/js/v4'></script>" if pasarela == "culqi" else "")
         + f"<script>{sesion.JS_SESION if sesion.activo() else ''}{_JS_RESERVA}</script>")
     return ui.shell(f"Reservar en {titulo}", cuerpo, con_barra=True, canonical=canonical, og_image=og,
@@ -2534,10 +2763,15 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
         return {"ok": False, "error": err}
     tope = _reglas.de_cancha(c).get("max_reservas_dia_jugador")
     if tope:
+        # Por DÍA (no la suma de los días pedidos) y sin contar lo cancelado
+        # ni los no-show: quien cancela puede volver a reservar ese día.
         dias_pedidos = {f for f, _h in pedidos}
-        ya = [r for r in datos.reservas_de_usuario(email) if r.get("cancha_id") == c["id"]
-              and r.get("fecha") in dias_pedidos and r.get("estado") != "noShow"]
-        if len({r.get("grupo_reserva_id") or r.get("id") for r in ya}) >= tope:
+        por_dia: dict[str, set] = {}
+        for r in datos.reservas_de_usuario(email):
+            if (r.get("cancha_id") == c["id"] and r.get("fecha") in dias_pedidos
+                    and not str(r.get("estado") or "").startswith("cancelad") and r.get("estado") != "noShow"):
+                por_dia.setdefault(r["fecha"], set()).add(r.get("grupo_reserva_id") or r.get("id"))
+        if any(len(v) >= int(tope) for v in por_dia.values()):
             return {"ok": False, "error": "tope_reservas_dia"}
     # FIDELIDAD DEL LOCAL (sep-2026): si el jugador pidió usar su premio y de
     # verdad lo tiene, el descuento sale del precio de la cancha (hora gratis =
@@ -2690,7 +2924,12 @@ def web_beneficios(cancha_id: str, request: Request = None) -> dict:
     if not c or not ses:
         return {"ok": False, "error": "sesion_requerida" if c else "no_encontrada"}
     _sim, iso = _moneda_de(c)
-    return {"ok": True, **beneficios.estado(ses["email"], c, iso)}
+    out = beneficios.estado(ses["email"], c, iso)
+    if isinstance(out.get("puntos"), dict) and _cd.checkout(c, iso).get("directo"):
+        # Con cobro directo el canje no aplica (el descuento lo pone la
+        # plataforma y no hay de dónde compensárselo al club).
+        out["puntos"] = {**out["puntos"], "aplica": False}
+    return {"ok": True, **out}
 
 
 class LiberarReq(BaseModel):
@@ -2706,6 +2945,10 @@ def liberar(req: LiberarReq) -> dict:
         # El jugador está pagando en la pasarela (o el pago ya entró y se está
         # confirmando): el apartado lo suelta la orden, nunca el navegador.
         return {"ok": False, "error": "pago_en_curso"}
+    if any((f.get("medio_pago") or "") == datos.MEDIO_HOLD_VOUCHER for f in datos.reservas_de(req.ids)):
+        # Ya subió su comprobante: el apartado espera la revisión del club (lo
+        # suelta el club al rechazar o el vencimiento, nunca el navegador).
+        return {"ok": False, "error": "pago_en_revision"}
     import fidelidad as _fid
     _fid.revertir_canje(ids=req.ids)
     beneficios.soltar(ids=req.ids)  # bono / puntos apartados vuelven al jugador
@@ -3466,7 +3709,7 @@ def _boton_cancelar(filas: list[dict], c: dict | None, ses: dict | None, clase: 
         return ""
     cuando = f"{horarios.fecha_larga(str(filas[0]['fecha']))} · {filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}"
     pol = est.get("politica") or {}
-    opciones = json.dumps([{k: o[k] for k in ("medio", "monto", "etiqueta", "nota", "simbolo", "incluye_cargo")} for o in pol.get("opciones") or []],
+    opciones = ui.json_js([{k: o[k] for k in ("medio", "monto", "etiqueta", "nota", "simbolo", "incluye_cargo")} for o in pol.get("opciones") or []],
                           ensure_ascii=False)
     return (f"<button type='button' class='{clase}' data-cancelar='{e(_ref_de(filas))}' data-nombre='{e((c or {}).get('nombre') or 'la reserva')}' "
             f"data-cuando='{e(cuando)}' data-monto='{est['monto']}' data-moneda='{e(est['moneda'])}' data-pagado='{1 if est['pagado'] else 0}' "
@@ -3483,18 +3726,26 @@ def _url_comprobante(filas: list[dict]) -> str:
 
 # ── comprobante ───────────────────────────────────────────────────────────────
 
+# Motivos con los que el club rechaza un comprobante (selección en "Pagos por
+# confirmar"); un motivo libre de APKs viejos se muestra tal cual.
+MOTIVO_RECHAZO = {"no_llego": "El club no recibió el pago.", "monto": "El monto no coincide con la reserva.",
+                  "ilegible": "No se pudo leer el comprobante.", "otro": "El club no pudo confirmarlo."}
+
 ESTADO_RESERVA = {"confirmada": ("Confirmada", "ok"), "cancelada": ("Cancelada", "bad"), "noShow": ("No asististe", "bad"),
                   "nueva": ("Pendiente de pago", "warn"), "completada": ("Jugada", "ok")}
 
 
-def _tarjeta_viaje(r: dict, c: dict | None, hoy: str, ses: dict | None) -> str:
+def _tarjeta_viaje(r: dict, c: dict | None, hoy: str, ses: dict | None, pago_club: dict | None = None) -> str:
     """Tarjeta tipo "Viajes" de Airbnb: foto cuadrada · cancha · fecha y hora ·
     avatar del jugador · estado; clic = detalle/comprobante. Las próximas llevan
     "Cancelar"."""
     sim = r.get("moneda") or (c and _moneda_de(c)[0]) or "S/"
     estado = str(r.get("estado") or "")
+    en_revision = estado == "nueva" and not r.get("pagado") and str(r.get("medio_pago") or "") == datos.MEDIO_HOLD_VOUCHER
     if estado == "noShow":
         pill = "<span class='pill bad'>No asististe</span>"
+    elif en_revision:
+        pill = "<span class='pill warn'>Pago en revisión del club</span>"
     elif r.get("pagado") and str(r.get("medio_pago") or "") == "bono":
         pill = "<span class='pill ok'>Pagada con bono 🎟️</span>"
     elif r.get("pagado"):
@@ -3504,7 +3755,7 @@ def _tarjeta_viaje(r: dict, c: dict | None, hoy: str, ses: dict | None) -> str:
     ref = r.get("grupo_reserva_id") or r.get("id")
     pasada = str(r.get("fecha") or "") < hoy
     nombre = (c or {}).get("nombre") or "Cancha"
-    con_comprobante = bool(r.get("pagado") or estado == "confirmada")
+    con_comprobante = bool(r.get("pagado") or estado == "confirmada" or en_revision)
     href = f"/reserva/{e(ref)}" if con_comprobante else (f"/reservar/{e(c['id'])}" if c else "#")
     fs = _fotos(c) if c else []
     if fs:
@@ -3520,7 +3771,7 @@ def _tarjeta_viaje(r: dict, c: dict | None, hoy: str, ses: dict | None) -> str:
     if int(r.get("turnos") or 1) > 1:
         cuando += f" · {r['turnos']} turnos"
     filas_r = r.get("_filas") or [r]
-    cancelar = _boton_cancelar(filas_r, c, ses, "lnk") if not pasada else ""
+    cancelar = _boton_cancelar(filas_r, c, ses, "lnk") if (not pasada and not en_revision) else ""
     return (f"<a class='viaje{' pasada' if pasada else ''}' href='{href}' data-lat='{(c or {}).get('lat') or ''}' data-lng='{(c or {}).get('lng') or ''}' "
             f"data-nombre='{e(nombre)}' data-cuando='{e(cuando)}'>"
             f"<div class='vfoto'>{foto}</div>"
@@ -3577,16 +3828,33 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
         cid = r.get("cancha_id")
         if cid and cid not in canchas:
             canchas[cid] = datos.cancha(cid)
+    # "Hoy" en la zona horaria del país de CADA cancha (Bolivia va una hora adelante de Perú).
+    hoy_de = {cid: horarios.ahora_local(_pais_de(c) if c else "PE").date().isoformat() for cid, c in canchas.items()}
     hoy = horarios.ahora_local("PE").date().isoformat()
-    proximas = sorted([r for r in filas if str(r.get("fecha") or "") >= hoy], key=lambda r: (r.get("fecha"), r.get("hora_inicio")))
-    pasadas = [r for r in filas if str(r.get("fecha") or "") < hoy]
+    def _hoy(r): return hoy_de.get(r.get("cancha_id")) or hoy
+    proximas = sorted([r for r in filas if str(r.get("fecha") or "") >= _hoy(r)], key=lambda r: (r.get("fecha"), r.get("hora_inicio")))
+    pasadas = [r for r in filas if str(r.get("fecha") or "") < _hoy(r)]
+    # COBRO DIRECTO: comprobantes que subió el jugador. Los rechazados o vencidos
+    # (su reserva ya se soltó) se listan aparte para que sepa qué pasó.
+    vouchers = _cd.pagos_del_jugador(email)
+    refs_vivas = {str(r.get("grupo_reserva_id") or r.get("id")) for r in filas}
+    caidos = [v for v in vouchers if v.get("estado") in ("rechazado", "vencido") and str(v.get("reserva_ref")) not in refs_vivas][:10]
     # Solo reservas: un pago devuelto de una matrícula o compra (pasarela $ / Bs) no es una cancha cancelada.
     canceladas = sorted([x for x in _st.cancelaciones_web if x.get("usuario") == email and (x.get("tipo") or "reserva") == "reserva"], key=lambda x: x.get("creado_en", ""), reverse=True)
-    lista = "".join(_tarjeta_viaje(r, canchas.get(r.get("cancha_id")), hoy, ses) for r in proximas) if proximas else (
+    lista = "".join(_tarjeta_viaje(r, canchas.get(r.get("cancha_id")), _hoy(r), ses) for r in proximas) if proximas else (
         "<div class='viaje-vacio'><b>Todavía no tienes reservas próximas</b>"
         "<p class='sub'>Cuando reserves una cancha, aparecerá aquí con su mapa y su comprobante.</p>"
         "<a class='btn' href='/canchas'>Explorar canchas</a></div>")
-    pasadas_html = "".join(_tarjeta_viaje(r, canchas.get(r.get("cancha_id")), hoy, ses) for r in pasadas)
+    pasadas_html = "".join(_tarjeta_viaje(r, canchas.get(r.get("cancha_id")), _hoy(r), ses) for r in pasadas)
+    def _fila_voucher(v: dict) -> str:
+        c_v = canchas.get(v.get("cancha_id")) or datos.cancha(str(v.get("cancha_id") or "")) or {}
+        sim_v = simbolo_de_moneda(v.get("moneda") or "PEN")
+        motivo = (MOTIVO_RECHAZO.get(v.get("motivo_rechazo") or "", v.get("motivo_rechazo") or "")
+                  if v.get("estado") == "rechazado" else "El club no lo revisó a tiempo.")
+        return (f"<div class='cancelada'><div><b>{e(c_v.get('nombre') or 'Cancha')}</b><div class='sub' style='font-size:13px;margin:0'>"
+                f"{e(motivo)} El horario se liberó.</div></div>"
+                f"<div style='text-align:right'><span class='pill bad'>{'Pago rechazado' if v.get('estado') == 'rechazado' else 'Pago vencido'}</span>"
+                f"<div class='sub' style='font-size:12.5px;margin:4px 0 0'>{e(sim_v)} {int(v.get('monto_centimos') or 0) / 100:.2f}</div></div></div>")
     def _fila_cancel(x: dict) -> str:
         est = {"reembolsado": ("Devolución en camino", "ok"), "saldo": ("Devuelto a tu saldo", "ok"), "reembolsado_manual": ("Devuelto", "ok"),
                "manual": ("Devolución en proceso", "warn"), "fallo": ("Devolución en proceso", "warn"),
@@ -3607,7 +3875,10 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
         + f"<details class='viajes-det'{' open' if canceladas else ''}><summary><span class='ico'>🗓️</span> Reservaciones canceladas <small>· {len(canceladas)}</small></summary>"
         + ("".join(_fila_cancel(x) for x in canceladas) if canceladas else "<p class='sub' style='padding:8px 4px 2px'>No has cancelado ninguna reserva.</p>")
         + "</details>"
-        f"<p class='sub' style='font-size:12.5px;margin-top:18px'>Salvo que el club indique otra política en tu comprobante: cancelación con más de {int(config.WEB_CANCELACION_HORAS)} horas de anticipación: devolución del 100 % al mismo medio de pago. "
+        + (f"<details class='viajes-det' open><summary><span class='ico'>🧾</span> Pagos que el club no confirmó <small>· {len(caidos)}</small></summary>"
+           + "".join(_fila_voucher(v) for v in caidos) + "<p class='sub' style='font-size:12.5px;padding:8px 4px 2px'>"
+           "Si ya pagaste, escribe al local con tu comprobante: el dinero lo recibió el club.</p></details>" if caidos else "")
+        + "<p class='sub' style='font-size:12.5px;margin-top:18px'>Cada club define su política de cancelación: la ves en la ficha de la cancha y en tu comprobante. "
         f"Dudas: <a href='mailto:{empresa.datos()['correo']}'>{empresa.datos()['correo']}</a>.</p>"
         "</div><aside class='viajes-mapa'><div class='mapa' id='mapaViajes' aria-label='Mapa de tus reservas'></div></aside></div>"
         + _MODAL_CANCELAR
@@ -3832,15 +4103,53 @@ def pagina_perfil(request: Request) -> HTMLResponse:
         "<script>(function(){\n"
         "document.querySelectorAll('[data-app]').forEach(function(b){ b.addEventListener('click', function(ev){ ev.preventDefault();\n"
         "  pcgConfirmar({titulo: b.dataset.titulo, mensaje: b.dataset.app, icono: b.dataset.em || '📱', confirmar: 'Abrir la app', cancelar: 'Ahora no'})\n"
-        f"   .then(function(ok){{ if(ok) window.open({json.dumps(PLAY_URL)}, '_blank', 'noopener'); }});\n"
+        f"   .then(function(ok){{ if(ok) window.open({ui.json_js(PLAY_URL)}, '_blank', 'noopener'); }});\n"
         "}); });\n"
         "})();</script>")
     return ui.shell("Perfil", cuerpo, sesion=ses, titulo_tab=f"Perfil · {MARCA}")
 
 
-def _filas_comprobante(ref: str) -> list[dict]:
+def _filas_comprobante(ref: str, con_revision: bool = False) -> list[dict]:
+    """Filas con comprobante: pagadas o confirmadas y, con [con_revision], las
+    que esperan que el club revise el comprobante (cobro directo)."""
     filas = datos.reservas_por_grupo(ref) if ref.startswith("grp_") else datos.reservas_de([ref])
-    return [f for f in filas if f.get("pagado") or f.get("estado") == "confirmada"]
+    return [f for f in filas if f.get("pagado") or f.get("estado") == "confirmada"
+            or (con_revision and f.get("estado") == "nueva" and str(f.get("medio_pago") or "") == datos.MEDIO_HOLD_VOUCHER)]
+
+
+def _cabecera_revision(ref: str, v: dict | None) -> str:
+    vence = ""
+    if v and v.get("vence_en"):
+        try:
+            vv = v["vence_en"] if isinstance(v["vence_en"], datetime) else datetime.fromisoformat(str(v["vence_en"]))
+            vence = f" antes de las {vv.astimezone(horarios.ahora_local('PE').tzinfo).strftime('%H:%M')}" if vv.tzinfo else ""
+        except (TypeError, ValueError):
+            vence = ""
+    op = f" (operación {e(v.get('operacion'))})" if v and v.get("operacion") else ""
+    return ("<div style='font-size:44px' aria-hidden='true'>⏳</div><h1>Pago en revisión del club</h1>"
+            f"<p class='sub'>Subiste tu comprobante{op}. El club lo confirmará{vence} y te avisaremos. "
+            f"Tu horario sigue apartado.</p><p class='sub'>Reserva <b>{e(ref)}</b></p>")
+
+
+def _pagina_pago_caido(ref: str, v: dict, ses: dict | None) -> HTMLResponse:
+    """El club rechazó el comprobante o no lo revisó a tiempo: la reserva ya
+    se soltó, pero el jugador debe saber qué pasó (y que el dinero lo tiene el club)."""
+    c = datos.cancha(str(v.get("cancha_id") or "")) or {}
+    rech = v.get("estado") == "rechazado"
+    motivo = MOTIVO_RECHAZO.get(v.get("motivo_rechazo") or "", v.get("motivo_rechazo") or "") if rech else "El club no lo revisó a tiempo."
+    cuerpo = ("<div style='max-width:560px;margin:26px auto 0'><div class='panel' style='text-align:center'>"
+              "<div style='font-size:44px' aria-hidden='true'>🧾</div>"
+              f"<h1>{'El club no confirmó tu pago' if rech else 'Tu pago no se revisó a tiempo'}</h1>"
+              f"<p class='sub'>{e(c.get('nombre') or 'Cancha')}{(' · ' + e(c.get('club'))) if c.get('club') else ''}</p>"
+              f"<div class='cl-aviso bad' style='text-align:left;margin-top:14px'><b>{e(motivo)}</b>"
+              "<span>El horario se liberó. Si ya pagaste, escribe al local con tu comprobante: el dinero lo recibió el club, "
+              "no la plataforma.</span></div>"
+              f"<p class='sub' style='margin-top:12px'>Operación reportada: <b>{e(v.get('operacion') or '—')}</b> · "
+              f"{e(simbolo_de_moneda(v.get('moneda') or 'PEN'))} {int(v.get('monto_centimos') or 0) / 100:.2f}</p>"
+              "<div class='acciones' style='justify-content:center'>"
+              + (f"<a class='btn' href='/reservar/{e(c['id'])}'>Volver a reservar</a>" if c.get("id") else "")
+              + "<a class='btn sec' href='/mis-reservas'>Mis reservas</a></div></div></div>")
+    return ui.shell("Pago no confirmado", cuerpo, sesion=ses)
 
 
 @router.get("/reserva/{ref}.ics")
@@ -3885,11 +4194,19 @@ def _ics(s) -> str:
 
 
 @router.get("/reserva/{ref}", response_class=HTMLResponse)
-def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
-    filas = _filas_comprobante(ref)
-    if not filas:
-        return _no_encontrada("Reserva no encontrada")
+def pagina_comprobante(ref: str, request: Request = None, enviado: str = "") -> HTMLResponse:
     ses = sesion.de_request(request)
+    filas = _filas_comprobante(ref, con_revision=True)
+    voucher = _cd.estado_pago_de_ref((ses or {}).get("email", ""), ref) if ses else None
+    if not filas:
+        if voucher and voucher.get("estado") in ("rechazado", "vencido"):
+            return _pagina_pago_caido(ref, voucher, ses)
+        return _no_encontrada("Reserva no encontrada")
+    en_revision = all(f.get("estado") == "nueva" and not f.get("pagado") for f in filas)
+    # El comprobante se abre con su enlace: sin la sesión del titular no se
+    # muestran sus datos personales (el id de la reserva es adivinable).
+    # (Sin login con Google activo —modo invitado— el enlace es la única llave.)
+    es_titular = (not sesion.activo()) or (bool(ses) and ses["email"] == str(filas[0].get("usuario") or "").strip().lower())
     c = datos.cancha(filas[0]["cancha_id"]) or {}
     sim = filas[0].get("moneda") or "S/"
     total = _total_de(filas)
@@ -3965,32 +4282,40 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         f"{horarios.fecha_larga(filas[0]['fecha'])} {filas[0]['hora_inicio']}–{filas[-1]['hora_fin']}. "
         f"Comprobante: {base}/reserva/{ref}", etiqueta="💬 Compartir", clase="btn sec")
     medio = {"yape": "Yape", "tarjeta": "tarjeta", "fidelidad": "tu premio de fidelidad 🎁", "sena": "seña en línea",
-             "bono": "tu bono de horas 🎟️"}.get(str(filas[0].get("medio_pago") or ""), "en línea")
+             "bono": "tu bono de horas 🎟️", "plin": "Plin", "transferencia": "transferencia bancaria",
+             "qr": "QR", "billetera": "billetera digital"}.get(str(filas[0].get("medio_pago") or ""), "en línea")
+    if voucher and voucher.get("estado") == "aprobado":
+        medio += " · confirmado por el club"
     if cobro is not None and not _es_cargo_culqi(cobro) and ":" in str(cobro.culqi_charge_id or ""):
         # Cobro por pasarela hospedada ($ / Bs): se nombra la pasarela.
         medio += f" · {pago_hospedado.nombre_pasarela(str(cobro.culqi_charge_id).split(':', 1)[0])}"
     cuerpo = (
         "<div style='max-width:640px;margin:26px auto 0'>"
-        f"<div class='panel' style='text-align:center'>{ui.check_svg()}"
-        "<h1>¡Reserva confirmada!</h1>"
-        f"<p class='sub'>Comprobante <b>{e(ref)}</b> · pagado con {e(medio)}</p>"
+        + ("<div class='cl-aviso' role='status' style='margin-bottom:14px'><b>✅ Recibimos tu comprobante</b>"
+           "<span>Te avisamos apenas el club lo confirme.</span></div>" if (enviado and en_revision) else "")
+        + f"<div class='panel' style='text-align:center'>"
+        + (_cabecera_revision(ref, voucher) if en_revision else
+           f"{ui.check_svg()}<h1>¡Reserva confirmada!</h1><p class='sub'>Comprobante <b>{e(ref)}</b> · pagado con {e(medio)}</p>")
+        +
         f"<h3 style='margin-top:16px'>{e(c.get('nombre') or 'Cancha')}</h3>"
         f"<div class='sub'>{e(c.get('club'))}{(' · ' + e(lugar)) if lugar else ''}</div>"
         f"<div style='text-align:left;margin-top:16px'>{lineas}"
         + (f"<div class='linea'><span>Total de la reserva</span><b>{e(sim)} {total:.2f}</b></div>" if sena_c else "")
-        + f"<div class='total'><span>{'Pagaste hoy (seña)' if sena_c else 'Total pagado'}</span><span>{e(sim)} {pagado:.2f}</span></div>"
+        + f"<div class='total'><span>{'Pagaste hoy (seña)' if sena_c else ('Pagado al club · en revisión' if en_revision else 'Total pagado')}</span><span>{e(sim)} {pagado:.2f}</span></div>"
         + (f"<div class='linea' style='font-weight:700'><span>Por pagar en la cancha</span><b>{e(sim)} {resto_cancha:.2f}</b></div>"
            "<div class='sub' style='font-size:12.5px'>La seña no es reembolsable: si no llegas, queda a favor de la cancha.</div>" if sena_c else "")
         + f"{detalle_cargo}</div>"
-        f"<div class='sub' style='margin-top:12px'>A nombre de <b>{e(filas[0].get('jugador'))}</b> · {e(filas[0].get('usuario'))}. "
-        "Guarda este enlace: es tu comprobante.</div>"
+        + (f"<div class='sub' style='margin-top:12px'>A nombre de <b>{e(filas[0].get('jugador'))}</b> · {e(filas[0].get('usuario'))}. "
+           "Guarda este enlace: es tu comprobante.</div>" if es_titular else
+           "<div class='sub' style='margin-top:12px'>Inicia sesión con la cuenta de la reserva para ver sus datos.</div>")
+        +
         "<div class='acciones'>"
         f"<a class='btn sec' href='/reserva/{e(ref)}.ics'>📅 Agregar al calendario</a>"
         + (f"<a class='btn sec' href='{_maps(c)}' target='_blank' rel='noopener'>📍 Cómo llegar</a>" if c else "")
         + boton_wa
         + "</div>"
-        + (f"<div class='acciones'>{_boton_cancelar(filas, c, ses, 'btn sec')}</div>" if _boton_cancelar(filas, c, ses) else "")
-        + f"<div class='estado ok' style='text-align:left'>Cancelación con más de {int(_dev.horas_minimas(c))} horas de anticipación: devolución del 100 % al mismo medio de pago. "
+        + (f"<div class='acciones'>{_boton_cancelar(filas, c, ses, 'btn sec')}</div>" if (not en_revision and _boton_cancelar(filas, c, ses)) else "")
+        + f"<div class='estado ok' style='text-align:left'>Política del club: cancelación con más de {_num_txt(_dev.horas_minimas(c))} h de anticipación, devolución del 100 % al mismo medio de pago. "
         f"Puedes cancelar desde aquí o desde <a href='/mis-reservas'>Mis reservas</a>. Dudas: <a href='mailto:{empresa.datos()['correo']}'>{empresa.datos()['correo']}</a>.</div>"
         "</div>"
         "<div class='panel' style='margin-top:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap'>"
@@ -4000,4 +4325,4 @@ def pagina_comprobante(ref: str, request: Request = None) -> HTMLResponse:
         f"<a class='btn' href='{PLAY_URL}'>Descargar la app</a></div>"
         "<div style='text-align:center;margin-top:16px'><a href='/canchas'>Reservar otra cancha</a></div>"
         f"</div>{_MODAL_CANCELAR}<script>{JS_CANCELAR}</script>")
-    return ui.shell("Reserva confirmada", cuerpo, sesion=ses)
+    return ui.shell("Pago en revisión" if en_revision else "Reserva confirmada", cuerpo, sesion=ses)

@@ -323,7 +323,7 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
  <div class='estado bad' id='errGuardar' style='display:none;margin-top:12px'></div>
  <div class='pie'><button type='button' class='btn sec' data-ir='2'>Atrás</button><button type='button' class='btn' id='btnGuardar'>{'Crear campeonato' if nuevo else 'Guardar cambios'}</button></div></div>
 </div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_WIZARD}</script>"""
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_WIZARD}</script>"""
     return ui.shell("Campeonato", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, extra_head=_LEAFLET,
                     titulo_tab=f"{'Organizar' if nuevo else 'Editar'} campeonato · Modo anfitrión")
 
@@ -819,7 +819,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
 <div class='acciones' style='margin-top:18px;flex-wrap:wrap'><a class='btn' href='{BASE}/{e(c['id'])}/editar'>✏️ Editar campeonato</a><button type='button' class='btn sec' id='btnDuplicar'>📄 Duplicar campeonato (nueva edición)</button><button type='button' class='btn sec' id='btnEliminar' style='color:var(--rojo)'>🗑 Eliminar campeonato</button></div>
 </div>
 <div class='modal' id='modal' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:520px'><div class='modal-cab'><button type='button' class='cerrar' id='modalCerrar'>✕</button><h3 id='modalTit'></h3></div><div class='modal-cuerpo mod-form' id='modalCuerpo'></div></div></div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_DETALLE}</script>"""
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_DETALLE}</script>"""
     return ui.shell(c.get("nombre") or "Campeonato", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab=f"{c.get('nombre') or 'Campeonato'} · Mis campeonatos")
 
 
