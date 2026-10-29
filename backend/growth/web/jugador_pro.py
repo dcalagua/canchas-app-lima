@@ -129,6 +129,18 @@ _BENEFICIOS = [("🪪", "Carnet oficial verificado", "Tu ficha de jugador con la
                ("📊", "Ranking y estadísticas", "Apareces en el ranking del circuito con tus números."),
                ("🏆", "Prioridad en torneos", "Acceso preferente cuando abramos inscripciones."),
                ("💚", "Apoyas tu comunidad", "Ayudas a que tu academia crezca su circuito.")]
+# Lo que Pro le da a quien tiene canchas (antes la página solo hablaba del circuito de tenis).
+_BENEFICIOS_DUENO = [("🧃", "Mi bodega", "Caja rápida, stock y carta digital con QR para tu local."),
+                     ("🏆", "Campeonatos con tu marca", "Inscripciones con pago, fixture, resultados y afiche."),
+                     ("📣", "Más visibilidad", "Tu local puede salir en la publicidad de la marca.")]
+
+
+def _es_dueno(email: str) -> bool:
+    try:
+        from web import datos
+        return bool(datos.canchas_de_dueno(email))
+    except Exception:  # noqa: BLE001
+        return False
 
 
 @router.get("/pro", response_class=HTMLResponse)
@@ -144,12 +156,16 @@ def pagina_pro(request: Request) -> HTMLResponse:
         sub = f"Eres Pro. Vigente hasta el {_fecha(st['hasta'])}."
     elif st["hasta"]:
         sub = f"Tu membresía venció el {_fecha(st['hasta'])}. Reactívala y vuelve al circuito."
+    elif _es_dueno(email):
+        sub = "Para tu local: bodega, campeonatos con tu marca y más visibilidad. Para ti: carnet y ranking."
     else:
         sub = "Sé parte del circuito: tu carnet oficial, tu ranking y tus estadísticas."
-    hero = (f"<section class='pr-hero'><div class='pr-hero-t'><span class='pr-corona'>👑</span><b>{MARCA} Pro</b>"
+    hero = (f"<section class='pr-hero'><div class='pr-hero-t'><span class='pr-corona'>👑</span>"
+            f"<h1 style='font:inherit;margin:0;color:inherit'><b>{MARCA} Pro</b></h1>"
             + ("<span class='pr-activo'>ACTIVO</span>" if st["activa"] else "") + "</div>"
             f"<p>{e(sub)}</p><div class='pr-precio'><b>{e(p_txt)}</b><span>/mes</span></div></section>")
-    bens = "".join(f"<li><span class='pr-ic'>{ic}</span><div><b>{e(t)}</b><small>{e(d)}</small></div></li>" for ic, t, d in _BENEFICIOS)
+    lista = (_BENEFICIOS_DUENO + _BENEFICIOS) if _es_dueno(email) else _BENEFICIOS
+    bens = "".join(f"<li><span class='pr-ic'>{ic}</span><div><b>{e(t)}</b><small>{e(d)}</small></div></li>" for ic, t, d in lista)
     nota = (f"<div class='pr-nota'><span class='pr-bur'>👛</span><div>Se cobra de tu saldo {MARCA} (la misma billetera de la app). "
             f"Tu saldo hoy: <b>{e(_monto(sim, st['saldo']))}</b>. "
             + ("Se renueva solo cada mes." if not st["cortesia"] else "")

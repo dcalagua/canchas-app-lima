@@ -263,7 +263,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
     pais = _iso(a)
     dep = (a.get("deporte") or "").lower()
     dep_nombre, emoji = _deporte(dep) if dep else ("Academia", "🎓")
-    lugar = " · ".join(x for x in (a.get("sedeClub"), a.get("zona")) if x)
+    lugar = ui.unir_lugar(a.get("sedeClub"), a.get("zona"), sep=" · ")
     tel = _wa(a)
     con_mapa = bool(a.get("lat") or a.get("lng"))
     # PLAN ACADEMIA (suscripción, 10-oct-2026): los alumnos le pagan DIRECTO a
@@ -403,8 +403,15 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
               f"<script>window.__academia={cfg};</script>"
               + ("" if (hosp or directo) else "<script src='https://checkout.culqi.com/js/v4'></script>")
               + f"<script>{sesion.JS_SESION if sesion.activo() else ''}{ph.JS_IR_PASARELA if hosp else ''}{_JS_ACADEMIA}</script>")
+    # Datos estructurados para buscadores (antes la academia no tenía ninguno).
+    ld = {"@context": "https://schema.org", "@type": "SportsActivityLocation", "name": a["nombre"],
+          "description": (a.get("descripcion") or "")[:300] or f"Academia de {dep_nombre.lower()}",
+          "address": {"@type": "PostalAddress", "addressLocality": a.get("zona") or "", "streetAddress": a.get("sedeClub") or ""},
+          "image": (_fotos_academia(a) or [None])[0]}
+    if a.get("lat") and a.get("lng"):
+        ld["geo"] = {"@type": "GeoCoordinates", "latitude": a["lat"], "longitude": a["lng"]}
     return ui.shell(a["nombre"], cuerpo, con_barra=True, desc=f"{a['nombre']} · academia de {dep_nombre.lower()} · {lugar}. Matricúlate en línea.",
-                    og_image=(_fotos_academia(a) or ["/marca/logo-og.png"])[0], sesion=ses,
+                    og_image=(_fotos_academia(a) or ["/marca/logo-og.png"])[0], sesion=ses, jsonld=json.dumps(ld, ensure_ascii=False),
                     extra_head=(_LEAFLET if con_mapa else "") + _CSS_CARRITO + (sesion.GIS_SCRIPT if (sesion.activo() and not ses) else ""))
 
 

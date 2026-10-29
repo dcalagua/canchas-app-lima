@@ -19,7 +19,7 @@ import boleadores as _bol
 import paises
 from web import datos, horarios, ui
 from web.anfitrion import _entrar, _sesion_o_entrar
-from web.router import PLAY_URL, e
+from web.router import e
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 router = APIRouter(tags=["web-anfitrion-boleadores"])
@@ -36,10 +36,10 @@ def _candado(ses: dict, nombre: str) -> HTMLResponse:
     cuerpo = ("<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
               "<div class='panel' style='max-width:640px;margin:22px auto 0;text-align:center'>"
               "<span class='anf-item-ico' style='background:#0B7A57'>🎾</span>"
-              f"<h2 style='margin-top:12px'>Verifica tu identidad para ser {nombre.lower()}</h2>"
+              f"<h1 style='margin-top:12px;font-size:22px'>Verifica tu identidad para ser {nombre.lower()}</h1>"
               f"<p class='sub'>Vas a estar en una cancha con jugadores que no te conocen: por eso todo {nombre.lower()} de {MARCA} tiene "
-              "identidad verificada (DNI validado). Verifícate desde la app: Perfil → Verificar identidad. Toma un minuto.</p>"
-              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}' rel='noopener'>Abrir en la app</a>"
+              "identidad verificada (documento validado). Toma un minuto.</p>"
+              "<div class='acciones' style='justify-content:center'><a class='btn' href='/cuenta/identidad'>Verificar mi identidad</a>"
               "<a class='btn sec' href='/anfitrion'>Volver al menú</a></div></div>")
     return ui.shell(f"Soy {nombre.lower()}", cuerpo, nav=_cab(ses), sesion=ses, ancho=True)
 
@@ -135,7 +135,7 @@ _JS_BOL = (r"""
       .then(function(r){ return r.json(); }).then(function(j){
         if(j.ok){ pcgRecargar('Listo…'); return; }
         pcgCargando(false);
-        var m = {verificacion_requerida: 'Primero verifica tu identidad desde la app.', categoria_requerida: 'Elige tu categoría.', canchas_requeridas: 'Marca al menos un local.',
+        var m = {verificacion_requerida: 'Primero verifica tu identidad (Perfil → Verificar identidad).', categoria_requerida: 'Elige tu categoría.', canchas_requeridas: 'Marca al menos un local.',
                  tarifa_invalida: 'La tarifa no es válida.', cancha_invalida: 'Uno de los locales ya no está disponible.'}[j.error] || 'No se pudo guardar.';
         pcgAvisar({titulo: 'Revisa tu perfil', mensaje: m});
       }).catch(function(){ pcgCargando(false); pcgAvisar({titulo: 'Sin conexión', mensaje: 'No se pudo guardar. Inténtalo de nuevo.'}); });

@@ -126,6 +126,8 @@ def test_progreso_por_local_premio_en_el_checkout_y_ciclo(db, monkeypatch):
     # Sin sesión: la ficha explica la promo; el estado no cuenta nada.
     html = cli.get("/reservar/c_f1").text
     assert "Tarjeta de fidelidad de Club Fiel" in html and "Cada 3 reservas pagadas, una hora gratis" in html
+    # El JS repinta la caja sin sesión: necesita el nombre del local en su config.
+    assert '"local": "Club Fiel"' in html
     assert cli.get("/web/fidelidad?cancha_id=c_f1").json()["conteo"] == 0
     _sesion(cli, monkeypatch, "ana@gmail.com", "Ana Pérez")
     cargos = []

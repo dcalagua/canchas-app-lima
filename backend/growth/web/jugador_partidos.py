@@ -1597,7 +1597,7 @@ def pagina_referidos(request: Request) -> HTMLResponse:
         "<div class='jp-card'><b>¿Tienes el código de un amigo?</b><p class='sub' style='margin:4px 0 10px'>"
         + (f"Canjéalo y te sumamos {e(bono_txt)} a tu saldo (a tu amigo también). " if bono_txt else "")
         + "Solo puedes canjear un código una vez, y no el tuyo.</p>"
-        "<div style='display:flex;gap:8px'><input id='rfAmigo' maxlength='12' autocomplete='off' placeholder='PCG······' "
+        "<div style='display:flex;gap:8px'><input id='rfAmigo' aria-label='Código de tu amigo' maxlength='12' autocomplete='off' placeholder='PCG······' "
         "style='flex:1;min-width:0;text-transform:uppercase;letter-spacing:1px'>"
         "<button type='button' class='btn' id='rfBtn' onclick='rfCanjear()'>Canjear</button></div></div>")
     regla = (f"Comparte tu código. Cuando un amigo lo canjea, {e(bono_txt)} para cada uno, directo a tu saldo. 🎁"

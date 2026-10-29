@@ -63,6 +63,7 @@ LIMITES: dict[str, tuple[int, int]] = {
     "/web/asegurar": (20, 60),
     "/web/sesion/prueba": (10, 60),
     "/web/csp-reporte": (30, 60),
+    "/web/js-error": (20, 60),
 }
 _golpes: dict[tuple[str, str], list[float]] = {}
 _lock = threading.Lock()
@@ -176,6 +177,23 @@ def instalar(app: FastAPI) -> None:
             if len(_csp_vistos) > 500:
                 _csp_vistos.clear()
             print(f"[csp] {cuerpo[:600]}", flush=True)
+        return Response(status_code=204)
+
+    @app.post("/web/js-error", include_in_schema=False)
+    async def js_error(request: Request) -> Response:
+        """Errores de JavaScript de los usuarios (window.onerror en JS_NAV): una
+        línea `[js]` en los logs por error distinto y por hora."""
+        try:
+            cuerpo = (await request.body())[:1500].decode("utf-8", "replace")
+        except Exception:  # noqa: BLE001
+            cuerpo = ""
+        clave = "js:" + cuerpo[:240]
+        ahora = time.time()
+        if cuerpo and ahora - _csp_vistos.get(clave, 0) > 3600:
+            _csp_vistos[clave] = ahora
+            if len(_csp_vistos) > 500:
+                _csp_vistos.clear()
+            print(f"[js] {cuerpo[:800]}", flush=True)
         return Response(status_code=204)
 
     @app.middleware("http")

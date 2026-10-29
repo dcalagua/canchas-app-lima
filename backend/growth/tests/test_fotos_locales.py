@@ -232,15 +232,17 @@ def test_dueno_ve_el_aviso_en_la_web_y_en_el_app(db, _base, monkeypatch):
     fl.lanzar(avisar=False)
     _fotos(db, "c_lima", 1)
     mc = cli.get("/anfitrion/canchas").text
-    assert "Sube 3 fotos de Club Sur antes del 31 oct" in mc and "/anfitrion/cancha/c_gye/editar#sec-fotos" in mc
-    assert "Sube 2 fotos de Club Raqueta" in mc and "/anfitrion/cancha/c_lima/editar#sec-fotos" in mc
-    assert "Sube 3 fotos de Club Sur" in cli.get("/anfitrion/mis-canchas").text
+    # Dos locales con fotos pendientes: UN solo aviso con la lista (antes, un banner por local).
+    assert "2 de tus locales necesitan fotos tuyas" in mc and mc.count("class='aviso warn'") == 1
+    assert "<b>Club Sur</b>: faltan 3 fotos · antes del 31 oct" in mc and "/anfitrion/cancha/c_gye/editar#sec-fotos" in mc
+    assert "<b>Club Raqueta</b>: faltan 2 fotos" in mc and "/anfitrion/cancha/c_lima/editar#sec-fotos" in mc
+    assert "2 de tus locales necesitan fotos tuyas" in cli.get("/anfitrion/mis-canchas").text
     ed = cli.get("/anfitrion/cancha/c_gye/editar").text
     assert "Tu local lleva <b>0 de 3</b> fotos propias" in ed
     _base["hoy"]["d"] = date(2026, 11, 3)
     fl.invalidar()
     mc = cli.get("/anfitrion/canchas").text
-    assert "Club Sur ya no muestra fotos" in mc and "class='aviso err'" in mc
+    assert "<b>Club Sur</b>: faltan 3 fotos · ya no muestra fotos" in mc and "class='aviso err'" in mc
     # APK: estado de los locales del dueño.
     j = cli.get("/fotos-locales/mios", params={"email": "dueno@x.com"}).json()
     sur = next(x for x in j["locales"] if x["key"] == K_SUR)

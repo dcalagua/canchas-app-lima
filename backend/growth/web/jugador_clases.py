@@ -475,7 +475,7 @@ def _tarjeta_matricula(m: dict, a: dict | None, email: str, hoy: str, directo: b
     grupo = f"al-{m['id']}"
     chips = "".join(f"<span>{x}</span>" for x in (
         (f"📚 {e(prog)}" if prog else ""), (f"🕒 {e(horario)}" if horario else ""),
-        (f"📍 {e(' · '.join(x for x in ((a or {}).get('sedeClub'), (a or {}).get('zona')) if x))}" if (a or {}).get("sedeClub") or (a or {}).get("zona") else "")) if x)
+        (f"📍 {e(ui.unir_lugar((a or {}).get('sedeClub'), (a or {}).get('zona'), sep=' · '))}" if (a or {}).get("sedeClub") or (a or {}).get("zona") else "")) if x)
     h = (f"<div class='mc-card' id='m-{e(m['id'])}'><div class='mc-cab'>{_logo(a)}<div class='tx'><b>{e(nombre_aca)}</b>"
          f"<small>Alumno: {e(m.get('nombre'))}{e(_quien(m))}</small></div></div><div class='mc-body' data-grupo='{e(grupo)}' "
          f"data-mon='{e(sim)}' data-dep='{e(str((a or {}).get('deporte') or ''))}'>"

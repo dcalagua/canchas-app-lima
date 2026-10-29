@@ -265,7 +265,7 @@ def _tarjeta_res(r: dict, c: dict | None, hoy: date) -> str:
             f"<div class='quien'><span class='av'>{e(ini)}</span><div style='min-width:0'><b>{e(jugador)}</b>"
             f"<div class='sub' style='margin:0;font-size:12.5px'>{e(r.get('usuario') or '')}{(' · ' + e(tel)) if tel else ''}{' · reserva web' if web else ''}</div></div>"
             f"<b style='margin-left:auto;white-space:nowrap'>{e(sim)} {int(r.get('precio') or 0):.2f}</b></div>"
-            f"<div class='acc'>{pill}" + (f"<span class='pill gris'>{medio_txt}</span>" if medio_txt else "")
+            f"<div class='acc'>{pill}" + (f"<span class='pill gris'>{medio_txt}</span>" if medio_txt and not (pagado and medio in ("yape", "tarjeta")) else "")
             + (f"<a class='btn sec' href='https://wa.me/{e(''.join(ch for ch in tel if ch.isdigit()))}' target='_blank' rel='noopener'>💬 WhatsApp</a>" if tel else "")
             + ("" if noshow else (f"<button type='button' class='btn' data-pagar='{e(r.get('id'))}' data-v='1'>✅ Marcar pagada</button>" if not pagado
                else (f"<button type='button' class='btn sec' data-pagar='{e(r.get('id'))}' data-v='0'>↩ Marcar por cobrar</button>" if medio not in ("yape", "tarjeta") else "")))
@@ -353,8 +353,8 @@ def pagina_reservas(request: Request) -> HTMLResponse:
     filtros = ("<div class='chips' id='filMedio' style='margin-top:14px'>" + "".join(
         f"<button type='button' class='chip{' sel' if k == 'todos' else ''}' data-medio='{k}'>{n}</button>"
         for k, n in (("todos", "Todos"), ("online", "Online"), ("efectivo", "Efectivo"), ("manual", "Manual"))) + "</div>"
-        f"<div class='kpis'><div class='kpi'><small>Cobrado</small><b>{e(sim)} {cobrado}</b></div>"
-        f"<div class='kpi'><small>Por cobrar</small><b>{e(sim)} {pend}</b></div></div>")
+        f"<div class='kpis'><div class='kpi'><small>Cobrado</small><b>{e(ui.monto(cobrado, sim, 0))}</b></div>"
+        f"<div class='kpi'><small>Por cobrar</small><b>{e(ui.monto(pend, sim, 0))}</b></div></div>")
     cuerpo = ("<h1 class='anf-hola'>Reservas</h1><p class='sub'>Las reservas de tus canchas: en línea (web y app) y las que registraste a mano.</p>"
               + filtros + bloque("Próximas", prox, "Sin reservas próximas.") + bloque("Pasadas (30 días)", pas, "Sin reservas en los últimos 30 días.")
               + f"<script>{JS_PAGAR}{JS_FILTRO_RESERVAS}</script>")
@@ -522,7 +522,7 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
     <div class='row'><div><label for='mTel'>Teléfono <span class='req'>opcional</span></label><input id='mTel' inputmode='tel' maxlength='20' placeholder='999 888 777'></div>
     <div><label for='mEm'>Correo de su cuenta <span class='req'>opcional</span></label><input id='mEm' type='email' maxlength='120' placeholder='para que la vea en su app'></div></div>
     <label for='mPre'>Precio</label><div class='inp-moneda'><span>{e(sim)}</span><input id='mPre' type='number' min='0' step='0.5' inputmode='decimal'></div>
-    <label class='chk' style='margin-top:14px'><input type='checkbox' id='mPag'> Ya pagó <small>(si no, queda "por cobrar" en tu caja)</small></label>
+    <label class='chk' style='margin-top:14px'><input type='checkbox' id='mPag' aria-label='Ya pagó'> Ya pagó <small>(si no, queda "por cobrar" en tu caja)</small></label>
     <p class='sub' style='font-size:12.5px;margin-top:10px'>Cliente propio: sin comisión. No entra a tu billetera {MARCA}, sí a tu caja del día.</p>
    </div>
    <div id='calBloq' hidden style='margin-top:14px'><p class='sub' style='margin:0'>El turno deja de aparecer libre en la app y en la web (mantenimiento, uso propio, clases…). Puedes desbloquearlo cuando quieras.</p></div>
@@ -553,6 +553,8 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
         + ("" if cfg["pro"] else f"<p class='aviso warn' style='margin-top:12px'>📝 La reserva manual y el bloqueo de horas son parte de <b>{MARCA} Pro</b>. Actívalo en Perfil → 👑 {MARCA} Pro.</p>")
         + modal
         + f"<script>var CAL={ui.json_js(cfg, ensure_ascii=False)};var RES={ui.json_js(res_json, ensure_ascii=False)};</script><script>{_JS_CAL}{_JS_CAL_DIAS}</script>")
+    from web import anfitrion_agenda
+    cuerpo += anfitrion_agenda.tarjeta(ses["email"])
     return ui.shell("Calendario", cuerpo, nav=_cabecera("calendario", ses), sesion=ses, ancho=True, titulo_tab="Calendario · Modo anfitrión")
 
 
@@ -870,6 +872,8 @@ def _quitar_reserva_manual(request: Request, res_id: str) -> JSONResponse:
         return JSONResponse({"ok": False, "error": "Solo se quitan reservas manuales. Las pagadas por la app se cancelan con reembolso."}, status_code=400)
     if not datos.borrar_reserva_manual(res_id, ids):
         return JSONResponse({"ok": False, "error": "No pudimos quitarla en este momento."}, status_code=503)
+    from web import jugador_espera as _je
+    _je.avisar_liberados([(str(r.get("cancha_id")), str(r.get("fecha")), str(r.get("hora_inicio")))])
     usuario = str(r.get("usuario") or "").strip().lower()
     if usuario:
         from pagos import router as pr
@@ -1013,7 +1017,7 @@ def _tarjeta_cuenta_cobro(cuenta: dict | None, res: dict, pais_iso: str, ses: di
             "<div id='ccCciBox' hidden><label for='ccCci'>CCI <span class='req'>código interbancario de 20 dígitos · en tu app del banco</span></label><input id='ccCci' inputmode='numeric' autocomplete='off' maxlength='26'></div>"
             "<label for='ccTitular'>Titular <span class='req'>tal como figura en la cuenta</span></label><input id='ccTitular' maxlength='80' autocomplete='name'>"
             "<label>Documento del titular</label><div class='chips' id='ccDoc'></div>"
-            "<input id='ccDocNum' inputmode='numeric' autocomplete='off' maxlength='15' placeholder='Número de documento' style='margin-top:6px'>"
+            "<input id='ccDocNum' aria-label='Número de documento' inputmode='numeric' autocomplete='off' maxlength='15' placeholder='Número de documento' style='margin-top:6px'>"
             "<div class='err' id='ccErr' style='display:none'></div>"
             "<div class='acciones' style='margin-top:12px'><button type='submit' class='btn' id='ccGuardar'>Guardar cuenta de cobro</button>"
             "<button type='button' class='btn sec' id='ccCancelar'>Cancelar</button></div>"
@@ -1318,7 +1322,7 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
                        f"<button type='button' class='chip{' sel' if on else ''}' data-g='servicios' data-v='{e(k)}'>{x['emoji']} {e(x['nombre'])}</button>"
                        f"<span class='sub' style='margin:0;font-size:12px'>{_se.etiqueta_tipo(x['tipo'])}</span>"
                        f"<label class='precio-serv'{'' if on else ' hidden'}><span>{e(sim)}</span>"
-                       f"<input type='number' name='serv_{e(k)}' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
+                       f"<input type='number' name='serv_{e(k)}' aria-label='Precio del servicio' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
     local_nombre = (c.get("club") or "").strip() or c["nombre"]
     amen_txt = " · ".join(f"{catalogos.AMENIDADES[a][1]} {catalogos.AMENIDADES[a][0]}" for a in (c.get("amenidades") or []) if a in catalogos.AMENIDADES) or "ninguno configurado"
     loc_txt = " · ".join(f"{x['emoji']} {e(x['nombre'])} {e(sim)} {float(x['precio']):.2f} {_se.etiqueta_tipo(x['tipo'])}" for x in del_local) or "ninguno configurado"
@@ -1603,7 +1607,7 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
                        f"<button type='button' class='chip{' sel' if on else ''}' data-g='servicios' data-v='{e(k)}'>{x['emoji']} {e(x['nombre'])}</button>"
                        f"<span class='sub' style='margin:0;font-size:12px'>{_se.etiqueta_tipo(x['tipo'])}</span>"
                        f"<label class='precio-serv'{'' if on else ' hidden'}><span>{e(sim)}</span>"
-                       f"<input type='number' name='serv_{e(k)}' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
+                       f"<input type='number' name='serv_{e(k)}' aria-label='Precio del servicio' min='0.5' step='0.5' inputmode='decimal' value='{precio_txt}' placeholder='Precio'></label></div>")
     lista = "".join(f"<li>{_deporte(h.get('deporte'))[1]} <a href='/anfitrion/cancha/{e(h['id'])}/editar'>{e(h['nombre'])}</a> · {e(_deporte(h.get('deporte'))[0])}</li>" for h in hermanas)
     # TARJETA DE FIDELIDAD del local (sep-2026): cada N reservas pagadas, una
     # hora gratis o un % de descuento. Se guarda igual en todas las canchas.
@@ -1650,7 +1654,9 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
  <section class='panel edit-sec' id='sec-local'><h2>Nombre y dirección</h2>
   <label for='local'>Nombre del local / club</label><input id='local' maxlength='{catalogos.NOMBRE_MAX}' value='{e(local)}' placeholder='Ej. Complejo Los Olivos'>
   <label for='direccion'>Dirección</label><input id='direccion' maxlength='160' value='{e(c.get('direccion') or '')}' placeholder='Av. Aviación 1234, San Borja'>
-  <p class='sub' style='font-size:13px'>Zona: {e(_zona(c)) or '—'}. La ubicación en el mapa se ajusta desde la app.</p>
+  <label>Ubicación del local <span class='req'>arrastra el pin si quedó corrido (hasta {PIN_MAX_M} m)</span></label>
+  <div id='mapaLocal' style='height:260px;border-radius:var(--r-sm);margin-top:6px' aria-label='Mapa del local: arrastra el pin para ajustar la ubicación'></div>
+  <p class='sub' style='font-size:13px' id='pinTxt'>Zona: {e(_zona(c)) or '—'}. Los jugadores llegan con este punto (Cómo llegar).</p>
  </section>
  <section class='panel edit-sec' id='sec-amenidades'><h2>Servicios del local</h2><p class='sub'>Gratis para el jugador. Salen como filtros en Explorar y se aplican a todas las canchas.</p>
   {_chips('amenidades', [(k, f'{ico} {e(n)}') for k, (n, ico) in catalogos.AMENIDADES.items()], set(amen), multi=True)}
@@ -1672,10 +1678,33 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
 </div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Se aplica a las {len(hermanas)} cancha{'s' if len(hermanas) != 1 else ''} del local.</span>
 <button type='button' class='btn' id='btnGuardar'>Guardar local</button></div></div>
-<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_LOCAL}</script>"""
-    return ui.shell("Editar local", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True,
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_LOCAL}</script>
+<script>{_JS_PIN.replace('⟦LAT⟧', ui.json_js(c.get('lat'))).replace('⟦LNG⟧', ui.json_js(c.get('lng'))).replace('⟦MAX⟧', str(PIN_MAX_M))}</script>"""
+    return ui.shell("Editar local", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True, extra_head=_LEAFLET,
                     titulo_tab=f"Editar {local} · Modo anfitrión")
 
+
+# Ajustar el pin del local desde la web (antes: "se ajusta desde la app"). Solo
+# un AJUSTE: más lejos que esto sería otro lugar (y otra verificación).
+PIN_MAX_M = 300
+
+_JS_PIN = r"""
+(function(){
+  var lat0 = ⟦LAT⟧, lng0 = ⟦LNG⟧, MAX = ⟦MAX⟧, el = document.getElementById('mapaLocal');
+  if(!el || !window.L || lat0 == null || lng0 == null){ if(el) el.style.display = 'none'; return; }
+  var mapa = L.map(el).setView([lat0, lng0], 17);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '© OpenStreetMap'}).addTo(mapa);
+  L.circle([lat0, lng0], {radius: MAX, color: '#0B7A57', weight: 1, fillOpacity: .05}).addTo(mapa);
+  var pin = L.marker([lat0, lng0], {draggable: true, keyboard: true, title: 'Ubicación del local'}).addTo(mapa);
+  pin.on('dragend', function(){
+    var p = pin.getLatLng(), d = mapa.distance([lat0, lng0], p), t = document.getElementById('pinTxt');
+    if(d > MAX){ pin.setLatLng([lat0, lng0]); window.__pinLocal = null;
+      if(window.pcgAvisar) pcgAvisar({titulo: 'Muy lejos', icono: '📍', mensaje: 'Solo puedes ajustar el pin hasta ' + MAX + ' m. Si tu local se mudó, escríbenos.'}); return; }
+    window.__pinLocal = {lat: Math.round(p.lat * 1e7) / 1e7, lng: Math.round(p.lng * 1e7) / 1e7};
+    if(t) t.textContent = 'Pin movido ' + Math.round(d) + ' m. Guarda para aplicarlo a todas las canchas del local.';
+  });
+})();
+"""
 
 _JS_LOCAL = r"""
 (function(){
@@ -1719,6 +1748,7 @@ $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('ms
   var serv=[];document.querySelectorAll('.serv.sel').forEach(function(r){serv.push({clave:r.dataset.serv,precio:parseFloat(r.querySelector('input').value)||0})});
   var fid={activa:sel('fid_activa')[0]==='1',meta:parseInt(sel('fid_meta')[0]||'5',10),premio:sel('fid_premio')[0]||'hora_gratis',descuentoPct:parseInt(sel('fid_pct')[0]||'20',10),ventanaDias:parseInt(sel('fid_ventana')[0]||'180',10),aplica:sel('fid_aplica')[0]||'todas'};
   var body={nombre_local:$('local').value,direccion:$('direccion').value,amenidades:sel('amenidades'),servicios_extra:serv,fidelidad:fid,fotos_local:fotos.map(function(f){return f.url})};
+  if(window.__pinLocal){body.lat=window.__pinLocal.lat;body.lng=window.__pinLocal.lng;}
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Guardando…';
   try{var r=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){location.href=j.url||'/anfitrion/canchas';return}msg.classList.add('err');msg.textContent=j.error||'No se pudo guardar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth'})}}
@@ -1786,6 +1816,17 @@ def _guardar_edicion_local(request: Request, cancha_id: str, _cuerpo_json) -> JS
             return JSONResponse({"ok": False, "error": msgs.get(err, "Revisa la tarjeta de fidelidad."), "campo": "fidelidad"}, status_code=400)
         if not datos.col_fidelidad_disponible():
             fid_cfg = None  # la base aún no tiene la columna: no se rompe el resto del guardado
+    pin = None
+    if b.get("lat") is not None and b.get("lng") is not None:
+        from propiedad.reclamos import _distancia_m
+        try:
+            nlat, nlng = float(b["lat"]), float(b["lng"])
+        except (TypeError, ValueError):
+            return JSONResponse({"ok": False, "error": "Ubicación inválida.", "campo": "ubicacion"}, status_code=400)
+        if c.get("lat") is None or c.get("lng") is None or _distancia_m(c["lat"], c["lng"], nlat, nlng) > PIN_MAX_M:
+            return JSONResponse({"ok": False, "error": f"Solo puedes ajustar el pin hasta {PIN_MAX_M} m. Si tu local se mudó, escríbenos.",
+                                 "campo": "ubicacion"}, status_code=400)
+        pin = (round(nlat, 7), round(nlng, 7))
     hermanas = _hermanas_local(ses["email"], c)
     fotos_por, quitadas = _repartir_fotos_local(c, hermanas, b.get("fotos_local"))
     n = 0
@@ -1793,6 +1834,8 @@ def _guardar_edicion_local(request: Request, cancha_id: str, _cuerpo_json) -> JS
         propios = [_se.completar(x) for x in (h.get("servicios_extra") or []) if x.get("clave")]
         nuevos = [x for x in propios if x.get("ambito") != "local"] + [dict(x) for x in locales]
         campos = {"club": local, "direccion": direccion or None, "amenidades": amen, "servicios_extra": nuevos}
+        if pin:
+            campos["lat"], campos["lng"] = pin
         if fid_cfg is not None:
             campos["fidelidad"] = fid_cfg
         if fotos_por is not None and h["id"] in fotos_por:
@@ -2092,7 +2135,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
   <div id='mapaSede' class='mapa-sede' style='margin-top:6px'></div>
   <div class='acciones' style='margin-top:8px'><button type='button' class='btn sec' id='btnUbic'>📍 Usar mi ubicación</button><span class='sub' id='ubicTxt' style='margin:0'>{'Toca el mapa para fijar tu cancha.' if la is None else f'{la:.5f}, {ln:.5f}'}</span></div>
   <label>Zona</label>
-  <div class='row' id='geoRow' style='grid-template-columns:1fr 1fr 1fr'><select id='g1'><option value=''>—</option></select><select id='g2'><option value=''>—</option></select><select id='g3'><option value=''>—</option></select></div>
+  <div class='row' id='geoRow' style='grid-template-columns:1fr 1fr 1fr'><select id='g1' aria-label='Zona: nivel 1'><option value=''>—</option></select><select id='g2' aria-label='Zona: nivel 2'><option value=''>—</option></select><select id='g3' aria-label='Zona: nivel 3'><option value=''>—</option></select></div>
  </section>
  <section class='panel edit-sec' id='sec-deportes'><h2>Deportes y tipo de piso</h2><p class='sub'>Marca todo lo que se juega en tu local.</p>
   {_chips('deportes', dep_ops, set(pre['deportes']), multi=True)}

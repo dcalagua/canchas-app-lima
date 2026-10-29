@@ -858,7 +858,7 @@ def pagina_liga(request: Request, tab: str = "ranking", deporte: str = "", modal
 
     det = " · ".join(x for x in ((mi_circ or {}).get("zona"), ("Cat. " + mi_circ["categoria"]) if (mi_circ or {}).get("categoria") else "") if x)
     estado = ((f"✅ Estás en el circuito{' · ' + e(det) if det else ''}") if mi_circ else "🏆 Únete al circuito y deja que te reten")
-    hero = (f"<div class='lg-hero'><div class='top'><span class='bola'>🎾</span><div><b>Liga de tenis {MARCA}</b>"
+    hero = (f"<div class='lg-hero'><div class='top'><span class='bola'>🎾</span><div><h1 style='font:inherit;margin:0;color:inherit'><b>Liga de tenis {MARCA}</b></h1>"
             "<small>Rankea, reta y sube en tu ciudad</small></div></div>"
             f"<div class='est'>{estado}</div><div class='acc'>"
             + ("" if mi_circ else "<button type='button' class='btn' onclick='lgUnirme()'>Unirme al circuito</button>")

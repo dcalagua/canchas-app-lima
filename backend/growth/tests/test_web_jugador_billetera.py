@@ -75,7 +75,8 @@ def test_movimientos_web_son_los_mismos_del_apk(monkeypatch):
     assert all(m["moneda"] == "PEN" for m in api)
 
     html = _cli().get("/mi-billetera").text
-    assert "Mi billetera" in html and "S/ 50.00" in html and "⭐ Destacado" in html
+    # Sin canchas (solo juega): sin el sello de "destacado", que es de los dueños.
+    assert "Mi billetera" in html and "S/ 50.00" in html and "destacadas" not in html and "Pausado" not in html
     assert "Por recibir" in html and "S/ 57.00" in html and "Registra tu cuenta de cobro" in html
     assert "href='/anfitrion/ingresos'" in html
     assert "Cobrado al cliente" in html and "Comisión Pichangol" in html

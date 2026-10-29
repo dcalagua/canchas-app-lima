@@ -226,7 +226,8 @@ def test_noshow_y_filtro_de_reservas(cli, monkeypatch):
     monkeypatch.setattr(ng, "marcar_noshow", lambda rid, ids: hechos.append(rid) or True)
     html = cli.get("/anfitrion/reservas").text
     assert "id='filMedio'" in html and "data-medio='efectivo'" in html and "data-noshow='r1'" in html and "data-noshow='r2'" not in html
-    assert "💵 Efectivo" in html and "📱 Yape" in html
+    # En línea el medio va en la píldora ("Pagada en línea · yape"), sin chip repetido.
+    assert "💵 Efectivo" in html and "Pagada en línea · yape" in html and "📱 Yape</span>" not in html
     assert cli.post("/anfitrion/reserva/r1/noshow").json()["ok"] and hechos == ["r1"]
     assert cli.post("/anfitrion/reserva/r2/noshow").status_code == 409  # pagada en línea
     assert cli.post("/anfitrion/reserva/zz/noshow").status_code == 404

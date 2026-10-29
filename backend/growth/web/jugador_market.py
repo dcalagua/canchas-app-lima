@@ -452,7 +452,7 @@ def pagina_marketplace(request: Request) -> HTMLResponse:
               + f"<div class='mk-h'><div><h1>Marketplace {MARCA}</h1>"
               "<p class='sub'>Raquetas, pelotas e indumentaria de los locales y jugadores verificados. Pagas seguro y coordinas la entrega con el vendedor.</p></div>"
               "<div class='acc'><a class='btn sec' href='/mis-ordenes'>🛍️ Mis compras</a></div></div>"
-              "<div class='mk-busca'><span>🔍</span><input id='mkQ' type='search' placeholder='Buscar producto o vendedor…' autocomplete='off' maxlength='60'></div>"
+              "<div class='mk-busca'><span>🔍</span><input id='mkQ' type='search' aria-label='Buscar producto o vendedor' placeholder='Buscar producto o vendedor…' autocomplete='off' maxlength='60'></div>"
               + (f"<div class='mk-cats' id='mkCats'>{chips}</div>" if prods else "")
               + grid
               + "<a class='btn mk-fab' href='/anfitrion/tienda'>🏷️ Vender</a>"
@@ -901,7 +901,7 @@ def pagina_bonos_local(request: Request, cancha_id: str) -> HTMLResponse:
                f"data-linea='{e(titulo)} · {e(club)}'>{e(_monto(sim, o['precio']))}</button>" if (puede and o["precio"] >= 1)
                else f"<span style='font-weight:800'>{e(_monto(sim, o['precio']))}</span>")
         packs.append(f"<div class='pack'><div class='h'>{o['horas']}h</div><div class='tx'><b>{e(titulo)}</b>"
-                     f"<div class='sub' style='margin:0;font-size:13px'>{e(_monto(sim, ph))}/hora" + (f" · ahorras {ahorro} %" if ahorro > 0 else "") + "</div></div>"
+                     f"<div class='sub' style='margin:0;font-size:13px'>{e(_monto(sim, ph))}/hora" + (f" · <span style='white-space:nowrap'>ahorras {ahorro} %</span>" if ahorro > 0 else "") + "</div></div>"
                      f"{btn}</div>")
     if not ofertas:
         cuerpo_packs = "<div class='mk-vacio'><div class='em'>🎟️</div><b>Este local aún no ofrece bonos</b>Cuando publique packs de horas aparecerán aquí.</div>"
@@ -909,7 +909,7 @@ def pagina_bonos_local(request: Request, cancha_id: str) -> HTMLResponse:
         cuerpo_packs = "".join(packs)
     nota = ""
     if mio:
-        nota = "<div class='estado warn'>Son los packs de tu local: así los ven los jugadores. Se administran desde la app (Mis canchas → Bonos).</div>"
+        nota = "<div class='estado warn'>Son los packs de tu local: así los ven los jugadores. <a href='/anfitrion/bonos'>Administrar mis bonos ›</a></div>"
     elif ofertas and not _pago_web_disponible(iso):
         nota = (f"<div class='estado warn'>Este local cobra en {e(sim)}: el pago en línea en esa moneda aún no está disponible en la web. "
                 f"<a href='{PLAY_URL}'>Compra tu bono en la app</a>.</div>")

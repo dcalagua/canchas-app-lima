@@ -15,8 +15,11 @@ import pytest  # noqa: E402
 def _sin_limites_por_ip(monkeypatch):
     """Toda la suite pega desde la misma IP ('testclient'): los límites por IP
     de la web (`web/seguridad_web.py`) se prueban aparte, en su propio test."""
-    from web import seguridad_web
+    from web import datos, seguridad_web
     monkeypatch.setattr(seguridad_web, "ACTIVO", False)
+    # Cada test arma su propia base: sin la caché de canchas de la web.
+    monkeypatch.setattr(datos, "CANCHAS_TTL", 0)
+    datos.invalidar_canchas()
 
 
 def con_assets(cli, html: str) -> str:

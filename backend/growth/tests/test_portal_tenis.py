@@ -59,7 +59,8 @@ def test_portada_de_tenis_muestra_solo_raqueta_y_torneos(monkeypatch):
     r = client.get("/tenis")
     assert r.status_code == 200
     t = r.text
-    assert "Tenis y pádel, en un solo lugar" in t
+    # El título sale de los deportes prendidos en la torre (pádel está retirado).
+    assert "Tenis y pickleball, en un solo lugar" in t and "Reservar pádel" not in t
     assert "Club Raqueta" in t and "Sabor Golazo" not in t
     assert "/c/camp_1" in t and "Organiza Club Lawn Tennis de la Exposición" in t
     assert "/partidos?tab=partner" in t and "/liga" in t and "/anfitrion/campeonatos" in t
@@ -70,3 +71,17 @@ def test_portada_de_tenis_vacia_no_se_rompe(monkeypatch):
     monkeypatch.setattr(datos, "campeonatos_publicos", lambda deps, limite=12: [])
     r = client.get("/tenis")
     assert r.status_code == 200 and "No hay torneos abiertos ahora" in r.text
+
+
+def test_pestanas_y_titulos_siguen_los_deportes_activos(monkeypatch):
+    from db.store import stores
+    monkeypatch.setattr(datos, "canchas_publicas", lambda: [])
+    monkeypatch.setitem(stores.config, "deportes_activos", "futbol,tenis,pickleball,voley,basquet")
+    t = client.get("/").text
+    assert "data-dep='padel'" not in t and "data-dep='futsal'" not in t and "data-dep='voley'" in t
+    assert "Reserva canchas de fútbol, tenis, pickleball, vóley y básquet" in t
+    assert "href='/canchas?deporte=padel'" not in t   # pie
+    # Si la torre prende pádel, vuelve solo.
+    monkeypatch.setitem(stores.config, "deportes_activos", "futbol,tenis,padel")
+    t = client.get("/").text
+    assert "data-dep='padel'" in t and "Tenis y pádel, en un solo lugar" in client.get("/tenis").text

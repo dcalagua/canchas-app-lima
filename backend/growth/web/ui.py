@@ -132,7 +132,7 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 .slot .dia{font-size:11px;font-weight:700;color:var(--tenue)}
 .slot.sel{background:var(--noche);border-color:var(--noche)}.slot.sel b,.slot.sel b small,.slot.sel .pr,.slot.sel .dia{color:#fff}
 .slot.sel .tag{background:rgba(255,255,255,.18);color:#fff}
-.slot.off{opacity:.6;cursor:not-allowed;background:var(--gris)}.slot.off b{text-decoration:line-through}
+.slot.off{background:var(--gris);cursor:pointer}.slot.off b,.slot.off .pr{opacity:.6}.slot.off b{text-decoration:line-through}.slot .tag.esp{background:#fff;border:1px dashed var(--trazo);color:var(--tenue)}.slot .tag.esp.on{border-style:solid;border-color:var(--esmeralda);color:var(--esmeralda)}
 button.slot{font:inherit;color:inherit;text-align:left;width:100%;min-height:44px}
 .cl-aviso{display:flex;flex-direction:column;gap:4px;padding:14px 16px;border-radius:var(--r);background:var(--tinte);color:var(--ok-fg);font-size:14px}.cl-aviso b{font-size:15px}.cl-aviso.warn{background:var(--warn-bg);color:var(--warn-fg)}.cl-aviso.bad{background:var(--bad-bg);color:var(--bad-fg)}
 .politica{margin:18px 0 6px;border:1px solid var(--trazo);border-radius:var(--r);padding:0 16px}.politica summary{cursor:pointer;font-weight:800;padding:14px 0;min-height:44px;list-style-position:inside}.politica ul{list-style:none;margin:0;padding:0 0 8px}.politica li{display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--gris);font-size:14px}.politica li span:first-child{flex:none;width:22px;text-align:center}.politica a{display:inline-block;margin:4px 0 14px;font-size:13px}
@@ -141,6 +141,14 @@ button.slot{font:inherit;color:inherit;text-align:left;width:100%;min-height:44p
 .strip{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 8px;min-width:0;max-width:100%;scrollbar-width:none;-webkit-overflow-scrolling:touch}.strip::-webkit-scrollbar{display:none}
 .strip .chip{flex-direction:column;gap:2px;padding:10px 14px;min-width:74px;align-items:center}
 .strip .chip b{font-size:15px}.strip .chip small{font-size:11.5px}
+/* Flechas de la tira de días (solo escritorio: en el celular se desliza con el dedo). */
+.strip-wrap{position:relative;min-width:0}
+.strip-fl{display:none}
+@media (min-width:900px){
+  .strip-fl{display:flex;position:absolute;top:50%;transform:translateY(-60%);z-index:2;width:34px;height:34px;border-radius:50%;border:1px solid var(--trazo);background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.12);align-items:center;justify-content:center;font-size:20px;line-height:1;color:var(--noche);cursor:pointer}
+  .strip-fl.izq{left:-10px}.strip-fl.der{right:-10px}
+  .strip-fl[hidden]{display:none}
+}
 /* tarjetas */
 .card{background:var(--blanco);border-radius:var(--r-lg);box-shadow:var(--sombra);overflow:hidden;display:flex;flex-direction:column}
 .card:hover{box-shadow:var(--sombra2)}
@@ -189,7 +197,8 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .barra-fija{display:none}
 @media(max-width:900px){
   .barra-fija{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--blanco);border-top:1px solid var(--trazo);padding:12px 16px calc(12px + env(safe-area-inset-bottom));gap:12px;align-items:center;justify-content:space-between;z-index:30;box-shadow:0 -6px 20px rgba(15,27,45,.08)}
-  .barra-fija .t{font-weight:800;font-size:18px}.barra-fija .btn{flex:1;max-width:60%}
+  .barra-fija .t{font-weight:800;font-size:18px;white-space:nowrap}.barra-fija>div:first-child{flex:none}
+  .barra-fija .btn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:12px;padding-right:12px}
   body.con-barra{padding-bottom:88px}
 }
 /* marcas de pago */
@@ -213,7 +222,8 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .galeria.una{grid-template-columns:1fr;grid-template-rows:300px}.galeria.una .principal{grid-row:auto}
 @media(max-width:640px){.galeria.una{grid-template-rows:220px}}
 .galeria .principal{grid-row:1/3}
-@media(max-width:640px){.galeria{grid-template-columns:1fr;grid-template-rows:220px}.galeria .principal{grid-row:auto}.galeria>*:not(.principal){display:none}}
+/* Celular: carrusel deslizable; la siguiente foto asoma para que se note que hay más. */
+@media(max-width:640px){.galeria:not(.una){display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;border-radius:var(--r-lg);gap:8px}.galeria:not(.una)::-webkit-scrollbar{display:none}.galeria:not(.una)>*{flex:0 0 86%;height:230px;scroll-snap-align:start;border-radius:var(--r-lg)}.galeria .principal{grid-row:auto}}
 ul.datos{list-style:none;padding:0;margin:10px 0 0;font-size:14px;color:var(--tenue);font-weight:600}
 ul.datos li{margin:6px 0;display:flex;gap:8px;align-items:flex-start}
 .amen{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.amen span{background:var(--gris);border-radius:999px;padding:5px 10px;font-size:12.5px;font-weight:700;color:var(--tenue)}
@@ -397,11 +407,16 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 /* panel del anfitrión */
 .anf-hola{font-size:28px;margin:26px 0 4px}
 .anf-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 12px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.anf-tabs .chip.sel small{color:inherit;opacity:.85}
 .anf-tabs .chip.sel{background:var(--noche);color:#fff;border-color:var(--noche)}
 .anf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:14px}
 .anf-res{background:var(--blanco);border:1px solid var(--trazo);border-radius:16px;padding:14px 16px;box-shadow:var(--sombra);min-width:0}
 .anf-res .hora{font-size:20px;font-weight:800}
 .anf-res .quien{display:flex;align-items:center;gap:10px;margin-top:8px}
+.anf-res .quien>div{flex:1;min-width:0}
+.anf-res .quien .sub{overflow-wrap:anywhere}
+.anf-res .quien>b{flex:none}
 .anf-res .quien .av{width:36px;height:36px;border-radius:50%;background:var(--tinte);color:var(--teal);display:inline-flex;align-items:center;justify-content:center;font-weight:800}
 .anf-res .acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.anf-res .acc .btn{padding:8px 12px;font-size:13px;flex:0 0 auto;min-width:0}
 .anf-vacio{background:var(--gris);border-radius:16px;padding:26px;text-align:center;color:var(--tenue);font-weight:600}
@@ -649,6 +664,11 @@ button.btn,a.btn,button.chip,a.chip,.redondo{min-height:44px}.redondo{min-width:
 .lst .foto{position:relative;border-radius:14px;overflow:hidden;aspect-ratio:1/0.95;background:var(--gris)}
 .lst .fotos{display:flex;height:100%;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
 .lst .fotos::-webkit-scrollbar{display:none}
+/* Canchas de Google aún sin registrar: sin foto, tarjeta baja; se muestran 8 y "Ver más". */
+#gridDesc .lst .foto:has(.sinfoto){aspect-ratio:16/9}
+#gridDesc .lst .sinfoto{font-size:40px}
+#gridDesc .lst.desc-extra{display:none!important}
+.desc-mas{display:flex;justify-content:center;margin:18px 0 6px}
 .lst .fotos img,.lst .fotos .sinfoto{flex:0 0 100%;width:100%;height:100%;object-fit:cover;scroll-snap-align:start;aspect-ratio:auto;display:block}
 .lst .fotos .sinfoto{font-size:56px;display:flex}
 .lst .fotos img{color:transparent}
@@ -681,6 +701,17 @@ button.btn,a.btn,button.chip,a.chip,.redondo{min-height:44px}.redondo{min-width:
 .links a.yo:hover{background:var(--blanco);box-shadow:var(--sombra)}
 .avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;display:inline-flex;align-items:center;justify-content:center;background:var(--tinte);color:var(--teal);font-weight:800;font-size:13px}
 @media(max-width:640px){.links a.yo,.links a.entrar{display:inline-flex}.links a.yo .nom{display:none}}
+/* Servicios extra de la ficha: fila tocable de 48 px; la cantidad sale solo al marcarlo. */
+/* Acciones del local en la ficha: en el celular el texto no se parte en dos líneas. */
+.acc-local{margin:6px 0 14px}
+.acc-local .btn{white-space:nowrap}
+@media (max-width:600px){.acc-local .btn{font-size:14px;padding-left:10px;padding-right:10px}}
+label.extra{display:flex;gap:10px;align-items:center;flex-wrap:wrap;min-height:48px;margin:8px 0;padding:8px 12px;border:1px solid var(--trazo);border-radius:var(--r-sm);font-weight:600;cursor:pointer}
+label.extra:has(input:checked){border-color:var(--esmeralda);background:var(--tinte)}
+label.extra input[type=checkbox]{width:20px;height:20px;flex:none;margin:0;accent-color:var(--esmeralda)}
+label.extra small{color:var(--tenue)}
+label.extra select.cant{display:none;width:auto;margin-left:auto;padding:6px 10px}
+label.extra:has(input:checked) select.cant{display:block}
 .login-box{background:var(--tinte);border-radius:var(--r);padding:16px 18px;margin-top:8px}
 .login-box b{font-size:15px}
 .quien{display:flex;align-items:center;gap:12px;margin:10px 0 4px;padding:12px 14px;border:1px solid var(--trazo);border-radius:var(--r);background:var(--blanco)}
@@ -900,6 +931,42 @@ def medio_pago_mini(pasarela: str = "culqi") -> str:
 _PLUS_CODE = re.compile(r"^\s*[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}\b[,\s]*", re.I)
 
 
+def codigo_corto(ref: str) -> str:
+    """Código legible y estable de una reserva ("CL-7K2P9Q", siglas de la marca) para el
+    comprobante, en vez del id interno (`web_1787…_0`, `grp_…`). El id real
+    sigue en la URL y en el title, para soporte."""
+    import zlib
+    n = zlib.crc32(str(ref or "").encode()) or 1
+    alfabeto = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"   # sin 0/O ni 1/I
+    out = ""
+    while n and len(out) < 6:
+        n, r = divmod(n, len(alfabeto))
+        out += alfabeto[r]
+    pref = "".join(ch for ch in MARCA if ch.isupper())[:3] or "R"   # CanchaLibre → "CL"
+    return f"{pref}-" + out.ljust(6, "2")
+
+
+def monto(v: float, sim: str = "S/", dec: int = 2) -> str:
+    """"S/ 56 070.00": separador de miles con espacio (igual en toda la web)."""
+    return f"{sim} {float(v or 0):,.{dec}f}".replace(",", " ")
+
+
+def unir_lugar(*partes: str, sep: str = ", ") -> str:
+    """Une partes de una ubicación sin repetir: si una ya está contenida en lo
+    anterior (sin tildes ni mayúsculas) se omite. "Calle Los Laureles 365, San
+    Isidro" + "San Isidro" → sin el segundo "San Isidro"."""
+    import unicodedata
+
+    def norm(t: str) -> str:
+        return "".join(ch for ch in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(ch) != "Mn")
+    out: list[str] = []
+    for p in partes:
+        p = str(p or "").strip()
+        if p and norm(p) not in norm(sep.join(out)):
+            out.append(p)
+    return sep.join(out)
+
+
 def direccion_legible(texto: str) -> str:
     """Dirección para personas: Google a veces la da como Plus Code
     ("373R+J63, Lurigancho-Chosica 15468, …"), que nadie entiende; se quita."""
@@ -994,21 +1061,30 @@ def redes_pie(em: dict) -> str:
                       for r in rs) + "</div>")
 
 
+def _titulo_raquetas() -> str:
+    from web import catalogos
+    return catalogos.titulo_raquetas()
+
+
 def footer() -> str:
     """Pie de página con columnas (estilo Airbnb) + datos del comercio que
     exigen Culqi/INDECOPI (razón social, RUC, contacto, Libro de Reclamaciones,
     políticas de devolución y términos, redes oficiales) en TODAS las páginas."""
     import empresa
+    from web import catalogos
     em = empresa.datos()
+    activos = catalogos.deportes_activos()
+    deps_pie = " · ".join(catalogos.NOMBRE_DEPORTE.get(d, d).capitalize() for d in activos)
     return (
         "<footer class='pie'><div class='wrap-xl'><div class='pie-cols'>"
         f"<div>{wordmark(20)}<div>Reserva, juega, repite.</div>"
-        "<div style='margin-top:10px;font-size:12.5px'>Fútbol · Tenis · Pádel · Pickleball<br>Perú · Ecuador · Bolivia</div>"
+        f"<div style='margin-top:10px;font-size:12.5px'>{e(deps_pie)}<br>Perú · Ecuador · Bolivia</div>"
         f"{redes_pie(em)}</div>"
-        "<div><h4>Reservar</h4><a href=\"/canchas\">Todas las canchas</a><a href='/canchas?deporte=futbol'>Canchas de fútbol</a>"
-        "<a href='/canchas?deporte=tenis'>Canchas de tenis</a><a href='/canchas?deporte=padel'>Canchas de pádel</a><a href='/tenis'>Tenis y pádel: torneos y partner</a>"
+        "<div><h4>Reservar</h4><a href=\"/canchas\">Todas las canchas</a>"
+        + "".join(f"<a href='/canchas?deporte={d}'>Canchas de {catalogos.NOMBRE_DEPORTE.get(d, d)}</a>" for d in activos[:3])
+        + f"<a href='/tenis'>{e(catalogos.titulo_raquetas())}: torneos y partner</a>"
         "<a href='/canchas?deporte=academias'>Academias</a><a href='/#servicios'>Servicios y precios</a></div>"
-        "<div><h4>Soporte</h4><a href='/#contacto'>Contacto</a><a href='/#como'>Cómo funciona</a>"
+        "<div><h4>Soporte</h4><a href='/ayuda'>Centro de ayuda</a><a href='/#contacto'>Contacto</a><a href='/#como'>Cómo funciona</a>"
         "<a href='/#pagos'>Pagos y seguridad</a><a href='/legal/devoluciones'>Cambios, cancelaciones y devoluciones</a>"
         f"<a class='libro' href='/libro-de-reclamaciones'>{LIBRO_SVG}<span>Libro de Reclamaciones</span></a></div>"
         f"<div><h4>{MARCA}</h4><a href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>Descarga la app</a>"
@@ -1066,7 +1142,7 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
     if ses:
         nombre = ses.get("nombre") or ses.get("email") or ""
         cuenta = (f"<div class='yo'>{_avatar(ses)}<div><b>{e(nombre)}</b><small>{e(ses.get('email'))}</small></div></div>"
-                  "<hr><a class='b' href='/perfil'>👤 Perfil</a><a class='b' href='/mensajes'>💬 Mensajes <span class='bdg-msj' data-badge-mensajes hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:11px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/buscar'>🔎 Busca tu cancha</a><a class='b' href='/novedades'>📰 Novedades</a><a class='b' href='/canales'>📢 Canales</a><a class='b' href='/partidos'>⚽ Juega ya</a><a class='b' href='/mis-reservas'>📅 Mis reservas</a>"
+                  "<hr><a class='b' href='/perfil'>👤 Perfil</a><a class='b' href='/mensajes'>💬 Mensajes <span class='bdg-msj' data-badge-mensajes hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:11px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/buscar'>🔎 Busca tu cancha</a><a class='b' href='/novedades'>📰 Novedades</a><a class='b' href='/canales'>📢 Canales</a><a class='b' href='/partidos'>⚽ Juega ya</a><a class='b' href='/notificaciones'>🔔 Notificaciones <span data-badge-avisos hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:11px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/mis-reservas'>📅 Mis reservas</a><a class='b' href='/mis-favoritos'>♥ Mis favoritos</a>"
                   "<button type='button' onclick='window.pcgSalir&&pcgSalir()'>Cerrar sesión</button>")
         avatar = f"<a class='redondo' href='/perfil' title='{e(ses.get('email'))}' aria-label='Tu perfil'>{_avatar(ses)}</a>"
     else:
@@ -1086,7 +1162,7 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
         "<div class='menu'><button type='button' class='redondo' id='btnMenu' aria-label='Menú' aria-expanded='false'>"
         f"{_HAMB_SVG}</button>"
         f"<div class='menu-panel' id='menuPanel' role='menu'>{cuenta}<hr>"
-        "<a href='/tenis'>🎾 Tenis y pádel</a><a href='/#como'>Cómo funciona</a><a href='/#contacto'>Centro de ayuda</a><hr>"
+        f"<a href='/tenis'>🎾 {e(_titulo_raquetas())}</a><a href='/#como'>Cómo funciona</a><a href='/ayuda'>Centro de ayuda</a><hr>"
         + ("<a class='b' href='/'>Cambiar a modo jugador</a>" if modo == "anfitrion" else "<a class='b' href='/anfitrion'>Modo anfitrión</a>")
         + f"<a href='/anfitrion/nueva'>Pon tu cancha en {MARCA}</a>"
         f"<a href='{PLAY_URL}' rel='noopener'>Descarga la app</a><hr>"
@@ -1154,6 +1230,13 @@ JS_NAV = (r"""
   document.addEventListener('DOMContentLoaded', function(){
     Array.prototype.forEach.call(document.images, function(i){ if(i.complete && i.naturalWidth === 0 && i.getAttribute('src')) fotoRota(i); });
   });
+  // Errores de JavaScript del usuario → logs del servidor ([js]), máx. 5 por página.
+  (function(){ var n = 0;
+    function enviar(msg, src, linea){ if(n++ >= 5 || !navigator.sendBeacon) return;
+      try { navigator.sendBeacon('/web/js-error', JSON.stringify({m: String(msg).slice(0, 300), s: String(src || '').slice(0, 200), l: linea || 0, u: location.pathname, ua: navigator.userAgent.slice(0, 120)})); } catch(e){} }
+    window.addEventListener('error', function(ev){ if(ev && ev.message) enviar(ev.message, ev.filename, ev.lineno); });
+    window.addEventListener('unhandledrejection', function(ev){ enviar('promesa: ' + ((ev && ev.reason && (ev.reason.message || ev.reason)) || '')); });
+  })();
   function bordesTabs(){
     document.querySelectorAll('.cab-tabs').forEach(function(t){
       var mas = t.scrollWidth > t.clientWidth + 2;
@@ -1163,6 +1246,19 @@ JS_NAV = (r"""
     });
   }
   document.addEventListener('DOMContentLoaded', bordesTabs); window.addEventListener('resize', bordesTabs);
+  // Tiras desplazables con flechas (.strip-wrap): se muestran solo si hay más hacia ese lado.
+  function flechasStrip(){
+    document.querySelectorAll('.strip-wrap').forEach(function(w){
+      var s = w.querySelector('.strip'), iz = w.querySelector('.strip-fl.izq'), de = w.querySelector('.strip-fl.der');
+      if(!s || !iz || !de) return;
+      iz.hidden = s.scrollLeft <= 4; de.hidden = s.scrollLeft + s.clientWidth >= s.scrollWidth - 4;
+      if(!w.dataset.fl){ w.dataset.fl = '1'; s.addEventListener('scroll', flechasStrip, {passive: true});
+        if(window.MutationObserver) new MutationObserver(flechasStrip).observe(s, {childList: true}); }
+    });
+  }
+  document.addEventListener('click', function(ev){ var f = ev.target.closest && ev.target.closest('.strip-fl'); if(!f) return;
+    var s = f.parentNode.querySelector('.strip'); if(s) s.scrollBy({left: (f.classList.contains('izq') ? -1 : 1) * s.clientWidth * 0.8, behavior: 'smooth'}); });
+  document.addEventListener('DOMContentLoaded', flechasStrip); window.addEventListener('resize', flechasStrip);
   window.pcgMedioPago = function(){ var s = document.querySelector('#medioPago [data-medio].sel'); return s ? s.dataset.medio : 'yape'; };
   document.addEventListener('DOMContentLoaded', function(){ if(document.getElementById('medioPagoMini')) mpSet(window.pcgMedioPago()); });
   // WhatsApp: en móvil se usa el texto con emojis (data-wa-movil); en escritorio queda el href sin emojis (WhatsApp Windows los rompe).
@@ -1266,7 +1362,7 @@ JS_NAV = (r"""
     setTimeout(function(){ if(!e.defaultPrevented) navegando(); }, 0);
   });
   document.addEventListener('submit', function(e){ if(!e.defaultPrevented && !(e.target.target && e.target.target !== '_self')) navegando(); });
-  var FONDO = /\/web\/(mensajes\/(no-leidos|hilo|bandeja)|foto|descubrir|sesion$|pago\/[^\/]+\/estado)|\/static\//;
+  var FONDO = /\/web\/(mensajes\/(no-leidos|hilo|bandeja)|foto|descubrir|favoritos$|avisos\/nuevos|sesion$|pago\/[^\/]+\/estado)|\/static\//;
   if(window.fetch && !window.fetch.__pcg){ var f0 = window.fetch; var fw = function(rec, op){ var url = typeof rec === 'string' ? rec : ((rec && rec.url) || '');
       if(FONDO.test(url)) return f0.apply(this, arguments);
       nBar++; var t = setTimeout(function(){ if(nBar > 0) barra(true); }, 250);
@@ -1386,6 +1482,10 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         + "<meta name='theme-color' content='#0F1B2D'>"
         f"<link rel='icon' type='image/png' href='{_logo_url()}'>"
         f"<link rel='apple-touch-icon' href='{_logo_url()}'>"
+        # Instalable ("Agregar a inicio"): en iPhone no hay app, la web hace de app.
+        "<link rel='manifest' href='/manifest.webmanifest'>"
+        "<meta name='apple-mobile-web-app-capable' content='yes'><meta name='mobile-web-app-capable' content='yes'>"
+        f"<meta name='apple-mobile-web-app-title' content='{e(MARCA)}'>"
         "<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
         "<link href='https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700;9..40,800&display=swap' rel='stylesheet'>"
         f"<link rel='stylesheet' href='{_seg().url_css()}'>{extra_head}"
@@ -1395,6 +1495,12 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         f"<main class='{'wrap-xl' if ancho else 'wrap'}'>{cuerpo}</main>"
         + ("" if pantalla == "chat" else footer()) +
         "</body></html>")
+    if "data-badge-avisos" in page:
+        # Avisos nuevos desde el último que se vio en /notificaciones (localStorage).
+        page = page.replace("</body></html>", "<script>(function(){var v=0;try{v=parseInt(localStorage.getItem('pcg_avisos_visto')||'0',10)||0;}catch(e){}"
+                            "fetch('/web/avisos/nuevos?desde='+v).then(function(r){return r.json();}).then(function(j){if(!j||!j.n)return;"
+                            "document.querySelectorAll('[data-badge-avisos]').forEach(function(b){b.textContent=j.n>9?'9+':j.n;b.hidden=false;});"
+                            "}).catch(function(){});})();</script></body></html>")
     if "data-badge-mensajes" in page:
         # Badge de no leídos (mensajería web): pinta el último valor y lo refresca.
         from web.jugador_mensajes import JS_BADGE_MENSAJES

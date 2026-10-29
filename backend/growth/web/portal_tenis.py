@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse
 
 from marketing import campeonato_web
 from web import campeonatos_logica as L
-from web import datos, horarios, sesion, ui
+from web import catalogos, datos, horarios, sesion, ui
 from web import router as _r
 from web.ui import e
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
@@ -102,8 +102,12 @@ def pagina_tenis(request: Request) -> HTMLResponse:
     ses = sesion.de_request(request)
     locales = _locales()
     torneos = datos.campeonatos_publicos(DEPORTES, 12)
+    titulo = catalogos.titulo_raquetas()                       # "Tenis y pickleball"
+    frase = catalogos.frase_deportes(catalogos.raquetas_activas())
+    frase_o = catalogos.frase_deportes(catalogos.raquetas_activas(), "o")
+    reservar = "".join(f"<a href='/?deporte={d}'>Reservar {catalogos.NOMBRE_DEPORTE[d]}</a>" for d in catalogos.raquetas_activas())
     canchas_html = ("<div class='tn-grid'>" + "".join(_tarjeta_local(g) for g in locales) + "</div>" if locales
-                    else "<div class='tn-vacio'>Aún no hay canchas de tenis o pádel aprobadas cerca. "
+                    else f"<div class='tn-vacio'>Aún no hay canchas de {frase_o} aprobadas cerca. "
                          "¿Tienes un club? <a href='/anfitrion/nueva'>Ponlo aquí</a>.</div>")
     torneos_html = ("<div class='tn-grid'>" + "".join(_tarjeta_torneo(c) for c in torneos) + "</div>" if torneos
                     else "<div class='tn-vacio'>No hay torneos abiertos ahora. Organiza el tuyo: inscripciones, "
@@ -118,12 +122,12 @@ def pagina_tenis(request: Request) -> HTMLResponse:
         f"<a class='tn-caja' href='{u}'><span class='em'>{em}</span><b>{e(t)}</b><span>{e(d)}</span></a>"
         for em, t, d, u in cajas) + "</div>"
     cuerpo = (f"<style>{_CSS}</style>"
-              "<section class='tn-hero'><h1>🎾 Tenis y pádel, en un solo lugar</h1>"
+              f"<section class='tn-hero'><h1>🎾 {e(titulo)}, en un solo lugar</h1>"
               "<p>Reserva tu cancha, encuentra partner, juega torneos y sube en la liga. "
               "Los clubes organizan sus torneos con su propia marca.</p>"
-              "<div class='tn-acc'><a href='/?deporte=tenis'>Reservar tenis</a><a href='/?deporte=padel'>Reservar pádel</a>"
+              f"<div class='tn-acc'>{reservar}"
               "<a class='sec' href='/anfitrion/campeonatos'>Organizar un torneo</a></div></section>"
-              "<div class='tn-sec'><h2>Canchas de tenis y pádel</h2><a href='/?deporte=tenis'>Ver todas ›</a></div>"
+              f"<div class='tn-sec'><h2>Canchas de {e(frase)}</h2><a href='/?deporte=tenis'>Ver todas ›</a></div>"
               f"{canchas_html}"
               "<div class='tn-sec'><h2>Torneos</h2><a href='/anfitrion/campeonatos'>Organizar ›</a></div>"
               f"{torneos_html}"
@@ -132,7 +136,7 @@ def pagina_tenis(request: Request) -> HTMLResponse:
               "<div class='tn-sec'><h2>¿Tienes un club?</h2></div>"
               "<div class='tn-vacio'>Pon tus canchas para recibir reservas pagadas en línea, arma tus torneos y "
               "gestiona tu academia. <a href='/anfitrion/nueva'>Pon tu club</a> · <a href='/anfitrion'>Modo anfitrión</a></div>")
-    return ui.shell("Tenis y pádel", cuerpo, sesion=ses, ancho=True,
-                    titulo_tab=f"Tenis y pádel · {MARCA}",
-                    desc="Reserva canchas de tenis y pádel, encuentra partner, juega torneos y la liga.",
+    return ui.shell(titulo, cuerpo, sesion=ses, ancho=True,
+                    titulo_tab=f"{titulo} · {MARCA}",
+                    desc=f"Reserva canchas de {frase}, encuentra partner, juega torneos y la liga.",
                     canonical="/tenis")
