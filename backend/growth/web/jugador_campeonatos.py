@@ -880,7 +880,7 @@ if(bc) bc.addEventListener('click', function(){ var err = $('eqErr'); err.textCo
       post('/web/torneo/' + encodeURIComponent(C.id) + '/equipo/crear', {nombre: n, doc_token: t || tok.yo || ''}).then(function(j){ bc.disabled = false; pcgCargando(false);
         if(!j.ok) return fallo(j, err);
         var url = location.origin + '/torneo/' + encodeURIComponent(C.id) + '?equipo=' + encodeURIComponent(j.codigo || '');
-        pcgAvisar({titulo: '¡Equipo creado! ⚽', icono: '🏆', confirmar: 'Listo', html: "<p class='sub'>Comparte este código con tus jugadores para que se unan a tu equipo:</p><div style='font-size:30px;font-weight:900;letter-spacing:4px;color:#067A38;margin:8px 0'>" + esc(j.codigo) + "</div><p class='sub' style='overflow-wrap:anywhere'>" + esc(url) + "</p>"})
+        pcgAvisar({titulo: '¡Equipo creado! ⚽', icono: '🏆', confirmar: 'Listo', html: "<p class='sub'>Comparte este código con tus jugadores para que se unan a tu equipo:</p><div style='font-size:30px;font-weight:900;letter-spacing:4px;color:#08654A;margin:8px 0'>" + esc(j.codigo) + "</div><p class='sub' style='overflow-wrap:anywhere'>" + esc(url) + "</p>"})
           .then(function(){ pcgRecargar('Actualizando…'); });
       }).catch(function(){ bc.disabled = false; pcgCargando(false); fallo(null, err); }); }); }); });
 // ── Fútbol: unirme (código o tocando el equipo) ──

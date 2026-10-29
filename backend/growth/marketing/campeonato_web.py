@@ -24,7 +24,7 @@ import config
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 # Paleta del logo nuevo (la misma del APK).
-_ESMERALDA = "#0E8F67"
+_ESMERALDA = "#0B7A57"
 _NAVY = "#0F1B2D"
 def _descarga() -> str:
     """A dónde va quien no tiene la app: Play en PRD, Release en dev/QAS

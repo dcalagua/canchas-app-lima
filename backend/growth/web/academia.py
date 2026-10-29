@@ -354,7 +354,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
         "<div class='sub' id='planElegido'>Toca «Matricularme» en el tarifario de arriba.</div>"
         "<div class='paso'><span>2</span> ¿Para quién es?</div>"
         "<div class='chips'><button type='button' class='chip sel' data-quien='yo'>Para mí</button><button type='button' class='chip' data-quien='hijo'>Para mi hijo(a)</button><button type='button' class='chip' data-quien='familiar'>Para otra persona</button></div>"
-        "<div class='sub' id='dtoFamBox' hidden style='margin-top:8px;color:#0B7A55'></div>"
+        "<div class='sub' id='dtoFamBox' hidden style='margin-top:8px;color:#0B7A57'></div>"
         f"<div class='paso'><span>3</span> Tus datos</div>{login}"
         f"<div id='datosBox'{datos_box_ini}>{quien}"
         "<div class='row'><div><label for='nombre' id='lblNombre'>Nombre del alumno</label>"
@@ -410,7 +410,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
 # Carrito en el resumen: una tarjeta por persona guardada con ✕ para quitarla.
 _CSS_CARRITO = ("<style>.cart-it{border:1px solid var(--trazo);border-radius:14px;padding:10px 12px;margin-bottom:8px;background:#fff}"
                 ".cart-it .ci-t{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.cart-it .ci-t .sub{margin:0;font-size:12.5px}"
-                ".cart-it .ci-d{display:flex;align-items:center;gap:8px;white-space:nowrap}.cart-it .ok{color:#0B7A55;font-weight:700}"
+                ".cart-it .ci-d{display:flex;align-items:center;gap:8px;white-space:nowrap}.cart-it .ok{color:#0B7A57;font-weight:700}"
                 ".cart-it .quitar{border:0;background:#F4F7FA;color:#555;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:13px;line-height:26px;padding:0}"
                 ".cart-it .quitar:hover{background:#FDE8E8;color:#B3261E}.cart-h{font-weight:800;margin:12px 0 4px;font-size:14px}.cart-h .sub{font-weight:600;font-size:12.5px}"
                 "[data-quien]:disabled{opacity:.45;cursor:not-allowed}</style>")
@@ -678,7 +678,7 @@ _JS_ACADEMIA = (r"""
     Culqi.settings({ title: '⟦MARCA⟧', currency: 'PEN', amount: montoC });
     Culqi.options({ lang: 'es', installments: false,
       paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false },
-      style: { logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
+      style: { logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0B7A57', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
     window.culqi = function(){
       if(Culqi.token){
         var token = Culqi.token.id, medio = (Culqi.token.iin && Culqi.token.iin.card_brand) ? 'tarjeta' : 'yape';
@@ -1336,7 +1336,7 @@ def _cargo_comprobante(pw: dict, sim: str, *, individual: bool) -> tuple[str, fl
                 f"por las {personas} personas de la familia; lo ves en el comprobante familiar.</p>"), 0.0
     ahorro = float(pw.get("cargoAhorro") or 0)
     html = (f"<div class='linea'><span>Cargo por servicio {MARCA}</span><span>{e(sim)} {cargo:.2f}</span></div>"
-            + (f"<p class='sub' style='font-size:13px;color:#0B7A55'>🎉 Ahorraste {e(sim)} {ahorro:.2f} en el cargo por pagar en familia (un solo cobro).</p>" if ahorro > 0 else "")
+            + (f"<p class='sub' style='font-size:13px;color:#0B7A57'>🎉 Ahorraste {e(sim)} {ahorro:.2f} en el cargo por pagar en familia (un solo cobro).</p>" if ahorro > 0 else "")
             + "<details style='margin-top:6px'><summary class='sub' style='cursor:pointer;font-size:13px'>Qué incluye el cargo por servicio</summary>"
             + ui.desglose_cargo_html(pw.get("cargoDesglose") or [], sim, str(pw.get("cargoRegla") or "")) + "</details>")
     return html, cargo
@@ -1388,7 +1388,7 @@ def comprobante_matriculas(request: Request, academia_id: str, ids: str = "") ->
             f"<li>{'✅' if c.get('pagada') else '⏳'} <span>{e(c.get('concepto'))} · {e(sim)} {float(c.get('monto') or 0):.2f}"
             f"{' · pagada' if c.get('pagada') else ' · vence ' + e(str(c.get('vencimiento'))[:10])}</span></li>" for c in cuotas)
         bloques += (f"<div class='cart-it' style='margin-top:12px'><div class='ci-t'><div><b>{e(m.get('nombre'))}</b> <span class='sub'>{quien}</span>"
-                    + (f"<div class='sub' style='color:#0B7A55'>🎉 Descuento familiar −{dto:.0f} % ({'2.º' if int(m.get('ordenHermano') or 1) == 2 else '3.º o más'} de tu familia)</div>" if dto > 0 else "")
+                    + (f"<div class='sub' style='color:#0B7A57'>🎉 Descuento familiar −{dto:.0f} % ({'2.º' if int(m.get('ordenHermano') or 1) == 2 else '3.º o más'} de tu familia)</div>" if dto > 0 else "")
                     + f"</div><div class='ci-d'><b>{e(sim)} {t:.2f}</b></div></div><ul class='datos' style='margin-top:8px'>{filas}</ul></div>")
     pw0 = ms[0].get("pagoWeb") if isinstance(ms[0].get("pagoWeb"), dict) else {}
     cargo_html, cargo_fam = _cargo_comprobante(pw0, sim, individual=False)
@@ -1430,8 +1430,8 @@ def _comprobante_directo(a: dict, ms: list[dict], ses: dict | None) -> HTMLRespo
             f"<li style='align-items:flex-start'><span style='min-width:0'>{e(c.get('concepto'))} · {e(sim)} {float(c.get('monto') or 0):.2f}"
             f"{'' if c.get('pagada') else ' · vence ' + e(str(c.get('vencimiento'))[:10])}<br>{apw.pill_cuota(c)}</span></li>" for c in cuotas)
         bloques += (f"<div class='cart-it' style='margin-top:12px'><div class='ci-t'><div><b>{e(m.get('nombre'))}</b> <span class='sub'>{quien}</span>"
-                    + (f"<div class='sub' style='color:#0B7A55'>🎉 Descuento familiar −{dto:.0f} % ({'2.º' if int(m.get('ordenHermano') or 1) == 2 else '3.º o más'} de tu familia)</div>" if dto > 0 else "")
-                    + (f"<div class='sub' style='color:#0B7A55'>Ahorras {e(sim)} {float(pd.get('ahorro') or 0):.2f} en descuentos</div>" if float(pd.get("ahorro") or 0) > 0 and dto <= 0 else "")
+                    + (f"<div class='sub' style='color:#0B7A57'>🎉 Descuento familiar −{dto:.0f} % ({'2.º' if int(m.get('ordenHermano') or 1) == 2 else '3.º o más'} de tu familia)</div>" if dto > 0 else "")
+                    + (f"<div class='sub' style='color:#0B7A57'>Ahorras {e(sim)} {float(pd.get('ahorro') or 0):.2f} en descuentos</div>" if float(pd.get("ahorro") or 0) > 0 and dto <= 0 else "")
                     + f"</div></div><ul class='datos' style='margin-top:8px'>{filas}</ul></div>")
     nombres = ", ".join(str(m.get("nombre") or "") for m in ms)
     varios = len(ms) > 1

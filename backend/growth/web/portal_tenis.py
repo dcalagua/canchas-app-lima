@@ -68,11 +68,11 @@ def _tarjeta_torneo(c: dict) -> str:
 
 
 _CSS = """
-.tn-hero{background:linear-gradient(135deg,#0B8A3E,#0A1B3D);color:#fff;border-radius:24px;padding:34px 28px;margin:18px 0 8px}
-.tn-hero h1{font-size:clamp(26px,5vw,40px);line-height:1.1;font-weight:800;margin:0}
+.tn-hero{background:linear-gradient(135deg,#0B7A57,#0A1B3D);color:#fff;border-radius:24px;padding:34px 28px;margin:18px 0 8px}
+.tn-hero h1{font-size:clamp(26px,5vw,40px);line-height:1.1;font-weight:800;margin:0;color:#fff}
 .tn-hero p{margin:10px 0 0;opacity:.92;font-size:16px;max-width:560px}
 .tn-acc{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
-.tn-acc a{background:#fff;color:#0A1B3D;border-radius:999px;padding:10px 16px;font-weight:800;text-decoration:none;font-size:14px}
+.tn-acc a{display:inline-flex;align-items:center;min-height:44px;background:#fff;color:#0A1B3D;border-radius:999px;padding:10px 16px;font-weight:800;text-decoration:none;font-size:14px}
 .tn-acc a.sec{background:rgba(255,255,255,.14);color:#fff}
 .tn-sec{margin:28px 0 10px;display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 .tn-sec h2{font-size:20px;margin:0}

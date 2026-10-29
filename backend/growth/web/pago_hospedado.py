@@ -966,7 +966,7 @@ def pagina_orden(oid: str, request: Request):
                   f"<p class='sub'>Completa el pago en la página de {e(pas)}. Si ya pagaste, en unos segundos lo confirmamos y te llevamos a tu "
                   + _DESTINO.get(tipo, "comprobante") + "." + _MIENTRAS.get(tipo, "") + "</p>"
                   f"<div class='acciones' style='flex-wrap:wrap'>{ir}<button type='button' class='btn sec' id='btnCancelarOrden'>Cancelar este pago</button></div></div>"
-                  "<style>.aro-mini{width:26px;height:26px;border-radius:50%;border:3px solid #DDE7E2;border-top-color:var(--verde,#0B8A3E);animation:girar .9s linear infinite;flex:none}"
+                  "<style>.aro-mini{width:26px;height:26px;border-radius:50%;border:3px solid #DDE7E2;border-top-color:var(--verde,#0B7A57);animation:girar .9s linear infinite;flex:none}"
                   "@keyframes girar{to{transform:rotate(360deg)}}</style>"
                   f"<script>window.__orden={ui.json_js({'id': oid, 'pasarela': pas})};</script><script>{_JS_ESPERA}</script>")
         return ui.shell("Confirmando tu pago", cuerpo, sesion=ses, titulo_tab=f"Confirmando tu pago · {MARCA}")

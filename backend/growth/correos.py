@@ -248,7 +248,7 @@ def _liq(p) -> dict:
 
 # ── Plantilla HTML (estilo Airbnb, paleta del logo) ───────────────────────────
 
-_VERDE = "#0B8A3E"
+_VERDE = "#0B7A57"
 _TINTA = "#0A1B3D"
 _TENUE = "#6A7282"
 _BORDE = "#E7EAEE"

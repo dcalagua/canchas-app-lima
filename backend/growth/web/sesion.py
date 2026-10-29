@@ -192,7 +192,7 @@ def enlace_revision(volver: str = "") -> str:
         return ""
     q = f"?volver={urllib.parse.quote(volver, safe='')}" if volver else ""
     return (f"<div style='margin-top:10px;font-size:12.5px;color:#6b7280'>¿Eres revisor (Culqi, INDECOPI)? "
-            f"<a href='/entrar{q}#revision' style='color:#0B8A3E;font-weight:700'>Acceso de revisión con usuario y contraseña</a></div>")
+            f"<a href='/entrar{q}#revision' style='color:#0B7A57;font-weight:700'>Acceso de revisión con usuario y contraseña</a></div>")
 
 
 def boton_google(callback: str = "onGoogleCred", volver: str = "") -> str:

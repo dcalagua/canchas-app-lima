@@ -231,7 +231,7 @@ def _cookie_actualizada(resp: JSONResponse, ses: dict, nombre: str | None = None
 
 _CSS_CUENTA = """
 .cf-av{position:relative;width:152px;height:152px;margin:8px auto 30px}
-.cf-av img,.cf-av .ini{width:152px;height:152px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;background:#EAF7EF;color:#067A38;font-size:60px;font-weight:800}
+.cf-av img,.cf-av .ini{width:152px;height:152px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;background:#EAF7EF;color:#08654A;font-size:60px;font-weight:800}
 .cf-av .ed{position:absolute;left:50%;transform:translateX(-50%);bottom:-14px;background:#fff;border:0;border-radius:99px;box-shadow:0 3px 10px rgba(0,0,0,.18);padding:9px 16px;font:inherit;font-weight:800;cursor:pointer;white-space:nowrap}
 .cf-lbl{display:block;font-size:12.5px;font-weight:700;color:#6a6a6a;margin:14px 0 6px}
 .cf-cel{display:flex;gap:8px;align-items:center}
@@ -251,7 +251,7 @@ _CSS_CUENTA = """
 .cf-it .em{font-size:22px;width:28px;text-align:center;flex:none}
 .cf-it .tx{flex:1;min-width:0}
 .cf-it small{display:block;color:#6a6a6a;font-size:13px;margin-top:2px}
-.cf-it .app{font-size:11.5px;font-weight:700;color:#067A38;background:#E9F6EE;border-radius:99px;padding:3px 9px;white-space:nowrap}
+.cf-it .app{font-size:11.5px;font-weight:700;color:#08654A;background:#E9F6EE;border-radius:99px;padding:3px 9px;white-space:nowrap}
 .cf-it .chev{color:#b0b0b0;font-size:20px}
 .cf-it.rojo{color:#C0392B}
 .pcg-dlg .caja .cf-op{display:flex;flex-wrap:wrap;gap:8px;text-align:left}

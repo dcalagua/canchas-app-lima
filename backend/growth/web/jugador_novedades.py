@@ -756,9 +756,9 @@ _CSS = """<style>
 .nv-fila .der{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none;color:#6a6a6a;font-size:12.5px}
 .nv-badge{background:var(--esmeralda);color:#fff;border-radius:999px;font-size:11.5px;font-weight:800;padding:2px 7px;min-width:20px;text-align:center}
 .nv-aro{position:relative;width:58px;height:58px;border-radius:50%;flex:none;padding:3px;background:#C7CDD4}
-.nv-aro.nuevo{background:conic-gradient(#7CB518,#0B8A3E,#7CB518)}
+.nv-aro.nuevo{background:conic-gradient(#7CB518,#0B7A57,#7CB518)}
 .nv-aro.mio{background:none;padding:0}
-.nv-aro .in{width:100%;height:100%;border-radius:50%;border:2.5px solid #fff;overflow:hidden;background:#0E8F67;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:20px}
+.nv-aro .in{width:100%;height:100%;border-radius:50%;border:2.5px solid #fff;overflow:hidden;background:#0B7A57;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:20px}
 .nv-aro .in img,.nv-aro .in video{width:100%;height:100%;object-fit:cover}
 .nv-aro .in .txt{font-size:9px;padding:4px;text-align:center;line-height:1.1;overflow:hidden}
 .nv-aro .mas{position:absolute;right:-2px;bottom:-2px;width:22px;height:22px;border-radius:50%;background:var(--esmeralda);color:#fff;border:2px solid #fff;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1}
@@ -780,7 +780,7 @@ _CSS = """<style>
 .nv-barras i{flex:1;height:3px;border-radius:3px;background:rgba(255,255,255,.35);overflow:hidden}
 .nv-barras i b{display:block;height:100%;width:0;background:#fff}
 .nv-cab{position:absolute;top:calc(max(8px,env(safe-area-inset-top)) + 12px);left:10px;right:10px;display:flex;align-items:center;gap:10px;z-index:3;min-width:0}
-.nv-cab .av{width:38px;height:38px;border-radius:50%;object-fit:cover;background:#0E8F67;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none;overflow:hidden}
+.nv-cab .av{width:38px;height:38px;border-radius:50%;object-fit:cover;background:#0B7A57;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none;overflow:hidden}
 .nv-cab .av img{width:100%;height:100%;object-fit:cover}
 .nv-cab .q{flex:1;min-width:0}.nv-cab .q b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,.5)}
 .nv-cab .q small{opacity:.85;font-size:12.5px;text-shadow:0 1px 3px rgba(0,0,0,.5)}
@@ -805,7 +805,7 @@ _CSS = """<style>
 .nv-menu button:hover,.nv-menu a:hover{background:#F2F2F2}
 .nv-lista-vistas{display:flex;flex-direction:column;gap:8px;text-align:left;max-height:50vh;overflow:auto}
 .nv-lista-vistas div{display:flex;align-items:center;gap:10px}
-.nv-lista-vistas .av{width:36px;height:36px;border-radius:50%;object-fit:cover;background:#0E8F67;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none;overflow:hidden}
+.nv-lista-vistas .av{width:36px;height:36px;border-radius:50%;object-fit:cover;background:#0B7A57;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none;overflow:hidden}
 .nv-lista-vistas .av img{width:100%;height:100%;object-fit:cover}
 .nv-lista-vistas small{color:#6a6a6a;margin-left:auto}
 /* Composer */

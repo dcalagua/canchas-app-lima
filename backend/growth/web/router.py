@@ -606,7 +606,7 @@ _JS_EXPLORAR = (r"""
   }
   function pintarRadio(){
     var u = $('ubicTxt'); if(!u || !yo) return;
-    u.innerHTML = (C.dep === 'academias' ? 'Academias' : 'Canchas') + ' a <select id="selRadio" aria-label="Distancia máxima" style="width:auto;display:inline-block;padding:2px 6px;border:1px solid #DDD;border-radius:999px;font:inherit;font-weight:700;background:#fff">' +
+    u.innerHTML = (C.dep === 'academias' ? 'Academias' : 'Canchas') + ' a <select id="selRadio" aria-label="Distancia máxima">' +
       RADIOS.map(function(r){ return '<option value="' + r + '"' + (r === radio ? ' selected' : '') + '>' + r + ' km</option>'; }).join('') + '</select> de ti, las más cercanas primero.';
     $('selRadio').addEventListener('change', function(){ radio = parseInt(this.value, 10) || 10; try { localStorage.setItem('pcg_radio', String(radio)); } catch(e){} aplicar(); ajustarMapa(); });
   }
@@ -724,7 +724,7 @@ _JS_EXPLORAR = (r"""
       var m = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio' + (ok ? '' : ' pend') + (esAca ? ' aca' : '') + '">' + c.dataset.precio + '</span>', iconSize: null})});
       m._card = c;
       m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br>' + (esAca ? '' : '<span style="font-weight:800">' + esc(c.dataset.precio) + ' por hora</span><br>') + '<a class="btn' + (ok ? '' : ' sec') + '" href="' + c.getAttribute('href') + '">' + (esAca ? 'Ver academia' : (ok ? 'Ver horarios' : 'Reservar en la app')) + '</a>');
-      m.on('mouseover', function(){ c.style.outline = '2px solid #0E8F67'; c.style.outlineOffset = '4px'; c.style.borderRadius = '14px'; });
+      m.on('mouseover', function(){ c.style.outline = '2px solid #0B7A57'; c.style.outlineOffset = '4px'; c.style.borderRadius = '14px'; });
       m.on('mouseout', function(){ c.style.outline = ''; });
       marcadores.push(m); m.addTo(mapa);
     });
@@ -978,7 +978,7 @@ def _tarjeta(canchas: list[dict] | dict, ratings: dict | tuple | None = None, fe
     deps_txt = " · ".join(_deporte(d)[0] for d in deps[:3])
     nombres = " ".join(x["nombre"] for x in cs)
     texto = f"{local} {nombres} {_zona(c)} {deps_txt} {c.get('direccion', '')}".lower()
-    sub = _zona(c) or (c.get("direccion") or "")
+    sub = _zona(c) or ui.direccion_legible(c.get("direccion") or "")
     ok = all(datos.reservable(x) for x in cs)
     fs: list[str] = []
     for x in cs:
@@ -1785,7 +1785,7 @@ _JS_RESERVA = (r"""
       if(C.senaPct > 0 && !bonoActivo()){
         if(bl) h += '<div class="linea" style="color:var(--tenue);font-size:13px"><span>Con ' + esc(C.nombreBoleador.toLowerCase()) + ' la reserva se paga completa en línea (quítalo si prefieres solo la seña).</span></div>';
         else {
-          var op = function(m, tit, sub){ var on = modoPago === m; return '<label class="op-sena" data-modo="' + m + '" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1.5px solid ' + (on ? 'var(--esmeralda)' : 'var(--trazo)') + ';border-radius:14px;cursor:pointer;background:' + (on ? '#EEF8F1' : '#fff') + '"><input type="radio" name="modoPago" ' + (on ? 'checked' : '') + ' style="width:auto;flex:none;margin-top:3px;accent-color:#0B8A3E"><span><b>' + tit + '</b><br><small style="color:var(--tenue)">' + sub + '</small></span></label>'; };
+          var op = function(m, tit, sub){ var on = modoPago === m; return '<label class="op-sena" data-modo="' + m + '" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1.5px solid ' + (on ? 'var(--esmeralda)' : 'var(--trazo)') + ';border-radius:14px;cursor:pointer;background:' + (on ? '#EEF8F1' : '#fff') + '"><input type="radio" name="modoPago" ' + (on ? 'checked' : '') + ' style="width:auto;flex:none;margin-top:3px;accent-color:#0B7A57"><span><b>' + tit + '</b><br><small style="color:var(--tenue)">' + sub + '</small></span></label>'; };
           h += '<div style="display:grid;gap:8px;margin:10px 0 4px">' +
             op('sena', 'Pagar seña ' + C.senaPct + ' % ahora · ' + fmt(senaTotal()), 'Asegura tu hora; el resto (' + fmt(t - senaTotal()) + ') lo pagas en la cancha.') +
             op('total', 'Pagar todo ahora · ' + fmt(t), 'No pagas nada en la cancha.') + '</div>';
@@ -2005,7 +2005,7 @@ _JS_RESERVA = (r"""
         Culqi.settings({ title: '⟦MARCA⟧', currency: 'PEN', amount: j.total_centimos });
         Culqi.options({ lang: 'es', installments: false,
           paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false },
-          style: { logo: C.logo, bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
+          style: { logo: C.logo, bannerColor: '#0F1B2D', buttonBackground: '#0B7A57', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
         window.culqi = function(){
           if(Culqi.token){
             var token = Culqi.token.id, medio = (Culqi.token.iin && Culqi.token.iin.card_brand) ? 'tarjeta' : 'yape';
@@ -2125,11 +2125,12 @@ _JS_RESERVA = (r"""
       + "<button type='button' class='btn lg' id='vchEnviar'>Enviar comprobante</button>"
       + "<div class='sub vch-pie'>El club revisa tu pago y te avisamos. Si no lo confirma, el horario se libera y no se te cobra nada por la plataforma.</div></div>";
     document.body.appendChild(ov); document.body.style.overflow = 'hidden';
-    var reloj = setInterval(function(){
+    function tic(){
       var r = Math.max(0, Math.round((fin - Date.now()) / 1000)), el = document.getElementById('vchReloj');
-      if(el) el.textContent = Math.floor(r / 60) + ':' + ('0' + (r % 60)).slice(-2);
+      if(el) el.textContent = 'por ' + Math.floor(r / 60) + ':' + ('0' + (r % 60)).slice(-2) + ' min';
       if(r <= 0){ clearInterval(reloj); cerrar(true); mostrarError(VCH_ERR.hold_vencido); cargar(); }
-    }, 1000);
+    }
+    var reloj = setInterval(tic, 1000); tic();
     function err(t){ var e = document.getElementById('vchErr'); e.textContent = t; e.style.display = t ? 'block' : 'none'; }
     function cerrar(soltar){ clearInterval(reloj); ov.remove(); document.body.style.overflow = ''; if(soltar){ liberar(); pintarResumen(); } }
     ov.querySelector('.vch-x').addEventListener('click', function(){
@@ -2235,7 +2236,7 @@ def _ficha(c: dict, sim: str, pais: str, verificada: bool = True, hermanas: list
     y el local chico; queja del director, sep-2026). Con varias canchas en el
     local, chips para cambiar de cancha."""
     sello = ui.sello_verificada() if verificada else "<span class='pill gris'>Aún sin verificar</span>"
-    lugar = ", ".join(x for x in (c.get("direccion"), _zona(c)) if x)
+    lugar = ", ".join(x for x in (ui.direccion_legible(c.get("direccion") or ""), _zona(c)) if x)
     deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c))
     amen = "".join(f"<span>{e(AMENIDAD_NOMBRE.get(str(a).lower(), str(a).replace('_', ' ').capitalize()))}</span>"
                    for a in (c.get("amenidades") or [])[:8])
@@ -2368,7 +2369,7 @@ def pagina_lugar(request: Request, lugar_id: str, nombre: str = "", direccion: s
         return r
     ses = sesion.de_request(request)
     nombre = re.sub(r"\s+", " ", nombre).strip()[:120]
-    direccion = re.sub(r"\s+", " ", direccion).strip()[:200]
+    direccion = ui.direccion_legible(re.sub(r"\s+", " ", direccion).strip()[:200])
     dep = deporte if deporte in DEPORTES else ""
     c = {"id": lugar_id, "nombre": nombre, "club": "", "direccion": direccion, "lat": lat, "lng": lng, "deporte": dep or "futbol", "fotos": [], "foto_url": ""}
     pais = _pais_de(c)
@@ -3924,7 +3925,7 @@ _CSS_PERFIL = """
 .perf-av{position:relative;width:104px;height:104px;margin:0 auto 10px}
 .perf-av img,.perf-av .ini{width:104px;height:104px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;background:var(--noche,#0A1B3D);color:#fff;font-size:42px;font-weight:700}
 .perf-av .pro{position:absolute;right:-4px;bottom:4px;background:#F2C94C;color:#3a2a00;border:3px solid #fff;border-radius:99px;font-size:11px;font-weight:800;padding:3px 8px}
-.perf-av .ok{position:absolute;left:-2px;bottom:6px;background:#0B8A3E;color:#fff;border:3px solid #fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px}
+.perf-av .ok{position:absolute;left:-2px;bottom:6px;background:#0B7A57;color:#fff;border:3px solid #fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px}
 .perf-yo b{display:block;font-size:22px;line-height:1.2;overflow-wrap:anywhere}
 .perf-yo small{display:block;color:#6a6a6a;font-size:13px;margin-top:4px;overflow-wrap:anywhere}
 .perf-stats{border-left:1px solid #EBEBEB;padding-left:18px;display:grid;gap:10px}
@@ -3951,7 +3952,7 @@ _CSS_PERFIL = """
 .perf-it .em{font-size:24px;width:30px;text-align:center;flex:none}
 .perf-it .tx{flex:1;min-width:0}
 .perf-it .tx small{display:block;color:#6a6a6a;font-size:13px;margin-top:2px}
-.perf-it .app{font-size:11.5px;font-weight:700;color:#067A38;background:#E9F6EE;border-radius:99px;padding:3px 9px;white-space:nowrap}
+.perf-it .app{font-size:11.5px;font-weight:700;color:#08654A;background:#E9F6EE;border-radius:99px;padding:3px 9px;white-space:nowrap}
 .perf-it .bdg{background:#E0245E;color:#fff;font-size:12px;font-weight:800;border-radius:99px;min-width:22px;height:22px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center}
 .perf-it .chev{color:#b0b0b0;font-size:22px;line-height:1}
 .perf-it.rojo{color:#C0392B}
@@ -4275,7 +4276,7 @@ def pagina_comprobante(ref: str, request: Request = None, enviado: str = "") -> 
         _s, _iso_c = _moneda_de(c) if c else (sim, _cs.moneda_iso(sim))
         detalle_cargo = ("<details style='margin-top:8px;text-align:left'><summary class='sub' style='cursor:pointer;font-size:13px'>Qué incluye el cargo por servicio</summary>"
                          f"{ui.desglose_cargo_html(desglose_guardado, sim, _cs.regla_texto(_iso_c))}</details>")
-    lugar = ", ".join(x for x in (c.get("direccion"), _zona(c)) if x)
+    lugar = ", ".join(x for x in (ui.direccion_legible(c.get("direccion") or ""), _zona(c)) if x)
     base = (config.PUBLIC_BASE_URL or "").rstrip("/")
     boton_wa = ui.boton_whatsapp(
         f"Reservé en {c.get('nombre', 'una cancha')} por {MARCA}: "

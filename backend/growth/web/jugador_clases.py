@@ -312,31 +312,31 @@ _CSS = """
 .mc-cab{display:flex;gap:12px;align-items:center;padding:16px;background:#EEF8E8}
 .mc-logo{width:48px;height:48px;border-radius:12px;flex:none;background:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden}
 .mc-logo img{width:100%;height:100%;object-fit:cover}
-.mc-cab b{display:block;color:#067A38;font-size:16px;line-height:1.25;overflow-wrap:anywhere}
+.mc-cab b{display:block;color:#08654A;font-size:16px;line-height:1.25;overflow-wrap:anywhere}
 .mc-cab small{color:#6a6a6a;font-size:12.5px;overflow-wrap:anywhere}
 .mc-cab .tx{min-width:0;flex:1}
 .mc-body{padding:12px 16px 16px}
 .mc-prog{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 8px}
 .mc-prog span{background:#F4F7FA;border-radius:99px;padding:5px 10px;font-size:12.5px;font-weight:600;overflow-wrap:anywhere;max-width:100%}
-.mc-tot{font-weight:800;color:#0B8A3E;font-size:14px}
-.mc-sus{display:flex;gap:10px;align-items:center;background:#EEF8E8;border-radius:12px;padding:10px 12px;margin-top:10px;font-size:13px;color:#067A38}
+.mc-tot{font-weight:800;color:#0B7A57;font-size:14px}
+.mc-sus{display:flex;gap:10px;align-items:center;background:#EEF8E8;border-radius:12px;padding:10px 12px;margin-top:10px;font-size:13px;color:#08654A}
 .mc-sus .tx{flex:1;min-width:0}
 .mc-sus button{border:0;background:none;color:#B3261E;font-weight:700;cursor:pointer;font:inherit;font-weight:700}
 .mc-h{font-weight:800;font-size:13.5px;margin:14px 0 2px}
 .mc-hs{color:#6a6a6a;font-size:12px;margin-bottom:4px}
 .mc-f{display:flex;align-items:center;gap:10px;padding:7px 4px;border-radius:10px;cursor:pointer}
 .mc-f:hover{background:#F7F7F7}
-.mc-f input{width:18px;height:18px;flex:none;accent-color:#0B8A3E;margin:0}
+.mc-f input{width:18px;height:18px;flex:none;accent-color:#0B7A57;margin:0}
 .mc-f .tx{flex:1;min-width:0}
 .mc-f .tx b{display:block;font-size:13.5px;font-weight:600;overflow-wrap:anywhere}
 .mc-f .tx small{color:#6a6a6a;font-size:12px}
 .mc-f .tx small.venc{color:#B3261E;font-weight:700}
 .mc-f .m{font-weight:800;font-size:13.5px;white-space:nowrap;color:#B3261E}
-.mc-f .m.ok{color:#0B8A3E}
+.mc-f .m.ok{color:#0B7A57}
 .mc-f.bloq{cursor:default;opacity:.8}
 .mc-f.comp .ic{font-size:16px;flex:none}
 .mc-cargo{display:flex;justify-content:space-between;gap:10px;font-size:13px;margin-top:8px;color:#444}
-.mc-ahorro{font-size:12.5px;color:#0B7A55;margin-top:4px}
+.mc-ahorro{font-size:12.5px;color:#0B7A57;margin-top:4px}
 .mc-pagar{width:100%;margin-top:10px}
 .mc-nota{color:#6a6a6a;font-size:11.5px;margin-top:6px}
 .mc-acc{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
@@ -567,7 +567,7 @@ def pagina_mis_clases(request: Request, pagado: str = "") -> HTMLResponse:
             aviso_ok = str(o.get("mensaje") or "Pago registrado. ¡Gracias!")
     cuerpo = (f"<style>{_CSS}</style><div class='mcl'><h1>Mis clases y pagos</h1>"
               "<p class='intro'>Tus academias, tus cuotas y tus comprobantes. Lo mismo que ves en la app.</p>"
-              f"<div class='estado' id='mcAviso' style='{'display:block' if aviso_ok else 'display:none'};background:#EEF8E8;color:#067A38;margin-bottom:14px'>{e(aviso_ok)}</div>"
+              f"<div class='estado' id='mcAviso' style='{'display:block' if aviso_ok else 'display:none'};background:#EEF8E8;color:#08654A;margin-bottom:14px'>{e(aviso_ok)}</div>"
               f"{familia}{medio}{tarjetas}</div>"
               f"<script>window.__misClases={cfg};</script>"
               + ("<script src='https://checkout.culqi.com/js/v4'></script>" if hay_culqi else "")
@@ -652,7 +652,7 @@ _JS = (r"""
     if(p){ pagar(p.dataset.pagar); }
   });
   function comprobante(d){
-    var f = function(k, v, fuerte){ return '<div style="display:flex;gap:10px;padding:3px 0"><span style="width:110px;flex:none;color:#717171">' + k + '</span><span style="flex:1;min-width:0;overflow-wrap:anywhere;' + (fuerte ? 'font-weight:900;font-size:16px;color:#0B8A3E' : 'font-weight:600;color:#222') + '">' + v + '</span></div>'; };
+    var f = function(k, v, fuerte){ return '<div style="display:flex;gap:10px;padding:3px 0"><span style="width:110px;flex:none;color:#717171">' + k + '</span><span style="flex:1;min-width:0;overflow-wrap:anywhere;' + (fuerte ? 'font-weight:900;font-size:16px;color:#0B7A57' : 'font-weight:600;color:#222') + '">' + v + '</span></div>'; };
     var h = '<div style="text-align:left;font-size:13.5px">' + (d.logo ? '<div style="text-align:center;margin-bottom:10px"><img src="' + esc(d.logo) + '" alt="" style="width:48px;height:48px;border-radius:10px;object-fit:cover" onerror="this.parentNode.remove()"></div>' : '');
     h += f('Academia', esc(d.academia)) + f('Alumno', esc(d.alumno)) + f('Concepto', esc(d.concepto)) + f('Fecha y hora', esc(d.fecha));
     if(d.op) h += f('N.º operación', esc(d.op));
@@ -707,7 +707,7 @@ _JS = (r"""
         Culqi.publicKey = C.pk;
         Culqi.settings({title: '⟦MARCA⟧', currency: 'PEN', amount: montoC});
         Culqi.options({lang: 'es', installments: false, paymentMethods: {yape: medio === 'yape', tarjeta: medio === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false},
-                       style: {logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF'}});
+                       style: {logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0B7A57', buttonText: 'Pagar', buttonTextColor: '#FFFFFF'}});
         window.culqi = function(){
           if(Culqi.token){
             var token = Culqi.token.id, m = (Culqi.token.iin && Culqi.token.iin.card_brand) ? 'tarjeta' : 'yape';
@@ -1184,7 +1184,7 @@ def comprobante_cuota(request: Request, alumno_id: str, cuota_id: str) -> HTMLRe
     def li(k: str, v: str, fuerte: bool = False) -> str:
         return (f"<div class='cp-l'><span>{k}</span><b{' class=fuerte' if fuerte else ''}>{v}</b></div>")
     cuerpo = ("<style>.cp{max-width:520px;margin:24px auto 80px}.cp-l{display:flex;gap:12px;padding:6px 0;border-bottom:1px solid #F0F0F0}"
-              ".cp-l span{width:130px;flex:none;color:#6a6a6a}.cp-l b{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:600}.cp-l b.fuerte{font-weight:900;font-size:17px;color:#0B8A3E}"
+              ".cp-l span{width:130px;flex:none;color:#6a6a6a}.cp-l b{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:600}.cp-l b.fuerte{font-weight:900;font-size:17px;color:#0B7A57}"
               ".cp-cab{display:flex;gap:12px;align-items:center;margin-bottom:6px}.cp-cab img{width:48px;height:48px;border-radius:10px;object-fit:cover}"
               "@media print{header,footer,.cab,.no-print,.barra-fija,#abrirApp{display:none!important}.cp{margin:0}}</style>"
               "<div class='cp panel'><div class='cp-cab'>"

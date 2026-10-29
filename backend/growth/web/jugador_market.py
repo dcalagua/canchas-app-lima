@@ -386,7 +386,7 @@ def _js_culqi(cfg: dict) -> str:
       Culqi.settings({ title: '⟦MARCA⟧', currency: 'PEN', amount: montoC });
       Culqi.options({ lang: 'es', installments: false,
         paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false },
-        style: { logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
+        style: { logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0B7A57', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
       window.culqi = function(){
         if(Culqi.token){
           var body = Object.assign({token: Culqi.token.id, medio: (Culqi.token.iin && Culqi.token.iin.card_brand) ? 'tarjeta' : 'yape'}, C.cuerpo || {});

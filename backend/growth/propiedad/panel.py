@@ -936,7 +936,7 @@ def get_redes_biblioteca_callback(code: str = "", state: str = "", error: str = 
         return HTMLResponse(f"<!doctype html><html lang='es'><head><meta charset='utf-8'><title>{titulo}</title>"
                             "<style>body{font-family:system-ui,sans-serif;background:#F4F7FA;margin:0;display:flex;align-items:center;justify-content:center;height:100vh}"
                             ".c{background:#fff;border-radius:18px;padding:28px 32px;max-width:460px;box-shadow:0 8px 30px rgba(0,0,0,.08);text-align:center}"
-                            f"h1{{font-size:20px;color:{'#0B8A3E' if ok else '#B42318'}}}p{{color:#444;line-height:1.5}}</style></head>"
+                            f"h1{{font-size:20px;color:{'#0B7A57' if ok else '#B42318'}}}p{{color:#444;line-height:1.5}}</style></head>"
                             f"<body><div class='c'><h1>{titulo}</h1><p>{cuerpo}</p><p><b>Ya puedes cerrar esta pestaña y volver a la torre.</b></p></div></body></html>",
                             status_code=200 if ok else 400)
     if error:
@@ -5315,7 +5315,7 @@ async function guardarYapeAuto(){
   const r = await fetch('/admin/api/yape-auto/config',{method:'POST', headers:{...headers(),'Content-Type':'application/json'}, body: JSON.stringify(body)});
   const j = await r.json().catch(()=>({}));
   if(!r.ok){ msg.textContent = j.detail || 'No se pudo guardar.'; msg.style.color='#B42318'; return; }
-  msg.textContent = 'Guardado ✓'; msg.style.color='#0B8A3E';
+  msg.textContent = 'Guardado ✓'; msg.style.color='#0B7A57';
 }
 async function probarYapeAuto(){
   const res = document.getElementById('ya_res');
@@ -5334,7 +5334,7 @@ async function guardarPlanAcademia(){
   const r = await fetch('/admin/api/academias-plan/config',{method:'POST', headers:{...headers(),'Content-Type':'application/json'}, body: JSON.stringify(body)});
   const j = await r.json().catch(()=>({}));
   if(!r.ok){ msg.textContent = j.detail || 'No se pudo guardar.'; msg.style.color='#B42318'; return; }
-  msg.textContent = 'Guardado ✓'; msg.style.color='#0B8A3E';
+  msg.textContent = 'Guardado ✓'; msg.style.color='#0B7A57';
   setTimeout(cargarPlanAcademia, 600);
 }
 async function cortesiaPlanAcademia(id){
@@ -5445,7 +5445,7 @@ function simHtml(x){
       <span class="liq-mini" style="background:#FFF4E5;color:#7A4B00">Pasarela (${esc(x.pasarela)} · ${x.medio}) −${S(x.pasarela_soles)}</span>
       <span class="liq-mini liq-mini-pcg">Comisión ⟦MARCA⟧ ${S(x.comision_soles)}</span>
       <span class="liq-mini liq-mini-neto">Al dueño ${S(x.neto_soles)}</span>
-      <span class="liq-mini" style="background:${neg?'#FDE8E8':'#E6F7EE'};color:${neg?'#B3261E':'#0B7A55'};font-weight:800">Margen ⟦MARCA⟧ ${S(x.margen_soles)}</span>
+      <span class="liq-mini" style="background:${neg?'#FDE8E8':'#E6F7EE'};color:${neg?'#B3261E':'#0B7A57'};font-weight:800">Margen ⟦MARCA⟧ ${S(x.margen_soles)}</span>
     </div>
     <div style="color:#667;font-size:12.5px;margin-top:8px">Comisión ${x.comision_pct}% con mínimo ${S(x.comision_min)}${neg?' · <b style="color:#B3261E">en este monto la pasarela cuesta más que la comisión: pierdes plata</b>':''}.</div>`;
 }
@@ -5572,10 +5572,10 @@ function renderModeloNegocio(sim){
     .mn-top h2{margin:0;font-size:19px} .mn-top p{margin:4px 0 0;color:#667;font-size:13px;max-width:780px}
     .mn-tabs{display:flex;gap:10px;flex-wrap:wrap;border-bottom:1px solid var(--border);margin:0 -20px 18px;padding:0 20px}
     .mn-tab{display:flex;align-items:center;gap:10px;padding:10px 14px 12px;border:0;background:none;cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px;text-align:left;font-family:inherit}
-    .mn-tab.on{border-bottom-color:#0B8A3E} .mn-tab-ico{font-size:22px}
+    .mn-tab.on{border-bottom-color:#0B7A57} .mn-tab-ico{font-size:22px}
     .mn-tab-txt{display:grid} .mn-tab-txt b{font-size:15px;color:#222} .mn-tab-txt small{color:#889;font-size:12px}
     .mn-tab:not(.on) .mn-tab-txt b{color:#667}
-    .mn-vig{background:#E7F6EF;color:#0B8A3E;font-weight:800;font-size:11.5px;padding:3px 9px;border-radius:999px;white-space:nowrap}
+    .mn-vig{background:#E7F6EF;color:#0B7A57;font-weight:800;font-size:11.5px;padding:3px 9px;border-radius:999px;white-space:nowrap}
     .mn-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:22px}
     @media(max-width:1100px){.mn-grid{grid-template-columns:1fr}}
     .mn-col{min-width:0}
@@ -5583,7 +5583,7 @@ function renderModeloNegocio(sim){
     .mn-h small{font-weight:400;color:#889}
     .mn-chips{display:flex;gap:6px;flex-wrap:wrap}
     .mn-chip{padding:6px 12px;border-radius:999px;border:1px solid #E4E4E4;background:#fff;font-weight:800;cursor:pointer;font-size:12.5px}
-    .mn-chip.on{border-color:#0B8A3E;background:#E7F6EF}
+    .mn-chip.on{border-color:#0B7A57;background:#E7F6EF}
     .mn-filas{border:1px solid var(--border);border-radius:14px;overflow:hidden}
     .mn-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 14px;border-bottom:1px solid #F1F1F1}
     .mn-row:last-child{border-bottom:0}
@@ -5594,12 +5594,12 @@ function renderModeloNegocio(sim){
     .mn-num button:hover{background:#F2F2F2}
     .mn-num input{width:52px;border:0;text-align:right;font-size:15px;font-weight:800;font-family:inherit;padding:4px 0;background:none;-moz-appearance:textfield}
     .mn-num input::-webkit-outer-spin-button,.mn-num input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-    .mn-num input:focus{outline:none} .mn-num:focus-within{border-color:#0B8A3E;box-shadow:0 0 0 3px #E7F6EF}
+    .mn-num input:focus{outline:none} .mn-num:focus-within{border-color:#0B7A57;box-shadow:0 0 0 3px #E7F6EF}
     .mn-suf{font-size:13px;font-weight:700;color:#667;padding:0 4px 0 2px}
     @media(max-width:480px){.mn-row{flex-wrap:wrap}.mn-num{margin-left:auto}}
     .mn-nota{font-size:12px;color:#889;margin-top:10px}
     .mn-acc{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:16px}
-    .mn-ok{color:#0B8A3E;font-weight:800;font-size:13.5px}
+    .mn-ok{color:#0B7A57;font-weight:800;font-size:13.5px}
     .mn-lista{margin:0;padding-left:18px;display:grid;gap:8px;font-size:13.5px;color:#333}
     .mn-simhead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
     .mn-precio{font-size:12.5px;font-weight:700;display:flex;align-items:center;gap:8px}
@@ -5612,10 +5612,10 @@ function renderModeloNegocio(sim){
     .mn-sub{padding:8px 14px;background:#F7F9FB;font-weight:800;font-size:12.5px;color:#445;border-bottom:1px solid #F1F1F1}
     .mn-seg{display:flex;flex:none;border:1px solid #E4E4E4;border-radius:999px;overflow:hidden;background:#fff}
     .mn-seg button{border:0;background:none;padding:7px 12px;font-weight:700;font-size:12.5px;cursor:pointer;font-family:inherit;color:#556}
-    .mn-seg button.on{background:#E7F6EF;color:#0B8A3E}
+    .mn-seg button.on{background:#E7F6EF;color:#0B7A57}
     .mn-medios{display:flex;gap:8px;margin:2px 0 10px;flex-wrap:wrap}
     .mn-medios button{padding:7px 14px;border-radius:999px;border:1px solid #E4E4E4;background:#fff;font-weight:800;cursor:pointer;font-family:inherit;font-size:13px}
-    .mn-medios button.on{border-color:#0B8A3E;background:#E7F6EF;color:#0B8A3E}
+    .mn-medios button.on{border-color:#0B7A57;background:#E7F6EF;color:#0B7A57}
     .mn-compara{font-size:12.5px;color:#556;margin:-4px 0 12px}
     .mn-curva{border:1px solid var(--border);border-radius:14px;overflow-x:auto}
     .mn-curva table{width:100%;border-collapse:collapse;font-size:13px;white-space:nowrap}
@@ -5669,9 +5669,9 @@ function pintarSimModelo(sim){
   const kpis = (x) => `<div class="mn-kpis">
       <div class="mn-kpi"><small>👤 El jugador paga</small><b>${mnF(x.cliente_paga_centimos,s)}</b></div>
       <div class="mn-kpi"><small>🏟️ El dueño recibe</small><b>${mnF(x.dueno_recibe_centimos,s)}</b></div>
-      <div class="mn-kpi"><small>💚 Comisión ⟦MARCA⟧</small><b style="color:#0B8A3E">${mnF(x.ingreso_pcg_centimos,s)}</b></div>
+      <div class="mn-kpi"><small>💚 Comisión ⟦MARCA⟧</small><b style="color:#0B7A57">${mnF(x.ingreso_pcg_centimos,s)}</b></div>
       ${mnTab==='2' ? `<div class="mn-kpi"><small>Costo de la pasarela (repartido)</small><b>${mnF(x.pasarela_total_centimos,s)}</b></div>`
-        : `<div class="mn-kpi"><small>Margen tras la pasarela</small><b style="color:${x.margen_real_centimos<0?'#C0392B':'#0B8A3E'}">${mnF(x.margen_real_centimos,s)}</b></div>`}</div>`;
+        : `<div class="mn-kpi"><small>Margen tras la pasarela</small><b style="color:${x.margen_real_centimos<0?'#C0392B':'#0B7A57'}">${mnF(x.margen_real_centimos,s)}</b></div>`}</div>`;
   if(mnTab==='1'){
     const b = sim.modelo_1;
     el.innerHTML = kpis(b) + `<div class="mn-sim">
@@ -5680,9 +5680,9 @@ function pintarSimModelo(sim){
       ${fila('👤 El jugador paga', mnF(b.cliente_paga_centimos,s), 'fuerte')}
       ${fila('Comisión ⟦MARCA⟧ al dueño (5 %, con mínimo)', '−'+mnF(b.descuento_dueno_centimos,s), 'sub')}
       ${fila('🏟️ El dueño recibe', mnF(b.dueno_recibe_centimos,s), 'fuerte')}
-      ${fila('💚 Ingreso ⟦MARCA⟧ (comisión + cargo)', mnF(b.ingreso_pcg_centimos,s), 'fuerte', '#0B8A3E')}
+      ${fila('💚 Ingreso ⟦MARCA⟧ (comisión + cargo)', mnF(b.ingreso_pcg_centimos,s), 'fuerte', '#0B7A57')}
       ${fila('Pasarela que paga ⟦MARCA⟧ (Tarifas de pasarela)', '−'+mnF(b.pasarela_real_centimos,s), 'sub')}
-      ${fila('Margen de ⟦MARCA⟧', mnF(b.margen_real_centimos,s), 'total', b.margen_real_centimos<0?'#C0392B':'#0B8A3E')}
+      ${fila('Margen de ⟦MARCA⟧', mnF(b.margen_real_centimos,s), 'total', b.margen_real_centimos<0?'#C0392B':'#0B7A57')}
     </div>`;
     return;
   }
@@ -5708,15 +5708,15 @@ function pintarSimModelo(sim){
     ${fila('Comisión ⟦MARCA⟧ al dueño', mnF(a.pcg_dueno_centimos,s), 'sub')}
     ${fila('👤 El jugador paga', mnF(a.cliente_paga_centimos,s)+' <small style="color:#889">(+'+mnF(a.cargo_cliente_centimos,s)+')</small>', 'fuerte')}
     ${fila('🏟️ El dueño recibe', mnF(a.dueno_recibe_centimos,s)+' <small style="color:#889">(−'+mnF(a.descuento_dueno_centimos,s)+')</small>', 'fuerte')}
-    ${fila('💚 Comisión ⟦MARCA⟧', mnF(a.ingreso_pcg_centimos,s), 'fuerte', '#0B8A3E')}
+    ${fila('💚 Comisión ⟦MARCA⟧', mnF(a.ingreso_pcg_centimos,s), 'fuerte', '#0B7A57')}
     ${fila('La pasarela cobra de verdad (sobre lo cobrado)', '−'+mnF(a.pasarela_real_centimos,s), 'sub')}
-    ${fila('⟦MARCA⟧ gana de verdad', mnF(a.margen_real_centimos,s), 'total', a.margen_real_centimos<0?'#C0392B':'#0B8A3E')}
+    ${fila('⟦MARCA⟧ gana de verdad', mnF(a.margen_real_centimos,s), 'total', a.margen_real_centimos<0?'#C0392B':'#0B7A57')}
   </div>
   ${(sim.curva||[]).length ? `<div class="mn-h" style="margin-top:16px">📈 Según el precio de la cancha <small>(${nom(mnMedio)} · con lo que tienes en pantalla)</small></div>
   <div class="mn-curva"><table><thead><tr><th>Cancha</th><th>Jugador paga</th><th>Comisión jugador</th><th>%</th><th>Dueño recibe</th><th>PCG gana</th></tr></thead><tbody>
   ${sim.curva.map(c0=>{ const c = (c0.por_medio||{})[mnMedio] || c0; return `<tr class="${Math.abs(c0.precio-sim.monto)<0.005?'on':''}"><td>${mnF(c0.precio*100,s)}</td><td>${mnF(c.cliente_paga_centimos,s)}</td>
     <td>${mnF(c.pcg_cliente_centimos,s)}${c.cliente_min_aplicado?' <span class="mn-tag">mín.</span>':''}</td><td><b>${c.cliente_pct_efectivo} %</b></td>
-    <td>${mnF(c.dueno_recibe_centimos,s)}</td><td style="color:#0B8A3E;font-weight:800">${mnF(c.margen_real_centimos!=null?c.margen_real_centimos:c.ingreso_pcg_centimos,s)}</td></tr>`; }).join('')}
+    <td>${mnF(c.dueno_recibe_centimos,s)}</td><td style="color:#0B7A57;font-weight:800">${mnF(c.margen_real_centimos!=null?c.margen_real_centimos:c.ingreso_pcg_centimos,s)}</td></tr>`; }).join('')}
   </tbody></table></div>` : ''}
 `;
 }
@@ -5838,7 +5838,7 @@ function cargoSimHtml(x){
       <span class="liq-mini liq-mini-neto">Recibe el dueño/academia ${S(x.recibe_soles)}</span>
       <span class="liq-mini liq-mini-pcg">Comisión ${S(x.comision_soles)}</span>
       <span class="liq-mini" style="background:#FFF4E5;color:#7A4B00">Pasarela (${x.medio}) −${S(x.pasarela_soles)}</span>
-      <span class="liq-mini" style="background:${neg?'#FDE8E8':'#E6F7EE'};color:${neg?'#B3261E':'#0B7A55'};font-weight:800">Margen ⟦MARCA⟧ ${S(x.margen_soles)}</span>
+      <span class="liq-mini" style="background:${neg?'#FDE8E8':'#E6F7EE'};color:${neg?'#B3261E':'#0B7A57'};font-weight:800">Margen ⟦MARCA⟧ ${S(x.margen_soles)}</span>
     </div>
     <div style="color:#667;font-size:12.5px;margin-top:8px">Regla: ${esc(x.regla)}. Desglose ⓘ: ${(x.desglose||[]).map(d=>esc(d.nombre)+' '+S(d.monto_centimos/100)).join(' · ')}.${neg?' <b style="color:#B3261E">Con esta tarifa de pasarela pierdes plata en este monto.</b>':''}</div>`;
 }
@@ -6034,7 +6034,7 @@ async function cargarLiquidaciones(){
           </div>
           <div class="liq-der">
             <div class="liq-monto" title="Bruto ${S(p.bruto_soles||0)} − comisión ⟦MARCA⟧ ${S(p.comision_soles||0)} · pasarela ${S(p.pasarela_soles||0)}${p.medio?' ('+esc(p.medio)+')':''} · margen ${S(p.margen_soles||0)}">${S(p.neto_soles||0)}</div>
-            <div class="liq-det" style="font-size:11.5px">${(p.cargo_servicio_soles||0)>0?`cargo por servicio ${S(p.cargo_servicio_soles)} · `:''}pasarela −${S(p.pasarela_soles||0)} <span title="${p.pasarela_fuente==='real'?'Comisión real leída de Culqi':(p.pasarela_fuente==='saldo'?'Pagado con saldo: la pasarela se pagó al recargar':'Estimada con la tarifa configurada; Culqi la publica ~12 h después')}" style="color:${p.pasarela_fuente==='real'?'#0B7A55':'#98A2B3'}">${p.pasarela_fuente==='real'?'✓ real':(p.pasarela_fuente==='saldo'?'saldo':'est.')}</span> · margen <b style="color:${(p.margen_soles||0)<0?'#B3261E':'#0B7A55'}">${S(p.margen_soles||0)}</b></div>
+            <div class="liq-det" style="font-size:11.5px">${(p.cargo_servicio_soles||0)>0?`cargo por servicio ${S(p.cargo_servicio_soles)} · `:''}pasarela −${S(p.pasarela_soles||0)} <span title="${p.pasarela_fuente==='real'?'Comisión real leída de Culqi':(p.pasarela_fuente==='saldo'?'Pagado con saldo: la pasarela se pagó al recargar':'Estimada con la tarifa configurada; Culqi la publica ~12 h después')}" style="color:${p.pasarela_fuente==='real'?'#0B7A57':'#98A2B3'}">${p.pasarela_fuente==='real'?'✓ real':(p.pasarela_fuente==='saldo'?'saldo':'est.')}</span> · margen <b style="color:${(p.margen_soles||0)<0?'#B3261E':'#0B7A57'}">${S(p.margen_soles||0)}</b></div>
             <button class="liq-btn" onclick="pagarLiquidacion('${esc(p.reserva_id)}','${S(p.neto_soles||0)}')">Marcar pagado</button>
           </div>
         </div>`).join('');
@@ -6056,7 +6056,7 @@ async function cargarLiquidaciones(){
             <span class="liq-mini">Bruto ${S(bruto)}</span>
             <span class="liq-mini liq-mini-pcg">⟦MARCA⟧ ${S(com)}</span>
             <span class="liq-mini" style="background:#FFF4E5;color:#7A4B00">Pasarela −${S(pas)}</span>
-            <span class="liq-mini" style="background:${mar<0?'#FDE8E8':'#E6F7EE'};color:${mar<0?'#B3261E':'#0B7A55'}">Margen ${S(mar)}</span>
+            <span class="liq-mini" style="background:${mar<0?'#FDE8E8':'#E6F7EE'};color:${mar<0?'#B3261E':'#0B7A57'}">Margen ${S(mar)}</span>
             <span class="liq-mini liq-mini-neto">Al dueño ${S(neto)}</span>
           </div>
         </div>
@@ -6080,7 +6080,7 @@ async function cargarLiquidaciones(){
             <span class="liq-mini liq-mini-pcg">Comisión ⟦MARCA⟧ ${S(gCom)}</span>
             ${gCargo>0?`<span class="liq-mini liq-mini-pcg" title="Cargo por servicio que pagaron los clientes además del precio (Cobros → Cargo por servicio)">Cargo por servicio ${S(gCargo)}</span>`:''}
             <span class="liq-mini" style="background:#FFF4E5;color:#7A4B00" title="Estimado con la tarifa configurada en Cobros → Tarifas de pasarela">Pasarela −${S(gPas)}</span>
-            <span class="liq-mini" style="background:${gMar<0?'#FDE8E8':'#E6F7EE'};color:${gMar<0?'#B3261E':'#0B7A55'}" title="Comisión + cargo por servicio − pasarela">Margen ⟦MARCA⟧ ${S(gMar)}</span>
+            <span class="liq-mini" style="background:${gMar<0?'#FDE8E8':'#E6F7EE'};color:${gMar<0?'#B3261E':'#0B7A57'}" title="Comisión + cargo por servicio − pasarela">Margen ⟦MARCA⟧ ${S(gMar)}</span>
             <span class="liq-mini liq-mini-neto">Neto a dueños ${S(gNeto)}</span>
           </div>
         </div>
@@ -6302,13 +6302,13 @@ function renderFotosReclamo(){
         podrás <b>Aprobar</b> cuando la cancha tenga ese número de fotos <b>propias</b>
         (subidas a su carpeta; las de Google y la foto de evidencia no cuentan).</div>
       <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-        ${ops.map(n=>`<button type="button" style="padding:8px 14px;border-radius:999px;border:1px solid ${n===fotosMin?'#0E8F67':'#E4E4E4'};background:${n===fotosMin?'#E7F6EF':'#fff'};color:#222;font-weight:800;cursor:pointer" onclick="setFotosMin(${n})">${n===0?'No exigir':n+' foto'+(n>1?'s':'')}</button>`).join('')}
+        ${ops.map(n=>`<button type="button" style="padding:8px 14px;border-radius:999px;border:1px solid ${n===fotosMin?'#0B7A57':'#E4E4E4'};background:${n===fotosMin?'#E7F6EF':'#fff'};color:#222;font-weight:800;cursor:pointer" onclick="setFotosMin(${n})">${n===0?'No exigir':n+' foto'+(n>1?'s':'')}</button>`).join('')}
       </div>
       <div class="row" style="margin-top:12px">Máximo de fotos en el formulario de reclamo
         (luego, en Editar cancha, el dueño puede llegar a 8). Al <b>Aprobar</b>, la cancha se
         queda solo con las fotos del dueño: las de Google se borran.</div>
       <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-        ${[3,4,5,6,8].filter(n=>n>=Math.max(1,fotosMin)).map(n=>`<button type="button" style="padding:8px 14px;border-radius:999px;border:1px solid ${n===fotosMax?'#0E8F67':'#E4E4E4'};background:${n===fotosMax?'#E7F6EF':'#fff'};color:#222;font-weight:800;cursor:pointer" onclick="setFotosMax(${n})">Hasta ${n}</button>`).join('')}
+        ${[3,4,5,6,8].filter(n=>n>=Math.max(1,fotosMin)).map(n=>`<button type="button" style="padding:8px 14px;border-radius:999px;border:1px solid ${n===fotosMax?'#0B7A57':'#E4E4E4'};background:${n===fotosMax?'#E7F6EF':'#fff'};color:#222;font-weight:800;cursor:pointer" onclick="setFotosMax(${n})">Hasta ${n}</button>`).join('')}
       </div></div>`;
 }
 async function setFotosMax(n){
@@ -6345,7 +6345,7 @@ async function cargarFotosLocales(){
   renderFotosLocales();
 }
 function flChip(txt, on, js){
-  return `<button type="button" style="padding:8px 14px;border-radius:999px;border:1px solid ${on?'#0E8F67':'#E4E4E4'};background:${on?'#E7F6EF':'#fff'};color:#222;font-weight:800;cursor:pointer" onclick="${js}">${txt}</button>`;
+  return `<button type="button" style="padding:8px 14px;border-radius:999px;border:1px solid ${on?'#0B7A57':'#E4E4E4'};background:${on?'#E7F6EF':'#fff'};color:#222;font-weight:800;cursor:pointer" onclick="${js}">${txt}</button>`;
 }
 function renderFotosLocales(){
   const box = document.getElementById('fotosLoc');
