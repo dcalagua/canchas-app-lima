@@ -118,7 +118,9 @@ def _zona(c: dict) -> str:
 
 
 def _secreto() -> bytes:
-    return (config.ADMIN_PANEL_TOKEN or config.APP_API_KEY or "pichangol-web").encode()
+    # Misma clave que las sesiones web (sin secretos configurados, una
+    # aleatoria del proceso: nunca una constante conocida).
+    return sesion._secreto()
 
 
 def _firma(ids: list[str]) -> str:
@@ -1138,7 +1140,7 @@ def _tarjeta_academia(a: dict) -> str:
     if tel and not tel.startswith(pref) and len(tel) <= 10:
         tel = pref + tel
     # OJO: la tarjeta ya es un <a>; un <a> anidado rompe el HTML (el navegador parte la tarjeta). Va como <span> con manejador, igual que "Cómo llegar".
-    wa = (f" <span class='app'>💬 <span class='wa' data-wa='https://wa.me/{tel}?text=Hola,%20vi%20tu%20academia%20en%20Pichangol'>WhatsApp</span></span>" if tel else "")
+    wa = (f" <span class='app'>💬 <span class='wa' data-wa='https://wa.me/{tel}?text=' + quote(f'Hola, vi tu academia en {MARCA}') + '>WhatsApp</span></span>" if tel else "")
     ir = (f" <span class='app'>📍 <span class='ir' data-lat='{a.get('lat')}' data-lng='{a.get('lng')}'>Cómo llegar</span></span>" if a.get("lat") or a.get("lng") else "")
     sub = " · ".join(x for x in (a.get("sedeClub"), a.get("zona")) if x)
     n_prog = len([x for x in programas if x])
@@ -2580,8 +2582,12 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
                     desc=(f"Reserva {c['nombre']} y paga en línea con Yape o tarjeta." if pasarela == "culqi"
                           else f"Reserva {c['nombre']} y paga en línea con {pago_hospedado.nombre_pasarela(pasarela)}."),
                     jsonld=_jsonld_cancha(c, sim),
-                    extra_head=("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
-                                "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>"
+                    # Leaflet DIFERIDO: en la ficha el mapa solo se dibuja al tocar "Cómo llegar"
+                    # (no bloquea la primera pintura). SRI = el archivo de unpkg no puede cambiar.
+                    extra_head=("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' "
+                                "integrity='sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=' crossorigin=''>"
+                                "<script defer src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' "
+                                "integrity='sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=' crossorigin=''></script>"
                                 + (sesion.GIS_SCRIPT if (sesion.activo() and not ses) else "")), sesion=ses)
 
 
@@ -4184,10 +4190,10 @@ def comprobante_ics(ref: str) -> Response:
                   f"LOCATION:{_ics(lugar)}\r\n"
                   f"DESCRIPTION:Reserva {_ics(ref)}. Comprobante: {_ics((config.PUBLIC_BASE_URL or '').rstrip('/'))}/reserva/{_ics(ref)}\r\n"
                   "END:VEVENT\r\n")
-    body = ("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Pichangol//Reserva web//ES\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n"
+    body = ("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//' + MARCA + '//Reserva web//ES\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n"
             + "".join(ev) + "END:VCALENDAR\r\n")
     return Response(body, media_type="text/calendar; charset=utf-8",
-                    headers={"Content-Disposition": f"attachment; filename=pichangol-{ref}.ics"})
+                    headers={"Content-Disposition": f"attachment; filename={MARCA.lower()}-{ref}.ics"})
 
 
 def _ics(s) -> str:

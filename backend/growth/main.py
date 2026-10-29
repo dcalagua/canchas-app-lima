@@ -174,6 +174,11 @@ def _persistir_al_apagar() -> None:
         except Exception:  # noqa: BLE001
             pass
 
+# Rendimiento y seguridad de la web pública (gzip, CSS/JS versionados,
+# anti-iframe, CSP en modo reporte, CSRF y límites por IP): web/seguridad_web.py.
+from web import seguridad_web as _seguridad_web  # noqa: E402
+_seguridad_web.instalar(app)
+
 app.include_router(puntos_router)
 app.include_router(entrenador_router)
 app.include_router(solicitudes_router)

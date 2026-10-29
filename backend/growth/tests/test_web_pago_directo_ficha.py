@@ -157,5 +157,6 @@ def test_sesion_sin_secretos_no_usa_constante_y_rota_sin_cerrar_sesiones(monkeyp
 
 
 def test_turnos_son_botones_accesibles(db):
-    html = client.get("/reservar/c_lima").text
+    from tests.conftest import con_assets
+    html = con_assets(client, client.get("/reservar/c_lima").text)
     assert '<button type="button" class="slot' in html and "aria-pressed" in html and "button.slot{" in html

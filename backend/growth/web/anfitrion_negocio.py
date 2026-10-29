@@ -899,7 +899,7 @@ def descargar_csv(request: Request, r: str = "mes", desde: str = "", hasta: str 
         c = por_id.get(x["cancha_id"]) or {}
         w.writerow([x["fecha"], f"{x['hora_inicio']}-{x['hora_fin']}", c.get("club") or "", c.get("nombre") or "", x["jugador"],
                     x["usuario"], x["medio_pago"], _estado_txt(x), f"{x['precio']:.2f}", f"{total_con_extras(x):.2f}"])
-    nombre = f"pichangol-cobros-{a.isoformat()}-{b.isoformat()}.csv" if rango != "todo" else "pichangol-cobros.csv"
+    nombre = f"{MARCA.lower()}-cobros-{a.isoformat()}-{b.isoformat()}.csv" if rango != "todo" else f"{MARCA.lower()}-cobros.csv"
     return Response("﻿" + buf.getvalue(), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f"attachment; filename={nombre}"})
 

@@ -33,7 +33,7 @@ TOKENS = ("""
   --blanco:#FFFFFF;--noche:#0A1B3D;--esmeralda:#0B7A57;--teal:#08654A;--lima:#7CB518;--naranja:#F28C28;--dorado:#D9B45A;
   --papel:#FFFFFF;--trazo:#DDE5EF;--tenue:#627080;--tinte:#E7F4EF;--gris:#EEF1F1;--gris-txt:#5C6B6C;
   /* = tokens del APK (lib/theme.dart · lib/ui/ds.dart): CTA AA, texto dorado legible, foco visible */
-  --verde:var(--esmeralda);--dorado-txt:#8A6A12;--info-bg:#E7F0FB;--info-fg:#1E5FB0;--foco:0 0 0 3px rgba(11,122,87,.35);
+  --verde:var(--esmeralda);--borde:var(--trazo);--dorado-txt:#8A6A12;--info-bg:#E7F0FB;--info-fg:#1E5FB0;--foco:0 0 0 3px rgba(11,122,87,.35);
   --esp-1:4px;--esp-2:8px;--esp-3:12px;--esp-4:16px;--esp-5:24px;--esp-6:32px;--r-sm:10px;--r-pill:999px;--dur:.18s;
   --ok-bg:#E9F4EE;--ok-fg:#1F6E49;--warn-bg:#FDF2D6;--warn-fg:#946200;--bad-bg:#FBE7E7;--bad-fg:#C0392B;
   --rojo:#C13515;--sombra:0 2px 14px rgba(15,27,45,.06);--sombra2:0 10px 30px rgba(15,27,45,.10);
@@ -1116,7 +1116,7 @@ def cabecera(*, tabs: str = "", busq: str = "", ses: dict | None = None, volver:
             + ("" if modo == "anfitrion" else f"<div class='cab-mini'>{busq_mini('#', 'busqMini') if busq else busq_mini('/canchas')}</div>")
             + f"{menu_cuenta(ses, volver, modo)}"
             + (f"<div class='cab-busq'>{busq}</div>" if busq else "")
-            + f"</div></header><script>{JS_NAV}</script>")
+            + f"</div></header><script src='{_seg().url_nav()}'></script>")
 
 
 # JS de la cabecera: menú ☰ (abre/cierra, se cierra al hacer clic fuera o con
@@ -1388,7 +1388,7 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         f"<link rel='apple-touch-icon' href='{_logo_url()}'>"
         "<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
         "<link href='https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700;9..40,800&display=swap' rel='stylesheet'>"
-        f"<style>{CSS}</style>{extra_head}"
+        f"<link rel='stylesheet' href='{_seg().url_css()}'>{extra_head}"
         + (f"<script type='application/ld+json'>{js_seguro(jsonld)}</script>" if jsonld else "")
         + "</head><body" + (f" class='{clases}'" if clases else "") + ">"
         f"{nav or nav_simple(sesion)}"
@@ -1399,4 +1399,12 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         # Badge de no leídos (mensajería web): pinta el último valor y lo refresca.
         from web.jugador_mensajes import JS_BADGE_MENSAJES
         page = page.replace("</body></html>", JS_BADGE_MENSAJES + "</body></html>")
-    return HTMLResponse(page, headers={"Cache-Control": "no-store"})
+    # private + no-cache: nada se guarda en cachés compartidas y el navegador
+    # revalida siempre, pero el botón "atrás" puede usar su copia en memoria
+    # (con no-store, cada "atrás" recargaba la página entera).
+    return HTMLResponse(page, headers={"Cache-Control": "private, no-cache"})
+
+
+def _seg():
+    from web import seguridad_web
+    return seguridad_web

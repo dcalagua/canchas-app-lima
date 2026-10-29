@@ -558,7 +558,8 @@ def test_calendario_ics_y_acciones_del_comprobante(db, monkeypatch):
     ref = p["url"].rsplit("/", 1)[-1]
     html = client.get(p["url"]).text
     assert f"/reserva/{ref}.ics" in html and "Cómo llegar" in html and "wa.me/?text=" in html
-    assert "Pichang" in html and "DM Sans" in html  # identidad del app
+    from tests.conftest import con_assets
+    assert "Pichang" in html and "DM Sans" in con_assets(client, html)  # identidad del app
     ics = client.get(f"/reserva/{ref}.ics")
     assert ics.status_code == 200 and "text/calendar" in ics.headers["content-type"]
     assert "BEGIN:VEVENT" in ics.text and "Cancha Central" in ics.text
@@ -1220,7 +1221,8 @@ def test_mi_academia_en_la_web_como_el_app(db, monkeypatch):
     # El mapa de la sede debe VERSE: la clase `.mapa-ficha` de la ficha de
     # reserva arranca en display:none (se abre con "Cómo llegar") y ocultaba
     # el mapa del formulario (bug reportado por el director, sep-2026).
-    assert "id='mapaSede' class='mapa-sede'" in nueva and ".mapa-sede{display:block" in nueva
+    from tests.conftest import con_assets
+    assert "id='mapaSede' class='mapa-sede'" in nueva and ".mapa-sede{display:block" in con_assets(client, nueva)
     # "Club / local donde entrenas" AUTOCOMPLETA con Google Maps (pedido del
     # director: escribir "esmon" y que el pin se ponga solo): misma búsqueda
     # /web/lugares de "Pon tu cancha"; sin PLACES_API_KEY el campo es texto simple.
@@ -2285,8 +2287,9 @@ def test_yape_es_la_pestana_principal_del_checkout_web(db, monkeypatch):
     db.academias["ac_y"] = {"nombre": "Academia Yape", "deporte": "tenis", "dueno": "profe@gmail.com", "sedeClub": "Club",
                             "lat": -12.09, "lng": -77.03, "planes": [{"id": "p1", "nombre": "Plan", "precioMes": 300, "modalidad": "mensual"}]}
     cli = TestClient(app, base_url="https://testserver")
+    from tests.conftest import con_assets
     for url in ("/reservar/c_lima", "/academia/ac_y"):
-        html = cli.get(url).text
+        html = con_assets(cli, cli.get(url).text)
         # Selector en la página con Yape preseleccionado + chip de la barra fija (móvil).
         assert "id='medioPago'" in html and "class='chip sel' data-medio='yape'" in html and "class='chip' data-medio='tarjeta'" in html, url
         assert "id='medioPagoMini' data-medio='yape'" in html, url

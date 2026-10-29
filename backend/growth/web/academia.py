@@ -47,6 +47,7 @@ from web import catalogos, datos, sesion, ui
 from web.router import (PLAY_URL, _RED_SVG, _deporte, _maps, _no_encontrada, _pago_web_disponible,
                         _pasarela_web, _url_red, e)
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
+from urllib.parse import quote  # noqa: E402
 
 router = APIRouter()
 
@@ -291,7 +292,7 @@ def pagina_academia(request: Request, academia_id: str) -> HTMLResponse:
         datos_li += (f"<li>📍 <span>{e(lugar or 'Sede en la app')}"
                      + (f" · <a href='#mapaFicha' id='btnLlegar'>Cómo llegar</a>" if con_mapa else "") + "</span></li>")
     if tel:
-        datos_li += f"<li>💬 <span><a href='https://wa.me/{tel}?text=Hola,%20vi%20tu%20academia%20en%20Pichangol' target='_blank' rel='noopener'>WhatsApp de la academia</a></span></li>"
+        datos_li += f"<li>💬 <span><a href='https://wa.me/{tel}?text={quote(f'Hola, vi tu academia en {MARCA}')}' target='_blank' rel='noopener'>WhatsApp de la academia</a></span></li>"
     if (a.get("dueno") or "").strip().lower() and (a.get("dueno") or "").strip().lower() != ((ses or {}).get("email") or "").lower():
         datos_li += f"<li>✉️ <span><a href='/mensajes/nuevo?academia={e(academia_id)}'>Escribir al profe por {MARCA}</a></span></li>"
     if a.get("horarioTexto"):
@@ -1288,6 +1289,7 @@ def comprobante_matricula(request: Request, academia_id: str, alumno_id: str) ->
         f"{' · pagada' if c.get('pagada') else ' · vence ' + e(str(c.get('vencimiento'))[:10])}</span></li>" for c in cuotas)
     op = next((c.get("operacionId") for c in pagadas if c.get("operacionId")), "")
     tel = _wa(a)
+    msg_wa = f"Hola, acabo de matricular a {m.get('nombre', '')} por {MARCA}"
     cuerpo = ("<div class='panel' style='margin-top:24px'><div class='check-ok'>✓</div><h1 style='text-align:center'>¡Matrícula registrada!</h1>"
               f"<p class='sub' style='text-align:center'>{e(m.get('nombre'))} ya es alumno de <b>{e(a['nombre'])}</b>. El profe lo ve en su lista y tú en la app (Mis academias).</p>"
               f"<ul class='datos'>{filas}</ul>"
@@ -1298,7 +1300,7 @@ def comprobante_matricula(request: Request, academia_id: str, alumno_id: str) ->
               + (f"<p class='sub' style='font-size:12.5px'>N.º de operación: {e(op)}{_pasarela_txt(pw)}</p>" if op else "")
               + _nota_sin_debito(pw, cuotas)
               + "<div class='acciones' style='margin-top:14px'>"
-              + (f"<a class='btn' href='https://wa.me/{tel}?text=Hola,%20acabo%20de%20matricular%20a%20{e(m.get('nombre', ''))}%20por%20Pichangol' target='_blank' rel='noopener'>💬 Escribir a la academia</a>" if tel else "")
+              + (f"<a class='btn' href='https://wa.me/{tel}?text={quote(msg_wa)}' target='_blank' rel='noopener'>💬 Escribir a la academia</a>" if tel else "")
               + f"<a class='btn sec' href='/academia/{e(academia_id)}'>Ver la academia</a><a class='btn sec' href='{PLAY_URL}'>Abrir en la app</a></div></div>")
     return ui.shell("Matrícula registrada", cuerpo, sesion=ses)
 

@@ -21,8 +21,10 @@ def test_toda_pagina_web_lleva_el_salto_a_la_app(db):
     for ruta in ("/", "/canchas", "/reservar/c_lima1", "/entrar"):
         r = client.get(ruta)
         assert r.status_code == 200, ruta
-        assert "pcgAbrirApp" in r.text, ruta
-        assert "scheme=pichangol;package=pe.ebim.pichangol" in r.text, ruta
+        from tests.conftest import con_assets
+        txt = con_assets(client, r.text)
+        assert "pcgAbrirApp" in txt, ruta
+        assert "scheme=pichangol;package=pe.ebim.pichangol" in txt, ruta
     js = ui.JS_ABRIR_APP
     # Solo Android con navegador real; el WebView del propio APK y el iPhone no.
     assert "/Android/i.test(ua)" in js and "wv" in js
