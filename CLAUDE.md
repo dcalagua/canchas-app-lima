@@ -4047,6 +4047,15 @@ Detalle y acciones pendientes: `docs/plan/BITACORA_NOCHE.md`.
   Goldens: `flutter test --update-goldens test/goldens` (tag `golden`, CI los excluye).
 - **CI:** job `backend` (Python 3.11 + Postgres + migraciones + pytest) y
   `flutter test --exclude-tags golden`.
+- **Web (noche 28-oct, `docs/plan/BITACORA_NOCHE_WEB.md`):** la ficha cobra
+  con la llave pública DEL CLUB o con comprobante (`pcgVoucher`); el anfitrión
+  web tiene `/anfitrion/cobros-club`, `/pagos-por-confirmar` y `/reglas/{id}`
+  (`web/anfitrion_cobros_club.py`, lógica compartida en `cobro_directo_web.py`).
+  **Reglas:** todo JSON dentro de `<script>` va con `ui.json_js` (XSS); CSS y
+  `JS_NAV` se sirven versionados desde `/web/a/` (no en línea: en tests,
+  `conftest.con_assets`); `web/seguridad_web.py` = gzip, anti-iframe, CSP
+  solo-reporte, CSRF por origen y límites por IP (apagados en la suite);
+  colores = tokens del APK (`--esmeralda #0B7A57`), nunca hex sueltos nuevos.
 
 ## Pendientes / backlog
 
