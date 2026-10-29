@@ -48,6 +48,12 @@ from web.jugador_market import router as jugador_market_router
 from web.jugador_billetera import router as jugador_billetera_router
 from web.jugador_favoritos import router as jugador_favoritos_router
 from web.jugador_resenas import router as jugador_resenas_router
+from web.jugador_espera import router as jugador_espera_router
+from web.jugador_avisos import router as jugador_avisos_router
+from web.ayuda import router as ayuda_router
+from web.seo import router as seo_router
+from web.anfitrion_agenda import router as anfitrion_agenda_router
+from web.jugador_reprogramar import router as jugador_reprogramar_router
 from web.pago_hospedado import router as pago_hospedado_router
 from web.jugador_liga import router as jugador_liga_router
 from web.jugador_campeonatos import router as jugador_campeonatos_router
@@ -207,6 +213,12 @@ app.include_router(academia_web_router)  # ficha pública /academia/{id} + matr�
 app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}
 app.include_router(jugador_clases_router)  # /mis-clases: Mis clases y pagos del jugador
 app.include_router(jugador_billetera_router)  # /mi-billetera, /mis-pagos, /mis-puntos, /mi-pais
+app.include_router(jugador_reprogramar_router)  # /reserva/{ref}/cambiar: reprogramar
+app.include_router(anfitrion_agenda_router)  # /anfitrion/agenda/<token>.ics (Google Calendar)
+app.include_router(seo_router)  # /sitemap.xml
+app.include_router(ayuda_router)  # /ayuda: centro de ayuda (FAQ)
+app.include_router(jugador_avisos_router)  # /notificaciones: avisos de la cuenta
+app.include_router(jugador_espera_router)  # /web/espera: lista de espera de turnos ocupados
 app.include_router(jugador_resenas_router)  # POST /web/resena: calificar después de jugar
 app.include_router(jugador_favoritos_router)  # /mis-favoritos + /web/favoritos (♥ en la cuenta)
 app.include_router(pago_hospedado_router)  # /web/pago/*: cobro web en USD/BOB por pasarela hospedada (Ecuador / Bolivia)
@@ -559,11 +571,12 @@ async def _iniciar_cron_storage() -> None:
 
 
 @app.get("/robots.txt", include_in_schema=False)
-def robots_txt():
+def robots_txt(request: Request):
     """Los robots pueden indexar las páginas públicas, pero NO llamar a las
     rutas JSON ni a la torre: un buscador que ejecuta el JS de la portada
-    disparaba consultas pagadas a Google Places (oct-2026)."""
+    disparaba consultas pagadas a Google Places (oct-2026). Anuncia el sitemap."""
     from fastapi.responses import PlainTextResponse
+    from web import seo as _seo
     return PlainTextResponse(
         "User-agent: *\n"
         "Disallow: /web/\n"
@@ -571,7 +584,8 @@ def robots_txt():
         "Disallow: /pagos/\n"
         "Disallow: /anfitrion\n"
         "Disallow: /entrar\n"
-        "Disallow: /mensajes\n",
+        "Disallow: /mensajes\n"
+        f"Sitemap: {_seo.base_url(request)}/sitemap.xml\n",
         headers={"Cache-Control": "public, max-age=86400"})
 
 

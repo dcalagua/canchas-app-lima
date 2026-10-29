@@ -4066,6 +4066,15 @@ Detalle y acciones pendientes: `docs/plan/BITACORA_NOCHE.md`.
   `/mis-favoritos`); **calificar desde la web** (`web/jugador_resenas.py`, misma
   `pichangol_resenas` del APK, solo si jugaste en el local, estrellas + chips sin
   texto libre); `ui.monto`, `ui.unir_lugar`, `ui.codigo_corto`.
+  Ronda 2b: **lista de espera** (`web/jugador_espera.py`, misma `pichangol_espera`
+  del APK; turno ocupado → "Avísame", push al cancelar desde la web),
+  **notificaciones** (`/notificaciones`, lee `pichangol_avisos`), **`/ayuda`**
+  (FAQ + JSON-LD), **SEO** (`/sitemap.xml`, `/canchas/{deporte}/{zona}`),
+  **manifest** instalable, **mover el pin** del local ≤ 300 m (Editar local),
+  **agenda iCal** del dueño (`/anfitrion/agenda/<token>.ics`, token HMAC),
+  **reprogramar** (`/reserva/{ref}/cambiar`: misma cancha, mismo precio, con la
+  anticipación de cancelación; mueve las mismas filas con `datos.mover_reservas`)
+  y `[js]` en los logs con los errores de JavaScript de los usuarios.
 
 ## Pendientes / backlog
 

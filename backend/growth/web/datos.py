@@ -355,6 +355,7 @@ COLS_EDITABLES = {
     "hora_cierre", "duracion_slot_min", "descuento_valle", "valle_desde",
     "valle_hasta", "sena_pct", "superficie", "amenidades", "servicios_extra",
     "fotos", "foto_url", "direccion", "fidelidad", "precio_turno",
+    "lat", "lng",   # solo para AJUSTAR el pin del local (≤ PIN_MAX_M, anfitrion._guardar_edicion_local)
 }
 _COLS_JSON = {"deportes", "amenidades", "servicios_extra", "fotos", "fidelidad"}
 
@@ -955,6 +956,33 @@ def col_cargo_disponible() -> bool:
 
 def _cols_res() -> list[str]:
     return _COLS_RES + (_COLS_CARGO if col_cargo_disponible() else [])
+
+
+def mover_reservas(cambios: list[tuple[str, str, str, str]], email: str) -> bool:
+    """REPROGRAMAR: mueve cada turno (id → fecha, hora_inicio, hora_fin) en UNA
+    transacción, solo filas del propio correo. Si algún turno nuevo choca con
+    otra reserva (UNIQUE cancha+fecha+hora), no se mueve ninguno."""
+    if not pg.habilitado or not cambios:
+        return False
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id FROM pichangol_reservas WHERE id = ANY(%s) AND lower(usuario) = %s FOR UPDATE",
+                        ([c[0] for c in cambios], email.strip().lower()))
+            if len(cur.fetchall()) != len(cambios):
+                conn.rollback()
+                return False
+            # Primero a un horario temporal imposible, para que mover 19:00→20:00
+            # y 20:00→21:00 dentro del mismo bloque no choque consigo mismo.
+            for rid, _f, _hi, _hf in cambios:
+                cur.execute("UPDATE pichangol_reservas SET hora_inicio = %s WHERE id = %s", ("~" + rid[-20:], rid))
+            for rid, fecha, hi, hf in cambios:
+                cur.execute("UPDATE pichangol_reservas SET fecha = %s, hora_inicio = %s, hora_fin = %s WHERE id = %s",
+                            (fecha, hi, hf, rid))
+            conn.commit()
+            return True
+    except Exception as ex:  # noqa: BLE001
+        print(f"[reprogramar] no se pudo mover: {ex}", flush=True)
+        return False
 
 
 def eliminar_reservas(ids: list[str]) -> bool:

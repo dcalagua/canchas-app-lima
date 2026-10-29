@@ -132,7 +132,7 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 .slot .dia{font-size:11px;font-weight:700;color:var(--tenue)}
 .slot.sel{background:var(--noche);border-color:var(--noche)}.slot.sel b,.slot.sel b small,.slot.sel .pr,.slot.sel .dia{color:#fff}
 .slot.sel .tag{background:rgba(255,255,255,.18);color:#fff}
-.slot.off{opacity:.6;cursor:not-allowed;background:var(--gris)}.slot.off b{text-decoration:line-through}
+.slot.off{background:var(--gris);cursor:pointer}.slot.off b,.slot.off .pr{opacity:.6}.slot.off b{text-decoration:line-through}.slot .tag.esp{background:#fff;border:1px dashed var(--trazo);color:var(--tenue)}.slot .tag.esp.on{border-style:solid;border-color:var(--esmeralda);color:var(--esmeralda)}
 button.slot{font:inherit;color:inherit;text-align:left;width:100%;min-height:44px}
 .cl-aviso{display:flex;flex-direction:column;gap:4px;padding:14px 16px;border-radius:var(--r);background:var(--tinte);color:var(--ok-fg);font-size:14px}.cl-aviso b{font-size:15px}.cl-aviso.warn{background:var(--warn-bg);color:var(--warn-fg)}.cl-aviso.bad{background:var(--bad-bg);color:var(--bad-fg)}
 .politica{margin:18px 0 6px;border:1px solid var(--trazo);border-radius:var(--r);padding:0 16px}.politica summary{cursor:pointer;font-weight:800;padding:14px 0;min-height:44px;list-style-position:inside}.politica ul{list-style:none;margin:0;padding:0 0 8px}.politica li{display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--gris);font-size:14px}.politica li span:first-child{flex:none;width:22px;text-align:center}.politica a{display:inline-block;margin:4px 0 14px;font-size:13px}
@@ -407,7 +407,8 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 /* panel del anfitrión */
 .anf-hola{font-size:28px;margin:26px 0 4px}
 .anf-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 12px}
-.chip.sel small{color:inherit;opacity:.85}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.anf-tabs .chip.sel small{color:inherit;opacity:.85}
 .anf-tabs .chip.sel{background:var(--noche);color:#fff;border-color:var(--noche)}
 .anf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:14px}
 .anf-res{background:var(--blanco);border:1px solid var(--trazo);border-radius:16px;padding:14px 16px;box-shadow:var(--sombra);min-width:0}
@@ -1083,7 +1084,7 @@ def footer() -> str:
         + "".join(f"<a href='/canchas?deporte={d}'>Canchas de {catalogos.NOMBRE_DEPORTE.get(d, d)}</a>" for d in activos[:3])
         + f"<a href='/tenis'>{e(catalogos.titulo_raquetas())}: torneos y partner</a>"
         "<a href='/canchas?deporte=academias'>Academias</a><a href='/#servicios'>Servicios y precios</a></div>"
-        "<div><h4>Soporte</h4><a href='/#contacto'>Contacto</a><a href='/#como'>Cómo funciona</a>"
+        "<div><h4>Soporte</h4><a href='/ayuda'>Centro de ayuda</a><a href='/#contacto'>Contacto</a><a href='/#como'>Cómo funciona</a>"
         "<a href='/#pagos'>Pagos y seguridad</a><a href='/legal/devoluciones'>Cambios, cancelaciones y devoluciones</a>"
         f"<a class='libro' href='/libro-de-reclamaciones'>{LIBRO_SVG}<span>Libro de Reclamaciones</span></a></div>"
         f"<div><h4>{MARCA}</h4><a href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>Descarga la app</a>"
@@ -1141,7 +1142,7 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
     if ses:
         nombre = ses.get("nombre") or ses.get("email") or ""
         cuenta = (f"<div class='yo'>{_avatar(ses)}<div><b>{e(nombre)}</b><small>{e(ses.get('email'))}</small></div></div>"
-                  "<hr><a class='b' href='/perfil'>👤 Perfil</a><a class='b' href='/mensajes'>💬 Mensajes <span class='bdg-msj' data-badge-mensajes hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:11px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/buscar'>🔎 Busca tu cancha</a><a class='b' href='/novedades'>📰 Novedades</a><a class='b' href='/canales'>📢 Canales</a><a class='b' href='/partidos'>⚽ Juega ya</a><a class='b' href='/mis-reservas'>📅 Mis reservas</a><a class='b' href='/mis-favoritos'>♥ Mis favoritos</a>"
+                  "<hr><a class='b' href='/perfil'>👤 Perfil</a><a class='b' href='/mensajes'>💬 Mensajes <span class='bdg-msj' data-badge-mensajes hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:11px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/buscar'>🔎 Busca tu cancha</a><a class='b' href='/novedades'>📰 Novedades</a><a class='b' href='/canales'>📢 Canales</a><a class='b' href='/partidos'>⚽ Juega ya</a><a class='b' href='/notificaciones'>🔔 Notificaciones <span data-badge-avisos hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:11px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/mis-reservas'>📅 Mis reservas</a><a class='b' href='/mis-favoritos'>♥ Mis favoritos</a>"
                   "<button type='button' onclick='window.pcgSalir&&pcgSalir()'>Cerrar sesión</button>")
         avatar = f"<a class='redondo' href='/perfil' title='{e(ses.get('email'))}' aria-label='Tu perfil'>{_avatar(ses)}</a>"
     else:
@@ -1161,7 +1162,7 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
         "<div class='menu'><button type='button' class='redondo' id='btnMenu' aria-label='Menú' aria-expanded='false'>"
         f"{_HAMB_SVG}</button>"
         f"<div class='menu-panel' id='menuPanel' role='menu'>{cuenta}<hr>"
-        f"<a href='/tenis'>🎾 {e(_titulo_raquetas())}</a><a href='/#como'>Cómo funciona</a><a href='/#contacto'>Centro de ayuda</a><hr>"
+        f"<a href='/tenis'>🎾 {e(_titulo_raquetas())}</a><a href='/#como'>Cómo funciona</a><a href='/ayuda'>Centro de ayuda</a><hr>"
         + ("<a class='b' href='/'>Cambiar a modo jugador</a>" if modo == "anfitrion" else "<a class='b' href='/anfitrion'>Modo anfitrión</a>")
         + f"<a href='/anfitrion/nueva'>Pon tu cancha en {MARCA}</a>"
         f"<a href='{PLAY_URL}' rel='noopener'>Descarga la app</a><hr>"
@@ -1229,6 +1230,13 @@ JS_NAV = (r"""
   document.addEventListener('DOMContentLoaded', function(){
     Array.prototype.forEach.call(document.images, function(i){ if(i.complete && i.naturalWidth === 0 && i.getAttribute('src')) fotoRota(i); });
   });
+  // Errores de JavaScript del usuario → logs del servidor ([js]), máx. 5 por página.
+  (function(){ var n = 0;
+    function enviar(msg, src, linea){ if(n++ >= 5 || !navigator.sendBeacon) return;
+      try { navigator.sendBeacon('/web/js-error', JSON.stringify({m: String(msg).slice(0, 300), s: String(src || '').slice(0, 200), l: linea || 0, u: location.pathname, ua: navigator.userAgent.slice(0, 120)})); } catch(e){} }
+    window.addEventListener('error', function(ev){ if(ev && ev.message) enviar(ev.message, ev.filename, ev.lineno); });
+    window.addEventListener('unhandledrejection', function(ev){ enviar('promesa: ' + ((ev && ev.reason && (ev.reason.message || ev.reason)) || '')); });
+  })();
   function bordesTabs(){
     document.querySelectorAll('.cab-tabs').forEach(function(t){
       var mas = t.scrollWidth > t.clientWidth + 2;
@@ -1354,7 +1362,7 @@ JS_NAV = (r"""
     setTimeout(function(){ if(!e.defaultPrevented) navegando(); }, 0);
   });
   document.addEventListener('submit', function(e){ if(!e.defaultPrevented && !(e.target.target && e.target.target !== '_self')) navegando(); });
-  var FONDO = /\/web\/(mensajes\/(no-leidos|hilo|bandeja)|foto|descubrir|favoritos$|sesion$|pago\/[^\/]+\/estado)|\/static\//;
+  var FONDO = /\/web\/(mensajes\/(no-leidos|hilo|bandeja)|foto|descubrir|favoritos$|avisos\/nuevos|sesion$|pago\/[^\/]+\/estado)|\/static\//;
   if(window.fetch && !window.fetch.__pcg){ var f0 = window.fetch; var fw = function(rec, op){ var url = typeof rec === 'string' ? rec : ((rec && rec.url) || '');
       if(FONDO.test(url)) return f0.apply(this, arguments);
       nBar++; var t = setTimeout(function(){ if(nBar > 0) barra(true); }, 250);
@@ -1474,6 +1482,10 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         + "<meta name='theme-color' content='#0F1B2D'>"
         f"<link rel='icon' type='image/png' href='{_logo_url()}'>"
         f"<link rel='apple-touch-icon' href='{_logo_url()}'>"
+        # Instalable ("Agregar a inicio"): en iPhone no hay app, la web hace de app.
+        "<link rel='manifest' href='/manifest.webmanifest'>"
+        "<meta name='apple-mobile-web-app-capable' content='yes'><meta name='mobile-web-app-capable' content='yes'>"
+        f"<meta name='apple-mobile-web-app-title' content='{e(MARCA)}'>"
         "<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
         "<link href='https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700;9..40,800&display=swap' rel='stylesheet'>"
         f"<link rel='stylesheet' href='{_seg().url_css()}'>{extra_head}"
@@ -1483,6 +1495,12 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         f"<main class='{'wrap-xl' if ancho else 'wrap'}'>{cuerpo}</main>"
         + ("" if pantalla == "chat" else footer()) +
         "</body></html>")
+    if "data-badge-avisos" in page:
+        # Avisos nuevos desde el último que se vio en /notificaciones (localStorage).
+        page = page.replace("</body></html>", "<script>(function(){var v=0;try{v=parseInt(localStorage.getItem('pcg_avisos_visto')||'0',10)||0;}catch(e){}"
+                            "fetch('/web/avisos/nuevos?desde='+v).then(function(r){return r.json();}).then(function(j){if(!j||!j.n)return;"
+                            "document.querySelectorAll('[data-badge-avisos]').forEach(function(b){b.textContent=j.n>9?'9+':j.n;b.hidden=false;});"
+                            "}).catch(function(){});})();</script></body></html>")
     if "data-badge-mensajes" in page:
         # Badge de no leídos (mensajería web): pinta el último valor y lo refresca.
         from web.jugador_mensajes import JS_BADGE_MENSAJES

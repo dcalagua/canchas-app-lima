@@ -1188,7 +1188,19 @@ def _tarjeta_academia(a: dict) -> str:
             f"<div class='l3'>{desde}<br>{ver}{redes_html}{wa}{ir}</div></div></a>")
 
 
-def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None, hora: str = "") -> HTMLResponse:
+def _n_locales(n: int) -> str:
+    return "1 local verificado" if n == 1 else f"{n} locales verificados"
+
+
+def slug(texto: str) -> str:
+    """"Santiago de Surco" → "santiago-de-surco" (URLs de las páginas por zona)."""
+    import unicodedata
+    t = "".join(ch for ch in unicodedata.normalize("NFD", str(texto or "").lower()) if unicodedata.category(ch) != "Mn")
+    return re.sub(r"[^a-z0-9]+", "-", t).strip("-")
+
+
+def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None, hora: str = "",
+              zona: str = "") -> HTMLResponse:
     """RAÍZ del dominio, tipo Airbnb: buscador en pastilla, categorías por
     deporte, grilla de tarjetas con foto/corazón/★, "Mostrar mapa" (split
     view en escritorio), cercanía por ubicación y canchas descubiertas en
@@ -1204,6 +1216,11 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     # de todos los deportes; sin canchas registradas ni descubiertas.
     solo_aca = dep == "academias"
     lista = [] if solo_aca else [c for c in todas if not dep or dep in _deportes_de(c)]
+    # Página por ZONA (SEO: /canchas/futbol/miraflores): solo los locales de esa zona.
+    zona_nombre = ""
+    if zona:
+        lista = [c for c in lista if slug(_zona(c)) == zona]
+        zona_nombre = _zona(lista[0]) if lista else ""
     fecha = fecha if _es_iso(fecha) else ""
     ratings = datos.ratings([c["id"] for c in lista])
     print(f"[explorar] dep={dep or '*'} {len(lista)} canchas: " + " | ".join(
@@ -1212,7 +1229,18 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     por_pais: dict[str, list[dict]] = {}
     for c in lista:
         por_pais.setdefault(_pais_de(c), []).append(c)
-    cuerpo = ("<div class='ubic-mini'><span>📍</span><span id='ubicTxt'>Permite tu ubicación para ver primero las canchas más cercanas.</span>"
+    dep_txt = catalogos.NOMBRE_DEPORTE.get(dep, "") if dep and not solo_aca else ""
+    if zona_nombre:
+        h1 = f"Canchas de {dep_txt} en {zona_nombre}" if dep_txt else f"Canchas en {zona_nombre}"
+        encabezado = (f"<h1 style='font-size:26px;margin:18px 0 2px'>{e(h1)}</h1>"
+                      f"<p class='sub' style='margin:0 0 6px'>{_n_locales(len(_agrupar_locales(lista)))} con turnos y precios "
+                      f"a la vista. Reserva y paga en línea en {e(MARCA)}.</p>")
+    else:
+        # Título para buscadores y lectores de pantalla (la portada no tenía h1).
+        h1 = ("Academias deportivas cerca de ti" if solo_aca else
+              f"Reserva canchas de {dep_txt or catalogos.frase_deportes(catalogos.deportes_activos())} cerca de ti")
+        encabezado = f"<h1 class='sr-only'>{e(h1)}</h1>"
+    cuerpo = (encabezado + "<div class='ubic-mini'><span>📍</span><span id='ubicTxt'>Permite tu ubicación para ver primero las canchas más cercanas.</span>"
               "<button id='btnUbic'>Usar mi ubicación</button><span id='resBusq'></span></div>")
     if not solo_aca:  # amenidades / precio por hora no aplican a academias
         cuerpo += _barra_filtros(lista) + _modal_filtros(lista)
@@ -1280,7 +1308,8 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     cuerpo += f"<script>window.__explorar={cfg};</script><script>{_JS_EXPLORAR}</script>"
     if js_m:
         cuerpo += f"<script>{js_m}</script>"
-    canonical = f"{config.PUBLIC_BASE_URL.rstrip('/')}/" if getattr(config, "PUBLIC_BASE_URL", "") else ""
+    base_pub = config.PUBLIC_BASE_URL.rstrip('/') if getattr(config, "PUBLIC_BASE_URL", "") else ""
+    canonical = (f"{base_pub}/canchas/{dep or 'todas'}/{zona}" if zona else f"{base_pub}/") if base_pub else ""
     ses = sesion.de_request(request)
     deps = catalogos.frase_deportes(catalogos.deportes_activos())
     titulo_tab = (f"{MARCA} · Academias deportivas cerca de ti" if solo_aca
@@ -1288,6 +1317,9 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     desc = (f"Academias de {catalogos.frase_deportes(catalogos.deportes_activos()[:3])} y más cerca de ti: programas, "
             "tarifario y matrícula en línea." if solo_aca
             else f"Reserva canchas de {deps} cerca de ti y paga con Yape o tarjeta. Perú, Ecuador y Bolivia.")
+    if zona_nombre:
+        titulo_tab = f"{h1} · {MARCA}"
+        desc = f"{h1}: turnos libres, precios y fotos. Reserva y paga en línea con Yape o tarjeta en {MARCA}."
     return ui.shell(MARCA, cuerpo, extra_head=head, nav=_nav_explorar(dep, ses, _zonas_sugeridas(lista)), ancho=True, sesion=ses,
                     titulo_tab=titulo_tab, canonical=canonical, desc=desc)
 
@@ -1301,6 +1333,35 @@ def pagina_inicio(request: Request, deporte: str = "", fecha: str = "", hora: st
 def pagina_canchas(request: Request, deporte: str = "", fecha: str = "", hora: str = "") -> HTMLResponse:
     """Alias histórico del explorador (enlaces de la app, la home y el pie)."""
     return _explorar(deporte, fecha, request, hora)
+
+
+@router.get("/canchas/{deporte}/{zona}", response_class=HTMLResponse)
+def pagina_zona(request: Request, deporte: str, zona: str) -> HTMLResponse:
+    """Página por deporte y zona para buscadores ("canchas de fútbol en
+    Miraflores"). `todas` = cualquier deporte. Sin locales → 404."""
+    dep = "" if deporte == "todas" else deporte.strip().lower()
+    if dep and dep not in DEPORTES:
+        return _no_encontrada("Página no encontrada")
+    zona = slug(zona)
+    if not any(datos.reservable(c) and slug(_zona(c)) == zona and (not dep or dep in _deportes_de(c))
+               for c in datos.canchas_publicas()):
+        r = _no_encontrada("Aún no hay canchas en esta zona")
+        r.status_code = 404
+        return r
+    return _explorar(dep, "", request, "", zona=zona)
+
+
+def paginas_zona() -> list[str]:
+    """Rutas /canchas/{deporte}/{zona} con al menos un local (para el sitemap)."""
+    rutas = set()
+    for c in datos.canchas_publicas():
+        if not datos.reservable(c) or not _zona(c):
+            continue
+        z = slug(_zona(c))
+        rutas.add(f"/canchas/todas/{z}")
+        for d in _deportes_de(c):
+            rutas.add(f"/canchas/{d}/{z}")
+    return sorted(rutas)
 
 
 # ── descubrir (Google Places, como el APK) ────────────────────────────────────
@@ -1549,7 +1610,7 @@ def _slots_del_dia(c: dict, fecha: str) -> list[dict]:
 
 
 @router.get("/web/disponibilidad/{cancha_id}")
-def disponibilidad(cancha_id: str, fecha: str = "") -> dict:
+def disponibilidad(cancha_id: str, fecha: str = "", request: Request = None) -> dict:
     c = datos.cancha(cancha_id)
     if not c:
         return {"ok": False, "error": "no_encontrada"}
@@ -1560,8 +1621,21 @@ def disponibilidad(cancha_id: str, fecha: str = "") -> dict:
         return {"ok": False, "error": "fecha_fuera_de_rango", "min": d_min, "max": d_max}
     sim, iso = _moneda_de(c)
     cd = _reglas.cancha_del_dia(c, fecha)
+    slots = _slots_del_dia(c, fecha)
+    # Turnos ocupados en los que ESTE jugador está en lista de espera.
+    # y los que son SUS reservas (no tiene sentido esperar el turno propio).
+    espera: list[str] = []
+    propias: list[str] = []
+    ses = sesion.de_request(request) if request is not None else None
+    if ses and ses.get("email") and any(s.get("ocupado") for s in slots):
+        from web import jugador_espera as _je
+        mis = {(x["fecha"], x["hora"]) for x in _je.mias(ses["email"], c["id"])}
+        espera = [s["hora"] for s in slots if (s.get("fecha") or fecha, s["hora"]) in mis]
+        mias_r = {(str(r.get("fecha")), str(r.get("hora_inicio"))) for r in datos.reservas_de_usuario(ses["email"])
+                  if r.get("cancha_id") == c["id"]}
+        propias = [s["hora"] for s in slots if s.get("ocupado") and (s.get("fecha") or fecha, s["hora"]) in mias_r]
     return {"ok": True, "fecha": fecha, "moneda": sim, "moneda_iso": iso,
-            "slots": _slots_del_dia(c, fecha), "cerrado": cd.get("_cerrado", ""),
+            "slots": slots, "cerrado": cd.get("_cerrado", ""), "espera": espera, "propias": propias,
             "politica": _reglas.resumen_publico(c)}
 
 
@@ -1878,6 +1952,21 @@ _JS_RESERVA = (r"""
       el.addEventListener('click', function(){ if(el.dataset.f === fechaSel) return; liberar(); fechaSel = el.dataset.f; pintarDias(); cargar(); });
     });
   }
+  // LISTA DE ESPERA: un turno ocupado avisa por push si se libera (misma tabla que el app).
+  function listaEspera(s, ya){
+    var cuando = (C.etiquetas[s.fecha] || s.fecha) + ' a las ' + s.hora;
+    if(!C.sesion){ pcgConfirmar({titulo: 'Te avisamos si se libera', icono: '🔔', mensaje: 'Inicia sesión y te mandamos un aviso si el turno de ' + cuando + ' queda libre.', confirmar: 'Iniciar sesión'})
+      .then(function(ok){ if(ok) location.href = '/entrar?volver=' + encodeURIComponent(location.pathname + location.search); }); return; }
+    pcgConfirmar(ya ? {titulo: 'Ya estás en la lista', icono: '🔔', mensaje: 'Te avisaremos si el turno de ' + cuando + ' se libera. ¿Quieres salir de la lista?', confirmar: 'Salir de la lista', destructivo: true}
+                    : {titulo: '¿Te avisamos si se libera?', icono: '🔔', mensaje: 'El turno de ' + cuando + ' está ocupado. Si lo cancelan, te llega un aviso y lo reserva el primero que entre.', confirmar: 'Avísame'})
+      .then(function(ok){ if(!ok) return;
+        fetch(ya ? '/web/espera/salir' : '/web/espera', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({cancha_id: C.id, fecha: s.fecha || fechaSel, hora: s.hora})})
+          .then(function(r){ return r.json(); }).then(function(j){
+            if(!j.ok){ pcgAvisar({titulo: 'No se pudo', icono: '🔔', mensaje: j.mensaje || 'Inténtalo de nuevo.'}); return; }
+            if(window.pcgToast) pcgToast(ya ? 'Saliste de la lista de espera' : 'Listo: te avisamos si se libera');
+            cargar();
+          }); });
+  }
   function cargar(){
     sel = {}; pintarResumen();
     $('slots').innerHTML = '<span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span>';
@@ -1886,6 +1975,7 @@ _JS_RESERVA = (r"""
       .then(function(j){
         if(!j.ok){ $('slots').innerHTML = '<span class="sub">No pudimos cargar los horarios de ese día.</span>'; return; }
         slots = j.slots;
+        var enEspera = {}, propia = {}; (j.espera || []).forEach(function(h){ enEspera[h] = 1; }); (j.propias || []).forEach(function(h){ propia[h] = 1; });
         var libres = slots.filter(function(s){ return !s.ocupado; }).length;
         if(j.cerrado){
           $('slots').innerHTML = '<div class="cl-aviso warn" role="status"><b>🚫 El club está cerrado este día</b><span>' + esc(j.cerrado === 'cerrado' ? 'No atiende este día.' : j.cerrado) + ' Prueba otra fecha.</span></div>'; return; }
@@ -1906,8 +1996,10 @@ _JS_RESERVA = (r"""
             var dia = s.fecha !== fechaSel ? '<span class="dia">' + esc(C.etiquetas[s.fecha] || '') + ' · madrugada</span>' : '';
             var tag = s.promo ? '<span class="tag">−' + s.promo + ' % promo</span>' : (s.franja ? '<span class="tag">⭐ ' + esc(s.franja) + '</span>' : (s.valle ? '<span class="tag">⚡ hora feliz</span>' : ''));
             if(s.luz) tag += '<span class="tag">💡 incluye luz</span>';
-            html += '<button type="button" class="slot' + (s.ocupado ? ' off' : '') + '" data-i="' + i + '" aria-pressed="false"' + (s.ocupado ? ' disabled' : '') +
-                    ' aria-label="' + s.hora + ' a ' + s.fin + ', ' + (s.ocupado ? 'ocupado' : fmt(s.precio)) + '">' +
+            // Ocupado = se puede tocar para entrar a la LISTA DE ESPERA (como el app).
+            if(s.ocupado) tag = propia[s.hora] ? '<span class="tag esp on">✓ Tu reserva</span>' : (enEspera[s.hora] ? '<span class="tag esp on">🔔 Te avisamos</span>' : '<span class="tag esp">🔔 Avísame</span>');
+            html += '<button type="button" class="slot' + (s.ocupado ? ' off' : '') + '" data-i="' + i + '" aria-pressed="false"' +
+                    ' aria-label="' + s.hora + ' a ' + s.fin + ', ' + (s.ocupado ? (enEspera[s.hora] ? 'ocupado, estás en lista de espera' : 'ocupado, toca para que te avisemos si se libera') : fmt(s.precio)) + '">' +
                     dia + '<b>' + s.hora + ' <small>– ' + s.fin + '</small></b><span class="pr">' + (s.ocupado ? 'Ocupado' : fmt(s.precio)) + '</span>' + tag + '</button>';
           });
           html += '</div></div>';
@@ -1917,7 +2009,7 @@ _JS_RESERVA = (r"""
         document.querySelectorAll('#slots .slot').forEach(function(el){
           el.addEventListener('click', function(){
             var s = slots[parseInt(el.dataset.i)];
-            if(s.ocupado) return;
+            if(s.ocupado){ if(propia[s.hora]){ if(window.pcgToast) pcgToast('Este turno ya es tuyo: míralo en Mis reservas'); return; } listaEspera(s, !!enEspera[s.hora]); return; }
             var k = s.fecha + '|' + s.hora;
             if(sel[k]){ delete sel[k]; el.classList.remove('sel'); el.setAttribute('aria-pressed', 'false'); }
             else {
@@ -3641,6 +3733,12 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
         pass
     if not datos.eliminar_reservas(ids):
         return {"ok": False, "error": "no_se_pudo", "mensaje": "No pudimos liberar el horario. Inténtalo de nuevo."}
+    try:   # quien esperaba estos turnos recibe "¡Se liberó tu hora!" (como el app)
+        from web import jugador_espera as _je
+        _je.avisar_liberados([(str(f.get("cancha_id")), str(f.get("fecha")), str(f.get("hora_inicio"))) for f in filas],
+                             salvo=email)
+    except Exception:  # noqa: BLE001
+        pass
     # Boleador contratado en esta reserva: su solicitud se cancela y su
     # liquidación se revierte (la devolución al jugador ya incluyó su parte).
     try:
@@ -3824,6 +3922,30 @@ ESTADO_RESERVA = {"confirmada": ("Confirmada", "ok"), "cancelada": ("Cancelada",
                   "nueva": ("Pendiente de pago", "warn"), "completada": ("Jugada", "ok")}
 
 
+def _seccion_espera(email: str) -> str:
+    """Mis turnos en LISTA DE ESPERA (Mis reservas): ir a la ficha o salir."""
+    from web import jugador_espera as _je
+    lst = _je.mias(email)
+    if not lst:
+        return ""
+    filas = ""
+    for x in lst:
+        c = datos.cancha(x["cancha_id"]) or {}
+        filas += (f"<div class='esp-fila'><span class='em'>🔔</span><div style='min-width:0'><b>{e(_titulo_local(c) if c else 'Cancha')}</b>"
+                  f"<div class='sub' style='margin:0;font-size:13px'>{e(c.get('nombre') or '')} · {e(horarios.fecha_larga(x['fecha']))} · {e(x['hora'])}</div></div>"
+                  f"<a class='btn sec' href='/reservar/{quote(x['cancha_id'], safe='')}?fecha={e(x['fecha'])}'>Ver</a>"
+                  f"<button type='button' class='btn sec' data-esp-salir='{e(json.dumps(x))}'>Salir</button></div>")
+    return ("<details class='viajes-det' open><summary><span class='ico'>🔔</span> Lista de espera <small>· " + str(len(lst)) + "</small></summary>"
+            "<p class='sub' style='font-size:12.5px;padding:4px 4px 6px;margin:0'>Si alguno de estos turnos se libera, te llega un aviso. "
+            "Lo reserva el primero que entre.</p>" + filas +
+            "<style>.esp-fila{display:flex;align-items:center;gap:10px;padding:10px 4px;border-top:1px solid var(--trazo)}"
+            ".esp-fila>div{flex:1}.esp-fila .em{font-size:20px}.esp-fila .btn{padding:8px 12px;font-size:13px;flex:none}</style>"
+            "<script>document.addEventListener('click',function(ev){var b=ev.target.closest('[data-esp-salir]');if(!b)return;"
+            "fetch('/web/espera/salir',{method:'POST',headers:{'Content-Type':'application/json'},body:b.dataset.espSalir})"
+            ".then(function(r){return r.json();}).then(function(j){if(j.ok){b.closest('.esp-fila').remove();if(window.pcgToast)pcgToast('Saliste de la lista de espera');}});});</script>"
+            "</details>")
+
+
 def _jr_css() -> str:
     from web import jugador_resenas
     return jugador_resenas.CSS
@@ -3975,6 +4097,7 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
         "<h1>Reservas</h1>"
         f"<p class='sub' style='margin-top:2px'>{e(ses.get('nombre') or email)} · {e(email)} · las mismas que ves en la app.</p>"
         f"<div class='viajes-cards' id='proximas'>{lista}</div>"
+        + _seccion_espera(email)
         + (f"<details class='viajes-det'><summary>Dónde has jugado <small>· {len(pasadas)}</small></summary><div class='viajes-cards'>{pasadas_html}</div></details>" if pasadas else "")
         + f"<details class='viajes-det'{' open' if canceladas else ''}><summary><span class='ico'>🗓️</span> Reservaciones canceladas <small>· {len(canceladas)}</small></summary>"
         + ("".join(_fila_cancel(x) for x in canceladas) if canceladas else "<p class='sub' style='padding:8px 4px 2px'>No has cancelado ninguna reserva.</p>")
@@ -4288,7 +4411,7 @@ def comprobante_ics(ref: str) -> Response:
                   f"LOCATION:{_ics(lugar)}\r\n"
                   f"DESCRIPTION:Reserva {_ics(ref)}. Comprobante: {_ics((config.PUBLIC_BASE_URL or '').rstrip('/'))}/reserva/{_ics(ref)}\r\n"
                   "END:VEVENT\r\n")
-    body = ("BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//' + MARCA + '//Reserva web//ES\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n"
+    body = (f"BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//{_ics(MARCA)}//Reserva web//ES\r\nCALSCALE:GREGORIAN\r\nMETHOD:PUBLISH\r\n"
             + "".join(ev) + "END:VCALENDAR\r\n")
     return Response(body, media_type="text/calendar; charset=utf-8",
                     headers={"Content-Disposition": f"attachment; filename={MARCA.lower()}-{ref}.ics"})
@@ -4296,6 +4419,14 @@ def comprobante_ics(ref: str) -> Response:
 
 def _ics(s) -> str:
     return str(s or "").replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
+
+
+def _boton_cambiar(ref: str, filas: list[dict], c: dict | None, ses: dict | None) -> str:
+    """"🔁 Cambiar horario" si la reserva se puede reprogramar (`jugador_reprogramar.puede`)."""
+    if not (ses and ses.get("email")):
+        return ""
+    from web import jugador_reprogramar as _rp
+    return "" if _rp.puede(filas, c, ses["email"].strip().lower()) else _rp.boton(ref)
 
 
 def _calificar_comprobante(filas: list[dict], c: dict | None, ses: dict | None, es_titular: bool) -> str:
@@ -4313,7 +4444,7 @@ def _calificar_comprobante(filas: list[dict], c: dict | None, ses: dict | None, 
 
 
 @router.get("/reserva/{ref}", response_class=HTMLResponse)
-def pagina_comprobante(ref: str, request: Request = None, enviado: str = "") -> HTMLResponse:
+def pagina_comprobante(ref: str, request: Request = None, enviado: str = "", cambiada: str = "") -> HTMLResponse:
     ses = sesion.de_request(request)
     filas = _filas_comprobante(ref, con_revision=True)
     voucher = _cd.estado_pago_de_ref((ses or {}).get("email", ""), ref) if ses else None
@@ -4414,7 +4545,8 @@ def pagina_comprobante(ref: str, request: Request = None, enviado: str = "") -> 
            "<span>Te avisamos apenas el club lo confirme.</span></div>" if (enviado and en_revision) else "")
         + f"<div class='panel' style='text-align:center'>"
         + (_cabecera_revision(ref, voucher) if en_revision else
-           f"{ui.check_svg()}<h1>¡Reserva confirmada!</h1><p class='sub'>Comprobante <b title='{e(ref)}'>{e(ui.codigo_corto(ref))}</b> · pagado con {e(medio)}</p>")
+           ("<div class='estado ok' role='status' style='text-align:left'>🔁 Listo: cambiaste el horario de tu reserva. El local ya lo ve en su agenda.</div>" if cambiada else "")
+           + f"{ui.check_svg()}<h1>¡Reserva confirmada!</h1><p class='sub'>Comprobante <b title='{e(ref)}'>{e(ui.codigo_corto(ref))}</b> · pagado con {e(medio)}</p>")
         +
         f"<h3 style='margin-top:16px'>{e(c.get('nombre') or 'Cancha')}</h3>"
         f"<div class='sub'>{e(c.get('club'))}{(' · ' + e(lugar)) if lugar else ''}</div>"
@@ -4433,7 +4565,7 @@ def pagina_comprobante(ref: str, request: Request = None, enviado: str = "") -> 
         + (f"<a class='btn sec' href='{_maps(c)}' target='_blank' rel='noopener'>📍 Cómo llegar</a>" if c else "")
         + boton_wa
         + "</div>"
-        + (f"<div class='acciones'>{_boton_cancelar(filas, c, ses, 'btn sec')}</div>" if (not en_revision and _boton_cancelar(filas, c, ses)) else "")
+        + (f"<div class='acciones'>{_boton_cambiar(ref, filas, c, ses)}{_boton_cancelar(filas, c, ses, 'btn sec')}</div>" if (not en_revision and _boton_cancelar(filas, c, ses)) else "")
         + _calificar_comprobante(filas, c, ses, es_titular)
         + f"<div class='estado ok' style='text-align:left'>Política del club: cancelación con más de {_num_txt(_dev.horas_minimas(c))} h de anticipación, devolución del 100 % al mismo medio de pago. "
         f"Puedes cancelar desde aquí o desde <a href='/mis-reservas'>Mis reservas</a>. Dudas: <a href='mailto:{empresa.datos()['correo']}'>{empresa.datos()['correo']}</a>.</div>"

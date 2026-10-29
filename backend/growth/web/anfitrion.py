@@ -553,6 +553,8 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
         + ("" if cfg["pro"] else f"<p class='aviso warn' style='margin-top:12px'>📝 La reserva manual y el bloqueo de horas son parte de <b>{MARCA} Pro</b>. Actívalo en Perfil → 👑 {MARCA} Pro.</p>")
         + modal
         + f"<script>var CAL={ui.json_js(cfg, ensure_ascii=False)};var RES={ui.json_js(res_json, ensure_ascii=False)};</script><script>{_JS_CAL}{_JS_CAL_DIAS}</script>")
+    from web import anfitrion_agenda
+    cuerpo += anfitrion_agenda.tarjeta(ses["email"])
     return ui.shell("Calendario", cuerpo, nav=_cabecera("calendario", ses), sesion=ses, ancho=True, titulo_tab="Calendario · Modo anfitrión")
 
 
@@ -870,6 +872,8 @@ def _quitar_reserva_manual(request: Request, res_id: str) -> JSONResponse:
         return JSONResponse({"ok": False, "error": "Solo se quitan reservas manuales. Las pagadas por la app se cancelan con reembolso."}, status_code=400)
     if not datos.borrar_reserva_manual(res_id, ids):
         return JSONResponse({"ok": False, "error": "No pudimos quitarla en este momento."}, status_code=503)
+    from web import jugador_espera as _je
+    _je.avisar_liberados([(str(r.get("cancha_id")), str(r.get("fecha")), str(r.get("hora_inicio")))])
     usuario = str(r.get("usuario") or "").strip().lower()
     if usuario:
         from pagos import router as pr
@@ -1650,7 +1654,9 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
  <section class='panel edit-sec' id='sec-local'><h2>Nombre y dirección</h2>
   <label for='local'>Nombre del local / club</label><input id='local' maxlength='{catalogos.NOMBRE_MAX}' value='{e(local)}' placeholder='Ej. Complejo Los Olivos'>
   <label for='direccion'>Dirección</label><input id='direccion' maxlength='160' value='{e(c.get('direccion') or '')}' placeholder='Av. Aviación 1234, San Borja'>
-  <p class='sub' style='font-size:13px'>Zona: {e(_zona(c)) or '—'}. La ubicación en el mapa se ajusta desde la app.</p>
+  <label>Ubicación del local <span class='req'>arrastra el pin si quedó corrido (hasta {PIN_MAX_M} m)</span></label>
+  <div id='mapaLocal' style='height:260px;border-radius:var(--r-sm);margin-top:6px' aria-label='Mapa del local: arrastra el pin para ajustar la ubicación'></div>
+  <p class='sub' style='font-size:13px' id='pinTxt'>Zona: {e(_zona(c)) or '—'}. Los jugadores llegan con este punto (Cómo llegar).</p>
  </section>
  <section class='panel edit-sec' id='sec-amenidades'><h2>Servicios del local</h2><p class='sub'>Gratis para el jugador. Salen como filtros en Explorar y se aplican a todas las canchas.</p>
   {_chips('amenidades', [(k, f'{ico} {e(n)}') for k, (n, ico) in catalogos.AMENIDADES.items()], set(amen), multi=True)}
@@ -1672,10 +1678,33 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
 </div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Se aplica a las {len(hermanas)} cancha{'s' if len(hermanas) != 1 else ''} del local.</span>
 <button type='button' class='btn' id='btnGuardar'>Guardar local</button></div></div>
-<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_LOCAL}</script>"""
-    return ui.shell("Editar local", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True,
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_LOCAL}</script>
+<script>{_JS_PIN.replace('⟦LAT⟧', ui.json_js(c.get('lat'))).replace('⟦LNG⟧', ui.json_js(c.get('lng'))).replace('⟦MAX⟧', str(PIN_MAX_M))}</script>"""
+    return ui.shell("Editar local", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True, extra_head=_LEAFLET,
                     titulo_tab=f"Editar {local} · Modo anfitrión")
 
+
+# Ajustar el pin del local desde la web (antes: "se ajusta desde la app"). Solo
+# un AJUSTE: más lejos que esto sería otro lugar (y otra verificación).
+PIN_MAX_M = 300
+
+_JS_PIN = r"""
+(function(){
+  var lat0 = ⟦LAT⟧, lng0 = ⟦LNG⟧, MAX = ⟦MAX⟧, el = document.getElementById('mapaLocal');
+  if(!el || !window.L || lat0 == null || lng0 == null){ if(el) el.style.display = 'none'; return; }
+  var mapa = L.map(el).setView([lat0, lng0], 17);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '© OpenStreetMap'}).addTo(mapa);
+  L.circle([lat0, lng0], {radius: MAX, color: '#0B7A57', weight: 1, fillOpacity: .05}).addTo(mapa);
+  var pin = L.marker([lat0, lng0], {draggable: true, keyboard: true, title: 'Ubicación del local'}).addTo(mapa);
+  pin.on('dragend', function(){
+    var p = pin.getLatLng(), d = mapa.distance([lat0, lng0], p), t = document.getElementById('pinTxt');
+    if(d > MAX){ pin.setLatLng([lat0, lng0]); window.__pinLocal = null;
+      if(window.pcgAvisar) pcgAvisar({titulo: 'Muy lejos', icono: '📍', mensaje: 'Solo puedes ajustar el pin hasta ' + MAX + ' m. Si tu local se mudó, escríbenos.'}); return; }
+    window.__pinLocal = {lat: Math.round(p.lat * 1e7) / 1e7, lng: Math.round(p.lng * 1e7) / 1e7};
+    if(t) t.textContent = 'Pin movido ' + Math.round(d) + ' m. Guarda para aplicarlo a todas las canchas del local.';
+  });
+})();
+"""
 
 _JS_LOCAL = r"""
 (function(){
@@ -1719,6 +1748,7 @@ $('btnGuardar').addEventListener('click',async function(){var btn=this,msg=$('ms
   var serv=[];document.querySelectorAll('.serv.sel').forEach(function(r){serv.push({clave:r.dataset.serv,precio:parseFloat(r.querySelector('input').value)||0})});
   var fid={activa:sel('fid_activa')[0]==='1',meta:parseInt(sel('fid_meta')[0]||'5',10),premio:sel('fid_premio')[0]||'hora_gratis',descuentoPct:parseInt(sel('fid_pct')[0]||'20',10),ventanaDias:parseInt(sel('fid_ventana')[0]||'180',10),aplica:sel('fid_aplica')[0]||'todas'};
   var body={nombre_local:$('local').value,direccion:$('direccion').value,amenidades:sel('amenidades'),servicios_extra:serv,fidelidad:fid,fotos_local:fotos.map(function(f){return f.url})};
+  if(window.__pinLocal){body.lat=window.__pinLocal.lat;body.lng=window.__pinLocal.lng;}
   btn.disabled=true;msg.classList.remove('err');msg.textContent='Guardando…';
   try{var r=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j=await r.json();
     if(j.ok){location.href=j.url||'/anfitrion/canchas';return}msg.classList.add('err');msg.textContent=j.error||'No se pudo guardar.';if(j.campo){var el=document.getElementById('sec-'+j.campo);if(el)el.scrollIntoView({behavior:'smooth'})}}
@@ -1786,6 +1816,17 @@ def _guardar_edicion_local(request: Request, cancha_id: str, _cuerpo_json) -> JS
             return JSONResponse({"ok": False, "error": msgs.get(err, "Revisa la tarjeta de fidelidad."), "campo": "fidelidad"}, status_code=400)
         if not datos.col_fidelidad_disponible():
             fid_cfg = None  # la base aún no tiene la columna: no se rompe el resto del guardado
+    pin = None
+    if b.get("lat") is not None and b.get("lng") is not None:
+        from propiedad.reclamos import _distancia_m
+        try:
+            nlat, nlng = float(b["lat"]), float(b["lng"])
+        except (TypeError, ValueError):
+            return JSONResponse({"ok": False, "error": "Ubicación inválida.", "campo": "ubicacion"}, status_code=400)
+        if c.get("lat") is None or c.get("lng") is None or _distancia_m(c["lat"], c["lng"], nlat, nlng) > PIN_MAX_M:
+            return JSONResponse({"ok": False, "error": f"Solo puedes ajustar el pin hasta {PIN_MAX_M} m. Si tu local se mudó, escríbenos.",
+                                 "campo": "ubicacion"}, status_code=400)
+        pin = (round(nlat, 7), round(nlng, 7))
     hermanas = _hermanas_local(ses["email"], c)
     fotos_por, quitadas = _repartir_fotos_local(c, hermanas, b.get("fotos_local"))
     n = 0
@@ -1793,6 +1834,8 @@ def _guardar_edicion_local(request: Request, cancha_id: str, _cuerpo_json) -> JS
         propios = [_se.completar(x) for x in (h.get("servicios_extra") or []) if x.get("clave")]
         nuevos = [x for x in propios if x.get("ambito") != "local"] + [dict(x) for x in locales]
         campos = {"club": local, "direccion": direccion or None, "amenidades": amen, "servicios_extra": nuevos}
+        if pin:
+            campos["lat"], campos["lng"] = pin
         if fid_cfg is not None:
             campos["fidelidad"] = fid_cfg
         if fotos_por is not None and h["id"] in fotos_por:

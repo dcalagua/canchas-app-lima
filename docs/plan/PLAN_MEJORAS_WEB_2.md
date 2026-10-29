@@ -1,10 +1,21 @@
 # Plan de mejoras de la web — ronda 2 (29-oct-2026)
 
-> **Estado (29-oct-2026, misma noche):** HECHO P0 completo, P1 (billetera,
-> puntos, ficha/galería, comprobante, Pro, accesibilidad, campeonato sin Pro)
-> y de P2 los puntos **1 (calificar)** y **3 (favoritos)**. 961 tests.
-> Pendiente: P1 calendario móvil por día y peso de fotos (`srcset`, el Storage
-> de Supabase no redimensiona en el plan actual); P2 2, 4–12; P3.
+> **Estado (29-oct-2026):**
+> - **Hecho:**
+>   - P0 completo.
+>   - P1: billetera, puntos, ficha y galería, comprobante, Pro, accesibilidad y campeonato sin Pro.
+>   - P2: 1 calificar, 2 lista de espera, 3 favoritos, 4 reprogramar, 5 notificaciones, 6 centro de ayuda,
+>     7 SEO (sitemap, páginas por zona, h1, JSON-LD de academia), 8 instalable (manifest), 9 mover el pin
+>     (≤ 300 m) y 10 agenda iCal del anfitrión.
+>   - P3: errores de JavaScript a los logs (`[js]`).
+> - **Pendiente, con su motivo:**
+>   - P1 peso de fotos: el Storage de Supabase no redimensiona en el plan actual; hay que generar
+>     miniaturas al subir.
+>   - P2-11 encargados con permisos y P2-12 dividir el pago: necesitan decisiones de producto
+>     (roles; cómo cobrar a varios con Culqi).
+>   - P3 CSP en modo bloqueo: esperar los reportes `[csp]` de QAS.
+>   - P3 estilos en línea y partir `router.py`: refactor grande sin cambio visible.
+>   - P3 Playwright en CI: necesita un Postgres con datos semilla en el job.
 
 Base: barrido con Playwright de **QAS** (`pg.ebim.pe`) con la cuenta de
 gep.soporteit@gmail.com (acceso de revisión). Se revisaron **95 pantallas**
