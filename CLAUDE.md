@@ -4136,6 +4136,27 @@ Detalle y acciones pendientes: `docs/plan/BITACORA_NOCHE.md`.
   nonces es aparte). Un recurso de un dominio nuevo (script, iframe, fuente)
   hay que sumarlo a `seguridad_web.CSP` o el navegador lo bloquea. "No
   encontrada" (`router._no_encontrada`) responde 404 de verdad, no 200.
+- **`web/router.py` partido en módulos (ronda 3, 30-oct):** `router.py` (136
+  líneas) solo compone y RE-EXPORTA los nombres de siempre (`wr._pais_de`,
+  `from web.router import …` siguen valiendo). El código vive en `web/comun.py`
+  (constantes, país/moneda, fotos, `_no_encontrada`), `explorador.py` (`/`,
+  `/canchas`, zonas, descubrir), `entrar.py` (sesión), `lugares.py`,
+  `disponibilidad.py`, `ficha.py` (`/reservar`, `/lugar`), `reserva_pago.py`
+  (asegurar/pagar/liberar, `confirmar_reserva_pagada`, `soltar_bloque`),
+  `cancelacion.py`, `mis_reservas.py`, `perfil.py` y `comprobante.py`.
+  **Para parchear en un test, parchea el módulo que DEFINE la función**, no
+  `router` (el re-export es otra referencia y el parche no surte efecto).
+  Las menciones `web/router.py::X` de este documento son históricas.
+- **Ronda 3 · velocidad (30-oct):** medidor de viajes a la base por request
+  (la línea `[perf]` termina en `sql=N viajes/M ms`; `PERF_SQL=1` imprime `[sql]`
+  y `Server-Timing`), memo de lecturas por request GET (`pg.memo_leer`, se borra
+  en cualquier escritura), precargas de una consulta (`precargar_perfil`,
+  `precargar_bandeja`, `canchas_por_ids`…) y `pg.conexion(atomica=False)` para
+  escrituras de una sola sentencia. Culqi v4 y Leaflet ya no bloquean la
+  billetera ni la portada (se cargan al usarse). Mis reservas pasó de 92 a 7
+  viajes. Las miniaturas de fotos: `web/miniaturas.py` (`/web/mini`, WebP en
+  `canchas/mini/`, solo nuestro Storage; Google solo cambia el ancho de la URL;
+  `WEB_MINIATURAS=0` lo apaga).
 - **Cada uno paga su parte (ronda 3, 30-oct-2026):** pago DIVIDIDO de una
   reserva web entre amigos, dinero DIRECTO al club. `pagos/division.py` (reglas,
   plata, `RepoPG`/`RepoMemoria`) + `web/dividir_pago.py` (ficha, `/dividir/{token}`,
