@@ -338,7 +338,7 @@ _CSS = """
 .mc-cargo{display:flex;justify-content:space-between;gap:10px;font-size:13px;margin-top:8px;color:#444}
 .mc-ahorro{font-size:12.5px;color:#0B7A57;margin-top:4px}
 .mc-pagar{width:100%;margin-top:10px}
-.mc-nota{color:#6a6a6a;font-size:11.5px;margin-top:6px}
+.mc-nota{color:#6a6a6a;font-size:12px;margin-top:6px}
 .mc-acc{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 .mc-acc .btn{flex:1 1 auto}
 .mc-fam .mc-cab{background:#EEF8E8}

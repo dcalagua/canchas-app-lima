@@ -518,7 +518,7 @@ def html_campeonato(c: dict, campeonato_id: str = "",
   .vacio{{color:#627080;padding:16px 4px}}
   .byline{{margin-top:4px;font-size:14px;opacity:.95}}
   .orglogo{{display:block;width:76px;height:76px;object-fit:contain;background:#fff;border-radius:18px;padding:6px;margin-bottom:12px;box-shadow:0 2px 10px rgba(0,0,0,.18)}}
-  .foot .tec{{display:block;margin-top:6px;font-size:11px;opacity:.85}}
+  .foot .tec{{display:block;margin-top:6px;font-size:12px;opacity:.85}}
   .premios{{list-style:none;background:#fff;border-radius:14px;padding:12px 16px;font-size:14px;line-height:2}}
   .auspicio{{background:#fff;border-left:4px solid {_ESMERALDA};border-radius:12px;padding:12px 14px;margin-top:12px;font-size:13.5px;color:#333}}
   .podio{{background:linear-gradient(135deg,var(--noche),#0B7A58);color:#fff;border-radius:14px;padding:14px 16px;margin-top:16px;font-size:14px;line-height:1.9}}

@@ -10,6 +10,7 @@ local, prórroga por local. `ok` y `vencido` dejan de pedir fotos a Google."""
 import os
 import sys
 from datetime import date, datetime, timezone
+from urllib.parse import unquote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -136,7 +137,7 @@ def test_web_foto_no_llama_a_google_para_local_ok_ni_vencido(db, _base):
     r = cli.get("/web/foto", params={"id": "c_noche"}).json()  # hermana sin fotos: muestra las del local
     assert r["origen"] == "propias" and r["fotos"][0].startswith(f"{SB}/c_lima/") and not _base["google"]
     html = cli.get("/").text
-    assert f"{SB}/c_lima/web_0.jpg" in html
+    assert f"{SB}/c_lima/web_0.jpg" in unquote(html)  # vía miniatura (/web/mini?u=…)
     # Local VENCIDO (Club Sur): ni la guardada ni la de Google; placeholder sin pedir nada.
     fl.lanzar(avisar=False)
     _base["hoy"]["d"] = date(2026, 11, 5)
@@ -144,8 +145,8 @@ def test_web_foto_no_llama_a_google_para_local_ok_ni_vencido(db, _base):
     r = cli.get("/web/foto", params={"id": "c_gye"}).json()
     assert r == {"ok": True, "fotos": [], "origen": "sin_google"} and not _base["google"]
     ficha = cli.get("/reservar/c_gye").text
-    assert GOOGLE not in ficha and "/web/foto?id=c_gye" not in ficha
-    assert GOOGLE not in cli.get("/").text
+    assert "AF1Qip-google" not in ficha and "/web/foto?id=c_gye" not in ficha  # ni con el ancho reescrito
+    assert "AF1Qip-google" not in cli.get("/").text
     # El APK sabe qué canchas ya no usan Google.
     pub = cli.get("/config/fotos-locales").json()
     assert pub["lanzada"] and pub["minimo"] == 3 and set(pub["sin_google"]) == {"c_lima", "c_noche", "c_gye"}

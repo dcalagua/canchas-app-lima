@@ -260,6 +260,19 @@ ANDROID_CERT_SHA256 = os.getenv("ANDROID_CERT_SHA256", "").strip()
 
 # Ambiente de la torre/backend (QAS / PRD). Lo pone Railway por servicio.
 PICHANGOL_ENTORNO = (os.getenv("PICHANGOL_ENTORNO", "") or "").strip().upper()
+_ENTORNOS_PRODUCCION = ("PRD", "PROD", "PRODUCCION")
+
+
+def sitio_indexable() -> bool:
+    """¿Los buscadores pueden indexar este ambiente? Solo PRODUCCIÓN (o sin
+    `PICHANGOL_ENTORNO`, el comportamiento de siempre). En QAS/DEV/… todas las
+    páginas llevan `noindex,nofollow` y `robots.txt` lo bloquea todo: así las
+    páginas de prueba (pg.ebim.pe, *.up.railway.app) no compiten en Google con
+    el dominio de la marca. Lee el valor en cada llamada (los tests lo cambian)."""
+    ent = (PICHANGOL_ENTORNO or "").strip().upper()
+    return not ent or ent in _ENTORNOS_PRODUCCION
+
+
 # A dónde mandar a quien NO tiene la app (botón "Abrir/Unirme en la app" de la
 # página del campeonato, pie "Descargar la app"). En PRODUCCIÓN es Play Store;
 # en dev/QAS el Release de GitHub (el APK de pruebas no está en Play).

@@ -95,7 +95,7 @@ class FakeDB:
                 self.reservas.pop(i)
         return True
 
-    def reservas_de(self, ids):
+    def reservas_de(self, ids, estricto=False):
         return sorted([dict(self.reservas[i]) for i in ids if i in self.reservas],
                       key=lambda r: (r["fecha"], r["hora_inicio"]))
 
@@ -1523,7 +1523,7 @@ def test_ficha_de_academia_y_matricula_web_como_el_app(db, monkeypatch):
     db.academias["ac_bo"] = {"nombre": "Escuela La Paz", "deporte": "futbol", "dueno": "dt@gmail.com", "lat": -16.5, "lng": -68.15, "moneda": "Bs",
                              "planes": [{"id": "p1", "nombre": "Mensual", "precioMes": 200}]}
     cli = TestClient(app, base_url="https://testserver")
-    assert cli.get("/academia/no_existe").status_code == 200 and "Academia no disponible" in cli.get("/academia/no_existe").text
+    assert cli.get("/academia/no_existe").status_code == 404 and "Academia no disponible" in cli.get("/academia/no_existe").text
     # Ficha: galería, sede, redes, tarifario por programa con socio/invitado y botones Matricularme.
     html = cli.get("/academia/ac_t1").text
     for t in ("Academia Baseline", "Club Lawn Tennis · San Borja", "Tenis para todos", "Programas y tarifario", "Bola Roja", "5 a 10 años · 1 h",

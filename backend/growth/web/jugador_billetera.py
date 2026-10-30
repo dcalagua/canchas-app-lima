@@ -76,6 +76,7 @@ _ISO_POR_MONEDA = {"PEN": "PE", "BOB": "BO", "USD": "EC"}
 SIMBOLO = {"PEN": "S/", "BOB": "Bs", "USD": "$"}
 # `cuenta_screen._saldoBajo`: con 15 o menos el dueño deja de salir destacado.
 SALDO_BAJO = 15
+CULQI_JS = "https://checkout.culqi.com/js/v4"  # se carga tras el `load` (ver _JS_BILLETERA)
 
 
 _LIMA = timezone(timedelta(hours=-5))
@@ -392,7 +393,7 @@ _CSS = """
 .bil-acc a,.bil-acc button{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:0;font:inherit;color:inherit;text-decoration:none;cursor:pointer;padding:6px 2px;border-radius:14px;position:relative}
 .bil-acc .bur{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px}
 .bil-acc small{font-size:12px;font-weight:700;text-align:center;line-height:1.15}
-.bil-acc .ins{position:absolute;top:0;left:calc(50% + 12px);background:#B08908;color:#fff;border:1.5px solid #fff;border-radius:99px;font-size:10px;font-weight:800;padding:2px 6px}
+.bil-acc .ins{position:absolute;top:0;left:calc(50% + 12px);background:#B08908;color:#fff;border:1.5px solid #fff;border-radius:99px;font-size:12px;font-weight:800;padding:2px 6px}
 .bil-cupon{margin:6px 0 4px;text-align:center}
 .bil-cupon summary{display:inline-block;cursor:pointer;color:#14463A;font-weight:700;list-style:none;padding:8px}
 .bil-cupon summary::-webkit-details-marker{display:none}
@@ -417,7 +418,7 @@ _CSS = """
 .bmov .tx small{color:var(--tenue);font-size:12.5px}
 .bmov .der{text-align:right;flex:none}
 .bmov .der b{font-size:15.5px;white-space:nowrap}
-.bmov .der small{display:block;color:var(--tenue);font-size:11.5px}
+.bmov .der small{display:block;color:var(--tenue);font-size:12px}
 .bmov .rec{margin:0 12px 12px 64px;background:#F6F7F6;border-radius:10px;padding:8px 10px;font-size:13px}
 .bmov .rec div{display:flex;justify-content:space-between;gap:10px;padding:2px 0}
 .bmov .rec div b{white-space:nowrap}
@@ -432,7 +433,7 @@ _CSS = """
 .pag .tx b{display:block;font-size:14.5px;overflow-wrap:anywhere;line-height:1.3}
 .pag .tx small{color:var(--tenue);font-size:12.5px;display:block}
 .pag .mt{font-weight:800;font-size:15px;white-space:nowrap;text-align:right}
-.pag .mt small{display:block;font-weight:600;font-size:11.5px;color:var(--tenue)}
+.pag .mt small{display:block;font-weight:600;font-size:12px;color:var(--tenue)}
 .pag-res{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;background:#F4F7F5;border-radius:14px;padding:12px;margin:10px 0}
 .pag-res small{display:block;color:var(--tenue);font-size:12px}
 .pag-res b{font-size:15px;overflow-wrap:anywhere}
@@ -450,7 +451,7 @@ _CSS = """
 .pts-it .em{font-size:20px;flex:none}
 .pts-it .tx{flex:1;min-width:0}
 .pts-it .tx b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pts-it .tx small{color:var(--tenue);font-size:11.5px}
+.pts-it .tx small{color:var(--tenue);font-size:12px}
 .pts-it .n{font-weight:900;font-size:15px;color:#14463A;white-space:nowrap}
 .pts-it .n.gris{color:var(--tenue)}.pts-it .n.rojo{color:#C0392B}
 .pais-actual{display:flex;align-items:center;gap:14px;background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px}
@@ -560,16 +561,43 @@ _JS_BILLETERA = (r"""
   document.querySelectorAll('#recChips [data-monto]').forEach(function(ch){ ch.addEventListener('click', function(){ st.otro = false; st.monto = Number(ch.dataset.monto); err(''); pintar(); }); });
   var co = $('chipOtro'); if(co) co.addEventListener('click', function(){ st.otro = true; var i = $('montoOtro'); st.monto = Number(i.value || 0); pintar(); i.focus(); });
   var mi = $('montoOtro'); if(mi) mi.addEventListener('input', function(){ st.monto = Number(mi.value || 0); err(''); pintar(); });
+  // Culqi Checkout (≈260 KB) ya no bloquea la página: se pide DESPUÉS de que
+  // la billetera terminó de cargar (y, si aún no llegó, al pulsar Pagar).
+  var culqiP = null;
+  function cargarCulqi(){
+    if(window.Culqi) return Promise.resolve(true);
+    if(culqiP) return culqiP;
+    culqiP = new Promise(function(res){
+      var s = document.createElement('script'); s.src = C.culqiJs; s.async = true;
+      s.onload = function(){ res(!!window.Culqi); };
+      s.onerror = function(){ culqiP = null; res(false); };
+      document.head.appendChild(s);
+    });
+    return culqiP;
+  }
+  if(C.culqiJs){
+    if(document.readyState === 'complete') setTimeout(cargarCulqi, 0);
+    else window.addEventListener('load', function(){ setTimeout(cargarCulqi, 0); });
+  }
   function recargar(){
     err('');
     if(!(st.monto >= C.min && st.monto <= C.max && Math.floor(st.monto) === st.monto)){ err('Entre ' + C.moneda + ' ' + C.min + ' y ' + C.moneda + ' ' + C.max + ', sin decimales.'); return; }
     if(C.pasarela){ recargarPasarela(); return; }
-    if(!C.pk || !window.Culqi){ err('El pago en línea no está disponible por ahora.'); return; }
+    if(!C.pk || !C.culqiJs){ err('El pago en línea no está disponible por ahora.'); return; }
     var m = window.pcgMedioPago ? pcgMedioPago() : 'yape', monto = st.monto, bv = bono(monto);
     pcgResumenPago({moneda: C.moneda, medio: m, lineas: [{t: 'Recarga de saldo ⟦MARCA⟧', m: monto}], total: monto,
                     nota: (bv > 0 ? '🎁 Además recibes +' + fmt(bv) + ' de bono (lo pone ⟦MARCA⟧). ' : '') + 'El saldo se acredita al instante en tu billetera, la misma de la app.'})
       .then(function(ok){
         if(!ok) return;
+        if(!window.Culqi){ pcgCargando('Abriendo el pago seguro…', {demora: 250}); }
+        return cargarCulqi().then(function(listo){
+          pcgCargando(false);
+          if(!listo){ err('El pago en línea no está disponible por ahora. Inténtalo de nuevo en un momento.'); return; }
+          abrirCulqi(m, monto);
+        });
+      });
+  }
+  function abrirCulqi(m, monto){
         Culqi.publicKey = C.pk;
         Culqi.settings({title: '⟦MARCA⟧', currency: 'PEN', amount: Math.round(monto * 100)});
         Culqi.options({lang: 'es', installments: false,
@@ -593,7 +621,6 @@ _JS_BILLETERA = (r"""
           else { err((Culqi.error && Culqi.error.user_message) || 'No se pudo procesar el pago.'); }
         };
         Culqi.open();
-      });
   }
   // $ / Bs: la recarga se paga en la página de la pasarela del país y vuelve a /web/pago/{orden}.
   function recargarPasarela(){
@@ -770,7 +797,9 @@ def pagina_billetera(request: Request) -> HTMLResponse:
             lista += ("<h2>Mi saldo</h2><p class='h2sub'>Tu monedero: recargas y gastos (comisiones, servicios, Pro).</p>"
                       + "".join(_fila_mov(m) for m in mios))
     pas_h = "" if P["pasarela"] == "culqi" else pago_hospedado.pasarela_para(P["iso_mon"])
+    con_culqi = "btnRecargar" in recargar and P["pasarela"] == "culqi"
     cfg = {"moneda": sim, "recargas": P["recargas"], "min": P["min"], "max": P["max"], "pk": config.CULQI_PUBLIC_KEY,
+           "culqiJs": CULQI_JS if con_culqi else "",
            "bono": {"pct": pct, "min": minimo, "tope": tope}, "play": PLAY_URL,
            "pasarela": pas_h, "pasarelaNombre": pago_hospedado.nombre_pasarela(pas_h) if pas_h else "",
            "recargaOk": _recarga_ok(request, email)}
@@ -780,7 +809,8 @@ def pagina_billetera(request: Request) -> HTMLResponse:
               + "<p class='sub' style='font-size:13px;margin-top:18px'>¿Buscas lo que pagaste en reservas y academias? "
                 "Está en <a href='/mis-pagos'>Mis pagos</a>.</p></div>"
               + f"<script>window.__billetera={ui.json_js(cfg)};</script><script>{_JS_BILLETERA}</script>")
-    head = "<script src='https://checkout.culqi.com/js/v4'></script>" if ("btnRecargar" in recargar and P["pasarela"] == "culqi") else ""
+    # Culqi ya no va en <head> (bloqueaba la página ~0,3-0,8 s): lo carga el JS tras el `load`.
+    head = "<link rel='preconnect' href='https://checkout.culqi.com'>" if con_culqi else ""
     return ui.shell("Mi billetera", cuerpo, sesion=ses, titulo_tab=f"Mi billetera · {MARCA}", extra_head=head)
 
 

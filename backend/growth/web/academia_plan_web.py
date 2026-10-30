@@ -121,12 +121,12 @@ label.pd-f{cursor:pointer}label.pd-f:hover{background:#F7F7F7}
 .pd-total b{font-size:20px;color:#4A1257}
 .pd-pasos{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;margin-top:14px}
 .pd-pasos ol{margin:0;padding-left:20px;font-size:14px;line-height:1.55}
-.pd-mock{width:150px;border-radius:16px;background:#742284;color:#fff;padding:12px 12px 10px;font-size:11px;box-shadow:0 8px 20px rgba(116,34,132,.25);text-align:center}
+.pd-mock{width:150px;border-radius:16px;background:#742284;color:#fff;padding:12px 12px 10px;font-size:12px;box-shadow:0 8px 20px rgba(116,34,132,.25);text-align:center}
 .pd-mock .t{font-weight:800;font-size:13px}.pd-mock .mo{font-size:20px;font-weight:900;margin:4px 0}
 .pd-mock .cod{background:#fff;color:#4A1257;border-radius:10px;padding:6px 4px;margin-top:8px;outline:3px solid #F2C94C;outline-offset:2px;position:relative}
 .pd-mock .cod b{display:block;font-size:18px;letter-spacing:4px}
-.pd-mock .cod:after{content:'← este';position:absolute;right:-50px;top:50%;transform:translateY(-50%);color:#B7791F;font-weight:800;font-size:11px}
-.pd-mock .op{opacity:.85;margin-top:8px;font-size:10px}
+.pd-mock .cod:after{content:'← este';position:absolute;right:-50px;top:50%;transform:translateY(-50%);color:#B7791F;font-weight:800;font-size:12px}
+.pd-mock .op{opacity:.85;margin-top:8px;font-size:12px}
 .pd-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:14px}
 .pd-form label{display:block;font-weight:700;font-size:13px;margin-bottom:4px}
 .pd-form input{width:100%;box-sizing:border-box}

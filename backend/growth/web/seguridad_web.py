@@ -6,10 +6,13 @@
   página. Cambiar el CSS cambia la huella: nunca se sirve uno viejo.
 - **Compresión** gzip de todo lo que pase de 1 KB.
 - **Cabeceras**: `X-Frame-Options: SAMEORIGIN` en las páginas HTML (antes las
-  de pago se podían meter en un iframe ajeno → clickjacking) y una CSP en modo
-  SOLO REPORTE con los dominios reales (Culqi, Google, unpkg, Supabase…): no
-  bloquea nada; lo que la violaría se anota en los logs (`[csp]`) para poder
-  pasarla a modo bloqueo con datos.
+  de pago se podían meter en un iframe ajeno → clickjacking) y una CSP con los
+  dominios reales (Culqi, Google, unpkg/Leaflet, OpenStreetMap, Supabase…) en
+  modo BLOQUEO desde la ronda 3 (barrido de todas las pantallas en local y en
+  QAS sin violaciones). Corte de emergencia: `WEB_CSP_MODO=reporte` vuelve a
+  solo reportar sin publicar código. En ambos modos lo que la viola llega a
+  `/web/csp-reporte` y queda en los logs (`[csp]`). El barrido de CI
+  (`tests/e2e/barrido.mjs`) falla ante cualquier violación nueva.
 - **CSRF**: un POST/PUT/DELETE que trae la cookie de sesión web desde OTRO
   sitio (`Sec-Fetch-Site: cross-site` u `Origin` ajeno) se rechaza con 403.
   Los webhooks y callbacks de pasarelas no traen esa cookie: no se tocan.
@@ -21,6 +24,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import threading
 import time
 from urllib.parse import urlparse
@@ -59,7 +63,9 @@ LIMITES: dict[str, tuple[int, int]] = {
     "/web/lugares": (30, 60),
     "/web/descubrir": (30, 60),
     "/web/foto": (120, 60),
+    "/web/mini": (300, 60),
     "/web/voucher": (10, 60),
+    "/web/dividir": (90, 60),   # pago dividido: sondeo cada 5 s + acciones
     "/web/asegurar": (20, 60),
     "/web/sesion/prueba": (10, 60),
     "/web/csp-reporte": (30, 60),
@@ -133,7 +139,13 @@ def es_csrf(request: Request) -> bool:
     return False
 
 
-# ── CSP (solo reporte) ───────────────────────────────────────────────────────
+# ── CSP ──────────────────────────────────────────────────────────────────────
+# 'unsafe-inline' en script/style SIGUE siendo necesario: la web arma cientos de
+# <script> en línea y atributos onclick/style por página. Pasar a nonces es un
+# trabajo aparte (cada f-string que emite <script> tendría que llevar el nonce
+# de la request). Aun así la política cierra lo importante: de DÓNDE se cargan
+# scripts, marcos e imágenes, quién puede meter la web en un iframe, a dónde se
+# envían formularios, <base> y <object>.
 
 CSP = ("default-src 'self'; "
        "script-src 'self' 'unsafe-inline' https://checkout.culqi.com https://js.culqi.com https://*.culqi.com "
@@ -143,8 +155,23 @@ CSP = ("default-src 'self'; "
        "img-src 'self' data: blob: https:; media-src 'self' blob: https:; "
        "connect-src 'self' https:; "
        "frame-src 'self' https://*.culqi.com https://accounts.google.com https://www.youtube.com https://www.google.com; "
-       "frame-ancestors 'self'; form-action 'self' https:; base-uri 'self'; "
+       "frame-ancestors 'self'; form-action 'self' https:; base-uri 'self'; object-src 'none'; "
        "report-uri /web/csp-reporte")
+
+MODOS_CSP = ("bloqueo", "reporte")
+
+
+def modo_csp() -> str:
+    """`WEB_CSP_MODO`: `bloqueo` (default) o `reporte` (corte de emergencia: el
+    navegador solo avisa). Se lee en cada respuesta: cambiar la variable en
+    Railway y reiniciar basta, sin publicar código."""
+    m = (os.getenv("WEB_CSP_MODO", "") or "").strip().lower()
+    return m if m in MODOS_CSP else "bloqueo"
+
+
+def cabecera_csp() -> str:
+    return "Content-Security-Policy" if modo_csp() == "bloqueo" else "Content-Security-Policy-Report-Only"
+
 
 _csp_vistos: dict[str, float] = {}
 
@@ -164,6 +191,13 @@ def instalar(app: FastAPI) -> None:
         cache = "public, max-age=31536000, immutable" if resto.startswith(huella + ".") else "no-cache"
         return Response(texto, media_type=f"{tipo}; charset=utf-8", headers={"Cache-Control": cache})
 
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon() -> Response:
+        # Las páginas sin <link rel=icon> (legales, landings) hacen que el
+        # navegador pida /favicon.ico: antes era un 404 en cada visita.
+        return Response(status_code=301, headers={"Location": "/marca/logo.png",
+                                                  "Cache-Control": "public, max-age=86400"})
+
     @app.post("/web/csp-reporte", include_in_schema=False)
     async def csp_reporte(request: Request) -> Response:
         try:
@@ -176,7 +210,7 @@ def instalar(app: FastAPI) -> None:
             _csp_vistos[clave] = ahora
             if len(_csp_vistos) > 500:
                 _csp_vistos.clear()
-            print(f"[csp] {cuerpo[:600]}", flush=True)
+            print(f"[csp] ({modo_csp()}) {cuerpo[:600]}", flush=True)
         return Response(status_code=204)
 
     @app.post("/web/js-error", include_in_schema=False)
@@ -209,7 +243,9 @@ def instalar(app: FastAPI) -> None:
         response = await call_next(request)
         if (response.headers.get("content-type") or "").startswith("text/html") and not ruta.startswith("/admin"):
             response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
-            response.headers.setdefault("Content-Security-Policy-Report-Only", CSP)
+            if ("content-security-policy" not in response.headers
+                    and "content-security-policy-report-only" not in response.headers):
+                response.headers[cabecera_csp()] = CSP
         return response
 
     app.add_middleware(GZipMiddleware, minimum_size=1024)

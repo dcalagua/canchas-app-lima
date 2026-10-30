@@ -128,8 +128,8 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 .slot b{font-size:15px;font-weight:800;color:var(--noche);line-height:1.1}
 .slot b small{font-weight:600;color:var(--tenue);font-size:12px}
 .slot .pr{font-size:13.5px;font-weight:700;color:var(--teal);margin-top:2px}
-.slot .tag{font-size:11px;font-weight:700;color:#946200;background:var(--warn-bg);border-radius:999px;padding:2px 7px;margin-top:3px}
-.slot .dia{font-size:11px;font-weight:700;color:var(--tenue)}
+.slot .tag{font-size:12px;font-weight:700;color:#946200;background:var(--warn-bg);border-radius:999px;padding:2px 7px;margin-top:3px}
+.slot .dia{font-size:12px;font-weight:700;color:var(--tenue)}
 .slot.sel{background:var(--noche);border-color:var(--noche)}.slot.sel b,.slot.sel b small,.slot.sel .pr,.slot.sel .dia{color:#fff}
 .slot.sel .tag{background:rgba(255,255,255,.18);color:#fff}
 .slot.off{background:var(--gris);cursor:pointer}.slot.off b,.slot.off .pr{opacity:.6}.slot.off b{text-decoration:line-through}.slot .tag.esp{background:#fff;border:1px dashed var(--trazo);color:var(--tenue)}.slot .tag.esp.on{border-style:solid;border-color:var(--esmeralda);color:var(--esmeralda)}
@@ -140,7 +140,7 @@ button.slot{font:inherit;color:inherit;text-align:left;width:100%;min-height:44p
 
 .strip{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 8px;min-width:0;max-width:100%;scrollbar-width:none;-webkit-overflow-scrolling:touch}.strip::-webkit-scrollbar{display:none}
 .strip .chip{flex-direction:column;gap:2px;padding:10px 14px;min-width:74px;align-items:center}
-.strip .chip b{font-size:15px}.strip .chip small{font-size:11.5px}
+.strip .chip b{font-size:15px}.strip .chip small{font-size:12px}
 /* Flechas de la tira de días (solo escritorio: en el celular se desliza con el dedo). */
 .strip-wrap{position:relative;min-width:0}
 .strip-fl{display:none}
@@ -189,7 +189,7 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .bol-card:hover{box-shadow:0 4px 14px rgba(10,27,61,.10)}.bol-card.sel{border-color:var(--noche);box-shadow:0 0 0 2px var(--noche) inset}
 .bol-card img,.bol-card .ini{width:48px;height:48px;border-radius:50%;object-fit:cover;flex:none;background:var(--tinte);display:inline-flex;align-items:center;justify-content:center;font-weight:800;color:var(--esmeralda);font-size:18px}
 .bol-card .nom{font-weight:800;color:var(--noche)}.bol-card .cat{display:inline-block;background:var(--tinte);color:var(--esmeralda);font-weight:800;font-size:12px;padding:2px 8px;border-radius:999px;margin-left:6px}
-.bol-card .det{color:var(--tenue);font-size:12.5px;margin-top:2px}.bol-card .pre{margin-left:auto;text-align:right;white-space:nowrap;font-weight:800;color:var(--noche)}.bol-card .pre small{display:block;color:var(--tenue);font-weight:600;font-size:11.5px}
+.bol-card .det{color:var(--tenue);font-size:12.5px;margin-top:2px}.bol-card .pre{margin-left:auto;text-align:right;white-space:nowrap;font-weight:800;color:var(--noche)}.bol-card .pre small{display:block;color:var(--tenue);font-weight:600;font-size:12px}
 .bol-card .chk{width:22px;height:22px;border-radius:50%;border:2px solid var(--trazo);flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:13px;color:#fff}.bol-card.sel .chk{background:var(--esmeralda);border-color:var(--esmeralda)}
 .bol-sol{border:1px solid var(--trazo);border-radius:16px;padding:14px 16px;background:var(--blanco);display:grid;gap:6px}.bol-sol.pend{border-color:#F2C94C;background:#FFFBEA}
 .bol-sol .acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
@@ -208,7 +208,7 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .mc{display:inline-block;width:34px;height:21px;position:relative}.mc i{position:absolute;top:0;width:21px;height:21px;border-radius:50%}
 .mc i:first-child{left:0;background:#EB001B}.mc i:last-child{left:13px;background:#F79E1B;opacity:.92}
 .candado{display:inline-flex;align-items:center;gap:6px;background:var(--noche);color:#fff;font-size:12px;font-weight:700;padding:6px 10px;border-radius:10px}
-.medio-pago .mp-t{font-weight:800;font-size:14px;margin-bottom:8px}.medio-pago .chip{padding:9px 12px}.medio-pago .chip small{font-size:11px;font-weight:800;color:var(--esmeralda)}
+.medio-pago .mp-t{font-weight:800;font-size:14px;margin-bottom:8px}.medio-pago .chip{padding:9px 12px}.medio-pago .chip small{font-size:12px;font-weight:800;color:var(--esmeralda)}
 .mp-mini{display:inline-flex;align-items:center;gap:6px;background:var(--blanco);border:1px solid var(--trazo);border-radius:999px;padding:6px 10px;cursor:pointer;font:inherit;flex:none}.mp-mini b{color:var(--tenue);font-weight:700}
 .pcg-rp{text-align:left;display:grid;gap:7px;margin:2px 0 6px}.pcg-rp .rp-l{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:12px;font-size:14px;color:var(--noche)}.pcg-rp .rp-l span{min-width:0;overflow-wrap:anywhere;line-height:1.3}.pcg-rp .rp-l b{white-space:nowrap}
 .pcg-rp .rp-t{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:12px;border-top:1px solid var(--trazo);padding-top:10px;margin-top:4px;font-size:17px;font-weight:800;color:var(--noche)}
@@ -347,7 +347,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .cal-mes{min-width:0}
 .cal-tit{text-align:center;font-weight:700;font-size:15px;padding:12px 0 14px}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px 0;justify-items:center}
-.cal-dn{font-size:11.5px;color:var(--tenue);font-weight:600;padding:4px 0 8px}
+.cal-dn{font-size:12px;color:var(--tenue);font-weight:600;padding:4px 0 8px}
 .cal-d{width:40px;height:40px;border-radius:50%;border:0;background:transparent;font-family:inherit;font-weight:600;font-size:13.5px;color:var(--noche);cursor:pointer}
 .cal-d:hover{box-shadow:inset 0 0 0 1.5px var(--noche)}
 .cal-d.off{color:#C4CBC7;text-decoration:line-through;cursor:default;box-shadow:none}
@@ -441,7 +441,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .anf-cancha .f img{width:100%;height:100%;object-fit:cover}
 .anf-cancha .acciones .btn{flex:0 0 auto;min-width:0;padding:8px 12px;font-size:13px}.anf-local{background:var(--blanco);border:1px solid var(--trazo);border-radius:18px;padding:14px;box-shadow:var(--sombra);min-width:0}.anf-local .cab{display:flex;gap:14px;align-items:flex-start}.anf-local .cab .f{flex:none;width:84px;height:84px;border-radius:12px;overflow:hidden;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:34px}.anf-local .cab .f img{width:100%;height:100%;object-fit:cover}.anf-local .cab .ico{display:inline-flex;color:var(--verde);flex:none;vertical-align:-3px}.anf-local .cab .tit{display:flex;gap:8px;align-items:center;min-width:0}.anf-local .filas{margin-top:12px;border-top:1px solid var(--trazo)}.anf-dep{font-size:12px;font-weight:800;color:var(--tenue);text-transform:uppercase;letter-spacing:.4px;padding:12px 0 2px}.anf-fila{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--trazo)}.anf-fila .ico{flex:none;width:32px;height:32px;border-radius:50%;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:16px}.anf-local .acciones .btn{flex:0 0 auto;min-width:0;padding:8px 12px;font-size:13px}
 /* calendario interactivo del anfitrión */
-.cal-act td[data-t]{cursor:pointer}.cal-act td.libre:hover{background:var(--tinte)}.cal-act td .li{opacity:0;font-size:11px;color:var(--teal);font-weight:800;text-align:center}
+.cal-act td[data-t]{cursor:pointer}.cal-act td.libre:hover{background:var(--tinte)}.cal-act td .li{opacity:0;font-size:12px;color:var(--teal);font-weight:800;text-align:center}
 .cal-act td.libre:hover .li{opacity:1}.cal-act td.res:hover .oc,.cal-act td.bloq:hover .bl{filter:brightness(.95)}
 .modal .quien .av{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--tinte);color:var(--teal);font-weight:800;flex:none}
 .chk{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;cursor:pointer}.chk input{width:18px;height:18px;padding:0;margin:0;accent-color:var(--esmeralda)}.chk small{font-weight:500;color:var(--tenue)}
@@ -506,7 +506,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .barra-guardar{position:sticky;bottom:0;background:var(--blanco);border-top:1px solid var(--trazo);padding:12px 0;margin-top:26px;z-index:15}
 .barra-guardar .wrap-xl{display:flex;align-items:center;justify-content:space-between;gap:16px}
 .barra-guardar .btn{flex:none;padding:13px 26px}#msgGuardar.err{color:var(--bad-fg);font-weight:700}
-@media(max-width:560px){#msgGuardar:not(.err){display:none}.barra-guardar .btn{width:100%}}
+@media(max-width:560px){#msgGuardar:not(.err){display:none}.barra-guardar .btn{flex:1 1 0;min-width:0;width:auto;padding-left:12px;padding-right:12px}}
 @media(max-width:900px){.edit-grid{grid-template-columns:1fr;gap:8px}.edit-nav{position:static;flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:6px}.edit-nav-it{white-space:nowrap;border:1px solid var(--trazo);padding:8px 12px;border-radius:999px;font-size:13.5px}}
 .mov{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--trazo);font-size:14px}
 .mov small{display:block;color:var(--tenue);font-weight:600}
@@ -548,7 +548,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
   body.pcg-chat header.nav,body.pcg-chat #abrirApp{display:none}
   body.pcg-chat{overflow:hidden;overscroll-behavior:none}
 }
-@media(max-width:560px){.busq .seg{padding:0 9px}.busq .seg small{font-size:11px}.busq .seg input{font-size:13px}.busq .seg.donde{flex:1.5}.busq .seg.hora{flex:.8}.cab-tabs{margin:0 -16px;padding:0 16px}.cat{padding:12px 8px 10px}}
+@media(max-width:560px){.busq .seg{padding:0 9px}.busq .seg small{font-size:12px}.busq .seg input{font-size:13px}.busq .seg.donde{flex:1.5}.busq .seg.hora{flex:.8}.cab-tabs{margin:0 -16px;padding:0 16px}.cat{padding:12px 8px 10px}}
 /* filtros del explorador (botón + chips) */
 .filtros{flex:none;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--trazo);border-radius:14px;padding:10px 14px;font-weight:700;font-size:13.5px;background:var(--blanco);cursor:pointer;color:var(--noche);font-family:inherit}
 .filtros:hover{border-color:var(--noche)}.filtros.on{border-color:var(--noche);box-shadow:inset 0 0 0 1px var(--noche)}
@@ -557,7 +557,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .barra-filtros .qchips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;min-width:0;padding:4px 0}
 .barra-filtros .qchips::-webkit-scrollbar{display:none}
 .barra-filtros .chip{font-size:13.5px;padding:10px 14px;border-radius:14px}
-.filtros .n{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;border-radius:999px;background:var(--noche);color:#fff;font-size:11px;margin-left:6px;padding:0 5px}
+.filtros .n{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;border-radius:999px;background:var(--noche);color:#fff;font-size:12px;margin-left:6px;padding:0 5px}
 body.sin-scroll{overflow:hidden}
 .modal{display:none;position:fixed;inset:0;background:rgba(10,27,61,.5);z-index:60;align-items:center;justify-content:center;padding:24px 16px}
 .modal.open{display:flex}
@@ -721,7 +721,30 @@ label.extra:has(input:checked) select.cant{display:block}
 .marca{margin-top:48px;border-top:1px solid var(--trazo)}
 .marca section{padding:44px 0}
 .marca section:first-child{border-top:0}
+/* Accesibilidad (ronda 3, al FINAL de la hoja para ganar a las reglas de arriba): ningún texto visible bajo 12px (el <small> del navegador
+   baja a ~10.8px dentro de un texto de 13px) */
+small{font-size:max(12px,.83em)}
+/* …y en pantallas TÁCTILES todo lo que se toca mide al menos 44px de alto (en
+   escritorio, con mouse, el diseño queda igual). Solo cambia el alto del área
+   táctil: los textos y colores no se mueven. */
+@media (pointer:coarse){
+  .chip,.btn,.mp-mini,.mj-chip,select,.bil-nav a,.jp-link,.anf-back,.pr-back,.pr-limpiar,.tn-sec a,.busq-mini,.ubic-mini select{min-height:44px}
+  .anf-back,.pr-back,.pr-limpiar,.tn-sec a,.viaje .vacc .lnk{display:inline-flex;align-items:center}
+  .viaje .vacc .lnk{min-height:44px}
+  .wm{min-height:44px}
+  .lst .corazon{min-width:44px;min-height:44px;top:4px;right:4px}
+  .mj-cab .vol{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  .anf-hero .volver{min-width:44px;min-height:44px;display:inline-flex;align-items:center}
+  .modal-cab .cerrar{min-width:44px;min-height:44px;top:10px;left:10px}
+  /* Pie: cada enlace es una fila de 44px (antes ~20px con 7px de margen). */
+  .pie-cols a{display:flex;align-items:center;min-height:44px;margin:0}
+  .pie-cols a.libro{display:inline-flex;margin-top:8px}
+  .pie-redes a{width:44px;height:44px}
+  .pie-bajo a{display:inline-flex;align-items:center;min-height:44px}
+}
 """
+from web.estilos_anfitrion import CSS as _CSS_ANFITRION  # noqa: E402 — modo anfitrión (va al final)
+CSS += _CSS_ANFITRION
 
 
 def e(s) -> str:
@@ -1142,7 +1165,7 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
     if ses:
         nombre = ses.get("nombre") or ses.get("email") or ""
         cuenta = (f"<div class='yo'>{_avatar(ses)}<div><b>{e(nombre)}</b><small>{e(ses.get('email'))}</small></div></div>"
-                  "<hr><a class='b' href='/perfil'>👤 Perfil</a><a class='b' href='/mensajes'>💬 Mensajes <span class='bdg-msj' data-badge-mensajes hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:11px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/buscar'>🔎 Busca tu cancha</a><a class='b' href='/novedades'>📰 Novedades</a><a class='b' href='/canales'>📢 Canales</a><a class='b' href='/partidos'>⚽ Juega ya</a><a class='b' href='/notificaciones'>🔔 Notificaciones <span data-badge-avisos hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:11px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/mis-reservas'>📅 Mis reservas</a><a class='b' href='/mis-favoritos'>♥ Mis favoritos</a>"
+                  "<hr><a class='b' href='/perfil'>👤 Perfil</a><a class='b' href='/mensajes'>💬 Mensajes <span class='bdg-msj' data-badge-mensajes hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:12px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/buscar'>🔎 Busca tu cancha</a><a class='b' href='/novedades'>📰 Novedades</a><a class='b' href='/canales'>📢 Canales</a><a class='b' href='/partidos'>⚽ Juega ya</a><a class='b' href='/notificaciones'>🔔 Notificaciones <span data-badge-avisos hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:12px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/mis-reservas'>📅 Mis reservas</a><a class='b' href='/mis-favoritos'>♥ Mis favoritos</a>"
                   "<button type='button' onclick='window.pcgSalir&&pcgSalir()'>Cerrar sesión</button>")
         avatar = f"<a class='redondo' href='/perfil' title='{e(ses.get('email'))}' aria-label='Tu perfil'>{_avatar(ses)}</a>"
     else:
@@ -1362,7 +1385,7 @@ JS_NAV = (r"""
     setTimeout(function(){ if(!e.defaultPrevented) navegando(); }, 0);
   });
   document.addEventListener('submit', function(e){ if(!e.defaultPrevented && !(e.target.target && e.target.target !== '_self')) navegando(); });
-  var FONDO = /\/web\/(mensajes\/(no-leidos|hilo|bandeja)|foto|descubrir|favoritos$|avisos\/nuevos|sesion$|pago\/[^\/]+\/estado)|\/static\//;
+  var FONDO = /\/web\/(mensajes\/(no-leidos|hilo|bandeja)|foto|descubrir|favoritos$|avisos\/nuevos|sesion$|pago\/[^\/]+\/estado|dividir\/[^\/]+\/estado)|\/static\//;
   if(window.fetch && !window.fetch.__pcg){ var f0 = window.fetch; var fw = function(rec, op){ var url = typeof rec === 'string' ? rec : ((rec && rec.url) || '');
       if(FONDO.test(url)) return f0.apply(this, arguments);
       nBar++; var t = setTimeout(function(){ if(nBar > 0) barra(true); }, 250);
@@ -1453,6 +1476,32 @@ def nav_simple(ses: dict | None = None, volver: str = "/canchas") -> str:
     return cabecera(ses=ses, volver=volver)
 
 
+# Base del sitio de la request en curso (la pone `main._a11y_seo`): respaldo
+# para armar URLs ABSOLUTAS cuando el ambiente no tiene PUBLIC_BASE_URL.
+import contextvars as _cv
+BASE_REQUEST: _cv.ContextVar[str] = _cv.ContextVar("pcg_base_request", default="")
+
+META_NOINDEX = "<meta name='robots' content='noindex,nofollow'>"
+
+
+def base_publica() -> str:
+    """Base ABSOLUTA del sitio para og:image / og:url / canonical: la del
+    ambiente (`PUBLIC_BASE_URL`), si no la de la request y, en último caso, el
+    dominio de la marca (`MARCA_URL`). Sin barra final."""
+    import config as _cfg
+    return (_cfg.url_limpia(getattr(_cfg, "PUBLIC_BASE_URL", "")) or _cfg.url_limpia(BASE_REQUEST.get())
+            or _cfg.url_limpia(getattr(_cfg, "MARCA_URL", "")))
+
+
+def url_absoluta(u: str) -> str:
+    """'/marca/logo-og.png' → 'https://<base>/marca/logo-og.png'. Lo que ya es
+    absoluto (https://…, //…, data:) queda igual."""
+    u = (u or "").strip()
+    if not u or re.match(r"^(?:[a-z][a-z0-9+.-]*:|//)", u, re.I):
+        return u
+    return base_publica() + (u if u.startswith("/") else "/" + u)
+
+
 def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
           canonical: str = "", og_image: str = "/marca/logo-og.png",
           con_barra: bool = False, jsonld: str = "", nav: str = "",
@@ -1470,9 +1519,13 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
     clases = " ".join(c for c in ("con-barra" if con_barra else "",
                                   {"chat": "pcg-chat", "mensajes": "pcg-msj"}.get(pantalla, "")) if c)
     vp_extra = ",interactive-widget=resizes-content" if pantalla == "chat" else ""
+    import config as _cfg
+    og_image = url_absoluta(og_image)
+    canonical = url_absoluta(canonical)
     page = (
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
         f"<meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover{vp_extra}'>"
+        + ("" if _cfg.sitio_indexable() else META_NOINDEX) +
         f"<title>{e(titulo_tab or (titulo + f' · {MARCA}'))}</title>"
         f"<meta name='description' content='{e(desc or titulo)}'>"
         f"<meta property='og:title' content='{e(titulo)} · {MARCA}'>"

@@ -100,6 +100,9 @@ def test_regalo_bono_y_recarga_culqi_solo_soles(monkeypatch):
     for m in (20, 50, 100, 200):
         assert f"data-monto='{m}'" in html
     assert "min='10' max='1000'" in html and "checkout.culqi.com/js/v4" in html and "id='medioPago'" in html
+    # Culqi (≈260 KB) NO bloquea la página: lo pide el JS tras el `load`.
+    assert "<script src='https://checkout.culqi.com/js/v4'>" not in html and '"culqiJs"' in html
+    assert "cargarCulqi" in jb._JS_BILLETERA
 
     cargos = []
     monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: (cargos.append(kw) or {"ok": True, "charge_id": "chr_rw1"}))

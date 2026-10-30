@@ -1942,6 +1942,33 @@ para la API del APK.
   Playwright `$SP/pw_preload.js`. **HECHO 1-oct-2026 (autorizado):**
   `pg-backend-prd` movido a **us-east4 (Virginia)** (~115 ms a São Paulo,
   más cerca de Lima) y el arreglo pasado a PRD (`prd` = 420be2a).
+  **Ronda 3 (30-oct-2026, rama `feat/web-r3-velocidad`): MENOS VIAJES.** (1)
+  Medidor por request (`pg.medir_request`, ContextVar): la línea `[perf]` dice
+  `sql=N viajes/M ms` y `PERF_SQL=1` lo registra en toda request (`[sql] …`) +
+  cabecera `Server-Timing`. (2) **Memoria de lecturas de la request** (solo
+  GET/HEAD): `pg.memo_leer(clave, fn)` / `pg.memo_por_clave(prefijo, claves,
+  leer)` / `memo_guardar`; se vacía sola con CUALQUIER escritura (`_abrir`) y
+  con `datos.invalidar_canchas()`. La usan `datos.cancha`, `canchas_de_dueno`,
+  `reservas_de_usuario`, `niveles_de`, `esta_verificado`, `tiene_matriculas`,
+  `boleador`, `puntos_de`, `ocupados`/`descuentos`, `canjes_web_de_ref`,
+  `puntos_canje_neto`, perfiles (`jugador_liga.perfiles`), agenda/prefs/
+  locales/academias del chat y pasarela + medios del club (`RepoPG`). (3)
+  **Precargas en UNA consulta** (con respaldo: si fallan, cada función lee
+  como antes): `precargar_perfil`, `precargar_canjes_web` +
+  `precargar_puntos_canjes` (Mis reservas: eran 2 consultas POR reserva),
+  `precargar_dia` (reservas + bloqueos + descuentos), `canchas_por_ids`,
+  `jugador_mensajes.precargar_bandeja` (academias, grupos, agenda, prefs y el
+  resumen de hilos en un viaje); `puntos_de` en una consulta. (4)
+  `pg.conexion(atomica=False)` = una sentencia de escritura sin BEGIN/COMMIT
+  (marcar leído/entregados y `guardar_prefs` con `unnest`: antes N+2 viajes).
+  (5) Portada: estrellas y academias con la caché corta de canchas
+  (`datos._publico`). (6) Culqi (billetera) y Leaflet (portada) ya NO van en
+  `<head>`: se piden tras el `load` / al abrir el mapa. Antes → después (100 ms
+  por viaje simulados): Mis reservas 92→7 viajes, Perfil 8→2, Billetera 4→2,
+  Mensajes 16→4-6, chat 24→7-9, `/mensajes/nuevo` 8→2. Test
+  `tests/test_velocidad_viajes.py` (equivalencia contra Postgres real con
+  `TEST_DATABASE_URL`). **Regla:** página nueva = contar sus viajes con
+  `PERF_SQL=1`; nada de consultas dentro de un `for`.
 - **APARTADOS WEB VENCIDOS NO OCUPAN (caso real PRD, 1-oct-2026: las 20:00
   de "Campo deportivo Edu Jr." salían "Ocupado" sin ningún pago; era un
   apartado `web_hold` de 10 min que el cliente abandonó y que solo se borraba
@@ -4075,6 +4102,96 @@ Detalle y acciones pendientes: `docs/plan/BITACORA_NOCHE.md`.
   **reprogramar** (`/reserva/{ref}/cambiar`: misma cancha, mismo precio, con la
   anticipación de cancelación; mueve las mismas filas con `datos.mover_reservas`)
   y `[js]` en los logs con los errores de JavaScript de los usuarios.
+- **Encargados del local · rol único "Recepción" (ronda 3, solo web):** el
+  dueño invita por correo de Google en `/anfitrion/encargados?local=<cancha_id>`
+  (menú "Mi club" y Editar local → Encargados; el correo es el único texto
+  libre, tope 10 por local); la persona acepta/rechaza en `/anfitrion` (push +
+  correo `aviso`). Alcance = el LOCAL (`fidelidad.local_key` + canchas ancla:
+  sigue un renombre; una cancha que cambia de dueño sale sola). Recepción
+  PUEDE: Hoy/Calendario/Reservas del local, reserva manual (y quitarla),
+  bloquear, marcar cobrada/por cobrar, no-show y Pagos por confirmar (aprobar
+  o rechazar; `resuelto_por` = quien lo hizo). NO puede: ingresos, reportes,
+  caja, clientes, editar cancha/local, reglas, cobros del club, cancelar con
+  devolución, invitar. **Autorización en UN lugar:** `web/permisos.py`
+  (`canchas_para(email, accion)`, `puede`, `es_solo_encargado`, `auditar`);
+  `_contexto(..., accion=)` y `_canchas_sesion(request, accion)` de
+  `anfitrion.py` lo usan; sin `accion` siguen siendo solo del dueño y quien solo
+  es encargado recibe `sin_permiso` (403). El Pro de reserva manual/bloqueo es
+  el del DUEÑO. Datos en `web/encargados.py`; páginas y JSON en
+  `web/anfitrion_encargados.py`; migración `0005_encargados.sql`
+  (`cl_encargados` + bitácora `cl_encargados_acciones`, RLS sin políticas); sin
+  la migración todo queda oculto. Test `tests/test_web_encargados.py`.
+  Pendiente: APK (rol en "Mis canchas", vouchers y agenda del encargado).
+- **Web ronda 3 · barrido en CI + CSP en bloqueo (30-oct):** workflow
+  `.github/workflows/web-e2e.yml` levanta el backend contra un Postgres de CI con
+  `tests/e2e/semilla.sql` (fechas relativas a hoy; `tests/e2e/preparar_db.py`
+  crea las tablas extra de `docs/piloto/`) y corre `tests/e2e/barrido.mjs`
+  (Playwright, ~100 pantallas públicas/jugador/anfitrión a 390 y 1440 px + flujo
+  ficha → "Resumen de tu pago"). FALLA ante HTTP inesperado, error de JS,
+  diálogo del navegador, desborde horizontal, página sin `<h1>`, sin cabecera
+  CSP o con violación de CSP. **Toda pantalla web nueva se agrega a `RUTAS`
+  del barrido** (y sus datos a la semilla). La CSP ahora BLOQUEA
+  (`Content-Security-Policy`); corte de emergencia `WEB_CSP_MODO=reporte`. Sigue
+  con `'unsafe-inline'` (scripts/estilos en línea por todas partes: pasar a
+  nonces es aparte). Un recurso de un dominio nuevo (script, iframe, fuente)
+  hay que sumarlo a `seguridad_web.CSP` o el navegador lo bloquea. "No
+  encontrada" (`router._no_encontrada`) responde 404 de verdad, no 200.
+- **`web/router.py` partido en módulos (ronda 3, 30-oct):** `router.py` (136
+  líneas) solo compone y RE-EXPORTA los nombres de siempre (`wr._pais_de`,
+  `from web.router import …` siguen valiendo). El código vive en `web/comun.py`
+  (constantes, país/moneda, fotos, `_no_encontrada`), `explorador.py` (`/`,
+  `/canchas`, zonas, descubrir), `entrar.py` (sesión), `lugares.py`,
+  `disponibilidad.py`, `ficha.py` (`/reservar`, `/lugar`), `reserva_pago.py`
+  (asegurar/pagar/liberar, `confirmar_reserva_pagada`, `soltar_bloque`),
+  `cancelacion.py`, `mis_reservas.py`, `perfil.py` y `comprobante.py`.
+  **Para parchear en un test, parchea el módulo que DEFINE la función**, no
+  `router` (el re-export es otra referencia y el parche no surte efecto).
+  Las menciones `web/router.py::X` de este documento son históricas.
+- **Ronda 3 · velocidad (30-oct):** medidor de viajes a la base por request
+  (la línea `[perf]` termina en `sql=N viajes/M ms`; `PERF_SQL=1` imprime `[sql]`
+  y `Server-Timing`), memo de lecturas por request GET (`pg.memo_leer`, se borra
+  en cualquier escritura), precargas de una consulta (`precargar_perfil`,
+  `precargar_bandeja`, `canchas_por_ids`…) y `pg.conexion(atomica=False)` para
+  escrituras de una sola sentencia. Culqi v4 y Leaflet ya no bloquean la
+  billetera ni la portada (se cargan al usarse). Mis reservas pasó de 92 a 7
+  viajes. Las miniaturas de fotos: `web/miniaturas.py` (`/web/mini`, WebP en
+  `canchas/mini/`, solo nuestro Storage; Google solo cambia el ancho de la URL;
+  `WEB_MINIATURAS=0` lo apaga).
+- **Cada uno paga su parte (ronda 3, 30-oct-2026):** pago DIVIDIDO de una
+  reserva web entre amigos, dinero DIRECTO al club. `pagos/division.py` (reglas,
+  plata, `RepoPG`/`RepoMemoria`) + `web/dividir_pago.py` (ficha, `/dividir/{token}`,
+  `/web/dividir/{token}/estado|tomar|soltar|pagar|voucher|cancelar`, sección
+  "Pagos divididos" de Mis reservas, `/anfitrion/cobros-club/devoluciones`).
+  Migración `0006_dividir_pago.sql` (`cl_division_pago` + `cl_division_partes`,
+  RLS sin políticas; únicos: una división viva por reserva, un cobro = una
+  parte, un amigo = una parte viva). Solo clubes con cobro directo y sin seña,
+  bono, puntos, fidelidad ni boleador (oculto y rechazado en `/web/asegurar
+  {dividir: N}`). Reparto en céntimos: cada amigo ⌊total/N⌋, el organizador el
+  resto; cada parte ≥ S/ 3 · $ 3 · Bs 3. Hold `medio_pago = 'division'`: plazo =
+  min(2 h, inicio − 60 min) (`dividir_horas`, `dividir_margen_min`; < 30 min no
+  se ofrece), tope SQL 2 h 10 (`datos.HOLD_DIVISION_MAX_SEGUNDOS`). Cada uno
+  TOMA una parte (15 min) y la paga con el Culqi del club (`chr_…#n`) o voucher
+  (ref `div_…#n`, misma bandeja Pagos por confirmar; plazo = el de la división).
+  Un voucher en revisión NO cuenta. Todas pagadas (decidido con `FOR UPDATE`
+  de la división) → `confirmar_directo` UNA vez: mismas filas (`medio_pago =
+  'dividido'`, `usuario` = organizador), `cobro_directo` total `div:<id>`, una
+  comisión al dueño; sin cargo por servicio (el cobro directo no lo lleva).
+  Vence/cancela → se suelta el horario; Culqi → reembolso con la llave del club;
+  voucher aprobado o sin revisar → `devolver` (el club marca "Ya lo devolví" /
+  "No recibí ese pago"). Aviso al organizador 30 min antes ("Pagar lo que
+  falta"). Reserva confirmada que se cancela → `devolver_por_cancelacion`
+  (proporcional por parte, resto mayor y nunca más de lo que pagó cada parte;
+  un solo reembolso por cargo base). Cron: `division.barrer` en el de 1 min de
+  `main.py` (cada división con su try/except; retoma cierres cortados a mitad).
+  **Reglas tras la revisión (30-oct):** una lectura fallida NUNCA se toma como
+  "apartado perdido" (`datos.reservas_de(estricto=True)` → se reintenta);
+  `confirmar_directo` verifica que las filas quedaron confirmadas antes de
+  registrar el cobro y la comisión; el webhook de Culqi exige el MISMO club,
+  PEN y cargo capturado, e ignora cargos ya devueltos
+  (`cl_division_cargos_devueltos`); un voucher subido tarde retoma la parte o
+  queda como "pago fuera de plazo" para devolver (`cl_division_tardios`).
+  Migración `0007_dividir_pago_devoluciones.sql` (sin ella la opción no se
+  ofrece). APK: pendiente. Test `tests/test_web_dividir_pago.py`.
 
 ## Pendientes / backlog
 

@@ -40,8 +40,9 @@ import config
 from config import MARCA
 from pagos import cobro_directo as cd
 from reservas import reglas as _reglas
-from web import almacen, datos, horarios, sesion, ui
+from web import almacen, datos, horarios, permisos, sesion, ui
 from web import cobro_directo_web as cdw
+from web import dividir_pago as _dividir_web
 from web.anfitrion import _cabecera, _motivo_cierre, _sesion_o_entrar
 from web.router import PLAY_URL, _moneda_de, e
 
@@ -199,6 +200,9 @@ def pagina_cobros_club(request: Request) -> HTMLResponse:
     if resp is not None:
         return resp
     email = ses["email"]
+    if permisos.es_solo_encargado(email):
+        from web import anfitrion_encargados as _enc
+        return _enc.sin_permiso(ses, "")
     if not datos.canchas_de_dueno(email):
         cuerpo = ("<h1 class='anf-hola'>Cobros de tu club</h1><div class='anf-vacio' style='margin-top:16px'>"
                   "Primero registra tu cancha: aquí conectarás tu Culqi y tus medios de pago.</div>"
@@ -366,7 +370,9 @@ def _tarjeta_voucher(p: dict, canchas: dict, historial: bool) -> str:
                 "vencido": "<span class='pill gris'>Venció sin revisar</span>"}.get(estado, f"<span class='pill gris'>{e(estado)}</span>")
         motivo = str(p.get("motivo_rechazo") or "")
         motivo = "" if motivo in ("sin_revision", "apartado_perdido") else cdw.MOTIVOS_RECHAZO.get(motivo, motivo)
-        acciones = f"<div class='acc'>{pill}" + (f"<small class='sub'>Motivo: {e(motivo)}</small>" if motivo else "") + "</div>"
+        por = str(p.get("resuelto_por") or "").strip().lower()
+        por_txt = f"<small class='sub'>Por {e(por)} (recepción)</small>" if por and por != str(p.get("dueno") or "").lower() else ""
+        acciones = (f"<div class='acc'>{pill}" + (f"<small class='sub'>Motivo: {e(motivo)}</small>" if motivo else "") + por_txt + "</div>")
     else:
         acciones = (f"<div class='acc'><span class='vv-vence' data-vence='{e(p.get('vence_en'))}'>Vence pronto</span>"
                     f"<button type='button' class='btn' data-aprobar='{e(pid)}' data-monto='{e(monto)}'>✅ Aprobar</button>"
@@ -388,9 +394,9 @@ def pagina_pagos_por_confirmar(request: Request, estado: str = "") -> HTMLRespon
         return resp
     email = ses["email"]
     historial = estado == "historial"
-    canchas = {c["id"]: c for c in datos.canchas_de_dueno(email)}
-    pagos = cdw.bandeja_de(email, "historial" if historial else "en_revision") if cd.disponible() else []
-    pend = len(pagos) if not historial else cdw.pendientes_de(email)
+    canchas = {c["id"]: c for c in permisos.canchas_para(email, permisos.VOUCHERS)}
+    pagos = cdw.bandeja_operable(email, "historial" if historial else "en_revision") if cd.disponible() else []
+    pend = len(pagos) if not historial else cdw.pendientes_operables(email)
     tabs = ("<div class='anf-tabs' role='tablist'>"
             f"<a class='chip{'' if historial else ' sel'}' role='tab' aria-selected='{'false' if historial else 'true'}' href='/anfitrion/pagos-por-confirmar'>Por revisar <small>({pend})</small></a>"
             f"<a class='chip{' sel' if historial else ''}' role='tab' aria-selected='{'true' if historial else 'false'}' href='/anfitrion/pagos-por-confirmar?estado=historial'>Resueltos</a></div>")
@@ -405,8 +411,10 @@ def pagina_pagos_por_confirmar(request: Request, estado: str = "") -> HTMLRespon
     cfg = {"motivos": [{"k": k, "n": n} for k, n in MOTIVOS_RECHAZO]}
     cuerpo = ("<h1 class='anf-hola'>Pagos por confirmar</h1>"
               "<p class='sub'>Compara cada comprobante con el movimiento en tu Yape, Plin o banco. Si no lo revisas a tiempo, "
-              "la reserva se libera sola.</p>" + tabs + lista
+              "la reserva se libera sola.</p>" + _dividir_web.aviso_devoluciones(email) + tabs + lista
               + f"<script>window.__vv={_js(cfg)};</script><script>{JS_VOUCHERS}</script>")
+    if permisos.es_solo_encargado(email):  # la recepción no ve Cobros del club
+        return _pagina("Pagos por confirmar", cuerpo, ses)
     return _pagina("Pagos por confirmar", cuerpo, ses, "/anfitrion/cobros-club", "Cobros de tu club")
 
 
@@ -415,7 +423,7 @@ def imagen_voucher(request: Request, pid: str) -> Response:
     ses = sesion.de_request(request)
     if not ses:
         return Response(status_code=401)
-    if cdw.pago_del_dueno(pid, ses["email"]) is None:
+    if cdw.pago_operable(pid, ses["email"]) is None:
         return Response(status_code=404)
     datos_img, mime = cd.repo().imagen_voucher(pid)
     if not datos_img:
@@ -432,12 +440,14 @@ async def aprobar_voucher(request: Request, pid: str) -> JSONResponse:
 
 
 def _aprobar(email: str, pid: str) -> JSONResponse:
-    p = cdw.pago_del_dueno(pid, email)
+    p = cdw.pago_operable(pid, email)
     if p is None:
         return _err("no_encontrado", 404)
-    r = cdw.aprobar_voucher(p, email)
+    r = cdw.aprobar_voucher(p, email)  # `resuelto_por` = quien aprobó (dueño o su recepción)
     if not r.get("ok"):
         return _err(r.get("error") or "error", 409)
+    permisos.auditar(email, datos.cancha(str(p.get("cancha_id") or "")), "voucher_aprobado", pid,
+                     {"monto_centimos": int(p.get("monto_centimos") or 0), "moneda": str(p.get("moneda") or ""), "cliente": p.get("jugador_nombre") or p.get("jugador_email") or ""})
     print(f"[vouchers-web] {email} aprobó {pid}", flush=True)
     return JSONResponse({"ok": True, "comision": r.get("comision")})
 
@@ -454,12 +464,13 @@ async def rechazar_voucher(request: Request, pid: str) -> JSONResponse:
 
 
 def _rechazar(email: str, pid: str, motivo: str) -> JSONResponse:
-    p = cdw.pago_del_dueno(pid, email)
+    p = cdw.pago_operable(pid, email)
     if p is None:
         return _err("no_encontrado", 404)
     r = cdw.rechazar_voucher(p, email, motivo)
     if not r.get("ok"):
         return _err(r.get("error") or "error", 409)
+    permisos.auditar(email, datos.cancha(str(p.get("cancha_id") or "")), "voucher_rechazado", pid, {"motivo": motivo, "cliente": p.get("jugador_nombre") or p.get("jugador_email") or ""})
     print(f"[vouchers-web] {email} rechazó {pid} ({motivo})", flush=True)
     return JSONResponse({"ok": True})
 
@@ -477,6 +488,9 @@ def pagina_reglas_elegir(request: Request):
     if resp is not None:
         return resp
     canchas = datos.canchas_de_dueno(ses["email"])
+    if not canchas and permisos.es_solo_encargado(ses["email"]):
+        from web import anfitrion_encargados as _enc
+        return _enc.sin_permiso(ses, "")
     if len(canchas) == 1:
         return RedirectResponse(f"/anfitrion/reglas/{canchas[0]['id']}", status_code=303)
     if not canchas:

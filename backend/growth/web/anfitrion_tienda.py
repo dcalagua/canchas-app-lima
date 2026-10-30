@@ -84,7 +84,7 @@ def _tarjeta(p: dict) -> str:
             "<div class='acciones' style='margin-top:10px'>"
             f"<a class='btn sec' href='/anfitrion/tienda/{e(p['id'])}/editar'>✏️ Editar</a>"
             f"<button type='button' class='btn sec' data-activo='{e(p['id'])}' data-v='{0 if p['activo'] else 1}'>{'⏸ Pausar' if p['activo'] else '▶ Publicar'}</button>"
-            f"<button type='button' class='btn sec' data-eliminar='{e(p['id'])}' style='color:var(--rojo)'>🗑</button>"
+            f"<button type='button' class='btn sec' data-eliminar='{e(p['id'])}' style='color:var(--rojo)' aria-label='Eliminar producto'>🗑</button>"
             "</div></div></div>")
 
 

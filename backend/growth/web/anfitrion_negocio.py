@@ -53,6 +53,7 @@ from db import pg
 from db.store import stores
 from reservas import reglas as _reglas
 from web import datos, horarios, sesion, ui
+from web.estilos_anfitrion import RAMPA
 from web.anfitrion import (JS_PAGAR, _cabecera, _contexto, _en_segundo_plano, _motivo_cierre, _pais_de, _sesion_o_entrar)
 from web.router import PLAY_URL, _moneda_de, e
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
@@ -588,8 +589,10 @@ def _tabs_rep(activo: str) -> str:
 
 
 def _pagina(titulo: str, cuerpo: str, ses: dict, activo: str, tab: str = "") -> HTMLResponse:
-    html = ("<a class='anf-back' href='/anfitrion/mis-canchas'>‹ Mis canchas</a>" + _nav(activo) + cuerpo
-            + f"<style>{CSS}</style><script>{JS_TIP}</script>")
+    # Los estilos de "Tu negocio" viajan en el CSS versionado del sitio
+    # (`web/estilos_anfitrion.py`); `.anf-ng` acota los que tocan clases genéricas.
+    html = ("<div class='anf-pag anf-ng'><a class='anf-back' href='/anfitrion/mis-canchas'>‹ Mis canchas</a>" + _nav(activo) + cuerpo
+            + f"</div><script>{JS_TIP}</script>")
     return ui.shell(titulo, html, nav=_cabecera(tab, ses), sesion=ses, ancho=True, titulo_tab=f"{titulo} · Modo anfitrión")
 
 
@@ -907,7 +910,7 @@ def descargar_csv(request: Request, r: str = "mes", desde: str = "", hasta: str 
 # ── Reportes · Ocupación (analitica_ocupacion_screen.dart) ──────────────────
 
 PERIODOS = [("d30", "30 días"), ("d90", "90 días"), ("mes", "Este mes"), ("todo", "Todo")]
-RAMPA = ["#E6F4EA", "#BFE3CB", "#8DCBA3", "#52AC77", "#1E8F4E", "#0B6E3A"]  # un solo tono, claro → oscuro
+# RAMPA (escala del mapa de calor) vive en `web/estilos_anfitrion.py`: cada celda lleva `n<nivel>`.
 
 
 def _resenas(ids: list[str]) -> list[dict]:
@@ -979,11 +982,10 @@ def pagina_ocupacion(request: Request, p: str = "d90", m: str = "") -> HTMLRespo
         for ds in range(7):
             v = celda.get((ds, h), 0)
             nivel = 0 if v == 0 or mx == 0 else min(5, 1 + int((v / mx) * 4.999))
-            fondo = "var(--gris)" if v == 0 else RAMPA[nivel]
-            cuerpo_hm += (f"<div class='hm-c' style='background:{fondo}' tabindex='0' "
+            cuerpo_hm += (f"<div class='hm-c n{nivel}' tabindex='0' "
                           f"data-tip='{DIAS_TIT[ds]} {e(h)} · {v} reserva{'s' if v != 1 else ''}'></div>")
-    leyenda = ("<div class='hm-ley'><span>Menos</span><i style='background:var(--gris)'></i>"
-               + "".join(f"<i style='background:{c}'></i>" for c in RAMPA[1:]) + "<span>Más</span></div>")
+    leyenda = ("<div class='hm-ley' aria-hidden='true'><span>Menos</span><i class='n0'></i>"
+               + "".join(f"<i class='n{i}'></i>" for i in range(1, len(RAMPA))) + "<span>Más</span></div>")
     tabla_hm = "".join(f"<tr><td>{e(h)}</td>" + "".join(f"<td>{celda.get((d, h), 0)}</td>" for d in range(7)) + "</tr>" for h in horas_l)
     ing_filas = [((por_id.get(cid) or {}).get("nombre") or "Cancha", float(v), (por_id.get(cid) or {}).get("club") or "")
                  for cid, v in sorted(ing.items(), key=lambda kv: -kv[1])]
@@ -1074,12 +1076,12 @@ def pagina_cancelaciones(request: Request) -> HTMLResponse:
             d = d.astimezone(timezone(timedelta(hours=-5)))
         return f"{_fecha_bonita(d.date().isoformat(), hoy)} · {d.strftime('%H:%M')}"
     tarjetas = "".join(
-        f"<div class='anf-res'><div class='ng-fila-t' style='display:flex;justify-content:space-between;gap:8px'><b>🚫 {e(x['jugador'] or 'Jugador')}</b>"
+        f"<div class='anf-res'><div class='ng-fila-t anf-fila-ent'><b>🚫 {e(x['jugador'] or 'Jugador')}</b>"
         f"<small>{e(cuando(x['cuando']))}</small></div>"
-        f"<div class='sub' style='margin:4px 0 8px'>{e(x['lugar'])} · {e(horarios.fecha_larga(x['fecha']))} · {e(x['hora'])}"
+        f"<div class='sub anf-lugar'>{e(x['lugar'])} · {e(horarios.fecha_larga(x['fecha']))} · {e(x['hora'])}"
         f"{(' · ' + e(x['quien'])) if x['quien'] else ''}</div>"
-        f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>{e(x['monto'])}</b>"
-        f"<span class='pill {'ok' if x['favor'] else 'gris'}' style='white-space:normal'>{e(x['estado'])}</span></div></div>" for x in items)
+        f"<div class='anf-gap8'><b>{e(x['monto'])}</b>"
+        f"<span class='pill {'ok' if x['favor'] else 'gris'} anf-pill-n'>{e(x['estado'])}</span></div></div>" for x in items)
     cuerpo = (_tabs_rep("cancelaciones")
               + "<h1 class='anf-hola'>Cancelaciones</h1><p class='sub'>Reservas que se cancelaron en tus canchas y qué pasó con la plata.</p>"
               + (f"<div class='anf-grid' style='margin-top:16px'>{tarjetas}</div>" if items
@@ -1246,7 +1248,9 @@ def reserva_noshow(request: Request, res_id: str) -> JSONResponse:
     ses = sesion.de_request(request)
     if not ses:
         return _err("sesion_requerida", 401)
-    ids = [c["id"] for c in datos.canchas_de_dueno(ses["email"])]
+    from web import permisos  # dueño o su recepción (encargado del local)
+    operables = permisos.canchas_para(ses["email"], permisos.NOSHOW)
+    ids = [c["id"] for c in operables]
     if not ids:
         return _err("Esta reserva no es de tus canchas.", 404)
     fila = next((r for r in reservas_dueno(ids, "2020-01-01", "2100-01-01") if r["id"] == res_id), None)
@@ -1256,6 +1260,7 @@ def reserva_noshow(request: Request, res_id: str) -> JSONResponse:
         return _err("Esta reserva se pagó en línea: no se marca como no-show.", 409)
     if not marcar_noshow(res_id, ids):
         return _err("No pudimos guardar en este momento.", 503)
+    permisos.auditar(ses["email"], next((c for c in operables if c["id"] == fila.get("cancha_id")), None), "noshow", res_id)
     print(f"[noshow-web] {ses['email']} marcó no-show {res_id}", flush=True)
     return _json_ok()
 
@@ -1264,7 +1269,7 @@ def reserva_noshow(request: Request, res_id: str) -> JSONResponse:
 
 SEGMENTOS = [("todos", "Todos"), ("vip", "VIP"), ("recurrente", "Recurrentes"), ("nuevo", "Nuevos"),
              ("riesgo", "En riesgo"), ("moroso", "Deudores")]
-SEG_COLOR = {"vip": "#B8860B", "recurrente": "#0B7A57", "nuevo": "#2F6FDE", "riesgo": "#C0392B", "moroso": "#946200"}
+# Color de cada insignia de segmento: `.ng-badge.s-<segmento>` en `web/estilos_anfitrion.py`.
 DIAS_RIESGO = 30
 MEDIOS_LABEL = {"yape": "Yape", "tarjeta": "Tarjeta", "efectivo": "Efectivo", "sena": "Seña + saldo", "manual": "Manual", "online": "Online", "bono": "Bono"}
 
@@ -1371,10 +1376,10 @@ def pagina_clientes(request: Request, seg: str = "todos", orden: str = "frecuent
         p = fotos.get(c["email"]) or {}
         nom = c["visible"]
         contacto = c["email"] or c["telefono"] or "Cliente de mostrador"
-        badge = (f"<span class='ng-badge' style='background:{SEG_COLOR[c['badge']]}'>{e(dict(SEGMENTOS)[c['badge']])}</span>" if c["badge"] else "")
+        badge = (f"<span class='ng-badge s-{c['badge']}'>{e(dict(SEGMENTOS)[c['badge']])}</span>" if c["badge"] else "")
         ult = _fecha_bonita(c["ultima"], hoy) if c["ultima"] else "—"
         tarjetas += (f"<button type='button' class='ng-cli' data-cli='{i}' data-q='{e((nom + ' ' + c['email']).lower())}'>{badge}"
-                     f"<div class='ng-cli-h'>{avatar(nom, p.get('foto_url') or '', 'ng-av')}<div style='min-width:0'><b>{e(nom)}</b>"
+                     f"<div class='ng-cli-h'>{avatar(nom, p.get('foto_url') or '', 'ng-av')}<div><b>{e(nom)}</b>"
                      f"<small>{e(contacto)}{(' · ' + e(c['nivel'])) if c['nivel'] else ''}</small></div></div>"
                      f"<div class='ng-cli-d'><span><b>{c['reservas']}</b>reservas</span><span><b>{e(_m(c['gastado'], sim, 0))}</b>gastado</span>"
                      f"<span><b>{e(ult)}</b>última vez</span></div>"
@@ -1436,19 +1441,19 @@ def pagina_bonos(request: Request, local: str = "") -> HTMLResponse:
     ses, canchas, resp = _contexto(request, "/anfitrion/bonos")
     if resp is not None:
         return resp
+    email = ses["email"].lower()
     locs = _locales(canchas)
     if not local and len(locs) > 1:   # sin elegir: el primer local que ya tiene bonos
         con_bonos = {b["club"] for b in ofertas_de_dueno(email)}
         local = next((c for c, _s in locs if c in con_bonos), "")
     club, sim = next(((c, s) for c, s in locs if c == local), locs[0] if locs else ("", "S/"))
-    email = ses["email"].lower()
     bonos = [b for b in ofertas_de_dueno(email) if b["club"] == club]
     vend = [v for v in vendidos_de_dueno(email) if v["club"] == club]
     chips = ("<div class='chips' style='margin-top:12px'>" + "".join(
         f"<a class='chip{' sel' if c == club else ''}' href='?local={quote(c)}'>{e(c)}</a>" for c, _ in locs) + "</div>") if len(locs) > 1 else ""
     tarj = "".join(
         f"<div class='ng-bono{'' if b['activo'] else ' pausa'}' data-bono='{e(ui.json_js({'id': b['id'], 'nombre': b['nombre'], 'horas': b['horas'], 'precio': b['precio']}))}'>"
-        f"<div class='ng-bono-h'>{b['horas']}h</div><div style='min-width:0;flex:1'><b>{e(b['nombre'] or str(b['horas']) + ' horas')}</b>"
+        f"<div class='ng-bono-h' aria-hidden='true'>{b['horas']}h</div><div class='anf-flex1'><b>{e(b['nombre'] or str(b['horas']) + ' horas')}</b>"
         f"<small>{e(_m(b['precio'], sim))} · {e(_m(b['precio'] / b['horas'] if b['horas'] else b['precio'], sim))}/hora</small>"
         f"<span class='pill {'ok' if b['activo'] else 'gris'}'>{'A la venta' if b['activo'] else 'Pausado'}</span></div>"
         "<div class='ng-bono-a'><button type='button' class='btn sec mini-b' data-acc='editar'>Editar</button>"
@@ -2114,94 +2119,7 @@ JS_AGREGAR_CUOTA = r"""
 
 # ── estilos y scripts ───────────────────────────────────────────────────────
 
-CSS = r"""
-.kpis{grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr))}.kpi{min-width:0}.kpi b{overflow-wrap:anywhere}
-.ng-nav{display:flex;gap:8px;overflow-x:auto;padding:4px 0 10px;margin:8px 0 6px;scrollbar-width:none}.ng-nav::-webkit-scrollbar{display:none}
-.ng-nav .chip{flex:none;font-size:13.5px;padding:8px 13px}.ng-nav .chip span{font-size:15px}
-.ng-tabs{display:flex;gap:22px;border-bottom:1px solid var(--trazo);margin:6px 0 16px;overflow-x:auto;scrollbar-width:none}
-.ng-tabs a{padding:10px 0;font-weight:700;color:var(--tenue);text-decoration:none;border-bottom:3px solid transparent;white-space:nowrap}
-.ng-tabs a.sel{color:var(--noche);border-bottom-color:var(--esmeralda)}
-.ng-mon{margin:0 0 10px}
-.ng-h2{margin-top:28px;font-size:19px}.ng-h2 small{color:var(--tenue);font-size:14px;font-weight:600}
-.ng-hero,.ng-card{background:var(--blanco);border:1px solid var(--trazo);border-radius:20px;padding:18px 20px;box-shadow:var(--sombra);margin-top:16px;min-width:0}
-.ng-card h3{margin:0 0 8px;font-size:16px}
-.ng-hero>small{display:block;color:var(--tenue);font-weight:600}.ng-hero>b{display:block;font-size:34px;color:var(--esmeralda);margin:4px 0}
-.ng-barras{display:flex;align-items:flex-end;gap:8px;margin-top:10px;min-width:0}
-.ng-bar{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:default;outline:none}
-.ng-bar i{display:block;width:100%;max-width:44px;background:var(--esmeralda);border-radius:4px 4px 0 0;transition:opacity .15s}
-.ng-bar:hover i,.ng-bar:focus i{opacity:.8}
-.ng-bar small{font-size:11px;font-weight:700;color:var(--noche);min-height:15px;white-space:nowrap}
-.ng-bar span{font-size:11px;color:var(--tenue);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.ng-tabla{margin-top:10px;font-size:13px;color:var(--tenue)}.ng-tabla summary{cursor:pointer;font-weight:700}
-.ng-tabla table{border-collapse:collapse;margin-top:6px}.ng-tabla td,.ng-tabla th{padding:4px 10px;border-bottom:1px solid var(--trazo);text-align:left}
-.ng-hb{margin:10px 0}.ng-hb-t{display:flex;gap:8px;align-items:baseline;min-width:0}.ng-hb-t b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ng-hb-t small{color:var(--tenue);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.ng-hb-t span{margin-left:auto;font-weight:800;white-space:nowrap}
-.ng-hb-p{height:10px;background:var(--gris);border-radius:6px;margin-top:5px;overflow:hidden}.ng-hb-p i{display:block;height:100%;background:var(--esmeralda);border-radius:6px}
-.ng-local{background:var(--blanco);border:1px solid var(--trazo);border-radius:16px;padding:12px 16px;margin-top:12px}
-.ng-local-h{display:flex;justify-content:space-between;gap:8px}.ng-local-h span{font-weight:800}
-.ng-rc{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--trazo)}.ng-rc:first-of-type{border-top:0}
-.ng-rc div{min-width:0}.ng-rc small{display:block;color:var(--tenue);font-size:12px}.ng-rc span{font-weight:800;color:var(--esmeralda);white-space:nowrap}
-.ng-rc.tot b{font-size:15px}.ng-rc.tot span{font-size:17px}
-.ng-nota{font-size:12.5px;color:var(--tenue);margin:8px 0 0}
-.ng-custom{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-top:10px}.ng-custom label{display:flex;flex-direction:column;font-size:12.5px;font-weight:700;color:var(--tenue);gap:4px}
-.ng-custom input{width:auto}
-.ng-lista{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-.ng-fila{display:flex;align-items:center;gap:10px;background:var(--blanco);border:1px solid var(--trazo);border-radius:14px;padding:11px 14px;min-width:0;text-decoration:none;color:inherit;flex-wrap:wrap}
-.ng-fila.pausa,.ng-fila.pasada{opacity:.6}
-.ng-fila-t{flex:1;min-width:150px}.ng-fila-t b{display:block;overflow:hidden;text-overflow:ellipsis}.ng-fila-t small{display:block;color:var(--tenue);font-size:12.5px}
-.ng-monto{white-space:nowrap}
-.ng-sena{color:var(--teal)!important;font-weight:700}
-.mini-b{padding:8px 12px!important;font-size:13px!important}
-.pill.gris{background:var(--gris);color:var(--tenue)}.pill.bad{background:var(--bad-bg);color:var(--bad-fg)}.pill.warn{background:var(--warn-bg);color:var(--warn-fg)}.pill.ok{background:var(--ok-bg);color:var(--ok-fg)}
-.kpi.bad b{color:var(--bad-fg)}.kpi.ok b{color:var(--esmeralda)}
-.ng-atajos a{text-decoration:none;color:inherit}.ng-atajos b{font-size:15px}
-.ng-dia{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap}.ng-dia input{width:auto}.ng-dia>b{font-size:17px}
-.ng-flecha{width:38px;height:38px;border-radius:50%;border:1px solid var(--trazo);display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:var(--noche);font-size:22px;background:var(--blanco);box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.ng-cierre-box{margin-top:16px}.ng-cierre{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--ok-bg);border-radius:16px;padding:12px 16px}
-.ng-cierre.auto{background:var(--warn-bg)}.ng-cierre>div{flex:1;min-width:180px}.ng-cierre small{display:block;color:var(--tenue)}
-.ng-av{width:42px;height:42px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#0B7A57;color:#fff;font-weight:800;font-size:17px}
-.ng-busca{display:flex;flex-direction:column;gap:10px;margin:14px 0 4px}
-.ng-clis{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(280px,100%),1fr));gap:12px;margin-top:12px}
-.ng-cli{position:relative;text-align:left;background:var(--blanco);border:1px solid var(--trazo);border-radius:18px;padding:14px 16px;box-shadow:var(--sombra);cursor:pointer;font:inherit;color:inherit;min-width:0}
-.ng-cli:hover{box-shadow:var(--sombra2)}
-.ng-cli-h{display:flex;gap:12px;align-items:center;min-width:0;padding-right:70px}.ng-cli-h b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ng-cli-h small{display:block;color:var(--tenue);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ng-cli-d{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:12px;font-size:12px;color:var(--tenue)}
-.ng-cli-d b{display:block;color:var(--noche);font-size:14px}
-.ng-debe{margin-top:8px;font-size:12.5px;font-weight:800;color:var(--warn-fg);background:var(--warn-bg);border-radius:999px;padding:4px 10px;display:inline-block}
-.ng-badge{position:absolute;top:12px;right:12px;color:#fff;font-size:11px;font-weight:800;padding:4px 9px;border-radius:999px}
-.ng-ficha{text-align:left}.ng-ficha .fh{display:flex;gap:12px;align-items:center;margin-bottom:12px}.ng-ficha .fh small{display:block;color:var(--tenue)}
-.ng-ficha .dts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ng-ficha .dts div{background:var(--gris);border-radius:12px;padding:8px 10px}
-.ng-ficha .dts small{display:block;color:var(--tenue);font-size:11.5px}.ng-ficha .acc{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
-.ng-ficha textarea{width:100%;min-height:70px;border:1px solid var(--trazo);border-radius:12px;padding:10px;font:inherit;box-sizing:border-box}
-.ng-ficha .hist{font-size:13px;margin-top:10px}.ng-ficha .hist div{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--trazo)}
-.ng-bonos{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:12px;margin-top:14px}
-.ng-bono{display:flex;flex-wrap:wrap;gap:12px;align-items:center;background:var(--blanco);border:1px solid var(--trazo);border-radius:18px;padding:14px;box-shadow:var(--sombra)}
-.ng-bono.pausa{opacity:.7}.ng-bono b{display:block}.ng-bono small{display:block;color:var(--tenue);margin:2px 0 6px}
-.ng-bono-h{width:54px;height:54px;border-radius:16px;background:var(--tinte);color:var(--teal);font-weight:800;font-size:18px;display:flex;align-items:center;justify-content:center;flex:none}
-.ng-bono-a{display:flex;gap:6px;flex-wrap:wrap;width:100%}
-.ng-ico{font-size:20px}
-.ng-sw{position:relative;display:inline-block;width:46px;height:28px;flex:none;cursor:pointer}.ng-sw input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
-.ng-sw i{position:absolute;inset:0;background:#CFD8D3;border-radius:999px;transition:.2s}.ng-sw i:after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.2s}
-.ng-sw input:checked+i{background:var(--esmeralda)}.ng-sw input:checked+i:after{left:21px}.ng-sw input:disabled+i{opacity:.45}
-.ng-sw input:focus-visible+i{outline:2px solid var(--noche);outline-offset:2px}
-.ng-dispo{padding:6px 12px}.ng-dispo .ng-fila{border:0;border-bottom:1px solid var(--trazo);border-radius:0;box-shadow:none}.ng-dispo .ng-fila:last-child{border-bottom:0}
-.ng-hora{width:56px;font-size:16px;flex:none}.ng-valle{color:var(--warn-fg)!important;font-weight:700}.ng-lock{font-size:18px}
-.ng-ok{background:var(--ok-bg);color:var(--ok-fg);border-radius:14px;padding:12px 14px;font-weight:700;margin-top:12px}
-.ng-rec{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;background:var(--warn-bg);border-radius:16px;padding:14px 16px;margin-top:16px}
-.ng-rec b{flex:1 1 240px}.ng-rec small{flex:1 1 100%;order:3;color:var(--warn-fg)}
-.ng-form label{display:block;font-weight:700;font-size:13px;margin:12px 0 6px;text-align:left}.ng-form select,.ng-form input{width:100%;box-sizing:border-box}
-.ng-form .chips{gap:6px}.ng-form .chip{padding:7px 11px;font-size:13px}.ng-form .err{color:var(--bad-fg);font-size:13px;margin-top:8px;text-align:left;min-height:1em}
-.ng-cuota{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--trazo);text-align:left}
-.ng-cuota small{display:block;color:var(--tenue)}
-.hm{display:grid;grid-template-columns:48px repeat(7,minmax(0,1fr));gap:3px;min-width:0}
-.hm-d{text-align:center;font-size:12px;font-weight:800;color:var(--tenue)}.hm-h{font-size:11.5px;color:var(--tenue);display:flex;align-items:center}
-.hm-c{height:20px;border-radius:4px;outline:none}.hm-c:hover,.hm-c:focus{box-shadow:0 0 0 2px var(--noche)}
-.hm-ley{display:flex;align-items:center;gap:3px;justify-content:flex-end;margin-top:10px;font-size:11.5px;color:var(--tenue)}.hm-ley i{width:16px;height:12px;border-radius:3px;display:inline-block}.hm-ley span{margin:0 4px}
-.ng-rep{display:flex;align-items:baseline;gap:10px}.ng-rep b{font-size:32px}.ng-rep span{color:#E0A100;font-size:18px}.ng-rep small{color:var(--tenue)}
-.ng-resena{padding:8px 0;border-top:1px solid var(--trazo);font-size:14px}.ng-resena b{color:#E0A100}.ng-resena small{display:block;color:var(--tenue)}
-.ng-tip{position:fixed;z-index:9999;pointer-events:none;background:var(--noche);color:#fff;font-size:12.5px;font-weight:700;padding:6px 10px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.2);max-width:240px;display:none}
-"""
+# CSS de estas páginas: `web/estilos_anfitrion.py` (va en el CSS versionado del sitio).
 
 # Tooltip para las barras y el mapa de calor (hover y foco/toque).
 JS_TIP = r"""
@@ -2234,7 +2152,7 @@ document.addEventListener('click',function(ev){var b=ev.target.closest('[data-cl
     if(c.debe>0){var msg='Hola '+c.nombre+' 👋 Te recordamos tu saldo pendiente de '+c.moneda+c.debe.toFixed(2)+' por tu reserva. ¡Gracias!';h+='<a class="btn mini-b" target="_blank" rel="noopener" href="https://wa.me/'+c.wa+'?text='+encodeURIComponent(msg)+'">Recordar cobro</a>';}}
   h+='<a class="btn sec mini-b" href="/anfitrion/calendario">📝 Reservar</a></div>';
   if(c.debe>0)h+='<div class="ng-debe">Te debe '+ngEsc(c.moneda)+' '+c.debe.toFixed(2)+'</div>';
-  h+='<label style="display:block;font-weight:800;margin:14px 0 6px;text-align:left">Notas privadas</label><textarea id="ngNota" maxlength="600" placeholder="Solo tú las ves. Ej: prefiere Cancha 2, juega martes, paga efectivo.">'+ngEsc(c.nota)+'</textarea>';
+  h+='<label class="nota-l" for="ngNota">Notas privadas</label><textarea id="ngNota" maxlength="600" placeholder="Solo tú las ves. Ej: prefiere Cancha 2, juega martes, paga efectivo.">'+ngEsc(c.nota)+'</textarea>';
   h+='<div class="hist"><b>Historial de reservas</b>';c.historial.forEach(function(r){h+='<div><span>'+ngEsc(r[0])+' · '+ngEsc(r[1])+' · '+ngEsc(r[2])+'</span><span>'+ngEsc(r[3])+' · '+ngEsc(r[4])+'</span></div>';});
   if(!c.historial.length)h+='<div>Sin reservas registradas.</div>';h+='</div></div>';
   pcgConfirmar({titulo:'Ficha del cliente',html:h,confirmar:'Guardar nota',cancelar:'Cerrar',icono:'👤'}).then(async function(ok){if(!ok)return;var t=(document.getElementById('ngNota')||{}).value||'';
@@ -2243,11 +2161,11 @@ document.addEventListener('click',function(ev){var b=ev.target.closest('[data-cl
 
 JS_BONOS = r"""
 (function(){var B=window.__bonos;
-function form(b){b=b||{};var hs=[2,4,5,8,10,12,20];var h='<div class="ng-form"><label>¿Cuántas horas trae el pack?</label><div class="chips" id="bH">';
+function form(b){b=b||{};var hs=[2,4,5,8,10,12,20];var h='<div class="ng-form"><label id="bHl">¿Cuántas horas trae el pack?</label><div class="chips" id="bH" role="group" aria-labelledby="bHl">';
   hs.forEach(function(x){h+='<button type="button" class="chip'+(b.horas==x?' sel':'')+'" data-h="'+x+'">'+x+' h</button>';});
-  h+='</div><input type="number" id="bHo" min="1" max="200" inputmode="numeric" placeholder="Otra cantidad de horas" value="'+(b.horas&&hs.indexOf(b.horas)<0?b.horas:'')+'" style="margin-top:8px">';
-  h+='<label>Precio del pack ('+ngEsc(B.moneda)+')</label><input type="number" id="bP" min="0.5" step="0.5" inputmode="decimal" value="'+(b.precio||'')+'">';
-  h+='<label>Nombre (opcional)</label><input type="text" id="bN" maxlength="60" placeholder="Ej: Pack mensual" value="'+ngEsc(b.nombre||'')+'"><div class="err" id="bE"></div></div>';return h;}
+  h+='</div><input type="number" id="bHo" min="1" max="200" inputmode="numeric" placeholder="Otra cantidad de horas" aria-label="Otra cantidad de horas" value="'+(b.horas&&hs.indexOf(b.horas)<0?b.horas:'')+'" style="margin-top:8px">';
+  h+='<label for="bP">Precio del pack ('+ngEsc(B.moneda)+')</label><input type="number" id="bP" min="0.5" step="0.5" inputmode="decimal" value="'+(b.precio||'')+'">';
+  h+='<label for="bN">Nombre (opcional)</label><input type="text" id="bN" maxlength="60" placeholder="Ej: Pack mensual" value="'+ngEsc(b.nombre||'')+'"><div class="err" id="bE"></div></div>';return h;}
 async function editar(b){var nuevo=!b;var p=pcgConfirmar({titulo:nuevo?'Nuevo bono':'Editar bono',html:form(b),confirmar:'Guardar bono',icono:'🎟️'});
   setTimeout(function(){var g=document.getElementById('bH');if(g)g.addEventListener('click',function(ev){var c=ev.target.closest('[data-h]');if(!c)return;g.querySelectorAll('.chip').forEach(function(x){x.classList.toggle('sel',x===c);});document.getElementById('bHo').value='';});},60);
   var ok=await p;if(!ok)return;var sel=document.querySelector('#bH .chip.sel');var horas=parseInt(document.getElementById('bHo').value||(sel?sel.dataset.h:'0'),10);
@@ -2264,10 +2182,10 @@ document.addEventListener('click',async function(ev){var a=ev.target.closest('.n
 
 JS_FIJAS = r"""
 (function(){var F=window.__fijas,D=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
-function form(v){v=v||{};var h='<div class="ng-form"><label>Cancha</label><select id="fC">';F.canchas.forEach(function(c){h+='<option value="'+ngEsc(c.id)+'"'+(v.c===c.id?' selected':'')+'>'+ngEsc(c.nombre)+'</option>';});
-  h+='</select><label>Día de la semana</label><div class="chips" id="fD">';D.forEach(function(d,i){h+='<button type="button" class="chip'+((v.d||F.hoy)===i+1?' sel':'')+'" data-d="'+(i+1)+'">'+d.slice(0,3)+'</button>';});
-  h+='</div><label>Hora</label><select id="fH"></select><label>Cliente</label><input type="text" id="fN" maxlength="80" placeholder="Nombre del cliente o equipo" value="'+ngEsc(v.n||'')+'">';
-  h+='<label>WhatsApp (opcional)</label><input type="tel" id="fT" maxlength="20" inputmode="tel" value="'+ngEsc(v.t||'')+'"><label>Correo (opcional: así ve sus reservas en la app)</label><input type="email" id="fE" maxlength="120" value="'+ngEsc(v.e||'')+'"><div class="err" id="fErr">'+ngEsc(v.err||'')+'</div></div>';return h;}
+function form(v){v=v||{};var h='<div class="ng-form"><label for="fC">Cancha</label><select id="fC">';F.canchas.forEach(function(c){h+='<option value="'+ngEsc(c.id)+'"'+(v.c===c.id?' selected':'')+'>'+ngEsc(c.nombre)+'</option>';});
+  h+='</select><label id="fDl">Día de la semana</label><div class="chips" id="fD" role="group" aria-labelledby="fDl">';D.forEach(function(d,i){h+='<button type="button" class="chip'+((v.d||F.hoy)===i+1?' sel':'')+'" data-d="'+(i+1)+'">'+d.slice(0,3)+'</button>';});
+  h+='</div><label for="fH">Hora</label><select id="fH"></select><label for="fN">Cliente</label><input type="text" id="fN" maxlength="80" placeholder="Nombre del cliente o equipo" value="'+ngEsc(v.n||'')+'">';
+  h+='<label for="fT">WhatsApp (opcional)</label><input type="tel" id="fT" maxlength="20" inputmode="tel" value="'+ngEsc(v.t||'')+'"><label for="fE">Correo (opcional: así ve sus reservas en la app)</label><input type="email" id="fE" maxlength="120" value="'+ngEsc(v.e||'')+'"><div class="err" id="fErr">'+ngEsc(v.err||'')+'</div></div>';return h;}
 function horas(sel){var id=document.getElementById('fC').value,c=F.canchas.find(function(x){return x.id===id;})||F.canchas[0],s=document.getElementById('fH');s.innerHTML='<option value="">Elige la hora</option>'+c.slots.map(function(h){return '<option'+(h===sel?' selected':'')+'>'+h+'</option>';}).join('');}
 async function nueva(v){var p=pcgConfirmar({titulo:'Nuevo cliente fijo',html:form(v),confirmar:'Guardar y generar reservas',icono:'🔁'});
   setTimeout(function(){horas(v&&v.h);document.getElementById('fC').addEventListener('change',function(){horas();});var g=document.getElementById('fD');g.addEventListener('click',function(ev){var c=ev.target.closest('[data-d]');if(!c)return;g.querySelectorAll('.chip').forEach(function(x){x.classList.toggle('sel',x===c);});});},60);

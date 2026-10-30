@@ -210,7 +210,7 @@ _CSS = """
 .vf-card small{display:block;color:var(--tenue);font-size:13px;overflow-wrap:anywhere}
 .vf-card .dist{color:var(--teal);font-weight:800;font-size:13px}
 .vf-dem{flex:none;background:var(--tinte);color:var(--teal);border-radius:12px;padding:8px 10px;text-align:center;font-weight:900;font-size:18px;line-height:1}
-.vf-dem small{display:block;color:var(--teal);font-weight:600;font-size:10px;margin-top:3px}
+.vf-dem small{display:block;color:var(--teal);font-weight:600;font-size:12px;margin-top:3px}
 .vf-fotos{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
 .vf-fotos .f{position:relative;width:84px;height:84px;border-radius:12px;overflow:hidden;background:var(--gris)}
 .vf-fotos .f img{width:100%;height:100%;object-fit:cover;display:block}

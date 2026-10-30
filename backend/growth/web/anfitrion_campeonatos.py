@@ -185,7 +185,7 @@ def _caja_codigo(no_encontrado: bool) -> str:
     return (f"<form class='anf-cancha' method='get' action='{BASE}/unirme' style='align-items:center;gap:14px;margin-top:14px'>"
             "<div class='f' style='background:#EAF7E1'><span>🎟️</span></div><div style='flex:1;min-width:0'><b style='font-size:16px'>¿Te compartieron un código?</b>"
             "<div class='sub' style='margin:2px 0 8px'>Pega el código del campeonato o el de tu equipo para ver el torneo, como en la app.</div>"
-            "<div style='display:flex;gap:8px;flex-wrap:wrap'><input name='codigo' type='text' maxlength='12' placeholder='Ej.: 4KZ9AB' required "
+            "<div style='display:flex;gap:8px;flex-wrap:wrap'><input name='codigo' type='text' maxlength='12' placeholder='Ej.: 4KZ9AB' required aria-label='Código del campeonato o del equipo' "
             "style='width:180px;text-transform:uppercase;letter-spacing:.12em;font-weight:800'><button type='submit' class='btn'>Ver campeonato</button></div>"
             f"{err}</div></form>")
 
@@ -224,7 +224,7 @@ def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = ""
     boton = (f"<a class='btn' href='{BASE}/nuevo'>＋ Organizar</a>" if pro else
              "<button type='button' class='btn' onclick=\"document.getElementById('modalPro').classList.add('open')\">＋ Organizar</button>")
     modal_pro = (f"<div class='modal{' open' if pro else ''}' id='modalPro' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:460px'>"
-                 f"<div class='modal-cab'><button type='button' class='cerrar' onclick=\"this.closest('.modal').classList.remove('open')\">✕</button><h3>Es {MARCA} Pro</h3></div>"
+                 f"<div class='modal-cab'><button type='button' class='cerrar' aria-label='Cerrar' onclick=\"this.closest('.modal').classList.remove('open')\">✕</button><h3>Es {MARCA} Pro</h3></div>"
                  f"<div class='modal-cuerpo'><section><p class='sub' style='margin:0 0 12px'>Crear y administrar tus propios campeonatos (fixture, inscripciones, resultados) es parte de <b>{MARCA} Pro</b>. Actívalo en Perfil → 👑 {MARCA} Pro y vuelve aquí.</p>"
                  f"<a class='btn' href='/pro'>👑 Ver {MARCA} Pro</a></section></div></div></div>")
     if not lista:
@@ -307,10 +307,10 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
 <div class='wz-p panel' id='p3'><h2>Fechas, sede y reglas</h2>
  <div class='sw'><label>Relámpago (todo en un día)</label><input type='checkbox' id='relampago'{' checked' if c.get('relampago') else ''}></div>
  <label id='lblFechas'>{'Fecha (relámpago, un día)' if c.get('relampago') else 'Fechas de juego'}</label>
- <div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><input id='desde' type='date' value='{e(inicio)}'><input id='hastaJ' type='date' value='{e(fin)}'{' disabled' if c.get('relampago') else ''}></div>
+ <div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><input id='desde' type='date' aria-label='Fecha de inicio' value='{e(inicio)}'><input id='hastaJ' type='date' aria-label='Fecha de fin' value='{e(fin)}'{' disabled' if c.get('relampago') else ''}></div>
  {"<p class='sub' style='font-size:12.5px'>Actual: " + e(c.get('fechas')) + "</p>" if c.get('fechas') else ''}
  <label for='cierre' id='lblCierre'>Cierre de inscripciones <span class='req' id='cierreAyuda'>{'día y hora · a esa hora se cierran y se sortea solo' if c.get('relampago') else 'opcional · día y hora (sin hora = ese día a las 00:00); se sortea solo'}</span></label>
- <div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><input id='cierre' type='date' value='{e(hasta)}'><input id='cierreHora' type='time' value='{e(hasta_hora)}' placeholder='Hora'></div>
+ <div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><input id='cierre' type='date' value='{e(hasta)}'><input id='cierreHora' type='time' aria-label='Hora de cierre de inscripciones' value='{e(hasta_hora)}' placeholder='Hora'></div>
  <label for='sede'>Sede{f" <span class='req'>🔎 elige una cancha de {MARCA} o búscala en Google Maps</span>" if config.PLACES_API_KEY else f" <span class='req'>elige una cancha de {MARCA}</span>"}</label>
  <input id='sede' type='text' maxlength='80' value='{e(c.get('sede') or '')}' placeholder='Nombre de la cancha o club' autocomplete='off'><div id='resSede' class='res-busca' hidden></div>
  <div id='mapaSede' class='mapa-sede' style='margin-top:8px;height:220px'></div><div class='sub' id='ubicTxt' style='font-size:12.5px'>{'Sin ubicación: elige una sede para fijar el país y la moneda.' if c.get('sedeLat') is None else f"{float(c['sedeLat']):.5f}, {float(c['sedeLng']):.5f}"}</div>
@@ -819,7 +819,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
 <div class='panel'><h3>Galería del torneo</h3><div class='edit-fotos' id='fotos'>{fotos}</div><div class='acciones' style='margin-top:10px'><label class='btn sec' for='inFotos'>📷 Agregar fotos</label><input type='file' id='inFotos' accept='image/*' multiple hidden{'' if almacen.disponible() else ' disabled'}><span class='sub' id='fotosMsg' style='margin:0'></span></div></div>
 <div class='acciones' style='margin-top:18px;flex-wrap:wrap'><a class='btn' href='{BASE}/{e(c['id'])}/editar'>✏️ Editar campeonato</a><button type='button' class='btn sec' id='btnDuplicar'>📄 Duplicar campeonato (nueva edición)</button><button type='button' class='btn sec' id='btnEliminar' style='color:var(--rojo)'>🗑 Eliminar campeonato</button></div>
 </div>
-<div class='modal' id='modal' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:520px'><div class='modal-cab'><button type='button' class='cerrar' id='modalCerrar'>✕</button><h3 id='modalTit'></h3></div><div class='modal-cuerpo mod-form' id='modalCuerpo'></div></div></div>
+<div class='modal' id='modal' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:520px'><div class='modal-cab'><button type='button' class='cerrar' id='modalCerrar' aria-label='Cerrar'>✕</button><h3 id='modalTit'></h3></div><div class='modal-cuerpo mod-form' id='modalCuerpo'></div></div></div>
 <script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_DETALLE}</script>"""
     return ui.shell(c.get("nombre") or "Campeonato", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab=f"{c.get('nombre') or 'Campeonato'} · Mis campeonatos")
 
@@ -861,7 +861,7 @@ $('btnFondo').addEventListener('click',function(){var r=Math.floor(Math.random()
   pintar()});
 // participantes
 $('btnAgregar').addEventListener('click',function(){var eq=CFG.deporte==='futbol';
-  modal(eq?'Nuevo equipo':'Nuevo participante',"<label>"+(eq?'Nombre del equipo':'Nombre (jugador o pareja "A / B")')+"</label><input id='pNombre' type='text' maxlength='80'><label>WhatsApp <span class='req'>opcional</span></label><input id='pTel' type='text' inputmode='tel' maxlength='20'>"+pie('Agregar'),
+  modal(eq?'Nuevo equipo':'Nuevo participante',"<label>"+(eq?'Nombre del equipo':'Nombre (jugador o pareja "A / B")')+"</label><input id='pNombre' type='text' aria-label='Nombre del participante' maxlength='80'><label>WhatsApp <span class='req'>opcional</span></label><input id='pTel' type='text' aria-label='WhatsApp (opcional)' inputmode='tel' maxlength='20'>"+pie('Agregar'),
     async function(){try{await post('/participante',{nombre:$('pNombre').value,contacto:$('pTel').value});pcgRecargar()}catch(e){err(e.message)}})});
 document.addEventListener('click',async function(ev){var q=ev.target.closest('[data-quitar]');if(q){ev.stopPropagation();var pq=CFG.participantes.filter(function(x){return x.id===q.dataset.quitar})[0];if(!await pcgConfirmar({titulo:'Quitar participante',mensaje:'¿Quitas a '+(pq?pq.nombre:'este participante')+' del campeonato?',confirmar:'Quitar',destructivo:true}))return;try{var jq=await post('/participante/'+encodeURIComponent(q.dataset.quitar)+'/eliminar',{},'Quitando…');if(jq.aviso){await pcgAvisar({titulo:'Pozo ya liquidado',mensaje:jq.aviso,icono:'💰'})}pcgRecargar(jq.devueltos?jq.devueltos+' jugador(es) recuperaron su parte':undefined)}catch(e){pcgToast(e.message)}return}
   var ch=ev.target.closest('.chip.part[data-equipo="1"]');if(ch){var p=CFG.participantes.filter(function(x){return x.id===ch.dataset.pid})[0];if(!p)return;
@@ -889,9 +889,9 @@ function armarGrupos(){var ps=CFG.participantes,n=ps.length,maxG=Math.floor(n/2)
   if(!prev.length)repartir();
   function cuerpo(){var ops='';for(var i=1;i<=maxG;i++)ops+="<option value='"+i+"'"+(i===k?' selected':'')+">"+i+" grupo"+(i>1?'s':'')+"</option>";
     var filas=ps.map(function(p){var sel='';for(var i=0;i<k;i++)sel+="<option value='"+i+"'"+(asig[p.id]===i?' selected':'')+">Grupo "+CFG.letras[i]+"</option>";
-      return "<div class='marca' style='align-items:center'><span class='nom' style='flex:1'>"+esc(p.nombre)+"</span><select data-gm='"+esc(p.id)+"' style='width:auto;min-width:130px'>"+sel+"</select></div>"}).join('');
+      return "<div class='marca' style='align-items:center'><span class='nom' style='flex:1'>"+esc(p.nombre)+"</span><select data-gm='"+esc(p.id)+"' aria-label='Grupo de "+esc(p.nombre)+"' style='width:auto;min-width:130px'>"+sel+"</select></div>"}).join('');
     var res=[];for(var i=0;i<k;i++){res.push(CFG.letras[i]+': '+ps.filter(function(p){return asig[p.id]===i}).length)}
-    return "<label>Cantidad de grupos</label><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><select id='gmK' style='width:auto'>"+ops+"</select><button type='button' class='btn sec' id='gmRep'>Repartir parejo</button></div>"+
+    return "<label>Cantidad de grupos</label><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><select id='gmK' aria-label='Cantidad de grupos' style='width:auto'>"+ops+"</select><button type='button' class='btn sec' id='gmRep'>Repartir parejo</button></div>"+
       "<p class='sub' id='gmRes' style='margin:8px 0 4px'>Equipos por grupo · "+res.join(' · ')+"</p><div style='max-height:50vh;overflow:auto'>"+filas+"</div>"+pie('Generar fixture con estos grupos')}
   function pintar(){modal('✋ Armar los grupos',cuerpo(),async function(){var grupos=[];for(var i=0;i<k;i++)grupos.push([]);ps.forEach(function(p){grupos[asig[p.id]||0].push(p.id)});
       var vacio=grupos.findIndex(function(g){return g.length<2});if(vacio>=0){err('El grupo '+CFG.letras[vacio]+' necesita al menos 2 equipos.');return}
@@ -906,7 +906,7 @@ async function sortear(body){try{var j=await post('/fixture',body,'Sorteando el 
   pcgToast(e.message)}}
 // resultado
 document.addEventListener('click',function(ev){var t=ev.target.closest('.partido.clic');if(!t)return;
-  modal('Cargar resultado',"<div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><div><label>"+esc(t.dataset.a)+"</label><input id='mA' type='number' min='0' inputmode='numeric' value='"+esc(t.dataset.ma)+"'></div><div><label>"+esc(t.dataset.b)+"</label><input id='mB' type='number' min='0' inputmode='numeric' value='"+esc(t.dataset.mb)+"'></div></div>"+pie('Guardar'),
+  modal('Cargar resultado',"<div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><div><label>"+esc(t.dataset.a)+"</label><input id='mA' type='number' aria-label='Resultado de "+esc(t.dataset.a)+"' min='0' inputmode='numeric' value='"+esc(t.dataset.ma)+"'></div><div><label>"+esc(t.dataset.b)+"</label><input id='mB' type='number' aria-label='Resultado de "+esc(t.dataset.b)+"' min='0' inputmode='numeric' value='"+esc(t.dataset.mb)+"'></div></div>"+pie('Guardar'),
     async function(){var a=$('mA').value,b=$('mB').value;if(a===''||b===''){err('Escribe ambos marcadores.');return}try{await post('/resultado',{partido:t.dataset.pid,a:+a,b:+b});pcgRecargar()}catch(e){err(e.message)}})});
 var br=$('btnRanking');if(br)br.addEventListener('click',async function(){try{var j=await post('/ranking',{},'Sumando al ranking…');pcgToast(j.n?j.n+' partido(s) sumado(s) al ranking de la academia.':'Aún no hay partidos jugados para sumar.')}catch(e){pcgToast(e.message)}});
 // natación
@@ -916,7 +916,7 @@ var bp=$('btnPrueba');if(bp)bp.addEventListener('click',function(){
   $('modalCuerpo').addEventListener('click',function(ev){var b=ev.target.closest('.chip[data-v]');if(!b)return;b.parentNode.querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel')});b.classList.add('sel')})});
 document.addEventListener('click',async function(ev){var q=ev.target.closest('[data-quitar-prueba]');if(q){if(!await pcgConfirmar({titulo:'Eliminar prueba',mensaje:'Se borra la prueba y todos sus tiempos registrados.',confirmar:'Eliminar',destructivo:true}))return;try{await post('/prueba/'+encodeURIComponent(q.dataset.quitarPrueba)+'/eliminar',{},'Eliminando…');pcgRecargar()}catch(e){pcgToast(e.message)}return}
   var m=ev.target.closest('.marca.clic');if(!m)return;
-  modal('Tiempo de '+m.querySelector('.nom').firstChild.textContent.trim(),"<label>Tiempo (mm:ss.cc)</label><input id='tT' type='text' placeholder='ej. 0:37.85' value='"+esc(m.dataset.t)+"'><div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><div><label>Serie</label><input id='tS' type='number' min='0' value='"+esc(m.dataset.s)+"'></div><div><label>Carril</label><input id='tC' type='number' min='0' value='"+esc(m.dataset.c)+"'></div></div><label style='display:flex;gap:8px;align-items:center'><input type='checkbox' id='tD' style='width:auto;margin:0'"+(m.dataset.dsq==='1'?' checked':'')+"> Descalificado (DSQ)</label>"+pie('Guardar'),
+  modal('Tiempo de '+m.querySelector('.nom').firstChild.textContent.trim(),"<label>Tiempo (mm:ss.cc)</label><input id='tT' type='text' aria-label='Tiempo (mm:ss.cc)' placeholder='ej. 0:37.85' value='"+esc(m.dataset.t)+"'><div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><div><label>Serie</label><input id='tS' type='number' aria-label='Serie' min='0' value='"+esc(m.dataset.s)+"'></div><div><label>Carril</label><input id='tC' type='number' aria-label='Carril' min='0' value='"+esc(m.dataset.c)+"'></div></div><label style='display:flex;gap:8px;align-items:center'><input type='checkbox' id='tD' style='width:auto;margin:0'"+(m.dataset.dsq==='1'?' checked':'')+"> Descalificado (DSQ)</label>"+pie('Guardar'),
     async function(){try{await post('/marca',{prueba:m.dataset.prueba,participante:m.dataset.pid,tiempo:$('tT').value,serie:+$('tS').value||0,carril:+$('tC').value||0,dsq:$('tD').checked});pcgRecargar()}catch(e){err(e.message)}})});
 // duplicar / eliminar
 $('btnDuplicar').addEventListener('click',async function(){if(!await pcgConfirmar({titulo:'Nueva edición',mensaje:'Se crea un campeonato nuevo con los mismos datos, sin participantes ni resultados. Luego le pones las fechas.',confirmar:'Crear nueva edición',icono:'📄'}))return;try{var j=await post('/duplicar',{},'Creando la nueva edición…');pcgIr('/anfitrion/campeonatos/'+encodeURIComponent(j.id)+'/editar','Abriendo la nueva edición…')}catch(e){pcgToast(e.message)}});

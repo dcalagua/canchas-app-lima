@@ -162,7 +162,7 @@ CSS = r"""
 .rc-n{display:flex;flex-direction:column;align-items:center;gap:4px;flex:none;width:64px}
 .rc-n i{font-style:normal;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1px solid var(--trazo);background:#fff;opacity:.4;font-size:15px}
 .rc-n.on i{opacity:1;background:var(--tinte);border-color:var(--esmeralda)}.rc-n.act i{border-width:2px}
-.rc-n small{font-size:11px;font-weight:800;color:var(--tenue)}.rc-n.on small{color:var(--teal)}
+.rc-n small{font-size:12px;font-weight:800;color:var(--tenue)}.rc-n.on small{color:var(--teal)}
 .rc-tr{flex:1;height:3px;border-radius:2px;background:var(--trazo);margin-top:16px}.rc-tr.on{background:var(--esmeralda)}
 .bj-est{font-size:12.5px;font-weight:800;margin-top:6px}.bj-est.ok{color:var(--esmeralda)}.bj-est.bad{color:var(--rojo,#C0392B)}
 .bj-est.warn{color:#C77700}.bj-est.gris{color:var(--tenue)}
@@ -179,7 +179,7 @@ CSS = r"""
 .bj-hist{margin-top:18px}.bj-hist summary{cursor:pointer;font-weight:800;font-size:15px;padding:8px 0;list-style:none;display:flex;justify-content:space-between}
 .bj-hist summary span{color:var(--tenue)}.bj-g{color:var(--tenue);font-size:12.5px;font-weight:800;margin:10px 0 6px}
 .bj-h{display:flex;gap:10px;justify-content:space-between;align-items:center;background:#fff;border:1px solid var(--trazo);border-radius:12px;padding:10px 12px;margin-bottom:6px}
-.bj-h .tx{min-width:0}.bj-h b{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bj-h small{color:var(--tenue);font-size:11.5px}
+.bj-h .tx{min-width:0}.bj-h b{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.bj-h small{color:var(--tenue);font-size:12px}
 .bj-h .bj-est{margin:0;flex:none;font-size:12px}
 .bbarra{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--trazo);padding:12px 16px calc(12px + env(safe-area-inset-bottom));z-index:40;display:none}
 .bbarra.on{display:block}.bbarra .btn{width:100%;max-width:560px;margin:0 auto;display:block}

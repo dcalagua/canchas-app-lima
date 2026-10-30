@@ -60,7 +60,7 @@ import empresa
 from db import pg
 from pagos import culqi
 from pagos.stock_productos import apartar_unidad, devolver_unidad  # noqa: F401 (tests los monkeypatchean aquí)
-from web import catalogos, datos, sesion, ui
+from web import catalogos, datos, miniaturas, sesion, ui
 from web.router import PLAY_URL, _moneda_de, _no_encontrada, _pago_web_disponible, _pasarela_web
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
@@ -283,9 +283,14 @@ def _cat(clave: str) -> tuple[str, str]:
     return catalogos.CATEGORIAS_PRODUCTO.get(clave or "otros", catalogos.CATEGORIAS_PRODUCTO["otros"])
 
 
-def _foto_producto(p: dict, clase: str = "ph") -> str:
+def _foto_producto(p: dict, clase: str = "ph", grande: bool = False) -> str:
+    """Foto del producto como MINIATURA (`web/miniaturas.py`): la tarjeta del
+    feed pide ~480 px; la ficha (`grande`) ~960 px y con prioridad."""
     if (p.get("foto_url") or "").startswith("http"):
-        return f"<img src='{e(p['foto_url'])}' alt='{e(p.get('nombre'))}' loading='lazy'>"
+        if grande:
+            return miniaturas.img(p["foto_url"], p.get("nombre") or "", w=960,
+                                  sizes="(max-width: 600px) 100vw, 560px", prioridad=True)
+        return miniaturas.img(p["foto_url"], p.get("nombre") or "", sizes="(max-width: 560px) 46vw, 220px")
     return f"<span class='{clase}'>{_cat(p.get('categoria'))[1]}</span>"
 
 
@@ -310,7 +315,7 @@ _CSS = """<style>
 .mk-card{display:block;color:inherit;text-decoration:none;min-width:0}
 .mk-card .f{position:relative;aspect-ratio:1;border-radius:14px;overflow:hidden;background:var(--gris);display:flex;align-items:center;justify-content:center}
 .mk-card .f img{width:100%;height:100%;object-fit:cover;transition:transform .3s}.mk-card:hover .f img{transform:scale(1.03)}
-.mk-card .ph{font-size:46px}.mk-card .tag{position:absolute;left:10px;top:10px;background:#fff;border-radius:999px;padding:4px 9px;font-size:11.5px;font-weight:800;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.mk-card .ph{font-size:46px}.mk-card .tag{position:absolute;left:10px;top:10px;background:#fff;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:800;box-shadow:0 1px 4px rgba(0,0,0,.12)}
 .mk-card .tag.agot{background:var(--bad-bg);color:var(--bad-fg)}
 .mk-card b.n{display:block;margin-top:9px;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mk-card .pr{font-weight:800;font-size:15px;margin-top:1px}.mk-card .vd{display:flex;gap:4px;align-items:center;color:var(--tenue);font-size:12.5px;margin-top:2px;min-width:0}
@@ -492,7 +497,7 @@ def pagina_producto(request: Request, producto_id: str) -> HTMLResponse:
     precio = _monto(sim, p["precio"])
     av = (f"<img src='{e(perf['foto_url'])}' alt='' referrerpolicy='no-referrer'>" if perf.get("foto_url")
           else e((vend[:1] or "?").upper()))
-    ficha = (f"<div class='mk-foto'>{_foto_producto(p)}</div>"
+    ficha = (f"<div class='mk-foto'>{_foto_producto(p, grande=True)}</div>"
              f"<h1 style='margin-top:16px'>{e(p.get('nombre'))}</h1>"
              f"<div style='font-size:24px;font-weight:800;color:var(--esmeralda);margin-top:4px'>{e(precio)}</div>"
              f"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><span class='pill'>{cat_em} {e(cat_n)}</span>"
@@ -717,7 +722,7 @@ def pagina_mis_ordenes(request: Request, nueva: str = "") -> HTMLResponse:
         sim = _moneda_de_venta(v, prod)
         et, cls, em = _ESTADOS.get(v["estado"], (v["estado"], "gris", "🧾"))
         es_bono = not v.get("producto_id") and str(v.get("producto_nombre") or "").startswith("Bono ")
-        foto = (f"<img src='{e(prod['foto_url'])}' alt=''>" if prod and (prod.get("foto_url") or "").startswith("http")
+        foto = (miniaturas.img(prod["foto_url"], sizes=miniaturas.SIZES_MINI, dims=False) if prod and (prod.get("foto_url") or "").startswith("http")
                 else ("🎟️" if es_bono else em))
         vend = v.get("vendedor_nombre") or perf.get(v["vendedor_email"], {}).get("nombre") or "—"
         try:

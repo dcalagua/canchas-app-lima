@@ -181,7 +181,7 @@ def html_carta(productos: list[dict], con_packshots: bool = False) -> str:
   .nom{{flex:1;font-weight:700;font-size:14.5px}}
   .pre{{font-weight:800;color:{_ESMERALDA};font-variant-numeric:tabular-nums}}
   .off .nom,.off .pre{{color:#a5aeb8}}
-  .agot{{display:inline-block;margin-left:8px;background:#fdeaea;color:#c0392b;font-size:10.5px;font-weight:800;padding:2px 8px;border-radius:10px;vertical-align:middle}}
+  .agot{{display:inline-block;margin-left:8px;background:#fdeaea;color:#c0392b;font-size:12px;font-weight:800;padding:2px 8px;border-radius:10px;vertical-align:middle}}
   .vacio{{color:#627080;padding:26px 6px;text-align:center}}
   .foot{{max-width:640px;margin:26px auto 0;padding:16px;text-align:center;color:#8a94a0;font-size:12px}}
   .foot b{{color:{_NAVY}}}

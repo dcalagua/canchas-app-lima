@@ -62,11 +62,27 @@ def _avisar(email: str, titulo: str, texto: str) -> None:
 
 # ── confirmación común (Culqi del club o voucher aprobado) ───────────────────
 
+def _ya_confirmadas(ids: list[str], medio: str) -> bool:
+    """¿Las filas YA quedaron confirmadas con [medio]? (lectura estricta: un
+    error de la base cuenta como "no"). Cubre el caso raro en que el UPDATE
+    entró pero la conexión falló al responder."""
+    try:
+        filas = datos.reservas_de(ids, estricto=True)
+    except Exception:  # noqa: BLE001
+        return False
+    return (len(filas) == len(ids)
+            and all(f.get("estado") == "confirmada" and f.get("medio_pago") == medio for f in filas))
+
+
 def confirmar_directo(filas: list[dict], c: dict, email: str, *, plan: dict, medio: str,
                       cobro_id: str, monto_centimos: int) -> dict:
     """Confirma un bloque pagado DIRECTO al club: filas confirmadas, premio /
     bono usados, cobro en el libro (`cobro_directo`, así se puede devolver) y
-    comisión de la plataforma desde el saldo del dueño (o deuda)."""
+    comisión de la plataforma desde el saldo del dueño (o deuda).
+
+    Si las filas NO se pudieron confirmar (error de la base) devuelve
+    {ok: False, error: 'confirmar_fallo'} SIN tocar nada más: ni cobro en el
+    libro ni comisión. Quien llama decide (reintentar / devolver)."""
     import fidelidad as _fid
     from db.store import stores
     from web import beneficios
@@ -75,7 +91,11 @@ def confirmar_directo(filas: list[dict], c: dict, email: str, *, plan: dict, med
     ids = [str(f["id"]) for f in filas]
     ref = wr._ref_de(filas)
     es_sena = plan["es_sena"]
-    datos.confirmar_reservas(ids, "sena" if es_sena else medio, 0.0, [], pagado=not es_sena)
+    medio_filas = "sena" if es_sena else medio
+    if not datos.confirmar_reservas(ids, medio_filas, 0.0, [], pagado=not es_sena) \
+            and not _ya_confirmadas(ids, medio_filas):
+        print(f"[directo] {ref} no se pudo confirmar en la base: sin cobro ni comisión", flush=True)
+        return {"ok": False, "error": "confirmar_fallo"}
     if plan.get("canje"):
         _fid.confirmar_canje(plan["ref"])
     beneficios.confirmar(plan["ref"], filas)
@@ -135,6 +155,16 @@ def pagar_con_culqi_del_club(filas: list[dict], c: dict, email: str, *, plan: di
         return {"ok": False, "error": "hold_vencido",
                 "mensaje": "Tu horario se liberó antes de confirmar el pago. Te devolvimos el dinero."}
     out = confirmar_directo(filas, c, email, plan=plan, medio=medio, cobro_id=charge_id, monto_centimos=monto)
+    if not out.get("ok"):
+        # La base no confirmó el horario: no se puede dejar al jugador cobrado
+        # sin reserva. Se devuelve ya y el horario se suelta.
+        r = culqi.reembolsar(charge_id=charge_id, monto_centimos=monto, motivo="solicitud_comprador", llave=llave)
+        wr.soltar_bloque(filas)
+        print(f"[directo] {ref} cobrado pero sin confirmar → reembolso {'ok' if r.get('ok') else r.get('error')}", flush=True)
+        return {"ok": False, "error": "confirmar_fallo",
+                "mensaje": ("No pudimos confirmar tu reserva. Te devolvimos el dinero; inténtalo de nuevo en unos minutos."
+                            if r.get("ok") else
+                            "No pudimos confirmar tu reserva. El club te devolverá el dinero; escríbele si no lo ves en unos días.")}
     return {**out, "charge_id": charge_id}
 
 
@@ -279,9 +309,50 @@ def pago_del_dueno(pid: str, email: str) -> dict | None:
     return p
 
 
+def bandeja_operable(email: str, estado: str = "en_revision") -> list[dict]:
+    """Bandeja del dueño + la de los locales donde `email` es encargado con
+    permiso de vouchers (solo los pagos de ESAS canchas). Para el dueño sin
+    encargos es exactamente `bandeja_de`."""
+    from web import permisos
+    pagos = bandeja_de(email, estado)
+    ajenos = permisos.alcance_delegado(email, permisos.VOUCHERS)
+    if not ajenos:
+        return pagos
+    for dueno, ids in ajenos.items():
+        pagos += [p for p in bandeja_de(dueno, estado) if p.get("cancha_id") in ids]
+    return sorted(pagos, key=lambda p: str(p.get("creado_en") or ""), reverse=True)
+
+
+def pendientes_operables(email: str) -> int:
+    """Insignia de vouchers por revisar (dueño + locales donde ayuda)."""
+    try:
+        return len(bandeja_operable(email, "en_revision")) if cd.disponible() else 0
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def pago_operable(pid: str, email: str) -> dict | None:
+    """El voucher `pid` si lo puede revisar `email`: es de un club suyo o de
+    una cancha del local donde es encargado (Recepción). None = 404."""
+    p = pago_del_dueno(pid, email)
+    if p is not None:
+        return p
+    from web import permisos
+    p = cd.repo().pago_manual(pid) if cd.disponible() else None
+    if not p:
+        return None
+    enc = permisos.encargo_en(email, str(p.get("cancha_id") or ""))
+    if enc is None or enc["dueno"] != p["dueno"] or not permisos.permitido(enc["rol"], permisos.VOUCHERS):
+        return None
+    return p
+
+
 def aprobar_voucher(p: dict, email: str) -> dict:
     """El club confirma el pago: se confirma el apartado, se registra el
     cobro directo y se cobra la comisión (saldo o deuda)."""
+    from pagos import division as _div
+    if _div.es_ref(p.get("reserva_ref")):   # parte de un PAGO DIVIDIDO: cuenta su parte
+        return _div.voucher_aprobado(p, email)
     pid = p["id"]
     filas = datos.reservas_de(list(p["reserva_ids"]))
     if not filas or len(filas) != len(p["reserva_ids"]):
@@ -293,6 +364,10 @@ def aprobar_voucher(p: dict, email: str) -> dict:
     plan = _wr().plan_cobro_reserva(filas)
     out = confirmar_directo(filas, c, p["jugador_email"], plan=plan, medio=f"voucher_{p['medio']}",
                             cobro_id=f"pm:{pid}", monto_centimos=int(p["monto_centimos"]))
+    if not out.get("ok"):
+        cd.repo().reabrir_pago_manual(pid)   # vuelve a la bandeja: se aprueba de nuevo
+        return {"ok": False, "error": "confirmar_fallo",
+                "mensaje": "No pudimos confirmar la reserva en este momento. Vuelve a aprobar el pago en unos minutos."}
     _avisar(p["jugador_email"], "¡Reserva confirmada! ✅",
             f"{c.get('nombre', 'El club')} confirmó tu pago · {filas[0]['fecha']} {filas[0]['hora_inicio']}.")
     return {"ok": True, "comision": out.get("comision")}
@@ -308,6 +383,9 @@ MOTIVOS_RECHAZO = {"no_llego": "No llegó el pago", "monto": "Monto distinto",
 def rechazar_voucher(p: dict, email: str, motivo: str = "") -> dict:
     """El club no reconoce el pago: el horario queda libre y se avisa al jugador."""
     motivo = (motivo or "").strip()
+    from pagos import division as _div
+    if _div.es_ref(p.get("reserva_ref")):   # parte de un PAGO DIVIDIDO: la parte vuelve a quedar libre
+        return _div.voucher_rechazado(p, email, motivo)
     if not cd.repo().resolver_pago_manual(p["id"], "rechazado", email, motivo):
         return {"ok": False, "error": "ya_resuelto"}
     _wr().soltar_bloque(list(p["reserva_ids"]))
@@ -384,7 +462,11 @@ def vencer() -> int:
         return 0
     from datetime import datetime, timezone
     n = 0
+    from pagos import division as _div
     for p in cd.repo().vencidos(datetime.now(timezone.utc)):
+        if _div.es_ref(p.get("reserva_ref")):   # parte de un pago dividido: no suelta el horario
+            n += int(_div.voucher_vencido(p))
+            continue
         if cd.repo().resolver_pago_manual(p["id"], "vencido", "sistema", "sin_revision"):
             _wr().soltar_bloque(list(p["reserva_ids"]))
             _avisar(p["jugador_email"], "Tu reserva se liberó",
@@ -436,9 +518,16 @@ async def webhook_club(ref: str, request: Request) -> dict:
     if not info.get("ok"):
         return {"ok": True, "ignorado": "consulta"}
     meta = info.get("metadata") or {}
+    if meta.get("canal") == "division":   # parte de un PAGO DIVIDIDO
+        from starlette.concurrency import run_in_threadpool
+        from pagos import division as _div
+        return await run_in_threadpool(_div.conciliar_cargo, info, charge_id, llave, pas["dueno"])
     rref = str(meta.get("reserva_ref") or "")
     if meta.get("canal") != "directo" or not rref:
         return {"ok": True, "ignorado": "sin_reserva"}
+    if int(info.get("reembolsado_centimos") or 0) > 0:
+        # Ya se devolvió (p. ej. el horario no se pudo confirmar): nunca confirma.
+        return {"ok": True, "ignorado": "reembolsado"}
     wr = _wr()
     if wr._cobro_web(rref) is not None:
         return {"ok": True, "duplicado": True}
@@ -453,6 +542,9 @@ async def webhook_club(ref: str, request: Request) -> dict:
     if int(info.get("monto_centimos") or 0) != int(plan["base_cobro"]) * 100:
         print(f"[directo] webhook {rref}: monto distinto, se deja al operador", flush=True)
         return {"ok": True, "ignorado": "monto"}
-    confirmar_directo(filas, c, str(filas[0].get("usuario") or ""), plan=plan, medio="tarjeta",
-                      cobro_id=charge_id, monto_centimos=int(info["monto_centimos"]))
+    out = confirmar_directo(filas, c, str(filas[0].get("usuario") or ""), plan=plan, medio="tarjeta",
+                            cobro_id=charge_id, monto_centimos=int(info["monto_centimos"]))
+    if not out.get("ok"):
+        # 503 → Culqi reintenta el evento más tarde.
+        raise HTTPException(status_code=503, detail="confirmar_fallo")
     return {"ok": True, "confirmado": True}

@@ -168,6 +168,16 @@ class RepoMemoria:
             p.update(estado=estado, resuelto_por=por, motivo_rechazo=motivo, resuelto_en=_ahora())
             return True
 
+    def reabrir_pago_manual(self, pid):
+        """Deshace una aprobación cuyo apartado no se pudo confirmar (error de
+        la base): el voucher vuelve a la bandeja para aprobarlo de nuevo."""
+        with self._lock:
+            p = self.pagos.get(pid)
+            if not p or p["estado"] != "aprobado":
+                return False
+            p.update(estado="en_revision", resuelto_por="", motivo_rechazo="", resuelto_en=None)
+            return True
+
     def vencidos(self, ahora):
         return [{k: v for k, v in p.items() if k != "voucher_img"} for p in self.pagos.values()
                 if p["estado"] == "en_revision" and p["vence_en"] <= ahora]
@@ -209,8 +219,44 @@ class RepoPG:
             return n
 
     def pasarela_de(self, dueno):
+        from db import pg
+        if pg.memo_request() is None:
+            return self._pasarela_de(dueno)
+        self._precargar_club(dueno)
+        return pg.memo_leer(("cl_pasarela", dueno), lambda: self._pasarela_de(dueno))
+
+    def _pasarela_de(self, dueno):
         return self._uno(f"select {', '.join(self._COLS_PAS)} from cl_pasarela_club where dueno = %s",
                          (dueno,), self._COLS_PAS)
+
+    def _precargar_club(self, dueno) -> None:
+        """La ficha y el panel piden la pasarela Y los medios del club, uno
+        tras otro: en una request GET se leen juntos (un viaje) y quedan en la
+        memoria de la request. Si falla, cada uno se lee como siempre."""
+        from db import pg
+        if pg.memo_tiene(("cl_pasarela", dueno)) or pg.memo_tiene(("cl_medios", dueno)):
+            return
+        np_, nm = len(self._COLS_PAS), len(self._COLS_MED)
+        try:
+            with pg.conexion() as conn, conn.cursor() as cur:
+                cur.execute(
+                    "select p.hay, " + ", ".join(f"p.{c}" for c in self._COLS_PAS) + ", m.hay, "
+                    + ", ".join(f"m.{c}" for c in self._COLS_MED) + " from (select 1) uno "
+                    f"left join lateral (select {', '.join(self._COLS_PAS)}, true as hay from cl_pasarela_club "
+                    "where dueno = %s) p on true "
+                    f"left join lateral (select {', '.join(self._COLS_MED)}, true as hay from cl_medios_pago_club "
+                    "where dueno = %s and activo order by orden, id) m on true "
+                    "order by m.orden, m.id", (dueno, dueno))
+                filas = cur.fetchall()
+        except Exception:  # noqa: BLE001
+            return
+        if not filas:
+            return
+        f0 = filas[0]
+        pg.memo_guardar(("cl_pasarela", dueno), dict(zip(self._COLS_PAS, f0[1:1 + np_])) if f0[0] else None)
+        im = 1 + np_
+        pg.memo_guardar(("cl_medios", dueno),
+                        [dict(zip(self._COLS_MED, f[im + 1:im + 1 + nm])) for f in filas if f[im]])
 
     def pasarela_por_ref(self, ref):
         return self._uno(f"select {', '.join(self._COLS_PAS)} from cl_pasarela_club where webhook_ref = %s",
@@ -228,6 +274,13 @@ class RepoPG:
         return self._exec("delete from cl_pasarela_club where dueno = %s", (dueno,)) > 0
 
     def medios_de(self, dueno):
+        from db import pg
+        if pg.memo_request() is None:
+            return self._medios_de(dueno)
+        self._precargar_club(dueno)
+        return pg.memo_leer(("cl_medios", dueno), lambda: self._medios_de(dueno))
+
+    def _medios_de(self, dueno):
         return self._varios(f"select {', '.join(self._COLS_MED)} from cl_medios_pago_club "
                             "where dueno = %s and activo order by orden, id", (dueno,), self._COLS_MED)
 
@@ -297,6 +350,10 @@ class RepoPG:
         return self._exec("update cl_pagos_manuales set estado = %s, resuelto_por = %s, motivo_rechazo = %s, "
                           "resuelto_en = now() where id = %s and estado = 'en_revision'",
                           (estado, por, motivo, pid)) == 1
+
+    def reabrir_pago_manual(self, pid):
+        return self._exec("update cl_pagos_manuales set estado = 'en_revision', resuelto_por = '', motivo_rechazo = '', "
+                          "resuelto_en = null where id = %s and estado = 'aprobado'", (pid,)) == 1
 
     def vencidos(self, ahora):
         return self._pm("estado = 'en_revision' and vence_en <= %s", (ahora,))
@@ -606,9 +663,11 @@ _contador = {"n": 0}
 
 
 def registrar_voucher(*, filas: list[dict], c: dict, email: str, nombre: str, medio: str, operacion: str,
-                      imagen_b64: str, monto_centimos: int, iso: str, ref: str) -> dict:
+                      imagen_b64: str, monto_centimos: int, iso: str, ref: str,
+                      vence_en: datetime | None = None) -> dict:
     """El jugador reporta su pago manual. Las filas ya están apartadas por
-    `/web/asegurar` (monto calculado por el servidor)."""
+    `/web/asegurar` (monto calculado por el servidor). [vence_en] = plazo de
+    revisión propio (la parte de un pago dividido vence con su división)."""
     dueno = (c.get("dueno") or "").strip().lower()
     medio = (medio or "").strip().lower()
     if medio not in {m["tipo"] for m in medios_publicos(dueno)}:
@@ -629,7 +688,7 @@ def registrar_voucher(*, filas: list[dict], c: dict, email: str, nombre: str, me
          "dueno": dueno, "jugador_email": email, "jugador_nombre": (nombre or "")[:80],
          "monto_centimos": int(monto_centimos), "moneda": iso, "medio": medio, "operacion": op,
          "voucher_img": img, "voucher_mime": mime, "voucher_hash": huella, "estado": "en_revision",
-         "motivo_rechazo": "", "vence_en": _ahora() + timedelta(minutes=config.VOUCHER_PLAZO_MIN),
+         "motivo_rechazo": "", "vence_en": vence_en or (_ahora() + timedelta(minutes=config.VOUCHER_PLAZO_MIN)),
          "creado_en": _ahora(), "resuelto_en": None, "resuelto_por": ""}
     err = _repo.crear_pago_manual(p)
     if err:
