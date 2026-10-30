@@ -584,8 +584,8 @@ _CSS = """
 .aco-bar{display:flex;align-items:flex-end;gap:10px;height:150px;margin-top:10px}
 .aco-bar div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0}
 .aco-bar i{display:block;width:100%;max-width:46px;border-radius:8px 8px 3px 3px;background:var(--esmeralda)}
-.aco-bar small{font-size:11.5px;color:var(--tenue);margin-top:4px}
-.aco-bar b{font-size:11px;margin-bottom:3px;white-space:nowrap}
+.aco-bar small{font-size:12px;color:var(--tenue);margin-top:4px}
+.aco-bar b{font-size:12px;margin-bottom:3px;white-space:nowrap}
 .aco-rub{display:flex;gap:6px;flex-wrap:wrap}
 .aco-rub .chip{padding:7px 12px;font-size:13px}
 .aco-rub .chip.ok.sel{background:var(--ok-bg);border-color:var(--ok-fg);color:var(--ok-fg)}
@@ -598,7 +598,7 @@ _CSS = """
 .aco-msgs{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;padding:14px;background:#EFEAE2;border-radius:16px}
 .aco-msg{max-width:78%;padding:8px 12px;border-radius:14px;background:#fff;font-size:14.5px;overflow-wrap:anywhere;box-shadow:0 1px 1px rgba(0,0,0,.06)}
 .aco-msg.yo{align-self:flex-end;background:#D9FDD3}
-.aco-msg small{display:block;font-size:11px;color:var(--tenue);margin-top:2px;text-align:right}
+.aco-msg small{display:block;font-size:12px;color:var(--tenue);margin-top:2px;text-align:right}
 .aco-dlg label{display:block;font-weight:700;font-size:13.5px;margin:12px 0 6px}
 .aco-dlg .chips{margin:0}
 .aco-dlg select,.aco-dlg input{width:100%}
@@ -662,10 +662,10 @@ def pagina_asistencia(request: Request, academia: str = "", dia: str = "") -> HT
     presentes = sum(1 for m in mats if (marcas.get(m.get("id")) or {}).get("presente"))
     q = f"academia={up.quote(a['id'])}"
     nav_dia = (f"<div class='aco-noimp' style='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px'>"
-               f"<a class='chip' href='/anfitrion/academia/asistencia?{q}&dia={(d - timedelta(days=1)).isoformat()}'>‹</a>"
+               f"<a class='chip' href='/anfitrion/academia/asistencia?{q}&dia={(d - timedelta(days=1)).isoformat()}' aria-label='Día anterior'>‹</a>"
                f"<b style='font-size:17px'>{DIAS_CORTOS[d.weekday()]} {_f(d)}{' · Hoy' if d == hoy else ''}</b>"
-               f"<a class='chip' href='/anfitrion/academia/asistencia?{q}&dia={(d + timedelta(days=1)).isoformat()}'>›</a>"
-               f"<input type='date' id='acoDia' value='{clave}' style='max-width:170px'>"
+               f"<a class='chip' href='/anfitrion/academia/asistencia?{q}&dia={(d + timedelta(days=1)).isoformat()}' aria-label='Día siguiente'>›</a>"
+               f"<input type='date' id='acoDia' value='{clave}' style='max-width:170px' aria-label='Elegir el día'>"
                + ("" if d == hoy else f"<a class='chip' href='/anfitrion/academia/asistencia?{q}'>Hoy</a>") + "</div>")
     filas = ""
     for m in mats:
@@ -900,7 +900,7 @@ document.addEventListener('click',async function(ev){
 });
 var bn=document.getElementById('acoNota');if(bn)bn.addEventListener('click',async function(){
  var h="<div class='aco-dlg'><label>¿Cómo le fue?</label><div class='chips' data-g='des'>";Object.keys(ACO.desemp).forEach(function(k,i){h+="<span class='chip"+(i===0?' sel':'')+"' data-v='"+k+"'>"+ACO.desemp[k]+"</span>"});
- h+="</div><label>Clase del plan</label><select id='acoSes'><option value='0'>Clase suelta</option>";ACO.sesiones.forEach(function(s){h+="<option value='"+s.numero+"'>Clase "+s.numero+": "+acoEsc(s.titulo)+"</option>"});
+ h+="</div><label>Clase del plan</label><select id='acoSes' aria-label='Clase del plan'><option value='0'>Clase suelta</option>";ACO.sesiones.forEach(function(s){h+="<option value='"+s.numero+"'>Clase "+s.numero+": "+acoEsc(s.titulo)+"</option>"});
  h+="</select><label>Observaciones <span class='aco-n'>(opcional)</span></label><div class='chips' data-g='obs' data-multi='1'>";ACO.obs.forEach(function(o){h+="<span class='chip' data-v='"+acoEsc(o)+"'>"+acoEsc(o)+"</span>"});h+="</div></div>";
  if(!await pcgConfirmar({titulo:'Clase de hoy',html:h,confirmar:'Guardar clase',icono:'📝'}))return;
  var j=await acoPost('/anfitrion/academia/evaluaciones/nota',{academia_id:ACO.aid,alumno_id:ACO.alumno,plan_id:ACO.plan,sesion:+document.getElementById('acoSes').value,desempeno:acoSel('des')[0]||'bien',observaciones:acoSel('obs')});
@@ -1043,10 +1043,10 @@ def pagina_ranking(request: Request, academia: str = "", sede: str = "", categor
 _JS_RANK = r"""
 function opts(sel){var h='<option value="">Elige…</option>';ACO.alumnos.forEach(function(a){h+='<option value="'+acoEsc(a.id)+'"'+(a.id===sel?' selected':'')+'>'+acoEsc(a.nombre)+'</option>'});return h}
 var bp=document.getElementById('acoPartido');if(bp)bp.addEventListener('click',async function(){
- var h="<div class='aco-dlg'><label>Jugador A</label><select id='acoA'>"+opts('')+"</select><label>Jugador B</label><select id='acoB'>"+opts('')+"</select>"+
+ var h="<div class='aco-dlg'><label>Jugador A</label><select id='acoA' aria-label='Jugador A'>"+opts('')+"</select><label>Jugador B</label><select id='acoB' aria-label='Jugador B'>"+opts('')+"</select>"+
   "<label>¿Quién ganó?</label><div class='chips' data-g='gan'><span class='chip sel' data-v='A'>Jugador A</span><span class='chip' data-v='B'>Jugador B</span></div>"+
-  "<label>Marcador <span class='aco-n'>(opcional, ej. 6-3 6-4)</span></label><input id='acoMarc' maxlength='40' inputmode='numeric' pattern='[0-9 ()\\-/,.]*' placeholder='6-3 6-4'>";
- if(ACO.sedes.length){h+="<label>Sede</label><select id='acoSede'><option value=''>Sin sede</option>";ACO.sedes.forEach(function(s){h+="<option value='"+acoEsc(s.id)+"'>"+acoEsc(s.nombre)+"</option>"});h+="</select>"}
+  "<label>Marcador <span class='aco-n'>(opcional, ej. 6-3 6-4)</span></label><input id='acoMarc' aria-label='Marcador (opcional)' maxlength='40' inputmode='numeric' pattern='[0-9 ()\\-/,.]*' placeholder='6-3 6-4'>";
+ if(ACO.sedes.length){h+="<label>Sede</label><select id='acoSede' aria-label='Sede'><option value=''>Sin sede</option>";ACO.sedes.forEach(function(s){h+="<option value='"+acoEsc(s.id)+"'>"+acoEsc(s.nombre)+"</option>"});h+="</select>"}
  h+="</div>";
  if(!await pcgConfirmar({titulo:'Registrar resultado',html:h,confirmar:'Guardar',icono:'🏆'}))return;
  var A=document.getElementById('acoA').value,B=document.getElementById('acoB').value,g=acoSel('gan')[0];
@@ -1387,7 +1387,7 @@ def pagina_chats(request: Request, academia: str = "") -> HTMLResponse:
 
 _JS_CHAT = r"""
 document.addEventListener('click',async function(ev){var b=ev.target.closest('[data-escribir]');if(!b)return;
- var h="<div class='aco-dlg'><p style='margin:0'>Para <b>"+acoEsc(b.dataset.nombre)+"</b></p><label>Mensaje</label><input id='acoTxt' maxlength='2000' autocomplete='off' placeholder='Escribe tu mensaje'></div>";
+ var h="<div class='aco-dlg'><p style='margin:0'>Para <b>"+acoEsc(b.dataset.nombre)+"</b></p><label>Mensaje</label><input id='acoTxt' aria-label='Mensaje' maxlength='2000' autocomplete='off' placeholder='Escribe tu mensaje'></div>";
  if(!await pcgConfirmar({titulo:'Nuevo mensaje',html:h,confirmar:'Enviar',icono:'💬'}))return;var v=(document.getElementById('acoTxt').value||'').trim();if(!v)return;
  var j=await acoPost('/anfitrion/academia/chats/enviar',{academia_id:ACO.aid,cuenta:b.dataset.escribir,texto:v},'Enviando…');if(j.ok)pcgIr(j.url||'/mensajes','Abriendo el chat…');else acoErr(j)});
 """
@@ -1452,15 +1452,15 @@ var S=ACO.sedes.map(function(s){return {id:s.id,nombre:s.nombre||'',direccion:s.
 function pintar(){var box=document.getElementById('acoSedes');var h='';
  if(!S.length)h="<div class='anf-vacio' style='margin-top:12px'>Aún no agregas sedes: tu academia usa su sede principal.</div>";
  S.forEach(function(s,i){h+="<div class='aco-sede' data-i='"+i+"'><div style='display:flex;justify-content:space-between;gap:8px;align-items:center'><b>📍 Sede "+(i+1)+"</b><button class='btn sec aco-mini' data-quitar='"+i+"'>Quitar</button></div>"+
-  "<div class='aco-dos' style='margin-top:8px'><div><label class='aco-n'>Nombre del local</label><input data-k='nombre' maxlength='80' value='"+acoEsc(s.nombre)+"' placeholder='Ej. Club Las Palmas'></div>"+
-  "<div><label class='aco-n'>Dirección <span>(opcional)</span></label><input data-k='direccion' maxlength='120' value='"+acoEsc(s.direccion)+"' placeholder='Calle y número'></div></div>"+
+  "<div class='aco-dos' style='margin-top:8px'><div><label class='aco-n'>Nombre del local</label><input data-k='nombre' aria-label='Nombre del local de la sede' maxlength='80' value='"+acoEsc(s.nombre)+"' placeholder='Ej. Club Las Palmas'></div>"+
+  "<div><label class='aco-n'>Dirección <span>(opcional)</span></label><input data-k='direccion' aria-label='Dirección de la sede (opcional)' maxlength='120' value='"+acoEsc(s.direccion)+"' placeholder='Calle y número'></div></div>"+
   "<div class='aco-n' style='margin-top:8px'>Toca el mapa para ubicarla "+(s.lat?'· ✓ ubicada':'(opcional)')+"</div><div class='mapa' id='mapa"+i+"'></div>";
   h+="<div style='margin-top:12px'><b style='font-size:14px'>Horario por programa</b>";
   if(!ACO.programas.length)h+="<div class='aco-n'>Agrega programas en tu tarifario para fijar horarios por sede.</div>";
-  ACO.programas.forEach(function(p){var k=s.id+'|'+p;h+="<label class='aco-n' style='display:block;margin-top:6px'>"+acoEsc(p)+"</label><input data-h='"+acoEsc(k)+"' maxlength='80' value='"+acoEsc(ACO.horarios[k]||'')+"' placeholder='Ej. Lun-Mié-Vie 4-6pm'>"});
+  ACO.programas.forEach(function(p){var k=s.id+'|'+p;h+="<label class='aco-n' style='display:block;margin-top:6px'>"+acoEsc(p)+"</label><input data-h='"+acoEsc(k)+"' aria-label='Horario de "+acoEsc(p)+"' maxlength='80' value='"+acoEsc(ACO.horarios[k]||'')+"' placeholder='Ej. Lun-Mié-Vie 4-6pm'>"});
   h+="</div>";
   if(ACO.planes.length){h+="<div style='margin-top:12px'><b style='font-size:14px'>Precios en esta sede</b> <span class='aco-n'>(opcional · vacío = precio base)</span><div class='aco-dos' style='margin-top:6px'>";
-   ACO.planes.forEach(function(p){var k=s.id+'|'+p.id,v=ACO.precios[k];h+="<div><label class='aco-n'>"+acoEsc(p.nombre)+"</label><input type='number' min='0' step='0.5' inputmode='decimal' data-p='"+acoEsc(k)+"' value='"+(v>0?(+v).toFixed(2):'')+"' placeholder='Base: "+ACO.sim+' '+p.precio.toFixed(2)+"'></div>"});h+="</div></div>"}
+   ACO.planes.forEach(function(p){var k=s.id+'|'+p.id,v=ACO.precios[k];h+="<div><label class='aco-n'>"+acoEsc(p.nombre)+"</label><input type='number' min='0' step='0.5' inputmode='decimal' aria-label='Precio de "+acoEsc(p.nombre)+" en esta sede' data-p='"+acoEsc(k)+"' value='"+(v>0?(+v).toFixed(2):'')+"' placeholder='Base: "+ACO.sim+' '+p.precio.toFixed(2)+"'></div>"});h+="</div></div>"}
   h+="</div>"});
  box.innerHTML=h;
  if(window.L)S.forEach(function(s,i){var c=s.lat?[s.lat,s.lng]:ACO.centro;var m=L.map('mapa'+i,{scrollWheelZoom:false}).setView(c,s.lat?16:12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(m);

@@ -669,7 +669,7 @@ _JS_EXPLORAR = (r"""
       '<div class="foto"><div class="fotos">' + foto + '</div><span class="badge pend">Aún sin registrar</span>' + extra + '</div>' +
       '<div class="lb"><div class="l1"><b>' + esc(c.nombre) + '</b><span class="rate">' + esc(c.deporte_nombre) + '</span></div>' +
       '<div class="l2">' + esc(c.direccion) + '</div><div class="l2"><span class="dist">' + (c.km != null ? 'a ' + fmtKm(c.km) : '') + '</span>' +
-      (esOsm ? ' <span class="wa osm-atrib" data-wa="https://www.openstreetmap.org/copyright" style="font-size:11px;color:#717171">© OpenStreetMap</span>' : '') + '</div>' +
+      (esOsm ? ' <span class="wa osm-atrib" data-wa="https://www.openstreetmap.org/copyright" style="font-size:12px;color:#717171">© OpenStreetMap</span>' : '') + '</div>' +
       '<div class="l3"><span class="app">📲 Reservar en la app</span> <span class="app">📍 <span class="ir" data-lat="' + c.lat + '" data-lng="' + c.lng + '">Cómo llegar</span></span> ' +
       '<span class="app reclamar" data-id="' + esc(c.id) + '" data-nombre="' + esc(c.nombre) + '" data-dir="' + esc(c.direccion) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-dep="' + esc(c.deporte) + '">🏷️ ¿Es tuya? Reclámala</span></div></div></a>';
   }
@@ -946,7 +946,7 @@ def _modal_filtros(lista: list[dict]) -> str:
         + (f"<section><h4>Recomendado para ti</h4><div class='tiles'>{tiles}</div></section>" if tiles else "")
         + "<section><h4>Rango de precios</h4><p class='sub' id='precioSub'>Precio por hora</p>"
         "<div class='histo' id='histo'></div>"
-        "<div class='rango'><input type='range' id='rMin' min='0' max='100' value='0'><input type='range' id='rMax' min='0' max='100' value='100'></div>"
+        "<div class='rango'><input type='range' id='rMin' aria-label='Precio mínimo' min='0' max='100' value='0'><input type='range' id='rMax' aria-label='Precio máximo' min='0' max='100' value='100'></div>"
         "<div class='topes'><label>Mínimo<div class='tope'><span id='monMin'></span><input type='number' id='pMin' min='0'></div></label>"
         "<label>Máximo<div class='tope'><span id='monMax'></span><input type='number' id='pMax' min='0'></div></label></div></section>"
         + (f"<section><h4>Servicios del local</h4><div class='chips'>{servicios}</div></section>" if servicios else "")
@@ -3846,7 +3846,7 @@ JS_CANCELAR = (r"""
       opciones.forEach(function(o, i){
         lista.innerHTML += '<label style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--trazo);border-radius:12px;margin-bottom:8px;cursor:pointer">' +
           '<input type="radio" name="cancMedio" value="' + o.medio + '"' + (i === 0 ? ' checked' : '') + ' style="width:auto;flex:none;margin-top:3px">' +
-          '<span style="flex:1"><b>' + o.etiqueta + ' · ' + fmt(o.simbolo || datos.moneda || 'S/', o.monto) + '</b>' + (i === 0 ? ' <span class="pill ok" style="font-size:11px">Recomendado</span>' : '') +
+          '<span style="flex:1"><b>' + o.etiqueta + ' · ' + fmt(o.simbolo || datos.moneda || 'S/', o.monto) + '</b>' + (i === 0 ? ' <span class="pill ok" style="font-size:12px">Recomendado</span>' : '') +
           '<div class="sub" style="font-size:12.5px;margin-top:2px">' + o.nota + '</div></span></label>';
       });
       opc.style.display = '';
@@ -4151,7 +4151,7 @@ _CSS_PERFIL = """
 .perf-yo{text-align:center;min-width:0}
 .perf-av{position:relative;width:104px;height:104px;margin:0 auto 10px}
 .perf-av img,.perf-av .ini{width:104px;height:104px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;background:var(--noche,#0A1B3D);color:#fff;font-size:42px;font-weight:700}
-.perf-av .pro{position:absolute;right:-4px;bottom:4px;background:#F2C94C;color:#3a2a00;border:3px solid #fff;border-radius:99px;font-size:11px;font-weight:800;padding:3px 8px}
+.perf-av .pro{position:absolute;right:-4px;bottom:4px;background:#F2C94C;color:#3a2a00;border:3px solid #fff;border-radius:99px;font-size:12px;font-weight:800;padding:3px 8px}
 .perf-av .ok{position:absolute;left:-2px;bottom:6px;background:#0B7A57;color:#fff;border:3px solid #fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px}
 .perf-yo b{display:block;font-size:22px;line-height:1.2;overflow-wrap:anywhere}
 .perf-yo small{display:block;color:#6a6a6a;font-size:13px;margin-top:4px;overflow-wrap:anywhere}
@@ -4164,7 +4164,7 @@ _CSS_PERFIL = """
 .perf-tile{position:relative;background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:26px 14px 18px;text-align:center;color:inherit;text-decoration:none;cursor:pointer;border:0;font:inherit}
 .perf-tile .em{font-size:52px;line-height:1;display:block;margin-bottom:12px}
 .perf-tile b{font-size:15px}
-.perf-tile .nov{position:absolute;top:12px;right:12px;background:#0A1B3D;color:#fff;font-size:10px;font-weight:800;letter-spacing:.6px;border-radius:99px;padding:4px 8px}
+.perf-tile .nov{position:absolute;top:12px;right:12px;background:#0A1B3D;color:#fff;font-size:12px;font-weight:800;letter-spacing:.6px;border-radius:99px;padding:4px 8px}
 .perf-ban{display:flex;gap:14px;align-items:center;background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px;color:inherit;text-decoration:none;margin-bottom:16px}
 .perf-ban .em{font-size:44px;flex:none}
 .perf-ban b{display:block;font-size:16px}
@@ -4179,7 +4179,7 @@ _CSS_PERFIL = """
 .perf-it .em{font-size:24px;width:30px;text-align:center;flex:none}
 .perf-it .tx{flex:1;min-width:0}
 .perf-it .tx small{display:block;color:#6a6a6a;font-size:13px;margin-top:2px}
-.perf-it .app{font-size:11.5px;font-weight:700;color:#08654A;background:#E9F6EE;border-radius:99px;padding:3px 9px;white-space:nowrap}
+.perf-it .app{font-size:12px;font-weight:700;color:#08654A;background:#E9F6EE;border-radius:99px;padding:3px 9px;white-space:nowrap}
 .perf-it .bdg{background:#E0245E;color:#fff;font-size:12px;font-weight:800;border-radius:99px;min-width:22px;height:22px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center}
 .perf-it .chev{color:#b0b0b0;font-size:22px;line-height:1}
 .perf-it.rojo{color:#C0392B}

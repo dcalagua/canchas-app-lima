@@ -179,12 +179,12 @@ _CSS = """
 .jp-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}
 .jp-stats div{background:#fff;border:1px solid #EBEBEB;border-radius:14px;padding:10px 6px;text-align:center;min-width:0}
 .jp-stats b{display:block;font-size:20px}
-.jp-stats small{color:#6a6a6a;font-size:11.5px}
+.jp-stats small{color:#6a6a6a;font-size:12px}
 .jp-carnet{background:linear-gradient(135deg,#08654A,#0A1B3D);color:#fff;border-radius:20px;padding:18px;display:flex;gap:14px;align-items:center;min-width:0}
 .jp-carnet .jp-av{width:60px;height:60px;font-size:24px;background:#7CB518}
 .jp-carnet b{font-size:19px;display:block;overflow-wrap:anywhere}
 .jp-carnet small{opacity:.85;display:block}
-.jp-pro{display:inline-block;background:#7CB518;color:#fff;font-weight:900;font-size:10px;border-radius:6px;padding:2px 7px;margin-left:6px;vertical-align:middle}
+.jp-pro{display:inline-block;background:#7CB518;color:#fff;font-weight:900;font-size:12px;border-radius:6px;padding:2px 7px;margin-left:6px;vertical-align:middle}
 .jp-cod{font-size:30px;font-weight:900;letter-spacing:3px;margin:4px 0 12px}
 .jp-slots{display:flex;flex-wrap:wrap;gap:8px}
 .jp-slot{border:1px solid #E4E4E4;background:#fff;border-radius:12px;padding:8px 12px;cursor:pointer;font:inherit;text-align:center;min-width:84px}
@@ -823,10 +823,10 @@ window.jpCrear = function(tipo, reusar){
   var html = "<div class='jp-form' style='text-align:left'>"
     + "<label class='l'>Deporte</label><div class='jp-chips' id='jpDeps'>" + deps + "</div>"
     + "<label class='l'>¿Dónde se juega?</label><div class='ayuda'>Elige un local de ⟦MARCA⟧; si es otro lugar, usamos tu ubicación para avisar a los de la zona.</div>"
-    + "<input type='text' id='jpSede' list='jpSedes' maxlength='80' placeholder='Busca la cancha o el lugar'>"
+    + "<input type='text' id='jpSede' aria-label='Cancha o lugar' list='jpSedes' maxlength='80' placeholder='Busca la cancha o el lugar'>"
     + "<label class='l'>Fecha</label><div class='jp-chips' id='jpDias'>" + dias + "</div>"
-    + "<input type='date' id='jpFecha' min='" + JP.hoy + "' max='" + JP.max + "'>"
-    + "<label class='l'>Hora</label><select id='jpHora'>" + jpHoras('20:00') + "</select>"
+    + "<input type='date' id='jpFecha' aria-label='Fecha' min='" + JP.hoy + "' max='" + JP.max + "'>"
+    + "<label class='l'>Hora</label><select id='jpHora' aria-label='Hora'>" + jpHoras('20:00') + "</select>"
     + "<label class='l'>" + (F.tipo === 'partner' ? '¿Qué buscas?' : 'Jugadores en total') + "</label><div class='ayuda' id='jpFaltan'></div><div class='jp-chips' id='jpPre'></div>"
     + "<div class='jp-step' id='jpStep'><button type='button' data-paso='-1' aria-label='Menos'>−</button><b id='jpN'></b><button type='button' data-paso='1' aria-label='Más'>+</button></div>"
     + "<label class='l'>Nivel</label><div class='jp-chips' id='jpNiv'></div>"
@@ -1251,7 +1251,7 @@ def pagina_nueva_pichanga(request: Request, club: str = "") -> HTMLResponse:
                     f"<span><b>{nom}</b><small>{d}</small></span></button>" for k, (ico, nom, d) in _MODOS.items())
     cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap jp-form'><a class='jp-volver' href='/pichangas'>‹ Pichangas</a><h1>Nueva pichanga</h1>"
               f"<label class='l'>Local</label><div class='jp-chips' id='npClubs'>{locales}</div>"
-              "<label class='l'>Título</label><input type='text' id='npTit' maxlength='60' value='Fulbito' placeholder='Ej. Fulbito Máster'>"
+              "<label class='l'>Título</label><input type='text' id='npTit' aria-label='Título de la pichanga' maxlength='60' value='Fulbito' placeholder='Ej. Fulbito Máster'>"
               "<label class='l'>Deporte</label><div class='jp-chips' id='npDeps'></div>"
               f"<label class='l'>Categoría</label><div class='jp-chips' id='npCats'>{cats}</div>"
               f"<label class='l'>Cupos</label><div class='jp-chips' id='npCupos'>{cupos}</div>"
@@ -1917,7 +1917,7 @@ def pagina_llenar(request: Request, cancha: str = "", dia: int = 0) -> HTMLRespo
               f"<div class='jp-chips'>{dias}</div><label class='l'>Horas libres</label>{lista}"
               f"<div id='llDescBox' style='display:none'><label class='l'>Descuento para llenar (opcional)</label><div class='jp-chips' id='llDesc'>{descs}</div>"
               "<p class='ayuda' id='llDescAyuda'>Sin descuento: precio normal.</p></div>"
-              "<label class='l'>Mensaje o promo (opcional)</label><input type='text' id='llPromo' maxlength='160' placeholder='Ej.: 20% off hoy'>"
+              "<label class='l'>Mensaje o promo (opcional)</label><input type='text' id='llPromo' aria-label='Mensaje o promo (opcional)' maxlength='160' placeholder='Ej.: 20% off hoy'>"
               f"<div class='jp-acc'><button type='button' class='btn' id='llGo' disabled>Elige horas para avisar</button></div></div>"
               f"<script>window.LL={_js(cfg)};</script><script>{_JS_BASE}{_JS_LLENAR}</script>")
     return ui.shell("Llenar cancha", cuerpo, nav=_cabecera("", ses), sesion=ses, ancho=True, titulo_tab=f"Llenar cancha · {MARCA}")

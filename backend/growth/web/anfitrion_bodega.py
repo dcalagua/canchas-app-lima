@@ -192,10 +192,10 @@ CSS = r"""
 .bbarra.on{display:block}.bbarra .btn{width:100%;max-width:560px;margin:0 auto;display:block}
 .bfila{display:flex;gap:12px;align-items:center;background:#fff;border:1px solid var(--trazo);border-radius:16px;padding:12px 14px;margin-bottom:8px;cursor:pointer;min-width:0}
 .bfila .tx{flex:1;min-width:0}.bfila .tx b{display:block;overflow-wrap:anywhere}.bfila .tx small{color:var(--tenue);font-size:12.5px}
-.bfila .stk{text-align:right;flex:none}.bfila .stk b{display:block;font-size:18px;color:var(--esmeralda)}.bfila .stk small{font-size:11px;color:var(--tenue);font-weight:700}
+.bfila .stk{text-align:right;flex:none}.bfila .stk b{display:block;font-size:18px;color:var(--esmeralda)}.bfila .stk small{font-size:12px;color:var(--tenue);font-weight:700}
 .bfila .stk.bajo b,.bfila .stk.bajo small{color:var(--rojo,#C0392B)}
 .bfoto{position:relative;cursor:pointer;flex:none;border:0;background:none;padding:0}
-.bfoto .cam{position:absolute;right:-4px;bottom:-4px;width:18px;height:18px;border-radius:50%;background:var(--esmeralda);color:#fff;font-size:10px;display:flex;align-items:center;justify-content:center}
+.bfoto .cam{position:absolute;right:-4px;bottom:-4px;width:18px;height:18px;border-radius:50%;background:var(--esmeralda);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center}
 .bsec{background:#fff;border:1px solid var(--trazo);border-radius:16px;padding:14px 16px;margin-bottom:12px}
 .bsw{display:flex;align-items:center;gap:12px;justify-content:space-between}
 .bsw b{display:block}.bsw small{color:var(--tenue);font-size:12.5px}
@@ -277,7 +277,7 @@ def _vista_caja(prods: list[dict], sim: str) -> str:
             f"<span style='display:flex;gap:10px;align-items:center;min-width:0'>{imagen(p)}<span class='nm'>{e(p['nombre'])}</span></span>"
             f"<span class='pr'>{e(_m(p['moneda'] or sim, p['precio']))}</span>"
             f"<span class='st{' bajo' if agot or bd.stock_bajo(p) else ''}'>{e(st)}</span><span class='cant' hidden></span></button>")
-    return ("<input class='bbusca' id='bBusca' type='search' placeholder='🔎 Buscar producto…' autocomplete='off'>"
+    return ("<input class='bbusca' id='bBusca' aria-label='Buscar producto' type='search' placeholder='🔎 Buscar producto…' autocomplete='off'>"
             f"{chips}<div id='bTicket'></div><p class='sub' id='bTip' style='margin:12px 0 0'>Toca un producto para sumarlo al ticket.</p>"
             f"<p class='sub' id='bSinRes' hidden style='text-align:center;margin:18px 0'>Sin resultados con ese filtro.</p>"
             f"<div class='bgrid'>{''.join(tarjetas)}</div>")
@@ -395,7 +395,7 @@ def _modal_carta(carta: str, base: str) -> str:
     enlace = f"{base}/b/{carta}"
     wa = ui.boton_whatsapp(f"Mira la carta de mi bodega 🧃🍺: {enlace}", "💬 Compartir", "btn sec")
     return ("<div class='modal' id='modalCarta' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:460px'>"
-            "<div class='modal-cab'><button type='button' class='cerrar' data-cerrar-modal>✕</button><h3>Carta digital de tu bodega 🧾</h3></div>"
+            "<div class='modal-cab'><button type='button' class='cerrar' data-cerrar-modal aria-label='Cerrar'>✕</button><h3>Carta digital de tu bodega 🧾</h3></div>"
             "<div class='modal-cuerpo'><section class='bqr'><p class='sub' style='margin:0 0 14px'>Imprime el QR y pégalo junto a tu Yape: tus "
             "clientes ven la carta con precios siempre al día. Pagan contigo, como siempre.</p>"
             f"<img src='/b/{e(carta)}/qr.png' alt='QR de la carta' loading='lazy'>"
@@ -456,7 +456,7 @@ def pagina_bodega(request: Request, tab: str = "caja") -> HTMLResponse:
         "<div class='bbarra' id='bBarra'><button type='button' class='btn lg' id='bCobrar'>Cobrar</button></div>"
         f"{_modal_carta(carta, _base_landing(request))}"
         "<div class='modal' id='bModal' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:480px'>"
-        "<div class='modal-cab'><button type='button' class='cerrar' data-cerrar-modal>✕</button><h3 id='bModalTit'></h3></div>"
+        "<div class='modal-cab'><button type='button' class='cerrar' data-cerrar-modal aria-label='Cerrar'>✕</button><h3 id='bModalTit'></h3></div>"
         "<div class='modal-cuerpo' id='bModalCuerpo'></div></div></div>"
         f"<script>var BOD={ui.json_js(cfg_js, ensure_ascii=False)};</script><script>{JS}</script>")
     return ui.shell("Mi bodega", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mi bodega · Modo anfitrión",
@@ -911,7 +911,7 @@ async function elegirCliente(){pcgCargando('Buscando tus clientes…',{demora:25
   var lista=(j&&j.clientes)||[];
   if(!lista.length){await pcgAvisar({titulo:'Sin clientes registrados',mensaje:'La cuenta abierta es solo para clientes registrados (así sabes quién te debe). Aparecerán aquí cuando reserven en tus canchas con la app.',icono:'🪪'});return null}
   return new Promise(function(res){resolver=res;
-    abrirModal('Abrir cuenta · ¿para quién?',"<section><input class='bbusca' id='bCliQ' type='search' placeholder='🔎 Buscar por nombre…' autocomplete='off'><div class='bopc' id='bCliL' style='margin-top:10px'></div></section>");
+    abrirModal('Abrir cuenta · ¿para quién?',"<section><input class='bbusca' id='bCliQ' aria-label='Buscar cliente por nombre' type='search' placeholder='🔎 Buscar por nombre…' autocomplete='off'><div class='bopc' id='bCliL' style='margin-top:10px'></div></section>");
     function pinta(f){f=(f||'').toLowerCase();var vis=lista.filter(function(c){return !f||c.nombre.toLowerCase().indexOf(f)>=0||c.email.indexOf(f)>=0});
       $('bCliL').innerHTML=vis.length?vis.map(function(c,i){return "<button type='button' data-cli='"+esc(c.email)+"'>"+(c.foto?"<img class='av' src='"+esc(c.foto)+"' alt='' referrerpolicy='no-referrer'>":"<span class='av'>"+esc((c.nombre||'?').charAt(0).toUpperCase())+"</span>")+"<span><b>"+esc(c.nombre)+"</b>"+(c.hoy?"<small style='color:var(--esmeralda)'>Con reserva hoy · está en el local</small>":"")+"</span></button>"}).join(''):"<p class='sub' style='text-align:center'>Nadie coincide con esa búsqueda.</p>";
       $('bCliL').querySelectorAll('[data-cli]').forEach(function(b){b.onclick=function(){cerrarModal(b.dataset.cli)}})}
@@ -923,8 +923,8 @@ function editor(p){var nuevo=!p;p=p||{id:'',nombre:'',categoria:'Bebidas',precio
   var h="<section class='bform'><label class='l'>Categoría</label><div class='chips' id='bfCat'>"+B.cats.map(function(c){return "<button type='button' class='chip"+(c===cat?' sel':'')+"' data-c='"+esc(c)+"'>"+esc(c)+"</button>"}).join('')+"</div>"
    +"<label class='l' for='bfNom'>Producto</label><input type='text' id='bfNom' maxlength='60' value='"+esc(p.nombre)+"' placeholder='Toca una sugerencia o escribe la marca'><div class='bsug' id='bfSug'>"+sugs()+"</div>"
    +"<label class='l' for='bfPre'>Precio de venta</label><div class='pre'><span>"+esc(p.moneda||B.sim)+"</span><input type='number' id='bfPre' min='0' step='0.10' inputmode='decimal' value='"+(p.precio?Number(p.precio).toFixed(2):'')+"'></div>"
-   +"<div class='fila'><span class='l'>Stock actual</span><span class='bstep'><button type='button' data-st='bfSt' data-d='-1'>−</button></span><input type='number' id='bfSt' min='0' max='99999' value='"+(p.stock||0)+"'><span class='bstep'><button type='button' data-st='bfSt' data-d='1'>+</button></span></div>"
-   +"<div class='fila'><span class='l'>Avisarme cuando queden</span><span class='bstep'><button type='button' data-st='bfMin' data-d='-1'>−</button></span><input type='number' id='bfMin' min='0' max='99999' value='"+(p.stock_min==null?2:p.stock_min)+"'><span class='bstep'><button type='button' data-st='bfMin' data-d='1'>+</button></span></div>"
+   +"<div class='fila'><span class='l'>Stock actual</span><span class='bstep'><button type='button' data-st='bfSt' data-d='-1' aria-label='Restar uno al stock'>−</button></span><input type='number' id='bfSt' aria-label='Stock actual' min='0' max='99999' value='"+(p.stock||0)+"'><span class='bstep'><button type='button' data-st='bfSt' data-d='1' aria-label='Sumar uno al stock'>+</button></span></div>"
+   +"<div class='fila'><span class='l'>Avisarme cuando queden</span><span class='bstep'><button type='button' data-st='bfMin' data-d='-1' aria-label='Restar uno al aviso de stock'>−</button></span><input type='number' id='bfMin' aria-label='Avisarme cuando queden' min='0' max='99999' value='"+(p.stock_min==null?2:p.stock_min)+"'><span class='bstep'><button type='button' data-st='bfMin' data-d='1' aria-label='Sumar uno al aviso de stock'>+</button></span></div>"
    +"<div class='err' id='bfErr'></div><div class='acciones' style='justify-content:space-between;margin-top:12px'>"+(nuevo?"<span></span>":"<button type='button' class='btn sec' id='bfDel' style='color:var(--rojo,#C0392B)'>Eliminar</button>")
    +"<span style='display:flex;gap:8px'><button type='button' class='btn sec' data-cerrar-modal>Cancelar</button><button type='button' class='btn' id='bfOk'>Guardar</button></span></div></section>";
   resolver=null;abrirModal(nuevo?'Nuevo producto':'Editar producto',h);
@@ -955,7 +955,7 @@ document.addEventListener('click',async function(ev){var sw=ev.target.closest('[
 function zonas(){var zs=B.zonas.slice();
   function pinta(){$('bzL').innerHTML=zs.map(function(z,i){return "<span class='chip sel'>"+esc(z)+(zs.length>1?" <button type='button' data-zq='"+i+"' aria-label='Quitar' style='border:0;background:none;cursor:pointer;font-weight:900'>✕</button>":"")+"</span>"}).join('')}
   resolver=null;abrirModal('Zonas de entrega 📍',"<section class='bform'><p class='sub' style='margin:0 0 12px'>El cliente elige a dónde le llevas su pedido.</p><div class='chips' id='bzL'></div>"
-    +"<label class='l' for='bzN'>Agregar zona</label><div style='display:flex;gap:8px'><input type='text' id='bzN' maxlength='20' placeholder='Ej.: Cancha 3'><button type='button' class='btn sec' id='bzAdd'>＋</button></div>"
+    +"<label class='l' for='bzN'>Agregar zona</label><div style='display:flex;gap:8px'><input type='text' id='bzN' maxlength='20' placeholder='Ej.: Cancha 3'><button type='button' class='btn sec' id='bzAdd' aria-label='Agregar zona'>＋</button></div>"
     +"<div class='acciones' style='justify-content:flex-end;margin-top:14px'><button type='button' class='btn' id='bzOk'>Guardar</button></div></section>");pinta();
   $('bModalCuerpo').onclick=async function(ev){var qz=ev.target.closest('[data-zq]');if(qz){zs.splice(+qz.dataset.zq,1);pinta();return}
     if(ev.target.id==='bzAdd'){var z=$('bzN').value.trim();if(z&&zs.indexOf(z)<0){zs.push(z);$('bzN').value='';pinta()}return}

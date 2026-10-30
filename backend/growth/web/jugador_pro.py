@@ -696,7 +696,7 @@ CSS = r"""
 .pr-h1{font-size:26px;margin:4px 0 6px}.pr-h2{font-size:18px;margin:22px 0 10px}
 .pr-hero{background:linear-gradient(135deg,#14463A,#1E5C4C);color:#fff;border-radius:22px;padding:22px}
 .pr-hero-t{display:flex;align-items:center;gap:10px;font-size:22px}.pr-hero-t b{font-weight:900}
-.pr-corona{font-size:28px}.pr-activo{margin-left:auto;background:#7CB518;color:#fff;border-radius:999px;padding:4px 11px;font-size:11px;font-weight:900}
+.pr-corona{font-size:28px}.pr-activo{margin-left:auto;background:#7CB518;color:#fff;border-radius:999px;padding:4px 11px;font-size:12px;font-weight:900}
 .pr-hero p{margin:10px 0 0;color:rgba(255,255,255,.9);line-height:1.4}
 .pr-precio{margin-top:14px;display:flex;align-items:flex-end;gap:4px}.pr-precio b{font-size:32px;font-weight:900}.pr-precio span{color:rgba(255,255,255,.75);padding-bottom:6px}
 .pr-ben{list-style:none;margin:0;padding:0;display:grid;gap:12px}

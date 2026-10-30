@@ -251,7 +251,7 @@ _CSS_CUENTA = """
 .cf-it .em{font-size:22px;width:28px;text-align:center;flex:none}
 .cf-it .tx{flex:1;min-width:0}
 .cf-it small{display:block;color:#6a6a6a;font-size:13px;margin-top:2px}
-.cf-it .app{font-size:11.5px;font-weight:700;color:#08654A;background:#E9F6EE;border-radius:99px;padding:3px 9px;white-space:nowrap}
+.cf-it .app{font-size:12px;font-weight:700;color:#08654A;background:#E9F6EE;border-radius:99px;padding:3px 9px;white-space:nowrap}
 .cf-it .chev{color:#b0b0b0;font-size:20px}
 .cf-it.rojo{color:#C0392B}
 .pcg-dlg .caja .cf-op{display:flex;flex-wrap:wrap;gap:8px;text-align:left}

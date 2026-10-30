@@ -8,6 +8,7 @@ Ejecutar (desde este directorio):
 from __future__ import annotations
 
 import os
+import re
 import time
 
 import asyncio
@@ -181,6 +182,78 @@ def _persistir_al_apagar() -> None:
             pg.persistir_ahora(stores)
         except Exception:  # noqa: BLE001
             pass
+
+class _SeoAmbiente:
+    """ASGI puro (va DENTRO del gzip de `seguridad_web`, así ve el HTML sin
+    comprimir): (1) guarda la base de la request para que `ui.shell` arme
+    og:image/canonical ABSOLUTOS cuando el ambiente no tiene PUBLIC_BASE_URL;
+    (2) FUERA de producción (`config.sitio_indexable()` falso: QAS, DEV…) toda
+    respuesta lleva `X-Robots-Tag: noindex, nofollow` y toda página HTML el
+    `<meta name="robots">` (lo pone `ui.shell`; aquí se inyecta en las páginas
+    que no pasan por él: landings, campeonato, legal, retornos de pasarela)."""
+
+    _RE_ROBOTS = re.compile(rb"<meta[^>]+name=[\"']?robots", re.I)
+    _RE_HEAD = re.compile(rb"<head[^>]*>", re.I)
+    _RE_CHARSET = re.compile(rb"<meta[^>]*charset[^>]*>", re.I)
+    _RE_DOCTYPE = re.compile(rb"<!doctype[^>]*>", re.I)
+
+    def __init__(self, app):
+        self.app = app
+
+    @classmethod
+    def con_meta(cls, cuerpo: bytes) -> bytes:
+        if not cuerpo.strip() or cls._RE_ROBOTS.search(cuerpo[:8192]):
+            return cuerpo
+        meta = b"<meta name='robots' content='noindex,nofollow'>"
+        for rx in (cls._RE_HEAD, cls._RE_CHARSET, cls._RE_DOCTYPE):
+            m = rx.search(cuerpo, 0, 8192)
+            if m:
+                return cuerpo[:m.end()] + meta + cuerpo[m.end():]
+        return meta + cuerpo
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            return await self.app(scope, receive, send)
+        from web import ui as _ui
+        hdrs = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers") or []}
+        host = (hdrs.get("x-forwarded-host") or hdrs.get("host") or "").split(",")[0].strip()
+        proto = (hdrs.get("x-forwarded-proto") or scope.get("scheme") or "http").split(",")[0].strip()
+        token = _ui.BASE_REQUEST.set(f"{proto}://{host}" if host else "")
+        try:
+            if config.sitio_indexable():
+                return await self.app(scope, receive, send)
+            inicio: dict = {}
+            partes: list[bytes] = []
+
+            async def _send(msg):
+                if msg["type"] == "http.response.start":
+                    cab = [(k, v) for k, v in msg.get("headers") or [] if k.lower() != b"x-robots-tag"]
+                    cab.append((b"x-robots-tag", b"noindex, nofollow"))
+                    msg = dict(msg, headers=cab)
+                    tipo = next((v for k, v in cab if k.lower() == b"content-type"), b"")
+                    codif = next((v for k, v in cab if k.lower() == b"content-encoding"), b"")
+                    if tipo.lower().startswith(b"text/html") and not codif and scope.get("method") != "HEAD":
+                        inicio["msg"] = msg     # se manda junto al cuerpo (cambia el largo)
+                        return
+                    return await send(msg)
+                if msg["type"] == "http.response.body" and inicio:
+                    partes.append(msg.get("body", b""))
+                    if msg.get("more_body"):
+                        return
+                    cuerpo = self.con_meta(b"".join(partes))
+                    ini = inicio.pop("msg")
+                    cab = [(k, v) for k, v in ini["headers"] if k.lower() != b"content-length"]
+                    cab.append((b"content-length", str(len(cuerpo)).encode()))
+                    await send(dict(ini, headers=cab))
+                    return await send({"type": "http.response.body", "body": cuerpo, "more_body": False})
+                return await send(msg)
+
+            return await self.app(scope, receive, _send)
+        finally:
+            _ui.BASE_REQUEST.reset(token)
+
+
+app.add_middleware(_SeoAmbiente)
 
 # Rendimiento y seguridad de la web pública (gzip, CSS/JS versionados,
 # anti-iframe, CSP en modo reporte, CSRF y límites por IP): web/seguridad_web.py.
@@ -577,6 +650,10 @@ def robots_txt(request: Request):
     disparaba consultas pagadas a Google Places (oct-2026). Anuncia el sitemap."""
     from fastapi.responses import PlainTextResponse
     from web import seo as _seo
+    if not config.sitio_indexable():
+        # QAS / DEV: nada se indexa (las páginas de prueba no van a Google) y
+        # sin Sitemap, que solo anuncia producción.
+        return PlainTextResponse("User-agent: *\nDisallow: /\n", headers={"Cache-Control": "public, max-age=3600"})
     return PlainTextResponse(
         "User-agent: *\n"
         "Disallow: /web/\n"

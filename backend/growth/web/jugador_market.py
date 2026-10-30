@@ -310,7 +310,7 @@ _CSS = """<style>
 .mk-card{display:block;color:inherit;text-decoration:none;min-width:0}
 .mk-card .f{position:relative;aspect-ratio:1;border-radius:14px;overflow:hidden;background:var(--gris);display:flex;align-items:center;justify-content:center}
 .mk-card .f img{width:100%;height:100%;object-fit:cover;transition:transform .3s}.mk-card:hover .f img{transform:scale(1.03)}
-.mk-card .ph{font-size:46px}.mk-card .tag{position:absolute;left:10px;top:10px;background:#fff;border-radius:999px;padding:4px 9px;font-size:11.5px;font-weight:800;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.mk-card .ph{font-size:46px}.mk-card .tag{position:absolute;left:10px;top:10px;background:#fff;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:800;box-shadow:0 1px 4px rgba(0,0,0,.12)}
 .mk-card .tag.agot{background:var(--bad-bg);color:var(--bad-fg)}
 .mk-card b.n{display:block;margin-top:9px;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mk-card .pr{font-weight:800;font-size:15px;margin-top:1px}.mk-card .vd{display:flex;gap:4px;align-items:center;color:var(--tenue);font-size:12.5px;margin-top:2px;min-width:0}

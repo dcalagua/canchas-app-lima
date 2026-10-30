@@ -392,7 +392,7 @@ _CSS = """
 .bil-acc a,.bil-acc button{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:0;font:inherit;color:inherit;text-decoration:none;cursor:pointer;padding:6px 2px;border-radius:14px;position:relative}
 .bil-acc .bur{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px}
 .bil-acc small{font-size:12px;font-weight:700;text-align:center;line-height:1.15}
-.bil-acc .ins{position:absolute;top:0;left:calc(50% + 12px);background:#B08908;color:#fff;border:1.5px solid #fff;border-radius:99px;font-size:10px;font-weight:800;padding:2px 6px}
+.bil-acc .ins{position:absolute;top:0;left:calc(50% + 12px);background:#B08908;color:#fff;border:1.5px solid #fff;border-radius:99px;font-size:12px;font-weight:800;padding:2px 6px}
 .bil-cupon{margin:6px 0 4px;text-align:center}
 .bil-cupon summary{display:inline-block;cursor:pointer;color:#14463A;font-weight:700;list-style:none;padding:8px}
 .bil-cupon summary::-webkit-details-marker{display:none}
@@ -417,7 +417,7 @@ _CSS = """
 .bmov .tx small{color:var(--tenue);font-size:12.5px}
 .bmov .der{text-align:right;flex:none}
 .bmov .der b{font-size:15.5px;white-space:nowrap}
-.bmov .der small{display:block;color:var(--tenue);font-size:11.5px}
+.bmov .der small{display:block;color:var(--tenue);font-size:12px}
 .bmov .rec{margin:0 12px 12px 64px;background:#F6F7F6;border-radius:10px;padding:8px 10px;font-size:13px}
 .bmov .rec div{display:flex;justify-content:space-between;gap:10px;padding:2px 0}
 .bmov .rec div b{white-space:nowrap}
@@ -432,7 +432,7 @@ _CSS = """
 .pag .tx b{display:block;font-size:14.5px;overflow-wrap:anywhere;line-height:1.3}
 .pag .tx small{color:var(--tenue);font-size:12.5px;display:block}
 .pag .mt{font-weight:800;font-size:15px;white-space:nowrap;text-align:right}
-.pag .mt small{display:block;font-weight:600;font-size:11.5px;color:var(--tenue)}
+.pag .mt small{display:block;font-weight:600;font-size:12px;color:var(--tenue)}
 .pag-res{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;background:#F4F7F5;border-radius:14px;padding:12px;margin:10px 0}
 .pag-res small{display:block;color:var(--tenue);font-size:12px}
 .pag-res b{font-size:15px;overflow-wrap:anywhere}
@@ -450,7 +450,7 @@ _CSS = """
 .pts-it .em{font-size:20px;flex:none}
 .pts-it .tx{flex:1;min-width:0}
 .pts-it .tx b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pts-it .tx small{color:var(--tenue);font-size:11.5px}
+.pts-it .tx small{color:var(--tenue);font-size:12px}
 .pts-it .n{font-weight:900;font-size:15px;color:#14463A;white-space:nowrap}
 .pts-it .n.gris{color:var(--tenue)}.pts-it .n.rojo{color:#C0392B}
 .pais-actual{display:flex;align-items:center;gap:14px;background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px}

@@ -756,7 +756,7 @@ _CSS_LIGA = """
 .lg-tabs{display:flex;gap:4px;border-bottom:1px solid #EBEBEB;margin:0 0 14px;overflow-x:auto;scrollbar-width:none}
 .lg-tabs a{padding:10px 12px;font-weight:700;color:#6a6a6a;text-decoration:none;border-bottom:2px solid transparent;white-space:nowrap;display:inline-flex;gap:6px;align-items:center}
 .lg-tabs a.sel{color:#0A1B3D;border-color:#0A1B3D}
-.lg-bdg{background:#E0245E;color:#fff;border-radius:99px;font-size:11.5px;font-weight:800;min-width:20px;height:20px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center}
+.lg-bdg{background:#E0245E;color:#fff;border-radius:99px;font-size:12px;font-weight:800;min-width:20px;height:20px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center}
 .lg-fil{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
 .lg-fil a.chip{text-decoration:none}
 .lg-info{display:flex;gap:12px;align-items:center;background:#EAF7EF;color:#08654A;border-radius:16px;padding:12px 14px;margin:0 0 10px;font-size:13.5px;line-height:1.35}
@@ -775,13 +775,13 @@ _CSS_LIGA = """
 .lg-fila .q b{display:flex;gap:6px;align-items:center;min-width:0}
 .lg-fila .q b span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .lg-fila .q small{display:block;color:#6a6a6a;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lg-pro{background:#0A1B3D;color:#fff;font-size:9.5px;font-weight:900;border-radius:6px;padding:2px 6px;letter-spacing:.5px;flex:none}
+.lg-pro{background:#0A1B3D;color:#fff;font-size:12px;font-weight:900;border-radius:6px;padding:2px 6px;letter-spacing:.5px;flex:none}
 .lg-st{display:flex;gap:2px;flex:none}
 .lg-st div{width:28px;text-align:center}
 .lg-st div.pts{width:38px}
 .lg-st b{display:block;font-size:14px}
 .lg-st .pts b{font-size:17px;color:#08654A}
-.lg-st small{font-size:9.5px;color:#6a6a6a;font-weight:600}
+.lg-st small{font-size:12px;color:#6a6a6a;font-weight:600}
 .lg-st .g b{color:#0B7A57}.lg-st .p b{color:#C0392B}
 .lg-fila .btn{margin:0;padding:7px 12px;font-size:13px;flex:none}
 .lg-reto{background:#fff;border:1px solid #EBEBEB;border-radius:14px;padding:14px;margin:0 0 8px}
@@ -790,7 +790,7 @@ _CSS_LIGA = """
 .lg-reto .q{flex:1;min-width:0}
 .lg-reto .q .r1{display:flex;gap:8px;align-items:flex-start;justify-content:space-between}
 .lg-reto .q .r1 b{overflow-wrap:anywhere}
-.lg-reto .est{border-radius:8px;padding:3px 8px;font-size:11.5px;font-weight:800;white-space:nowrap;flex:none}
+.lg-reto .est{border-radius:8px;padding:3px 8px;font-size:12px;font-weight:800;white-space:nowrap;flex:none}
 .lg-reto small{display:block;color:#6a6a6a;font-size:12.5px;margin-top:2px}
 .lg-reto .acc{display:flex;gap:10px;margin-top:10px}
 .lg-reto .acc .btn{flex:1;margin:0}
@@ -1421,7 +1421,7 @@ window.lgUnirme = function(){
     C.deportes.map(function(d){ return "<button type='button' class='chip" + (d[0] === dep ? ' sel' : '') + "' data-v='" + d[0] + "'>" + esc(d[1]) + "</button>"; }).join('') +
     "</div><div class='lg-sec'>Zona</div><div class='lg-chips' id='uPais'>" +
     C.paises.map(function(p){ return "<button type='button' class='chip" + (p[0] === pais ? ' sel' : '') + "' data-v='" + p[0] + "'>" + esc(p[1]) + "</button>"; }).join('') +
-    "</div><div class='lg-geo'><select id='g1'></select><select id='g2'></select><select id='g3'></select></div>" +
+    "</div><div class='lg-geo'><select id='g1' aria-label='Región'></select><select id='g2' aria-label='Provincia o ciudad'></select><select id='g3' aria-label='Distrito o zona'></select></div>" +
     "<div class='lg-sec'>Categoría *</div><div class='sub' style='margin:-4px 0 6px;font-size:12.5px'>Obligatoria: la liga te ordena y te reta por tu nivel.</div><div class='lg-chips' id='uCat'>" +
     C.categorias.map(function(k){ return "<button type='button' class='chip" + (k === cat ? ' sel' : '') + "' data-v='" + esc(k) + "'>" + esc(k) + "</button>"; }).join('') + "</div></div>";
   var arbol = null;
@@ -1464,7 +1464,7 @@ var slots = {}, envBtn = document.getElementById('lgDobEnviar');
 function listo(){ var ok = slots.companero && slots.rival1 && slots.rival2; envBtn.disabled = !ok; envBtn.style.opacity = ok ? 1 : .5; }
 document.querySelectorAll('[data-slot]').forEach(function(s){ s.addEventListener('click', function(){
   var k = s.dataset.slot;
-  var p = pcgConfirmar({titulo: s.querySelector('small').textContent, icono: '🔎', html: "<input type='search' id='dqQ' placeholder='Nombre del jugador' autocomplete='off' style='width:100%'><div class='lg-res' id='dqRes'></div>", confirmar: 'Cerrar', cancelar: 'Cancelar'});
+  var p = pcgConfirmar({titulo: s.querySelector('small').textContent, icono: '🔎', html: "<input type='search' id='dqQ' aria-label='Buscar jugador por nombre' placeholder='Nombre del jugador' autocomplete='off' style='width:100%'><div class='lg-res' id='dqRes'></div>", confirmar: 'Cerrar', cancelar: 'Cancelar'});
   var inp = document.getElementById('dqQ'); setTimeout(function(){ inp.focus(); }, 60);
   buscador(inp, document.getElementById('dqRes'), {boton: function(){ return ''; }, click: function(x){
     var usado = Object.keys(slots).some(function(o){ return o !== k && slots[o] && slots[o].ref === x.ref; });

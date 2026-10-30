@@ -1099,7 +1099,7 @@ _CSS = """
 .mj-b.mio{align-self:flex-end;background:var(--tinte)}
 .mj-b .au{font-size:12.5px;font-weight:800;color:var(--teal);margin-bottom:2px}
 .mj-b .tx{white-space:pre-wrap}.mj-b .tx a{color:var(--teal);word-break:break-all}
-.mj-b .pie{display:flex;justify-content:flex-end;align-items:center;gap:4px;font-size:11.5px;color:var(--tenue);margin-top:2px}
+.mj-b .pie{display:flex;justify-content:flex-end;align-items:center;gap:4px;font-size:12px;color:var(--tenue);margin-top:2px}
 .mj-b .ck{font-size:12px;letter-spacing:-3px;color:#8A9AA5}.mj-b .ck.azul{color:#34B7F1}
 .mj-b img.ft{display:block;max-width:100%;width:280px;max-height:340px;object-fit:cover;border-radius:12px;margin:2px 0 4px;cursor:zoom-in;background:#eee}
 .mj-b img.gif{max-width:200px;border-radius:10px;background:transparent}
@@ -1426,7 +1426,10 @@ def _cabecera_chat(conv: dict, tit: dict) -> str:
     foto = (f"<img class='mj-av sm' src='{e(tit['foto'])}' alt='' referrerpolicy='no-referrer'>" if tit["foto"]
             else f"<span class='mj-av sm'>{'👥' if tit['grupo'] else e((tit['titulo'].strip() or '?')[:1].upper())}</span>")
     who_href = f"/mensajes/grupo/{quote(tit['grupo'], safe='')}" if tit["grupo"] else "#"
-    return ("<div class='mj-cab'><a class='vol' href='/mensajes' aria-label='Volver'>‹</a>"
+    # h1 solo para lectores de pantalla: la cabecera visible es la del contacto.
+    h1 = ("Chat del grupo " if tit["grupo"] else "Chat con ") + (tit["titulo"].strip() or "tu contacto")
+    return (f"<h1 class='sr-only'>{e(h1)}</h1>"
+            "<div class='mj-cab'><a class='vol' href='/mensajes' aria-label='Volver a Mensajes'>‹</a>"
             f"<a class='who' href='{who_href}'" + ("" if tit["grupo"] else " onclick='return false'") + f">{foto}"
             f"<span style='min-width:0'><b>{e(tit['titulo'])}</b><small>{e(tit['sub'])}</small></span></a>"
             "<button type='button' class='ib' onclick='mjLlamadas()' title='Llamar' aria-label='Llamar'>📞</button>"
@@ -1561,7 +1564,7 @@ def pagina_nuevo_grupo(request: Request):
                   for n, c in sugeridos)
     cuerpo = (_CSS + "<div class='mj-panel'><div class='mj-top'><h1>Nuevo grupo</h1><div class='acc'><a class='btn sec' href='/mensajes'>‹ Mensajes</a></div></div>"
               "<div class='panel'><label style='font-weight:700;font-size:14px'>Nombre del grupo</label>"
-              "<input id='mjGNom' maxlength='60' placeholder='Ej.: Pichanga de los jueves' style='margin-top:6px'>"
+              "<input id='mjGNom' aria-label='Nombre del grupo' maxlength='60' placeholder='Ej.: Pichanga de los jueves' style='margin-top:6px'>"
               "<div class='mj-sec'>Miembros <span id='mjGCnt'></span></div><div class='mj-elegidos' id='mjGEl'></div>"
               "<div class='mj-busca'><input id='mjQ' type='search' placeholder='Busca por nombre o correo para agregar' autocomplete='off' aria-label='Buscar miembros'></div>"
               "<div class='mj-res' id='mjRes'></div>"
@@ -1630,7 +1633,7 @@ def pagina_info_grupo(request: Request, grupo_id: str):
               + "<button type='button' class='btn sec' id='mjGCam' style='padding:8px 14px;font-size:14px'>📷 Cambiar foto</button>"
               "<input type='file' id='mjGArch' accept='image/*' hidden></div>"
               f"<label style='font-weight:700;font-size:14px'>Nombre del grupo</label><div style='display:flex;gap:8px;margin-top:6px'>"
-              f"<input id='mjGNom' maxlength='60' value='{e(g['nombre'])}'><button type='button' class='btn' id='mjGGuardar'>Guardar</button></div>"
+              f"<input id='mjGNom' aria-label='Nombre del grupo' maxlength='60' value='{e(g['nombre'])}'><button type='button' class='btn' id='mjGGuardar'>Guardar</button></div>"
               f"<div class='mj-sec'>{len(g['miembros'])} integrantes</div><div class='mj-res'>" + "".join(x for _, _, x in miembros) + "</div>"
               "<div class='mj-sec'>Añadir integrante</div>"
               "<div class='mj-busca'><input id='mjQ' type='search' placeholder='Busca por nombre o correo' autocomplete='off' aria-label='Buscar integrante'></div>"

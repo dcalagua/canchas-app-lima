@@ -631,7 +631,7 @@ def _bloque_doc(c: dict, para: str) -> str:
     pais = _pais(c)
     doc, largo = _DOC.get(pais, ("DNI", 8))
     mn, mx = _rango_edad(c)
-    fecha = ("<label class='l'>🎂 Fecha de nacimiento</label><input type='date' data-doc-nac>"
+    fecha = ("<label class='l'>🎂 Fecha de nacimiento</label><input type='date' aria-label='Fecha de nacimiento' data-doc-nac>"
              if pais == "BO" and (mn is not None or mx is not None) else "")
     quien = f"el {doc} de tu hijo(a)" if para == "hijo" else f"tu {doc}"
     nota = ("Lo validamos contra el registro oficial: nombre y edad vienen de ahí." if pais != "BO"
@@ -639,7 +639,7 @@ def _bloque_doc(c: dict, para: str) -> str:
     return (f"<div class='doc' data-doc='{para}'><b>🪪 Este campeonato exige {e(doc)}</b>"
             f"<p class='sub' style='margin:4px 0 0'>Ingresa {e(quien)}. {e(nota)}</p>"
             f"<label class='l'>Número de {e(doc)}</label><input type='text' inputmode='{'text' if pais == 'BO' else 'numeric'}' "
-            f"maxlength='{largo or 15}' autocomplete='off' data-doc-num placeholder='{(str(largo) + ' dígitos') if largo else e(doc)}'>{fecha}"
+            f"maxlength='{largo or 15}' autocomplete='off' aria-label='Número de {e(doc)}' data-doc-num placeholder='{(str(largo) + ' dígitos') if largo else e(doc)}'>{fecha}"
             "<div class='err' data-doc-err></div></div>")
 
 
@@ -749,7 +749,7 @@ def pagina_torneo(request: Request, cid: str, equipo: str = "") -> HTMLResponse:
         boton = f"Inscribirme · {_monto(c, costo)}" if costo > 0 else "Inscribirme"
         hijo_fijo = bool(mias)  # ya me inscribí yo o inscribí hijos → solo otro hijo
         campo_nombre = ("" if nombre_del_dni else
-                        "<label class='l'>Nombre del alumno (niño/a)</label><input type='text' maxlength='80' data-f='nombre' autocomplete='off'>")
+                        "<label class='l'>Nombre del alumno (niño/a)</label><input type='text' maxlength='80' aria-label='Nombre del alumno' data-f='nombre' autocomplete='off'>")
         partes.append(
             f"<div class='card' id='insc'><h2>{'Inscribir a otro hijo(a)' if hijo_fijo else 'Inscribirme'}</h2>"
             f"<p class='sub'>Se paga de tu saldo {MARCA}, como en la app. El organizador recibe tu inscripción al instante.</p>"
@@ -757,8 +757,8 @@ def pagina_torneo(request: Request, cid: str, equipo: str = "") -> HTMLResponse:
             f"<button type='button' data-q='yo' class='{'' if hijo_fijo else 'sel'}'{' disabled' if hijo_fijo else ''}>Yo</button>"
             f"<button type='button' data-q='hijo' class='{'sel' if hijo_fijo else ''}'>Mi hijo(a)</button></div>"
             f"<div data-hijo style='display:{'block' if hijo_fijo else 'none'}'>{campo_nombre}"
-            + ("" if c.get("exigeDni") else "<label class='l'>Edad (opcional)</label><input type='text' inputmode='numeric' maxlength='2' data-f='edad' autocomplete='off'>")
-            + f"<label class='l'>Tu WhatsApp (apoderado)</label><input type='tel' maxlength='15' data-f='whatsapp' inputmode='tel'>"
+            + ("" if c.get("exigeDni") else "<label class='l'>Edad (opcional)</label><input type='text' inputmode='numeric' maxlength='2' aria-label='Edad (opcional)' data-f='edad' autocomplete='off'>")
+            + f"<label class='l'>Tu WhatsApp (apoderado)</label><input type='tel' maxlength='15' aria-label='Tu WhatsApp (apoderado)' data-f='whatsapp' inputmode='tel'>"
             "<label class='chk'><input type='checkbox' data-f='consiente'> <span>Soy el apoderado y autorizo el registro del menor.</span></label>"
             + (_bloque_doc(c, "hijo") if c.get("exigeDni") else "") + "</div>"
             + (f"<div data-yo style='display:{'none' if hijo_fijo else 'block'}'>{_bloque_doc(c, 'yo')}</div>" if doc_yo else "")
@@ -781,7 +781,7 @@ def pagina_torneo(request: Request, cid: str, equipo: str = "") -> HTMLResponse:
                 + ("<p class='sub'>Como capitán pones tu parte del pozo de tu saldo; tus jugadores ponen la suya al entrar con tu código "
                    "y el equipo queda inscrito cuando el pozo se completa.</p>" if parte > 0 else
                    "<p class='sub'>Recibirás un código para que tus jugadores se unan al plantel.</p>")
-                + "<label class='l'>Nombre del equipo</label><input type='text' maxlength='60' id='eqNombre' placeholder='Los Tigres FC' autocomplete='off'>"
+                + "<label class='l'>Nombre del equipo</label><input type='text' maxlength='60' id='eqNombre' aria-label='Nombre del equipo' placeholder='Los Tigres FC' autocomplete='off'>"
                 f"<div class='err' id='eqErr'></div><div class='acc'><button type='button' class='btn lg' id='btnCrear' data-parte='{parte}'>{e(txt)}</button></div></div>")
         if not es_dueno and not mias and L.plantel_abierto(c):
             nota = ("" if puede_ins else
@@ -789,7 +789,7 @@ def pagina_torneo(request: Request, cid: str, equipo: str = "") -> HTMLResponse:
                     + "aún puedes unirte al plantel de un equipo: toca el equipo o usa el código de tu capitán.")
             partes.append("<div class='card'><h2>Unirme a un equipo</h2>"
                           + (f"<p class='sub'>{e(nota)}</p>" if nota else "<p class='sub'>¿Tu capitán te pasó un código? Escríbelo aquí.</p>")
-                          + "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><input type='text' id='codEq' maxlength='12' placeholder='Ej.: 4KZ9AB' "
+                          + "<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><input type='text' id='codEq' maxlength='12' aria-label='Código del equipo' placeholder='Ej.: 4KZ9AB' "
                           "style='flex:1 1 160px;min-width:0;text-transform:uppercase;letter-spacing:.12em;font-weight:800' autocomplete='off'>"
                           "<button type='button' class='btn' id='btnCod' style='flex:0 0 auto'>Unirme</button></div><div class='err' id='codErr'></div></div>")
         elif not es_dueno and not mias and not puede_ins:
