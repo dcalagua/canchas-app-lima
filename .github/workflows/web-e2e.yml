@@ -1,0 +1,102 @@
+# Barrido Playwright de la WEB: que una pantalla rota (500, error de JS, diálogo
+# del navegador, desborde en móvil, sin <h1> o violación de CSP) nunca llegue a QAS.
+# Levanta el backend contra un Postgres de CI con la semilla de demostración y
+# recorre ~100 pantallas (públicas, jugador y anfitrión) a 390 px y 1440 px.
+# Detalle: backend/growth/tests/e2e/barrido.mjs. Solo valores DESECHABLES de CI:
+# ninguna llave real, ninguna base de QAS/PRD.
+name: Web E2E (barrido)
+
+on:
+  pull_request:
+    paths:
+      - "backend/growth/**"
+      - ".github/workflows/web-e2e.yml"
+  push:
+    paths:
+      - "backend/growth/**"
+      - ".github/workflows/web-e2e.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: web-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  barrido:
+    name: Barrido web (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: canchalibre
+          POSTGRES_PASSWORD: canchalibre
+          POSTGRES_DB: canchalibre
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U canchalibre"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    defaults:
+      run:
+        working-directory: backend/growth
+    env:
+      DATABASE_URL: postgresql://canchalibre:canchalibre@localhost:55432/canchalibre
+      BASE: http://localhost:8000
+      # Cuentas de REVISIÓN solo de CI (login por /web/sesion/prueba). Desechables.
+      E2E_JUGADOR: jugador@e2e.canchalibre.test:clave-jugador-ci
+      E2E_DUENO: dueno@e2e.canchalibre.test:clave-dueno-ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # = Dockerfile de producción
+          cache: pip
+          cache-dependency-path: backend/growth/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Esquema + semilla de demostración
+        run: |
+          python -m db.migrar --local
+          python tests/e2e/preparar_db.py --base "$BASE"
+      - name: Levantar el backend
+        run: |
+          # Llave Fernet desechable, generada en cada corrida (nunca se guarda).
+          export PAGOS_ENC_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+          export ADMIN_PANEL_TOKEN=ci-admin CULQI_PUBLIC_KEY=pk_test_ci CULQI_SECRET_KEY=sk_test_ci
+          export PICHANGOL_ENTORNO=dev GOOGLE_WEB_CLIENT_ID=ci OSM_ACTIVO=0
+          export PUBLIC_BASE_URL="$BASE" LANDING_BASE_URL="$BASE"
+          export WEB_USUARIOS_PRUEBA="$E2E_JUGADOR,$E2E_DUENO"
+          nohup python -m uvicorn main:app --port 8000 --log-level warning > "$RUNNER_TEMP/servidor.log" 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -fs -o /dev/null "$BASE/ayuda"; then echo "backend arriba"; exit 0; fi
+            sleep 1
+          done
+          echo "el backend no arrancó"; cat "$RUNNER_TEMP/servidor.log"; exit 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: backend/growth/tests/e2e/package-lock.json
+      - name: Playwright (Chromium)
+        working-directory: backend/growth/tests/e2e
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Barrido
+        working-directory: backend/growth/tests/e2e
+        env:
+          E2E_SALIDA: ${{ runner.temp }}/barrido
+        run: node barrido.mjs
+      - name: Log del backend
+        if: always()
+        run: |
+          cp "$RUNNER_TEMP/servidor.log" "$RUNNER_TEMP/barrido/servidor.log" 2>/dev/null || true
+          grep -E "Traceback|Error|\[csp\]|\[js\]" "$RUNNER_TEMP/servidor.log" | tail -60 || true
+      - name: Capturas y reporte
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: barrido-web
+          path: ${{ runner.temp }}/barrido
+          retention-days: 14

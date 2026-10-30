@@ -18,7 +18,7 @@ from tests.test_web_reservas import client, db  # noqa: E402,F401
 
 
 def test_toda_pagina_web_lleva_el_salto_a_la_app(db):
-    for ruta in ("/", "/canchas", "/reservar/c_lima1", "/entrar"):
+    for ruta in ("/", "/canchas", "/reservar/c_lima", "/entrar"):
         r = client.get(ruta)
         assert r.status_code == 200, ruta
         from tests.conftest import con_assets

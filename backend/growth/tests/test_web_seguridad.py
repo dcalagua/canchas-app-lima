@@ -32,14 +32,48 @@ def test_css_y_js_versionados_con_cache_larga_y_gzip(db):
     assert "no-store" not in r.headers["cache-control"]
 
 
-def test_cabeceras_anti_iframe_y_csp_en_modo_reporte(db):
+def test_cabeceras_anti_iframe_y_csp_en_modo_bloqueo_por_defecto(db, monkeypatch):
+    monkeypatch.delenv("WEB_CSP_MODO", raising=False)
     h = client.get("/reservar/c_lima").headers
     assert h["x-frame-options"] == "SAMEORIGIN"
-    csp = h["content-security-policy-report-only"]
+    # Por defecto la CSP BLOQUEA (y sigue reportando).
+    assert "content-security-policy-report-only" not in h
+    csp = h["content-security-policy"]
     assert "frame-ancestors 'self'" in csp and "checkout.culqi.com" in csp and "report-uri /web/csp-reporte" in csp
+    # Lo que la política cierra aunque siga con 'unsafe-inline'.
+    for d in ("object-src 'none'", "base-uri 'self'", "default-src 'self'"):
+        assert d in csp, d
+    assert " * " not in f" {csp} " and "'unsafe-eval'" not in csp
+    # Nada de comodines por directiva de scripts/marcos: dominios concretos.
+    script = next(p for p in csp.split(";") if p.strip().startswith("script-src"))
+    assert "https:" not in script.split() and "*" not in script.replace("*.culqi.com", "")
     assert client.post("/web/csp-reporte", content=b'{"csp-report":{}}').status_code == 204
-    # La torre conserva su DENY.
+    # Los JSON no llevan CSP (solo el HTML) y la torre conserva su DENY.
+    assert "content-security-policy" not in client.get("/web/disponibilidad/c_lima").headers
     assert client.get("/admin").headers["x-frame-options"] == "DENY"
+
+
+def test_csp_en_modo_reporte_como_corte_de_emergencia(db, monkeypatch, capsys):
+    monkeypatch.setenv("WEB_CSP_MODO", "reporte")
+    h = client.get("/reservar/c_lima").headers
+    assert "content-security-policy" not in h
+    assert h["content-security-policy-report-only"] == seguridad_web.CSP
+    # El endpoint de reportes funciona igual y anota el modo en el log.
+    assert client.post("/web/csp-reporte", content=b'{"csp-report":{"blocked-uri":"https://malo.example/x.js"}}').status_code == 204
+    assert "[csp] (reporte)" in capsys.readouterr().out
+    # Un valor desconocido no apaga la protección: vuelve a bloqueo.
+    monkeypatch.setenv("WEB_CSP_MODO", "nada")
+    assert "content-security-policy" in client.get("/reservar/c_lima").headers
+
+
+def test_favicon_ico_ya_no_es_404(db):
+    r = client.get("/favicon.ico", follow_redirects=False)
+    assert r.status_code == 301 and r.headers["location"] == "/marca/logo.png"
+
+
+def test_pagina_inexistente_responde_404_no_soft_404(db):
+    r = client.get("/reservar/no-existe-123")
+    assert r.status_code == 404 and "Cancha no disponible" in r.text
 
 
 def test_csrf_escritura_con_cookie_desde_otro_sitio_se_rechaza(db, monkeypatch):

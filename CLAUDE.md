@@ -4095,6 +4095,20 @@ Detalle y acciones pendientes: `docs/plan/BITACORA_NOCHE.md`.
   (`cl_encargados` + bitácora `cl_encargados_acciones`, RLS sin políticas); sin
   la migración todo queda oculto. Test `tests/test_web_encargados.py`.
   Pendiente: APK (rol en "Mis canchas", vouchers y agenda del encargado).
+- **Web ronda 3 · barrido en CI + CSP en bloqueo (30-oct):** workflow
+  `.github/workflows/web-e2e.yml` levanta el backend contra un Postgres de CI con
+  `tests/e2e/semilla.sql` (fechas relativas a hoy; `tests/e2e/preparar_db.py`
+  crea las tablas extra de `docs/piloto/`) y corre `tests/e2e/barrido.mjs`
+  (Playwright, ~100 pantallas públicas/jugador/anfitrión a 390 y 1440 px + flujo
+  ficha → "Resumen de tu pago"). FALLA ante HTTP inesperado, error de JS,
+  diálogo del navegador, desborde horizontal, página sin `<h1>`, sin cabecera
+  CSP o con violación de CSP. **Toda pantalla web nueva se agrega a `RUTAS`
+  del barrido** (y sus datos a la semilla). La CSP ahora BLOQUEA
+  (`Content-Security-Policy`); corte de emergencia `WEB_CSP_MODO=reporte`. Sigue
+  con `'unsafe-inline'` (scripts/estilos en línea por todas partes: pasar a
+  nonces es aparte). Un recurso de un dominio nuevo (script, iframe, fuente)
+  hay que sumarlo a `seguridad_web.CSP` o el navegador lo bloquea. "No
+  encontrada" (`router._no_encontrada`) responde 404 de verdad, no 200.
 
 ## Pendientes / backlog
 
