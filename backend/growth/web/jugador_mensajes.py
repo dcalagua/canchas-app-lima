@@ -1426,10 +1426,7 @@ def _cabecera_chat(conv: dict, tit: dict) -> str:
     foto = (f"<img class='mj-av sm' src='{e(tit['foto'])}' alt='' referrerpolicy='no-referrer'>" if tit["foto"]
             else f"<span class='mj-av sm'>{'👥' if tit['grupo'] else e((tit['titulo'].strip() or '?')[:1].upper())}</span>")
     who_href = f"/mensajes/grupo/{quote(tit['grupo'], safe='')}" if tit["grupo"] else "#"
-    # h1 solo para lectores de pantalla: la cabecera visible es la del contacto.
-    h1 = ("Chat del grupo " if tit["grupo"] else "Chat con ") + (tit["titulo"].strip() or "tu contacto")
-    return (f"<h1 class='sr-only'>{e(h1)}</h1>"
-            "<div class='mj-cab'><a class='vol' href='/mensajes' aria-label='Volver a Mensajes'>‹</a>"
+    return ("<div class='mj-cab'><a class='vol' href='/mensajes' aria-label='Volver a Mensajes'>‹</a>"
             f"<a class='who' href='{who_href}'" + ("" if tit["grupo"] else " onclick='return false'") + f">{foto}"
             f"<span style='min-width:0'><h1 class='mj-h1'><b>{e(tit['titulo'])}</b></h1><small>{e(tit['sub'])}</small></span></a>"
             "<button type='button' class='ib' onclick='mjLlamadas()' title='Llamar' aria-label='Llamar'>📞</button>"

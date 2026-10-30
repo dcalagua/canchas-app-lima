@@ -82,12 +82,12 @@ def test_el_chat_tiene_h1_con_el_contacto(monkeypatch, fk):
     fk.add(hc, YO, "¿Tienen turno?", 0)
     cli = _cli(monkeypatch)
     html = cli.get(f"/mensajes/{quote(M.clave_de([hc]), safe='')}").text
-    assert re.search(r"<h1 class='sr-only'>Chat con [^<]+</h1>", html)
+    assert html.count("<h1") == 1 and re.search(r"<h1 class='mj-h1'><b>[^<]+</b></h1>", html)
     assert "aria-label='Volver a Mensajes'" in html and "aria-label='Mensaje'" in html
     refs = [p["ref"] for p in cli.get("/web/mensajes/buscar", params={"q": "s"}).json()["jugadores"]]
     r = cli.post("/web/mensajes/grupos", json={"nombre": "Pichanga jueves", "miembros": refs}).json()
     html = cli.get(r["url"]).text
-    assert "<h1 class='sr-only'>Chat del grupo Pichanga jueves</h1>" in html
+    assert html.count("<h1") == 1 and "<h1 class='mj-h1'><b>Pichanga jueves</b></h1>" in html
     assert unquote(r["url"]).startswith("/mensajes/")
 
 
