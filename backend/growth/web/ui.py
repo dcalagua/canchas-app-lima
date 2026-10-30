@@ -743,6 +743,8 @@ small{font-size:max(12px,.83em)}
   .pie-bajo a{display:inline-flex;align-items:center;min-height:44px}
 }
 """
+from web.estilos_anfitrion import CSS as _CSS_ANFITRION  # noqa: E402 — modo anfitrión (va al final)
+CSS += _CSS_ANFITRION
 
 
 def e(s) -> str:
