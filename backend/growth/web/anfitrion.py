@@ -136,6 +136,12 @@ def _banner_cobros(email: str) -> str:
     return out
 
 
+def _anf(cuerpo: str) -> str:
+    """Envoltorio de toda página del modo anfitrión: sus estilos (y el alto
+    táctil mínimo de 44 px) viven en `web/estilos_anfitrion.py`."""
+    return f"<div class='anf-pag'>{cuerpo}</div>"
+
+
 def _cabecera(seccion: str, ses: dict | None, tabs_visibles: bool = True) -> str:
     tabs = "".join(f"<a class='cat{' sel' if k == seccion else ''}' href='{href}'><span class='ico'>{ico}</span>{n}</a>"
                    for k, n, href, ico in SECCIONES) if tabs_visibles else ""
@@ -152,7 +158,7 @@ def _sesion_o_entrar(request: Request, volver: str):
               "<h1 style='font-size:22px'>Modo anfitrión</h1>"
               "<p class='sub'>En esta web aún no está activo el inicio de sesión. Administra tus canchas desde la app.</p>"
               f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}'>Abrir {MARCA} en Google Play</a></div></div>")
-    return None, ui.shell("Modo anfitrión", cuerpo, sesion=None)
+    return None, ui.shell("Modo anfitrión", _anf(cuerpo), sesion=None)
 
 
 @router.get("/anfitrion", response_class=HTMLResponse)
@@ -179,11 +185,8 @@ def pagina_menu(request: Request) -> HTMLResponse:
             grupos += f"<section class='anf-grupo' aria-label='{e(nombre)}'><h2>{e(nombre)}</h2>{html_its}</section>"
     cuerpo = ("<div class='anf-hero'><a class='volver' href='/' aria-label='Volver'>‹</a><h1>Modo anfitrión</h1>"
               "<p>Publica tu cancha o academia y recibe reservas y alumnos.</p></div>"
-              f"<div class='anf-menu'>{grupos}</div>"
-              "<style>.anf-grupo{display:flex;flex-direction:column;gap:14px}.anf-grupo h2{margin:12px 0 0;font-size:15px;"
-              "text-transform:uppercase;letter-spacing:.06em;color:var(--tenue)}.anf-insignia{display:inline-flex!important;min-width:28px;"
-              "justify-content:center;font-weight:800}.anf-item:focus-visible{outline:3px solid var(--esmeralda);outline-offset:2px}</style>")
-    return ui.shell("Modo anfitrión", cuerpo, nav=_cabecera("", ses, tabs_visibles=False), sesion=ses, ancho=True,
+              f"<div class='anf-menu'>{grupos}</div>")
+    return ui.shell("Modo anfitrión", _anf(cuerpo), nav=_cabecera("", ses, tabs_visibles=False), sesion=ses, ancho=True,
                     titulo_tab=f"Modo anfitrión · {MARCA}")
 
 
@@ -229,7 +232,7 @@ def _onboarding(ses: dict, seccion: str = "hoy") -> HTMLResponse:
         f"<a class='btn sec' href='{PLAY_URL}' rel='noopener'>O desde la app</a><a class='btn sec' href='/#como'>Cómo funciona</a></div>"
         "<p class='sub' style='margin-top:18px;font-size:13px'>¿Ya registraste tu cancha con otro correo? Inicia sesión aquí con ese mismo correo de Google.</p>"
         "</div>")
-    return ui.shell(titulo, cuerpo, nav=_cabecera(seccion, ses), sesion=ses, ancho=True, titulo_tab=f"{titulo} · Modo anfitrión · {MARCA}")
+    return ui.shell(titulo, _anf(cuerpo), nav=_cabecera(seccion, ses), sesion=ses, ancho=True, titulo_tab=f"{titulo} · Modo anfitrión · {MARCA}")
 
 
 def _hoy(canchas: list[dict]) -> date:
@@ -259,14 +262,14 @@ def _tarjeta_res(r: dict, c: dict | None, hoy: date) -> str:
     web = str(r.get("id") or "").startswith("web_")
     medio_txt = {"yape": "📱 Yape", "tarjeta": "💳 Tarjeta", "efectivo": "💵 Efectivo", "sena": "🔒 Seña", "manual": "✍️ Manual", "bono": "🎟️ Bono"}.get(medio, "")
     return (f"<div class='anf-res' data-fecha='{e(fecha)}' data-pagado='{1 if pagado else 0}' data-medio='{grupo_medio(r)}'>"
-            f"<div style='display:flex;justify-content:space-between;gap:8px;align-items:baseline'><span class='hora'>{e(r.get('hora_inicio'))}–{e(r.get('hora_fin'))}</span>"
-            f"<span class='sub' style='margin:0;font-weight:700'>{e(dia)}{e(horarios.fecha_larga(fecha))}</span></div>"
-            f"<div class='sub' style='margin:2px 0 0;font-weight:700;color:var(--noche)'>{e((c or {}).get('nombre') or 'Cancha')}</div>"
-            f"<div class='quien'><span class='av'>{e(ini)}</span><div style='min-width:0'><b>{e(jugador)}</b>"
-            f"<div class='sub' style='margin:0;font-size:12.5px'>{e(r.get('usuario') or '')}{(' · ' + e(tel)) if tel else ''}{' · reserva web' if web else ''}</div></div>"
-            f"<b style='margin-left:auto;white-space:nowrap'>{e(sim)} {int(r.get('precio') or 0):.2f}</b></div>"
+            f"<div class='anf-res-cab'><span class='hora'>{e(r.get('hora_inicio'))}–{e(r.get('hora_fin'))}</span>"
+            f"<span class='sub anf-res-dia'>{e(dia)}{e(horarios.fecha_larga(fecha))}</span></div>"
+            f"<div class='sub anf-res-cancha'>{e((c or {}).get('nombre') or 'Cancha')}</div>"
+            f"<div class='quien'><span class='av' aria-hidden='true'>{e(ini)}</span><div><b>{e(jugador)}</b>"
+            f"<div class='sub anf-res-det'>{e(r.get('usuario') or '')}{(' · ' + e(tel)) if tel else ''}{' · reserva web' if web else ''}</div></div>"
+            f"<b class='anf-precio'>{e(sim)} {int(r.get('precio') or 0):.2f}</b></div>"
             f"<div class='acc'>{pill}" + (f"<span class='pill gris'>{medio_txt}</span>" if medio_txt and not (pagado and medio in ("yape", "tarjeta")) else "")
-            + (f"<a class='btn sec' href='https://wa.me/{e(''.join(ch for ch in tel if ch.isdigit()))}' target='_blank' rel='noopener'>💬 WhatsApp</a>" if tel else "")
+            + (f"<a class='btn sec' href='https://wa.me/{e(''.join(ch for ch in tel if ch.isdigit()))}' target='_blank' rel='noopener' aria-label='WhatsApp a {e(jugador)}'>💬 WhatsApp</a>" if tel else "")
             + ("" if noshow else (f"<button type='button' class='btn' data-pagar='{e(r.get('id'))}' data-v='1'>✅ Marcar pagada</button>" if not pagado
                else (f"<button type='button' class='btn sec' data-pagar='{e(r.get('id'))}' data-v='0'>↩ Marcar por cobrar</button>" if medio not in ("yape", "tarjeta") else "")))
             + ("" if noshow or (pagado and medio in ("yape", "tarjeta")) else f"<button type='button' class='btn sec' data-noshow='{e(r.get('id'))}'>No-show</button>")
@@ -300,7 +303,7 @@ def pagina_hoy(request: Request) -> HTMLResponse:
     paneles = "".join(
         f"<div class='anf-grid' data-panel='{k}'{'' if k == 'hoy' else ' style=display:none'}>"
         + ("".join(_tarjeta_res(r, por_id.get(r.get("cancha_id")), hoy) for r in grupos[k]) if grupos[k]
-           else f"<div class='anf-vacio' style='grid-column:1/-1'>{vacios[k]}</div>")
+           else f"<div class='anf-vacio anf-col-todo'>{vacios[k]}</div>")
         + "</div>" for k, _ in etiquetas)
     n_ver = sum(1 for c in canchas if datos.reservable(c))
     cuerpo = (
@@ -311,9 +314,9 @@ def pagina_hoy(request: Request) -> HTMLResponse:
         f"{_banner_cobros(ses['email'])}{_aviso_verificacion(canchas, ses['email'])}{fotos_locales.avisos_dueno(ses['email'], canchas)}"
         f"<h2 style='margin-top:22px'>Tus reservas</h2><div class='anf-tabs' id='anfTabs'>{tabs}</div>{paneles}"
         "<h2 style='margin-top:30px'>Atajos</h2><div class='kpis'>"
-        "<a class='kpi' href='/anfitrion/calendario' style='text-decoration:none'><small>Agenda</small><b style='font-size:16px'>Ver el calendario semanal</b></a>"
-        "<a class='kpi' href='/anfitrion/ingresos' style='text-decoration:none'><small>Plata</small><b style='font-size:16px'>Saldo y por recibir</b></a>"
-        "<a class='kpi' href='/anfitrion/calendario' style='text-decoration:none'><small>Operar</small><b style='font-size:16px'>Reserva manual · bloquear horas · marcar pagado</b></a>"
+        "<a class='kpi anf-atajo' href='/anfitrion/calendario'><small>Agenda</small><b>Ver el calendario semanal</b></a>"
+        "<a class='kpi anf-atajo' href='/anfitrion/ingresos'><small>Plata</small><b>Saldo y por recibir</b></a>"
+        "<a class='kpi anf-atajo' href='/anfitrion/calendario'><small>Operar</small><b>Reserva manual · bloquear horas · marcar pagado</b></a>"
         "</div>"
         f"<script>{JS_PAGAR}</script>"
         "<script>window.alPagar=function(id,v){var b=document.querySelector(\"[data-pagar='\"+id+\"']\");if(!b)return;var card=b.closest('.anf-res');card.dataset.pagado=v?'1':'0';"
@@ -321,7 +324,7 @@ def pagina_hoy(request: Request) -> HTMLResponse:
         "b.disabled=false;b.dataset.v=v?'0':'1';b.className='btn'+(v?' sec':'');b.innerHTML=v?'↩ Marcar por cobrar':'✅ Marcar pagada'};</script>"
         "<script>(function(){var t=document.getElementById('anfTabs');if(!t)return;t.addEventListener('click',function(ev){var b=ev.target.closest('[data-tab]');if(!b)return;"
         "t.querySelectorAll('.chip').forEach(function(x){x.classList.toggle('sel',x===b);});document.querySelectorAll('[data-panel]').forEach(function(p){p.style.display=p.dataset.panel===b.dataset.tab?'':'none';});});})();</script>")
-    return ui.shell("Hoy", cuerpo, nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab=f"Modo anfitrión · {MARCA}")
+    return ui.shell("Hoy", _anf(cuerpo), nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab=f"Modo anfitrión · {MARCA}")
 
 
 @router.get("/anfitrion/reservas", response_class=HTMLResponse)
@@ -336,13 +339,13 @@ def pagina_reservas(request: Request) -> HTMLResponse:
     pas = [r for r in filas if str(r.get("fecha")) < hoy.isoformat()][::-1]
     def bloque(titulo: str, lst: list[dict], vacio: str) -> str:
         if not lst:
-            return f"<h2 style='margin-top:26px'>{titulo}</h2><div class='anf-vacio'>{vacio}</div>"
-        out, dia = f"<h2 style='margin-top:26px'>{titulo} <small style='color:var(--tenue);font-size:14px;font-weight:600'>· {len(lst)}</small></h2>", None
+            return f"<h2 class='anf-h2-26'>{titulo}</h2><div class='anf-vacio'>{vacio}</div>"
+        out, dia = f"<h2 class='anf-h2-26'>{titulo} <small>· {len(lst)}</small></h2>", None
         for r in lst:
             f = str(r.get("fecha"))
             if f != dia:
                 dia = f
-                out += f"<h3 style='margin:16px 0 8px'>{e(horarios.etiqueta_dia(f, hoy))} · {e(horarios.fecha_larga(f))}</h3><div class='anf-grid'>"
+                out += f"<h3 class='anf-dia-h'>{e(horarios.etiqueta_dia(f, hoy))} · {e(horarios.fecha_larga(f))}</h3><div class='anf-grid'>"
                 out += "".join(_tarjeta_res(x, por_id.get(x.get("cancha_id")), hoy) for x in lst if str(x.get("fecha")) == f) + "</div>"
         return out
     # Filtro por ORIGEN del cobro + mini libro de caja (reservas_dueno_screen); se aplica en el navegador.
@@ -350,7 +353,7 @@ def pagina_reservas(request: Request) -> HTMLResponse:
     sim = _moneda_de(canchas[0])[0] if canchas else "S/"
     cobrado = sum(int(r.get("precio") or 0) for r in filas if r.get("pagado") and not es_noshow(r))
     pend = sum(int(r.get("precio") or 0) for r in filas if not r.get("pagado") and not es_noshow(r))
-    filtros = ("<div class='chips' id='filMedio' style='margin-top:14px'>" + "".join(
+    filtros = ("<div class='chips anf-mt14' id='filMedio' role='group' aria-label='Filtrar por forma de cobro'>" + "".join(
         f"<button type='button' class='chip{' sel' if k == 'todos' else ''}' data-medio='{k}'>{n}</button>"
         for k, n in (("todos", "Todos"), ("online", "Online"), ("efectivo", "Efectivo"), ("manual", "Manual"))) + "</div>"
         f"<div class='kpis'><div class='kpi'><small>Cobrado</small><b>{e(ui.monto(cobrado, sim, 0))}</b></div>"
@@ -358,7 +361,7 @@ def pagina_reservas(request: Request) -> HTMLResponse:
     cuerpo = ("<h1 class='anf-hola'>Reservas</h1><p class='sub'>Las reservas de tus canchas: en línea (web y app) y las que registraste a mano.</p>"
               + filtros + bloque("Próximas", prox, "Sin reservas próximas.") + bloque("Pasadas (30 días)", pas, "Sin reservas en los últimos 30 días.")
               + f"<script>{JS_PAGAR}{JS_FILTRO_RESERVAS}</script>")
-    return ui.shell("Reservas", cuerpo, nav=_cabecera("reservas", ses), sesion=ses, ancho=True, titulo_tab="Reservas · Modo anfitrión")
+    return ui.shell("Reservas", _anf(cuerpo), nav=_cabecera("reservas", ses), sesion=ses, ancho=True, titulo_tab="Reservas · Modo anfitrión")
 
 
 JS_PAGAR = r"""
@@ -549,13 +552,12 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
         + "</span></div>"
         f"<div class='chips cal-dias' id='calDias' role='group' aria-label='Día'>{dias_chips}</div>"
         f"<div class='cal-sem cal-act' id='calSem' data-dia='{dia_ini}'><table><thead><tr><th></th>{cab}</tr></thead><tbody>{filas_html}</tbody></table></div>"
-        f"<style>{_CSS_CAL}</style>"
         + ("" if cfg["pro"] else f"<p class='aviso warn' style='margin-top:12px'>📝 La reserva manual y el bloqueo de horas son parte de <b>{MARCA} Pro</b>. Actívalo en Perfil → 👑 {MARCA} Pro.</p>")
         + modal
         + f"<script>var CAL={ui.json_js(cfg, ensure_ascii=False)};var RES={ui.json_js(res_json, ensure_ascii=False)};</script><script>{_JS_CAL}{_JS_CAL_DIAS}</script>")
     from web import anfitrion_agenda
     cuerpo += anfitrion_agenda.tarjeta(ses["email"])
-    return ui.shell("Calendario", cuerpo, nav=_cabecera("calendario", ses), sesion=ses, ancho=True, titulo_tab="Calendario · Modo anfitrión")
+    return ui.shell("Calendario", _anf(cuerpo), nav=_cabecera("calendario", ses), sesion=ses, ancho=True, titulo_tab="Calendario · Modo anfitrión")
 
 
 MOTIVOS_CIERRE = {"cerrado": "Cerrado", "feriado": "Feriado", "mantenimiento": "Mantenimiento",
@@ -599,21 +601,7 @@ def base_de_turno(c: dict, fecha: str, hora: str, base: str = "") -> tuple[str, 
     return "", None
 
 
-_CSS_CAL = (
-    ".cal-dias{display:none;margin-top:12px;flex-wrap:nowrap;overflow-x:auto;gap:8px;padding-bottom:4px}"
-    ".cal-dias .chip{flex:none;min-height:44px}"
-    ".cal-sem td:first-child,.cal-sem th:first-child{position:sticky;left:0;z-index:1;background:var(--blanco)}"
-    ".cal-sem th:first-child{z-index:2}"
-    ".cal-sem td.fuera{background:repeating-linear-gradient(45deg,var(--gris) 0 6px,var(--blanco) 6px 12px)}"
-    ".cal-sem th.cerr{color:var(--tenue)}"
-    ".cal-cerr{display:block;font-size:11.5px;font-weight:700;color:var(--bad-fg);margin-top:2px}"
-    ".cal-sem td[data-t]{cursor:pointer}.cal-sem td[data-t]:focus-visible{outline:3px solid var(--esmeralda);outline-offset:-3px}"
-    ".vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}"
-    ".cal-act td[data-t]:focus-visible .li{opacity:1}"
-    "@media(max-width:600px){.cal-dias{display:flex}.cal-sem table{min-width:0}.cal-sem td{min-width:0}.cal-act td .li{opacity:1}"
-    ".cal-sem [data-col]{display:none}"
-    + ",".join(f".cal-sem[data-dia='{i}'] [data-col='{i}']" for i in range(7)) + "{display:table-cell}}"
-)
+# Estilos del calendario: `web/estilos_anfitrion.py` (CSS versionado del sitio).
 
 _JS_CAL_DIAS = r"""
 (function(){var t=document.getElementById('calDias'),s=document.getElementById('calSem');if(!t||!s)return;
@@ -954,7 +942,7 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
     def fila_liq(x: dict) -> str:
         return (f"<div class='mov'><div><b>{e(x['concepto'])}</b><small>{e(x['creado_en'][:10])}{(' · pagada ' + e(x['liquidado_en'][:10])) if x.get('liquidado') else ''}"
                 f"{(' · ' + e(x['medio'])) if x.get('medio') else ''}</small></div>"
-                f"<div style='text-align:right'><b>{e(x.get('sim_mov') or sim)} {x['neto_soles']:.2f}</b><small>bruto {x['bruto_soles']:.2f} · comisión {x['comision_soles']:.2f}{(' · cargo por servicio del jugador ' + format(x.get('cargo_servicio_soles') or 0, '.2f')) if x.get('cargo_servicio_soles') else ''}</small></div></div>")
+                f"<div class='anf-der'><b>{e(x.get('sim_mov') or sim)} {x['neto_soles']:.2f}</b><small>bruto {x['bruto_soles']:.2f} · comisión {x['comision_soles']:.2f}{(' · cargo por servicio del jugador ' + format(x.get('cargo_servicio_soles') or 0, '.2f')) if x.get('cargo_servicio_soles') else ''}</small></div></div>")
     def fila_mov(p) -> str:
         signo = "+" if p.tipo in ("recarga", "bono_recarga", "bono_bienvenida", "cupon", "bono_referido") else (
             "−" if p.tipo in ("comision_reserva", "comision_efectivo", "comision_deuda", "pro", "suscripcion") else "")
@@ -985,13 +973,13 @@ def pagina_ingresos(request: Request) -> HTMLResponse:
         + bloque_directo
         + _tarjeta_cuenta_cobro(cuenta, res_cta, pais_iso, ses, por_recibir > 0)
         + ui.tarjeta_comision('reservas', sim, {'PE': 'PEN', 'EC': 'USD', 'BO': 'BOB'}.get(pais_iso, 'PEN'))
-        + "<h2 style='margin-top:28px'>Por recibir</h2>"
+        + "<h2 class='anf-h2-28'>Por recibir</h2>"
         + ("".join(fila_liq(x) for x in pend) if pend else "<div class='anf-vacio'>Nada pendiente. Cuando un jugador pague en línea, el neto aparece aquí.</div>")
-        + "<h2 style='margin-top:28px'>Liquidaciones pagadas</h2>"
+        + "<h2 class='anf-h2-28'>Liquidaciones pagadas</h2>"
         + ("".join(fila_liq(x) for x in pagadas) if pagadas else "<div class='anf-vacio'>Aún no te hemos transferido liquidaciones.</div>")
-        + "<h2 style='margin-top:28px'>Últimos movimientos</h2>"
+        + "<h2 class='anf-h2-28'>Últimos movimientos</h2>"
         + ("".join(fila_mov(p) for p in movs) if movs else "<div class='anf-vacio'>Sin movimientos todavía.</div>"))
-    return ui.shell("Ingresos", cuerpo + f"<script>window.__cc={ui.json_js({'catalogo': _cc.catalogo(), 'pais': pais_iso, 'cuenta': cuenta or {}, 'nombre': ses.get('nombre') or ''}, ensure_ascii=False)};</script><script>{_JS_CUENTA_COBRO}</script>",
+    return ui.shell("Ingresos", _anf(cuerpo + f"<script>window.__cc={ui.json_js({'catalogo': _cc.catalogo(), 'pais': pais_iso, 'cuenta': cuenta or {}, 'nombre': ses.get('nombre') or ''}, ensure_ascii=False)};</script><script>{_JS_CUENTA_COBRO}</script>"),
                     nav=_cabecera("ingresos", ses), sesion=ses, ancho=True, titulo_tab="Ingresos · Modo anfitrión")
 
 
@@ -1022,10 +1010,7 @@ def _tarjeta_cuenta_cobro(cuenta: dict | None, res: dict, pais_iso: str, ses: di
             "<div class='acciones' style='margin-top:12px'><button type='submit' class='btn' id='ccGuardar'>Guardar cuenta de cobro</button>"
             "<button type='button' class='btn sec' id='ccCancelar'>Cancelar</button></div>"
             "<p class='sub' style='font-size:12.5px;margin-top:10px'>Solo la usamos para transferirte. Nunca se muestra a jugadores.</p>"
-            "</form></section>"
-            "<style>.cc-actual{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:var(--gris);border-radius:14px;padding:12px 14px}"
-            ".cc-actual .ico{font-size:22px}.cc-actual>div{flex:1;min-width:200px}.cc-actual small{display:block;color:var(--tenue);font-weight:600;margin-top:2px}"
-            ".cc-actual.sin{background:#FFF3D6}#ccForm label{margin-top:12px}</style>")
+            "</form></section>")
 
 
 _JS_CUENTA_COBRO = r"""
@@ -1097,30 +1082,30 @@ def _fila_cancha_local(c: dict) -> str:
     ok = datos.reservable(c)
     deps = " · ".join(_deporte(d)[0] for d in _deportes_de(c)[:3])
     return (
-        f"<div class='anf-fila'><span class='ico'>{_deporte(c.get('deporte'))[1]}</span><div style='flex:1;min-width:0'>"
-        f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>{e(c['nombre'])}</b>"
-        + ("<span class='pill ok' style='font-size:11px'>✓ Verificada</span>" if ok else "<span class='pill warn' style='font-size:11px'>Aún sin verificar</span>") + "</div>"
-        f"<div class='sub' style='margin:2px 0 0'>{e(deps)} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · {c['duracion_slot_min']} min · <b style='white-space:nowrap'>{e(sim)} {horarios.precio_publico(c)[0]:.2f} {'/h' if horarios.precio_publico(c)[1] == 'por hora' else '/turno'}</b></div>"
-        "<div class='acciones' style='margin-top:8px'>"
-        f"<a class='btn sec' href='/reservar/{e(c['id'])}'>Ver ficha pública</a>"
-        f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}'>Calendario</a>"
-        f"<a class='btn sec' href='/anfitrion/reglas/{e(c['id'])}'>⚙️ Reglas de reserva</a>"
-        f"<a class='btn' href='/anfitrion/cancha/{e(c['id'])}/editar'>✏️ Editar</a>"
+        f"<div class='anf-fila'><span class='ico' aria-hidden='true'>{_deporte(c.get('deporte'))[1]}</span><div class='anf-flex1'>"
+        f"<div class='anf-fila-tit'><b>{e(c['nombre'])}</b>"
+        + ("<span class='pill ok'>✓ Verificada</span>" if ok else "<span class='pill warn'>Aún sin verificar</span>") + "</div>"
+        f"<div class='sub anf-l2'>{e(deps)} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · {c['duracion_slot_min']} min · <b class='anf-nowrap'>{e(sim)} {horarios.precio_publico(c)[0]:.2f} {'/h' if horarios.precio_publico(c)[1] == 'por hora' else '/turno'}</b></div>"
+        "<div class='acciones anf-acc8'>"
+        f"<a class='btn sec' href='/reservar/{e(c['id'])}' aria-label='Ver ficha pública de {e(c['nombre'])}'>Ver ficha pública</a>"
+        f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}' aria-label='Calendario de {e(c['nombre'])}'>Calendario</a>"
+        f"<a class='btn sec' href='/anfitrion/reglas/{e(c['id'])}' aria-label='Reglas de reserva de {e(c['nombre'])}'>⚙️ Reglas de reserva</a>"
+        f"<a class='btn' href='/anfitrion/cancha/{e(c['id'])}/editar' aria-label='Editar {e(c['nombre'])}'>✏️ Editar</a>"
         "</div></div></div>")
 
 
 def _tarjeta_local(local: str, lst: list[dict], foto: str, zona: str, n: int, pill: str, filas: str) -> str:
     c0 = lst[0]
     return (
-        f"<div class='anf-local'><div class='cab'><div class='f'>{foto}</div><div style='flex:1;min-width:0'>"
-        f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><span class='tit'><span class='ico'>{ui.LOCAL_SVG}</span><b style='font-size:17px'>{e(local)}</b></span>{pill}</div>"
-        f"<div class='sub' style='margin:2px 0 0'>{e(c0.get('direccion') or '')}{(' · ' if c0.get('direccion') and zona else '')}{e(zona)}</div>"
-        f"<div class='sub' style='margin:2px 0 0'>{n} {'cancha' if n == 1 else 'canchas'}</div>"
-        f"<div class='acciones' style='margin-top:8px'><a class='btn sec' href='/anfitrion/local/{e(c0['id'])}/editar'>✏️ Editar local</a></div></div></div>"
+        f"<div class='anf-local'><div class='cab'><div class='f'>{foto}</div><div class='anf-flex1'>"
+        f"<div class='anf-fila-tit'><span class='tit'><span class='ico'>{ui.LOCAL_SVG}</span><b class='anf-local-nom'>{e(local)}</b></span>{pill}</div>"
+        f"<div class='sub anf-l2'>{e(c0.get('direccion') or '')}{(' · ' if c0.get('direccion') and zona else '')}{e(zona)}</div>"
+        f"<div class='sub anf-l2'>{n} {'cancha' if n == 1 else 'canchas'}</div>"
+        f"<div class='acciones anf-acc8'><a class='btn sec' href='/anfitrion/local/{e(c0['id'])}/editar' aria-label='Editar el local {e(local)}'>✏️ Editar local</a></div></div></div>"
         f"<div class='filas'>{filas}</div>"
-        "<div class='acciones' style='margin-top:10px'>"
+        "<div class='acciones anf-acc10'>"
         f"<a class='btn sec' href='/anfitrion/cancha/{e(c0['id'])}/agregar'>＋ Agregar cancha a este local</a>"
-        f"<a class='btn sec' href='{_maps(c0)}' target='_blank' rel='noopener'>📍 Mapa</a>"
+        f"<a class='btn sec' href='{_maps(c0)}' target='_blank' rel='noopener' aria-label='Ver {e(local)} en el mapa'>📍 Mapa</a>"
         "</div></div>")
 
 
@@ -1179,7 +1164,7 @@ def pagina_canchas(request: Request, guardado: str = "") -> HTMLResponse:
               f"{aviso}{_aviso_verificacion(canchas, ses['email'])}{fotos_locales.avisos_dueno(ses['email'], canchas)}"
               f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(min(420px,100%),1fr));margin-top:16px'>{tarjetas}</div>"
               "<p style='margin-top:20px'><a class='btn' href='/anfitrion/nueva'>＋ Registrar otro local</a></p>")
-    return ui.shell("Canchas", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True, titulo_tab="Canchas · Modo anfitrión")
+    return ui.shell("Canchas", _anf(cuerpo), nav=_cabecera("canchas", ses), sesion=ses, ancho=True, titulo_tab="Canchas · Modo anfitrión")
 
 
 
@@ -1330,8 +1315,8 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
     fotos_html = "".join(
         f"<div class='foto' data-url='{e(u)}'><img src='{e(u)}' alt=''>"
         f"<span class='portada'{'' if i == 0 else ' hidden'}>Portada</span>"
-        "<div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada'>★</button>"
-        "<button type='button' class='mini' data-acc='quitar' title='Quitar'>✕</button></div></div>" for i, u in enumerate(fotos))
+        "<div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada' aria-label='Usar esta foto como portada'>★</button>"
+        "<button type='button' class='mini' data-acc='quitar' title='Quitar' aria-label='Quitar esta foto'>✕</button></div></div>" for i, u in enumerate(fotos))
     secciones = [("fotos", "Fotos"), ("nombre", "Nombre"), ("deportes", "Deportes y piso"), ("precio", "Precio y promociones"),
                  ("horario", "Horario"), ("extras", "Servicios extra"), ("local", "Tu local")]
     nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
@@ -1398,7 +1383,7 @@ def pagina_editar_cancha(request: Request, cancha_id: str) -> HTMLResponse:
 <button type='button' class='btn' id='btnGuardar'>Guardar cambios</button></div></div>
 <script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script>
 <script>{JS_PRECIO}</script><script>{_JS_EDITAR}</script>"""
-    return ui.shell("Editar cancha", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True,
+    return ui.shell("Editar cancha", _anf(cuerpo), nav=_cabecera("canchas", ses), sesion=ses, ancho=True,
                     titulo_tab=f"Editar {c['nombre']} · Modo anfitrión")
 
 
@@ -1410,7 +1395,7 @@ function sel(g){return Array.prototype.slice.call(document.querySelectorAll(".ch
 function principal(){for(var i=0;i<CFG.activos.length;i++){if(dep.indexOf(CFG.activos[i])>=0)return CFG.activos[i]}return dep[0]||'futbol'}
 function pintarSup(){var ops=CFG.superficies[principal()]||[];if(ops.indexOf(sup)<0)sup='';
   $('supWrap').innerHTML="<div class='chips' data-grupo='superficie'>"+ops.map(function(o){return "<button type='button' class='chip"+(o===sup?' sel':'')+"' data-g='superficie' data-v='"+o.replace(/'/g,'&#39;')+"'>"+o+"</button>"}).join('')+"</div>"}
-function pintarFotos(){$('fotos').innerHTML=fotos.map(function(u,i){return "<div class='foto' data-url='"+u.replace(/'/g,'&#39;')+"'><img src='"+u.replace(/'/g,'&#39;')+"' alt=''><span class='portada'"+(i?' hidden':'')+">Portada</span><div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada'>★</button><button type='button' class='mini' data-acc='quitar' title='Quitar'>✕</button></div></div>"}).join('')}
+function pintarFotos(){$('fotos').innerHTML=fotos.map(function(u,i){return "<div class='foto' data-url='"+u.replace(/'/g,'&#39;')+"'><img src='"+u.replace(/'/g,'&#39;')+"' alt=''><span class='portada'"+(i?' hidden':'')+">Portada</span><div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada' aria-label='Usar esta foto como portada'>★</button><button type='button' class='mini' data-acc='quitar' title='Quitar' aria-label='Quitar esta foto'>✕</button></div></div>"}).join('')}
 function prev(){var p=parseFloat($('precio').value)||0, m=CFG.moneda, d=parseInt(sel('descuento_valle')[0]||'0'), s=parseInt(sel('sena_pct')[0]||'0');
   $('valleWrap').hidden=!(d>0);
   if(d>0){var a=$('valle_desde').value,b=$('valle_hasta').value;$('vallePrev').textContent='De '+a+' a '+b+(b<=a?' (del día siguiente)':'')+' la hora sale a '+m+' '+(p*(100-d)/100).toFixed(2)+' en vez de '+m+' '+p.toFixed(2)+'.'}
@@ -1680,7 +1665,7 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
 <button type='button' class='btn' id='btnGuardar'>Guardar local</button></div></div>
 <script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_LOCAL}</script>
 <script>{_JS_PIN.replace('⟦LAT⟧', ui.json_js(c.get('lat'))).replace('⟦LNG⟧', ui.json_js(c.get('lng'))).replace('⟦MAX⟧', str(PIN_MAX_M))}</script>"""
-    return ui.shell("Editar local", cuerpo, nav=_cabecera("canchas", ses), sesion=ses, ancho=True, extra_head=_LEAFLET,
+    return ui.shell("Editar local", _anf(cuerpo), nav=_cabecera("canchas", ses), sesion=ses, ancho=True, extra_head=_LEAFLET,
                     titulo_tab=f"Editar {local} · Modo anfitrión")
 
 
@@ -1723,7 +1708,7 @@ function esc(t){return String(t).replace(/[&<>"']/g,function(c){return{'&':'&amp
 function pintarFotos(){var box=$('fotos');if(!box)return;
   box.innerHTML=fotos.map(function(f,i){return "<div class='foto' data-url='"+esc(f.url)+"'><img src='"+esc(f.url)+"' alt=''>"+
     (i===0?"<span class='portada'>Portada</span>":"")+(f.propia?"":"<span class='portada' style='left:auto;right:8px;top:auto;bottom:8px;background:#5F6368;color:#fff'>Google</span>")+
-    "<div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada'>★</button><button type='button' class='mini' data-acc='quitar' title='Quitar'>✕</button></div></div>"}).join('')||
+    "<div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada' aria-label='Usar esta foto como portada'>★</button><button type='button' class='mini' data-acc='quitar' title='Quitar' aria-label='Quitar esta foto'>✕</button></div></div>"}).join('')||
     "<p class='sub' style='margin:0'>Aún no hay fotos. Sube las de tu local.</p>";
   var n=fotos.filter(function(f){return f.propia}).length,g=fotos.length-n,m=CFG.minFotos||0,c=$('contFotos');
   if(c){if(m>0&&n<m){c.className='aviso warn';c.innerHTML='📷 Llevas <b>'+n+' de '+m+'</b> fotos propias: sube '+(m-n)+' más.'}
@@ -2172,7 +2157,7 @@ def pagina_nueva_cancha(request: Request, nombre: str = "", direccion: str = "",
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Al enviar, tu cancha queda <b>en verificación</b> y te avisamos por WhatsApp y en la app cuando esté activa.</span>
 <button type='button' class='btn' id='btnGuardar'>{'Reclamar mi cancha' if existente else 'Registrar mi cancha'}</button></div></div>
 <script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{JS_PRECIO}</script><script>{_JS_NUEVA}</script>"""
-    return ui.shell("Pon tu cancha", cuerpo, nav=_cabecera("canchas", ses, tabs_visibles=False), sesion=ses, ancho=True,
+    return ui.shell("Pon tu cancha", _anf(cuerpo), nav=_cabecera("canchas", ses, tabs_visibles=False), sesion=ses, ancho=True,
                     extra_head=_LEAFLET, titulo_tab=f"Pon tu cancha · {MARCA}")
 
 
@@ -2234,7 +2219,7 @@ function actualizarEnvio(){var m=CFG.minFotos||0,n=fotos.length,ok=n>=m,c=$('fot
   if(!m)return;btn.disabled=!ok;
   if(!ok){msg.classList.remove('err');msg.innerHTML='📷 Sube al menos <b>'+m+' fotos de tu local</b> para enviar (llevas '+n+'). Las de Google no cuentan: no se pueden guardar y las tuyas prueban que el local existe.'}
   else if(msg.innerHTML.indexOf('📷')===0)msg.innerHTML=msgBase}
-function pintarFotos(){$('fotos').innerHTML=fotos.map(function(u,i){return "<div class='foto' data-url='"+esc(u)+"'><img src='"+esc(u)+"' alt=''><span class='portada'"+(i?' hidden':'')+">Portada</span><div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada'>★</button><button type='button' class='mini' data-acc='quitar' title='Quitar'>✕</button></div></div>"}).join('');actualizarEnvio()}
+function pintarFotos(){$('fotos').innerHTML=fotos.map(function(u,i){return "<div class='foto' data-url='"+esc(u)+"'><img src='"+esc(u)+"' alt=''><span class='portada'"+(i?' hidden':'')+">Portada</span><div class='acc'><button type='button' class='mini' data-acc='portada' title='Usar como portada' aria-label='Usar esta foto como portada'>★</button><button type='button' class='mini' data-acc='quitar' title='Quitar' aria-label='Quitar esta foto'>✕</button></div></div>"}).join('');actualizarEnvio()}
 pintarFotos();
 document.addEventListener('click',function(ev){var a=ev.target.closest('.foto .mini');if(!a)return;var u=a.closest('.foto').dataset.url,i=fotos.indexOf(u);if(a.dataset.acc==='quitar'&&i>=0)fotos.splice(i,1);if(a.dataset.acc==='portada'&&i>0){fotos.splice(i,1);fotos.unshift(u)}pintarFotos()});
 $('inFotos').addEventListener('change',async function(){var files=Array.prototype.slice.call(this.files||[]);this.value='';var msg=$('fotosMsg');
@@ -2595,7 +2580,7 @@ def pagina_agregar_cancha(request: Request, cancha_id: str, deporte: str = "") -
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>{'Queda activa al instante.' if activo else 'Se activa junto con el local.'}</span>
 <button type='button' class='btn' id='btnGuardar'>Agregar cancha</button></div></div>
 <script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{JS_PRECIO}</script><script>{_JS_AGREGAR}</script>"""
-    return ui.shell("Agregar cancha", cuerpo, nav=_cabecera("canchas", ses, tabs_visibles=False), sesion=ses, ancho=True,
+    return ui.shell("Agregar cancha", _anf(cuerpo), nav=_cabecera("canchas", ses, tabs_visibles=False), sesion=ses, ancho=True,
                     titulo_tab=f"Agregar cancha · {local}")
 
 
@@ -2611,7 +2596,7 @@ function actualizarEnvio(){var m=CFG.faltanFotos||0;if(!m)return;var n=fotos.len
   btn.disabled=!ok;if(!ok){msg.classList.remove('err');msg.innerHTML='📷 Sube <b>'+m+' foto'+(m>1?'s':'')+' de tu local</b> para agregar la cancha (llevas '+n+').'}else if(msg.innerHTML.indexOf('📷')===0)msg.innerHTML=msgBase}
 if(CFG.faltanFotos){
   function comprimir(file,M){return new Promise(function(res,rej){var img=new Image(),url=URL.createObjectURL(file);img.onload=function(){var w=img.width,h=img.height,k=Math.min(1,M/Math.max(w,h));var cv=document.createElement('canvas');cv.width=Math.round(w*k);cv.height=Math.round(h*k);cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);URL.revokeObjectURL(url);cv.toBlob(function(b){b?res(b):rej(new Error('img'))},'image/jpeg',0.85)};img.onerror=function(){URL.revokeObjectURL(url);rej(new Error('img'))};img.src=url})}
-  var pintarFotos=function(){$('fotos').innerHTML=fotos.map(function(u){return "<div class='foto' data-url='"+esc(u)+"'><img src='"+esc(u)+"' alt=''><div class='acc'><button type='button' class='mini' data-acc='quitar' title='Quitar'>✕</button></div></div>"}).join('');actualizarEnvio()};
+  var pintarFotos=function(){$('fotos').innerHTML=fotos.map(function(u){return "<div class='foto' data-url='"+esc(u)+"'><img src='"+esc(u)+"' alt=''><div class='acc'><button type='button' class='mini' data-acc='quitar' title='Quitar' aria-label='Quitar esta foto'>✕</button></div></div>"}).join('');actualizarEnvio()};
   document.addEventListener('click',function(ev){var a=ev.target.closest('.foto .mini');if(!a)return;var i=fotos.indexOf(a.closest('.foto').dataset.url);if(i>=0)fotos.splice(i,1);pintarFotos()});
   $('inFotos').addEventListener('change',async function(){var files=Array.prototype.slice.call(this.files||[]);this.value='';var msg=$('fotosMsg');
     for(var i=0;i<files.length;i++){if(fotos.length>=CFG.maxFotos){msg.textContent='Máximo '+CFG.maxFotos+' fotos.';break}subiendo++;msg.textContent='Subiendo foto '+(i+1)+' de '+files.length+'…';
@@ -2799,7 +2784,7 @@ def pagina_modulo_app(request: Request, modulo: str) -> HTMLResponse:
               "La versión web llegará más adelante.</p>"
               f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}' rel='noopener'>Abrir en la app</a>"
               "<a class='btn sec' href='/anfitrion'>Volver al menú</a></div></div>")
-    return ui.shell(titulo, cuerpo, nav=_cabecera("", ses, tabs_visibles=False), sesion=ses, ancho=True, titulo_tab=f"{titulo} · Modo anfitrión")
+    return ui.shell(titulo, _anf(cuerpo), nav=_cabecera("", ses, tabs_visibles=False), sesion=ses, ancho=True, titulo_tab=f"{titulo} · Modo anfitrión")
 
 
 def _entrar(volver: str) -> HTMLResponse:

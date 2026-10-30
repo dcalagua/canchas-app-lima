@@ -722,6 +722,8 @@ label.extra:has(input:checked) select.cant{display:block}
 .marca section{padding:44px 0}
 .marca section:first-child{border-top:0}
 """
+from web.estilos_anfitrion import CSS as _CSS_ANFITRION  # noqa: E402 — modo anfitrión (va al final)
+CSS += _CSS_ANFITRION
 
 
 def e(s) -> str:
