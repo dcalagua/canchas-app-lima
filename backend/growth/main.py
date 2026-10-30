@@ -153,11 +153,16 @@ async def _persistir(request: Request, call_next):
     Referrer-Policy y, en la torre /admin, anti-iframe (clickjacking),
     sin caché de respuestas de la API y sin permisos de cámara/micro/GPS."""
     t0 = time.time()
+    medidor = pg.medir_request(memo=request.method in ("GET", "HEAD"))
     response = await call_next(request)
     ms = int((time.time() - t0) * 1000)
     if ms > 700:
-        print(f"[perf] {request.method} {request.url.path} tardó {ms} ms", flush=True)
+        print(f"[perf] {request.method} {request.url.path} tardó {ms} ms · {medidor.resumen()}", flush=True)
+    elif pg.PERF_SQL and medidor.viajes:
+        print(f"[sql] {request.method} {request.url.path} {ms} ms · {medidor.resumen()}", flush=True)
     h = response.headers
+    if pg.PERF_SQL:
+        h["Server-Timing"] = f'db;dur={int(medidor.ms)};desc="{medidor.viajes} viajes", app;dur={ms}'
     h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     h.setdefault("X-Content-Type-Options", "nosniff")
     h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")

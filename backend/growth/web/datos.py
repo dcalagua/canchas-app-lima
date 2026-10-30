@@ -220,6 +220,12 @@ def ratings(ids: list[str]) -> dict[str, tuple[float, int]]:
     ids = [i for i in ids if i]
     if not pg.habilitado or not ids:
         return {}
+    # La portada las pide para TODAS las canchas en cada visita: misma caché
+    # corta que `canchas_publicas` (se borra al calificar desde la web).
+    return _publico(("ratings", tuple(sorted(set(ids)))), lambda: _ratings(ids))
+
+
+def _ratings(ids: list[str]) -> dict[str, tuple[float, int]] | None:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
@@ -227,7 +233,7 @@ def ratings(ids: list[str]) -> dict[str, tuple[float, int]]:
                 "WHERE cancha_id = ANY(%s) AND estrellas BETWEEN 1 AND 5 GROUP BY cancha_id", (ids,))
             return {str(r[0]): (float(r[1] or 0), int(r[2] or 0)) for r in cur.fetchall()}
     except Exception:  # noqa: BLE001
-        return {}
+        return None
 
 
 def resenas_de(ids: list[str], limite: int = 6) -> list[dict]:
@@ -273,6 +279,7 @@ def guardar_resena(cancha_id: str, email: str, nombre: str, estrellas: int, come
                         "VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (cancha_id, autor_email) DO UPDATE SET "
                         "estrellas = EXCLUDED.estrellas, comentario = EXCLUDED.comentario, autor_nombre = EXCLUDED.autor_nombre, "
                         "creado = now()", (rid, cancha_id, email, (nombre or "")[:80], int(estrellas), (comentario or "")[:400]))
+        _cache_publico.clear()  # las estrellas de la portada se ven al instante
         return True
     except Exception as ex:  # noqa: BLE001
         print(f"[resena] no se pudo guardar {cancha_id}: {ex}", flush=True)
@@ -285,10 +292,30 @@ def guardar_resena(cancha_id: str, email: str, nombre: str, estrellas: int, come
 # Supabase aparece a más tardar en CANCHAS_TTL segundos.
 CANCHAS_TTL = 30
 _cache_canchas: dict = {"t": 0.0, "v": None}
+# Otras lecturas PÚBLICAS de la portada con la misma vida corta (academias del
+# explorador, estrellas): {clave: (momento, valor)}. Lo fallido no se guarda.
+_cache_publico: dict = {}
+
+
+def _publico(clave, calcular):
+    ahora = time.monotonic()
+    v = _cache_publico.get(clave)
+    if v is not None and ahora - v[0] < CANCHAS_TTL:
+        return copy.deepcopy(v[1])
+    val = calcular()
+    if val is None:
+        return {} if clave and clave[0] == "ratings" else []
+    if CANCHAS_TTL > 0:
+        if len(_cache_publico) > 64:
+            _cache_publico.clear()
+        _cache_publico[clave] = (ahora, copy.deepcopy(val))
+    return val
 
 
 def invalidar_canchas() -> None:
     _cache_canchas.update(t=0.0, v=None)
+    _cache_publico.clear()
+    pg.olvidar_memo()
 
 
 def _invalida_canchas(fn):
@@ -342,10 +369,15 @@ def canchas_verificadas() -> list[dict]:
 
 def canchas_de_dueno(email: str) -> list[dict]:
     """Canchas del DUEÑO (modo anfitrión web): registradas, no eliminadas,
-    `dueno` = correo de Google (mismo criterio que "Mis canchas" del app)."""
+    `dueno` = correo de Google (mismo criterio que "Mis canchas" del app).
+    Una vez por request (el panel la pide en la cabecera, el banner y la página)."""
     email = (email or "").strip().lower()
     if not pg.habilitado or not email:
         return []
+    return pg.memo_leer(("canchas_de_dueno", email), lambda: _canchas_de_dueno(email))
+
+
+def _canchas_de_dueno(email: str) -> list[dict]:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(f"SELECT {_sel_cancha()} FROM pichangol_canchas WHERE lower(dueno) = %s "
@@ -712,6 +744,10 @@ def bloqueos_de(ids: list[str], fechas: list[str]) -> set[tuple[str, str, str]]:
 def cancha(cancha_id: str) -> dict | None:
     if not pg.habilitado or not cancha_id:
         return None
+    return pg.memo_leer(("cancha", cancha_id), lambda: _cancha(cancha_id))
+
+
+def _cancha(cancha_id: str) -> dict | None:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(f"SELECT {_sel_cancha()} FROM pichangol_canchas WHERE id = %s",
@@ -722,11 +758,70 @@ def cancha(cancha_id: str) -> dict | None:
         return None
 
 
+def canchas_por_ids(ids) -> dict[str, dict | None]:
+    """{id: cancha | None} en UNA consulta (= `cancha(id)` para cada id, sin
+    el viaje por cada una). Lo leído queda memorizado en la request, así los
+    `cancha(id)` que vengan después no vuelven a la base."""
+    ids = list(dict.fromkeys(str(i) for i in (ids or []) if i))
+    if not pg.habilitado:
+        return {i: cancha(i) for i in ids}  # sin base (o con `cancha` de prueba): la de siempre
+    out: dict[str, dict | None] = {}
+    faltan = []
+    for i in ids:
+        if pg.memo_tiene(("cancha", i)):
+            out[i] = cancha(i)
+        else:
+            faltan.append(i)
+    if faltan:
+        try:
+            with pg.conexion() as conn, conn.cursor() as cur:
+                cur.execute(f"SELECT {_sel_cancha()} FROM pichangol_canchas WHERE id = ANY(%s)", (faltan,))
+                leidas = {}
+                for f in cur.fetchall():
+                    c = _norm_cancha(pg._fila_a_dict(_cols_cancha(), f))
+                    leidas[str(c.get("id"))] = c
+        except Exception:  # noqa: BLE001
+            return {i: cancha(i) for i in ids}  # respaldo: una por una, como antes
+        for i in faltan:
+            out[i] = leidas.get(i)
+            pg.memo_guardar(("cancha", i), out[i])
+    return out
+
+
+def precargar_dia(cancha_id: str, fechas: list[str]) -> None:
+    """Turnos de una cancha (GET de disponibilidad / ficha): reservas, bloqueos
+    y descuentos por turno en UNA consulta (antes tres), a la memoria de la
+    request; `ocupados` y `descuentos` los toman de ahí. Si falla (una base sin
+    la tabla de bloqueos o de descuentos), cada uno lee como siempre."""
+    if not pg.habilitado or not cancha_id or not fechas or pg.memo_request() is None:
+        return
+    clave = (cancha_id, tuple(fechas))
+    if pg.memo_tiene(("ocupados",) + clave):
+        return
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT 'r', fecha, hora_inicio, 0 FROM pichangol_reservas WHERE cancha_id = %s AND fecha = ANY(%s) "
+                "AND coalesce(estado,'') <> 'noShow'" + _SQL_SIN_HOLD_VENCIDO +
+                " UNION ALL SELECT 'b', fecha, hora, 0 FROM pichangol_bloqueos WHERE cancha_id = %s AND fecha = ANY(%s)"
+                " UNION ALL SELECT 'd', fecha, hora, pct FROM pichangol_descuentos_slot WHERE cancha_id = %s AND fecha = ANY(%s)",
+                (cancha_id, fechas, *_cortes_hold(), cancha_id, fechas, cancha_id, fechas))
+            filas = cur.fetchall()
+    except Exception:  # noqa: BLE001
+        return
+    ocup = {(str(f), str(h)) for t, f, h, _p in filas if t in ("r", "b")}
+    desc = {(str(f), str(h)): int(p or 0) for t, f, h, p in filas if t == "d"}
+    pg.memo_guardar(("ocupados",) + clave, ocup)
+    pg.memo_guardar(("descuentos",) + clave, desc)
+
+
 def ocupados(cancha_id: str, fechas: list[str]) -> set[tuple[str, str]]:
     """(fecha, hora_inicio) tomados: reservas vigentes (no-show no ocupa) +
     bloqueos del dueño. Incluye las reservas web en espera de pago."""
     if not pg.habilitado or not fechas:
         return set()
+    if pg.memo_tiene(("ocupados", cancha_id, tuple(fechas))):
+        return pg.memo_leer(("ocupados", cancha_id, tuple(fechas)), set)
     out: set[tuple[str, str]] = set()
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
@@ -778,6 +873,8 @@ def descuentos(cancha_id: str, fechas: list[str]) -> dict[tuple[str, str], int]:
     """Descuentos puntuales por slot que puso el dueño (%), por (fecha, hora)."""
     if not pg.habilitado or not fechas:
         return {}
+    if pg.memo_tiene(("descuentos", cancha_id, tuple(fechas))):
+        return pg.memo_leer(("descuentos", cancha_id, tuple(fechas)), dict)
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(
@@ -1025,6 +1122,18 @@ def reservas_de(ids: list[str]) -> list[dict]:
         return []
 
 
+# Filtro de "Mis reservas" (lo usan `reservas_de_usuario` y la precarga del Perfil).
+_WHERE_RES_USUARIO = ("lower(usuario) = %(e)s AND NOT (coalesce(estado,'') = 'nueva' AND NOT coalesce(pagado,false) "
+                      "AND coalesce(medio_pago,'') <> %(hold)s)")
+
+
+def _fila_res_usuario(cols: list[str], f) -> dict:
+    d = pg._fila_a_dict(cols, f)
+    d["extras"] = _json_list(d.get("extras"))
+    d["precio"] = int(round(float(d.get("precio") or 0)))
+    return d
+
+
 def reservas_de_usuario(email: str, limite: int = 200) -> list[dict]:
     """Reservas del CORREO de Google (`usuario`), las mismas que ve "Mis
     reservas" del app: pagadas o confirmadas (incluye efectivo), canceladas y
@@ -1033,20 +1142,17 @@ def reservas_de_usuario(email: str, limite: int = 200) -> list[dict]:
     email = (email or "").strip().lower()
     if not pg.habilitado or not email:
         return []
+    return pg.memo_leer(("reservas_de_usuario", email, int(limite)), lambda: _reservas_de_usuario(email, limite))
+
+
+def _reservas_de_usuario(email: str, limite: int) -> list[dict]:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
+            cols = _cols_res()
             cur.execute(
-                f"SELECT {', '.join(_cols_res())} FROM pichangol_reservas "
-                "WHERE lower(usuario) = %s AND NOT (coalesce(estado,'') = 'nueva' AND NOT coalesce(pagado,false) "
-                "AND coalesce(medio_pago,'') <> %s) "
-                "ORDER BY fecha DESC, hora_inicio DESC LIMIT %s", (email, MEDIO_HOLD_VOUCHER, limite))
-            out = []
-            for f in cur.fetchall():
-                d = pg._fila_a_dict(_cols_res(), f)
-                d["extras"] = _json_list(d.get("extras"))
-                d["precio"] = int(round(float(d.get("precio") or 0)))
-                out.append(d)
-            return out
+                f"SELECT {', '.join(cols)} FROM pichangol_reservas WHERE {_WHERE_RES_USUARIO} "
+                "ORDER BY fecha DESC, hora_inicio DESC LIMIT %(lim)s", {"e": email, "hold": MEDIO_HOLD_VOUCHER, "lim": limite})
+            return [_fila_res_usuario(cols, f) for f in cur.fetchall()]
     except Exception:  # noqa: BLE001
         return []
 
@@ -1087,9 +1193,14 @@ def _json_dict(v) -> dict:
 
 def academias_publicas() -> list[dict]:
     """Todas las academias no eliminadas (para el explorador web: salen por
-    deporte y por cercanía como las canchas). `data` = `Academia.toJson`."""
+    deporte y por cercanía como las canchas). `data` = `Academia.toJson`.
+    Caché corta como `canchas_publicas` (se borra al guardar desde la web)."""
     if not pg.habilitado:
         return []
+    return _publico(("academias_publicas",), _academias_publicas)
+
+
+def _academias_publicas() -> list[dict] | None:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute("SELECT id, dueno, data FROM pichangol_academias WHERE coalesce(eliminada,false) = false "
@@ -1102,7 +1213,7 @@ def academias_publicas() -> list[dict]:
                 out.append(d)
             return out
     except Exception:  # noqa: BLE001
-        return []
+        return None
 
 
 def academia(academia_id: str) -> dict | None:
@@ -1269,6 +1380,7 @@ def academias_de_dueno(email: str) -> list[dict]:
         return []
 
 
+@_invalida_canchas
 def guardar_academia(academia_id: str, dueno: str, data: dict) -> bool:
     """UPSERT por id (como `AcademiasRepo.guardar`). Si el id ya existe a nombre
     de OTRO correo, no se toca (el WHERE del ON CONFLICT lo impide)."""
@@ -1289,6 +1401,7 @@ def guardar_academia(academia_id: str, dueno: str, data: dict) -> bool:
         return False
 
 
+@_invalida_canchas
 def eliminar_academia(academia_id: str, dueno: str) -> bool:
     """Borrado lógico (como el app)."""
     dueno = (dueno or "").strip().lower()
@@ -1392,12 +1505,7 @@ def esta_verificado(email: str) -> bool:
     email = (email or "").strip().lower()
     if not pg.habilitado or not email:
         return False
-    try:
-        with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM pichangol_verificaciones WHERE lower(email) = %s AND estado = 'verificado' LIMIT 1", (email,))
-            return cur.fetchone() is not None
-    except Exception:  # noqa: BLE001
-        return False
+    return pg.memo_leer(("esta_verificado", email), lambda: _existe(_SQL_VERIFICADO, email))
 
 
 def producto_por_id(producto_id: str) -> dict | None:
@@ -1680,6 +1788,10 @@ def boleador(email: str) -> dict | None:
     email = (email or "").strip().lower()
     if not pg.habilitado or not email:
         return None
+    return pg.memo_leer(("boleador", email), lambda: _boleador(email))
+
+
+def _boleador(email: str) -> dict | None:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(f"SELECT {', '.join(_COLS_BOL)} FROM pichangol_boleadores WHERE email = %s", (email,))
@@ -2118,12 +2230,19 @@ def niveles_de(email: str) -> list[dict]:
     e = (email or "").strip().lower()
     if not pg.habilitado or not e:
         return []
+    return pg.memo_leer(("niveles_de", e), lambda: _niveles_de(e))
+
+
+def _nivel_de_fila(f) -> dict:
+    return {"deporte": str(f[0] or ""), "nivel": float(f[1] or 3.0), "partidos": int(f[2] or 0), "victorias": int(f[3] or 0)}
+
+
+def _niveles_de(e: str) -> list[dict]:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute("SELECT deporte, nivel, partidos, victorias FROM pichangol_niveles "
                         "WHERE lower(email) = %s ORDER BY deporte", (e,))
-            return [{"deporte": str(f[0] or ""), "nivel": float(f[1] or 3.0),
-                     "partidos": int(f[2] or 0), "victorias": int(f[3] or 0)} for f in cur.fetchall()]
+            return [_nivel_de_fila(f) for f in cur.fetchall()]
     except Exception:  # noqa: BLE001
         return []
 
@@ -2135,37 +2254,71 @@ def puntos_de(email: str) -> dict:
     pedidos de bodega pagados con saldo y entregados, menos lo canjeado
     (`pichangol_puntos_canjes`). Cada parte es fail-safe por separado."""
     e = (email or "").strip().lower()
-    from datetime import datetime, timedelta, timezone
-    out = {"ganados": 0, "canjeados": 0, "disponibles": 0}
     if not pg.habilitado or not e:
-        return out
+        return {"ganados": 0, "canjeados": 0, "disponibles": 0}
+    return pg.memo_leer(("puntos_de", e), lambda: _puntos_de(e))
+
+
+# Las tres partes de `puntos_de` (mismos filtros en la consulta única y en el
+# respaldo por partes).
+_SQL_PUNTOS_RES = ("SELECT precio, extras, fecha FROM pichangol_reservas WHERE lower(usuario) = %(e)s "
+                   "AND coalesce(traida_por_app, true) AND coalesce(pagado, false) "
+                   "AND coalesce(estado, '') NOT IN ('noShow', 'no_show')")
+_SQL_PUNTOS_BODEGA = ("SELECT coalesce(sum(total), 0) FROM pichangol_bodega_pedidos WHERE lower(cliente) = %(e)s "
+                      "AND pagado AND estado = 'entregado' AND creado >= %(desde)s")
+_SQL_PUNTOS_CANJES = "SELECT coalesce(sum(puntos), 0) FROM pichangol_puntos_canjes WHERE lower(email) = %(e)s"
+
+
+def _puntos_de_reserva(precio, extras) -> int:
+    tot = float(precio or 0) + sum(float((x or {}).get("precio") or 0) for x in _json_list(extras) if isinstance(x, dict))
+    return int(round(tot))
+
+
+def _puntos_de(e: str) -> dict:
+    """UNA consulta para las tres partes (con la base a ~115 ms eran 3 viajes);
+    si falla (p. ej. una base sin la tabla de bodega) se cae al cálculo por
+    partes, cada una fail-safe por separado como siempre."""
+    from datetime import datetime, timedelta, timezone
     desde = (datetime.now(timezone.utc) - timedelta(days=365))
+    lim = desde.date().isoformat()
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT r.precio, r.extras, r.fecha, r.hay, ({_SQL_PUNTOS_BODEGA}), ({_SQL_PUNTOS_CANJES}) "
+                        f"FROM (SELECT 1) uno LEFT JOIN LATERAL (SELECT q.*, true AS hay FROM ({_SQL_PUNTOS_RES}) q) r ON true",
+                        {"e": e, "desde": desde})
+            filas = cur.fetchall()
+    except Exception:  # noqa: BLE001
+        return _puntos_de_por_partes(e, desde)
+    ganados = sum(_puntos_de_reserva(p, x) for p, x, fecha, hay, _b, _c in filas if hay and str(fecha or "") >= lim)
+    bodega = float((filas[0][4] if filas else 0) or 0)
+    canjeados = int((filas[0][5] if filas else 0) or 0)
+    ganados += int(round(bodega))
+    return {"ganados": ganados, "canjeados": canjeados, "disponibles": max(0, ganados - canjeados)}
+
+
+def _puntos_de_por_partes(e: str, desde) -> dict:
+    out = {"ganados": 0, "canjeados": 0, "disponibles": 0}
     ganados = 0
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute(
-                "SELECT precio, extras, fecha FROM pichangol_reservas WHERE lower(usuario) = %s "
-                "AND coalesce(traida_por_app, true) AND coalesce(pagado, false) "
-                "AND coalesce(estado, '') NOT IN ('noShow', 'no_show')", (e,))
+            cur.execute(_SQL_PUNTOS_RES, {"e": e})
             lim = desde.date().isoformat()
             for precio, extras, fecha in cur.fetchall():
                 if str(fecha or "") < lim:
                     continue
-                tot = float(precio or 0) + sum(float((x or {}).get("precio") or 0) for x in _json_list(extras) if isinstance(x, dict))
-                ganados += int(round(tot))
+                ganados += _puntos_de_reserva(precio, extras)
     except Exception:  # noqa: BLE001
         pass
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute("SELECT coalesce(sum(total), 0) FROM pichangol_bodega_pedidos WHERE lower(cliente) = %s "
-                        "AND pagado AND estado = 'entregado' AND creado >= %s", (e, desde))
+            cur.execute(_SQL_PUNTOS_BODEGA, {"e": e, "desde": desde})
             ganados += int(round(float((cur.fetchone() or [0])[0] or 0)))
     except Exception:  # noqa: BLE001
         pass
     canjeados = 0
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute("SELECT coalesce(sum(puntos), 0) FROM pichangol_puntos_canjes WHERE lower(email) = %s", (e,))
+            cur.execute(_SQL_PUNTOS_CANJES, {"e": e})
             canjeados = int((cur.fetchone() or [0])[0] or 0)
     except Exception:  # noqa: BLE001
         pass
@@ -2173,18 +2326,69 @@ def puntos_de(email: str) -> dict:
     return out
 
 
+_SQL_TIENE_MATRICULAS = ("SELECT 1 FROM pichangol_matriculas WHERE (lower(email) = %(e)s "
+                         "OR lower(data->>'emailAlumno') = %(e)s) AND coalesce(eliminada,false) = false LIMIT 1")
+_SQL_VERIFICADO = "SELECT 1 FROM pichangol_verificaciones WHERE lower(email) = %(e)s AND estado = 'verificado' LIMIT 1"
+
+
 def tiene_matriculas(email: str) -> bool:
     """¿Paga (o es) alumno de alguna academia? (= `appState.misMatriculas`)."""
     e = (email or "").strip().lower()
     if not pg.habilitado or not e:
         return False
+    return pg.memo_leer(("tiene_matriculas", e), lambda: _existe(_SQL_TIENE_MATRICULAS, e))
+
+
+def _existe(sql: str, e: str) -> bool:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute("SELECT 1 FROM pichangol_matriculas WHERE (lower(email) = %s "
-                        "OR lower(data->>'emailAlumno') = %s) AND coalesce(eliminada,false) = false LIMIT 1", (e, e))
+            cur.execute(sql, {"e": e})
             return cur.fetchone() is not None
     except Exception:  # noqa: BLE001
         return False
+
+
+def precargar_perfil(email: str) -> None:
+    """Perfil web: lo que la página pide por separado (reservas, niveles,
+    verificación, matrículas, boleador) en UNA consulta, guardado en la memoria
+    de la request; las funciones de siempre lo toman de ahí. Si la consulta
+    falla (una base sin alguna tabla), no se guarda nada y cada función hace
+    su lectura de siempre, con su propio fail-safe."""
+    e = (email or "").strip().lower()
+    if not pg.habilitado or not e or pg.memo_request() is None:
+        return
+    cols_r = _cols_res()
+    sql = ("SELECT (SELECT coalesce(json_agg(json_build_array(deporte, nivel, partidos, victorias) ORDER BY deporte), '[]'::json) "
+           "FROM pichangol_niveles WHERE lower(email) = %(e)s), "
+           f"EXISTS({_SQL_VERIFICADO}), EXISTS({_SQL_TIENE_MATRICULAS}), b.hay, "
+           + ", ".join(f"b.{c}" for c in _COLS_BOL) + ", r.hay, " + ", ".join(f"r.{c}" for c in cols_r)
+           + " FROM (SELECT 1) uno "
+           f"LEFT JOIN LATERAL (SELECT {', '.join(_COLS_BOL)}, true AS hay FROM pichangol_boleadores WHERE email = %(e)s LIMIT 1) b ON true "
+           f"LEFT JOIN LATERAL (SELECT {', '.join(cols_r)}, true AS hay FROM pichangol_reservas WHERE {_WHERE_RES_USUARIO} "
+           "ORDER BY fecha DESC, hora_inicio DESC LIMIT 200) r ON true "
+           "ORDER BY r.fecha DESC NULLS LAST, r.hora_inicio DESC NULLS LAST")
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(sql, {"e": e, "hold": MEDIO_HOLD_VOUCHER})
+            filas = cur.fetchall()
+    except Exception:  # noqa: BLE001
+        return
+    if not filas:
+        return
+    f0 = filas[0]
+    niveles = f0[0] if isinstance(f0[0], list) else (json.loads(f0[0]) if f0[0] else [])
+    nb = len(_COLS_BOL)
+    pg.memo_guardar(("niveles_de", e), [_nivel_de_fila(x) for x in niveles])
+    pg.memo_guardar(("esta_verificado", e), bool(f0[1]))
+    pg.memo_guardar(("tiene_matriculas", e), bool(f0[2]))
+    try:
+        bol = _norm_boleador(f0[4:4 + nb]) if f0[3] else None
+    except Exception:  # noqa: BLE001 — mismo resultado que `_boleador` (que devuelve None si falla)
+        bol = None
+    pg.memo_guardar(("boleador", e), bol)
+    ir = 4 + nb
+    pg.memo_guardar(("reservas_de_usuario", e, 200),
+                    [_fila_res_usuario(cols_r, f[ir + 1:]) for f in filas if f[ir]])
 
 
 # ── Canjes de la RESERVA WEB: bono de horas y puntos Pichangol ────────────────
@@ -2340,6 +2544,30 @@ def canjes_web_de_ref(reserva_ref: str) -> list[dict]:
     """Beneficios vivos (no devueltos) de esa reserva/grupo."""
     if not pg.habilitado or not reserva_ref or not canjes_web_disponible():
         return []
+    return pg.memo_leer(("canjes_web_de_ref", reserva_ref), lambda: _canjes_web_de_ref(reserva_ref))
+
+
+def precargar_canjes_web(refs) -> None:
+    """Los canjes de VARIAS reservas en una consulta (Mis reservas arma el
+    botón "Cancelar" de cada una y preguntaba una por una)."""
+    refs = [r for r in dict.fromkeys(str(x) for x in (refs or []) if x) if not pg.memo_tiene(("canjes_web_de_ref", r))]
+    if not refs or not pg.habilitado or pg.memo_request() is None or not canjes_web_disponible():
+        return
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"SELECT {', '.join(_COLS_CW)} FROM pichangol_canjes_web "
+                        "WHERE reserva_ref = ANY(%s) AND estado <> 'devuelto' ORDER BY creado", (refs,))
+            por_ref: dict[str, list[dict]] = {r: [] for r in refs}
+            for f in cur.fetchall():
+                cj = _norm_cw(pg._fila_a_dict(_COLS_CW, f))
+                por_ref.setdefault(str(cj.get("reserva_ref") or ""), []).append(cj)
+    except Exception:  # noqa: BLE001
+        return
+    for r in refs:
+        pg.memo_guardar(("canjes_web_de_ref", r), por_ref.get(r, []))
+
+
+def _canjes_web_de_ref(reserva_ref: str) -> list[dict]:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(f"SELECT {', '.join(_COLS_CW)} FROM pichangol_canjes_web "
@@ -2478,6 +2706,24 @@ def _sql_puntos_netos(refs: list[str], desde: float | None) -> tuple[str, list]:
     return sql, params
 
 
+def precargar_puntos_canjes(email: str) -> None:
+    """Todas las filas de canje de puntos del jugador en UNA consulta (Mis
+    reservas mira el canje de cada reserva próxima): `puntos_canje_neto` suma
+    desde aquí lo mismo que su SELECT."""
+    e = (email or "").strip().lower()
+    if not pg.habilitado or not e or pg.memo_request() is None or pg.memo_tiene(("puntos_canjes_filas", e)):
+        return
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("SELECT puntos, soles, referencia, extract(epoch FROM creado)::float8 FROM pichangol_puntos_canjes "
+                        "WHERE lower(email) = %s", (e,))
+            filas = [(int(f[0] or 0), float(f[1] or 0), str(f[2] or ""), float(f[3]) if f[3] is not None else None)
+                     for f in cur.fetchall()]
+    except Exception:  # noqa: BLE001
+        return
+    pg.memo_guardar(("puntos_canjes_filas", e), filas)
+
+
 def puntos_canje_neto(email: str, refs: list[str], desde: float | None = None) -> tuple[int, float]:
     """(puntos, soles) aún canjeados en esas referencias (0 si ya se devolvieron
     o si la tabla no existe)."""
@@ -2485,6 +2731,14 @@ def puntos_canje_neto(email: str, refs: list[str], desde: float | None = None) -
     refs = [r for r in (refs or []) if r]
     if not pg.habilitado or not e or not refs:
         return 0, 0.0
+    m = pg.memo_request()
+    if m is not None and ("puntos_canjes_filas", e) in m:
+        validas = set(refs) | {"devolucion:" + r for r in refs}
+        pts = sum(p for p, _s, ref, t in m[("puntos_canjes_filas", e)]
+                  if ref in validas and (desde is None or (t is not None and t >= float(desde))))
+        soles = sum(s_ for _p, s_, ref, t in m[("puntos_canjes_filas", e)]
+                    if ref in validas and (desde is None or (t is not None and t >= float(desde))))
+        return max(int(pts), 0), max(float(soles), 0.0)
     try:
         sql, params = _sql_puntos_netos(refs, desde)
         with pg.conexion() as conn, conn.cursor() as cur:

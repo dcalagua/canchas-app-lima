@@ -103,13 +103,19 @@ def perfiles(emails) -> dict[str, dict]:
     es = sorted({(x or "").strip().lower() for x in emails if (x or "").strip()})
     if not pg.habilitado or not es:
         return {}
+    # Por correo con la memoria de la request (la bandeja y el encabezado del
+    # chat piden los mismos perfiles: el segundo pedido no vuelve a la base).
+    return pg.memo_por_clave("perfil", es, _perfiles)
+
+
+def _perfiles(es: list[str]) -> dict[str, dict] | None:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute("SELECT email, nombre, foto_url, celular FROM pichangol_perfiles WHERE lower(email) = ANY(%s)", (es,))
             return {str(f[0]).lower(): {"nombre": str(f[1] or ""), "foto_url": str(f[2] or ""), "celular": str(f[3] or "")}
                     for f in cur.fetchall()}
     except Exception:  # noqa: BLE001
-        return {}
+        return None
 
 
 def mi_nombre(ses: dict) -> str:
