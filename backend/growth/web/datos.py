@@ -1773,8 +1773,10 @@ def _norm_boleador(f) -> dict:
         "tarifa": float(d.get("tarifa") or 0),
         "moneda": str(d.get("moneda") or "PEN"),
         "activo": bool(d.get("activo")),
-        "creado": d["creado"].isoformat() if d.get("creado") else "",
-        "actualizado": d["actualizado"].isoformat() if d.get("actualizado") else "",
+        # `_fila_a_dict` ya deja las fechas en ISO (str); antes se llamaba .isoformat()
+        # sobre el str, el except lo tapaba y todo boleador salía como None.
+        "creado": str(d.get("creado") or ""),
+        "actualizado": str(d.get("actualizado") or ""),
     })
     out["canchas"] = [str(x) for x in (data.get("canchas") or []) if x]
     out["locales"] = [x for x in (data.get("locales") or []) if isinstance(x, dict)]

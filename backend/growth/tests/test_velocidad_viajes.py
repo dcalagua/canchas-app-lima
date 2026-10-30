@@ -295,6 +295,8 @@ def test_precarga_del_perfil_igual_que_cada_funcion(base):
     juntos, m = _en_request(pagina)
     assert juntos == sueltos and _consultas(m) == 1
     assert [x["id"] for x in juntos[0]] == ["it_vel_r3", "it_vel_r2", "it_vel_r1", "it_vel_r4"]  # la retención web no sale
+    # El boleador registrado SE ENCUENTRA (antes las fechas ISO rompían la normalización y salía None).
+    assert juntos[4] and juntos[4]["email"] == E and juntos[4]["creado"]
 
 
 def test_precarga_de_mis_reservas_igual_que_por_reserva(base):
