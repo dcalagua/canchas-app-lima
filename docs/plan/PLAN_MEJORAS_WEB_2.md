@@ -8,14 +8,18 @@
 >     7 SEO (sitemap, páginas por zona, h1, JSON-LD de academia), 8 instalable (manifest), 9 mover el pin
 >     (≤ 300 m) y 10 agenda iCal del anfitrión.
 >   - P3: errores de JavaScript a los logs (`[js]`).
-> - **Pendiente, con su motivo:**
->   - P1 peso de fotos: el Storage de Supabase no redimensiona en el plan actual; hay que generar
->     miniaturas al subir.
->   - P2-11 encargados con permisos y P2-12 dividir el pago: necesitan decisiones de producto
->     (roles; cómo cobrar a varios con Culqi).
->   - P3 CSP en modo bloqueo: esperar los reportes `[csp]` de QAS.
->   - P3 estilos en línea y partir `router.py`: refactor grande sin cambio visible.
->   - P3 Playwright en CI: necesita un Postgres con datos semilla en el job.
+> - **Ronda 3 (30-oct-2026, rama `feat/web-ronda3`):** todo lo pendiente quedó hecho.
+>   - Miniaturas de fotos (`/web/mini`, WebP en `canchas/mini/`).
+>   - P2-11 encargados con el rol **Recepción** (migración 0005).
+>   - P2-12 **cada uno paga su parte**, directo al club (migraciones 0006 y 0007).
+>   - CSP en modo bloqueo (`WEB_CSP_MODO=reporte` es el corte de emergencia).
+>   - Estilos en línea del anfitrión pasados a CSS y `router.py` partido en 11 módulos.
+>   - Barrido Playwright en CI (`.github/workflows/web-e2e.yml`).
+>   - También: `noindex` fuera de producción, `og:image` absoluto, accesibilidad (etiquetas,
+>     objetivos táctiles de 44 px y textos de al menos 12 px) y velocidad (menos viajes a la base;
+>     Culqi y Leaflet ya no bloquean la carga).
+> - **Queda para después:** la versión APK de encargados y de dividir el pago, y pasar la CSP a
+>   nonces (hoy sigue con `'unsafe-inline'`).
 
 Base: barrido con Playwright de **QAS** (`pg.ebim.pe`) con la cuenta de
 gep.soporteit@gmail.com (acceso de revisión). Se revisaron **95 pantallas**

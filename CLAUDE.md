@@ -4180,8 +4180,18 @@ Detalle y acciones pendientes: `docs/plan/BITACORA_NOCHE.md`.
   voucher aprobado o sin revisar → `devolver` (el club marca "Ya lo devolví" /
   "No recibí ese pago"). Aviso al organizador 30 min antes ("Pagar lo que
   falta"). Reserva confirmada que se cancela → `devolver_por_cancelacion`
-  (proporcional por parte). Cron: `division.barrer` en el de 1 min de `main.py`.
-  APK: pendiente. Test `tests/test_web_dividir_pago.py`.
+  (proporcional por parte, resto mayor y nunca más de lo que pagó cada parte;
+  un solo reembolso por cargo base). Cron: `division.barrer` en el de 1 min de
+  `main.py` (cada división con su try/except; retoma cierres cortados a mitad).
+  **Reglas tras la revisión (30-oct):** una lectura fallida NUNCA se toma como
+  "apartado perdido" (`datos.reservas_de(estricto=True)` → se reintenta);
+  `confirmar_directo` verifica que las filas quedaron confirmadas antes de
+  registrar el cobro y la comisión; el webhook de Culqi exige el MISMO club,
+  PEN y cargo capturado, e ignora cargos ya devueltos
+  (`cl_division_cargos_devueltos`); un voucher subido tarde retoma la parte o
+  queda como "pago fuera de plazo" para devolver (`cl_division_tardios`).
+  Migración `0007_dividir_pago_devoluciones.sql` (sin ella la opción no se
+  ofrece). APK: pendiente. Test `tests/test_web_dividir_pago.py`.
 
 ## Pendientes / backlog
 
