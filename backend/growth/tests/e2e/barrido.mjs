@@ -87,6 +87,8 @@ const RUTAS = [
   ['anf_cobros_agregar', '/anfitrion/cobros/agregar?academia=demo_ac_raqueta', 'dueno'],
   ['anf_campeonatos', '/anfitrion/campeonatos', 'dueno'], ['anf_boleador', '/anfitrion/boleador', 'dueno'],
   ['anf_mensajes', '/mensajes', 'dueno'],
+  ['anf_encargados', '/anfitrion/encargados?local=demo_arena_f7', 'dueno'],
+  ['anf_devoluciones', '/anfitrion/cobros-club/devoluciones', 'dueno'],
 ].filter(r => !SOLO || SOLO.test(r[0]));
 
 const VISTAS = [['mov', { width: 390, height: 844 }, true], ['pc', { width: 1440, height: 900 }, false]];
