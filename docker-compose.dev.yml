@@ -1,0 +1,24 @@
+# Postgres LOCAL para desarrollar y probar las migraciones sin tocar Supabase.
+#   docker compose -f docker-compose.dev.yml up -d
+#   cd backend/growth && DATABASE_URL=postgresql://canchalibre:canchalibre@localhost:55432/canchalibre \
+#       python -m db.migrar --local
+# Puerto 55432 para no chocar con un Postgres instalado en la máquina.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: canchalibre-pg
+    environment:
+      POSTGRES_USER: canchalibre
+      POSTGRES_PASSWORD: canchalibre
+      POSTGRES_DB: canchalibre
+    ports:
+      - "55432:5432"
+    volumes:
+      - canchalibre-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U canchalibre"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  canchalibre-pg:

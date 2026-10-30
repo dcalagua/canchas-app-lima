@@ -18,6 +18,7 @@ import urllib.parse
 import urllib.request
 
 import config
+from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 
 def validar_firma(url: str, params: dict, firma: str) -> bool:
@@ -64,7 +65,7 @@ def disponible_whatsapp() -> bool:
 
 def _cuerpo(codigo: str) -> str:
     return (
-        f"Tu codigo de verificacion Pichangol es {codigo}. "
+        f"Tu codigo de verificacion {MARCA} es {codigo}. "
         f"Vence en 5 minutos. No lo compartas."
     )
 

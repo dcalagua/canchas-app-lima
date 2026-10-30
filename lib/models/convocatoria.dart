@@ -63,6 +63,8 @@ class Convocatoria {
   final int totalInscritos;
   final int confirmadosN;
   final int esperaN;
+  // Correo de quien la creó: admin de la pichanga (junto al dueño del club).
+  final String creadoPor;
 
   const Convocatoria({
     required this.id,
@@ -80,6 +82,7 @@ class Convocatoria {
     this.totalInscritos = 0,
     this.confirmadosN = 0,
     this.esperaN = 0,
+    this.creadoPor = '',
   });
 
   bool get cerrada => estado == 'cerrada';
@@ -102,6 +105,7 @@ class Convocatoria {
         totalInscritos: (j['total_inscritos'] as num?)?.toInt() ?? 0,
         confirmadosN: (j['confirmados_n'] as num?)?.toInt() ?? 0,
         esperaN: (j['espera_n'] as num?)?.toInt() ?? 0,
+        creadoPor: (j['creado_por'] as String? ?? '').trim().toLowerCase(),
       );
 
   /// Parsea la cabecera dentro de una respuesta de detalle, tomando los conteos
@@ -126,6 +130,7 @@ class Convocatoria {
       totalInscritos: (d['total_inscritos'] as num?)?.toInt() ?? 0,
       confirmadosN: conf.length,
       esperaN: esp.length,
+      creadoPor: (c['creado_por'] as String? ?? '').trim().toLowerCase(),
     );
   }
 }
