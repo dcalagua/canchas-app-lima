@@ -506,7 +506,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .barra-guardar{position:sticky;bottom:0;background:var(--blanco);border-top:1px solid var(--trazo);padding:12px 0;margin-top:26px;z-index:15}
 .barra-guardar .wrap-xl{display:flex;align-items:center;justify-content:space-between;gap:16px}
 .barra-guardar .btn{flex:none;padding:13px 26px}#msgGuardar.err{color:var(--bad-fg);font-weight:700}
-@media(max-width:560px){#msgGuardar:not(.err){display:none}.barra-guardar .btn{width:100%}}
+@media(max-width:560px){#msgGuardar:not(.err){display:none}.barra-guardar .btn{flex:1 1 0;min-width:0;width:auto;padding-left:12px;padding-right:12px}}
 @media(max-width:900px){.edit-grid{grid-template-columns:1fr;gap:8px}.edit-nav{position:static;flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:6px}.edit-nav-it{white-space:nowrap;border:1px solid var(--trazo);padding:8px 12px;border-radius:999px;font-size:13.5px}}
 .mov{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--trazo);font-size:14px}
 .mov small{display:block;color:var(--tenue);font-weight:600}

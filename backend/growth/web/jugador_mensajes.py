@@ -1090,7 +1090,7 @@ _CSS = """
 .mj-cab .vol{text-decoration:none;font-size:22px;color:var(--noche);padding:4px 8px;border-radius:50%}.mj-cab .vol:hover{background:#F2F2F2}
 @media(min-width:900px){.mj.dos .mj-cab .vol{display:none}}
 .mj-cab .who{flex:1;min-width:0;text-decoration:none;color:inherit;display:flex;align-items:center;gap:10px}
-.mj-cab .who b{display:block;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mj-cab .who small{display:block;color:var(--tenue);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mj-cab .mj-h1{margin:0;font:inherit;min-width:0}.mj-cab .who b{display:block;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mj-cab .who small{display:block;color:var(--tenue);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mj-cab .ib{border:0;background:transparent;font-size:19px;padding:8px;border-radius:50%;cursor:pointer}.mj-cab .ib:hover{background:#F2F2F2}
 .mj-msgs{flex:1;min-height:0;overflow-y:auto;padding:14px 14px 8px;background:#F7F7F7;display:flex;flex-direction:column;gap:3px;overscroll-behavior:contain}
 .mj-msgs>:first-child{margin-top:auto}
@@ -1428,7 +1428,7 @@ def _cabecera_chat(conv: dict, tit: dict) -> str:
     who_href = f"/mensajes/grupo/{quote(tit['grupo'], safe='')}" if tit["grupo"] else "#"
     return ("<div class='mj-cab'><a class='vol' href='/mensajes' aria-label='Volver'>‹</a>"
             f"<a class='who' href='{who_href}'" + ("" if tit["grupo"] else " onclick='return false'") + f">{foto}"
-            f"<span style='min-width:0'><b>{e(tit['titulo'])}</b><small>{e(tit['sub'])}</small></span></a>"
+            f"<span style='min-width:0'><h1 class='mj-h1'><b>{e(tit['titulo'])}</b></h1><small>{e(tit['sub'])}</small></span></a>"
             "<button type='button' class='ib' onclick='mjLlamadas()' title='Llamar' aria-label='Llamar'>📞</button>"
             "<button type='button' class='ib' id='mjOpc' title='Opciones' aria-label='Opciones'>⋯</button></div>")
 

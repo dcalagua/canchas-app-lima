@@ -224,10 +224,12 @@ def _maps(c: dict) -> str:
 
 
 def _no_encontrada(que: str = "Cancha no disponible") -> HTMLResponse:
-    return ui.shell(que, (f"<div class='panel' style='text-align:center;margin-top:24px'><h1>{e(que)}</h1>"
+    r = ui.shell(que, (f"<div class='panel' style='text-align:center;margin-top:24px'><h1>{e(que)}</h1>"
                           "<p class='sub'>Puede que el enlace sea viejo o que el local haya dejado de "
                           f"publicar en {MARCA}.</p><div class='acciones' style='justify-content:center'>"
                           "<a class='btn' href='/canchas'>Ver canchas disponibles</a></div></div>"))
+    r.status_code = 404   # nunca un "soft 404" (Google lo indexaría como página válida)
+    return r
 
 
 # ── catálogo ──────────────────────────────────────────────────────────────────
