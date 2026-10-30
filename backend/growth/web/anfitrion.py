@@ -44,7 +44,7 @@ import fidelidad as _fid
 from db.store import stores
 from propiedad import fotos_locales, fotos_reclamo, reclamos
 from reservas import reglas as _reglas
-from web import almacen, catalogos, datos, horarios, sesion, ui
+from web import almacen, catalogos, datos, horarios, permisos, sesion, ui
 from web.router import (PLAY_URL, _deporte, _deportes_de, _fotos, _fotos_crudas, _maps, _moneda_de, _pais_de,
                         _zona, e)
 
@@ -64,6 +64,7 @@ GRUPOS_MENU = [
         ("mis-canchas", "Mis canchas", "Registra y administra: canchas, agenda, reservas, cuenta", "#0B7A57", "🏬", "/anfitrion/mis-canchas", True),
         ("cobros-club", "Cobros del club", "Tu Culqi, tus medios de pago manuales y la comisión", "#0B7A57", "💸", "/anfitrion/cobros-club", True),
         ("pagos-por-confirmar", "Pagos por confirmar", "Comprobantes de Yape, Plin o transferencia que debes revisar", "#946200", "🧾", "/anfitrion/pagos-por-confirmar", True),
+        ("encargados", "Encargados", "Invita a tu recepción a operar el local: agenda, reservas y pagos", "#2F6FDE", "👥", "/anfitrion/encargados", True),
         ("reglas", "Reglas de reserva", "Horario por día, días cerrados, precios por franja y cancelación", "#2F6FDE", "⚙️", "/anfitrion/reglas", True),
         ("disponibilidad", "Disponibilidad", "Abre o cierra turnos de tus canchas", "#7CB518", "🟢", "/anfitrion/disponibilidad", True),
         ("fijas", "Reservas fijas", "Pensionados: el mismo día y hora, cada semana", "#08654A", "🔁", "/anfitrion/fijas", True),
@@ -137,8 +138,9 @@ def _banner_cobros(email: str) -> str:
 
 
 def _cabecera(seccion: str, ses: dict | None, tabs_visibles: bool = True) -> str:
+    ocultas = permisos.tabs_ocultas(ses["email"]) if tabs_visibles and ses else frozenset()  # Recepción: sin Ingresos ni Canchas
     tabs = "".join(f"<a class='cat{' sel' if k == seccion else ''}' href='{href}'><span class='ico'>{ico}</span>{n}</a>"
-                   for k, n, href, ico in SECCIONES) if tabs_visibles else ""
+                   for k, n, href, ico in SECCIONES if k not in ocultas) if tabs_visibles else ""
     return ui.cabecera(tabs=tabs, ses=ses, volver="/anfitrion", modo="anfitrion")
 
 
@@ -163,7 +165,9 @@ def pagina_menu(request: Request) -> HTMLResponse:
     ses, resp = _sesion_o_entrar(request, "/anfitrion")
     if resp is not None:
         return resp
-    insignias = {"pagos-por-confirmar": _pendientes_vouchers(ses["email"])}
+    from web import anfitrion_encargados as _enc
+    enc_html, ocultar, n_vouchers = _enc.para_menu(ses["email"])  # invitaciones + locales donde ayuda
+    insignias = {"pagos-por-confirmar": n_vouchers}
 
     def item(k: str, titulo: str, desc: str, color: str, ico: str, href: str, web: bool) -> str:
         n = insignias.get(k) or 0
@@ -174,12 +178,12 @@ def pagina_menu(request: Request) -> HTMLResponse:
                 + "<span class='chev' aria-hidden='true'>›</span></a>")
     grupos = ""
     for nombre, its in GRUPOS_MENU:
-        html_its = "".join(item(*it) for it in its if it[0] != "plan-academia" or _plan_academia_activo())
+        html_its = "".join(item(*it) for it in its if it[0] not in ocultar and (it[0] != "plan-academia" or _plan_academia_activo()))
         if html_its:
             grupos += f"<section class='anf-grupo' aria-label='{e(nombre)}'><h2>{e(nombre)}</h2>{html_its}</section>"
     cuerpo = ("<div class='anf-hero'><a class='volver' href='/' aria-label='Volver'>‹</a><h1>Modo anfitrión</h1>"
               "<p>Publica tu cancha o academia y recibe reservas y alumnos.</p></div>"
-              f"<div class='anf-menu'>{grupos}</div>"
+              f"<div class='anf-menu'>{enc_html}{grupos}</div>"
               "<style>.anf-grupo{display:flex;flex-direction:column;gap:14px}.anf-grupo h2{margin:12px 0 0;font-size:15px;"
               "text-transform:uppercase;letter-spacing:.06em;color:var(--tenue)}.anf-insignia{display:inline-flex!important;min-width:28px;"
               "justify-content:center;font-weight:800}.anf-item:focus-visible{outline:3px solid var(--esmeralda);outline-offset:2px}</style>")
@@ -187,16 +191,25 @@ def pagina_menu(request: Request) -> HTMLResponse:
                     titulo_tab=f"Modo anfitrión · {MARCA}")
 
 
-def _contexto(request: Request, volver: str, seccion: str = "hoy", sin_canchas_ok: bool = False):
+def _contexto(request: Request, volver: str, seccion: str = "hoy", sin_canchas_ok: bool = False, accion: str = ""):
     """(sesión, canchas del dueño) o una respuesta de redirección/onboarding.
     Sin canchas, cada pestaña muestra la bienvenida CON SU pestaña marcada (antes
     todas pintaban "Hoy" y parecía que el clic no hacía nada); [sin_canchas_ok]
     deja pasar a las que sirven igual sin canchas (Ingresos: un organizador de
-    torneos o una academia también tiene plata por recibir)."""
+    torneos o una academia también tiene plata por recibir). Con [accion]
+    (`web/permisos.py`) también entran las canchas de los locales donde el
+    correo es ENCARGADO; sin ella son solo las del dueño, y quien solo es
+    encargado ve "tu rol no incluye esta sección" (403)."""
     ses, resp = _sesion_o_entrar(request, volver)
     if resp is not None:
         return None, None, resp
-    canchas = datos.canchas_de_dueno(ses["email"])
+    if accion:
+        canchas = permisos.canchas_para(ses["email"], accion)
+    else:
+        canchas = datos.canchas_de_dueno(ses["email"])
+        if not canchas and permisos.es_solo_encargado(ses["email"]):
+            from web import anfitrion_encargados as _enc
+            return ses, [], _enc.sin_permiso(ses, seccion)
     if not canchas and not sin_canchas_ok:
         return ses, [], _onboarding(ses, seccion)
     return ses, canchas, None
@@ -277,7 +290,7 @@ def _tarjeta_res(r: dict, c: dict | None, hoy: date) -> str:
 def pagina_hoy(request: Request) -> HTMLResponse:
     """Mis canchas → "Hoy" de Airbnb: las reservas que tocan hoy, mañana y en
     los próximos 7 días, más lo pendiente de cobrar en efectivo."""
-    ses, canchas, resp = _contexto(request, "/anfitrion/mis-canchas")
+    ses, canchas, resp = _contexto(request, "/anfitrion/mis-canchas", accion=permisos.VER_AGENDA)
     if resp is not None:
         return resp
     hoy = _hoy(canchas)
@@ -303,16 +316,18 @@ def pagina_hoy(request: Request) -> HTMLResponse:
            else f"<div class='anf-vacio' style='grid-column:1/-1'>{vacios[k]}</div>")
         + "</div>" for k, _ in etiquetas)
     n_ver = sum(1 for c in canchas if datos.reservable(c))
+    propias = [c for c in canchas if permisos.es_dueno_de(ses["email"], c)]  # los avisos de dueño, solo de las suyas
     cuerpo = (
         "<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
         f"<h1 class='anf-hola' style='margin-top:6px'>¡Hola, {e((ses.get('nombre') or ses.get('email') or '').split(' ')[0])}!</h1>"
         f"<p class='sub'>{len(canchas)} cancha{'s' if len(canchas) != 1 else ''} · {n_ver} verificada{'s' if n_ver != 1 else ''} · "
         f"{len(grupos['hoy'])} reserva{'s' if len(grupos['hoy']) != 1 else ''} hoy</p>"
-        f"{_banner_cobros(ses['email'])}{_aviso_verificacion(canchas, ses['email'])}{fotos_locales.avisos_dueno(ses['email'], canchas)}"
+        f"{_banner_cobros(ses['email'])}{_aviso_verificacion(propias, ses['email'])}{fotos_locales.avisos_dueno(ses['email'], propias)}"
         f"<h2 style='margin-top:22px'>Tus reservas</h2><div class='anf-tabs' id='anfTabs'>{tabs}</div>{paneles}"
         "<h2 style='margin-top:30px'>Atajos</h2><div class='kpis'>"
         "<a class='kpi' href='/anfitrion/calendario' style='text-decoration:none'><small>Agenda</small><b style='font-size:16px'>Ver el calendario semanal</b></a>"
-        "<a class='kpi' href='/anfitrion/ingresos' style='text-decoration:none'><small>Plata</small><b style='font-size:16px'>Saldo y por recibir</b></a>"
+        + ("<a class='kpi' href='/anfitrion/ingresos' style='text-decoration:none'><small>Plata</small><b style='font-size:16px'>Saldo y por recibir</b></a>"
+           if propias else "<a class='kpi' href='/anfitrion/pagos-por-confirmar' style='text-decoration:none'><small>Pagos</small><b style='font-size:16px'>Comprobantes por confirmar</b></a>") +
         "<a class='kpi' href='/anfitrion/calendario' style='text-decoration:none'><small>Operar</small><b style='font-size:16px'>Reserva manual · bloquear horas · marcar pagado</b></a>"
         "</div>"
         f"<script>{JS_PAGAR}</script>"
@@ -326,7 +341,7 @@ def pagina_hoy(request: Request) -> HTMLResponse:
 
 @router.get("/anfitrion/reservas", response_class=HTMLResponse)
 def pagina_reservas(request: Request) -> HTMLResponse:
-    ses, canchas, resp = _contexto(request, "/anfitrion/reservas", "reservas")
+    ses, canchas, resp = _contexto(request, "/anfitrion/reservas", "reservas", accion=permisos.VER_AGENDA)
     if resp is not None:
         return resp
     hoy = _hoy(canchas)
@@ -420,7 +435,7 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
     (como el calendario de Airbnb): libre → reserva manual o bloquear;
     bloqueado → desbloquear; reservado → detalle, marcar pagada / por cobrar
     y quitar (solo las manuales)."""
-    ses, canchas, resp = _contexto(request, "/anfitrion/calendario", "calendario")
+    ses, canchas, resp = _contexto(request, "/anfitrion/calendario", "calendario", accion=permisos.VER_AGENDA)
     if resp is not None:
         return resp
     hoy = _hoy(canchas)
@@ -508,7 +523,9 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
         clientes[k] = {"nombre": nom or em, "email": em, "telefono": tel}
     ant, sig = (ini - timedelta(days=7)).isoformat(), (ini + timedelta(days=7)).isoformat()
     ops_cli = "".join(f"<option value='{e(k)}'>{e(v['nombre'])}{(' · ' + e(v['email'])) if v['email'] else ''}</option>" for k, v in list(clientes.items())[:80])
-    cfg = {"cancha": c["id"], "nombre": c["nombre"], "moneda": sim, "clientes": clientes, "pro": _pro_ok(ses["email"])}
+    es_dueno = permisos.es_dueno_de(ses["email"], c)  # Recepción: sin reglas, sin agenda iCal ni cancelar con devolución
+    cfg = {"cancha": c["id"], "nombre": c["nombre"], "moneda": sim, "clientes": clientes, "pro": _pro_ok(c.get("dueno") or ses["email"]),
+           "puedeCancelar": es_dueno}
     modal = f"""
 <div class='modal' id='modalCal' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:520px'>
  <div class='modal-cab'><button type='button' class='cerrar' id='calCerrar' aria-label='Cerrar'>✕</button><h3 id='calTit'>Turno</h3></div>
@@ -545,7 +562,7 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
         f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}&desde={hoy.isoformat()}'>Hoy</a>"
         f"<a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}&desde={sig}'>Semana siguiente ›</a>"
         f"<span class='sub' style='margin:0 0 0 auto'>{e(c['nombre'])} · {e(c['hora_apertura'])}–{e(c['hora_cierre'])} · turnos de {c['duracion_slot_min']} min"
-        + (f" · <a href='/anfitrion/reglas/{e(c['id'])}'>con reglas del club</a>" if _reglas.de_cancha(c) else f" · <a href='/anfitrion/reglas/{e(c['id'])}'>Reglas de reserva</a>")
+        + ("" if not es_dueno else f" · <a href='/anfitrion/reglas/{e(c['id'])}'>con reglas del club</a>" if _reglas.de_cancha(c) else f" · <a href='/anfitrion/reglas/{e(c['id'])}'>Reglas de reserva</a>")
         + "</span></div>"
         f"<div class='chips cal-dias' id='calDias' role='group' aria-label='Día'>{dias_chips}</div>"
         f"<div class='cal-sem cal-act' id='calSem' data-dia='{dia_ini}'><table><thead><tr><th></th>{cab}</tr></thead><tbody>{filas_html}</tbody></table></div>"
@@ -554,7 +571,7 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
         + modal
         + f"<script>var CAL={ui.json_js(cfg, ensure_ascii=False)};var RES={ui.json_js(res_json, ensure_ascii=False)};</script><script>{_JS_CAL}{_JS_CAL_DIAS}</script>")
     from web import anfitrion_agenda
-    cuerpo += anfitrion_agenda.tarjeta(ses["email"])
+    cuerpo += anfitrion_agenda.tarjeta(ses["email"]) if es_dueno else ""
     return ui.shell("Calendario", cuerpo, nav=_cabecera("calendario", ses), sesion=ses, ancho=True, titulo_tab="Calendario · Modo anfitrión")
 
 
@@ -646,7 +663,7 @@ function abrir(td){cel=td;modo=td.dataset.t;err('');['calLibre','calBloqueado','
     var a='';if(r.telefono)a+="<a class='btn sec' href='https://wa.me/"+r.telefono.replace(/\D/g,'')+"' target='_blank' rel='noopener'>💬 WhatsApp</a>";
     if(!r.pagado)a+="<button type='button' class='btn' data-pagar='"+r.id+"' data-v='1'>✅ Marcar pagada</button>";else if(!online)a+="<button type='button' class='btn sec' data-pagar='"+r.id+"' data-v='0'>↩ Marcar por cobrar</button>";
     if(r.medio==='manual'&&!td.classList.contains('pasado'))a+="<button type='button' class='btn sec' id='rQuitar' style='color:var(--rojo)'>🗑 Quitar reserva</button>";
-    if(online&&!td.classList.contains('pasado'))a+="<button type='button' class='btn sec' id='rCancelar' style='color:var(--rojo)'>↩ Cancelar y devolver al jugador</button>";
+    if(online&&CAL.puedeCancelar&&!td.classList.contains('pasado'))a+="<button type='button' class='btn sec' id='rCancelar' style='color:var(--rojo)'>↩ Cancelar y devolver al jugador</button>";
     $('rAcc').innerHTML=a}
   M.classList.add('open')}
 function cerrar(){M.classList.remove('open');cel=null}
@@ -673,12 +690,16 @@ document.addEventListener('click',async function(ev){var q=ev.target.closest('#r
 """).replace('⟦MARCA⟧', MARCA) + JS_PAGAR
 
 
-def _canchas_sesion(request: Request):
-    """(sesión, canchas del dueño) para los endpoints JSON del calendario; None
-    en ses = sin sesión."""
+def _canchas_sesion(request: Request, accion: str = ""):
+    """(sesión, canchas) para los endpoints JSON del calendario; None en ses =
+    sin sesión. Con [accion] entran también las de los locales donde el correo
+    es encargado con ese permiso (`web/permisos.py`); sin ella, solo las del
+    dueño (cancelar con devolución)."""
     ses = sesion.de_request(request)
     if not ses:
         return None, []
+    if accion:
+        return ses, permisos.canchas_para(ses["email"], accion)
     return ses, datos.canchas_de_dueno(ses["email"])
 
 
@@ -692,11 +713,9 @@ async def bloquear_turno(request: Request) -> JSONResponse:
 
 
 def _bloquear_turno(request: Request, _cuerpo_json) -> JSONResponse:
-    ses, canchas = _canchas_sesion(request)
+    ses, canchas = _canchas_sesion(request, permisos.BLOQUEAR)
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
-    if not _pro_ok(ses["email"]):
-        return JSONResponse(_RESP_PRO, status_code=402)
     try:
         b = _leer_json(_cuerpo_json)
     except Exception:  # noqa: BLE001
@@ -704,6 +723,8 @@ def _bloquear_turno(request: Request, _cuerpo_json) -> JSONResponse:
     c = next((x for x in canchas if x["id"] == str(b.get("cancha_id") or "")), None)
     if c is None:
         return JSONResponse({"ok": False, "error": "Esta cancha no está a tu nombre."}, status_code=404)
+    if not _pro_ok(c.get("dueno") or ses["email"]):  # el Pro es del DUEÑO del local (también cuando opera su recepción)
+        return JSONResponse(_RESP_PRO, status_code=402)
     fecha, hora = str(b.get("fecha") or ""), str(b.get("hora") or "")
     try:
         date.fromisoformat(fecha)
@@ -725,6 +746,7 @@ def _bloquear_turno(request: Request, _cuerpo_json) -> JSONResponse:
         return JSONResponse({"ok": False, "error": "Ese turno ya tiene una reserva."}, status_code=409)
     if not datos.bloquear(c["id"], fecha, hora, bloquear):
         return JSONResponse({"ok": False, "error": "No pudimos guardar en este momento."}, status_code=503)
+    permisos.auditar(ses["email"], c, "bloquear" if bloquear else "desbloquear", f"{fecha} {hora}")
     print(f"[bloqueo-web] {ses['email']} {'bloqueó' if bloquear else 'desbloqueó'} {c['id']} {fecha} {hora}", flush=True)
     return JSONResponse({"ok": True})
 
@@ -742,11 +764,9 @@ def _reserva_manual(request: Request, _cuerpo_json) -> JSONResponse:
     """Reserva MANUAL del dueño desde la web = la misma fila que crea el app
     (`agregarReservaManual`): confirmada, `traida_por_app=false` (cliente
     propio, sin comisión), `medio_pago='manual'`, fecha REAL del slot."""
-    ses, canchas = _canchas_sesion(request)
+    ses, canchas = _canchas_sesion(request, permisos.RESERVA_MANUAL)
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
-    if not _pro_ok(ses["email"]):
-        return JSONResponse(_RESP_PRO, status_code=402)
     try:
         b = _leer_json(_cuerpo_json)
     except Exception:  # noqa: BLE001
@@ -754,6 +774,8 @@ def _reserva_manual(request: Request, _cuerpo_json) -> JSONResponse:
     c = next((x for x in canchas if x["id"] == str(b.get("cancha_id") or "")), None)
     if c is None:
         return JSONResponse({"ok": False, "error": "Esta cancha no está a tu nombre."}, status_code=404)
+    if not _pro_ok(c.get("dueno") or ses["email"]):
+        return JSONResponse(_RESP_PRO, status_code=402)
     base, hora = str(b.get("fecha") or ""), str(b.get("hora") or "")
     try:
         date.fromisoformat(base)
@@ -806,6 +828,7 @@ def _reserva_manual(request: Request, _cuerpo_json) -> JSONResponse:
         _en_segundo_plano(pr._aviso_push_usuario, email, "Reserva confirmada 🎾",
                           f"{lugar} · {horarios.fecha_larga(fr)} {hora}–{fila['hora_fin']}. El local te registró esta reserva. ¡Te esperamos!",
                           "reserva_manual")
+    permisos.auditar(ses["email"], c, "reserva_manual", fila["id"], {"fecha": fr, "hora": hora, "cliente": nombre, "precio": precio, "pagado": fila["pagado"]})
     print(f"[manual-web] {ses['email']} registró {fila['id']} en {c['id']} {fr} {hora} · {sim} {precio} · pagado={fila['pagado']}", flush=True)
     return JSONResponse({"ok": True, "id": fila["id"], "precio": precio})
 
@@ -823,7 +846,7 @@ def _marcar_pagado_web(request: Request, res_id: str, _cuerpo_json) -> JSONRespo
     """Marcar cobrada (efectivo) / volver a "por cobrar": igual que `marcarPago`
     del app, con el push "¡Te llegaron puntos! ⭐" al jugador en la
     transición no pagado → pagado de reservas traídas por la app."""
-    ses, canchas = _canchas_sesion(request)
+    ses, canchas = _canchas_sesion(request, permisos.MARCAR_PAGO)
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
     ids = [x["id"] for x in canchas]
@@ -851,6 +874,8 @@ def _marcar_pagado_web(request: Request, res_id: str, _cuerpo_json) -> JSONRespo
         _en_segundo_plano(pr._aviso_push_usuario, usuario, "¡Te llegaron puntos! ⭐",
                           f"El local confirmó tu pago: +{pts} puntos {MARCA} por tu reserva en {lugar}. Canjéalos como descuento en tu próxima reserva online.",
                           "puntos")
+    permisos.auditar(ses["email"], next((x for x in canchas if x["id"] == r.get("cancha_id")), None),
+                     "marcar_pagada" if pagado else "marcar_por_cobrar", res_id)
     print(f"[pago-web] {ses['email']} marcó {res_id} pagado={pagado}", flush=True)
     return JSONResponse({"ok": True, "pagado": pagado})
 
@@ -861,7 +886,7 @@ async def quitar_reserva_manual(request: Request, res_id: str) -> JSONResponse:
 
 
 def _quitar_reserva_manual(request: Request, res_id: str) -> JSONResponse:
-    ses, canchas = _canchas_sesion(request)
+    ses, canchas = _canchas_sesion(request, permisos.QUITAR_MANUAL)
     if not ses:
         return JSONResponse({"ok": False, "error": "sesion_requerida"}, status_code=401)
     ids = [x["id"] for x in canchas]
@@ -882,6 +907,8 @@ def _quitar_reserva_manual(request: Request, res_id: str) -> JSONResponse:
         _en_segundo_plano(pr._aviso_push_usuario, usuario, "Reserva cancelada 📅",
                           f"El local quitó tu reserva en {lugar} del {horarios.fecha_larga(str(r.get('fecha')))} {r.get('hora_inicio')}. Si tienes dudas, escríbele.",
                           "reserva_manual")
+    permisos.auditar(ses["email"], next((x for x in canchas if x["id"] == r.get("cancha_id")), None), "quitar_manual", res_id,
+                     {"fecha": str(r.get("fecha")), "hora": str(r.get("hora_inicio")), "cliente": str(r.get("jugador") or "")})
     print(f"[manual-web] {ses['email']} quitó {res_id}", flush=True)
     return JSONResponse({"ok": True})
 
@@ -1633,6 +1660,9 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
         plazo_txt = " <b>El plazo venció:</b> mientras no las subas, tu local se muestra sin fotos."
     secciones = [("fotos", "Fotos del local"), ("local", "Nombre y dirección"), ("amenidades", "Servicios del local"),
                  ("extras", "Servicios extra del local"), ("fidelidad", "Fidelidad"), ("canchas", "Canchas")]
+    from web import anfitrion_encargados as _enc
+    enc_sec = _enc.seccion_editar_local(ses["email"], c)  # 👥 Encargados de este local ("" sin la migración 0005)
+    secciones += [("encargados", "Encargados")] if enc_sec else []
     nav = "".join(f"<a href='#sec-{k}' class='edit-nav-it'>{n}</a>" for k, n in secciones)
     cfg = {"id": c["id"], "fotos": galeria, "minFotos": min_local, "maxFotos": catalogos.MAX_FOTOS,
            "storage": almacen.disponible()}
@@ -1674,6 +1704,7 @@ def pagina_editar_local(request: Request, cancha_id: str) -> HTMLResponse:
   <ul class='sub' style='margin:0 0 0 18px'>{lista}</ul>
   <div class='acciones' style='margin-top:10px'><a class='btn sec' href='/anfitrion/cancha/{e(c['id'])}/agregar'>＋ Agregar cancha a este local</a></div>
  </section>
+ {enc_sec}
 </form>
 </div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Se aplica a las {len(hermanas)} cancha{'s' if len(hermanas) != 1 else ''} del local.</span>
