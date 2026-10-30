@@ -168,6 +168,16 @@ class RepoMemoria:
             p.update(estado=estado, resuelto_por=por, motivo_rechazo=motivo, resuelto_en=_ahora())
             return True
 
+    def reabrir_pago_manual(self, pid):
+        """Deshace una aprobación cuyo apartado no se pudo confirmar (error de
+        la base): el voucher vuelve a la bandeja para aprobarlo de nuevo."""
+        with self._lock:
+            p = self.pagos.get(pid)
+            if not p or p["estado"] != "aprobado":
+                return False
+            p.update(estado="en_revision", resuelto_por="", motivo_rechazo="", resuelto_en=None)
+            return True
+
     def vencidos(self, ahora):
         return [{k: v for k, v in p.items() if k != "voucher_img"} for p in self.pagos.values()
                 if p["estado"] == "en_revision" and p["vence_en"] <= ahora]
@@ -340,6 +350,10 @@ class RepoPG:
         return self._exec("update cl_pagos_manuales set estado = %s, resuelto_por = %s, motivo_rechazo = %s, "
                           "resuelto_en = now() where id = %s and estado = 'en_revision'",
                           (estado, por, motivo, pid)) == 1
+
+    def reabrir_pago_manual(self, pid):
+        return self._exec("update cl_pagos_manuales set estado = 'en_revision', resuelto_por = '', motivo_rechazo = '', "
+                          "resuelto_en = null where id = %s and estado = 'aprobado'", (pid,)) == 1
 
     def vencidos(self, ahora):
         return self._pm("estado = 'en_revision' and vence_en <= %s", (ahora,))
