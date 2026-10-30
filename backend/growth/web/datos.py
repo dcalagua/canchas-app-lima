@@ -85,11 +85,16 @@ MEDIO_HOLD_PASARELA = "web_pasarela"
 # 10 min; lo suelta el barrido de vouchers (`cobro_directo_web.vencer`) al
 # rechazar/vencer, con tope duro HOLD_VOUCHER_MAX_SEGUNDOS.
 MEDIO_HOLD_VOUCHER = "voucher"
+# PAGO DIVIDIDO entre amigos (`pagos/division.py`): el apartado lleva
+# `medio_pago = 'division'` y lo suelta la división al vencer (≤ 2 h); tope
+# duro HOLD_DIVISION_MAX_SEGUNDOS por si la división se perdiera.
+MEDIO_HOLD_DIVISION = "division"
 _SQL_HOLD_VENCIDO = (
     "(coalesce(estado,'') = 'nueva' AND NOT coalesce(pagado,false) AND id LIKE 'web\\_%%' "
     "AND (CASE WHEN split_part(id, '_', 2) ~ '^[0-9]+$' THEN split_part(id, '_', 2)::bigint ELSE NULL END) "
     "< (CASE WHEN coalesce(medio_pago,'') = 'web_pasarela' THEN %s "
-    "WHEN coalesce(medio_pago,'') = 'voucher' THEN %s ELSE %s END))")
+    "WHEN coalesce(medio_pago,'') = 'voucher' THEN %s "
+    "WHEN coalesce(medio_pago,'') = 'division' THEN %s ELSE %s END))")
 _SQL_SIN_HOLD_VENCIDO = " AND NOT " + _SQL_HOLD_VENCIDO
 
 
@@ -97,12 +102,13 @@ def _corte_hold() -> int:
     return int((time.time() - HOLD_SEGUNDOS) * 1000)
 
 
-def _cortes_hold() -> tuple[int, int, int]:
+def _cortes_hold() -> tuple[int, int, int, int]:
     """(corte de un apartado en pasarela, corte de uno con voucher en revisión,
-    corte de un apartado normal), en ms: los parámetros de `_SQL_HOLD_VENCIDO`
-    en ese orden."""
+    corte de uno de pago dividido, corte de un apartado normal), en ms: los
+    parámetros de `_SQL_HOLD_VENCIDO` en ese orden."""
     return (int((time.time() - HOLD_PASARELA_MAX_SEGUNDOS) * 1000),
-            int((time.time() - hold_voucher_max_segundos()) * 1000), _corte_hold())
+            int((time.time() - hold_voucher_max_segundos()) * 1000),
+            int((time.time() - HOLD_DIVISION_MAX_SEGUNDOS) * 1000), _corte_hold())
 
 
 def hold_voucher_max_segundos() -> int:
@@ -113,6 +119,7 @@ def hold_voucher_max_segundos() -> int:
 
 HOLD_SEGUNDOS = 10 * 60  # una reserva web sin pagar se libera a los 10 min
 HOLD_PASARELA_MAX_SEGUNDOS = 50 * 60  # tope duro de un apartado en pasarela hospedada
+HOLD_DIVISION_MAX_SEGUNDOS = (2 * 60 + 10) * 60  # tope duro de un pago dividido (plazo máx. 2 h + 10 min)
 
 
 def _json_list(v) -> list:

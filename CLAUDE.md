@@ -4109,6 +4109,31 @@ Detalle y acciones pendientes: `docs/plan/BITACORA_NOCHE.md`.
   nonces es aparte). Un recurso de un dominio nuevo (script, iframe, fuente)
   hay que sumarlo a `seguridad_web.CSP` o el navegador lo bloquea. "No
   encontrada" (`router._no_encontrada`) responde 404 de verdad, no 200.
+- **Cada uno paga su parte (ronda 3, 30-oct-2026):** pago DIVIDIDO de una
+  reserva web entre amigos, dinero DIRECTO al club. `pagos/division.py` (reglas,
+  plata, `RepoPG`/`RepoMemoria`) + `web/dividir_pago.py` (ficha, `/dividir/{token}`,
+  `/web/dividir/{token}/estado|tomar|soltar|pagar|voucher|cancelar`, sección
+  "Pagos divididos" de Mis reservas, `/anfitrion/cobros-club/devoluciones`).
+  Migración `0006_dividir_pago.sql` (`cl_division_pago` + `cl_division_partes`,
+  RLS sin políticas; únicos: una división viva por reserva, un cobro = una
+  parte, un amigo = una parte viva). Solo clubes con cobro directo y sin seña,
+  bono, puntos, fidelidad ni boleador (oculto y rechazado en `/web/asegurar
+  {dividir: N}`). Reparto en céntimos: cada amigo ⌊total/N⌋, el organizador el
+  resto; cada parte ≥ S/ 3 · $ 3 · Bs 3. Hold `medio_pago = 'division'`: plazo =
+  min(2 h, inicio − 60 min) (`dividir_horas`, `dividir_margen_min`; < 30 min no
+  se ofrece), tope SQL 2 h 10 (`datos.HOLD_DIVISION_MAX_SEGUNDOS`). Cada uno
+  TOMA una parte (15 min) y la paga con el Culqi del club (`chr_…#n`) o voucher
+  (ref `div_…#n`, misma bandeja Pagos por confirmar; plazo = el de la división).
+  Un voucher en revisión NO cuenta. Todas pagadas (decidido con `FOR UPDATE`
+  de la división) → `confirmar_directo` UNA vez: mismas filas (`medio_pago =
+  'dividido'`, `usuario` = organizador), `cobro_directo` total `div:<id>`, una
+  comisión al dueño; sin cargo por servicio (el cobro directo no lo lleva).
+  Vence/cancela → se suelta el horario; Culqi → reembolso con la llave del club;
+  voucher aprobado o sin revisar → `devolver` (el club marca "Ya lo devolví" /
+  "No recibí ese pago"). Aviso al organizador 30 min antes ("Pagar lo que
+  falta"). Reserva confirmada que se cancela → `devolver_por_cancelacion`
+  (proporcional por parte). Cron: `division.barrer` en el de 1 min de `main.py`.
+  APK: pendiente. Test `tests/test_web_dividir_pago.py`.
 
 ## Pendientes / backlog
 

@@ -42,6 +42,7 @@ from pagos import cobro_directo as cd
 from reservas import reglas as _reglas
 from web import almacen, datos, horarios, permisos, sesion, ui
 from web import cobro_directo_web as cdw
+from web import dividir_pago as _dividir_web
 from web.anfitrion import _cabecera, _motivo_cierre, _sesion_o_entrar
 from web.router import PLAY_URL, _moneda_de, e
 
@@ -410,7 +411,7 @@ def pagina_pagos_por_confirmar(request: Request, estado: str = "") -> HTMLRespon
     cfg = {"motivos": [{"k": k, "n": n} for k, n in MOTIVOS_RECHAZO]}
     cuerpo = ("<h1 class='anf-hola'>Pagos por confirmar</h1>"
               "<p class='sub'>Compara cada comprobante con el movimiento en tu Yape, Plin o banco. Si no lo revisas a tiempo, "
-              "la reserva se libera sola.</p>" + tabs + lista
+              "la reserva se libera sola.</p>" + _dividir_web.aviso_devoluciones(email) + tabs + lista
               + f"<script>window.__vv={_js(cfg)};</script><script>{JS_VOUCHERS}</script>")
     if permisos.es_solo_encargado(email):  # la recepción no ve Cobros del club
         return _pagina("Pagos por confirmar", cuerpo, ses)

@@ -65,6 +65,7 @@ LIMITES: dict[str, tuple[int, int]] = {
     "/web/foto": (120, 60),
     "/web/mini": (300, 60),
     "/web/voucher": (10, 60),
+    "/web/dividir": (90, 60),   # pago dividido: sondeo cada 5 s + acciones
     "/web/asegurar": (20, 60),
     "/web/sesion/prueba": (10, 60),
     "/web/csp-reporte": (30, 60),
