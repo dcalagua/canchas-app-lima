@@ -1942,6 +1942,33 @@ para la API del APK.
   Playwright `$SP/pw_preload.js`. **HECHO 1-oct-2026 (autorizado):**
   `pg-backend-prd` movido a **us-east4 (Virginia)** (~115 ms a São Paulo,
   más cerca de Lima) y el arreglo pasado a PRD (`prd` = 420be2a).
+  **Ronda 3 (30-oct-2026, rama `feat/web-r3-velocidad`): MENOS VIAJES.** (1)
+  Medidor por request (`pg.medir_request`, ContextVar): la línea `[perf]` dice
+  `sql=N viajes/M ms` y `PERF_SQL=1` lo registra en toda request (`[sql] …`) +
+  cabecera `Server-Timing`. (2) **Memoria de lecturas de la request** (solo
+  GET/HEAD): `pg.memo_leer(clave, fn)` / `pg.memo_por_clave(prefijo, claves,
+  leer)` / `memo_guardar`; se vacía sola con CUALQUIER escritura (`_abrir`) y
+  con `datos.invalidar_canchas()`. La usan `datos.cancha`, `canchas_de_dueno`,
+  `reservas_de_usuario`, `niveles_de`, `esta_verificado`, `tiene_matriculas`,
+  `boleador`, `puntos_de`, `ocupados`/`descuentos`, `canjes_web_de_ref`,
+  `puntos_canje_neto`, perfiles (`jugador_liga.perfiles`), agenda/prefs/
+  locales/academias del chat y pasarela + medios del club (`RepoPG`). (3)
+  **Precargas en UNA consulta** (con respaldo: si fallan, cada función lee
+  como antes): `precargar_perfil`, `precargar_canjes_web` +
+  `precargar_puntos_canjes` (Mis reservas: eran 2 consultas POR reserva),
+  `precargar_dia` (reservas + bloqueos + descuentos), `canchas_por_ids`,
+  `jugador_mensajes.precargar_bandeja` (academias, grupos, agenda, prefs y el
+  resumen de hilos en un viaje); `puntos_de` en una consulta. (4)
+  `pg.conexion(atomica=False)` = una sentencia de escritura sin BEGIN/COMMIT
+  (marcar leído/entregados y `guardar_prefs` con `unnest`: antes N+2 viajes).
+  (5) Portada: estrellas y academias con la caché corta de canchas
+  (`datos._publico`). (6) Culqi (billetera) y Leaflet (portada) ya NO van en
+  `<head>`: se piden tras el `load` / al abrir el mapa. Antes → después (100 ms
+  por viaje simulados): Mis reservas 92→7 viajes, Perfil 8→2, Billetera 4→2,
+  Mensajes 16→4-6, chat 24→7-9, `/mensajes/nuevo` 8→2. Test
+  `tests/test_velocidad_viajes.py` (equivalencia contra Postgres real con
+  `TEST_DATABASE_URL`). **Regla:** página nueva = contar sus viajes con
+  `PERF_SQL=1`; nada de consultas dentro de un `for`.
 - **APARTADOS WEB VENCIDOS NO OCUPAN (caso real PRD, 1-oct-2026: las 20:00
   de "Campo deportivo Edu Jr." salían "Ocupado" sin ningún pago; era un
   apartado `web_hold` de 10 min que el cliente abandonó y que solo se borraba

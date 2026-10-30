@@ -300,6 +300,10 @@ def academias_de_dueno(email: str) -> list[str]:
     em = _low(email)
     if not pg.habilitado or not em:
         return []
+    return pg.memo_leer(("mj_academias_de_dueno", em), lambda: _academias_de_dueno(em))
+
+
+def _academias_de_dueno(em: str) -> list[str]:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute("SELECT id FROM pichangol_academias WHERE lower(dueno) = %s", (em,))
@@ -313,6 +317,10 @@ def academias_info(ids) -> dict[str, dict]:
     ids = sorted({str(i) for i in ids if i})
     if not pg.habilitado or not ids:
         return {}
+    return _por_clave("mj_academia", ids, _academias_info)
+
+
+def _academias_info(ids: list[str]) -> dict[str, dict] | None:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute("SELECT id, dueno, data FROM pichangol_academias WHERE id = ANY(%s::text[])", (ids,))
@@ -323,7 +331,13 @@ def academias_info(ids) -> dict[str, dict]:
                                   "logo": str(d.get("logoUrl") or "")}
             return out
     except Exception:  # noqa: BLE001
-        return {}
+        return None
+
+
+def _por_clave(prefijo: str, claves: list[str], leer) -> dict:
+    """La bandeja y el encabezado del chat piden los mismos locales /
+    academias: ver `pg.memo_por_clave`."""
+    return pg.memo_por_clave(prefijo, claves, leer)
 
 
 def nombres_alumnos(pares) -> dict[tuple, str]:
@@ -354,6 +368,10 @@ def locales_de(duenos) -> dict[str, dict]:
     es = sorted({_low(x) for x in duenos if x})
     if not pg.habilitado or not es:
         return {}
+    return _por_clave("mj_local", es, _locales_de)
+
+
+def _locales_de(es: list[str]) -> dict[str, dict] | None:
     for con_fotos in (True, False):
         try:
             with pg.conexion() as conn, conn.cursor() as cur:
@@ -375,7 +393,7 @@ def locales_de(duenos) -> dict[str, dict]:
                 return out
         except Exception:  # noqa: BLE001
             continue
-    return {}
+    return None
 
 
 def grupos_de(email: str) -> list[dict]:
@@ -383,12 +401,28 @@ def grupos_de(email: str) -> list[dict]:
     em = _low(email)
     if not pg.habilitado or not em:
         return []
+    m = pg.memo_request()
+    ids_memo = m.get(("mj_grupo_ids", em)) if m is not None else None
+    if ids_memo is not None and not ids_memo:
+        return []  # la precarga de la bandeja ya vio que no está en ningún grupo
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
-            cur.execute("SELECT grupo_id FROM pichangol_grupo_miembros WHERE email = %s", (em,))
-            ids = sorted({str(f[0]) for f in cur.fetchall() if f[0]})
+            if ids_memo is not None:
+                ids = sorted(set(ids_memo))
+            else:
+                cur.execute("SELECT grupo_id FROM pichangol_grupo_miembros WHERE email = %s", (em,))
+                ids = sorted({str(f[0]) for f in cur.fetchall() if f[0]})
             if not ids:
                 return []
+            try:
+                # Grupos + sus miembros en una sola consulta.
+                cur.execute("SELECT g.id, g.nombre, g.creador_email, coalesce(g.foto_url,''), g.creado, "
+                            "(SELECT coalesce(array_agg(mi.email), '{}'::text[]) FROM pichangol_grupo_miembros mi WHERE mi.grupo_id = g.id) "
+                            "FROM pichangol_grupos g WHERE g.id = ANY(%s::text[])", (ids,))
+                return [{"id": str(g[0]), "nombre": str(g[1] or ""), "creador": _low(g[2]), "foto": str(g[3] or ""),
+                         "creado": g[4], "miembros": [_low(x) for x in (g[5] or [])]} for g in cur.fetchall()]
+            except Exception:  # noqa: BLE001  (base sin `foto_url`: el camino de siempre)
+                pass
             try:
                 cur.execute("SELECT id, nombre, creador_email, coalesce(foto_url,''), creado FROM pichangol_grupos WHERE id = ANY(%s::text[])", (ids,))
                 gs = cur.fetchall()
@@ -500,15 +534,16 @@ def actualizar_grupo(gid: str, nombre: str | None = None, foto: str | None = Non
         return False
 
 
-_SQL_BANDEJA = """
-WITH mis AS (
+_SQL_BANDEJA_MIS = """
+mis AS (
   SELECT hilo, tipo, ref_id, academia_id, cuenta_email, autor_email, autor_nombre, texto, media_url, creado
   FROM pichangol_mensajes m
   WHERE (m.tipo = 'academia' AND (m.academia_id = ANY(%(acs)s::text[]) OR m.cuenta_email = %(e)s))
      OR (m.tipo = 'cancha' AND (m.ref_id = %(e)s OR m.cuenta_email = %(e)s))
      OR (m.tipo = 'grupo' AND m.ref_id = ANY(%(gs)s::text[]))
      OR (m.tipo = 'directo' AND (m.autor_email = %(e)s OR m.cuenta_email = %(e)s))
-), ult AS (
+)"""
+_SQL_BANDEJA_RESTO = """, ult AS (
   SELECT DISTINCT ON (hilo) * FROM mis ORDER BY hilo, creado DESC
 ), lec AS (
   SELECT hilo, leido_hasta FROM pichangol_lecturas WHERE email = %(e)s
@@ -519,11 +554,78 @@ WITH mis AS (
 ), nom AS (
   SELECT DISTINCT ON (hilo) hilo, autor_nombre FROM mis
   WHERE lower(autor_email) <> %(e)s AND autor_nombre <> '' ORDER BY hilo, creado DESC
-)
+)"""
+_SQL_BANDEJA_FILAS = """
 SELECT ult.hilo, ult.tipo, ult.ref_id, ult.academia_id, ult.cuenta_email, ult.autor_email, ult.autor_nombre,
        ult.texto, ult.media_url, ult.creado, cnt.n, nom.autor_nombre
 FROM ult JOIN cnt ON cnt.hilo = ult.hilo LEFT JOIN nom ON nom.hilo = ult.hilo
 """
+_SQL_BANDEJA = "WITH " + _SQL_BANDEJA_MIS + _SQL_BANDEJA_RESTO + _SQL_BANDEJA_FILAS
+
+# Precarga de la bandeja en UN viaje: mis academias, mis grupos, mi agenda y mis
+# preferencias de chat (antes 4 consultas) + el resumen de hilos, que usa las
+# dos primeras dentro de la misma sentencia.
+_SQL_PRECARGA_BANDEJA = (
+    "WITH ctx AS MATERIALIZED (SELECT "
+    "(SELECT coalesce(array_agg(id::text), '{}'::text[]) FROM pichangol_academias WHERE lower(dueno) = %(e)s) AS acs, "
+    "(SELECT coalesce(array_agg(grupo_id::text), '{}'::text[]) FROM pichangol_grupo_miembros WHERE email = %(e)s) AS gs), "
+    + _SQL_BANDEJA_MIS.replace("%(acs)s::text[]", "(SELECT acs FROM ctx)::text[]").replace("%(gs)s::text[]", "(SELECT gs FROM ctx)::text[]")
+    + _SQL_BANDEJA_RESTO
+    + " SELECT ctx.acs, ctx.gs, ag.hay, ag.apodos, ag.contactos, ag.bloqueados, pf.prefs, b.* FROM ctx "
+    "LEFT JOIN LATERAL (SELECT apodos, contactos, bloqueados, true AS hay FROM pichangol_agenda WHERE email = %(e)s LIMIT 1) ag ON true "
+    "CROSS JOIN LATERAL (SELECT coalesce(json_agg(json_build_array(hilo, oculto_en, fijado, archivado, silenciado)), '[]'::json) AS prefs "
+    "FROM pichangol_chat_prefs WHERE email = %(e)s) pf "
+    "LEFT JOIN LATERAL (" + _SQL_BANDEJA_FILAS + ") b ON true")
+
+
+def _fila_resumen(f) -> dict:
+    return {"hilo": str(f[0]), "tipo": str(f[1] or "academia"), "ref_id": str(f[2] or ""),
+            "academia_id": str(f[3] or ""), "cuenta_email": _low(f[4]), "autor_email": _low(f[5]),
+            "autor_nombre": str(f[6] or ""), "texto": str(f[7] or ""), "media_url": str(f[8] or ""),
+            "creado": f[9], "no_leidos": int(f[10] or 0), "otro_nombre": str(f[11] or "")}
+
+
+def _agenda_de_fila(apodos, contactos, bloqueados) -> dict:
+    def _j(v, d):
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except Exception:  # noqa: BLE001
+                return d
+        return v if isinstance(v, type(d)) else d
+    return {"apodos": {_low(k): str(v) for k, v in _j(apodos, {}).items() if str(v or "").strip()},
+            "contactos": [_low(x) for x in _j(contactos, []) if x],
+            "bloqueados": [_low(x) for x in _j(bloqueados, []) if x]}
+
+
+def precargar_bandeja(email: str) -> None:
+    """Lo que la bandeja lee al empezar, en UNA consulta, a la memoria de la
+    request (`academias_de_dueno`, `grupos_de`, `agenda_de`, `prefs_de` y
+    `resumen_hilos` lo toman de ahí). Si falla (p. ej. una base sin la tabla
+    de agenda o de preferencias), cada función hace su lectura de siempre."""
+    em = _low(email)
+    if not pg.habilitado or not em or pg.memo_request() is None or pg.memo_tiene(("mj_prefs", em)):
+        return
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(_SQL_PRECARGA_BANDEJA, {"e": em})
+            filas = cur.fetchall()
+    except Exception:  # noqa: BLE001
+        return
+    if not filas:
+        return
+    f0 = filas[0]
+    acs = [str(x) for x in (f0[0] or [])]
+    gs = sorted({str(x) for x in (f0[1] or []) if x})
+    agenda = (_agenda_de_fila(f0[3], f0[4], f0[5]) if f0[2] else {"apodos": {}, "contactos": [], "bloqueados": []})
+    prefs_crudas = f0[6] if isinstance(f0[6], list) else (json.loads(f0[6]) if f0[6] else [])
+    prefs = {str(h): {"oculto_en": _dt(oc), "fijado": bool(fi), "archivado": bool(ar), "silenciado": bool(si)}
+             for h, oc, fi, ar, si in prefs_crudas}
+    pg.memo_guardar(("mj_academias_de_dueno", em), acs)
+    pg.memo_guardar(("mj_grupo_ids", em), gs)
+    pg.memo_guardar(("mj_agenda", em), agenda)
+    pg.memo_guardar(("mj_prefs", em), prefs)
+    pg.memo_guardar(("mj_resumen", em, tuple(acs), tuple(gs)), [_fila_resumen(f[7:]) for f in filas if f[7] is not None])
 
 
 def resumen_hilos(email: str, acs: list[str], gids: list[str]) -> list[dict]:
@@ -532,16 +634,14 @@ def resumen_hilos(email: str, acs: list[str], gids: list[str]) -> list[dict]:
     em = _low(email)
     if not pg.habilitado or not em:
         return []
+    m = pg.memo_request()
+    clave = ("mj_resumen", em, tuple(str(a) for a in acs), tuple(sorted({str(g) for g in gids})))
+    if m is not None and clave in m:
+        return pg.memo_leer(clave, lambda: [])
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute(_SQL_BANDEJA, {"e": em, "acs": list(acs), "gs": list(gids)})
-            out = []
-            for f in cur.fetchall():
-                out.append({"hilo": str(f[0]), "tipo": str(f[1] or "academia"), "ref_id": str(f[2] or ""),
-                            "academia_id": str(f[3] or ""), "cuenta_email": _low(f[4]), "autor_email": _low(f[5]),
-                            "autor_nombre": str(f[6] or ""), "texto": str(f[7] or ""), "media_url": str(f[8] or ""),
-                            "creado": f[9], "no_leidos": int(f[10] or 0), "otro_nombre": str(f[11] or "")})
-            return out
+            return [_fila_resumen(f) for f in cur.fetchall()]
     except Exception:  # noqa: BLE001
         return []
 
@@ -551,6 +651,9 @@ def prefs_de(email: str) -> dict[str, dict]:
     em = _low(email)
     if not pg.habilitado or not em:
         return {}
+    m = pg.memo_request()
+    if m is not None and ("mj_prefs", em) in m:
+        return pg.memo_leer(("mj_prefs", em), dict)
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute("SELECT hilo, oculto_en, fijado, archivado, silenciado FROM pichangol_chat_prefs WHERE email = %s", (em,))
@@ -565,15 +668,18 @@ def guardar_prefs(email: str, filas: dict[str, dict]) -> bool:
     em = _low(email)
     if not pg.habilitado or not em or not filas:
         return False
+    hilos = list(filas)
     try:
-        with pg.conexion() as conn, conn.cursor() as cur:
-            for hilo, p in filas.items():
-                cur.execute("INSERT INTO pichangol_chat_prefs (email, hilo, oculto_en, fijado, archivado, silenciado, actualizado) "
-                            "VALUES (%s, %s, %s, %s, %s, %s, now()) ON CONFLICT (email, hilo) DO UPDATE SET "
-                            "oculto_en = EXCLUDED.oculto_en, fijado = EXCLUDED.fijado, archivado = EXCLUDED.archivado, "
-                            "silenciado = EXCLUDED.silenciado, actualizado = now()",
-                            (em, hilo, p.get("oculto_en"), bool(p.get("fijado")), bool(p.get("archivado")), bool(p.get("silenciado"))))
-            conn.commit()
+        # UNA sentencia para todas las filas (atómica por sí sola): 1 viaje en vez de N + BEGIN/COMMIT.
+        with pg.conexion(atomica=False) as conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO pichangol_chat_prefs (email, hilo, oculto_en, fijado, archivado, silenciado, actualizado) "
+                        "SELECT %s, h, o, f, a, s, now() FROM unnest(%s::text[], %s::timestamptz[], %s::bool[], %s::bool[], %s::bool[]) "
+                        "AS x(h, o, f, a, s) ON CONFLICT (email, hilo) DO UPDATE SET "
+                        "oculto_en = EXCLUDED.oculto_en, fijado = EXCLUDED.fijado, archivado = EXCLUDED.archivado, "
+                        "silenciado = EXCLUDED.silenciado, actualizado = now()",
+                        (em, hilos, [_dt(filas[h].get("oculto_en")) for h in hilos],
+                         [bool(filas[h].get("fijado")) for h in hilos], [bool(filas[h].get("archivado")) for h in hilos],
+                         [bool(filas[h].get("silenciado")) for h in hilos]))
             return True
     except Exception:  # noqa: BLE001
         return False
@@ -585,6 +691,11 @@ def agenda_de(email: str) -> dict:
     vacio = {"apodos": {}, "contactos": [], "bloqueados": []}
     if not pg.habilitado or not em:
         return vacio
+    return pg.memo_leer(("mj_agenda", em), lambda: _agenda_de(em))
+
+
+def _agenda_de(em: str) -> dict:
+    vacio = {"apodos": {}, "contactos": [], "bloqueados": []}
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute("SELECT apodos, contactos, bloqueados FROM pichangol_agenda WHERE email = %s LIMIT 1", (em,))
@@ -593,17 +704,7 @@ def agenda_de(email: str) -> dict:
         return vacio
     if not f:
         return vacio
-
-    def _j(v, d):
-        if isinstance(v, str):
-            try:
-                v = json.loads(v)
-            except Exception:  # noqa: BLE001
-                return d
-        return v if isinstance(v, type(d)) else d
-    return {"apodos": {_low(k): str(v) for k, v in _j(f[0], {}).items() if str(v or "").strip()},
-            "contactos": [_low(x) for x in _j(f[1], []) if x],
-            "bloqueados": [_low(x) for x in _j(f[2], []) if x]}
+    return _agenda_de_fila(f[0], f[1], f[2])
 
 
 def mensajes_de(hilos: list[str], antes=None, desde=None, limite: int = LIMITE) -> list[dict]:
@@ -678,11 +779,12 @@ def marcar_leido(hilos: list[str], email: str) -> None:
     if not pg.habilitado or not em or not hilos:
         return
     try:
-        with pg.conexion() as conn, conn.cursor() as cur:
-            for h in dict.fromkeys(hilos):
-                cur.execute("INSERT INTO pichangol_lecturas (hilo, email, entregado_hasta, leido_hasta) VALUES (%s, %s, now(), now()) "
-                            "ON CONFLICT (hilo, email) DO UPDATE SET entregado_hasta = now(), leido_hasta = now()", (h, em))
-            conn.commit()
+        # Una sola sentencia para todos los hilos (antes: una por hilo + BEGIN/COMMIT).
+        with pg.conexion(atomica=False) as conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO pichangol_lecturas (hilo, email, entregado_hasta, leido_hasta) "
+                        "SELECT h, %s, now(), now() FROM unnest(%s::text[]) AS h "
+                        "ON CONFLICT (hilo, email) DO UPDATE SET entregado_hasta = now(), leido_hasta = now()",
+                        (em, list(dict.fromkeys(hilos))))
     except Exception:  # noqa: BLE001
         pass
 
@@ -693,11 +795,11 @@ def marcar_entregados(hilos: list[str], email: str) -> None:
     if not pg.habilitado or not em or not hilos:
         return
     try:
-        with pg.conexion() as conn, conn.cursor() as cur:
-            for h in dict.fromkeys(hilos):
-                cur.execute("INSERT INTO pichangol_lecturas (hilo, email, entregado_hasta) VALUES (%s, %s, now()) "
-                            "ON CONFLICT (hilo, email) DO UPDATE SET entregado_hasta = now()", (h, em))
-            conn.commit()
+        with pg.conexion(atomica=False) as conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO pichangol_lecturas (hilo, email, entregado_hasta) "
+                        "SELECT h, %s, now() FROM unnest(%s::text[]) AS h "
+                        "ON CONFLICT (hilo, email) DO UPDATE SET entregado_hasta = now()",
+                        (em, list(dict.fromkeys(hilos))))
     except Exception:  # noqa: BLE001
         pass
 
@@ -793,11 +895,16 @@ def descriptor(hilo: str, yo: str, cache: dict | None = None) -> dict | None:
 
 # ═══════════════════════════ Bandeja (mensajes_screen._cargar) ═══════════════
 
-def bandeja(email: str, marcar: bool = True) -> dict:
+def bandeja(email: str, marcar: bool = True, solo_hilos: bool = False) -> dict:
     """Arma la bandeja como `_cargar`: conversaciones por tipo, filtra las
     eliminadas por hilo (reaparecen si hay algo más nuevo), funde por persona y
-    ordena. Devuelve {filas, archivadas}."""
+    ordena. Devuelve {filas, archivadas, entregar}. [solo_hilos] = solo hace
+    falta saber QUÉ hilos van con cada persona (abrir un chat): no lee perfiles,
+    locales ni nombres de alumnos (los títulos salen genéricos). `entregar` =
+    hilos que `marcar` marca como entregados (quien llama con marcar=False puede
+    hacerlo después con `marcar_entregados`)."""
     yo = _low(email)
+    precargar_bandeja(yo)
     acs = academias_de_dueno(yo)
     gs = grupos_de(yo)
     gids = [g["id"] for g in gs]
@@ -858,10 +965,13 @@ def bandeja(email: str, marcar: bool = True) -> dict:
     for c in convs:
         if c["tipo"] == "academia" and not c["soy_profe"]:
             c["persona"] = (info_ac.get(c["academia"]) or {}).get("dueno", "")
-    locales = locales_de(duenos_cancha)
     emails |= {c["persona"] for c in convs if c.get("persona")}
-    perf = perfiles(emails)
-    alumnos = nombres_alumnos(pares_alumno)
+    if solo_hilos:
+        locales, perf, alumnos = {}, {}, {}
+    else:
+        locales = locales_de(duenos_cancha)
+        perf = perfiles(emails)
+        alumnos = nombres_alumnos(pares_alumno)
     grupos_idx = {g["id"]: g for g in gs}
 
     def mostrable(em: str) -> str | None:
@@ -912,7 +1022,7 @@ def bandeja(email: str, marcar: bool = True) -> dict:
                 continue
             reaparecen[c["hilo"]] = dict(p, oculto_en=None)
         vivos.append(c)
-    if reaparecen:
+    if reaparecen and not solo_hilos:
         guardar_prefs(yo, reaparecen)
         for h, p in reaparecen.items():
             prefs[h] = p
@@ -948,9 +1058,10 @@ def bandeja(email: str, marcar: bool = True) -> dict:
     orden = lambda x: (not x["fijado"], -x["cuando"].timestamp())  # noqa: E731
     out.sort(key=orden)
     arch.sort(key=lambda x: -x["cuando"].timestamp())
+    entregar = [c["hilo"] for c in vivos if not c.get("vacio")]
     if marcar:
-        marcar_entregados([c["hilo"] for c in vivos if not c.get("vacio")], yo)
-    return {"filas": out, "archivadas": arch}
+        marcar_entregados(entregar, yo)
+    return {"filas": out, "archivadas": arch, "entregar": entregar}
 
 
 def fila_json(f: dict) -> dict:
@@ -1540,7 +1651,7 @@ def _abrir_con(ses: dict, yo: str, cancha: str = "", academia: str = "", persona
 
 
 def _todas(yo: str) -> list[dict]:
-    b = bandeja(yo, marcar=False)
+    b = bandeja(yo, marcar=False, solo_hilos=True)
     return b["filas"] + b["archivadas"]
 
 
@@ -1685,10 +1796,14 @@ def pagina_chat(request: Request, clave: str):
         return ui.shell("Mensajes", cuerpo, sesion=ses, titulo_tab=f"Mensajes · {MARCA}", pantalla="mensajes")
     hilos = conv["hilos"]
     k = clave_de(hilos)
-    tit = _titulo_conv(conv, yo)
     mm = mensajes_de(hilos)
     marcar_leido(hilos, yo)
-    b = bandeja(yo)
+    # La bandeja (barra izquierda) ANTES del encabezado: lee la agenda, los
+    # perfiles y los locales que el encabezado necesita (memoria de la request),
+    # y los entregados se marcan al final, en una sola escritura.
+    b = bandeja(yo, marcar=False)
+    tit = _titulo_conv(conv, yo)
+    marcar_entregados(b.get("entregar") or [], yo)
     fila = next((f for f in b["filas"] + b["archivadas"] if set(f["hilos"]) & set(hilos)), None)
     estado = {"fijado": bool(fila and fila.get("fijado")), "archivado": bool(fila and fila.get("archivado")),
               "silenciado": bool(fila and fila.get("silenciado"))}

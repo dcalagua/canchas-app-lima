@@ -76,6 +76,7 @@ _ISO_POR_MONEDA = {"PEN": "PE", "BOB": "BO", "USD": "EC"}
 SIMBOLO = {"PEN": "S/", "BOB": "Bs", "USD": "$"}
 # `cuenta_screen._saldoBajo`: con 15 o menos el dueño deja de salir destacado.
 SALDO_BAJO = 15
+CULQI_JS = "https://checkout.culqi.com/js/v4"  # se carga tras el `load` (ver _JS_BILLETERA)
 
 
 _LIMA = timezone(timedelta(hours=-5))
@@ -560,16 +561,43 @@ _JS_BILLETERA = (r"""
   document.querySelectorAll('#recChips [data-monto]').forEach(function(ch){ ch.addEventListener('click', function(){ st.otro = false; st.monto = Number(ch.dataset.monto); err(''); pintar(); }); });
   var co = $('chipOtro'); if(co) co.addEventListener('click', function(){ st.otro = true; var i = $('montoOtro'); st.monto = Number(i.value || 0); pintar(); i.focus(); });
   var mi = $('montoOtro'); if(mi) mi.addEventListener('input', function(){ st.monto = Number(mi.value || 0); err(''); pintar(); });
+  // Culqi Checkout (≈260 KB) ya no bloquea la página: se pide DESPUÉS de que
+  // la billetera terminó de cargar (y, si aún no llegó, al pulsar Pagar).
+  var culqiP = null;
+  function cargarCulqi(){
+    if(window.Culqi) return Promise.resolve(true);
+    if(culqiP) return culqiP;
+    culqiP = new Promise(function(res){
+      var s = document.createElement('script'); s.src = C.culqiJs; s.async = true;
+      s.onload = function(){ res(!!window.Culqi); };
+      s.onerror = function(){ culqiP = null; res(false); };
+      document.head.appendChild(s);
+    });
+    return culqiP;
+  }
+  if(C.culqiJs){
+    if(document.readyState === 'complete') setTimeout(cargarCulqi, 0);
+    else window.addEventListener('load', function(){ setTimeout(cargarCulqi, 0); });
+  }
   function recargar(){
     err('');
     if(!(st.monto >= C.min && st.monto <= C.max && Math.floor(st.monto) === st.monto)){ err('Entre ' + C.moneda + ' ' + C.min + ' y ' + C.moneda + ' ' + C.max + ', sin decimales.'); return; }
     if(C.pasarela){ recargarPasarela(); return; }
-    if(!C.pk || !window.Culqi){ err('El pago en línea no está disponible por ahora.'); return; }
+    if(!C.pk || !C.culqiJs){ err('El pago en línea no está disponible por ahora.'); return; }
     var m = window.pcgMedioPago ? pcgMedioPago() : 'yape', monto = st.monto, bv = bono(monto);
     pcgResumenPago({moneda: C.moneda, medio: m, lineas: [{t: 'Recarga de saldo ⟦MARCA⟧', m: monto}], total: monto,
                     nota: (bv > 0 ? '🎁 Además recibes +' + fmt(bv) + ' de bono (lo pone ⟦MARCA⟧). ' : '') + 'El saldo se acredita al instante en tu billetera, la misma de la app.'})
       .then(function(ok){
         if(!ok) return;
+        if(!window.Culqi){ pcgCargando('Abriendo el pago seguro…', {demora: 250}); }
+        return cargarCulqi().then(function(listo){
+          pcgCargando(false);
+          if(!listo){ err('El pago en línea no está disponible por ahora. Inténtalo de nuevo en un momento.'); return; }
+          abrirCulqi(m, monto);
+        });
+      });
+  }
+  function abrirCulqi(m, monto){
         Culqi.publicKey = C.pk;
         Culqi.settings({title: '⟦MARCA⟧', currency: 'PEN', amount: Math.round(monto * 100)});
         Culqi.options({lang: 'es', installments: false,
@@ -593,7 +621,6 @@ _JS_BILLETERA = (r"""
           else { err((Culqi.error && Culqi.error.user_message) || 'No se pudo procesar el pago.'); }
         };
         Culqi.open();
-      });
   }
   // $ / Bs: la recarga se paga en la página de la pasarela del país y vuelve a /web/pago/{orden}.
   function recargarPasarela(){
@@ -770,7 +797,9 @@ def pagina_billetera(request: Request) -> HTMLResponse:
             lista += ("<h2>Mi saldo</h2><p class='h2sub'>Tu monedero: recargas y gastos (comisiones, servicios, Pro).</p>"
                       + "".join(_fila_mov(m) for m in mios))
     pas_h = "" if P["pasarela"] == "culqi" else pago_hospedado.pasarela_para(P["iso_mon"])
+    con_culqi = "btnRecargar" in recargar and P["pasarela"] == "culqi"
     cfg = {"moneda": sim, "recargas": P["recargas"], "min": P["min"], "max": P["max"], "pk": config.CULQI_PUBLIC_KEY,
+           "culqiJs": CULQI_JS if con_culqi else "",
            "bono": {"pct": pct, "min": minimo, "tope": tope}, "play": PLAY_URL,
            "pasarela": pas_h, "pasarelaNombre": pago_hospedado.nombre_pasarela(pas_h) if pas_h else "",
            "recargaOk": _recarga_ok(request, email)}
@@ -780,7 +809,8 @@ def pagina_billetera(request: Request) -> HTMLResponse:
               + "<p class='sub' style='font-size:13px;margin-top:18px'>¿Buscas lo que pagaste en reservas y academias? "
                 "Está en <a href='/mis-pagos'>Mis pagos</a>.</p></div>"
               + f"<script>window.__billetera={ui.json_js(cfg)};</script><script>{_JS_BILLETERA}</script>")
-    head = "<script src='https://checkout.culqi.com/js/v4'></script>" if ("btnRecargar" in recargar and P["pasarela"] == "culqi") else ""
+    # Culqi ya no va en <head> (bloqueaba la página ~0,3-0,8 s): lo carga el JS tras el `load`.
+    head = "<link rel='preconnect' href='https://checkout.culqi.com'>" if con_culqi else ""
     return ui.shell("Mi billetera", cuerpo, sesion=ses, titulo_tab=f"Mi billetera · {MARCA}", extra_head=head)
 
 

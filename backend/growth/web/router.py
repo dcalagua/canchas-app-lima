@@ -232,6 +232,13 @@ def _no_encontrada(que: str = "Cancha no disponible") -> HTMLResponse:
 
 # ── catálogo ──────────────────────────────────────────────────────────────────
 
+# Leaflet del mapa del explorador (se carga bajo demanda; SRI = el archivo de
+# unpkg no puede cambiar, mismas huellas que la ficha).
+LEAFLET = {"css": "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css",
+           "cssSri": "sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=",
+           "js": "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+           "jsSri": "sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="}
+
 _JS_EXPLORAR = (r"""
 (function(){
   var C = window.__explorar, $ = function(id){ return document.getElementById(id); };
@@ -728,8 +735,28 @@ _JS_EXPLORAR = (r"""
       .catch(function(){ if(sec && !Object.keys(descAcum).length) sec.style.display = 'none'; });
   }
   // ── mapa (se dibuja al mostrarlo; split view en escritorio, pantalla completa en móvil) ──
+  // Leaflet (≈150 KB de unpkg) se pide RECIÉN al abrir el mapa: antes iba en
+  // <head> y frenaba la portada aunque casi nadie abre el mapa.
+  var leafletP = null;
+  function cargarLeaflet(){
+    if(window.L) return Promise.resolve();
+    if(leafletP) return leafletP;
+    leafletP = new Promise(function(res, rej){
+      var n = 0, fin = function(){ if(++n === 2) res(); };
+      var l = document.createElement('link'); l.rel = 'stylesheet'; l.href = C.leaflet.css; l.integrity = C.leaflet.cssSri;
+      l.crossOrigin = ''; l.onload = fin; l.onerror = fin; document.head.appendChild(l);
+      var s = document.createElement('script'); s.src = C.leaflet.js; s.integrity = C.leaflet.jsSri; s.crossOrigin = '';
+      s.onload = fin; s.onerror = function(){ leafletP = null; rej(); }; document.head.appendChild(s);
+    });
+    return leafletP;
+  }
   function pintarMapa(){
-    if(mapa || !window.L || !$('mapa')) return;
+    if(mapa || !$('mapa')) return;
+    if(!window.L){
+      cargarLeaflet().then(function(){ pintarMapa(); setTimeout(function(){ if(mapa) mapa.invalidateSize(); }, 60); })
+        .catch(function(){ if(window.pcgToast) pcgToast('No se pudo cargar el mapa. Revisa tu conexión.'); });
+      return;
+    }
     mapa = L.map('mapa', {scrollWheelZoom: true}).setView(C.centro, 12);
     // Mover el mapa NO busca solo (cada búsqueda nueva en Google cuesta): sale
     // el botón "Buscar en esta zona", como en Airbnb (oct-2026, factura Places).
@@ -1301,10 +1328,9 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     hora = hora if horarios.hora_en_minutos(hora) is not None else ""
     cfg = ui.json_js({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro, "play": PLAY_URL, "dep": dep,
                       "fecha": fecha, "hora": hora, "diasAdelante": DIAS_ADELANTE, "lugares": bool(config.PLACES_API_KEY),
-                      "acadPaises": _ap.paises_habilitados()})
-    head = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
-            "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>"
-            + (f"<style>{css_m}</style>" if css_m else ""))
+                      "acadPaises": _ap.paises_habilitados(), "leaflet": LEAFLET})
+    # Leaflet ya no va aquí: el JS lo carga al abrir el mapa (`cargarLeaflet`).
+    head = (f"<style>{css_m}</style>" if css_m else "")
     cuerpo += f"<script>window.__explorar={cfg};</script><script>{_JS_EXPLORAR}</script>"
     if js_m:
         cuerpo += f"<script>{js_m}</script>"
@@ -1593,6 +1619,7 @@ def _slots_del_dia(c: dict, fecha: str) -> list[dict]:
         horas = [h for h in horas if not _reglas.validar_inicio(
             c, horarios.fecha_real(fecha, c["hora_apertura"], c["hora_cierre"], h), h, ahora)]
     fechas = sorted({horarios.fecha_real(fecha, c["hora_apertura"], c["hora_cierre"], h) for h in horas} | {fecha})
+    datos.precargar_dia(c["id"], fechas)  # reservas + bloqueos + descuentos: un viaje
     ocup = datos.ocupados(c["id"], fechas)
     desc = datos.descuentos(c["id"], fechas)
     out = []
@@ -3929,6 +3956,7 @@ def _seccion_espera(email: str) -> str:
     if not lst:
         return ""
     filas = ""
+    datos.canchas_por_ids([x["cancha_id"] for x in lst])  # una consulta; `cancha()` lee de la memoria
     for x in lst:
         c = datos.cancha(x["cancha_id"]) or {}
         filas += (f"<div class='esp-fila'><span class='em'>🔔</span><div style='min-width:0'><b>{e(_titulo_local(c) if c else 'Cancha')}</b>"
@@ -4048,20 +4076,24 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
     email = ses["email"]
     from db.store import stores as _st
     filas = _agrupar_reservas(datos.reservas_de_usuario(email))
-    canchas = {}
-    for r in filas:
-        cid = r.get("cancha_id")
-        if cid and cid not in canchas:
-            canchas[cid] = datos.cancha(cid)
+    # COBRO DIRECTO: comprobantes que subió el jugador (se leen antes para traer
+    # sus canchas en la MISMA consulta que las de las reservas).
+    vouchers = _cd.pagos_del_jugador(email)
+    canchas = {cid: c for cid, c in datos.canchas_por_ids(
+        [r.get("cancha_id") for r in filas] + [v.get("cancha_id") for v in vouchers]).items()
+        if cid in {r.get("cancha_id") for r in filas}}
     # "Hoy" en la zona horaria del país de CADA cancha (Bolivia va una hora adelante de Perú).
     hoy_de = {cid: horarios.ahora_local(_pais_de(c) if c else "PE").date().isoformat() for cid, c in canchas.items()}
     hoy = horarios.ahora_local("PE").date().isoformat()
     def _hoy(r): return hoy_de.get(r.get("cancha_id")) or hoy
     proximas = sorted([r for r in filas if str(r.get("fecha") or "") >= _hoy(r)], key=lambda r: (r.get("fecha"), r.get("hora_inicio")))
     pasadas = [r for r in filas if str(r.get("fecha") or "") < _hoy(r)]
-    # COBRO DIRECTO: comprobantes que subió el jugador. Los rechazados o vencidos
-    # (su reserva ya se soltó) se listan aparte para que sepa qué pasó.
-    vouchers = _cd.pagos_del_jugador(email)
+    # El botón "Cancelar" de cada próxima mira sus canjes (bono / puntos): todos
+    # en dos consultas en vez de dos por reserva.
+    datos.precargar_canjes_web([str(r.get("grupo_reserva_id") or "").strip() or str(r.get("id")) for r in proximas])
+    datos.precargar_puntos_canjes(email)
+    # Los comprobantes rechazados o vencidos (su reserva ya se soltó) se listan
+    # aparte para que sepa qué pasó.
     refs_vivas = {str(r.get("grupo_reserva_id") or r.get("id")) for r in filas}
     caidos = [v for v in vouchers if v.get("estado") in ("rechazado", "vencido") and str(v.get("reserva_ref")) not in refs_vivas][:10]
     # Solo reservas: un pago devuelto de una matrícula o compra (pasarela $ / Bs) no es una cancha cancelada.
@@ -4237,6 +4269,7 @@ def pagina_perfil(request: Request) -> HTMLResponse:
     from retos.router import _auto_confirmar, _lado_retado, _lado_retador, _participantes
     email = (ses.get("email") or "").strip().lower()
     nombre = ses.get("nombre") or email
+    datos.precargar_perfil(email)  # reservas, niveles, verificación, matrículas y boleador: un solo viaje
     reservas = len(datos.reservas_de_usuario(email))
     niveles = datos.niveles_de(email)
     try:
