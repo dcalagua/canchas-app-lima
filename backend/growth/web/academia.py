@@ -43,7 +43,7 @@ import empresa
 from pagos import culqi
 from pagos import cargo_servicio as _cs
 from paises import moneda_de_pais, pais_de_coordenadas, simbolo_de_moneda
-from web import catalogos, datos, sesion, ui
+from web import catalogos, datos, miniaturas, sesion, ui
 from web.router import (PLAY_URL, _RED_SVG, _deporte, _maps, _no_encontrada, _pago_web_disponible,
                         _pasarela_web, _url_red, e)
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
@@ -189,10 +189,12 @@ def _galeria(a: dict) -> str:
     emoji = _deporte(a.get("deporte"))[1] if a.get("deporte") else "🎓"
     if not fs:
         return f"<div class='galeria una'><div class='sinfoto principal'>{emoji}</div></div>"
+    principal = miniaturas.img(fs[0], a.get("nombre", "") or "", w=960, sizes=miniaturas.SIZES_PRINCIPAL,
+                               clase="principal", prioridad=True)
     if len(fs) == 1:
-        return f"<div class='galeria una'><img class='principal' src='{e(fs[0])}' alt='{e(a.get('nombre', ''))}'></div>"
-    return ("<div class='galeria'>" + f"<img class='principal' src='{e(fs[0])}' alt='{e(a.get('nombre', ''))}'>"
-            + "".join(f"<img src='{e(u)}' alt='' loading='lazy'>" for u in fs[1:3]) + "</div>")
+        return f"<div class='galeria una'>{principal}</div>"
+    return ("<div class='galeria'>" + principal
+            + "".join(miniaturas.img(u, sizes=miniaturas.SIZES_CHICA) for u in fs[1:3]) + "</div>")
 
 
 def _redes_html(a: dict) -> str:

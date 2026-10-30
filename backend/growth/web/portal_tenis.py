@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse
 
 from marketing import campeonato_web
 from web import campeonatos_logica as L
-from web import catalogos, datos, horarios, sesion, ui
+from web import catalogos, datos, horarios, miniaturas, sesion, ui
 from web import router as _r
 from web.ui import e
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
@@ -43,7 +43,7 @@ def _tarjeta_local(cs: list[dict]) -> str:
         pvis, unidad = horarios.precio_publico(barato)
         precio = f"<span class='tn-precio'>desde {e(sim)} {float(pvis):.2f} <small>{e(unidad)}</small></span>"
     fotos = _r._fotos(c)
-    foto = (f"<img src='{e(fotos[0])}' alt='' loading='lazy'>" if fotos
+    foto = (miniaturas.img(fotos[0], sizes="(max-width: 600px) 92vw, 320px", dims=False) if fotos
             else f"<div class='tn-sinfoto'>{_r._deporte(deps[0] if deps else 'tenis')[1]}</div>")
     deps_txt = " · ".join(_r._deporte(d)[0] for d in deps)
     n = len(cs)
