@@ -279,6 +279,7 @@ app.include_router(legal_router)
 from marca_logo import router as marca_logo_router  # noqa: E402
 app.include_router(marca_logo_router)  # /marca/logo.png + torre → Logo de la marca
 app.include_router(web_router)
+app.include_router(__import__("web.miniaturas", fromlist=["router"]).router)  # /web/mini: miniaturas de las fotos de nuestro Storage
 app.include_router(reservas_router)
 app.include_router(cobro_directo_router)
 app.include_router(portal_tenis_router)  # /tenis: portada de raqueta (canchas, torneos con marca del organizador, partner, liga)

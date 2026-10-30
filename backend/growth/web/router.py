@@ -48,7 +48,7 @@ from paises import _CAJAS, pais_de_coordenadas, moneda_de_pais, simbolo_de_moned
 from pagos import culqi
 from pagos import cargo_servicio as _cs
 from pagos import devoluciones as _dev
-from web import beneficios, catalogos, datos, descubrir, horarios, marca, osm, pago_hospedado, sesion, ui
+from web import beneficios, catalogos, datos, descubrir, horarios, marca, miniaturas, osm, pago_hospedado, sesion, ui
 from reservas import reglas as _reglas
 from pagos import cobro_directo as _cd
 from web.ui import e
@@ -171,7 +171,7 @@ def _fotos_crudas(c: dict) -> list[str]:
 def _foto_card(c: dict) -> str:
     fs = _fotos(c)
     if fs:
-        return f"<img src='{e(fs[0])}' alt='{e(c.get('nombre'))}' loading='lazy'>"
+        return miniaturas.img(fs[0], c.get("nombre") or "")
     return f"<div class='sinfoto'>{_deporte(c.get('deporte'))[1]}</div>"
 
 
@@ -206,14 +206,19 @@ def _galeria(c: dict) -> str:
                 "<script>(function(){fetch('/web/foto?" + q + "').then(function(r){return r.json();}).then(function(j){"
                 "var f=(j&&j.fotos)||[];if(!f.length)return;var g=document.getElementById('galeria');if(!g)return;"
                 "var esc=function(s){return String(s).replace(/[&<>\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c];});};"
-                "if(f.length===1){g.innerHTML='<img class=principal src=\"'+esc(f[0])+'\" alt=\"\">';return;}"
-                "g.className='galeria';g.innerHTML='<img class=principal src=\"'+esc(f[0])+'\" alt=\"\">'+f.slice(1,3).map(function(u){return '<img src=\"'+esc(u)+'\" alt=\"\" loading=lazy>';}).join('');"
+                "var g9=(j&&j.minis_g)||[],m=(j&&j.minis)||[];"
+                "var im=function(i,cl,sz,ms){var x=ms[i]||{};return '<img'+(cl?' class='+cl:'')+' src=\"'+esc(x.s||f[i])+'\"'+(x.ss?' srcset=\"'+esc(x.ss)+'\" sizes=\"'+sz+'\"':'')+' alt=\"\" decoding=async'+(cl?'':' loading=lazy')+'>';};"
+                "var P='" + miniaturas.SIZES_PRINCIPAL + "',S='" + miniaturas.SIZES_CHICA + "';"
+                "if(f.length===1){g.innerHTML=im(0,'principal',P,g9);return;}"
+                "g.className='galeria';g.innerHTML=im(0,'principal',P,g9)+f.slice(1,3).map(function(u,i){return im(i+1,'',S,m);}).join('');"
                 "}).catch(function(){});})();</script>")
+    principal = miniaturas.img(fs[0], c.get("nombre") or "", w=960, sizes=miniaturas.SIZES_PRINCIPAL,
+                               clase="principal", prioridad=True)
     if len(fs) == 1:
-        return f"<div class='galeria una'><img class='principal' src='{e(fs[0])}' alt='{e(c['nombre'])}'></div>"
-    partes = [f"<img class='principal' src='{e(fs[0])}' alt='{e(c['nombre'])}'>"]
+        return f"<div class='galeria una'>{principal}</div>"
+    partes = [principal]
     for u in fs[1:3]:
-        partes.append(f"<img src='{e(u)}' alt='' loading='lazy'>")
+        partes.append(miniaturas.img(u, sizes=miniaturas.SIZES_CHICA))
     while len(partes) < 3 and len(fs) > 1:
         partes.append(f"<div class='sinfoto'>{_deporte(c.get('deporte'))[1]}</div>")
     return f"<div class='galeria'>{''.join(partes)}</div>"
@@ -236,7 +241,13 @@ _JS_EXPLORAR = (r"""
 (function(){
   var C = window.__explorar, $ = function(id){ return document.getElementById(id); };
   var cards = function(){ return Array.prototype.slice.call(document.querySelectorAll('.lst[data-lat]')); };
-  var yo = null, mapa = null, marcadores = [], miPin = null, pinesDesc = [], descubiertas = {}, fotosConocidas = {};
+  var yo = null, mapa = null, marcadores = [], miPin = null, pinesDesc = [], descubiertas = {}, fotosConocidas = {}, minisConocidas = {};
+  // Foto de tarjeta = MINIATURA (`web/miniaturas.py`): el servidor manda
+  // {s: src, ss: srcset} alineado con cada foto; sin eso, la URL de siempre.
+  function fotoImg(u, m){
+    m = m || {};
+    return '<img src="' + esc(m.s || u) + '"' + (m.ss ? ' srcset="' + esc(m.ss) + '" sizes="' + C.sizesTarjeta + '"' : '') + ' alt="" loading="lazy" decoding="async">';
+  }
   var filtro = {q: '', dep: C.dep || '', fecha: '', hora: '', cerca: false};
   // Radio de cercanía (como el APK: 5/10/20/30 km, 10 por defecto). Con tu
   // ubicación SOLO salen canchas/academias dentro del radio (nunca las de otro
@@ -657,12 +668,14 @@ _JS_EXPLORAR = (r"""
   function tarjetaDesc(c){
     // Fotos: las que trae la Edge, o las que ya resolvió /web/foto antes de
     // este re-pintado (nunca se "esconde" una foto ya mostrada).
-    var fs = (c.fotos && c.fotos.length) ? c.fotos : (fotosConocidas[c.id] || []);
-    if(fs.length) fotosConocidas[c.id] = fs;
+    var propias = c.fotos && c.fotos.length;
+    var fs = propias ? c.fotos : (fotosConocidas[c.id] || []);
+    var ms = propias ? (c.minis || []) : (minisConocidas[c.id] || []);
+    if(fs.length){ fotosConocidas[c.id] = fs; minisConocidas[c.id] = ms; }
     // OpenStreetMap: nunca se pide foto a Google (placeholder del deporte) y
     // va la atribución de la licencia ODbL.
     var esOsm = c.fuente === 'osm';
-    var foto = fs.length ? fs.slice(0, 3).map(function(u){ return '<img src="' + esc(u) + '" alt="" loading="lazy">'; }).join('') : '<div class="sinfoto"' + (esOsm ? '' : ' data-buscar="1"') + '>' + (c.emoji || '🏟️') + '</div>';
+    var foto = fs.length ? fs.slice(0, 3).map(function(u, i){ return fotoImg(u, ms[i]); }).join('') : '<div class="sinfoto"' + (esOsm ? '' : ' data-buscar="1"') + '>' + (c.emoji || '🏟️') + '</div>';
     var extra = fs.length > 1 ? '<button class="flecha izq" aria-label="Anterior">‹</button><button class="flecha der" aria-label="Siguiente">›</button><div class="dots">' + fs.slice(0, 3).map(function(){ return '<i></i>'; }).join('') + '</div>' : '';
     var hrefLugar = '/lugar/' + encodeURIComponent(c.id) + '?nombre=' + encodeURIComponent(c.nombre) + '&direccion=' + encodeURIComponent(c.direccion) + '&lat=' + c.lat + '&lng=' + c.lng + '&deporte=' + encodeURIComponent(c.deporte);
     return '<a class="lst pend" href="' + hrefLugar + '" data-id="' + esc(c.id) + '" data-lat="' + c.lat + '" data-lng="' + c.lng + '" data-ok="0" data-deps="' + esc(c.deporte) + '" data-nombre="' + esc(c.nombre) + '" data-sub="' + esc(c.direccion) + '" data-precio="' + esc(c.deporte_nombre) + '" data-emoji="' + esc(c.emoji || '') + '" data-t="' + esc((c.nombre + ' ' + c.direccion).toLowerCase()) + '" data-q="' + esc(c.q || '') + '"' + (yo && c.km != null ? ' data-d="' + c.km + '"' : '') + '>' +
@@ -696,7 +709,7 @@ _JS_EXPLORAR = (r"""
   function pintarDescubiertas(lista, conFotos){
     var sec = $('descubiertas'), grid = $('gridDesc');
     if(!sec || !grid) return;
-    (lista || []).forEach(function(c){ var prev = descAcum[c.id]; if(prev && !(c.fotos && c.fotos.length) && prev.fotos && prev.fotos.length) c.fotos = prev.fotos; descAcum[c.id] = c; });
+    (lista || []).forEach(function(c){ var prev = descAcum[c.id]; if(prev && !(c.fotos && c.fotos.length) && prev.fotos && prev.fotos.length){ c.fotos = prev.fotos; c.minis = prev.minis; } descAcum[c.id] = c; });
     var ref = yo ? yo : (mapa ? {lat: mapa.getCenter().lat, lng: mapa.getCenter().lng} : null);
     lista = Object.keys(descAcum).map(function(k){ var c = descAcum[k]; if(ref) c.km = Math.round(kmEntre(ref.lat, ref.lng, c.lat, c.lng) * 100) / 100; return c; })
       .sort(function(a, b){ return (a.km == null ? 1e9 : a.km) - (b.km == null ? 1e9 : b.km); });
@@ -766,10 +779,11 @@ _JS_EXPLORAR = (r"""
   // ── PRIMERA FOTO siempre (como el app): las tarjetas sin foto propia piden
   // la de Google en su ubicación (/web/foto, cacheado en el servidor). ──
   var colaFotos = [], enVuelo = 0, pedidas = {};
-  function pintarFotos(card, fotos){
+  function pintarFotos(card, fotos, minis){
     var box = card.querySelector('.fotos'); if(!box || !fotos || !fotos.length) return;
-    fotosConocidas[card.dataset.id] = fotos;
-    box.innerHTML = fotos.slice(0, 3).map(function(u){ return '<img src="' + esc(u) + '" alt="" loading="lazy">'; }).join('');
+    minis = minis || [];
+    fotosConocidas[card.dataset.id] = fotos; minisConocidas[card.dataset.id] = minis;
+    box.innerHTML = fotos.slice(0, 3).map(function(u, i){ return fotoImg(u, minis[i]); }).join('');
     if(fotos.length > 1){
       var f = card.querySelector('.foto');
       f.insertAdjacentHTML('beforeend', '<button class="flecha izq" aria-label="Anterior">‹</button><button class="flecha der" aria-label="Siguiente">›</button><div class="dots">' + fotos.slice(0, 3).map(function(){ return '<i></i>'; }).join('') + '</div>');
@@ -778,7 +792,7 @@ _JS_EXPLORAR = (r"""
   function pedirFoto(card){
     var q = 'id=' + encodeURIComponent(card.dataset.id || '') + '&nombre=' + encodeURIComponent(card.dataset.nombre || '') +
             '&club=' + encodeURIComponent(card.dataset.club || '') + '&lat=' + card.dataset.lat + '&lng=' + card.dataset.lng;
-    fetch('/web/foto?' + q).then(function(r){ return r.json(); }).then(function(j){ pintarFotos(card, (j && j.fotos) || []); })
+    fetch('/web/foto?' + q).then(function(r){ return r.json(); }).then(function(j){ pintarFotos(card, (j && j.fotos) || [], (j && j.minis) || []); })
       .catch(function(){}).then(function(){ enVuelo--; siguienteFoto(); });
   }
   function siguienteFoto(){
@@ -984,7 +998,8 @@ def _agrupar_locales(lista: list[dict]) -> list[list[dict]]:
     return [mapa[k] for k in orden]
 
 
-def _tarjeta(canchas: list[dict] | dict, ratings: dict | tuple | None = None, fecha: str = "") -> str:
+def _tarjeta(canchas: list[dict] | dict, ratings: dict | tuple | None = None, fecha: str = "",
+             prioridad: bool = False) -> str:
     """Tarjeta del explorador = UN LOCAL con sus canchas (queja del director,
     sep-2026: "sigue saliendo el nombre de la cancha como nombre del local").
     Igual que `ClubCard` del app: título = local, debajo zona, "N canchas ·
@@ -993,7 +1008,9 @@ def _tarjeta(canchas: list[dict] | dict, ratings: dict | tuple | None = None, fe
     chips para cambiar de cancha dentro del local). Los `data-*` que usa el
     JS (hora libre, precio, duración, superficie, amenidades, mapa, fotos)
     reúnen los valores de TODAS las canchas del local (`data-ids`,
-    `data-pasos`, `data-sup` con varias superficies)."""
+    `data-pasos`, `data-sup` con varias superficies). Fotos = miniaturas
+    (`web/miniaturas.py`); `prioridad` = tarjeta visible al abrir (su primera
+    foto no espera al scroll)."""
     cs = [canchas] if isinstance(canchas, dict) else list(canchas)
     if isinstance(ratings, tuple) or ratings is None:
         ratings = {cs[0]["id"]: ratings} if ratings else {}
@@ -1016,7 +1033,7 @@ def _tarjeta(canchas: list[dict] | dict, ratings: dict | tuple | None = None, fe
             if u not in fs:
                 fs.append(u)
     if fs:
-        fotos = "".join(f"<img src='{e(u)}' alt='' loading='lazy'>" for u in fs[:5])
+        fotos = "".join(miniaturas.img(u, prioridad=prioridad and i == 0) for i, u in enumerate(fs[:5]))
     elif _sin_google(c):  # plazo de fotos propias vencido: sin Google
         fotos = f"<div class='sinfoto'>{_deporte(c.get('deporte'))[1]}</div>"
     else:
@@ -1158,7 +1175,7 @@ def _tarjeta_academia(a: dict) -> str:
     programas = {str(p.get("programa") or p.get("nombre") or "") for p in (a.get("planes") or []) if isinstance(p, dict)}
     desde = f"<b>{e(sim)} {min(precios):.0f}</b> <span style='color:var(--tenue)'>al mes desde</span>" if precios else "<span style='color:var(--tenue)'>Consulta precios</span>"
     fs = [u for u in ([a.get("logoUrl")] + list(a.get("fotos") or [])) if isinstance(u, str) and u.startswith("http")]
-    foto = "".join(f"<img src='{e(u)}' alt='' loading='lazy'>" for u in fs[:3]) if fs else f"<div class='sinfoto'>{emoji}</div>"
+    foto = "".join(miniaturas.img(u) for u in fs[:3]) if fs else f"<div class='sinfoto'>{emoji}</div>"
     extra = ""
     if len(fs) > 1:
         extra = ("<button class='flecha izq' aria-label='Anterior'>‹</button><button class='flecha der' aria-label='Siguiente'>›</button>"
@@ -1245,6 +1262,7 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     if not solo_aca:  # amenidades / precio por hora no aplican a academias
         cuerpo += _barra_filtros(lista) + _modal_filtros(lista)
     cuerpo += "<div class='expl' id='expl'><div class='lista'><div id='grupos'>"
+    primeras = 4  # tarjetas cuya foto se pide con prioridad (las que se ven al abrir)
     for pais in ("PE", "EC", "BO"):
         lst = por_pais.get(pais) or []
         if not lst:
@@ -1253,7 +1271,9 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
         # reordena por cercanía al tenerla), los locales con foto van primero:
         # la portada no abre con un cuadro vacío.
         grupos = sorted(_agrupar_locales(lst), key=lambda g: 0 if any(_fotos(x) for x in g) else 1)
-        cards = "".join(_tarjeta(grupo, ratings, fecha) for grupo in grupos)
+        cards = "".join(_tarjeta(grupo, ratings, fecha, prioridad=(primeras > 0 and i < primeras))
+                        for i, grupo in enumerate(grupos))
+        primeras = 0  # solo las primeras tarjetas del PRIMER país pintado
         cuerpo += (f"<section class='grupo-pais' data-pais='{pais}'><div class='tit'><h2>{ui.bandera(pais)} Canchas en {NOMBRE_PAIS[pais]}"
                    f"<span class='cerca'></span></h2></div><div class='lst-grid'>{cards}</div></section>")
     cuerpo += "</div>"
@@ -1299,7 +1319,7 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     if c0:
         centro = [c0.get("lat") or centro[0], c0.get("lng") or centro[1]]
     hora = hora if horarios.hora_en_minutos(hora) is not None else ""
-    cfg = ui.json_js({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro, "play": PLAY_URL, "dep": dep,
+    cfg = ui.json_js({"cajas": {k: list(v) for k, v in _CAJAS.items()}, "centro": centro, "play": PLAY_URL, "dep": dep, "sizesTarjeta": miniaturas.SIZES_TARJETA,
                       "fecha": fecha, "hora": hora, "diasAdelante": DIAS_ADELANTE, "lugares": bool(config.PLACES_API_KEY),
                       "acadPaises": _ap.paises_habilitados()})
     head = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
@@ -1383,6 +1403,7 @@ def descubrir_web(lat: float, lng: float, fotos: int = 0, deporte: str = "") -> 
         c["deporte_nombre"], c["emoji"] = _deporte(c["deporte"])
         if c.get("fotos"):
             descubrir.recordar_fotos_edge(c)  # cosecha gratis: ya las pagó la Edge
+            c["minis"] = miniaturas.para_js(c["fotos"][:3])
     return {"ok": True, "region": region, "canchas": lista}
 
 
@@ -1532,6 +1553,13 @@ def lugares_web(q: str = "", lat: float | None = None, lng: float | None = None)
     return {"ok": True, "disponible": True, "lugares": lugares}
 
 
+def _minis(fotos: list[str]) -> dict:
+    """Miniaturas alineadas con `fotos` para el JS que las pinta: `minis`
+    (tarjetas, 480 px) y `minis_g` (foto principal de la ficha, 960 px). El APK
+    sigue leyendo solo `fotos` (las URLs de siempre)."""
+    return {"minis": miniaturas.para_js(fotos), "minis_g": miniaturas.para_js(fotos[:1], 960)}
+
+
 @router.get("/web/foto")
 def foto_web(id: str = "", nombre: str = "", club: str = "", lat: float = 0.0, lng: float = 0.0,
              refrescar: int = 0, x_admin_token: str | None = Header(default=None)) -> dict:
@@ -1548,7 +1576,7 @@ def foto_web(id: str = "", nombre: str = "", club: str = "", lat: float = 0.0, l
     if c:
         propias = _fotos(c)
         if propias:
-            return {"ok": True, "fotos": propias[:5], "origen": "propias"}
+            return {"ok": True, "fotos": propias[:5], "origen": "propias", **_minis(propias[:5])}
         if _sin_google(c):
             # FOTOS PROPIAS DE LOS LOCALES: plazo vencido sin fotos → nunca
             # se le pide a Google (ahorro; placeholder del deporte).
@@ -1566,7 +1594,7 @@ def foto_web(id: str = "", nombre: str = "", club: str = "", lat: float = 0.0, l
     forzar = bool(refrescar) and _aa.token_admin_valido(x_admin_token)
     fotos = descubrir.fotos_de_lugar(nombre, club, lat, lng, region=region, place_id=place_id,
                                      cancha_id="" if place_id else id, forzar=forzar)
-    return {"ok": True, "fotos": fotos, "origen": "google" if fotos else ""}
+    return {"ok": True, "fotos": fotos, "origen": "google" if fotos else "", **_minis(fotos)}
 
 
 # ── disponibilidad ────────────────────────────────────────────────────────────
@@ -3981,7 +4009,7 @@ def _tarjeta_viaje(r: dict, c: dict | None, hoy: str, ses: dict | None, pago_clu
     href = f"/reserva/{e(ref)}" if con_comprobante else (f"/reservar/{e(c['id'])}" if c else "#")
     fs = _fotos(c) if c else []
     if fs:
-        foto = f"<img src='{e(fs[0])}' alt='' loading='lazy'>"
+        foto = miniaturas.img(fs[0], sizes=miniaturas.SIZES_MINI, dims=False)
     elif c:
         foto = (f"<div class='sinfoto' data-buscar='1' data-id='{e(c['id'])}' data-nombre='{e(c.get('nombre'))}' data-club='{e(c.get('club') or '')}' "
                 f"data-lat='{c.get('lat')}' data-lng='{c.get('lng')}'>{_deporte(c.get('deporte'))[1]}</div>")
@@ -4116,7 +4144,7 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
   // Fotos que faltan (canchas sembradas): la primera foto, como en el explorador.
   document.querySelectorAll('.viaje .sinfoto[data-buscar]').forEach(function(ph){
     var q = '/web/foto?id=' + encodeURIComponent(ph.dataset.id) + '&nombre=' + encodeURIComponent(ph.dataset.nombre) + '&club=' + encodeURIComponent(ph.dataset.club) + '&lat=' + ph.dataset.lat + '&lng=' + ph.dataset.lng;
-    fetch(q).then(function(r){ return r.json(); }).then(function(j){ if(j && j.fotos && j.fotos.length){ var im = document.createElement('img'); im.src = j.fotos[0]; im.alt = ''; ph.replaceWith(im); } }).catch(function(){});
+    fetch(q).then(function(r){ return r.json(); }).then(function(j){ if(j && j.fotos && j.fotos.length){ var m = (j.minis || [])[0] || {}; var im = document.createElement('img'); im.src = m.s || j.fotos[0]; if(m.ss){ im.srcset = m.ss; im.sizes = '120px'; } im.alt = ''; im.decoding = 'async'; ph.replaceWith(im); } }).catch(function(){});
   });
   // Mapa con un pin por reserva próxima (Leaflet + OpenStreetMap, como el explorador).
   var caja = document.getElementById('mapaViajes'); if(!caja || !window.L) return;

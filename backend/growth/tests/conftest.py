@@ -17,6 +17,10 @@ def _sin_limites_por_ip(monkeypatch):
     de la web (`web/seguridad_web.py`) se prueban aparte, en su propio test."""
     from web import datos, seguridad_web
     monkeypatch.setattr(seguridad_web, "ACTIVO", False)
+    # Las miniaturas al subir corren en un hilo aparte: en la suite no (cada
+    # test que las prueba las llama directo, `test_web_miniaturas.py`).
+    from web import miniaturas
+    monkeypatch.setattr(miniaturas, "PRECALENTAR", False)
     # Cada test arma su propia base: sin la caché de canchas de la web.
     monkeypatch.setattr(datos, "CANCHAS_TTL", 0)
     datos.invalidar_canchas()
