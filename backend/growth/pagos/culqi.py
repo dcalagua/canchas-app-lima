@@ -289,11 +289,19 @@ def obtener_cargo(charge_id: str, llave: str | None = None) -> dict:
     if not r["ok"]:
         return r
     data = r["data"]
+    monto = int(data.get("amount") or 0)
+    # Lo ya devuelto de este cargo: `amount_refunded` o, si Culqi solo trae el
+    # saldo vigente, `amount − current_amount`.
+    devuelto = _entero(data.get("amount_refunded"))
+    if not devuelto and data.get("current_amount") is not None:
+        devuelto = max(0, monto - _entero(data.get("current_amount")))
     return {
         "ok": True,
         "charge_id": data.get("id"),
         "capturado": bool(data.get("capture") or data.get("captured", True)),
-        "monto_centimos": int(data.get("amount") or 0),
+        "monto_centimos": monto,
+        "moneda": str(data.get("currency_code") or data.get("currency") or "").upper(),
+        "reembolsado_centimos": devuelto,
         "metadata": data.get("metadata") or {},
         "raw": data,
         **_fees_de(data),

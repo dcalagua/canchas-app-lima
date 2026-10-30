@@ -1103,8 +1103,16 @@ def eliminar_reservas(ids: list[str]) -> bool:
         return False
 
 
-def reservas_de(ids: list[str]) -> list[dict]:
-    if not pg.habilitado or not ids:
+def reservas_de(ids: list[str], estricto: bool = False) -> list[dict]:
+    """Filas de `pichangol_reservas` por id (orden fecha, hora). Por defecto un
+    error de la base devuelve []; con [estricto] LANZA (y también sin base):
+    quien decide con la plata ("¿se perdió el apartado?") no puede confundir
+    "no pude leer" con "ya no existe"."""
+    if not ids:
+        return []
+    if not pg.habilitado:
+        if estricto:
+            raise RuntimeError("sin_base")
         return []
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
@@ -1119,6 +1127,8 @@ def reservas_de(ids: list[str]) -> list[dict]:
                 out.append(d)
             return out
     except Exception:  # noqa: BLE001
+        if estricto:
+            raise
         return []
 
 

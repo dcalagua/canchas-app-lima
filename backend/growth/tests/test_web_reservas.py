@@ -95,7 +95,7 @@ class FakeDB:
                 self.reservas.pop(i)
         return True
 
-    def reservas_de(self, ids):
+    def reservas_de(self, ids, estricto=False):
         return sorted([dict(self.reservas[i]) for i in ids if i in self.reservas],
                       key=lambda r: (r["fecha"], r["hora_inicio"]))
 

@@ -41,8 +41,20 @@ Flujo (todo lo decide el servidor; el navegador solo muestra):
    → `devolver_por_cancelacion`: lo que corresponde se reparte proporcional a
    lo que pagó cada uno y vuelve a cada pagador por su medio.
 
-Persistencia: tablas Postgres (`RepoPG`); los tests inyectan `RepoMemoria`
-(`usar_repo`). Sin las tablas la opción NO se ofrece (`disponible()`).
+9. A prueba de fallas (revisión oct-2026): un error de la base al leer el
+   apartado NO cuenta como "apartado perdido" (lectura estricta, se reintenta);
+   si las filas no se confirman, la división sigue `completa` sin cobrar
+   comisión; un cierre que se corta a mitad lo retoma el barrido
+   (`cerradas_pendientes`); cada cargo se devuelve UNA vez y en UNA llamada
+   aunque cubra varias partes (`cl_division_cargos_devueltos`, también ignora
+   webhooks tardíos); el webhook exige que la división sea del club del webhook,
+   en soles y con el cargo capturado; un comprobante que llega con la parte ya
+   suelta se retoma o queda como pago tardío para que el club lo devuelva
+   (`cl_division_tardios`); la devolución proporcional nunca pasa lo pagado.
+
+Persistencia: tablas Postgres (`RepoPG`, migraciones 0006 + 0007); los tests
+inyectan `RepoMemoria` (`usar_repo`). Sin las tablas la opción NO se ofrece
+(`disponible()`).
 """
 
 from __future__ import annotations
@@ -157,6 +169,26 @@ _LIBRE = {"estado": "libre", "pagador_email": "", "pagador_nombre": "", "por_org
           "tomada_en": None}
 
 
+def _pendiente_de_devolver(div: dict, p: dict) -> bool:
+    """¿Esta parte de una división YA CERRADA aún espera su devolución? (el
+    cierre se cortó a mitad: lo retoma el barrido). Tras cancelar una reserva
+    confirmada, una parte pagada solo espera si se le asignó monto a devolver."""
+    if p["estado"] in ("cobrando", "en_revision"):
+        return True
+    if p["estado"] != "pagada":
+        return False
+    return div.get("motivo") != "reserva_cancelada" or int(p.get("devolver_centimos") or 0) > 0
+
+
+def _tardio_como_parte(t: dict) -> dict:
+    """Un comprobante tardío con la misma forma que una parte por devolver."""
+    return {"id": t["id"], "division_id": t["division_id"], "n": int(t.get("n") or 0),
+            "monto_centimos": int(t["monto_centimos"]), "devolver_centimos": int(t["monto_centimos"]),
+            "estado": t["estado"], "pagador_email": t["pagador_email"], "pagador_nombre": t.get("pagador_nombre") or "",
+            "medio": t.get("medio") or "", "nota": t.get("nota") or "", "pago_manual_id": t.get("pago_manual_id") or "",
+            "cobro_id": "", "refund_id": "", "por_organizador": False, "tardio": True}
+
+
 class RepoMemoria:
     """Mismo contrato que `RepoPG`, en memoria (tests). Un solo candado hace de
     `FOR UPDATE` de la fila de la división."""
@@ -164,6 +196,8 @@ class RepoMemoria:
     def __init__(self):
         self.divs: dict[str, dict] = {}
         self.partes_: dict[str, dict] = {}
+        self.devueltos: dict[str, dict] = {}     # cl_division_cargos_devueltos
+        self.tardios: dict[str, dict] = {}       # cl_division_tardios
         self._lock = threading.RLock()
 
     def disponible(self) -> bool:
@@ -230,6 +264,63 @@ class RepoMemoria:
                 return "sin_partes", []
             _toma(libre, False)
             return "", [dict(libre)]
+
+    def retomar(self, div_id, ids, email, nombre, organizador, ahora):
+        """Vuelve a tomar partes CONCRETAS que siguen libres (la toma de 15 min
+        venció mientras el amigo pagaba). Mismas reglas que `tomar`."""
+        with self._lock:
+            d = self.divs.get(div_id)
+            if not d or d["estado"] != "abierta" or d["vence_en"] <= ahora:
+                return False
+            ps = [self.partes_.get(i) for i in dict.fromkeys(ids)]
+            if not ps or any(not p or p["division_id"] != div_id or p["estado"] != "libre" for p in ps):
+                return False
+            if not organizador:
+                if len(ps) != 1 or ps[0]["n"] == 0 or any(
+                        x["pagador_email"] == email and not x["por_organizador"] and x["estado"] in VIVOS
+                        for x in self._p(div_id)):
+                    return False
+            for p in ps:
+                p.update(estado="cobrando", pagador_email=email, pagador_nombre=nombre,
+                         por_organizador=bool(organizador and p["n"] != 0), tomada_en=ahora)
+            return True
+
+    def cargo_devuelto(self, charge_id):
+        d = self.devueltos.get(charge_id)
+        return dict(d) if d else None
+
+    def marcar_cargo_devuelto(self, charge_id, division_id, monto, refund_id, motivo):
+        with self._lock:
+            self.devueltos.setdefault(charge_id, {"charge_id": charge_id, "division_id": division_id,
+                                                  "monto_centimos": int(monto), "refund_id": refund_id,
+                                                  "motivo": motivo, "creado_en": _ahora()})
+            return True
+
+    def crear_tardio(self, t):
+        with self._lock:
+            self.tardios[t["id"]] = dict(t)
+            return True
+
+    def tardio_por_pm(self, pm_id):
+        t = next((t for t in self.tardios.values() if pm_id and t["pago_manual_id"] == pm_id), None)
+        return dict(t) if t else None
+
+    def set_tardio(self, tid, desde, campos):
+        with self._lock:
+            t = self.tardios.get(tid)
+            if not t or t["estado"] not in desde:
+                return False
+            t.update(campos)
+            return True
+
+    def cerradas_pendientes(self, corte):
+        out = []
+        for d in self.divs.values():
+            if d["estado"] not in ("vencida", "cancelada") or (d.get("cerrado_en") or d["vence_en"]) > corte:
+                continue
+            if any(_pendiente_de_devolver(d, p) for p in self._p(d["id"])):
+                out.append(dict(d))
+        return out
 
     def soltar(self, div_id, ids, email):
         with self._lock:
@@ -328,6 +419,10 @@ class RepoMemoria:
             d = self.divs.get(p["division_id"])
             if d and d["dueno"] == dueno and p["estado"] == "devolver":
                 out.append({**dict(p), "division": dict(d)})
+        for t in self.tardios.values():
+            d = self.divs.get(t["division_id"])
+            if d and d["dueno"] == dueno and t["estado"] == "devolver":
+                out.append({**_tardio_como_parte(t), "division": dict(d)})
         return sorted(out, key=lambda x: (x["division"]["creado_en"], x["n"]))
 
 
@@ -347,7 +442,9 @@ class RepoPG:
         try:
             with pg.conexion() as conn, conn.cursor() as cur:
                 cur.execute("select to_regclass('public.cl_division_pago') is not null "
-                            "and to_regclass('public.cl_division_partes') is not null")
+                            "and to_regclass('public.cl_division_partes') is not null "
+                            "and to_regclass('public.cl_division_cargos_devueltos') is not null "
+                            "and to_regclass('public.cl_division_tardios') is not null")
                 self._ok = bool(cur.fetchone()[0])
         except Exception:  # noqa: BLE001
             self._ok = False
@@ -457,6 +554,90 @@ class RepoPG:
                         (email, nombre, ahora, div_id))
             g = cur.fetchone()
             return ("", [self._parte(g)]) if g else ("sin_partes", [])
+
+    def retomar(self, div_id, ids, email, nombre, organizador, ahora):
+        from db import pg
+        ids = list(dict.fromkeys(ids))
+        with pg.conexion() as conn, conn.cursor() as cur:
+            f = self._bloquear(cur, div_id)
+            if not f or f[0] != "abierta" or f[1] <= ahora:
+                return False
+            cur.execute(self._SEL_PARTE + "where division_id = %s and id = any(%s) order by n for update", (div_id, ids))
+            ps = [self._parte(x) for x in cur.fetchall()]
+            if not ps or len(ps) != len(ids) or any(p["estado"] != "libre" for p in ps):
+                return False
+            if not organizador and (len(ps) != 1 or ps[0]["n"] == 0):
+                return False
+            try:
+                cur.execute("update cl_division_partes set estado = 'cobrando', pagador_email = %s, pagador_nombre = %s, "
+                            "por_organizador = (%s and n <> 0), tomada_en = %s, actualizado_en = now() "
+                            "where division_id = %s and id = any(%s) and estado = 'libre'",
+                            (email, nombre, bool(organizador), ahora, div_id, ids))
+                if cur.rowcount != len(ids):
+                    conn.rollback()
+                    return False
+            except Exception as e:  # noqa: BLE001 — ya tiene otra parte viva (uq_cl_divp_pagador)
+                conn.rollback()
+                print("[dividir] retomar rechazado:", str(e)[:160], flush=True)
+                return False
+            return True
+
+    def cargo_devuelto(self, charge_id):
+        from db import pg
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("select charge_id, division_id, monto_centimos, refund_id, motivo from cl_division_cargos_devueltos "
+                        "where charge_id = %s", (charge_id,))
+            f = cur.fetchone()
+            return dict(zip(["charge_id", "division_id", "monto_centimos", "refund_id", "motivo"], f)) if f else None
+
+    def marcar_cargo_devuelto(self, charge_id, division_id, monto, refund_id, motivo):
+        from db import pg
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("insert into cl_division_cargos_devueltos (charge_id, division_id, monto_centimos, refund_id, motivo) "
+                        "values (%s, %s, %s, %s, %s) on conflict (charge_id) do nothing",
+                        (charge_id, division_id, int(monto), refund_id, motivo))
+            return True
+
+    _COLS_TARDIO = ["id", "division_id", "n", "pagador_email", "pagador_nombre", "monto_centimos", "medio",
+                    "pago_manual_id", "estado", "nota", "creado_en", "resuelta_en"]
+
+    def crear_tardio(self, t):
+        from db import pg
+        cols = [c for c in self._COLS_TARDIO if c not in ("creado_en", "resuelta_en")]
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"insert into cl_division_tardios ({', '.join(cols)}) values ({', '.join(['%s'] * len(cols))})",
+                        [t[c] for c in cols])
+            return True
+
+    def tardio_por_pm(self, pm_id):
+        from db import pg
+        if not pm_id:
+            return None
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("select " + ", ".join(self._COLS_TARDIO) + " from cl_division_tardios where pago_manual_id = %s "
+                        "order by creado_en limit 1", (pm_id,))
+            f = cur.fetchone()
+            return dict(zip(self._COLS_TARDIO, f)) if f else None
+
+    def set_tardio(self, tid, desde, campos):
+        from db import pg
+        cols = [c for c in campos if c in self._COLS_TARDIO and c not in ("id", "division_id")]
+        if not cols:
+            return False
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(f"update cl_division_tardios set {', '.join(c + ' = %s' for c in cols)} "
+                        "where id = %s and estado = any(%s)", [campos[c] for c in cols] + [tid, list(desde)])
+            return cur.rowcount == 1
+
+    def cerradas_pendientes(self, corte):
+        from db import pg
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute(self._SEL_DIV + "d where d.estado in ('vencida', 'cancelada') "
+                        "and coalesce(d.cerrado_en, d.vence_en) <= %s and exists (select 1 from cl_division_partes p "
+                        "where p.division_id = d.id and (p.estado in ('cobrando', 'en_revision') or (p.estado = 'pagada' "
+                        "and (d.motivo <> 'reserva_cancelada' or p.devolver_centimos > 0)))) "
+                        "order by d.vence_en limit 200", (corte,))
+            return [self._div(f) for f in cur.fetchall()]
 
     def soltar(self, div_id, ids, email):
         from db import pg
@@ -582,7 +763,15 @@ class RepoPG:
                 p = self._parte(f[:len(_COLS_PARTE)])
                 p["division"] = self._div(f[len(_COLS_PARTE):])
                 out.append(p)
-            return out
+            cur.execute("select " + ", ".join("t." + c for c in self._COLS_TARDIO) + ", " + ", ".join("d." + c for c in _COLS_DIV)
+                        + " from cl_division_tardios t join cl_division_pago d on d.id = t.division_id "
+                        "where d.dueno = %s and t.estado = 'devolver' order by d.creado_en, t.n", (dueno,))
+            k = len(self._COLS_TARDIO)
+            for f in cur.fetchall():
+                t = _tardio_como_parte(dict(zip(self._COLS_TARDIO, f[:k])))
+                t["division"] = self._div(f[k:])
+                out.append(t)
+            return sorted(out, key=lambda x: (x["division"]["creado_en"], x["n"]))
 
 
 _repo = RepoPG()
@@ -789,13 +978,30 @@ def pagar_culqi(div: dict, email: str, nombre: str, ids: list[str], token: str, 
     return _registrar_cargo(div, partes, email, charge_id, monto, medio, llave)
 
 
-def _registrar_cargo(div: dict, partes: list[dict], email: str, charge_id: str, monto: int, medio: str, llave: str) -> dict:
+def _reembolsar_cargo(div: dict, charge_id: str, monto: int, motivo: str, llave: str) -> dict:
+    """Devuelve [monto] de un cargo del Culqi del club UNA sola vez. Lo ya
+    devuelto queda en `cl_division_cargos_devueltos`: un barrido que se reanuda
+    tras un error no vuelve a llamar a Culqi, y un webhook tardío de ese cargo
+    se ignora (`conciliar_cargo`)."""
     from pagos import culqi
+    previo = _repo.cargo_devuelto(charge_id)
+    if previo:
+        return {"ok": True, "refund_id": previo.get("refund_id") or "", "previo": True}
+    r = culqi.reembolsar(charge_id=charge_id, monto_centimos=int(monto), motivo="solicitud_comprador", llave=llave)
+    if r.get("ok"):
+        try:
+            _repo.marcar_cargo_devuelto(charge_id, div["id"], int(monto), str(r.get("refund_id") or "")[:80], motivo[:60])
+        except Exception as e:  # noqa: BLE001 — el reembolso ya salió: solo queda sin registro
+            print(f"[dividir] {div['id']} reembolso de {charge_id} OK pero no se registró: {str(e)[:120]}", flush=True)
+    return r
+
+
+def _registrar_cargo(div: dict, partes: list[dict], email: str, charge_id: str, monto: int, medio: str, llave: str) -> dict:
     cobros = {p["id"]: f"{charge_id}#{p['n']}" for p in partes}
     r = _repo.pagar(div["id"], [p["id"] for p in partes], email, cobros, medio, ("cobrando",))
     if r in ("cerrada", "no_tomada"):
         # El plazo cerró (o la parte se soltó) MIENTRAS Culqi cobraba: se devuelve ya, en el servidor.
-        rr = culqi.reembolsar(charge_id=charge_id, monto_centimos=monto, motivo="solicitud_comprador", llave=llave)
+        rr = _reembolsar_cargo(div, charge_id, monto, "sin_parte", llave)
         print(f"[dividir] {div['id']} cargo {charge_id} sin parte viva ({r}) → reembolso "
               f"{'ok' if rr.get('ok') else rr.get('error')}", flush=True)
         return {"ok": False, "error": "cerrada" if r == "cerrada" else "no_tomada",
@@ -806,17 +1012,39 @@ def _registrar_cargo(div: dict, partes: list[dict], email: str, charge_id: str, 
     return {"ok": True, "estado": r, "charge_id": charge_id}
 
 
-def conciliar_cargo(info: dict, charge_id: str, llave: str) -> dict:
+def _capturado(info: dict) -> bool:
+    """¿El cargo entró de verdad? (capturado y, si Culqi lo informa, venta exitosa)."""
+    raw = info.get("raw") if isinstance(info.get("raw"), dict) else {}
+    if "capture" in raw and not raw.get("capture"):
+        return False
+    outcome = raw.get("outcome") if isinstance(raw.get("outcome"), dict) else {}
+    if outcome.get("type") and str(outcome["type"]) != "venta_exitosa":
+        return False
+    return bool(info.get("capturado"))
+
+
+def conciliar_cargo(info: dict, charge_id: str, llave: str, dueno: str = "") -> dict:
     """Webhook de la cuenta Culqi del club con `canal = division`: si el cargo
     entró pero la conexión se cortó antes de registrar la parte, aquí se
     registra (idempotente por `cobro_id`); si ya no hay parte que pagar, se
-    devuelve (Culqi no deja reembolsar dos veces más de lo cobrado)."""
+    devuelve. [dueno] = el club dueño de la cuenta Culqi del webhook: la
+    metadata del cargo NO basta (la escribe quien crea el cargo)."""
     meta = info.get("metadata") or {}
     div = _repo.por_id(str(meta.get("division_id") or ""))
     ids = [x for x in str(meta.get("partes") or "").split(",") if x]
     email = str(meta.get("email") or "").strip().lower()
     if not div or not ids or not email:
         return {"ok": True, "ignorado": "sin_division"}
+    if not dueno or (div.get("dueno") or "").strip().lower() != dueno.strip().lower():
+        print(f"[dividir] webhook {charge_id}: la división {div['id']} no es del club del webhook", flush=True)
+        return {"ok": True, "ignorado": "otro_club"}
+    if _repo.cargo_devuelto(charge_id) or int(info.get("reembolsado_centimos") or 0) > 0:
+        return {"ok": True, "ignorado": "reembolsado"}
+    if div["moneda"] != "PEN" or str(info.get("moneda") or "").upper() != "PEN":
+        print(f"[dividir] webhook {charge_id}: moneda {info.get('moneda')!r}, se deja al operador", flush=True)
+        return {"ok": True, "ignorado": "moneda"}
+    if not _capturado(info):
+        return {"ok": True, "ignorado": "no_capturado"}
     partes = {p["id"]: p for p in _repo.partes(div["id"])}
     sel = [partes.get(i) for i in ids]
     if any(p is None for p in sel):
@@ -833,12 +1061,68 @@ def conciliar_cargo(info: dict, charge_id: str, llave: str) -> dict:
 
 # ── voucher de una parte ─────────────────────────────────────────────────────
 
+_TXT_TARDIO = {
+    "toma_vencida": "Tu parte ya no estaba reservada para ti (pasaron los 15 minutos para pagarla)",
+    "division_cerrada": "Esta reserva dividida ya se cerró",
+}
+
+
+def _voucher_tardio(div: dict, email: str, nombre: str, sel: list[dict], medio: str, operacion: str,
+                    imagen_b64: str, motivo: str) -> dict:
+    """El amigo YA pagó al club (Yape, Plin…) pero su parte ya no es suya. El
+    pago no cuenta para la reserva; el comprobante se guarda y el club lo
+    revisa: si el dinero llegó (o vence sin revisar) queda en Devoluciones."""
+    from pagos import cobro_directo as cd
+    from web import datos
+    c = datos.cancha(div["cancha_id"]) or {}
+    monto = sum(int(p["monto_centimos"]) for p in sel)
+    filas = datos.reservas_de(list(div["reserva_ids"]))
+    r = cd.registrar_voucher(filas=filas, c=c, email=email,
+                             nombre=f"{(nombre or email)[:50]} · pago fuera de plazo (pago dividido)",
+                             medio=medio, operacion=operacion, imagen_b64=imagen_b64, monto_centimos=monto,
+                             iso=div["moneda"], ref=f"{div['id']}#t{secrets.token_hex(4)}")
+    if not r.get("ok"):
+        return r
+    try:
+        _repo.crear_tardio({"id": f"dvt_{int(time.time() * 1000)}_{secrets.token_hex(3)}", "division_id": div["id"],
+                            "n": min(int(p["n"]) for p in sel), "pagador_email": email,
+                            "pagador_nombre": (nombre or "")[:80], "monto_centimos": monto,
+                            "medio": f"voucher_{(medio or '').strip().lower()}", "pago_manual_id": r["pago_id"],
+                            "estado": "en_revision", "nota": motivo})
+    except Exception as e:  # noqa: BLE001 — sin el registro el club igual ve el comprobante en su bandeja
+        print(f"[dividir] {div['id']} no se pudo guardar el pago tardío {r['pago_id']}: {str(e)[:120]}", flush=True)
+    _avisar(div["dueno"], "Revisa un pago fuera de plazo 🧾",
+            f"{nombre or email} subió un comprobante de una reserva dividida en {c.get('nombre', '')} cuando su parte ya "
+            "no estaba reservada. No cuenta para la reserva: si te llegó el dinero, apruébalo y devuélveselo.")
+    print(f"[dividir] {div['id']} comprobante tardío ({motivo}) de {email} por {monto}", flush=True)
+    return {"ok": True, "pago_id": r["pago_id"], "tardio": True,
+            "mensaje": f"{_TXT_TARDIO.get(motivo, _TXT_TARDIO['division_cerrada'])}, así que este pago no cuenta para la "
+                       "reserva. Guardamos tu comprobante: el club lo revisará y, si recibió tu dinero, te lo devolverá. "
+                       "Te avisamos."}
+
+
 def subir_voucher(div: dict, email: str, nombre: str, ids: list[str], medio: str, operacion: str, imagen_b64: str) -> dict:
     from pagos import cobro_directo as cd
     from web import datos
     partes = _mis_partes(div, email, ids)
     if not partes:
-        return {"ok": False, "error": "no_tomada", "mensaje": mensaje("no_tomada")}
+        # La toma de 15 min venció mientras pagaba (o la división se cerró). Si la
+        # parte sigue libre y hay plazo, se vuelve a tomar; si no, el comprobante
+        # igual se guarda para que el club devuelva lo que ya recibió.
+        todas = {p["id"]: p for p in _repo.partes(div["id"])}
+        sel = [todas.get(i) for i in dict.fromkeys(ids)]
+        if not sel or any(p is None for p in sel):
+            return {"ok": False, "error": "no_tomada", "mensaje": mensaje("no_tomada")}
+        if any(p["pagador_email"].lower() == email and p["estado"] in ("en_revision", "pagada") for p in sel):
+            return {"ok": False, "error": "ya_pagaste", "mensaje": mensaje("ya_pagaste")}
+        org = div["organizador_email"].lower() == email
+        if _repo.retomar(div["id"], [p["id"] for p in sel], email, (nombre or "")[:80], org, _ahora()):
+            partes = _mis_partes(div, email, ids)
+        if not partes:
+            actual = _repo.por_id(div["id"]) or div
+            cerrada = actual["estado"] != "abierta" or actual["vence_en"] <= _ahora()
+            return _voucher_tardio(actual, email, nombre, sel, medio, operacion, imagen_b64,
+                                   "division_cerrada" if cerrada else "toma_vencida")
     c = datos.cancha(div["cancha_id"]) or {}
     filas = datos.reservas_de(list(div["reserva_ids"]))
     etiqueta = ("parte" if len(partes) == 1 else "partes") + " " + ", ".join(str(p["n"] + 1) for p in partes)
@@ -850,18 +1134,55 @@ def subir_voucher(div: dict, email: str, nombre: str, ids: list[str], medio: str
     if not r.get("ok"):
         return r
     if not _repo.a_revision(div["id"], [p["id"] for p in partes], email, r["pago_id"], f"voucher_{medio}"):
-        cd.repo().resolver_pago_manual(r["pago_id"], "vencido", "sistema", "parte_perdida")
-        return {"ok": False, "error": "cerrada", "mensaje": mensaje("cerrada")}
+        # La división se cerró entre la toma y el envío: el comprobante queda como
+        # pago tardío (vence con la división → Devoluciones "sin revisar").
+        try:
+            _repo.crear_tardio({"id": f"dvt_{int(time.time() * 1000)}_{secrets.token_hex(3)}", "division_id": div["id"],
+                                "n": partes[0]["n"], "pagador_email": email, "pagador_nombre": (nombre or "")[:80],
+                                "monto_centimos": sum(p["monto_centimos"] for p in partes),
+                                "medio": f"voucher_{medio}", "pago_manual_id": r["pago_id"], "estado": "en_revision",
+                                "nota": "division_cerrada"})
+        except Exception as e:  # noqa: BLE001
+            print(f"[dividir] {div['id']} no se pudo guardar el pago tardío {r['pago_id']}: {str(e)[:120]}", flush=True)
+        _repo.soltar(div["id"], [p["id"] for p in partes], email)
+        return {"ok": True, "pago_id": r["pago_id"], "tardio": True,
+                "mensaje": f"{_TXT_TARDIO['division_cerrada']}, así que este pago no cuenta para la reserva. Guardamos tu "
+                           "comprobante: el club lo revisará y, si recibió tu dinero, te lo devolverá. Te avisamos."}
     _avisar(div["dueno"], "Confirma un pago 🧾",
             f"{nombre or email} reportó su parte de una reserva dividida en {c.get('nombre', '')}. Revísalo en Pagos por confirmar.")
     return {"ok": True, "pago_id": r["pago_id"],
             "mensaje": "Recibimos tu comprobante. El club lo confirmará; tu parte cuenta como pagada cuando lo apruebe."}
 
 
+def _tardio_resuelto(p: dict, estado: str, nota: str = "") -> dict | None:
+    """Resuelve el registro de un comprobante tardío (si [p] es uno)."""
+    t = _repo.tardio_por_pm(p["id"])
+    if not t:
+        return None
+    campos = {"estado": estado, "resuelta_en": _ahora() if estado != "devolver" else None}
+    if nota:
+        campos["nota"] = nota
+    _repo.set_tardio(t["id"], ("en_revision",), campos)
+    return t
+
+
 def voucher_aprobado(p: dict, email: str) -> dict:
     """El club aprueba el voucher de una parte (`cobro_directo_web.aprobar_voucher`)."""
     from pagos import cobro_directo as cd
     partes = _repo.partes_por_pm(p["id"])
+    if not partes and _repo.tardio_por_pm(p["id"]):
+        # Comprobante tardío: aprobar = "me llegó el dinero" → hay que devolverlo.
+        if not cd.repo().resolver_pago_manual(p["id"], "aprobado", email):
+            return {"ok": False, "error": "ya_resuelto"}
+        t = _tardio_resuelto(p, "devolver", "aprobado_tarde")
+        div = _repo.por_id(t["division_id"]) if t else None
+        moneda = div["moneda"] if div else str(p.get("moneda") or "PEN")
+        _avisar(p["dueno"], "Devuelve un pago 💸",
+                f"Confirmaste el pago fuera de plazo de {p.get('jugador_nombre') or p.get('jugador_email')}. Devuélvele "
+                f"{_plata(int(p['monto_centimos']), moneda)} y márcalo en Pagos por confirmar → Devoluciones.")
+        _avisar(p["jugador_email"], "El club recibió tu pago 💸",
+                "Tu pago llegó fuera de plazo y no cuenta para la reserva dividida: el club te lo devolverá.")
+        return {"ok": True, "aviso": "division_cerrada"}
     div = _repo.por_id(partes[0]["division_id"]) if partes else None
     if not div:
         return {"ok": False, "error": "no_encontrado"}
@@ -889,6 +1210,10 @@ def voucher_rechazado(p: dict, email: str, motivo: str = "") -> dict:
     from pagos import cobro_directo as cd
     if not cd.repo().resolver_pago_manual(p["id"], "rechazado", email, motivo):
         return {"ok": False, "error": "ya_resuelto"}
+    if _tardio_resuelto(p, "rechazado"):
+        _avisar(p["jugador_email"], "Pago no confirmado",
+                "El club no reconoció el comprobante que subiste fuera de plazo. Si sí pagaste, escríbele al club.")
+        return {"ok": True}
     _repo.liberar_revision(p["id"])
     _avisar(p["jugador_email"], "Pago no confirmado",
             "El club no pudo confirmar el comprobante de tu parte. Tu parte quedó libre: si no pagaste, vuelve a intentarlo; "
@@ -902,6 +1227,8 @@ def voucher_vencido(p: dict) -> bool:
     from pagos import cobro_directo as cd
     if not cd.repo().resolver_pago_manual(p["id"], "vencido", "sistema", "sin_revision"):
         return False
+    if _tardio_resuelto(p, "devolver", "sin_revisar"):
+        return True   # pago tardío nunca revisado: el club devuelve si lo recibió
     partes = _repo.partes_por_pm(p["id"])
     div = _repo.por_id(partes[0]["division_id"]) if partes else None
     if div and div["estado"] == "abierta" and div["vence_en"] > _ahora():
@@ -919,31 +1246,56 @@ def voucher_vencido(p: dict) -> bool:
 _lock_conf = threading.Lock()
 
 
+def _leer_filas(ids: list[str]) -> list[dict] | None:
+    """Filas del apartado o None si la base no respondió (NUNCA [] por un error:
+    "no pude leer" no es "el apartado se perdió")."""
+    from web import datos
+    try:
+        return datos.reservas_de(list(ids), estricto=True)
+    except Exception as e:  # noqa: BLE001
+        print(f"[dividir] no se pudo leer el apartado: {str(e)[:120]}", flush=True)
+        return None
+
+
 def confirmar(div_id: str) -> dict:
     """Todas las partes pagadas: confirma la reserva con el MISMO camino que un
-    cobro directo (filas, cobro total `div:<id>`, una comisión, avisos)."""
+    cobro directo (filas, cobro total `div:<id>`, una comisión, avisos). Si la
+    base falla, la división sigue `completa` y el barrido reintenta."""
     from web import datos
     with _lock_conf:
         div = _repo.por_id(div_id)
         if not div or div["estado"] != "completa":
             return {"ok": False, "error": "no_completa"}
-        filas = datos.reservas_de(list(div["reserva_ids"]))
-        if len(filas) != len(div["reserva_ids"]) or any(f.get("estado") != "nueva" for f in filas):
-            if filas and len(filas) == len(div["reserva_ids"]) and all(
-                    f.get("estado") == "confirmada" and f.get("medio_pago") == MEDIO_RESERVA for f in filas):
-                _repo.transicion(div_id, ("completa",), "confirmada")
-                return {"ok": True, "ya": True}
-            # El apartado se perdió con la plata adentro: se devuelve todo.
+        filas = _leer_filas(div["reserva_ids"])
+        if filas is None:
+            return {"ok": False, "error": "lectura_fallo"}
+        completas = len(filas) == len(div["reserva_ids"])
+        c = datos.cancha(div["cancha_id"]) or {}
+        if completas and all(f.get("estado") == "confirmada" and f.get("medio_pago") == MEDIO_RESERVA for f in filas):
+            # Ya confirmada (p. ej. un error cortó el paso anterior a mitad): se
+            # completa el libro y la comisión si faltan (ambos idempotentes).
+            if _wr()._cobro_web(_wr()._ref_de(filas)) is None:
+                out = _cdw().confirmar_directo(filas, c, div["organizador_email"], plan=_wr().plan_cobro_reserva(filas),
+                                               medio=MEDIO_RESERVA, cobro_id=f"{PREFIJO_COBRO}{div_id}",
+                                               monto_centimos=int(div["total_centimos"]))
+                if not out.get("ok"):
+                    return {"ok": False, "error": out.get("error") or "confirmar_fallo"}
+            _repo.transicion(div_id, ("completa",), "confirmada")
+            return {"ok": True, "ya": True}
+        if not completas or any(f.get("estado") != "nueva" for f in filas):
+            # Lectura correcta y el apartado ya no está (o lo tomó otra reserva): se devuelve todo.
             print(f"[dividir] {div_id} completa pero sin apartado → devolución", flush=True)
             cerrar_y_devolver(div, "vencida", "apartado_perdido", desde=("completa",))
             return {"ok": False, "error": "apartado_perdido"}
-        c = datos.cancha(div["cancha_id"]) or {}
         plan = _wr().plan_cobro_reserva(filas)
         if int(plan["base_cobro"]) * 100 != int(div["total_centimos"]):
             print(f"[dividir] {div_id} el total cambió ({plan['base_cobro']} vs {div['total_centimos']}): se confirma "
                   "con lo cobrado", flush=True)
-        _cdw().confirmar_directo(filas, c, div["organizador_email"], plan=plan, medio=MEDIO_RESERVA,
-                                 cobro_id=f"{PREFIJO_COBRO}{div_id}", monto_centimos=int(div["total_centimos"]))
+        out = _cdw().confirmar_directo(filas, c, div["organizador_email"], plan=plan, medio=MEDIO_RESERVA,
+                                       cobro_id=f"{PREFIJO_COBRO}{div_id}", monto_centimos=int(div["total_centimos"]))
+        if not out.get("ok"):
+            print(f"[dividir] {div_id} no se pudo confirmar ({out.get('error')}): queda completa, se reintenta", flush=True)
+            return {"ok": False, "error": out.get("error") or "confirmar_fallo"}
         _repo.transicion(div_id, ("completa",), "confirmada")
     cuando = _cuando(div)
     vistos = set()
@@ -958,10 +1310,28 @@ def confirmar(div_id: str) -> dict:
 
 # ── devolver ────────────────────────────────────────────────────────────────
 
-def _devolver_parte(div: dict, p: dict, monto: int, nota: str, llave: str) -> str:
-    """Devuelve [monto] de una parte. Devuelve el estado final de la parte."""
+def repartir_devolucion(montos: list[int], monto_dev: int) -> list[int]:
+    """Reparte [monto_dev] proporcional a lo que pagó cada uno, en céntimos
+    exactos (resto mayor) y SIN pasar nunca lo que pagó cada parte."""
+    montos = [max(0, int(m)) for m in montos]
+    total = sum(montos)
+    monto_dev = max(0, min(int(monto_dev), total))
+    if total <= 0 or monto_dev <= 0:
+        return [0] * len(montos)
+    cuotas = [m * monto_dev // total for m in montos]
+    resto = monto_dev - sum(cuotas)
+    for i in sorted(range(len(montos)), key=lambda i: (-(montos[i] * monto_dev % total), -montos[i], i)):
+        if resto <= 0:
+            break
+        if cuotas[i] < montos[i]:
+            cuotas[i] += 1
+            resto -= 1
+    return cuotas
+
+
+def _devolver_simple(p: dict, monto: int, nota: str) -> str:
+    """Partes que no se devuelven por la API de Culqi (o no tienen plata)."""
     from pagos import cobro_directo as cd
-    from pagos import culqi
     if p["estado"] == "cobrando":
         _repo.set_parte(p["id"], ("cobrando",), dict(_LIBRE))
         return "libre"
@@ -973,51 +1343,96 @@ def _devolver_parte(div: dict, p: dict, monto: int, nota: str, llave: str) -> st
         return "devolver"
     if p["estado"] != "pagada" or monto <= 0:
         return p["estado"]
-    cobro = str(p["cobro_id"] or "")
-    if cobro.startswith("chr_") and llave:
-        r = culqi.reembolsar(charge_id=_base_charge(cobro), monto_centimos=int(monto), motivo="solicitud_comprador", llave=llave)
-        if r.get("ok"):
-            _repo.set_parte(p["id"], ("pagada",), {"estado": "reembolsada", "refund_id": str(r.get("refund_id") or "")[:80],
-                                                    "devolver_centimos": int(monto), "nota": nota, "resuelta_en": _ahora()})
-            return "reembolsada"
-        print(f"[dividir] reembolso de {p['id']} falló: {r.get('error')}", flush=True)
-        nota = f"{nota} · reembolso_fallo"
     _repo.set_parte(p["id"], ("pagada",), {"estado": "devolver", "devolver_centimos": int(monto), "nota": nota})
     return "devolver"
 
 
-def cerrar_y_devolver(div: dict, estado: str, motivo: str, desde=("abierta",)) -> dict:
-    """Vence / se cancela sin completarse: suelta el horario y devuelve cada parte."""
+def _devolver_partes(div: dict, items: list[tuple[dict, int]], nota: str, llave: str) -> list[str]:
+    """Devuelve cada (parte, monto) y da el estado final de cada una (mismo
+    orden). Las partes pagadas con el MISMO cargo de Culqi ("Pagar lo que
+    falta": `chr_X#0`, `chr_X#2`…) se devuelven en UNA sola llamada por la
+    suma; la contabilidad sigue por parte."""
+    fins: list[str] = [""] * len(items)
+    grupos: dict[str, list[int]] = {}
+    for i, (p, monto) in enumerate(items):
+        cobro = str(p.get("cobro_id") or "")
+        if p["estado"] == "pagada" and int(monto) > 0 and cobro.startswith("chr_") and llave:
+            grupos.setdefault(_base_charge(cobro), []).append(i)
+        else:
+            fins[i] = _devolver_simple(p, int(monto), nota)
+    for charge, idx in grupos.items():
+        r = _reembolsar_cargo(div, charge, sum(int(items[i][1]) for i in idx), nota, llave)
+        if not r.get("ok"):
+            print(f"[dividir] reembolso de {charge} ({len(idx)} parte(s)) falló: {r.get('error')}", flush=True)
+        for i in idx:
+            p, monto = items[i]
+            if r.get("ok"):
+                _repo.set_parte(p["id"], ("pagada",), {"estado": "reembolsada", "refund_id": str(r.get("refund_id") or "")[:80],
+                                                        "devolver_centimos": int(monto), "nota": nota, "resuelta_en": _ahora()})
+                fins[i] = "reembolsada"
+            else:
+                _repo.set_parte(p["id"], ("pagada",), {"estado": "devolver", "devolver_centimos": int(monto),
+                                                        "nota": f"{nota} · reembolso_fallo"})
+                fins[i] = "devolver"
+    return fins
+
+
+def _devolver_parte(div: dict, p: dict, monto: int, nota: str, llave: str) -> str:
+    """Devuelve [monto] de una parte. Devuelve el estado final de la parte."""
+    return _devolver_partes(div, [(p, int(monto))], nota, llave)[0]
+
+
+def _devolver_pendientes(div: dict, motivo: str, cerrando: bool) -> dict:
+    """Suelta el horario y devuelve las partes de una división CERRADA que aún
+    tienen plata (o una toma / un voucher vivos). Re-ejecutable: cada parte se
+    mueve con `set_parte(desde=…)` y cada cargo se devuelve una sola vez, así
+    el barrido retoma un cierre que se cortó a mitad."""
     from pagos import cobro_directo as cd
-    if not _repo.transicion(div["id"], desde, estado, motivo):
-        return {"ok": False, "error": "cerrada"}
-    cuando = _cuando(div)
-    _wr().soltar_bloque(list(div["reserva_ids"]))
-    llave = cd.llave_secreta(div["dueno"])
-    res = {"reembolsada": 0, "devolver": 0}
-    pagadores: dict[str, list[str]] = {}
-    for p in _repo.partes(div["id"]):
-        fin = _devolver_parte(div, p, int(p["monto_centimos"]), motivo, llave)
-        if fin in res:
-            res[fin] += 1
-            pagadores.setdefault(p["pagador_email"].lower(), []).append(fin)
     from web import datos
+    cuando = _cuando(div)
+    cancelada = div.get("motivo") == "reserva_cancelada" or motivo == "reserva_cancelada"
+    if not cancelada:   # una reserva confirmada cancelada ya soltó sus filas (`_cancelar_reserva`)
+        _wr().soltar_bloque(list(div["reserva_ids"]))
+    llave = cd.llave_secreta(div["dueno"])
+    partes = [p for p in _repo.partes(div["id"]) if _pendiente_de_devolver(div, p)]
+    items = [(p, int(p["devolver_centimos"]) if cancelada and p["estado"] == "pagada" else int(p["monto_centimos"]))
+             for p in partes]
+    fins = _devolver_partes(div, items, motivo, llave)
+    res = {"reembolsada": fins.count("reembolsada"), "devolver": fins.count("devolver")}
+    pagadores: dict[str, list[str]] = {}
+    for p, fin in zip(partes, fins):
+        if fin in res:
+            pagadores.setdefault(p["pagador_email"].lower(), []).append(fin)
     c = datos.cancha(div["cancha_id"]) or {}
     lugar = f"{c.get('nombre', 'la cancha')} {cuando}".strip()
-    for e, fins in pagadores.items():
-        txt = ("Te devolvimos tu parte al mismo medio de pago (3 a 7 días hábiles)." if all(f == "reembolsada" for f in fins)
+    for e, fs in pagadores.items():
+        txt = ("Te devolvimos tu parte al mismo medio de pago (3 a 7 días hábiles)." if all(f == "reembolsada" for f in fs)
                else "El club te devolverá lo que pagaste; te avisamos.")
-        _avisar(e, "El pago dividido no se completó", f"{lugar}: no se juntaron todas las partes a tiempo y el horario se liberó. {txt}"
-                if motivo == "vencida" else f"{lugar}: el pago dividido se canceló y el horario se liberó. {txt}")
-    if div["organizador_email"].lower() not in pagadores:
+        if cancelada:
+            msg = f"{lugar}: se canceló la reserva dividida. {txt}"
+        elif motivo == "vencida":
+            msg = f"{lugar}: no se juntaron todas las partes a tiempo y el horario se liberó. {txt}"
+        else:
+            msg = f"{lugar}: el pago dividido se canceló y el horario se liberó. {txt}"
+        _avisar(e, "El pago dividido no se completó" if not cancelada else "Reserva cancelada", msg)
+    if cerrando and div["organizador_email"].lower() not in pagadores:
         _avisar(div["organizador_email"], "El pago dividido no se completó",
                 f"{lugar}: el horario se liberó porque no se pagaron todas las partes.")
     if res["devolver"]:
         _avisar(div["dueno"], "Devuelve pagos 💸",
                 f"Una reserva dividida de {lugar} no se completó: devuelve {res['devolver']} pago(s) recibido(s) y márcalos "
                 "en Pagos por confirmar → Devoluciones.")
-    print(f"[dividir] {div['id']} {estado} ({motivo}) reembolsadas={res['reembolsada']} a_devolver={res['devolver']}", flush=True)
+    print(f"[dividir] {div['id']} {div.get('estado')} ({motivo}) reembolsadas={res['reembolsada']} "
+          f"a_devolver={res['devolver']}{'' if cerrando else ' (reanudado)'}", flush=True)
     return {"ok": True, **res}
+
+
+def cerrar_y_devolver(div: dict, estado: str, motivo: str, desde=("abierta",)) -> dict:
+    """Vence / se cancela sin completarse: suelta el horario y devuelve cada parte.
+    Si algo falla a mitad, el barrido retoma lo que quedó (`cerradas_pendientes`)."""
+    if not _repo.transicion(div["id"], desde, estado, motivo):
+        return {"ok": False, "error": "cerrada"}
+    return _devolver_pendientes({**div, "estado": estado, "motivo": motivo}, motivo, cerrando=True)
 
 
 def cancelar(div: dict, email: str) -> dict:
@@ -1043,16 +1458,19 @@ def devolver_por_cancelacion(div_id: str, monto_dev_centimos: int) -> tuple[str,
     monto_dev = max(0, min(int(monto_dev_centimos), total))
     if monto_dev <= 0 or not partes:
         return "sin_reembolso", ""
-    # Proporcional y en céntimos exactos: el resto de la división va a la parte más grande.
-    cuotas = [p["monto_centimos"] * monto_dev // total for p in partes]
-    mayor = max(range(len(partes)), key=lambda i: partes[i]["monto_centimos"])
-    cuotas[mayor] += monto_dev - sum(cuotas)
+    cuotas = repartir_devolucion([p["monto_centimos"] for p in partes], monto_dev)
+    # Primero se ANOTA cuánto toca a cada parte: si algo falla a mitad, el
+    # barrido retoma con esos montos (nunca devuelve de más ni de menos).
+    for p, q in zip(partes, cuotas):
+        if q > 0:
+            _repo.set_parte(p["id"], ("pagada",), {"devolver_centimos": int(q)})
     llave = cd.llave_secreta(div["dueno"])
-    fins = [_devolver_parte(div, p, q, "reserva_cancelada", llave) for p, q in zip(partes, cuotas)]
+    items = [(p, q) for p, q in zip(partes, cuotas) if q > 0]
+    fins = _devolver_partes(div, items, "reserva_cancelada", llave)
     vistos = set()
-    for p, q, fin in zip(partes, cuotas, fins):
+    for (p, q), fin in zip(items, fins):
         e = p["pagador_email"].lower()
-        if e and e != div["organizador_email"].lower() and e not in vistos and q > 0:
+        if e and e != div["organizador_email"].lower() and e not in vistos:
             vistos.add(e)
             _avisar(e, "Reserva cancelada",
                     f"{div['organizador_nombre'] or 'El organizador'} canceló la reserva dividida. "
@@ -1065,8 +1483,8 @@ def devolver_por_cancelacion(div_id: str, monto_dev_centimos: int) -> tuple[str,
 
 
 def resolver_devolucion(parte_id: str, dueno: str, accion: str) -> dict:
-    """El club marca una parte como devuelta (o "no recibí ese pago" si el
-    voucher nunca se revisó)."""
+    """El club marca una parte (o un pago tardío) como devuelta, o "no recibí
+    ese pago" si el comprobante nunca se revisó."""
     if accion not in ("devuelta", "no_recibido"):
         return {"ok": False, "error": "accion"}
     p = next((x for x in _repo.devoluciones_de(dueno) if x["id"] == parte_id), None)
@@ -1074,7 +1492,11 @@ def resolver_devolucion(parte_id: str, dueno: str, accion: str) -> dict:
         return {"ok": False, "error": "no_encontrado"}
     if accion == "no_recibido" and p["nota"] != "sin_revisar":
         return {"ok": False, "error": "accion"}
-    if not _repo.set_parte(parte_id, ("devolver",), {"estado": accion, "resuelta_en": _ahora()}):
+    if p.get("tardio"):
+        hecho = _repo.set_tardio(parte_id, ("devolver",), {"estado": accion, "resuelta_en": _ahora()})
+    else:
+        hecho = _repo.set_parte(parte_id, ("devolver",), {"estado": accion, "resuelta_en": _ahora()})
+    if not hecho:
         return {"ok": False, "error": "ya_resuelto"}
     if accion == "devuelta":
         _avisar(p["pagador_email"], "Te devolvieron tu parte 💸",
@@ -1102,30 +1524,55 @@ def de_email(email: str) -> list[dict]:
 
 # ── barrido (cron de 1 min de main.py) ───────────────────────────────────────
 
+REANUDAR_TRAS_MIN = 1   # un cierre a medio camino se retoma pasado este tiempo
+
+
 def barrer(ahora: datetime | None = None) -> dict:
     """Avisa al organizador antes de vencer, suelta partes tomadas sin pagar,
-    vence lo que no se completó (devolviendo) y reintenta confirmar."""
+    vence lo que no se completó (devolviendo), retoma devoluciones que se
+    cortaron a mitad y reintenta confirmar. Un error en una división no frena
+    a las demás."""
     if not disponible():
         return {}
     ahora = ahora or _ahora()
-    out = {"avisos": 0, "soltadas": 0, "vencidas": 0, "confirmadas": 0}
+    out = {"avisos": 0, "soltadas": 0, "vencidas": 0, "confirmadas": 0, "reanudadas": 0, "errores": 0}
+
+    def _seguro(fn, div_id):
+        try:
+            return fn()
+        except Exception as e:  # noqa: BLE001
+            out["errores"] += 1
+            print(f"[dividir] barrido {div_id}: {type(e).__name__} {str(e)[:160]}", flush=True)
+            return None
+
     for p in _repo.tomas_viejas(ahora - timedelta(minutes=TOMA_MAX_MIN)):
-        if _repo.set_parte(p["id"], ("cobrando",), dict(_LIBRE)):
+        if _seguro(lambda p=p: _repo.set_parte(p["id"], ("cobrando",), dict(_LIBRE)), p["id"]):
             out["soltadas"] += 1
     for div in _repo.en_estado(("abierta",)):
         if div["vence_en"] <= ahora:
-            if cerrar_y_devolver(div, "vencida", "vencida").get("ok"):
+            if (_seguro(lambda div=div: cerrar_y_devolver(div, "vencida", "vencida"), div["id"]) or {}).get("ok"):
                 out["vencidas"] += 1
-        elif div.get("aviso_en") is None and ahora >= aviso_desde(div) and _repo.marcar_aviso(div["id"]):
-            partes = _repo.partes(div["id"])
-            faltan = [p for p in partes if p["estado"] != "pagada"]
-            if faltan:
-                mins = max(1, int((div["vence_en"] - ahora).total_seconds() // 60))
-                _avisar(div["organizador_email"], "Faltan partes por pagar ⏳",
-                        f"Faltan {len(faltan)} de {div['partes']} partes y quedan {mins} min. Entra a tu enlace y toca "
-                        f"\"Pagar lo que falta\" ({_plata(sum(p['monto_centimos'] for p in faltan), div['moneda'])}) o el horario se libera.")
+        elif div.get("aviso_en") is None and ahora >= aviso_desde(div):
+            if _seguro(lambda div=div: _avisar_faltan(div, ahora), div["id"]):
                 out["avisos"] += 1
+    for div in _repo.cerradas_pendientes(ahora - timedelta(minutes=REANUDAR_TRAS_MIN)):
+        if (_seguro(lambda div=div: _devolver_pendientes(div, div.get("motivo") or div["estado"], cerrando=False),
+                    div["id"]) or {}).get("ok"):
+            out["reanudadas"] += 1
     for div in _repo.en_estado(("completa",)):
-        if confirmar(div["id"]).get("ok"):
+        if (_seguro(lambda div=div: confirmar(div["id"]), div["id"]) or {}).get("ok"):
             out["confirmadas"] += 1
     return out
+
+
+def _avisar_faltan(div: dict, ahora: datetime) -> bool:
+    if not _repo.marcar_aviso(div["id"]):
+        return False
+    faltan = [p for p in _repo.partes(div["id"]) if p["estado"] != "pagada"]
+    if not faltan:
+        return False
+    mins = max(1, int((div["vence_en"] - ahora).total_seconds() // 60))
+    _avisar(div["organizador_email"], "Faltan partes por pagar ⏳",
+            f"Faltan {len(faltan)} de {div['partes']} partes y quedan {mins} min. Entra a tu enlace y toca "
+            f"\"Pagar lo que falta\" ({_plata(sum(p['monto_centimos'] for p in faltan), div['moneda'])}) o el horario se libera.")
+    return True

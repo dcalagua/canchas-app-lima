@@ -334,7 +334,10 @@ _JS_PAG = r"""
       err(''); var b = this; b.disabled = true; b.textContent = 'Enviando…'; pcgCargando('Enviando tu comprobante…');
       post('voucher', {partes: t.partes, medio: elegido, operacion: op, imagen: foto}).then(function(p){
         pcgCargando(false);
-        if(p.ok){ cerrar(false); if(window.pcgToast) pcgToast('Recibimos tu comprobante 🧾'); return; }
+        if(p.ok){ cerrar(false);
+          if(p.tardio) pcgAvisar({titulo: 'Recibimos tu comprobante 🧾', mensaje: p.mensaje, icono: '🧾'});
+          else if(window.pcgToast) pcgToast('Recibimos tu comprobante 🧾');
+          refrescar(true); return; }
         b.disabled = false; b.textContent = 'Enviar comprobante'; err(p.mensaje || ERR[p.error] || 'No pudimos enviar tu comprobante.');
         if(p.error === 'cerrada' || p.error === 'no_tomada') cerrar(false);
       }).catch(function(){ pcgCargando(false); b.disabled = false; b.textContent = 'Enviar comprobante'; err('Sin conexión. Inténtalo de nuevo.'); });
@@ -565,6 +568,8 @@ _NOTA = {"vencida": "La reserva dividida no se completó a tiempo.", "cancelada"
          "reserva_cancelada": "Se canceló la reserva ya confirmada.", "apartado_perdido": "El horario se perdió antes de confirmar.",
          "aprobado_tarde": "Aprobaste el comprobante cuando el plazo ya había vencido.",
          "sin_revisar": "El comprobante no se revisó a tiempo: devuélvelo solo si lo recibiste."}
+_NOTA_TARDIO = {"aprobado_tarde": "Pago fuera de plazo: lo confirmaste, pero no cuenta para la reserva. Devuélvelo.",
+                "sin_revisar": "Pago fuera de plazo que no revisaste: devuélvelo solo si lo recibiste."}
 
 
 @router.get("/anfitrion/cobros-club/devoluciones", response_class=HTMLResponse)
@@ -582,13 +587,18 @@ def pagina_devoluciones(request: Request) -> HTMLResponse:
         nota = next((v for k, v in _NOTA.items() if str(p.get("nota") or "").startswith(k)), "")
         if str(p.get("nota") or "") == "sin_revisar":
             nota = _NOTA["sin_revisar"]
+        if p.get("tardio"):
+            nota = _NOTA_TARDIO.get(str(p.get("nota") or ""), _NOTA_TARDIO["aprobado_tarde"])
+        ver = (f"<a class='btn sec' href='/anfitrion/pagos-por-confirmar/{e(p['pago_manual_id'])}/imagen' target='_blank' "
+               "rel='noopener'>🧾 Ver comprobante</a>") if p.get("pago_manual_id") else ""
         botones = (f"<button type='button' class='btn' data-dev='{e(p['id'])}' data-acc='devuelta'>✅ Ya lo devolví</button>"
                    + (f"<button type='button' class='btn sec' data-dev='{e(p['id'])}' data-acc='no_recibido'>No recibí ese pago</button>"
-                      if p.get("nota") == "sin_revisar" else ""))
+                      if p.get("nota") == "sin_revisar" else "") + ver)
+        donde = "pago fuera de plazo" if p.get("tardio") else f"parte {p['n'] + 1} de {d['partes']}"
         medio = str(p.get("medio") or "").replace("voucher_", "")
         filas += (f"<article class='panel dvd'><div class='dvd-m'>{e(_plata(p['devolver_centimos'] or p['monto_centimos'], d['moneda']))}</div>"
                   f"<div><b>{e(p.get('pagador_nombre') or p.get('pagador_email'))}</b> <small class='sub'>{e(p.get('pagador_email'))}</small></div>"
-                  f"<div class='sub' style='margin:4px 0 0'>{e(c.get('nombre') or '')} · parte {p['n'] + 1} de {d['partes']}"
+                  f"<div class='sub' style='margin:4px 0 0'>{e(c.get('nombre') or '')} · {donde}"
                   f"{(' · pagó con ' + e(medio)) if medio else ''}</div>"
                   f"<div class='sub' style='margin:4px 0 0'>{e(nota)}</div><div class='dvd-acc'>{botones}</div></article>")
     cuerpo = ("<h1 class='anf-hola'>Devoluciones de pagos divididos</h1>"
