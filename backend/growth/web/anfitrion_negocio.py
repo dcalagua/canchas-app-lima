@@ -1246,7 +1246,9 @@ def reserva_noshow(request: Request, res_id: str) -> JSONResponse:
     ses = sesion.de_request(request)
     if not ses:
         return _err("sesion_requerida", 401)
-    ids = [c["id"] for c in datos.canchas_de_dueno(ses["email"])]
+    from web import permisos  # dueño o su recepción (encargado del local)
+    operables = permisos.canchas_para(ses["email"], permisos.NOSHOW)
+    ids = [c["id"] for c in operables]
     if not ids:
         return _err("Esta reserva no es de tus canchas.", 404)
     fila = next((r for r in reservas_dueno(ids, "2020-01-01", "2100-01-01") if r["id"] == res_id), None)
@@ -1256,6 +1258,7 @@ def reserva_noshow(request: Request, res_id: str) -> JSONResponse:
         return _err("Esta reserva se pagó en línea: no se marca como no-show.", 409)
     if not marcar_noshow(res_id, ids):
         return _err("No pudimos guardar en este momento.", 503)
+    permisos.auditar(ses["email"], next((c for c in operables if c["id"] == fila.get("cancha_id")), None), "noshow", res_id)
     print(f"[noshow-web] {ses['email']} marcó no-show {res_id}", flush=True)
     return _json_ok()
 

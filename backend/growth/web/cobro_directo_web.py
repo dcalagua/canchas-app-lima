@@ -279,6 +279,44 @@ def pago_del_dueno(pid: str, email: str) -> dict | None:
     return p
 
 
+def bandeja_operable(email: str, estado: str = "en_revision") -> list[dict]:
+    """Bandeja del dueño + la de los locales donde `email` es encargado con
+    permiso de vouchers (solo los pagos de ESAS canchas). Para el dueño sin
+    encargos es exactamente `bandeja_de`."""
+    from web import permisos
+    pagos = bandeja_de(email, estado)
+    ajenos = permisos.alcance_delegado(email, permisos.VOUCHERS)
+    if not ajenos:
+        return pagos
+    for dueno, ids in ajenos.items():
+        pagos += [p for p in bandeja_de(dueno, estado) if p.get("cancha_id") in ids]
+    return sorted(pagos, key=lambda p: str(p.get("creado_en") or ""), reverse=True)
+
+
+def pendientes_operables(email: str) -> int:
+    """Insignia de vouchers por revisar (dueño + locales donde ayuda)."""
+    try:
+        return len(bandeja_operable(email, "en_revision")) if cd.disponible() else 0
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def pago_operable(pid: str, email: str) -> dict | None:
+    """El voucher `pid` si lo puede revisar `email`: es de un club suyo o de
+    una cancha del local donde es encargado (Recepción). None = 404."""
+    p = pago_del_dueno(pid, email)
+    if p is not None:
+        return p
+    from web import permisos
+    p = cd.repo().pago_manual(pid) if cd.disponible() else None
+    if not p:
+        return None
+    enc = permisos.encargo_en(email, str(p.get("cancha_id") or ""))
+    if enc is None or enc["dueno"] != p["dueno"] or not permisos.permitido(enc["rol"], permisos.VOUCHERS):
+        return None
+    return p
+
+
 def aprobar_voucher(p: dict, email: str) -> dict:
     """El club confirma el pago: se confirma el apartado, se registra el
     cobro directo y se cobra la comisión (saldo o deuda)."""

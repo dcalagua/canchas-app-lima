@@ -4075,6 +4075,26 @@ Detalle y acciones pendientes: `docs/plan/BITACORA_NOCHE.md`.
   **reprogramar** (`/reserva/{ref}/cambiar`: misma cancha, mismo precio, con la
   anticipación de cancelación; mueve las mismas filas con `datos.mover_reservas`)
   y `[js]` en los logs con los errores de JavaScript de los usuarios.
+- **Encargados del local · rol único "Recepción" (ronda 3, solo web):** el
+  dueño invita por correo de Google en `/anfitrion/encargados?local=<cancha_id>`
+  (menú "Mi club" y Editar local → Encargados; el correo es el único texto
+  libre, tope 10 por local); la persona acepta/rechaza en `/anfitrion` (push +
+  correo `aviso`). Alcance = el LOCAL (`fidelidad.local_key` + canchas ancla:
+  sigue un renombre; una cancha que cambia de dueño sale sola). Recepción
+  PUEDE: Hoy/Calendario/Reservas del local, reserva manual (y quitarla),
+  bloquear, marcar cobrada/por cobrar, no-show y Pagos por confirmar (aprobar
+  o rechazar; `resuelto_por` = quien lo hizo). NO puede: ingresos, reportes,
+  caja, clientes, editar cancha/local, reglas, cobros del club, cancelar con
+  devolución, invitar. **Autorización en UN lugar:** `web/permisos.py`
+  (`canchas_para(email, accion)`, `puede`, `es_solo_encargado`, `auditar`);
+  `_contexto(..., accion=)` y `_canchas_sesion(request, accion)` de
+  `anfitrion.py` lo usan; sin `accion` siguen siendo solo del dueño y quien solo
+  es encargado recibe `sin_permiso` (403). El Pro de reserva manual/bloqueo es
+  el del DUEÑO. Datos en `web/encargados.py`; páginas y JSON en
+  `web/anfitrion_encargados.py`; migración `0005_encargados.sql`
+  (`cl_encargados` + bitácora `cl_encargados_acciones`, RLS sin políticas); sin
+  la migración todo queda oculto. Test `tests/test_web_encargados.py`.
+  Pendiente: APK (rol en "Mis canchas", vouchers y agenda del encargado).
 
 ## Pendientes / backlog
 
