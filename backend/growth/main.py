@@ -208,6 +208,7 @@ app.include_router(marca_logo_router)  # /marca/logo.png + torre → Logo de la 
 app.include_router(web_router)
 app.include_router(reservas_router)
 app.include_router(cobro_directo_router)
+app.include_router(__import__("web.dividir_pago", fromlist=["router"]).router)  # /dividir/{token}: cada uno paga su parte (antes del comodín /anfitrion)
 app.include_router(portal_tenis_router)  # /tenis: portada de raqueta (canchas, torneos con marca del organizador, partner, liga)
 app.include_router(academia_web_router)  # ficha pública /academia/{id} + matrícula web
 app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}
@@ -492,6 +493,15 @@ async def _iniciar_cron_holds_web() -> None:
                     print(f"[pago-web] barrido: {r}", flush=True)
             except Exception as ex:  # noqa: BLE001
                 print(f"[pago-web] barrido falló: {ex}", flush=True)
+            try:
+                # PAGOS DIVIDIDOS: avisa antes de vencer, suelta partes tomadas sin
+                # pagar, vence (devolviendo) y reintenta confirmar las completas.
+                from pagos import division as _division
+                r = await asyncio.to_thread(_division.barrer)
+                if any((r or {}).values()):
+                    print(f"[dividir] barrido: {r}", flush=True)
+            except Exception as ex:  # noqa: BLE001
+                print(f"[dividir] barrido falló: {ex}", flush=True)
             try:
                 from web import datos as _datos
                 filas = await asyncio.to_thread(_datos.liberar_holds_vencidos_todos)

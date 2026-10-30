@@ -51,6 +51,7 @@ from pagos import devoluciones as _dev
 from web import beneficios, catalogos, datos, descubrir, horarios, marca, osm, pago_hospedado, sesion, ui
 from reservas import reglas as _reglas
 from pagos import cobro_directo as _cd
+from web import dividir_pago as _dividir_web
 from web.ui import e
 import academia_plan as _ap
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
@@ -1941,9 +1942,12 @@ _JS_RESERVA = (r"""
     $('totLbl').textContent = sn > 0 ? 'A pagar hoy' : 'Total'; if($('totBarraLbl')) $('totBarraLbl').textContent = sn > 0 ? 'Seña hoy' : 'Total';
     var txt = n ? (sn > 0 ? ('Pagar seña ' + fmt(tt) + ' y reservar') : tt > 0 ? ('Reservar y pagar ' + fmt(tt)) : (bonoActivo() ? 'Reservar con mi bono 🎟️' : 'Reservar gratis 🎁')) : 'Elige un horario';
     var corto = n ? (sn > 0 ? 'Pagar seña' : tt > 0 ? 'Reservar' : (bonoActivo() ? 'Usar mi bono 🎟️' : 'Reservar gratis 🎁')) : 'Elige un horario';
+    // PAGO DIVIDIDO (bloque de `web/dividir_pago.py`): cuánto paga cada uno y el texto del botón.
+    if(window.pcgDividirPinta && pcgDividirPinta(tt, n, {sena: sn > 0, bono: bonoActivo(), puntos: pd > 0, fid: fidDescuento() > 0, bol: !!bl})){ txt = 'Apartar y dividir el pago'; corto = 'Dividir'; }
     $('btnPagar').disabled = !n; $('btnPagar').textContent = txt;
     $('btnPagarBarra').disabled = !n; $('btnPagarBarra').textContent = corto;
   }
+  document.addEventListener('pcg-dividir', function(){ pintarResumen(); });
   function pintarDias(){
     $('dias').innerHTML = C.dias.map(function(d){
       return '<span class="chip' + (d.iso === fechaSel ? ' sel' : '') + '" data-f="' + d.iso + '"><b>' + esc(d.corto) + '</b><small>' + esc(d.sub) + '</small></span>';
@@ -2089,7 +2093,7 @@ _JS_RESERVA = (r"""
     ['btnPagar','btnPagarBarra'].forEach(function(id){ $(id).disabled = true; $(id).textContent = id === 'btnPagar' ? 'Reservando tu horario…' : 'Reservando…'; });
     var blSel = bolLinea();
     fetch('/web/asegurar', {method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({cancha_id: C.id, horas: horas, extras: extras, deporte: deporte, nombre: d.nombre, celular: d.celular, email: d.email, boleador: blSel ? blSel.slug : '', fidelidad: fidDescuento() > 0, pago: esSena() ? 'sena' : 'total', bono: bonoActivo(), puntos: puntosDesc() > 0, medio: (window.pcgMedioPago ? pcgMedioPago() : '')})})
+      body: JSON.stringify({cancha_id: C.id, horas: horas, extras: extras, deporte: deporte, nombre: d.nombre, celular: d.celular, email: d.email, boleador: blSel ? blSel.slug : '', fidelidad: fidDescuento() > 0, pago: esSena() ? 'sena' : 'total', bono: bonoActivo(), puntos: puntosDesc() > 0, medio: (window.pcgMedioPago ? pcgMedioPago() : ''), dividir: (window.pcgDividirN ? pcgDividirN() : 0)})})
       .then(function(r){ return r.json(); })
       .then(function(j){
         if(!j.ok){
@@ -2102,9 +2106,10 @@ _JS_RESERVA = (r"""
           else if(j.error === 'sin_puntos'){ usarPts = false; mostrarError('Tus puntos ya no alcanzan para el canje o no aplican a esta reserva. Revisa el total y vuelve a intentar.'); cargarBeneficios(); }
           else if(ERR_REGLAS[j.error]){ mostrarError(ERR_REGLAS[j.error]); if(j.error === 'hora_invalida' || j.error === 'cerrado') cargar(); }
           else if(j.error === 'bono_con_boleador'){ mostrarError('Con tu bono no se puede contratar ' + C.nombreBoleador.toLowerCase() + ': quítalo o reserva sin el bono.'); }
-          else mostrarError('No pudimos reservar el horario. Inténtalo de nuevo.');
+          else mostrarError(j.mensaje || 'No pudimos reservar el horario. Inténtalo de nuevo.');
           return;
         }
+        if(j.division){ hold = null; pcgIr(j.division.url, 'Creando el enlace para tus amigos…'); return; }
         hold = j;
         var fdTxt = j.fidelidad ? {t: '🎁 ' + esc(j.fidelidad.texto) + ' · fidelidad', m: -j.fidelidad.descuento} : null;
         var bnTxt = j.bono ? {t: '🎟️ Pagado con tu bono · ' + j.bono.horas + (j.bono.horas === 1 ? ' hora' : ' horas'), m: -j.bono.cubre} : null;
@@ -2591,7 +2596,8 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
                  if getattr(config, "PUBLIC_BASE_URL", "") else "")
     og = _fotos(c)[0] if _fotos(c) else "/marca/logo-og.png"
 
-    if not datos.reservable(c) or not _pago_web_disponible(iso):
+    # Un club con COBRO DIRECTO (sus medios) cobra en la web aunque la plataforma no tenga pasarela en esa moneda.
+    if not datos.reservable(c) or not (_pago_web_disponible(iso) or _cd.checkout(c, iso).get("directo")):
         if not datos.reservable(c):
             motivo = (f"Este local todavía está en proceso de verificación con {MARCA}. Desde la app puedes "
                       "reservar y pagar en la cancha, y te avisamos cuando acepte pagos en línea.")
@@ -2742,6 +2748,7 @@ def pagina_reservar(request: Request, cancha_id: str, fecha: str = "", hora: str
         "<div id='lineas'></div>"
         "<div class='total'><span id='totLbl'>Total</span><span id='tot'></span></div>"
         f"<div style='margin-top:14px'>{ui.selector_medio_directo(directo) if directo else (ui.selector_medio_pago() if pasarela == 'culqi' else pago_hospedado.selector(pasarela))}</div>"
+        + _dividir_web.bloque_ficha(c, directo, sim, ses) +
         "<div style='margin-top:14px'><button class='btn lg' id='btnPagar' disabled>Elige un horario</button></div>"
         "<div class='sub' style='font-size:12.5px;margin-top:12px'>"
         + ("El club confirma tu pago y la reserva aparece en su agenda." if directo else "Reserva confirmada al instante; el local la ve en su agenda.")
@@ -2792,6 +2799,9 @@ class AsegurarReq(BaseModel):
     # Medio elegido en la página (yape | tarjeta): en el modelo 2 el cargo
     # depende de él. Vacío = tarjeta (JS viejo).
     medio: str = ""
+    # PAGO DIVIDIDO entre amigos (`pagos/division.py`): N personas (2…12, el
+    # organizador incluido); 0 = pago normal.
+    dividir: int = 0
 
 
 _contador = {"n": 0}
@@ -3033,11 +3043,31 @@ def asegurar(req: AsegurarReq, request: Request = None) -> dict:
                                                con_bono=con_bono, disponibles=disp):
             return {"ok": False, "error": "sin_puntos"}
         con_puntos = True
+    # PAGO DIVIDIDO (`pagos/division.py`): solo con cobro directo al club, pago
+    # total y sin beneficios; los turnos quedan con el hold largo de la división.
+    n_div = int(req.dividir or 0)
+    if n_div:
+        from pagos import division as _division
+        err = _division.validar(c=c, directo=directo, n=n_div, total_centimos=int(total) * 100,
+                                inicio=_inicio_reserva(filas, pais), con_sesion=bool(ses),
+                                incompatibles=bool(con_sena or con_bono or req.puntos or desc_total > 0
+                                                   or (req.boleador or "").strip()))
+        if err:
+            return {"ok": False, "error": err, "mensaje": _division.mensaje(err)}
+        for f in filas:
+            f["medio_pago"] = datos.MEDIO_HOLD_DIVISION
     r = datos.insertar_reservas(filas)
     if r:
         return {"ok": False, "error": r}
     ids = [f["id"] for f in filas]
     ref = grupo or ids[0]
+    if n_div:
+        rd = _division.crear(filas=filas, c=c, email=email, nombre=nombre, n=n_div,
+                             total_centimos=int(total) * 100, inicio=_inicio_reserva(filas, pais))
+        if not rd.get("ok"):
+            datos.borrar_reservas(ids)
+            return {"ok": False, "error": rd.get("error"), "mensaje": _division.mensaje(str(rd.get("error") or ""))}
+        return {"ok": True, "ids": ids, "grupo": grupo, "total": total, "moneda": sim, "division": rd}
     bono_out = puntos_out = None
     if con_bono:
         rb = beneficios.apartar_bono(email, c, ref=ref, ids=ids, horas=len(filas), cubre=bono_cubre, iso=iso)
@@ -3130,6 +3160,9 @@ def liberar(req: LiberarReq) -> dict:
         # Ya subió su comprobante: el apartado espera la revisión del club (lo
         # suelta el club al rechazar o el vencimiento, nunca el navegador).
         return {"ok": False, "error": "pago_en_revision"}
+    if any((f.get("medio_pago") or "") == datos.MEDIO_HOLD_DIVISION for f in datos.reservas_de(req.ids)):
+        # Pago dividido en curso: lo suelta la división (vence o la cancela el organizador).
+        return {"ok": False, "error": "pago_en_curso"}
     import fidelidad as _fid
     _fid.revertir_canje(ids=req.ids)
     beneficios.soltar(ids=req.ids)  # bono / puntos apartados vuelven al jugador
@@ -3573,11 +3606,13 @@ def estado_cancelacion(filas: list[dict], c: dict | None, email: str, cancela_an
             if o.get("medio") == "original":
                 o["etiqueta"] = "Al mismo medio de pago (tarjeta / QR)"
     if pagado and not directo:
+        es_div = _es_directo(cobro) and str(cobro.culqi_charge_id or "").startswith("div:")
         for o in pol.get("opciones") or []:
             if o.get("medio") == "original":
                 o["nota"] = (("100 %, incluido el cargo por servicio. " if o.get("incluye_cargo") else
                               "Se devuelve el precio de la reserva; el cargo por servicio no se devuelve. ")
-                             + "Te escribimos para coordinar la devolución.")
+                             + ("Pago dividido: cada uno recibe su parte por el medio con el que pagó." if es_div
+                                else "Te escribimos para coordinar la devolución."))
     reembolsable = pol["motivo"] in ("plazo", "arrepentimiento", "anfitrion")
     if precio_c <= 0 and cargo_c <= 0:
         pol["opciones"] = []  # todo con bono: no hay plata que devolver, solo horas
@@ -3647,6 +3682,13 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
             if fila_cargo is not None and fila_cargo.estado == "aprobado":
                 fila_cargo.estado = "devuelto_saldo"
             reembolso = "saldo"
+        elif (_es_directo(fila_cargo) and fila_cargo.estado == "aprobado"
+              and str(fila_cargo.culqi_charge_id or "").startswith("div:")):
+            # PAGO DIVIDIDO: cada parte vuelve a quien la pagó (Culqi del club o el club a mano).
+            from pagos import division as _division
+            reembolso, detalle = _division.devolver_por_cancelacion(_division.id_de_cobro(fila_cargo.culqi_charge_id), monto_dev)
+            if reembolso == "reembolsado":
+                fila_cargo.estado = "reembolsado"
         elif fila_cargo is not None and _es_cargo_culqi(fila_cargo) and fila_cargo.estado == "aprobado" and (
                 not _es_directo(fila_cargo) or _cd.llave_secreta(fila_cargo.dueno_id or "")):
             # Cobro DIRECTO: se devuelve desde la cuenta Culqi del CLUB.
@@ -3688,7 +3730,7 @@ def _cancelar_reserva(filas: list[dict], c: dict | None, email: str, *, medio: s
     if _es_directo(fila_cargo) and reembolso in ("reembolsado", "manual"):
         # Cobro directo devuelto: la comisión de la plataforma vuelve al club.
         _cd.revertir_comision(ref)
-        if reembolso == "manual" and dueno:
+        if reembolso == "manual" and dueno and not detalle.startswith("division:"):  # el pago dividido avisa por parte
             try:
                 from pagos.router import _aviso_push_usuario
                 _aviso_push_usuario(dueno, "Devuelve un pago 💸",
@@ -4063,7 +4105,9 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
     # (su reserva ya se soltó) se listan aparte para que sepa qué pasó.
     vouchers = _cd.pagos_del_jugador(email)
     refs_vivas = {str(r.get("grupo_reserva_id") or r.get("id")) for r in filas}
-    caidos = [v for v in vouchers if v.get("estado") in ("rechazado", "vencido") and str(v.get("reserva_ref")) not in refs_vivas][:10]
+    # (Las partes de un PAGO DIVIDIDO van en su propia sección: su rechazo no suelta el horario.)
+    caidos = [v for v in vouchers if v.get("estado") in ("rechazado", "vencido") and str(v.get("reserva_ref")) not in refs_vivas
+              and not _dividir_web.es_ref(str(v.get("reserva_ref")))][:10]
     # Solo reservas: un pago devuelto de una matrícula o compra (pasarela $ / Bs) no es una cancha cancelada.
     canceladas = sorted([x for x in _st.cancelaciones_web if x.get("usuario") == email and (x.get("tipo") or "reserva") == "reserva"], key=lambda x: x.get("creado_en", ""), reverse=True)
     lista = "".join(_tarjeta_viaje(r, canchas.get(r.get("cancha_id")), _hoy(r), ses) for r in proximas) if proximas else (
@@ -4098,6 +4142,7 @@ def pagina_mis_reservas(request: Request) -> HTMLResponse:
         f"<p class='sub' style='margin-top:2px'>{e(ses.get('nombre') or email)} · {e(email)} · las mismas que ves en la app.</p>"
         f"<div class='viajes-cards' id='proximas'>{lista}</div>"
         + _seccion_espera(email)
+        + _dividir_web.seccion_mis_reservas(email)
         + (f"<details class='viajes-det'><summary>Dónde has jugado <small>· {len(pasadas)}</small></summary><div class='viajes-cards'>{pasadas_html}</div></details>" if pasadas else "")
         + f"<details class='viajes-det'{' open' if canceladas else ''}><summary><span class='ico'>🗓️</span> Reservaciones canceladas <small>· {len(canceladas)}</small></summary>"
         + ("".join(_fila_cancel(x) for x in canceladas) if canceladas else "<p class='sub' style='padding:8px 4px 2px'>No has cancelado ninguna reserva.</p>")

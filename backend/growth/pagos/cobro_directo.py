@@ -606,9 +606,11 @@ _contador = {"n": 0}
 
 
 def registrar_voucher(*, filas: list[dict], c: dict, email: str, nombre: str, medio: str, operacion: str,
-                      imagen_b64: str, monto_centimos: int, iso: str, ref: str) -> dict:
+                      imagen_b64: str, monto_centimos: int, iso: str, ref: str,
+                      vence_en: datetime | None = None) -> dict:
     """El jugador reporta su pago manual. Las filas ya están apartadas por
-    `/web/asegurar` (monto calculado por el servidor)."""
+    `/web/asegurar` (monto calculado por el servidor). [vence_en] = plazo de
+    revisión propio (la parte de un pago dividido vence con su división)."""
     dueno = (c.get("dueno") or "").strip().lower()
     medio = (medio or "").strip().lower()
     if medio not in {m["tipo"] for m in medios_publicos(dueno)}:
@@ -629,7 +631,7 @@ def registrar_voucher(*, filas: list[dict], c: dict, email: str, nombre: str, me
          "dueno": dueno, "jugador_email": email, "jugador_nombre": (nombre or "")[:80],
          "monto_centimos": int(monto_centimos), "moneda": iso, "medio": medio, "operacion": op,
          "voucher_img": img, "voucher_mime": mime, "voucher_hash": huella, "estado": "en_revision",
-         "motivo_rechazo": "", "vence_en": _ahora() + timedelta(minutes=config.VOUCHER_PLAZO_MIN),
+         "motivo_rechazo": "", "vence_en": vence_en or (_ahora() + timedelta(minutes=config.VOUCHER_PLAZO_MIN)),
          "creado_en": _ahora(), "resuelto_en": None, "resuelto_por": ""}
     err = _repo.crear_pago_manual(p)
     if err:

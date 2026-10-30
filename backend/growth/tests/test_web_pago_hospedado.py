@@ -359,8 +359,10 @@ def test_sql_del_apartado_respeta_la_orden_en_curso(monkeypatch):
     assert len(log) == 4
     for sql, params in log:
         assert "coalesce(medio_pago,'') = 'web_pasarela'" in sql and len(re.findall(r"(?<!%)%s", sql)) == len(params), sql
-        # Cortes: (pasarela hospedada, voucher en revisión del club, normal).
-        largo, voucher, normal = [x for x in params if isinstance(x, int)][-3:]
+        # Cortes: (pasarela hospedada, voucher en revisión del club, pago dividido, normal).
+        largo, voucher, dividido, normal = [x for x in params if isinstance(x, int)][-4:]
+        assert "coalesce(medio_pago,'') = 'division'" in sql
+        assert abs((normal - dividido) - (datos.HOLD_DIVISION_MAX_SEGUNDOS - datos.HOLD_SEGUNDOS) * 1000) < 5000
         assert "coalesce(medio_pago,'') = 'voucher'" in sql
         assert normal - largo == (datos.HOLD_PASARELA_MAX_SEGUNDOS - datos.HOLD_SEGUNDOS) * 1000 or abs(normal - largo - 2_400_000) < 5000
         assert abs((normal - voucher) - (datos.hold_voucher_max_segundos() - datos.HOLD_SEGUNDOS) * 1000) < 5000

@@ -282,6 +282,9 @@ def pago_del_dueno(pid: str, email: str) -> dict | None:
 def aprobar_voucher(p: dict, email: str) -> dict:
     """El club confirma el pago: se confirma el apartado, se registra el
     cobro directo y se cobra la comisión (saldo o deuda)."""
+    from pagos import division as _div
+    if _div.es_ref(p.get("reserva_ref")):   # parte de un PAGO DIVIDIDO: cuenta su parte
+        return _div.voucher_aprobado(p, email)
     pid = p["id"]
     filas = datos.reservas_de(list(p["reserva_ids"]))
     if not filas or len(filas) != len(p["reserva_ids"]):
@@ -308,6 +311,9 @@ MOTIVOS_RECHAZO = {"no_llego": "No llegó el pago", "monto": "Monto distinto",
 def rechazar_voucher(p: dict, email: str, motivo: str = "") -> dict:
     """El club no reconoce el pago: el horario queda libre y se avisa al jugador."""
     motivo = (motivo or "").strip()
+    from pagos import division as _div
+    if _div.es_ref(p.get("reserva_ref")):   # parte de un PAGO DIVIDIDO: la parte vuelve a quedar libre
+        return _div.voucher_rechazado(p, email, motivo)
     if not cd.repo().resolver_pago_manual(p["id"], "rechazado", email, motivo):
         return {"ok": False, "error": "ya_resuelto"}
     _wr().soltar_bloque(list(p["reserva_ids"]))
@@ -384,7 +390,11 @@ def vencer() -> int:
         return 0
     from datetime import datetime, timezone
     n = 0
+    from pagos import division as _div
     for p in cd.repo().vencidos(datetime.now(timezone.utc)):
+        if _div.es_ref(p.get("reserva_ref")):   # parte de un pago dividido: no suelta el horario
+            n += int(_div.voucher_vencido(p))
+            continue
         if cd.repo().resolver_pago_manual(p["id"], "vencido", "sistema", "sin_revision"):
             _wr().soltar_bloque(list(p["reserva_ids"]))
             _avisar(p["jugador_email"], "Tu reserva se liberó",
@@ -436,6 +446,10 @@ async def webhook_club(ref: str, request: Request) -> dict:
     if not info.get("ok"):
         return {"ok": True, "ignorado": "consulta"}
     meta = info.get("metadata") or {}
+    if meta.get("canal") == "division":   # parte de un PAGO DIVIDIDO
+        from starlette.concurrency import run_in_threadpool
+        from pagos import division as _div
+        return await run_in_threadpool(_div.conciliar_cargo, info, charge_id, llave)
     rref = str(meta.get("reserva_ref") or "")
     if meta.get("canal") != "directo" or not rref:
         return {"ok": True, "ignorado": "sin_reserva"}
