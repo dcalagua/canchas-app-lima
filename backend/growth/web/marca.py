@@ -32,6 +32,17 @@ _DESCARTAR = {"*", "html", "body", "header.nav", ".nav-in", ".wm", ".wm svg", "n
               ".hero h1", ".hero p.lead", ".hero .cta.sec", "footer", "footer .wrap", "footer a"}
 
 
+def _precio_pro() -> str:
+    """Precio de referencia de Pro en Perú (el de la torre, `pro_precio_soles`;
+    la tarjeta dice "precios de referencia en Lima"). Antes iba fijo en el HTML."""
+    try:
+        from db.store import stores
+        v = float(str(stores.cfg("pro_precio_soles") or "12").replace(",", "."))
+    except (ValueError, TypeError):
+        v = 12.0
+    return f"S/ {int(v)}" if v == int(v) else f"S/ {v:.2f}"
+
+
 def _leer() -> str:
     try:
         with open(_HOME, encoding="utf-8") as f:
@@ -90,6 +101,7 @@ def secciones() -> tuple[str, str, str]:
     doc = empresa.rellenar(_leer())
     if not doc:
         return "", "", ""
+    doc = doc.replace("{{PRO_PRECIO}}", _precio_pro())
     css = ""
     m = re.search(r"<style>(.*?)</style>", doc, flags=re.S)
     if m:

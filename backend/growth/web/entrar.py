@@ -126,8 +126,13 @@ def pagina_entrar(request: Request, volver: str = "/") -> HTMLResponse:
     if ses or not sesion.activo():
         return HTMLResponse("", status_code=302, headers={"Location": v})
     titulo, sub = _motivo_entrar(v)
-    cuerpo = ("<div class='panel' style='max-width:460px;margin:40px auto;text-align:center'>"
-              f"<div style='margin-bottom:8px'>{ui.wordmark(26, '/')}</div>"
+    # Rediseño azul (Frame 7): logo vertical azul centrado + ilustración a la izquierda (solo escritorio ancho).
+    logo = (f"<a class='entrar-logo' href='/' aria-label='{e(MARCA)}'><img src='/static/brand/cl_icono_azul.png' alt='' width='122' height='130'>"
+            f"<img src='/static/brand/cl_wordmark_azul.png' alt='{e(MARCA)}' width='300' height='29'></a>"
+            if ui._logo_propio_cl() else f"<div style='margin-bottom:8px'>{ui.wordmark(26, '/', color='azul')}</div>")
+    cuerpo = ("<div class='entrar-esc'><img class='ilus' src='/static/brand/cl_ilustracion_login.png' alt='' width='300' height='353'>"
+              "<div class='panel' style='max-width:460px;margin:40px auto;text-align:center'>"
+              f"{logo}"
               f"<h1 style='font-size:22px'>{e(titulo)}</h1>"
               f"<p class='sub'>{e(sub)}</p>"
               f"<div style='display:flex;justify-content:center;margin:22px 0 10px'>{sesion.boton_google()}</div>"
@@ -143,7 +148,7 @@ def pagina_entrar(request: Request, volver: str = "/") -> HTMLResponse:
                   "<input id='revPwd' type='password' autocomplete='current-password' maxlength='120' style='width:100%;margin:4px 0 12px'>"
                   "<button type='button' class='btn' style='width:100%' onclick='entrarRevision()'>Entrar como revisor</button>"
                   "<div class='estado bad' id='revErr'></div></div>") if sesion.revision_activa() else "")
-              + "</div>"
+              + "</div></div>"
               f"<script>window.alIniciarSesion=function(){{location.href={ui.json_js(v)};}};{sesion.JS_SESION}"
               "window.entrarRevision=function(){var u=document.getElementById('revUsr').value.trim(),c=document.getElementById('revPwd').value,er=document.getElementById('revErr');er.textContent='';"
               "fetch('/web/sesion/prueba',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({usuario:u,clave:c})}).then(function(r){return r.json();})"

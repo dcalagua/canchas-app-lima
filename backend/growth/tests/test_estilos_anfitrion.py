@@ -17,7 +17,9 @@ def test_tarjeta_de_reserva_sin_estilos_en_linea():
 
 
 def test_estilos_del_anfitrion_van_en_el_css_del_sitio():
-    assert ui.CSS.endswith(estilos_anfitrion.CSS)
+    # La hoja del anfitrión va al final del CSS del sitio; después solo va la del rediseño azul (nov-2026).
+    from web import estilos_rediseno
+    assert ui.CSS.endswith(estilos_anfitrion.CSS + estilos_rediseno.CSS)
     css = estilos_anfitrion.CSS
     # clases genéricas de la hoja de "Tu negocio" acotadas a sus páginas
     assert ":where(.anf-ng) .kpis{" in css and "\n.kpis{" not in css

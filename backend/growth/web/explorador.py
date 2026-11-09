@@ -17,7 +17,7 @@ from fastapi.responses import HTMLResponse
 
 import config
 from paises import _CAJAS, pais_de_coordenadas, moneda_de_pais, simbolo_de_moneda
-from web import catalogos, datos, descubrir, horarios, marca, miniaturas, sesion, ui
+from web import catalogos, datos, descubrir, horarios, iconos, marca, miniaturas, sesion, ui
 from web.ui import e
 import academia_plan as _ap
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
@@ -585,7 +585,7 @@ _JS_EXPLORAR = (r"""
       var m = L.marker([lat, lng], {icon: L.divIcon({className: '', html: '<span class="pin-precio' + (ok ? '' : ' pend') + (esAca ? ' aca' : '') + '">' + c.dataset.precio + '</span>', iconSize: null})});
       m._card = c;
       m.bindPopup('<b>' + esc(c.dataset.nombre) + '</b><br>' + esc(c.dataset.sub) + '<br>' + (esAca ? '' : '<span style="font-weight:800">' + esc(c.dataset.precio) + ' por hora</span><br>') + '<a class="btn' + (ok ? '' : ' sec') + '" href="' + c.getAttribute('href') + '">' + (esAca ? 'Ver academia' : (ok ? 'Ver horarios' : 'Reservar en la app')) + '</a>');
-      m.on('mouseover', function(){ c.style.outline = '2px solid #0B7A57'; c.style.outlineOffset = '4px'; c.style.borderRadius = '14px'; });
+      m.on('mouseover', function(){ c.style.outline = '2px solid #3056ED'; c.style.outlineOffset = '4px'; c.style.borderRadius = '14px'; });
       m.on('mouseout', function(){ c.style.outline = ''; });
       marcadores.push(m); m.addTo(mapa);
     });
@@ -674,7 +674,7 @@ def _zonas_sugeridas(lista: list[dict], n: int = 6) -> list[tuple[str, int]]:
     return sorted(cuenta.items(), key=lambda kv: (-kv[1], kv[0]))[:n]
 
 
-def _nav_explorar(dep: str, ses: dict | None = None, zonas: list[tuple[str, int]] | None = None) -> str:
+def _nav_explorar(dep: str, ses: dict | None = None, zonas: list[tuple[str, int]] | None = None, barra: str = "") -> str:
     """Cabecera tal cual airbnb.com: logo · pestañas por deporte con ícono
     (centradas) · "Modo dueño" + avatar + ☰ · buscador grande centrado
     (Dónde · Deporte · Cuándo · Buscar) con desplegable de búsquedas
@@ -685,8 +685,9 @@ def _nav_explorar(dep: str, ses: dict | None = None, zonas: list[tuple[str, int]
     cats = [c for c in CATEGORIAS if (c[0] in ("", "academias") or c[0] in activos or c[0] == dep)
             and (c[0] != "academias" or _ap.paises_habilitados())]
     ops = "".join(f"<option value='{k}'{' selected' if k == dep else ''}>{n}</option>" for k, n, _ in cats)
+    # Rediseño azul: pastillas con ícono de línea (web/iconos.py); el emoji queda de respaldo.
     tabs = "".join(f"<a class='cat{' sel' if k == dep else ''}' href='/canchas{('?deporte=' + k) if k else ''}' data-dep='{k}'>"
-                   f"<span class='ico'>{ico}</span>{n}</a>" for k, n, ico in cats)
+                   f"<span class='ico'>{iconos.svg(k or 'todas', 20) or ico}</span>{n}</a>" for k, n, ico in cats)
     sug_zonas = "".join(
         f"<button type='button' class='it' data-zona='{e(z)}'><span class='ic'>📍</span>"
         f"<div><b>{e(z)}</b><small>{n} cancha{'s' if n != 1 else ''}</small></div></button>"
@@ -698,9 +699,9 @@ def _nav_explorar(dep: str, ses: dict | None = None, zonas: list[tuple[str, int]
         for t, rango in (("Mañana", range(6, 12)), ("Tarde", range(12, 18)), ("Noche", range(18, 24))))
     busq = (
         "<div class='busq' role='search'>"
-        f"<label class='seg donde'><small>Dónde</small><input id='sQ' placeholder='{'Busca academias por nombre o zona' if dep == 'academias' else 'Explora zonas, clubes o canchas'}' autocomplete='off'></label>"
-        "<label class='seg cuando'><small>Cuándo</small><input id='sF' placeholder='Agrega fecha' readonly data-iso=''></label>"
-        "<label class='seg hora'><small>Hora</small><input id='sH' placeholder='¿A qué hora?' readonly data-hora=''></label>"
+        f"<label class='seg donde'><small>{iconos.svg('pin', 18)}Dónde</small><input id='sQ' placeholder='{'Busca academias por nombre o zona' if dep == 'academias' else 'Explora zonas, clubes o canchas'}' autocomplete='off'></label>"
+        f"<label class='seg cuando'><small>{iconos.svg('calendario', 18)}Cuándo</small><input id='sF' placeholder='Agrega fecha' readonly data-iso=''></label>"
+        f"<label class='seg hora'><small>{iconos.svg('reloj', 18)}Hora</small><input id='sH' placeholder='¿A qué hora?' readonly data-hora=''></label>"
         f"<button class='lupa' id='btnBuscar' aria-label='Buscar'>{_LUPA}<span>Buscar</span></button>"
         # Desplegable bajo "Dónde": recientes + zonas sugeridas
         "<div class='sug' id='sugDonde'>"
@@ -724,7 +725,7 @@ def _nav_explorar(dep: str, ses: dict | None = None, zonas: list[tuple[str, int]
         "<div class='hora-aviso' id='horaAviso' style='display:none'>Hoy ya no quedan horas por delante. Elige otro día en “Cuándo”.</div>"
         f"{horas}</div>"
         "</div>")
-    return ui.cabecera(tabs=tabs, busq=busq, ses=ses, volver="/")
+    return ui.cabecera(tabs=tabs, busq=busq, ses=ses, volver="/", extra_banda=barra)
 
 
 AMENIDAD_ICONO = {**{k: v[1] for k, v in catalogos.AMENIDADES.items()},
@@ -747,12 +748,15 @@ def _amenidades_de(lista: list[dict]) -> list[tuple[str, int]]:
 def _barra_filtros(lista: list[dict]) -> str:
     """Como la barra de Airbnb bajo el buscador: botón "Filtros" + chips
     rápidos con las amenidades más comunes (aplican al instante)."""
+    def ico(a: str) -> str:
+        return iconos.svg(iconos.AMENIDAD.get(a, ""), 18) or AMENIDAD_ICONO.get(a, '✓')
     chips = "".join(
-        f"<button type='button' class='chip qam' data-am='{e(a)}'>{AMENIDAD_ICONO.get(a, '✓')} {e(AMENIDAD_NOMBRE.get(a, a.capitalize()))}</button>"
+        f"<button type='button' class='chip qam' data-am='{e(a)}'>{ico(a)} {e(AMENIDAD_NOMBRE.get(a, a.capitalize()))}</button>"
         for a, _n in _amenidades_de(lista)[:6])
+    # Rediseño azul: va DENTRO de la franja del buscador (cabecera), con "Filtros" al final como en el PDF.
     return ("<div class='barra-filtros'>"
-            "<button type='button' class='filtros' id='btnFiltros'><span class='ico'>⚙️</span> Filtros<span class='n' id='nFiltros' style='display:none'></span></button>"
-            f"<div class='qchips'>{chips}</div></div>")
+            f"<div class='qchips'>{chips}</div>"
+            f"<button type='button' class='filtros' id='btnFiltros'>{iconos.svg('filtros', 18)} Filtros<span class='n' id='nFiltros' style='display:none'></span></button></div>")
 
 
 def _modal_filtros(lista: list[dict]) -> str:
@@ -1080,8 +1084,10 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
         encabezado = f"<h1 class='sr-only'>{e(h1)}</h1>"
     cuerpo = (encabezado + "<div class='ubic-mini'><span>📍</span><span id='ubicTxt'>Permite tu ubicación para ver primero las canchas más cercanas.</span>"
               "<button id='btnUbic'>Usar mi ubicación</button><span id='resBusq'></span></div>")
+    barra = ""
     if not solo_aca:  # amenidades / precio por hora no aplican a academias
-        cuerpo += _barra_filtros(lista) + _modal_filtros(lista)
+        barra = _barra_filtros(lista)   # va en la franja celeste de la cabecera
+        cuerpo += _modal_filtros(lista)
     cuerpo += "<div class='expl' id='expl'><div class='lista'><div id='grupos'>"
     primeras = 4  # tarjetas cuya foto se pide con prioridad (las que se ven al abrir)
     for pais in ("PE", "EC", "BO"):
@@ -1116,7 +1122,7 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
              and (not dep_aca or (a.get("deporte") or "").lower() == dep_aca) and _ap.habilitada(a)]
     if acads:
         titulo_aca = "Academias" + (f" de {_deporte(dep_aca)[0].lower()}" if dep_aca else "")
-        cuerpo += (f"<section id='academias' class='grupo-aca'><div class='tit'><h2>🎓 {e(titulo_aca)}<span class='cerca'></span></h2></div>"
+        cuerpo += (f"<section id='academias' class='grupo-aca'><div class='tit'><h2>{e(titulo_aca)}<span class='cerca'></span></h2></div>"
                    "<p class='sub' style='margin:-4px 0 12px'>Clases y programas por nivel. Entra a su página, escribe por WhatsApp o matricúlate en línea.</p>"
                    f"<div class='lst-grid' id='gridAca'>{''.join(_tarjeta_academia(a) for a in acads)}</div></section>")
     elif solo_aca:
@@ -1160,7 +1166,7 @@ def _explorar(deporte: str = "", fecha: str = "", request: Request | None = None
     if zona_nombre:
         titulo_tab = f"{h1} · {MARCA}"
         desc = f"{h1}: turnos libres, precios y fotos. Reserva y paga en línea con Yape o tarjeta en {MARCA}."
-    return ui.shell(MARCA, cuerpo, extra_head=head, nav=_nav_explorar(dep, ses, _zonas_sugeridas(lista)), ancho=True, sesion=ses,
+    return ui.shell(MARCA, cuerpo, extra_head=head, nav=_nav_explorar(dep, ses, _zonas_sugeridas(lista), barra), ancho=True, sesion=ses,
                     titulo_tab=titulo_tab, canonical=canonical, desc=desc)
 
 

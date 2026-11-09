@@ -1,18 +1,20 @@
-"""Sistema de diseño de la WEB de Pichangol — el MISMO look & feel del APK
-(`lib/theme.dart`, `lib/widgets/marca.dart`, estándar Airbnb del CLAUDE.md):
+"""Sistema de diseño de la WEB de CanchaLibre (REDISEÑO AZUL, nov-2026: los
+PDF "Soluciones EBIM" del diseñador; ver `docs/plan/REDISENO_AZUL.md`):
 
-- Tipografía **DM Sans** (la equivalente libre de Airbnb Cereal, que es
-  propietaria y no se puede descargar), pesos 500/600/700/800.
-- Paleta del logo nuevo: blanco, azul noche `#0F1B2D` (texto/oscuros),
-  esmeralda `#0B7A57` (CTA/acento), dorado `#D9B45A`, papel `#F4F7FA`,
-  trazo `#DDE5EF`, texto tenue `#627080`, tinte esmeralda `#E7F4EF`.
-- Cabecera tal cual airbnb.com (`cabecera()`): logo · pestañas con ícono ·
-  "Modo anfitrión" + avatar + ☰ (menú desplegable) · buscador grande centrado
-  con desplegable de recientes/zonas; se compacta al hacer scroll.
-- Wordmark **Pichang[o]l** con la 'o' = pelota (SVG esmeralda), pin oficial
-  (`/marca/logo.png`), sello "✓ Verificada", chips blancas con
-  borde suave (seleccionada = tinte), tarjetas radio 16-20 con sombra sutil,
-  botones esmeralda radio 12, marcas de pago dibujadas (Yape/Visa/Mastercard).
+- Tipografía **DM Sans** única, pesos 500/600/700/800.
+- Paleta del diseñador: azul `#3056ED` (marca, CTA, cabecera y pie), azul
+  claro `#7E98FF` (SOLO decoración: con texto blanco no llega a AA), tinte
+  `#E3E8FF` (franjas y fondos suaves), carbón `#333333` (texto y oscuros).
+  Los tokens conservan sus nombres históricos (`--esmeralda` = CTA,
+  `--teal` = CTA oscuro, `--noche` = texto, `--tinte` = fondo suave) para no
+  tocar los ~200 lugares que ya los usan; el verde queda SOLO para estados
+  (pagado, correcto: `--ok-*`).
+- Cabecera (`cabecera()`): barra azul (logo blanco · Cómo funciona · Centro de
+  ayuda · Modo anfitrión · Iniciar sesión/avatar · ☰), pastillas por deporte
+  con ícono en una fila blanca y el buscador en una franja celeste con las
+  amenidades rápidas; se compacta al hacer scroll.
+- Logo CanchaLibre (`static/brand/cl_*`) cuando la marca es CanchaLibre; con
+  otra marca (`MARCA_NOMBRE`) vuelve al isotipo de la torre + el nombre.
 
 Todo lo público del dominio (home, catálogo, reserva, comprobante, 404) pasa
 por `shell()` para que se vea como UNA sola marca.
@@ -29,11 +31,12 @@ from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lu
 
 TOKENS = ("""
 :root{
-  /* Paleta del LOGO oficial (pin verde + pelota + arco naranja + "⟦MARCA⟧" azul noche) */
-  --blanco:#FFFFFF;--noche:#0A1B3D;--esmeralda:#0B7A57;--teal:#08654A;--lima:#7CB518;--naranja:#F28C28;--dorado:#D9B45A;
-  --papel:#FFFFFF;--trazo:#DDE5EF;--tenue:#627080;--tinte:#E7F4EF;--gris:#EEF1F1;--gris-txt:#5C6B6C;
+  /* Paleta del rediseño ⟦MARCA⟧ (nov-2026): azul #3056ED · azul claro #7E98FF · tinte #E3E8FF · carbón #333333 */
+  --azul:#3056ED;--azul-osc:#2442C4;--azul-claro:#7E98FF;--azul-tinte:#E3E8FF;--carbon:#333333;--azul-suave:#F3F5FF;
+  --blanco:#FFFFFF;--noche:#333333;--esmeralda:#3056ED;--teal:#2442C4;--lima:#7E98FF;--naranja:#F28C28;--dorado:#D9B45A;
+  --papel:#FFFFFF;--trazo:#DCE1F0;--tenue:#5E6573;--tinte:#E3E8FF;--gris:#F1F3F9;--gris-txt:#5C6370;
   /* = tokens del APK (lib/theme.dart · lib/ui/ds.dart): CTA AA, texto dorado legible, foco visible */
-  --verde:var(--esmeralda);--borde:var(--trazo);--dorado-txt:#8A6A12;--info-bg:#E7F0FB;--info-fg:#1E5FB0;--foco:0 0 0 3px rgba(11,122,87,.35);
+  --verde:var(--esmeralda);--borde:var(--trazo);--dorado-txt:#8A6A12;--info-bg:#E7F0FB;--info-fg:#1E5FB0;--foco:0 0 0 3px rgba(48,86,237,.35);
   --esp-1:4px;--esp-2:8px;--esp-3:12px;--esp-4:16px;--esp-5:24px;--esp-6:32px;--r-sm:10px;--r-pill:999px;--dur:.18s;
   --ok-bg:#E9F4EE;--ok-fg:#1F6E49;--warn-bg:#FDF2D6;--warn-fg:#946200;--bad-bg:#FBE7E7;--bad-fg:#C0392B;
   --rojo:#C13515;--sombra:0 2px 14px rgba(15,27,45,.06);--sombra2:0 10px 30px rgba(15,27,45,.10);
@@ -153,7 +156,7 @@ button.slot{font:inherit;color:inherit;text-align:left;width:100%;min-height:44p
 .card{background:var(--blanco);border-radius:var(--r-lg);box-shadow:var(--sombra);overflow:hidden;display:flex;flex-direction:column}
 .card:hover{box-shadow:var(--sombra2)}
 .card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;background:var(--gris)}
-.sinfoto{width:100%;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;font-size:54px;background:linear-gradient(135deg,#E7F4EF,#CFE9DD)}
+.sinfoto{width:100%;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;font-size:54px;background:linear-gradient(135deg,#E3E8FF,#C9D3FF)}
 .cb{padding:14px 16px 16px;display:flex;flex-direction:column;gap:5px;flex:1}
 .cb .m{font-size:13px;color:var(--tenue);font-weight:600}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
@@ -184,7 +187,7 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .linea{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:7px 0;border-bottom:1px solid var(--trazo)}
 .linea:last-child{border-bottom:0}.linea b{font-weight:700}
 /* Boleadores (sparring por turno) en la ficha de reserva y en Modo anfitrión */
-.fid-box{border:1px dashed var(--verde);background:#F1FAF5;border-radius:14px;padding:12px 14px;margin:0 0 14px}.fid-box .sellos{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 2px}.fid-box .sello{width:26px;height:26px;border-radius:50%;border:2px solid #CFE8DA;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;background:#fff}.fid-box .sello.on{background:var(--verde);border-color:var(--verde)}.fid-usar{display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:700;cursor:pointer}.fid-usar input{width:auto;flex:none}.ben-box .ben-it+.ben-it{margin-top:10px;padding-top:10px;border-top:1px solid #DCEFE4}.ben-box .sub{margin:2px 0 0;font-size:13px}.bol-box{display:grid;gap:10px;margin:4px 0 12px}
+.fid-box{border:1px dashed var(--verde);background:#F3F5FF;border-radius:14px;padding:12px 14px;margin:0 0 14px}.fid-box .sellos{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 2px}.fid-box .sello{width:26px;height:26px;border-radius:50%;border:2px solid #C9D3FF;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;background:#fff}.fid-box .sello.on{background:var(--verde);border-color:var(--verde)}.fid-usar{display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:700;cursor:pointer}.fid-usar input{width:auto;flex:none}.ben-box .ben-it+.ben-it{margin-top:10px;padding-top:10px;border-top:1px solid #DCE3FF}.ben-box .sub{margin:2px 0 0;font-size:13px}.bol-box{display:grid;gap:10px;margin:4px 0 12px}
 .bol-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--trazo);border-radius:16px;background:var(--blanco);cursor:pointer;box-shadow:0 1px 3px rgba(10,27,61,.06);transition:box-shadow .15s,border-color .15s}
 .bol-card:hover{box-shadow:0 4px 14px rgba(10,27,61,.10)}.bol-card.sel{border-color:var(--noche);box-shadow:0 0 0 2px var(--noche) inset}
 .bol-card img,.bol-card .ini{width:48px;height:48px;border-radius:50%;object-fit:cover;flex:none;background:var(--tinte);display:inline-flex;align-items:center;justify-content:center;font-weight:800;color:var(--esmeralda);font-size:18px}
@@ -312,7 +315,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .busq .seg:focus-within{background:var(--blanco);box-shadow:0 6px 20px rgba(10,27,61,.16);z-index:1}
 .busq .seg:focus-within+.seg:before,.busq .seg:hover+.seg:before{display:none}
 .busq .seg input{caret-color:var(--noche)}
-.busq .seg select{padding-right:18px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%230A1B3D' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right center/14px;cursor:pointer}
+.busq .seg select{padding-right:18px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23333333' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right center/14px;cursor:pointer}
 .busq .seg small{font-size:12px;font-weight:700;color:var(--noche);line-height:1.1;margin-bottom:2px}
 .busq .seg input,.busq .seg select{border:0;padding:0;margin:0;background:transparent;font-size:14px;font-weight:500;color:var(--noche);height:auto;width:100%;min-width:0;outline:none;box-shadow:none;font-family:inherit;line-height:1.2;-webkit-appearance:none;appearance:none}
 .busq .seg input::placeholder{color:var(--tenue);font-weight:500}
@@ -607,7 +610,7 @@ button.btn,a.btn,button.chip,a.chip,.redondo{min-height:44px}.redondo{min-width:
 .pcg-dlg .caja::before{content:'';display:block;width:40px;height:4px;border-radius:2px;background:#DDDDDD;margin:0 auto 12px;flex:none}
 .pcg-dlg .ico{width:44px;height:44px;font-size:21px;margin-bottom:8px}.pcg-dlg h3{font-size:17px}.pcg-dlg p,.pcg-dlg .msg{font-size:14px;margin-bottom:14px}.pcg-dlg .btn{padding:13px 16px;font-size:15px}.pcg-dlg .txt{padding:10px;font-size:14.5px}}
 @keyframes subir{0%{transform:translateY(40px);opacity:0}100%{transform:none;opacity:1}}
-.pcg-barra{position:fixed;top:0;left:0;right:0;height:3px;z-index:120;pointer-events:none;opacity:0;transition:opacity .25s}.pcg-barra.on{opacity:1}.pcg-barra i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--esmeralda),#7CB518);box-shadow:0 0 8px rgba(11,138,62,.5)}.pcg-barra.on i{animation:pcgBarra 8s cubic-bezier(.1,.7,.2,1) forwards}.pcg-barra.fin i{animation:none;width:100%;transition:width .2s}@keyframes pcgBarra{0%{width:0}20%{width:45%}60%{width:75%}100%{width:92%}}
+.pcg-barra{position:fixed;top:0;left:0;right:0;height:3px;z-index:120;pointer-events:none;opacity:0;transition:opacity .25s}.pcg-barra.on{opacity:1}.pcg-barra i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--esmeralda),#7E98FF);box-shadow:0 0 8px rgba(48,86,237,.5)}.pcg-barra.on i{animation:pcgBarra 8s cubic-bezier(.1,.7,.2,1) forwards}.pcg-barra.fin i{animation:none;width:100%;transition:width .2s}@keyframes pcgBarra{0%{width:0}20%{width:45%}60%{width:75%}100%{width:92%}}
 .pcg-velo{display:none;position:fixed;inset:0;background:rgba(10,27,61,.35);backdrop-filter:blur(2px);z-index:90;align-items:center;justify-content:center;padding:16px}.pcg-velo.open{display:flex}
 .pcg-velo .tarjeta{background:var(--blanco);border-radius:20px;padding:24px 28px;display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--noche);font-weight:700;font-size:15px;box-shadow:0 12px 40px rgba(10,27,61,.3);min-width:220px;text-align:center}
 .pcg-velo .aro{width:46px;height:46px;border-radius:50%;border:4px solid var(--gris);border-top-color:var(--esmeralda);animation:pcgGiro .8s linear infinite}@keyframes pcgGiro{to{transform:rotate(360deg)}}
@@ -718,7 +721,7 @@ label.extra:has(input:checked) select.cant{display:block}
 .quien img{width:40px;height:40px;border-radius:50%;object-fit:cover}
 .quien .m{font-size:13px;color:var(--tenue);font-weight:600}
 .quien>div{flex:1;min-width:0}.quien .btn{padding:8px 12px;font-size:13px}
-.marca{margin-top:48px;border-top:1px solid var(--trazo)}
+.marca{margin-top:56px;border-top:0}
 .marca section{padding:44px 0}
 .marca section:first-child{border-top:0}
 /* Accesibilidad (ronda 3, al FINAL de la hoja para ganar a las reglas de arriba): ningún texto visible bajo 12px (el <small> del navegador
@@ -745,6 +748,8 @@ small{font-size:max(12px,.83em)}
 """
 from web.estilos_anfitrion import CSS as _CSS_ANFITRION  # noqa: E402 — modo anfitrión (va al final)
 CSS += _CSS_ANFITRION
+from web.estilos_rediseno import CSS as _CSS_REDISENO  # noqa: E402 — rediseño azul (nov-2026): lo último, gana
+CSS += _CSS_REDISENO
 
 
 def e(s) -> str:
@@ -820,18 +825,42 @@ def boton_whatsapp(texto: str, etiqueta: str = "💬 WhatsApp", clase: str = "bt
 
 
 PELOTA_SVG = (
-    "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='12' cy='12' r='10' fill='#0B7A57'/>"
+    "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='12' cy='12' r='10' fill='#3056ED'/>"
     "<path fill='#fff' d='M12 6.2l3.3 2.4-1.3 3.9H10l-1.3-3.9L12 6.2z'/>"
     "<path fill='none' stroke='#fff' stroke-width='1.4' d='M12 6.2V3.5M15.3 8.6l2.6-.9M14 12.5l1.9 2.3M10 12.5l-1.9 2.3M8.7 8.6l-2.6-.9'/>"
     "<path fill='#fff' opacity='.9' d='M6.2 8.5l2.5-.8.9 2.6-2.3 1.8-1.7-1.3zM17.8 8.5l-2.5-.8-.9 2.6 2.3 1.8 1.7-1.3zM9.1 15.6h5.8l.8 2.6-3.7 1.9-3.7-1.9z'/></svg>"
 )
 
 
-def wordmark(tam: int = 22, href: str = "/") -> str:
-    """Logo oficial (el configurable de la torre, `/marca/logo.png`) +
-    "Pichangol" en azul noche, peso 800, SIN cursiva (pedido del director)."""
-    return (f"<a class='wm' href='{href}' style='font-size:{tam}px' aria-label='{MARCA}'>"
+def _logo_propio_cl() -> bool:
+    """¿Se usa el logo dibujado de CanchaLibre? Sí si la marca es CanchaLibre y
+    el operador NO subió un logo propio en la torre (ese siempre manda)."""
+    import marca_logo
+    return MARCA.replace(" ", "").lower() == "canchalibre" and not marca_logo.personalizado()
+
+
+def wordmark(tam: int = 22, href: str = "/", color: str = "blanco") -> str:
+    """Logo de la marca. Con CanchaLibre: isotipo + wordmark del diseñador
+    (`static/brand/cl_icono_<color>.png` + `cl_wordmark_<color>.png`; `color`
+    = "blanco" sobre las franjas azules, "azul" sobre fondo claro). Con otra
+    marca o con un logo subido en la torre: ese logo (`/marca/logo.png`) + el
+    nombre en texto, como antes."""
+    if _logo_propio_cl():
+        c = "azul" if color == "azul" else "blanco"
+        return (f"<a class='wm wm-cl {c}' href='{href}' style='font-size:{tam}px' aria-label='{MARCA}'>"
+                f"<img class='wm-ico' src='/static/brand/cl_icono_{c}.png' alt='' width='34' height='36'>"
+                f"<img class='wm-txt' src='/static/brand/cl_wordmark_{c}.png' alt='{MARCA}' width='163' height='16'></a>")
+    return (f"<a class='wm {'' if color == 'azul' else 'sobre-azul'}' href='{href}' style='font-size:{tam}px' aria-label='{MARCA}'>"
             f"<img src='{_logo_url()}' alt=''><span>{MARCA}</span></a>")
+
+
+def logo_apilado(href: str = "/") -> str:
+    """Logo grande de dos líneas del pie ("CANCHA / LIBRE" en blanco); con otra
+    marca, el wordmark normal."""
+    if _logo_propio_cl():
+        return (f"<a class='wm-apilado' href='{href}' aria-label='{MARCA}'>"
+                f"<img src='/static/brand/cl_apilado_blanco.png' alt='{MARCA}' width='236' height='101'></a>")
+    return wordmark(24, href)
 
 
 def _logo_url() -> str:
@@ -1045,11 +1074,11 @@ def bandera(iso: str) -> str:
 
 
 def sello_verificada() -> str:
-    return "<span class='pill'>✓ Verificada</span>"
+    return "<span class='pill sello-ok'>✓ Verificada</span>"
 
 
 def check_svg() -> str:
-    return ("<div class='check'><svg viewBox='0 0 24 24'><path fill='none' stroke='#0B7A57' stroke-width='3' "
+    return ("<div class='check'><svg viewBox='0 0 24 24'><path fill='none' stroke='#3056ED' stroke-width='3' "
             "stroke-linecap='round' stroke-linejoin='round' d='M5 12.5l4.5 4.5L19 7'/></svg></div>")
 
 
@@ -1095,13 +1124,14 @@ def footer() -> str:
     políticas de devolución y términos, redes oficiales) en TODAS las páginas."""
     import empresa
     from web import catalogos
+    from web import iconos as _iconos
     em = empresa.datos()
     activos = catalogos.deportes_activos()
     deps_pie = " · ".join(catalogos.NOMBRE_DEPORTE.get(d, d).capitalize() for d in activos)
     return (
         "<footer class='pie'><div class='wrap-xl'><div class='pie-cols'>"
-        f"<div>{wordmark(20)}<div>Reserva, juega, repite.</div>"
-        f"<div style='margin-top:10px;font-size:12.5px'>{e(deps_pie)}<br>Perú · Ecuador · Bolivia</div>"
+        f"<div>{logo_apilado()}<div class='pie-lema'>Reserva, juega, repite.</div>"
+        f"<div class='pie-deps'>{e(deps_pie)}<br>Perú · Ecuador · Bolivia</div>"
         f"{redes_pie(em)}</div>"
         "<div><h4>Reservar</h4><a href=\"/canchas\">Todas las canchas</a>"
         + "".join(f"<a href='/canchas?deporte={d}'>Canchas de {catalogos.NOMBRE_DEPORTE.get(d, d)}</a>" for d in activos[:3])
@@ -1109,7 +1139,7 @@ def footer() -> str:
         "<a href='/canchas?deporte=academias'>Academias</a><a href='/#servicios'>Servicios y precios</a></div>"
         "<div><h4>Soporte</h4><a href='/ayuda'>Centro de ayuda</a><a href='/#contacto'>Contacto</a><a href='/#como'>Cómo funciona</a>"
         "<a href='/#pagos'>Pagos y seguridad</a><a href='/legal/devoluciones'>Cambios, cancelaciones y devoluciones</a>"
-        f"<a class='libro' href='/libro-de-reclamaciones'>{LIBRO_SVG}<span>Libro de Reclamaciones</span></a></div>"
+        f"<a class='libro' href='/libro-de-reclamaciones'>{_iconos.svg('libro', 16)}<span>Libro de Reclamaciones</span></a></div>"
         f"<div><h4>{MARCA}</h4><a href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>Descarga la app</a>"
         f"<a href='/anfitrion/nueva'>Pon tu cancha en {MARCA}</a>"
         "<a href=\"/legal/terminos\">Términos y condiciones</a><a href=\"/legal/privacidad\">Política de privacidad</a>"
@@ -1173,7 +1203,9 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
             cuenta = f"<a class='b' href='{entrar}'>Iniciar sesión o registrarse</a>"
         else:
             cuenta = f"<a class='b' href='{PLAY_URL}' rel='noopener'>Iniciar sesión en la app</a>"
-        avatar = f"<a class='redondo' href='{entrar if _s.activo() else PLAY_URL}' aria-label='Iniciar sesión'>{_USER_SVG}</a>"
+        # Rediseño azul: sin sesión va la pastilla "Iniciar sesión o registrarse" (en el celular, "Entrar").
+        avatar = (f"<a class='entrar-pill' href='{entrar if _s.activo() else PLAY_URL}'>"
+                  "<span class='l'>Iniciar sesión o registrarse</span><span class='c'>Entrar</span></a>")
     # "Modo anfitrión" abre el panel del dueño EN LA WEB (como airbnb.com/hosting);
     # dentro del panel el enlace se vuelve "Cambiar a modo jugador".
     host = ("<a class='host' href='/'>Cambiar a modo jugador</a>" if modo == "anfitrion"
@@ -1198,24 +1230,43 @@ def busq_mini(href: str = "/canchas", id_: str = "") -> str:
     """Pastilla compacta de las páginas interiores (Airbnb al hacer scroll)."""
     # En móvil (≤900 px) se muestra como la de airbnb.com en el celular: lupa a
     # la izquierda + dos líneas ("¿Dónde juegas?" / "Cualquier zona · …").
+    from web import iconos
     return (f"<a class='busq-mini' href='{href}'{(' id=' + chr(39) + id_ + chr(39)) if id_ else ''}><i class='lupa-mov'>{LUPA_SVG}</i>"
             "<div class='mov'><b>¿Dónde juegas?</b><small>Cualquier zona · Cualquier deporte · Cuándo quieras</small></div>"
-            f"<span>Cualquier zona</span><span>Cualquier deporte</span><span class='tenue'>Cuándo quieras</span><i>{LUPA_SVG}</i></a>")
+            f"<span>{iconos.svg('pin', 18)}Dónde</span><span>{iconos.svg('calendario', 18)}Cuándo</span>"
+            f"<span>{iconos.svg('reloj', 18)}Hora</span><i>{LUPA_SVG}<b>Buscar</b></i></a>")
 
 
-def cabecera(*, tabs: str = "", busq: str = "", ses: dict | None = None, volver: str = "/", modo: str = "") -> str:
-    """Cabecera tipo airbnb.com: logo a la izquierda, pestañas con ícono al
-    centro, "Modo dueño" + avatar + ☰ a la derecha y, debajo, el buscador
-    grande centrado. Sin [busq] (páginas interiores) queda la fila simple."""
-    clase = "" if busq else (" anfitrion" if modo == "anfitrion" else " simple")
-    return ("<header class='nav abnb'>"
-            f"<div class='wrap-xl cab{clase}'>"
-            f"<div class='cab-logo'>{wordmark(24, '/anfitrion' if modo == 'anfitrion' else '/')}</div>"
-            + (f"<nav class='cab-tabs' aria-label='Secciones'>{tabs}</nav>" if tabs else "")
-            + ("" if modo == "anfitrion" else f"<div class='cab-mini'>{busq_mini('#', 'busqMini') if busq else busq_mini('/canchas')}</div>")
-            + f"{menu_cuenta(ses, volver, modo)}"
-            + (f"<div class='cab-busq'>{busq}</div>" if busq else "")
-            + f"</div></header><script src='{_seg().url_nav()}'></script>")
+_CAB_LINKS = "<nav class='cab-links' aria-label='Ayuda'><a href='/#como'>Cómo funciona</a><a href='/ayuda'>Centro de ayuda</a></nav>"
+
+
+def cabecera(*, tabs: str = "", busq: str = "", ses: dict | None = None, volver: str = "/", modo: str = "",
+             extra_banda: str = "") -> str:
+    """Cabecera del rediseño azul (PDF del diseñador, nov-2026), en franjas:
+    1. barra azul: logo blanco · Cómo funciona / Centro de ayuda · Modo
+       anfitrión + Iniciar sesión (o avatar) + ☰;
+    2. fila blanca con las pastillas por deporte (`tabs`, solo explorador);
+    3. franja celeste con el buscador grande (`busq`) y las amenidades rápidas
+       (`extra_banda`) o, en las páginas interiores, el buscador chico.
+    En modo anfitrión las pestañas (Hoy, Calendario…) van dentro de la barra y
+    no hay franja. Al hacer scroll en el explorador se compacta: quedan la
+    barra y la pastilla chica al centro (`.cab.chica` + `header.compacta`)."""
+    anf = modo == "anfitrion"
+    clase = "" if busq else (" anfitrion" if anf else " simple")
+    barra = (f"<div class='cl-barra'><div class='wrap-xl cab{clase}'>"
+             f"<div class='cab-logo'>{wordmark(24, '/anfitrion' if anf else '/')}</div>"
+             + (f"<nav class='cab-tabs' aria-label='Secciones'>{tabs}</nav>" if (tabs and anf) else "")
+             + ("" if anf else _CAB_LINKS)
+             + (f"<div class='cab-mini'>{busq_mini('#', 'busqMini')}</div>" if busq else "")
+             + f"{menu_cuenta(ses, volver, modo)}</div></div>")
+    fila_tabs = (f"<div class='cl-fila-tabs'><div class='wrap-xl'><nav class='cab-tabs cl-pills' aria-label='Deportes'>{tabs}</nav></div></div>"
+                 if (tabs and not anf) else "")
+    banda = ("" if anf else
+             f"<div class='cl-banda{' grande' if busq else ''}'><div class='wrap-xl cl-banda-in'>"
+             + (f"<div class='cab-busq'>{busq}</div>{extra_banda}" if busq else busq_mini('/canchas'))
+             + "</div></div>")
+    return (f"<header class='nav abnb cl{' cl-anf' if anf else ''}'>{barra}{fila_tabs}{banda}"
+            f"</header><script src='{_seg().url_nav()}'></script>")
 
 
 # JS de la cabecera: menú ☰ (abre/cierra, se cierra al hacer clic fuera o con
@@ -1242,7 +1293,7 @@ JS_NAV = (r"""
   });
   // FOTOS QUE NUNCA SE VEN ROTAS (W2.2): una URL de Google caducada (o cualquier imagen que falle)
   // se reemplaza por un fondo neutro con el ícono del deporte, en vez del ícono de imagen rota.
-  var FOTO_RESPALDO = "data:image/svg+xml;charset=utf-8," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'><rect width='400' height='300' fill='#E7F4EF'/><rect x='110' y='85' width='180' height='130' rx='10' fill='none' stroke='#B9D9CC' stroke-width='6'/><line x1='200' y1='85' x2='200' y2='215' stroke='#B9D9CC' stroke-width='6'/><circle cx='200' cy='150' r='26' fill='none' stroke='#B9D9CC' stroke-width='6'/></svg>");
+  var FOTO_RESPALDO = "data:image/svg+xml;charset=utf-8," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'><rect width='400' height='300' fill='#E3E8FF'/><rect x='110' y='85' width='180' height='130' rx='10' fill='none' stroke='#B9D9CC' stroke-width='6'/><line x1='200' y1='85' x2='200' y2='215' stroke='#B9D9CC' stroke-width='6'/><circle cx='200' cy='150' r='26' fill='none' stroke='#B9D9CC' stroke-width='6'/></svg>");
   function fotoRota(img){
     if(!img || img.tagName !== 'IMG' || img.dataset.fallo || img.src.indexOf('data:') === 0) return;
     if(img.closest && img.closest('.vch, .pcg-dlg, #pcgDlg')) return;   // vistas previas propias
@@ -1296,10 +1347,11 @@ JS_NAV = (r"""
   // Al hacer scroll la cabecera se compacta (pastilla chica al centro); al tocarla vuelve el buscador grande.
   var cab = document.querySelector('.cab:not(.simple)'), mini = document.getElementById('busqMini');
   if(cab && mini){
-    var compactar = function(){ cab.classList.toggle('chica', window.innerWidth > 1060 && window.scrollY > 90); };
+    var hdr = cab.closest('header');
+    var compactar = function(){ var on = window.innerWidth > 1060 && window.scrollY > 90; cab.classList.toggle('chica', on); if(hdr) hdr.classList.toggle('compacta', on); };
     window.addEventListener('scroll', compactar, {passive: true}); window.addEventListener('resize', compactar); compactar();
     mini.addEventListener('click', function(ev){ ev.preventDefault(); window.scrollTo({top: 0, behavior: 'smooth'});
-      setTimeout(function(){ cab.classList.remove('chica'); var q = document.getElementById('sQ'); if(q) q.focus(); }, 350); });
+      setTimeout(function(){ cab.classList.remove('chica'); if(hdr) hdr.classList.remove('compacta'); var q = document.getElementById('sQ'); if(q) q.focus(); }, 350); });
   }
   window.pcgSalir = function(){ pcgCargando('Cerrando sesión…'); fetch('/web/salir', {method: 'POST'}).then(function(){ location.reload(); }); };
   // ── Diálogos y preloader de TODA la web (regla del director, sep-2026: nada de confirm()/alert() del navegador) ──
@@ -1458,7 +1510,7 @@ JS_ABRIR_APP = (r"""
   function banner(){
     if(document.getElementById('abrirApp')) return;
     var st = document.createElement('style');
-    st.textContent = ".abrir-app{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 14px;background:#0A1B3D;color:#fff;font:600 14px/1.25 'DM Sans',system-ui,sans-serif}.abrir-app img{width:36px;height:36px;border-radius:10px;background:#fff;padding:3px;flex:none}.abrir-app .t{flex:1;min-width:0}.abrir-app .t small{display:block;font-weight:500;opacity:.8;font-size:12px}.abrir-app .ir{flex:none;background:#0B7A57;color:#fff;border:0;border-radius:999px;padding:9px 16px;font:700 14px 'DM Sans',system-ui,sans-serif;width:auto}.abrir-app .x{flex:none;background:transparent;border:0;color:#fff;opacity:.7;font-size:20px;line-height:1;padding:6px;width:auto}@media(min-width:901px){.abrir-app{display:none}}";
+    st.textContent = ".abrir-app{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 14px;background:#333333;color:#fff;font:600 14px/1.25 'DM Sans',system-ui,sans-serif}.abrir-app img{width:36px;height:36px;border-radius:10px;background:#fff;padding:3px;flex:none}.abrir-app .t{flex:1;min-width:0}.abrir-app .t small{display:block;font-weight:500;opacity:.8;font-size:12px}.abrir-app .ir{flex:none;background:#3056ED;color:#fff;border:0;border-radius:999px;padding:9px 16px;font:700 14px 'DM Sans',system-ui,sans-serif;width:auto}.abrir-app .x{flex:none;background:transparent;border:0;color:#fff;opacity:.7;font-size:20px;line-height:1;padding:6px;width:auto}@media(min-width:901px){.abrir-app{display:none}}";
     var d = document.createElement('div'); d.id = 'abrirApp'; d.className = 'abrir-app'; d.setAttribute('role', 'region'); d.setAttribute('aria-label', 'Abrir en la app');
     d.innerHTML = "<img src='/marca/logo.png' alt=''><div class='t'>Abrir en la app ⟦MARCA⟧<small>Reserva más rápido y recibe avisos de tus partidos</small></div><button type='button' class='ir' id='abrirAppIr'>Abrir</button><button type='button' class='x' id='abrirAppX' aria-label='Seguir en la web'>&times;</button>";
     document.head.appendChild(st); document.body.insertBefore(d, document.body.firstChild);
@@ -1532,7 +1584,7 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         f"<meta property='og:description' content='{e(desc or 'Reserva, juega, repite.')}'>"
         f"<meta property='og:image' content='{e(og_image)}'><meta property='og:type' content='website'>"
         + (f"<link rel='canonical' href='{e(canonical)}'><meta property='og:url' content='{e(canonical)}'>" if canonical else "")
-        + "<meta name='theme-color' content='#0F1B2D'>"
+        + "<meta name='theme-color' content='#3056ED'>"
         f"<link rel='icon' type='image/png' href='{_logo_url()}'>"
         f"<link rel='apple-touch-icon' href='{_logo_url()}'>"
         # Instalable ("Agregar a inicio"): en iPhone no hay app, la web hace de app.

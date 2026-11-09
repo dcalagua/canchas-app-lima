@@ -2024,7 +2024,7 @@ def pagina_agregar_cuota(request: Request, academia: str = "", alumno: str = "")
           ".ag-l{display:block;font-weight:800;margin:16px 0 8px}.ag-prog{font-weight:800;margin:12px 0 6px;color:var(--tenue);font-size:13px}"
           ".ag-op{display:flex;gap:10px;align-items:center;border:1px solid var(--trazo);border-radius:14px;padding:11px 13px;margin-bottom:8px;cursor:pointer;min-width:0}"
           ".ag-op input{width:auto;flex:none}.ag-op small{display:block;color:var(--tenue)}.ag-op:has(input:checked){background:#EBEBEB;border-color:#D8D8D8}"
-          ".ag-prev{margin-top:14px;background:#EEF7E3;color:#14463A;border-radius:14px;padding:12px;font-size:14px;line-height:1.45}</style>"
+          ".ag-prev{margin-top:14px;background:#EEF1FF;color:#2442C4;border-radius:14px;padding:12px;font-size:14px;line-height:1.45}</style>"
         + f"<script>window.__ag={ui.json_js(cfg, ensure_ascii=False)};{JS_AGREGAR_CUOTA}</script>")
     return _pagina("Agregar cuota", cuerpo, ses, "cobros")
 
