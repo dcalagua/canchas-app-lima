@@ -496,7 +496,7 @@ _JS_EXPLORAR = (r"""
   // Las descubiertas se ACUMULAN por id entre búsquedas (cada celda que se
   // explora suma; la distancia se recalcula desde el usuario o el centro del mapa).
   var descAcum = {};
-  var DESC_MAX = 8, descAbierto = false;
+  var DESC_MAX = 6, descAbierto = false;  // 6 = filas completas en la grilla de 2 y 3 columnas (rediseño azul)
   document.addEventListener('click', function(ev){ if(!ev.target.closest('#btnDescMas')) return; descAbierto = true; aplicar(); });
   function kmEntre(a, b, c, d){ var R = 6371, x = (c - a) * Math.PI / 180, y = (d - b) * Math.PI / 180; var h = Math.sin(x/2)*Math.sin(x/2) + Math.cos(a*Math.PI/180)*Math.cos(c*Math.PI/180)*Math.sin(y/2)*Math.sin(y/2); return 2 * R * Math.asin(Math.sqrt(h)); }
   // Pin de una cancha descubierta: ícono del deporte + NOMBRE del local

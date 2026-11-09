@@ -56,6 +56,20 @@ a la escala azul (`web/*.py`, `legal/*`).
   pastillas, definiciones legales a la vista, "Enviar reclamo".
 - **`/legal/*`**: barra azul con logo y DM Sans (antes verde bosque).
 
+## Orden de la portada (mejorado, pedido del usuario: "el diseño es para colores y elementos; el orden, si se puede mejorar, procede")
+
+1. Canchas · Academias · Más canchas cerca de ti (6 visibles = filas completas, antes 8).
+2. Qué ofrecemos (azul) → Servicios y precios (blanco) → Cómo funciona (azul) → Pagos y seguridad (blanco).
+3. **Compra segura y transparente** (franja oscura): Términos, Devoluciones,
+   Privacidad y Libro en 4 tarjetas con lo esencial a la vista y el resto en
+   desplegables ("Leer los 8 puntos aquí", "Registrar un reclamo o queja": el
+   formulario integrado sigue en la raíz, como piden Culqi/INDECOPI). Antes eran
+   cuatro secciones largas, con el formulario completo siempre abierto.
+4. Contacto + "¿Tienes una cancha?" como cierre, antes del pie.
+Resultado: la portada pasó de ~9.900 a ~7.300 px a 1440 px. Los anclajes viejos
+(`/#terminos`, `/#devoluciones`, `/#privacidad`, `/#reclamaciones`) siguen
+funcionando (son los id de las tarjetas).
+
 ## Errores del PDF que NO se copiaron
 
 Sin tildes ("Que ofrecemos", "Peru"…); "Academias y clases" con el texto de

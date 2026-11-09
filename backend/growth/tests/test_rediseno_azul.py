@@ -119,7 +119,7 @@ def test_portada_multipais_y_precio_pro_de_la_torre():
             stores.config["pro_precio_soles"] = viejo
     # secciones con las franjas del diseño y los 6 servicios (Culqi pide ≥ 5)
     for c in ('id="servicio" class="banda-azul"', 'id="como" class="banda-azul"', 'class="banda-gris"',
-              'class="legal oscura"', 'class="card tienes-cancha"'):
+              'class="oscura legal-bloque"', 'class="card tienes-cancha"', 'class="legal-grid"'):
         assert c in html, c
     assert html.count('class="prod"') == 6
 

@@ -244,6 +244,9 @@ PDF del diseñador ("Soluciones EBIM", 7 frames). Detalle y pendientes:
 - **Portada**: los estilos de sus secciones viven en `legal/home.html` (bajo
   `.marca`); el precio de Pro sale de `pro_precio_soles` (`{{PRO_PRECIO}}`).
   Las tarjetas de servicios conservan `class="prod"` (Culqi: ≥5 servicios).
+  Orden: canchas → Qué ofrecemos → Servicios → Cómo funciona → Pagos →
+  "Compra segura" (Términos/Devoluciones/Privacidad/Libro en 4 tarjetas con
+  desplegables; el formulario del Libro sigue integrado en la raíz) → Contacto.
 - Test `tests/test_rediseno_azul.py`; barrido e2e en verde (204 pantallas).
 
 ## Dominio oficial: `pichangol.app`

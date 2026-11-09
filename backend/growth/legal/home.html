@@ -126,32 +126,37 @@
   .tienes-cancha h3{color:#fff!important;font-size:clamp(30px,4vw,46px)!important;letter-spacing:-1px;margin:0 0 14px!important}
   .tienes-cancha p{color:#fff!important;opacity:.95;max-width:420px}
   .socials{display:flex;gap:12px;margin-top:8px}
-  /* Términos: tarjetas abiertas en grilla (Frame 2) */
-  .terminos .wrap>details.acc{display:inline-block}
-  .terminos .wrap{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
-  .terminos .wrap>h2,.terminos .wrap>.sub{grid-column:1/-1}
-  .terminos .wrap>.sub{margin-bottom:8px}
-  @media(max-width:1100px){.terminos .wrap{grid-template-columns:repeat(2,minmax(0,1fr))}}
-  @media(max-width:600px){.terminos .wrap{grid-template-columns:minmax(0,1fr)}}
-  details.acc{background:#F7F8FA;border:0;border-radius:8px;padding:20px 24px 22px;margin:0;box-shadow:0 2px 10px rgba(17,24,39,.06);min-width:0}
-  details.acc>summary{cursor:pointer;font-weight:800;color:var(--carbon);padding:6px 24px 10px 0;font-size:18px;list-style:none;position:relative}
-  details.acc>summary::-webkit-details-marker{display:none}
-  details.acc>summary:before{content:none}
-  details.acc>summary:after{content:"";position:absolute;right:0;top:2px;width:14px;height:3px;border-radius:2px;background:var(--azul)}
-  details.acc:not([open])>summary:after{content:"+";background:none;color:var(--azul);font-size:22px;line-height:1;top:-4px;width:auto;height:auto}
-  details.acc p,details.acc li{font-size:14px;line-height:1.55;color:var(--carbon);text-align:left}
-  details.acc ul{padding-left:18px;margin:6px 0 0}
-  /* Devoluciones + privacidad: franja oscura */
+  /* Compra segura: bloque legal compacto en franja oscura, tarjetas blancas */
   .oscura{background:#1B1B1F;color:#fff}
-  #devoluciones.oscura{padding-bottom:24px}#privacidad.oscura{padding-top:24px}
-  .oscura h2{color:#fff;font-size:clamp(24px,3vw,34px)}
-  .oscura .wrap>*:not(h2){max-width:760px;margin-left:clamp(0px,16vw,232px)}
-  .oscura h3{color:var(--azul-claro);margin:26px 0 8px;font-size:17px}
-  .oscura p,.oscura li,.oscura .sub{color:#E7E8EC;font-size:14.5px;line-height:1.6}
-  .oscura a{color:#9FB2FF}
+  .oscura h2{color:#fff}
+  .oscura>.wrap>.sub{color:#E7E8EC;opacity:1}
+  .oscura .sub a,.oscura .sub b{color:#fff}
+  .legal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}
+  @media(max-width:900px){.legal-grid{grid-template-columns:minmax(0,1fr)}}
+  .lg-card{background:#fff;color:var(--carbon);border-radius:12px;padding:26px 28px;display:flex;flex-direction:column;gap:10px;min-width:0}
+  .lg-card h3{margin:0;font-size:19px;color:var(--carbon);font-weight:800}
+  .lg-card p,.lg-card li{margin:0;font-size:14.5px;line-height:1.55;color:var(--carbon)}
+  .lg-card ul{margin:0;padding-left:20px;display:grid;gap:6px}
+  .lg-ic{width:48px;height:48px;border-radius:50%;background:var(--azul-tinte);color:var(--azul);display:flex;align-items:center;justify-content:center}
+  .lg-ic.rojo{background:#FDE7E5;color:#D93025}
+  .lg-link{margin-top:auto;padding-top:6px;font-weight:700;font-size:14.5px;color:var(--azul-osc);text-decoration:none}
+  .lg-link:hover{text-decoration:underline}
+  details.mas{border-top:1px solid var(--trazo);padding-top:10px}
+  details.mas>summary{cursor:pointer;font-weight:700;color:var(--azul);font-size:14.5px;list-style:none;min-height:32px;display:flex;align-items:center}
+  details.mas>summary::-webkit-details-marker{display:none}
+  details.mas>summary:after{content:"+";margin-left:8px;font-size:18px}
+  details.mas[open]>summary:after{content:"–"}
+  .mas-in{padding-top:6px}
+  .mas-in h4{margin:14px 0 4px;font-size:15px;color:var(--carbon)}
+  .mas-in p,.mas-in li{font-size:14px}
+  .mas-in ul{padding-left:18px}
+  details.lr-desp{border-top:0;padding-top:0}
+  details.lr-desp>summary{color:#fff;align-self:flex-start;display:inline-flex}
+  details.lr-desp>summary:after{content:none}
+  details.lr-desp[open]>summary{margin-bottom:6px}
+  .lg-libro:has(details[open]){grid-column:1/-1}
+  /* Libro de Reclamaciones (formulario integrado) */
   .legal h3{margin:26px 0 6px;font-size:18px}
-  .legal ul{padding-left:20px}
-  /* Libro de Reclamaciones (Frame 6) */
   h2.con-ic{display:flex;align-items:center;gap:14px;color:var(--azul);font-size:clamp(28px,4vw,40px)}
   h2.con-ic svg{flex:none;width:52px;height:52px}
   #lr-form{max-width:960px}
@@ -338,152 +343,78 @@
   </div>
 </section>
 
-<!-- CONTACTO -->
-<section id="contacto" class="banda-gris">
+<!-- COMPRA SEGURA: términos, devoluciones, privacidad y Libro (compacto; texto completo en sus páginas) -->
+<section id="legal" class="oscura legal-bloque">
   <div class="wrap">
-    <h2>Contacto</h2>
-    <p class="sub">Estamos para ayudarte con tus reservas y pagos.</p>
-    <div class="contact-grid">
-      <div class="card info">
-        <ul>
-          <li><span class="k">Empresa</span> <span>{{EMPRESA}} (marca <b>{{MARCA}}</b>)</span></li>
-          <li><span class="k">{{DOC_ETIQUETA}}</span> <span>{{RUC}}</span></li>
-          <li><span class="k">Dirección</span> <span>{{DIRECCION}}</span></li>
-          <li><span class="k">WhatsApp</span> <span style="line-height:1.9">{{WHATSAPP_LISTA}}</span></li>
-          <li><span class="k">Correo</span> <span><a href="mailto:{{CORREO}}">{{CORREO}}</a></span></li>
-          <li><span class="k">Horario</span> <span>{{HORARIO}}</span></li>
-        </ul>
-      </div>
-      <div class="card tienes-cancha">
-        <h3>¿Tienes una cancha?</h3>
-        <p>Publícala en {{MARCA}} y recibe reservas. Escríbenos por WhatsApp
-          y te ayudamos a registrarla.</p>
-        <p style="margin-top:14px">{{WA_BOTONES}}</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- TÉRMINOS Y CONDICIONES -->
-<section id="terminos" class="legal terminos">
-  <div class="wrap">
-    <h2>Términos y Condiciones</h2>
-    <p class="sub">Última actualización: julio 2026.</p>
-
-    <details class="acc" open>
-      <summary>1. Quiénes somos</summary>
-      <p>{{MARCA}} es una plataforma operada por <b>{{EMPRESA}}</b>, {{DOC_ETIQUETA}} {{RUC}}, con domicilio en
+    <h2>Compra segura y transparente</h2>
+    <p class="sub">Las reglas de <b>{{EMPRESA}}</b> ({{DOC_ETIQUETA}} {{RUC}}) para reservar, pagar, cancelar y reclamar en {{MARCA}}.</p>
+    <div class="legal-grid">
+      <article id="terminos" class="lg-card">
+        <div class="lg-ic"><svg class='ic-svg' viewBox='0 0 24 24' width='26' height='26' fill='none' stroke='currentColor' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M6 2.8h12v18.4l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4-2 1.4z'/><path d='M9 8h6M9 11.5h6M9 15h3.5'/></svg></div>
+        <h3>Términos y Condiciones</h3>
+        <p>{{MARCA}} es una plataforma de <b>{{EMPRESA}}</b> que conecta a jugadores con establecimientos deportivos y procesa la reserva y su pago. Última actualización: julio 2026.</p>
+        <details class="mas"><summary>Leer los 8 puntos aquí</summary><div class="mas-in"><h4>1. Quiénes somos</h4><p>{{MARCA}} es una plataforma operada por <b>{{EMPRESA}}</b>, {{DOC_ETIQUETA}} {{RUC}}, con domicilio en
         {{DIRECCION}} ("{{MARCA}}", "nosotros"). {{MARCA}}
         pone en contacto a jugadores con establecimientos que ofrecen canchas deportivas ("Canchas") y permite
-        reservar y pagar horarios.</p>
-    </details>
-
-    <details class="acc" open>
-      <summary>2. El servicio</summary>
-      <p>{{MARCA}} facilita la búsqueda, reserva y pago de horarios de Canchas de terceros. La prestación del
+        reservar y pagar horarios.</p><h4>2. El servicio</h4><p>{{MARCA}} facilita la búsqueda, reserva y pago de horarios de Canchas de terceros. La prestación del
         servicio deportivo (uso de la cancha) es responsabilidad del establecimiento. {{MARCA}} actúa como
-        intermediario tecnológico y medio de pago de la reserva.</p>
-    </details>
-
-    <details class="acc" open>
-      <summary>3. Cuenta y uso</summary>
-      <ul>
+        intermediario tecnológico y medio de pago de la reserva.</p><h4>3. Cuenta y uso</h4><ul>
         <li>Debes brindar información veraz para reservar.</li>
         <li>Eres responsable del uso de tu cuenta y de las reservas que realices.</li>
         <li>No puedes usar la plataforma para fines ilícitos ni suplantar a terceros.</li>
-      </ul>
-    </details>
-
-    <details class="acc" open>
-      <summary>4. Reservas y precios</summary>
-      <p>Los precios se muestran en la moneda del país donde está la cancha (soles S/ en Perú, dólares $ en Ecuador y bolivianos Bs en Bolivia) e incluyen los tributos aplicables. Una reserva se confirma cuando
+      </ul><h4>4. Reservas y precios</h4><p>Los precios se muestran en la moneda del país donde está la cancha (soles S/ en Perú, dólares $ en Ecuador y bolivianos Bs en Bolivia) e incluyen los tributos aplicables. Una reserva se confirma cuando
         el pago es aprobado por la pasarela. Los horarios están sujetos a disponibilidad; si un establecimiento no
         pudiera honrar una reserva pagada, se procederá a la devolución conforme a la sección de Cancelaciones y
-        Devoluciones.</p>
-    </details>
-
-    <details class="acc" open>
-      <summary>5. Pagos</summary>
-      <p>Los pagos se procesan a través de <b>Culqi</b>, pasarela de pagos autorizada, mediante Yape o tarjeta.
+        Devoluciones.</p><h4>5. Pagos</h4><p>Los pagos se procesan a través de <b>Culqi</b>, pasarela de pagos autorizada, mediante Yape o tarjeta.
         {{MARCA}} no almacena los datos completos de tu tarjeta. La referencia de la operación queda registrada en
-        la app.</p>
-    </details>
-
-    <details class="acc" open>
-      <summary>6. Responsabilidad</summary>
-      <p>{{MARCA}} no es propietario de las Canchas ni presta el servicio deportivo. No respondemos por daños
+        la app.</p><h4>6. Responsabilidad</h4><p>{{MARCA}} no es propietario de las Canchas ni presta el servicio deportivo. No respondemos por daños
         derivados del uso de las instalaciones. Nuestra responsabilidad se limita al correcto procesamiento de la
-        reserva y su pago.</p>
-    </details>
-
-    <details class="acc" open>
-      <summary>7. Propiedad intelectual</summary>
-      <p>La marca {{MARCA}}, el logotipo y el software son de titularidad de {{EMPRESA}}. No pueden usarse sin
-        autorización.</p>
-    </details>
-
-    <details class="acc" open>
-      <summary>8. Ley aplicable</summary>
-      <p>Estos términos se rigen por las leyes de la República del Perú. Cualquier controversia se somete a la
-        jurisdicción de Lima Cercado.</p>
-    </details>
-  </div>
-</section>
-
-<!-- CANCELACIONES Y DEVOLUCIONES -->
-<section id="devoluciones" class="legal oscura">
-  <div class="wrap">
-    <h2>Política de cambios, cancelaciones y devoluciones</h2>
-    <p class="sub">Reglas claras para reservas y reembolsos, aplicadas por <b>{{EMPRESA}}</b> ({{DOC_ETIQUETA}} {{RUC}}).
+        reserva y su pago.</p><h4>7. Propiedad intelectual</h4><p>La marca {{MARCA}}, el logotipo y el software son de titularidad de {{EMPRESA}}. No pueden usarse sin
+        autorización.</p><h4>8. Ley aplicable</h4><p>Estos términos se rigen por las leyes de la República del Perú. Cualquier controversia se somete a la
+        jurisdicción de Lima Cercado.</p></div></details>
+        <a class="lg-link" href="/legal/terminos">Ver términos completos ›</a>
+      </article>
+      <article id="devoluciones" class="lg-card">
+        <div class="lg-ic"><svg class='ic-svg' viewBox='0 0 24 24' width='26' height='26' fill='none' stroke='currentColor' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M5 12h14M13 6l6 6-6 6'/></svg></div>
+        <h3>Cambios, cancelaciones y devoluciones</h3>
+        <p>Reglas claras para reservas y reembolsos, aplicadas por <b>{{EMPRESA}}</b> ({{DOC_ETIQUETA}} {{RUC}}).
       <a href="/legal/devoluciones">Ver la política completa</a> (matrículas, marketplace, saldo y suscripciones).</p>
-
-    <h3>Cancelación por el jugador</h3>
-    <ul>
+        <ul>
       <li><b>Con más de 6 horas de anticipación</b> al inicio de la reserva: puedes cancelar y se procede a la
         <b>devolución del 100%</b> del monto pagado por la reserva.</li>
       <li><b>Con menos de 6 horas de anticipación</b>: la reserva no es reembolsable, ya que el horario se bloqueó
         para ti y el establecimiento reservó el espacio.</li>
     </ul>
-
-    <h3>Cancelación por el establecimiento</h3>
+        <details class="mas"><summary>Cancelación por el local y cómo pedir tu devolución</summary><div class="mas-in"><h4>Cancelación por el establecimiento</h4>
     <p>Si el establecimiento no puede honrar una reserva pagada (por fuerza mayor, clima u otro), tienes derecho a
       <b>reprogramar sin costo</b> o a la <b>devolución del 100%</b>.</p>
 
-    <h3>Cómo solicitar una devolución</h3>
+    <h4>Cómo solicitar una devolución</h4>
     <p>Escríbenos a <a href="mailto:{{CORREO}}">{{CORREO}}</a> o por WhatsApp al
       {{WHATSAPP}} indicando tu nombre, la fecha/hora de la reserva y el
       motivo. Las devoluciones aprobadas se realizan por el <b>mismo medio de pago</b> (Yape o tarjeta) en un plazo
       de <b>hasta 7 días hábiles</b>, según los tiempos de la pasarela y el banco emisor.</p>
 
-    <h3>Derecho a información</h3>
-    <p>Para cualquier disconformidad puedes usar nuestro <a href="#reclamaciones">Libro de Reclamaciones</a>.</p>
-  </div>
-</section>
-
-<!-- PRIVACIDAD -->
-<section id="privacidad" class="legal oscura">
-  <div class="wrap">
-    <h2>Política de Privacidad</h2>
-    <p class="sub">Tratamiento de datos personales — Ley N.° 29733.</p>
-    <p>{{EMPRESA}} trata tus datos personales (nombre, correo, teléfono y datos de la reserva) con la
+    <h4>Derecho a información</h4>
+    <p>Para cualquier disconformidad puedes usar nuestro <a href="#reclamaciones">Libro de Reclamaciones</a>.</p></div></details>
+        <a class="lg-link" href="/legal/devoluciones">Ver la política completa ›</a>
+      </article>
+      <article id="privacidad" class="lg-card">
+        <div class="lg-ic"><svg class='ic-svg' viewBox='0 0 24 24' width='26' height='26' fill='none' stroke='currentColor' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 3l7.5 3v5.5c0 4.6-3.2 8.3-7.5 9.5-4.3-1.2-7.5-4.9-7.5-9.5V6z'/><path d='M8.6 12.2l2.4 2.4 4.6-4.8'/></svg></div>
+        <h3>Política de Privacidad</h3>
+        <p><b>Tratamiento de datos personales — Ley N.° 29733.</b> {{EMPRESA}} trata tus datos personales (nombre, correo, teléfono y datos de la reserva) con la
       finalidad de operar el servicio de reservas y pagos, brindarte soporte y cumplir obligaciones legales. Los
       datos de pago son procesados por la pasarela Culqi; no almacenamos los datos completos de tu tarjeta.</p>
-    <p>Puedes ejercer tus derechos de acceso, rectificación, cancelación y oposición (ARCO) escribiendo a
+        <details class="mas"><summary>Tus derechos ARCO</summary><div class="mas-in"><p>Puedes ejercer tus derechos de acceso, rectificación, cancelación y oposición (ARCO) escribiendo a
       <a href="mailto:{{CORREO_PRIVACIDAD}}">{{CORREO_PRIVACIDAD}}</a>. Conservamos tus datos mientras dure la relación y por
-      los plazos que exija la ley. No vendemos tus datos a terceros.</p>
-  </div>
-</section>
-
-<!-- LIBRO DE RECLAMACIONES -->
-<section id="reclamaciones" class="legal">
-  <div class="wrap">
-    <h2 class="con-ic"><svg class='ic-svg' viewBox='0 0 24 24' width='40' height='40' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 6.5c-2-1.6-5-2-8.5-1.5v13c3.5-.5 6.5 0 8.5 1.5 2-1.5 5-2 8.5-1.5v-13C17 4.5 14 4.9 12 6.5z'/><path d='M12 6.5v13'/></svg>Libro de Reclamaciones</h2>
-    <p class="sub">Conforme al Código de Protección y Defensa del Consumidor (Ley N.° 29571) y el D.S. 011-2011-PCM.
-      Registra aquí tu reclamo o queja; recibirás un número de registro y te responderemos en un plazo máximo de
-      <b>15 días hábiles</b>. También puedes abrirlo en su <a href="/libro-de-reclamaciones"><b>página propia</b></a>, con
-      los datos del proveedor y copia imprimible de tu hoja.</p>
-
-    <form id="lr-form" novalidate>
+      los plazos que exija la ley. No vendemos tus datos a terceros.</p></div></details>
+        <a class="lg-link" href="/legal/privacidad">Ver la política completa ›</a>
+      </article>
+      <article id="reclamaciones" class="lg-card lg-libro">
+        <div class="lg-ic rojo"><svg class='ic-svg' viewBox='0 0 24 24' width='26' height='26' fill='none' stroke='currentColor' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M12 6.5c-2-1.6-5-2-8.5-1.5v13c3.5-.5 6.5 0 8.5 1.5 2-1.5 5-2 8.5-1.5v-13C17 4.5 14 4.9 12 6.5z'/><path d='M12 6.5v13'/></svg></div>
+        <h3>Libro de Reclamaciones</h3>
+        <p>Conforme a la Ley N.° 29571 y el D.S. 011-2011-PCM. Registra tu reclamo o queja aquí mismo: recibes un número de hoja al instante y te respondemos en un máximo de <b>15 días hábiles</b>.</p>
+        <details class="mas lr-desp"><summary class="cta chico">Registrar un reclamo o queja</summary><div class="mas-in"><form id="lr-form" novalidate>
       <h3>1. Identificación del consumidor reclamante</h3>
       <div class="row">
         <div><label for="c_nombre">Nombre completo *</label><input id="c_nombre" name="c_nombre" required /></div>
@@ -539,7 +470,36 @@
         <p><b>No pudimos registrar tu reclamo.</b> Inténtalo de nuevo en unos minutos o escríbenos a
           <a href="mailto:{{CORREO}}">{{CORREO}}</a> y lo registramos por ti.</p>
       </div>
-    </form>
+    </form></div></details>
+        <a class="lg-link" href="/libro-de-reclamaciones">Abrir el Libro en su página (con copia imprimible) ›</a>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- CONTACTO -->
+<section id="contacto" class="banda-gris">
+  <div class="wrap">
+    <h2>Contacto</h2>
+    <p class="sub">Estamos para ayudarte con tus reservas y pagos.</p>
+    <div class="contact-grid">
+      <div class="card info">
+        <ul>
+          <li><span class="k">Empresa</span> <span>{{EMPRESA}} (marca <b>{{MARCA}}</b>)</span></li>
+          <li><span class="k">{{DOC_ETIQUETA}}</span> <span>{{RUC}}</span></li>
+          <li><span class="k">Dirección</span> <span>{{DIRECCION}}</span></li>
+          <li><span class="k">WhatsApp</span> <span style="line-height:1.9">{{WHATSAPP_LISTA}}</span></li>
+          <li><span class="k">Correo</span> <span><a href="mailto:{{CORREO}}">{{CORREO}}</a></span></li>
+          <li><span class="k">Horario</span> <span>{{HORARIO}}</span></li>
+        </ul>
+      </div>
+      <div class="card tienes-cancha">
+        <h3>¿Tienes una cancha?</h3>
+        <p>Publícala en {{MARCA}} y recibe reservas. Escríbenos por WhatsApp
+          y te ayudamos a registrarla.</p>
+        <p style="margin-top:14px">{{WA_BOTONES}}</p>
+      </div>
+    </div>
   </div>
 </section>
 
