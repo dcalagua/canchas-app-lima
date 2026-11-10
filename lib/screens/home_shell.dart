@@ -1,48 +1,126 @@
 import 'package:flutter/material.dart';
 
-import 'agenda_screen.dart';
+import '../theme.dart';
+import '../widgets/barra_nav_scroll.dart';
+import '../widgets/icono_chat_pichan.dart';
+import '../widgets/menu_lateral_scroll.dart';
+import 'bodega_screen.dart';
+import 'clientes_screen.dart';
 import 'cuenta_screen.dart';
-import 'disponibilidad_screen.dart';
-import 'reportes_screen.dart';
-import 'reservas_screen.dart';
+import 'mensajes_screen.dart';
+import 'mis_canchas_screen.dart';
+import 'reportes_hub_screen.dart';
+import 'reservas_hub_screen.dart';
 
+/// Panel del DUEÑO unificado: un solo lugar con TODO lo del dueño en pestañas,
+/// con el mismo estilo premium. "Mis canchas" (reales) es la pestaña principal.
+/// (Las "Novedades"/historias se abren desde el ícono de aro en la cabecera de
+/// Mensajes, para no recargar la barra/rail.)
 class HomeShell extends StatefulWidget {
-  const HomeShell({super.key});
+  const HomeShell({super.key, this.initialIndex = 0});
+
+  /// Pestaña inicial (0 = Mis canchas).
+  final int initialIndex;
 
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
 
 class _HomeShellState extends State<HomeShell> {
-  int _index = 0;
+  late int _index = widget.initialIndex;
 
+  // Cuenta/Saldo (modelo inDrive): recarga real con Culqi (Yape/tarjeta).
   static const _paginas = <Widget>[
-    AgendaScreen(),
-    DisponibilidadScreen(),
-    ReservasScreen(),
-    ReportesScreen(),
-    CuentaScreen(),
+    MisCanchasScreen(),     // tus canchas reales (editar precio/horarios/servicios)
+    ReservasHubScreen(),    // Reservas: conmutador Lista (cobros) + Calendario (agenda)
+    ClientesScreen(),       // base de clientes (CRM ligero, derivado de reservas)
+    BodegaScreen(),         // MI BODEGA: POS ligero + stock (función Pro)
+    MensajesScreen(),       // chat con clientes (inbox del dueño/profe)
+    ReportesHubScreen(),    // Reportes: pestañas Resumen + Cobros (unificado)
+    CuentaScreen(),         // BILLETERA: saldo único + recargar + por recibir
   ];
+
+  // Íconos/etiquetas de las secciones (compartidos por barra inferior y rail).
+  static const _iconos = <IconData>[
+    Icons.sports_soccer,
+    Icons.event_note,
+    Icons.groups,
+    Icons.storefront,
+    Icons.chat_bubble,
+    Icons.bar_chart,
+    Icons.account_balance_wallet,
+  ];
+  static const _etiquetas = <String>[
+    'Canchas',
+    'Reservas',
+    'Clientes',
+    'Bodega',
+    'Mensajes',
+    'Reportes',
+    'Billetera',
+  ];
+  // Color "con vida" (Airbnb) por sección; el ícono va coloreado en el menú.
+  static const _colores = <Color>[
+    lima,               // Canchas
+    naranja,            // Reservas (Lista + Calendario)
+    morado,             // Clientes
+    coral,              // Bodega (POS ligero, función Pro)
+    lima,               // Mensajes (se ignora: va el logo Pichangol)
+    teal,               // Reportes
+    amarillo,           // Billetera
+  ];
+  // Índice de la pestaña Mensajes → usa el ícono de chat con "P" (marca Pichan).
+  static const _iMensajes = 4;
 
   @override
   Widget build(BuildContext context) {
+    final body = IndexedStack(index: _index, children: _paginas);
+    // Tablet / horizontal: navegación LATERAL (NavigationRail), como un panel de
+    // control cómodo en pantalla ancha. Móvil / vertical: barra inferior.
+    final tablet = MediaQuery.of(context).size.width >= 720;
+    if (tablet) {
+      return Scaffold(
+        body: SafeArea(
+          child: Row(
+            children: [
+              MenuLateralScroll(
+                rail: NavigationRail(
+                  selectedIndex: _index,
+                  onDestinationSelected: (i) => setState(() => _index = i),
+                  labelType: NavigationRailLabelType.all,
+                  groupAlignment: -0.85,
+                  destinations: [
+                    for (var i = 0; i < _iconos.length; i++)
+                      NavigationRailDestination(
+                        icon: i == _iMensajes
+                            ? IconoMensajesLogo(
+                                activo: _index == _iMensajes,
+                                color: _colores[i])
+                            : Icon(_iconos[i], color: _colores[i]),
+                        label: Text(_etiquetas[i]),
+                      ),
+                  ],
+                ),
+              ),
+              const VerticalDivider(width: 1),
+              Expanded(child: body),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
-      body: IndexedStack(index: _index, children: _paginas),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: const [
-          NavigationDestination(
-              icon: Icon(Icons.calendar_month), label: 'Agenda'),
-          NavigationDestination(
-              icon: Icon(Icons.schedule), label: 'Horarios'),
-          NavigationDestination(
-              icon: Icon(Icons.list_alt), label: 'Reservas'),
-          NavigationDestination(
-              icon: Icon(Icons.bar_chart), label: 'Reportes'),
-          NavigationDestination(
-              icon: Icon(Icons.account_balance_wallet), label: 'Cuenta'),
-        ],
+      body: body,
+      // Barra inferior con SCROLL horizontal: 7 secciones no caben en una
+      // `NavigationBar` fija (partía las etiquetas, "Cancha\ns"); ahora se
+      // desliza y cada etiqueta va en una sola línea.
+      bottomNavigationBar: BarraNavScroll(
+        iconos: _iconos,
+        etiquetas: _etiquetas,
+        colores: _colores,
+        iMensajes: _iMensajes,
+        activo: _index,
+        onTap: (i) => setState(() => _index = i),
       ),
     );
   }

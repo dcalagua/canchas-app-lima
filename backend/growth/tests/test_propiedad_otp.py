@@ -29,7 +29,9 @@ def test_otp_confirma_propiedad_sin_telefono_publico():
 
     out = prop.confirmar("c1", cod, "dueno@correo.com")
     assert out["ok"] and out["estado"] == "confirmada"
-    assert stores.cancha("c1").verificada is True
+    # Desde el 1-oct-2026 el OTP es EVIDENCIA: no activa la cancha por defecto.
+    assert out["verificada"] is False
+    assert stores.cancha("c1").verificada is False
     # No-retención: el OTP se borró tras usarse.
     assert "c1" not in stores.otps
 
@@ -100,3 +102,37 @@ def test_canal_twilio_whatsapp_cuando_meta_no_y_es_preferido(monkeypatch):
 
     r = prop.solicitar("c8", "987654321")
     assert r["ok"] and r["via"] == "twilio_whatsapp"
+
+
+def test_otp_del_app_no_activa_y_queda_como_evidencia_en_el_reclamo(monkeypatch):
+    """APK (`POST /propiedad/otp/confirmar`): igual que la web, el código del
+    WhatsApp del local NO activa la cancha; se suma al reclamo abierto y avisa
+    al admin. Responde `pendiente_revision` para que un APK viejo no se
+    auto-verifique en local."""
+    from fastapi.testclient import TestClient
+    import main
+    from propiedad import reclamos
+
+    avisos = []
+    monkeypatch.setattr(reclamos, "_notificar_admin", lambda t: avisos.append(t))
+    monkeypatch.setattr(config, "APP_API_KEY", "", raising=False)
+    r = reclamos.crear_reclamo(
+        cancha_id="c9", nombre_local="Club Prueba", solicitante_id="dueno@correo.com",
+        telefono_contacto="987654321")
+    cli = TestClient(main.app)
+    cod = prop.solicitar("c9", "51987654321")["codigo_debug"]
+    out = cli.post("/propiedad/otp/confirmar", json={
+        "cancha_id": "c9", "codigo": cod, "solicitante_id": "dueno@correo.com"}).json()
+    assert out["ok"] and out["estado"] == "pendiente_revision"
+    assert out["verificada"] is False and out["codigo_confirmado"] is True
+    assert stores.cancha("c9").verificada is False
+    rec = [x for x in stores.reclamos if x.cancha_id == "c9"][-1]
+    assert rec.estado in reclamos._RECLAMO_ABIERTO
+    assert out["en_reclamo"] is True
+    assert "confirmado por código (app)" in (rec.nota_reclamante or "")
+    assert avisos and "APROBAR" in avisos[-1]
+    # Código incorrecto sigue respondiendo el error tal cual.
+    prop.solicitar("c9", "51987654321")
+    mal = cli.post("/propiedad/otp/confirmar", json={
+        "cancha_id": "c9", "codigo": "000000", "solicitante_id": "dueno@correo.com"}).json()
+    assert not mal["ok"] and mal["error"] == "codigo_incorrecto"

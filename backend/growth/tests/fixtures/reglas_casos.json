@@ -1,0 +1,230 @@
+[
+ {
+  "nombre": "sin reglas (lunes)",
+  "fecha": "2026-11-02",
+  "reglas": {},
+  "slots": [
+   "07:00",
+   "08:00",
+   "09:00",
+   "10:00",
+   "11:00",
+   "12:00",
+   "13:00",
+   "14:00",
+   "15:00",
+   "16:00",
+   "17:00",
+   "18:00",
+   "19:00",
+   "20:00",
+   "21:00",
+   "22:00",
+   "23:00"
+  ],
+  "precios": {
+   "10:00": 30,
+   "18:00": 60
+  }
+ },
+ {
+  "nombre": "sabado con horario propio",
+  "fecha": "2026-11-07",
+  "reglas": {
+   "horario_semana": {
+    "sab": {
+     "apertura": "09:00",
+     "cierre": "13:00"
+    }
+   }
+  },
+  "slots": [
+   "09:00",
+   "10:00",
+   "11:00",
+   "12:00",
+   "13:00"
+  ],
+  "precios": {
+   "09:00": 30,
+   "13:00": 60
+  }
+ },
+ {
+  "nombre": "domingo cerrado",
+  "fecha": "2026-11-08",
+  "reglas": {
+   "horario_semana": {
+    "dom": null
+   }
+  },
+  "slots": []
+ },
+ {
+  "nombre": "cierre especial",
+  "fecha": "2026-11-02",
+  "reglas": {
+   "cierres": [
+    {
+     "fecha": "2026-11-02",
+     "motivo": "Feriado"
+    }
+   ]
+  },
+  "slots": []
+ },
+ {
+  "nombre": "franja punta entre semana",
+  "fecha": "2026-11-02",
+  "reglas": {
+   "franjas": [
+    {
+     "dias": [
+      "lun",
+      "mar",
+      "mie",
+      "jue",
+      "vie"
+     ],
+     "desde": "18:00",
+     "hasta": "23:59",
+     "precio_hora": 100
+    }
+   ]
+  },
+  "slots": [
+   "07:00",
+   "08:00",
+   "09:00",
+   "10:00",
+   "11:00",
+   "12:00",
+   "13:00",
+   "14:00",
+   "15:00",
+   "16:00",
+   "17:00",
+   "18:00",
+   "19:00",
+   "20:00",
+   "21:00",
+   "22:00",
+   "23:00"
+  ],
+  "precios": {
+   "18:00": 100,
+   "23:00": 100,
+   "10:00": 30,
+   "17:00": 60
+  }
+ },
+ {
+  "nombre": "franja por turno fin de semana",
+  "fecha": "2026-11-07",
+  "reglas": {
+   "franjas": [
+    {
+     "dias": [
+      "sab",
+      "dom"
+     ],
+     "desde": "07:00",
+     "hasta": "23:59",
+     "precio_turno": 90
+    }
+   ]
+  },
+  "precios": {
+   "08:00": 90,
+   "20:00": 90
+  }
+ },
+ {
+  "nombre": "recargo de luz",
+  "fecha": "2026-11-02",
+  "reglas": {
+   "recargo_luz": {
+    "desde": "18:30",
+    "monto": 10
+   }
+  },
+  "precios": {
+   "18:00": 60,
+   "19:00": 70,
+   "23:00": 70
+  }
+ },
+ {
+  "nombre": "turno de 90 min con franja",
+  "fecha": "2026-11-02",
+  "cancha": {
+   "duracion_slot_min": 90
+  },
+  "reglas": {
+   "franjas": [
+    {
+     "dias": [
+      "lun"
+     ],
+     "desde": "19:00",
+     "hasta": "23:59",
+     "precio_hora": 100
+    }
+   ]
+  },
+  "slots": [
+   "07:00",
+   "08:30",
+   "10:00",
+   "11:30",
+   "13:00",
+   "14:30",
+   "16:00",
+   "17:30",
+   "19:00",
+   "20:30",
+   "22:00"
+  ],
+  "precios": {
+   "19:00": 150,
+   "10:00": 45,
+   "17:30": 90
+  }
+ },
+ {
+  "nombre": "madrugada usa la franja del dia siguiente",
+  "fecha": "2026-11-06",
+  "cancha": {
+   "hora_apertura": "18:00",
+   "hora_cierre": "02:00",
+   "descuento_valle": 0
+  },
+  "reglas": {
+   "franjas": [
+    {
+     "dias": [
+      "sab"
+     ],
+     "desde": "00:00",
+     "hasta": "03:00",
+     "precio_hora": 200
+    }
+   ]
+  },
+  "slots": [
+   "18:00",
+   "19:00",
+   "20:00",
+   "21:00",
+   "22:00",
+   "23:00",
+   "00:00",
+   "01:00",
+   "02:00"
+  ],
+  "precios": {
+   "01:00": 200,
+   "20:00": 60
+  }
+ }
+]

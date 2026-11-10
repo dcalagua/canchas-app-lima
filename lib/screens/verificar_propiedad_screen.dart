@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
+import '../config/pais.dart';
 import '../models/models.dart';
 import '../services/propiedad_service.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
+import '../widgets/cargando_pichangol.dart';
+import '../widgets/icono_vivo.dart';
 
 /// Verifica la **PROPIEDAD** de una cancha por OTP de WhatsApp: el código llega
 /// al teléfono del local. Probar que controlas ese teléfono es lo que te habilita
@@ -37,18 +40,29 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
 
   Future<void> _solicitar() async {
     final tel = _telefono.text.trim();
-    if (tel.length < 9) {
-      setState(() => _msg = 'Ingresa el teléfono del local (9 dígitos).');
+    final n = paisActual.telLongitud;
+    // Cuenta solo dígitos (el usuario puede escribir espacios/guiones).
+    if (tel.replaceAll(RegExp(r'[^0-9]'), '').length < n) {
+      setState(() => _msg = 'Ingresa el teléfono del local ($n dígitos).');
       return;
     }
     setState(() {
       _enviando = true;
       _msg = null;
     });
-    final r = await PropiedadService.solicitarOtp(
-        canchaId: widget.cancha.id, telefono: tel);
+    Map<String, dynamic>? res;
+    try {
+      res = await conPreload(
+          context,
+          () => PropiedadService.solicitarOtp(
+              canchaId: widget.cancha.id, telefono: tel),
+          texto: 'Enviando código…');
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
     if (!mounted) return;
-    setState(() => _enviando = false);
+    // Copia a un final: Dart no promueve una variable asignada dentro de `try`.
+    final r = res;
 
     if (r == null) {
       setState(() => _msg =
@@ -83,33 +97,38 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
       _enviando = true;
       _msg = null;
     });
-    final r = await PropiedadService.confirmarOtp(
-      canchaId: widget.cancha.id,
-      codigo: cod,
-      solicitanteId: email,
-    );
+    Map<String, dynamic>? res;
+    try {
+      res = await conPreload(
+          context,
+          () => PropiedadService.confirmarOtp(
+                canchaId: widget.cancha.id,
+                codigo: cod,
+                solicitanteId: email,
+              ),
+          texto: 'Verificando…');
+    } finally {
+      if (mounted) setState(() => _enviando = false);
+    }
     if (!mounted) return;
-    setState(() => _enviando = false);
+    // Copia a un final: Dart no promueve una variable asignada dentro de `try`.
+    final r = res;
 
     if (r == null) {
       setState(() => _msg = 'No se pudo confirmar. Revisa tu conexión.');
       return;
     }
-    if (r['ok'] == true && r['estado'] == 'confirmada') {
-      // La propiedad quedó probada: habilita la cancha localmente también.
-      appState.confirmarPropiedad(widget.cancha.id,
-          via: 'otp_whatsapp', dueno: email);
-      Navigator.of(context).pop(true);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        backgroundColor: bosque,
-        content: Text('✅ Propiedad verificada. Tu cancha ya acepta reservas.',
-            style: TextStyle(color: Colors.white)),
-      ));
-    } else if (r['ok'] == true && r['estado'] == 'pendiente_revision') {
+    if (r['ok'] == true) {
+      // El código SOLO prueba que controlas el WhatsApp del local (1-oct-2026,
+      // igual que la web): NUNCA activa la cancha en el teléfono. Queda como
+      // evidencia en tu solicitud y el equipo la aprueba desde la torre; la
+      // activación llega por [AppState.sincronizarPropiedades].
       Navigator.of(context).pop(false);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        backgroundColor: lima,
         content: Text(
-            'Código correcto. Como el número no coincide con el del local, lo revisará nuestro equipo.'),
+            '✅ WhatsApp confirmado. Lo sumamos a tu solicitud para que el equipo la apruebe más rápido.',
+            style: TextStyle(color: Colors.white)),
       ));
     } else {
       final err = r['error'];
@@ -124,8 +143,8 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
   @override
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: papel,
       appBar: const _AppBar(),
       body: ListView(
         padding: const EdgeInsets.all(20),
@@ -135,8 +154,8 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
           const SizedBox(height: 8),
           Text(
               'Te enviaremos un código por WhatsApp o SMS al teléfono del local. '
-              'Solo quien lo recibe puede activar la cancha para recibir reservas.',
-              style: t.bodyMedium?.copyWith(color: textoTenue)),
+              'Confirmarlo acelera la revisión de tu solicitud; la cancha se activa cuando el equipo la aprueba.',
+              style: t.bodyMedium?.copyWith(color: textoTenueDe(context))),
           if (!PropiedadService.disponible) ...[
             const SizedBox(height: 16),
             Container(
@@ -176,10 +195,8 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
                 style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 15)),
                 onPressed: _enviando ? null : _solicitar,
-                icon: _enviando
-                    ? const _Spin()
-                    : const Icon(Icons.send_to_mobile),
-                label: Text(_enviando ? 'Enviando…' : 'Enviar código'),
+                icon: const Icon(Icons.send_to_mobile),
+                label: const Text('Enviar código'),
               ),
             ),
           if (_otpEnviado) ...[
@@ -191,7 +208,7 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
                         ? 'Modo prueba (envío real aún no configurado).'
                         : 'Código enviado a $_telefonoEnmascarado'
                             ' por ${_via == 'sms' ? 'SMS' : 'WhatsApp'}.',
-                    style: t.bodySmall?.copyWith(color: textoTenue)),
+                    style: t.bodySmall?.copyWith(color: textoTenueDe(context))),
               ),
             TextField(
               controller: _codigo,
@@ -199,7 +216,7 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
               maxLength: 6,
               decoration: const InputDecoration(
                 labelText: 'Código de 6 dígitos',
-                prefixIcon: Icon(Icons.lock_outline),
+                prefixIcon: IconoVivo(Icons.lock_outline),
               ),
             ),
             const SizedBox(height: 6),
@@ -209,8 +226,8 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
                 style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 15)),
                 onPressed: _enviando ? null : _confirmar,
-                icon: _enviando ? const _Spin() : const Icon(Icons.verified),
-                label: Text(_enviando ? 'Verificando…' : 'Verificar propiedad'),
+                icon: const Icon(Icons.verified),
+                label: const Text('Verificar propiedad'),
               ),
             ),
             const SizedBox(height: 6),
@@ -223,14 +240,14 @@ class _VerificarPropiedadScreenState extends State<VerificarPropiedadScreen> {
             const SizedBox(height: 12),
             Text(_msg!,
                 style: TextStyle(
-                    color: _msg!.startsWith('✅') ? bosque : clayOscuro,
+                    color: _msg!.startsWith('✅') ? cs.primary : clayOscuro,
                     fontWeight: FontWeight.w600)),
           ],
           const SizedBox(height: 24),
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-                color: const Color(0xFFEAF6C2),
+                color: limaSuave,
                 borderRadius: BorderRadius.circular(12)),
             child: Text(
               '¿No tienes acceso al teléfono del local? También puedes verificar '
@@ -251,13 +268,4 @@ class _AppBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) =>
       AppBar(title: const Text('Verificar propiedad'));
-}
-
-class _Spin extends StatelessWidget {
-  const _Spin();
-  @override
-  Widget build(BuildContext context) => const SizedBox(
-      width: 18,
-      height: 18,
-      child: CircularProgressIndicator(strokeWidth: 2, color: lima));
 }
