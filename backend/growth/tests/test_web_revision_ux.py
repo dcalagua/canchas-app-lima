@@ -36,7 +36,7 @@ def test_entrar_dice_para_que_es(db, monkeypatch):
 
 def test_explorador_limita_las_canchas_de_google_con_ver_mas(db):
     html = client.get("/").text
-    assert "id='btnDescMas'" in html and "DESC_MAX = 8" in html
+    assert "id='btnDescMas'" in html and "DESC_MAX = 6" in html
 
 
 def test_cache_de_canchas_publicas_y_se_borra_al_escribir(monkeypatch):

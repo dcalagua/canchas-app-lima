@@ -1456,7 +1456,10 @@ function sumar(lista){ var nuevos = 0; (lista || []).forEach(function(m){ if(vis
 // abajo, se queda abajo (último mensaje siempre visible), como WhatsApp.
 function medir(){ var R = document.documentElement.style, cab = document.querySelector('header.nav'), vv = window.visualViewport;
   var abajo = caja.scrollHeight - caja.scrollTop - caja.clientHeight < 120;
-  R.setProperty('--cab-h', ((cab && cab.offsetHeight) || 0) + 'px');
+  // Rediseño azul: el <header> es display:contents (solo la barra azul queda fija) → se suman sus franjas visibles.
+  var alto = (cab && cab.offsetHeight) || 0;
+  if(!alto && cab) Array.prototype.forEach.call(cab.children, function(h){ if(h.offsetParent !== null) alto += h.offsetHeight; });
+  R.setProperty('--cab-h', alto + 'px');
   if(vv && window.innerWidth < 900){ R.setProperty('--mj-vh', Math.round(vv.height) + 'px'); R.setProperty('--mj-top', Math.round(vv.offsetTop) + 'px'); }
   else { R.removeProperty('--mj-vh'); R.removeProperty('--mj-top'); }
   if(abajo) caja.scrollTop = caja.scrollHeight; }

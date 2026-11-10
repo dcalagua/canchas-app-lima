@@ -371,22 +371,22 @@ _CSS = """
 .bil-nav::-webkit-scrollbar{display:none}
 .bil-nav a{flex:none;border:1px solid #E4E4E4;background:#fff;border-radius:999px;padding:8px 14px;font-weight:700;font-size:14px;color:var(--noche);text-decoration:none;box-shadow:0 1px 3px rgba(0,0,0,.06);white-space:nowrap}
 .bil-nav a.sel{background:#EBEBEB;border-color:#D6D6D6}
-.bil-saldo{background:linear-gradient(135deg,#128C7E,#075E54);color:#fff;border-radius:22px;padding:22px;box-shadow:0 8px 18px rgba(7,94,84,.35)}
+.bil-saldo{background:linear-gradient(135deg,#3056ED,#2442C4);color:#fff;border-radius:22px;padding:22px;box-shadow:0 8px 18px rgba(36,66,196,.35)}
 .bil-saldo .top{display:flex;align-items:center;gap:10px}
 .bil-saldo .top span{opacity:.8;font-size:15px}
 .bil-saldo .pill{margin-left:auto;background:rgba(255,255,255,.16);color:#fff;border-radius:99px;padding:5px 10px;font-size:12px;font-weight:800;white-space:nowrap}
 .bil-saldo .monto{font-size:38px;font-weight:800;margin:14px 0 4px;overflow-wrap:anywhere}
 .bil-saldo .txt{opacity:.7;font-size:13px;line-height:1.4}
-.bil-saldo .btn{width:100%;margin-top:18px;background:#fff;color:#0B7A57}
+.bil-saldo .btn{width:100%;margin-top:18px;background:#fff;color:#3056ED}
 .bil-card{border-radius:16px;padding:14px;display:flex;gap:10px;align-items:center;margin-top:12px;border:1px solid var(--trazo);background:#fff;color:inherit;text-decoration:none;min-width:0}
 .bil-card .em{font-size:22px;flex:none}
 .bil-card .tx{flex:1;min-width:0;font-size:13.5px;line-height:1.35}
 .bil-card .tx b{display:block;font-size:14.5px}
 .bil-card .val{font-weight:800;font-size:17px;white-space:nowrap}
-.bil-card.regalo{background:#EEF8E4;border-color:#7CB518;color:#14463A;font-weight:600}
+.bil-card.regalo{background:#EEF1FF;border-color:#7E98FF;color:#2442C4;font-weight:600}
 .bil-card.bajo{background:#FFF1EC;border-color:#F3B8A5;color:#8F2A10}
 .bil-card.recibir{background:#E6F4EA;border-color:#9ED2B0}
-.bil-card.recibir .val{color:#08654A}
+.bil-card.recibir .val{color:#2442C4}
 .bil-card.warn{background:var(--warn-bg);border-color:#EAD28F;color:var(--warn-fg)}
 .bil-card.promo{background:linear-gradient(90deg,#FFF6D8,#FFEFC2);border-color:#E8D9A0;color:#7A5C00;font-weight:800}
 .bil-acc{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:18px 0 6px}
@@ -395,7 +395,7 @@ _CSS = """
 .bil-acc small{font-size:12px;font-weight:700;text-align:center;line-height:1.15}
 .bil-acc .ins{position:absolute;top:0;left:calc(50% + 12px);background:#B08908;color:#fff;border:1.5px solid #fff;border-radius:99px;font-size:12px;font-weight:800;padding:2px 6px}
 .bil-cupon{margin:6px 0 4px;text-align:center}
-.bil-cupon summary{display:inline-block;cursor:pointer;color:#14463A;font-weight:700;list-style:none;padding:8px}
+.bil-cupon summary{display:inline-block;cursor:pointer;color:#2442C4;font-weight:700;list-style:none;padding:8px}
 .bil-cupon summary::-webkit-details-marker{display:none}
 .bil-cupon form{display:flex;gap:8px;max-width:420px;margin:6px auto 0}
 .bil-cupon input{flex:1;min-width:0;text-transform:uppercase;letter-spacing:1px}
@@ -437,13 +437,13 @@ _CSS = """
 .pag-res{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;background:#F4F7F5;border-radius:14px;padding:12px;margin:10px 0}
 .pag-res small{display:block;color:var(--tenue);font-size:12px}
 .pag-res b{font-size:15px;overflow-wrap:anywhere}
-.pts-top{background:#14463A;color:#fff;border-radius:18px;padding:20px;text-align:center}
+.pts-top{background:#2442C4;color:#fff;border-radius:18px;padding:20px;text-align:center}
 .pts-top .t{opacity:.75;font-weight:700;font-size:13px}
 .pts-top .n{font-size:44px;font-weight:900;line-height:1.1;margin:6px 0}
 .pts-top .v{font-size:14px}
 .pts-top .c{opacity:.75;font-size:12.5px;margin-top:4px}
 .pts-pend{background:#FBEAD2;color:#8A5A00;border-radius:12px;padding:10px 12px;font-weight:700;font-size:13px;margin-top:10px;line-height:1.35}
-.pts-como{background:#EEF8E4;border-radius:14px;padding:14px;margin-top:14px;font-size:13px;line-height:1.55}
+.pts-como{background:#EEF1FF;border-radius:14px;padding:14px;margin-top:14px;font-size:13px;line-height:1.55}
 .pts-como b{font-size:14px}
 .pts-como summary{cursor:pointer;list-style:none;min-height:32px;display:flex;align-items:center}.pts-como summary::after{content:'⌄';margin-left:auto;font-size:18px}
 .pts-como[open] summary{margin-bottom:6px}
@@ -452,7 +452,7 @@ _CSS = """
 .pts-it .tx{flex:1;min-width:0}
 .pts-it .tx b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pts-it .tx small{color:var(--tenue);font-size:12px}
-.pts-it .n{font-weight:900;font-size:15px;color:#14463A;white-space:nowrap}
+.pts-it .n{font-weight:900;font-size:15px;color:#2442C4;white-space:nowrap}
 .pts-it .n.gris{color:var(--tenue)}.pts-it .n.rojo{color:#C0392B}
 .pais-actual{display:flex;align-items:center;gap:14px;background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px}
 .pais-actual .flag{width:44px;height:30px;border-radius:5px;flex:none}
@@ -514,7 +514,7 @@ def _fila_mov(m: dict) -> str:
     rec = m["clase"] == "recarga"
     pagada = liq and m["liquidado"]
     con_recibo = liq and m["bruto"] > 0
-    color = "#7CB518" if rec else (("#0B7A57" if pagada else "#08654A") if liq else "#C13515")
+    color = "#7E98FF" if rec else (("#3056ED" if pagada else "#2442C4") if liq else "#C13515")
     ic = "⬇️" if rec else (("✅" if pagada else "👛") if liq else "⬆️")
     signo = "+" if (rec or liq) else "−"
     medio = f" · {_MEDIO[m['medio']]}" if m["medio"] in _MEDIO else ""
@@ -602,7 +602,7 @@ _JS_BILLETERA = (r"""
         Culqi.settings({title: '⟦MARCA⟧', currency: 'PEN', amount: Math.round(monto * 100)});
         Culqi.options({lang: 'es', installments: false,
           paymentMethods: {yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false},
-          style: {logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0B7A57', buttonText: 'Pagar', buttonTextColor: '#FFFFFF'}});
+          style: {logo: '', bannerColor: '#333333', buttonBackground: '#3056ED', buttonText: 'Pagar', buttonTextColor: '#FFFFFF'}});
         window.culqi = function(){
           if(Culqi.token){
             var token = Culqi.token.id, medio = (Culqi.token.iin && Culqi.token.iin.card_brand) ? 'tarjeta' : 'yape';
@@ -732,11 +732,11 @@ def pagina_billetera(request: Request) -> HTMLResponse:
     ins = f"<span class='ins'>{'999+' if puntos > 999 else puntos}</span>" if puntos > 0 else ""
     acciones = (
         "<div class='bil-acc'>"
-        "<a href='#recargar'><span class='bur' style='background:#7CB51824'>➕</span><small>Recargar</small></a>"
+        "<a href='#recargar'><span class='bur' style='background:#7E98FF24'>➕</span><small>Recargar</small></a>"
         "<a href='/cuenta/tarjetas'>"
-        "<span class='bur' style='background:#14463A1F'>💳</span><small>Tarjetas</small></a>"
+        "<span class='bur' style='background:#2442C41F'>💳</span><small>Tarjetas</small></a>"
         f"<a href='/mis-puntos'><span class='bur' style='background:#B089081F'>⭐</span>{ins}<small>Puntos</small></a>"
-        "<a href='/mi-billetera/estado-de-cuenta'><span class='bur' style='background:#08654A1F'>🧾</span><small>Estado<br>de cuenta</small></a>"
+        "<a href='/mi-billetera/estado-de-cuenta'><span class='bur' style='background:#2442C41F'>🧾</span><small>Estado<br>de cuenta</small></a>"
         "</div>")
     cupon = ("<details class='bil-cupon'><summary>🎟️ ¿Tienes un cupón? Canjéalo aquí</summary>"
              "<form id='formCupon' autocomplete='off'><input id='codCupon' maxlength='24' placeholder='CÓDIGO' aria-label='Código del cupón'>"
@@ -1017,13 +1017,13 @@ def _hoy() -> date:
 def _tarjeta_pago(p: dict) -> str:
     sim = p["moneda"]
     if p["estado"] == "bono":
-        color, ic, mt, sub = "#08654A", "🎟️", "Con bono", f"{p['sub']} · descontado de tu bono"
+        color, ic, mt, sub = "#2442C4", "🎟️", "Con bono", f"{p['sub']} · descontado de tu bono"
     elif p["estado"] == "pendiente":
         color, ic, mt, sub = "#C13515", "⏳", _dinero(sim, p["monto"]), f"{p['sub']} · por pagar en la cancha"
     elif p["estado"] == "pendiente_aca":
         color, ic, mt, sub = "#C13515", "⏳", _dinero(sim, p["monto"]), f"{p['sub']} · por pagar" if p["sub"] else "Por pagar"
     else:
-        color, ic, mt, sub = "#0B7A57", p.get("em") or "✅", f"− {_dinero(sim, p['monto'])}", p["sub"]
+        color, ic, mt, sub = "#3056ED", p.get("em") or "✅", f"− {_dinero(sim, p['monto'])}", p["sub"]
     inner = (f"<span class='ic' style='background:{color}1F'>{ic}</span><span class='tx'><b>{e(p['titulo'])}</b>"
              f"<small>{e(sub)}</small></span><span class='mt' style='color:{color}'>{e(mt)}"
              + ("<small>Comprobante ›</small>" if p["href"] and p["href"] != "/mi-billetera" else "") + "</span>")

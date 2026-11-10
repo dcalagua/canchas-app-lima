@@ -1464,7 +1464,7 @@ def test_academias_en_el_explorador_por_deporte_y_cercania(db, monkeypatch):
     monkeypatch.setattr(_st, "landings", {"ac_f1": {"nombre": "Escuela Golazo"}})
     cli = TestClient(app, base_url="https://testserver")
     home = cli.get("/").text
-    assert "id='academias'" in home and "🎓 Academias<" in home and "Academia Baseline" in home and "Escuela Golazo" in home and "Borrada" not in home
+    assert "id='academias'" in home and ">Academias<" in home and "Academia Baseline" in home and "Escuela Golazo" in home and "Borrada" not in home
     assert "data-id='ac:ac_t1'" in home and "class='lst aca'" in home and "S/ 250</b>" in home and "al mes desde" in home
     # "Ver academia" SOLO si el dueño generó su página (/l/{id} responde 404 si no);
     # si no, salen sus REDES con logo y enlace directo (pedido del director) y la
@@ -1480,7 +1480,7 @@ def test_academias_en_el_explorador_por_deporte_y_cercania(db, monkeypatch):
     # JS: las academias se ordenan por cercanía con las canchas, no entran en filtros de hora/precio y tienen pin propio.
     assert "'.grupo-pais, .grupo-aca'" in home and "c.classList.contains('aca')) return true" in home and "esAca ? 'Ver academia'" in home
     tenis = cli.get("/?deporte=tenis").text
-    assert "🎓 Academias de tenis" in tenis and "Academia Baseline" in tenis and "Escuela Golazo" not in tenis
+    assert ">Academias de tenis" in tenis and "Academia Baseline" in tenis and "Escuela Golazo" not in tenis
     assert "id='academias'" not in cli.get("/?deporte=padel").text
     # Descubiertas por deporte: la pestaña viaja al servidor y filtra.
     monkeypatch.setattr(descubrir, "descubrir_cerca", lambda *a, **k: [{"id": "gp_1", "nombre": "Cancha F", "deporte": "futbol", "lat": -12.0, "lng": -77.0, "direccion": ""},
@@ -1491,10 +1491,10 @@ def test_academias_en_el_explorador_por_deporte_y_cercania(db, monkeypatch):
     # Pestaña "🎓 Academias" en la cabecera (pedido del director, sep-2026:
     # "¿dónde busco academias?"): solo academias de TODOS los deportes, sin
     # canchas ni descubiertas; el buscador "Dónde" filtra por nombre.
-    assert "href='/canchas?deporte=academias' data-dep='academias'" in home and "🎓</span>Academias" in home
+    assert "href='/canchas?deporte=academias' data-dep='academias'" in home and "</svg></span>Academias" in home
     aca = cli.get("/?deporte=academias").text
     assert "class='cat sel' href='/canchas?deporte=academias'" in aca
-    assert "id='academias'" in aca and "🎓 Academias<" in aca and "Academia Baseline" in aca and "Escuela Golazo" in aca
+    assert "id='academias'" in aca and ">Academias<" in aca and "Academia Baseline" in aca and "Escuela Golazo" in aca
     assert "class='grupo-pais'" not in aca and "id='descubiertas'" not in aca and "Todavía no hay canchas" not in aca
     assert "No encontramos academias con" in aca and "if(C.dep === 'academias' || !$('descubiertas')) return;" in aca
     assert '"dep": "academias"' in aca and "Academias deportivas cerca de ti" in aca

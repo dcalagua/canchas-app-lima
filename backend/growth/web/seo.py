@@ -57,7 +57,7 @@ def manifest(request: Request) -> Response:
     from web import ui
     logo = ui._logo_url()
     m = {"name": MARCA, "short_name": MARCA, "start_url": "/?origen=app", "scope": "/", "display": "standalone",
-         "background_color": "#FFFFFF", "theme_color": "#0F1B2D", "lang": "es",
+         "background_color": "#FFFFFF", "theme_color": "#3056ED", "lang": "es",
          "description": "Reserva canchas, juega y paga en línea.",
          "icons": [{"src": logo, "sizes": "512x512", "type": "image/png", "purpose": "any"},
                    {"src": logo, "sizes": "192x192", "type": "image/png", "purpose": "any"}]}

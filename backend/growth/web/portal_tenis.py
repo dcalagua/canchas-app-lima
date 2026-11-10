@@ -68,15 +68,15 @@ def _tarjeta_torneo(c: dict) -> str:
 
 
 _CSS = """
-.tn-hero{background:linear-gradient(135deg,#0B7A57,#0A1B3D);color:#fff;border-radius:24px;padding:34px 28px;margin:18px 0 8px}
+.tn-hero{background:linear-gradient(135deg,#3056ED,#333333);color:#fff;border-radius:24px;padding:34px 28px;margin:18px 0 8px}
 .tn-hero h1{font-size:clamp(26px,5vw,40px);line-height:1.1;font-weight:800;margin:0;color:#fff}
 .tn-hero p{margin:10px 0 0;opacity:.92;font-size:16px;max-width:560px}
 .tn-acc{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
-.tn-acc a{display:inline-flex;align-items:center;min-height:44px;background:#fff;color:#0A1B3D;border-radius:999px;padding:10px 16px;font-weight:800;text-decoration:none;font-size:14px}
+.tn-acc a{display:inline-flex;align-items:center;min-height:44px;background:#fff;color:#333333;border-radius:999px;padding:10px 16px;font-weight:800;text-decoration:none;font-size:14px}
 .tn-acc a.sec{background:rgba(255,255,255,.14);color:#fff}
 .tn-sec{margin:28px 0 10px;display:flex;align-items:baseline;justify-content:space-between;gap:12px}
 .tn-sec h2{font-size:20px;margin:0}
-.tn-sec a{font-weight:700;color:var(--azul,#0A1B3D);font-size:14px}
+.tn-sec a{font-weight:700;color:var(--azul,#333333);font-size:14px}
 .tn-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(250px,100%),1fr));gap:14px}
 .tn-local,.tn-torneo,.tn-caja{display:flex;flex-direction:column;background:#fff;border-radius:18px;box-shadow:0 1px 8px rgba(0,0,0,.08);overflow:hidden;color:inherit;text-decoration:none;min-width:0}
 .tn-local img,.tn-sinfoto{width:100%;aspect-ratio:4/3;object-fit:cover;display:flex;align-items:center;justify-content:center;font-size:44px;background:#EEF4EF}

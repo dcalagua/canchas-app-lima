@@ -61,17 +61,17 @@ SECCIONES = [("hoy", "Hoy", "/anfitrion/mis-canchas", "📅"), ("calendario", "C
 # color, ícono, enlace, hecho_en_web).
 GRUPOS_MENU = [
     ("Mi club", [
-        ("mis-canchas", "Mis canchas", "Registra y administra: canchas, agenda, reservas, cuenta", "#0B7A57", "🏬", "/anfitrion/mis-canchas", True),
-        ("cobros-club", "Cobros del club", "Tu Culqi, tus medios de pago manuales y la comisión", "#0B7A57", "💸", "/anfitrion/cobros-club", True),
+        ("mis-canchas", "Mis canchas", "Registra y administra: canchas, agenda, reservas, cuenta", "#3056ED", "🏬", "/anfitrion/mis-canchas", True),
+        ("cobros-club", "Cobros del club", "Tu Culqi, tus medios de pago manuales y la comisión", "#3056ED", "💸", "/anfitrion/cobros-club", True),
         ("pagos-por-confirmar", "Pagos por confirmar", "Comprobantes de Yape, Plin o transferencia que debes revisar", "#946200", "🧾", "/anfitrion/pagos-por-confirmar", True),
         ("encargados", "Encargados", "Invita a tu recepción a operar el local: agenda, reservas y pagos", "#2F6FDE", "👥", "/anfitrion/encargados", True),
         ("reglas", "Reglas de reserva", "Horario por día, días cerrados, precios por franja y cancelación", "#2F6FDE", "⚙️", "/anfitrion/reglas", True),
-        ("disponibilidad", "Disponibilidad", "Abre o cierra turnos de tus canchas", "#7CB518", "🟢", "/anfitrion/disponibilidad", True),
-        ("fijas", "Reservas fijas", "Pensionados: el mismo día y hora, cada semana", "#08654A", "🔁", "/anfitrion/fijas", True),
+        ("disponibilidad", "Disponibilidad", "Abre o cierra turnos de tus canchas", "#7E98FF", "🟢", "/anfitrion/disponibilidad", True),
+        ("fijas", "Reservas fijas", "Pensionados: el mismo día y hora, cada semana", "#2442C4", "🔁", "/anfitrion/fijas", True),
     ]),
     ("Negocio", [
         ("reportes", "Reportes", "Resumen, ocupación, cobros y cancelaciones", "#2F6FDE", "📊", "/anfitrion/reportes", True),
-        ("caja", "Caja del día", "Cobrado, por cobrar y cierre de caja", "#0B7A57", "💵", "/anfitrion/caja", True),
+        ("caja", "Caja del día", "Cobrado, por cobrar y cierre de caja", "#3056ED", "💵", "/anfitrion/caja", True),
         ("clientes", "Clientes", "Tu base de clientes: frecuentes, VIP, en riesgo y deudores", "#7B61FF", "👥", "/anfitrion/clientes", True),
         ("llenar", "Llenar cancha", "Horas libres de hoy y mañana: ponles promo y avisa a tus clientes", "#F28C28", "📣", "/anfitrion/llenar", True),
         ("recordatorios", "Recordar reservas", "Avisa a tus clientes de hoy y mañana por chat o WhatsApp", "#2F6FDE", "🔔", "/anfitrion/recordatorios", True),
@@ -88,8 +88,8 @@ GRUPOS_MENU = [
         ("bodega", "Mi bodega", "Caja rápida, stock, pedidos a la cancha y carta con QR (Pro)", "#E07A3F", "🧃", "/anfitrion/bodega", True),
     ]),
     ("Roles", [
-        ("boleador", "Soy boleador", "Peloteo por turno: pon tu categoría, tu tarifa y dónde atiendes", "#0B7A57", "🎾", "/anfitrion/boleador", True),
-        ("verificador", "Verificador", "Rol de campo: visitas con foto, GPS y firma", "#0B7A57", "🛡️", "/anfitrion/verificador", True),
+        ("boleador", "Soy boleador", "Peloteo por turno: pon tu categoría, tu tarifa y dónde atiendes", "#3056ED", "🎾", "/anfitrion/boleador", True),
+        ("verificador", "Verificador", "Rol de campo: visitas con foto, GPS y firma", "#3056ED", "🛡️", "/anfitrion/verificador", True),
     ]),
 ]
 MENU = [it for _g, items in GRUPOS_MENU for it in items]
@@ -558,7 +558,7 @@ def pagina_calendario(request: Request, cancha: str = "", desde: str = "") -> HT
  <div class='modal-pie'><button type='button' class='limpiar' id='calNo'>Cerrar</button><button type='button' class='btn' id='calSi'>Guardar</button></div>
 </div></div>"""
     cuerpo = (
-        "<h1 class='anf-hola'>Calendario</h1><p class='sub'>Semana por cancha: verde = reserva pagada, ámbar = cobrar en la cancha, gris = bloqueado. "
+        "<h1 class='anf-hola'>Calendario</h1><p class='sub'>Semana por cancha: celeste = reserva pagada, ámbar = cobrar en la cancha, gris = bloqueado. "
         "<b>Toca un turno</b> para registrar una reserva manual, bloquearlo o marcar el pago.</p>"
         f"<div class='chips' style='margin-top:12px'>{chips}</div>"
         f"<div class='cal-nav2'><a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}&desde={ant}'>‹ Semana anterior</a>"
@@ -1710,7 +1710,7 @@ _JS_PIN = r"""
   if(!el || !window.L || lat0 == null || lng0 == null){ if(el) el.style.display = 'none'; return; }
   var mapa = L.map(el).setView([lat0, lng0], 17);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 19, attribution: '© OpenStreetMap'}).addTo(mapa);
-  L.circle([lat0, lng0], {radius: MAX, color: '#0B7A57', weight: 1, fillOpacity: .05}).addTo(mapa);
+  L.circle([lat0, lng0], {radius: MAX, color: '#3056ED', weight: 1, fillOpacity: .05}).addTo(mapa);
   var pin = L.marker([lat0, lng0], {draggable: true, keyboard: true, title: 'Ubicación del local'}).addTo(mapa);
   pin.on('dragend', function(){
     var p = pin.getLatLng(), d = mapa.distance([lat0, lng0], p), t = document.getElementById('pinTxt');

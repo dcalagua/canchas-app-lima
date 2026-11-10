@@ -57,25 +57,42 @@ CONTACTO = _Contacto()
 VIGENCIA = "29 de agosto de 2026"
 
 _ESTILO = """
+<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>
+<link href='https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,700;9..40,800&display=swap' rel='stylesheet'>
 <style>
- :root{--verde:#14463A;--lima:#128C7E;--tinte:#E3F2EF;--tx:#222;--mut:#666}
+ /* Rediseño azul (nov-2026): mismos colores que web/ui.py */
+ :root{--azul:#3056ED;--azul-osc:#2442C4;--tinte:#E3E8FF;--tx:#333333;--mut:#5E6573}
  *{box-sizing:border-box}
- body{margin:0;font-family:system-ui,Segoe UI,Roboto,-apple-system,sans-serif;
-   color:var(--tx);line-height:1.6;background:#F7F9F7}
+ body{margin:0;font-family:"DM Sans",system-ui,Segoe UI,Roboto,-apple-system,sans-serif;
+   color:var(--tx);line-height:1.6;background:#FFFFFF}
  .wrap{max-width:760px;margin:0 auto;padding:28px 20px 60px}
- header{background:var(--verde);color:#fff;padding:26px 20px;border-radius:0 0 18px 18px}
+ header{background:var(--azul);color:#fff;padding:18px 20px 30px}
  header .wrap{padding:0 20px}
- h1{margin:0;font-size:24px}
- .sub{color:#AEEA94;font-size:14px;margin-top:4px}
- h2{color:var(--verde);font-size:18px;margin:26px 0 8px}
+ header .logo{display:inline-flex;align-items:center;gap:10px;margin-bottom:18px;text-decoration:none}
+ header .logo img{display:block;height:34px;width:auto}header .logo img+img{height:14px}
+ h1{margin:0;font-size:28px;font-weight:800;letter-spacing:-.3px}
+ .sub{color:#fff;opacity:.9;font-size:14px;margin-top:4px}
+ h2{color:var(--azul);font-size:19px;font-weight:800;margin:28px 0 8px}
  p,li{font-size:15px}
- a{color:var(--lima)}
+ a{color:var(--azul-osc)}
  .box{background:var(--tinte);border-radius:12px;padding:14px 16px;margin:16px 0}
  .mut{color:var(--mut);font-size:13px}
  ol li,ul li{margin:6px 0}
- footer{margin-top:34px;border-top:1px solid #e3e3e3;padding-top:14px}
+ footer{margin-top:34px;border-top:1px solid #DCE1F0;padding-top:14px}
 </style>
 """
+
+
+def _logo_legal() -> str:
+    """Logo blanco de la barra (el mismo de la web)."""
+    try:
+        from web import ui
+        if ui._logo_propio_cl():
+            return ("<a class='logo' href='/' aria-label='" + MARCA + "'><img src='/static/brand/cl_icono_blanco.png' alt=''>"
+                    "<img src='/static/brand/cl_wordmark_blanco.png' alt='" + MARCA + "'></a>")
+    except Exception:  # noqa: BLE001
+        pass
+    return f"<a class='logo' href='/' style='color:#fff;font-weight:800;font-size:20px'>{MARCA}</a>"
 
 
 def _doc(titulo: str, cuerpo: str) -> str:
@@ -84,7 +101,7 @@ def _doc(titulo: str, cuerpo: str) -> str:
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
         f"<title>{titulo} · {MARCA}</title>{_ESTILO}</head><body>"
-        f"<header><div class='wrap'><h1>{titulo}</h1>"
+        f"<header><div class='wrap'>{_logo_legal()}<h1>{titulo}</h1>"
         f"<div class='sub'>{MARCA} · un producto de {em['razon_social']}</div></div></header>"
         f"<div class='wrap'>{cuerpo}"
         f"<footer><p class='mut'>{MARCA} es un producto de <b>{em['razon_social']}</b> "
@@ -560,34 +577,51 @@ _LIBRO_JS = """
         window.scrollTo({top: ok.getBoundingClientRect().top + window.scrollY - 90, behavior: 'smooth'});
       })
       .catch(function(){ err.style.display = ''; })
-      .then(function(){ btn.disabled = false; btn.textContent = 'Registrar reclamo'; });
+      .then(function(){ btn.disabled = false; btn.textContent = 'Enviar reclamo'; });
   });
   var bp = document.getElementById('btnImprimir'); if(bp) bp.addEventListener('click', function(){ window.print(); });
 })();
 """
 
 _LIBRO_CSS = """
-.libro-cab{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:22px}
-.libro-cab .sello{display:inline-flex;align-items:center;gap:10px;padding:10px 16px;border:2px solid #C8102E;border-radius:12px;color:#C8102E;font-weight:800;font-size:15px}
-.libro-cab .sello svg{width:28px;height:28px}
-.prov{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:6px 18px;font-size:14px;margin:14px 0 4px}
+/* Rediseño azul (Frame 6 del PDF): título azul con ícono, proveedor en caja celeste, pastillas */
+.libro-cab{display:flex;align-items:center;gap:16px;margin-top:30px;color:var(--azul)}
+.libro-cab svg{flex:none;width:64px;height:64px}
+.libro-cab h1{color:var(--azul);font-size:clamp(28px,4vw,42px);margin:0}
+.libro-ley{font-size:13.5px;color:var(--tenue);margin:12px 0 0}
+.sello-lr{display:inline-block;background:#D93025;color:#fff;font-weight:800;font-size:12px;letter-spacing:.3px;border-radius:6px;padding:3px 9px;margin-right:6px}
+.libro-intro{font-size:15px;color:var(--carbon);margin:8px 0 0;max-width:900px}
+.prov-caja{background:var(--azul-tinte);border-radius:12px;padding:22px 30px 24px;margin:26px 0 8px}
+.prov-caja h3{margin:0 0 4px;font-size:15px}
+.prov{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:6px 18px;font-size:14px;margin:10px 0 0}
 .prov b{color:var(--noche)}
-.lr h3{margin:22px 0 8px;font-size:16px}
-.lr label{display:block;font-size:13px;font-weight:700;margin:12px 0 5px;color:var(--noche)}
-.lr input:not([type=radio]),.lr select,.lr textarea{width:100%;padding:11px 12px;border:1px solid var(--trazo);border-radius:10px;font:inherit;font-size:14px;background:#fff}
-.lr textarea{min-height:96px;resize:vertical}
-.lr .row{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}@media(max-width:620px){.lr .row{grid-template-columns:1fr}}
-.lr .radio-row{display:flex;gap:16px;flex-wrap:wrap;font-size:14px;margin-top:8px}.lr .radio-row label{display:inline-flex;align-items:center;gap:6px;margin:0;font-weight:600}
-.lr .hint{font-size:12.5px;color:var(--tenue);margin-left:10px}
-.lr .aviso{display:none;margin-top:16px;padding:14px 16px;border-radius:12px;border:1px solid #BFE3CF;background:#F1FAF5;font-size:14px}
+.lr{max-width:980px}
+.lr h3{margin:36px 0 14px;font-size:20px;color:var(--azul)}
+.lr label,.lr .lbl{display:block;font-size:13px;font-weight:700;margin:16px 0 8px;color:var(--noche)}
+.lr input:not([type=radio]),.lr select,.lr textarea{width:100%;padding:15px 16px;border:1.5px solid #B9C6FF;border-radius:10px;font:inherit;font-size:15px;background:#fff;min-height:56px}
+.lr input:focus,.lr textarea:focus{outline:3px solid rgba(48,86,237,.3);border-color:var(--azul)}
+.lr textarea{min-height:200px;resize:vertical}
+.lr .row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0 28px}@media(max-width:620px){.lr .row{grid-template-columns:minmax(0,1fr)}}
+.lr .radio-row{display:flex;gap:10px 22px;flex-wrap:wrap;font-size:14px;margin-top:10px;align-items:center}.lr .radio-row label{display:inline-flex;align-items:center;gap:8px;margin:0;font-weight:600}
+.lr .radio-row input[type=radio]{width:22px;height:22px;accent-color:var(--azul)}
+.lr .pastillas{gap:12px}
+.lr .pastillas label{position:relative;border:1.5px solid var(--azul);color:var(--azul);border-radius:999px;padding:10px 28px;cursor:pointer;font-weight:700;min-height:44px;justify-content:center}
+.lr .pastillas label input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+.lr .pastillas label:has(input:checked){background:var(--azul);color:#fff}
+.lr .pastillas label:has(input:focus-visible){outline:3px solid rgba(48,86,237,.35);outline-offset:2px}
+.lr .pastillas label small{font-weight:500;opacity:.9}
+.lr .btn.enviar{background:#1B1B1F;border-radius:999px;padding:15px 56px;font-size:16px}
+.lr .btn.enviar:hover{background:#000}
+.lr .hint{font-size:13px;color:var(--tenue);margin-left:16px}
+.lr .aviso{display:none;margin-top:16px;padding:14px 16px;border-radius:12px;border:1px solid #BFCBFF;background:#F3F5FF;font-size:14px}
 .lr .aviso.err{border-color:#E7B4B4;background:#FFF4F4}
 .hoja{display:none;margin-top:18px;border:1px solid var(--trazo);border-radius:14px;padding:18px 20px;background:#fff}
 .hoja h2{font-size:18px;margin:0 0 4px}.hoja .meta{font-size:13px;color:var(--tenue);margin-bottom:12px}
 .hoja h4{margin:14px 0 6px;font-size:13.5px;text-transform:uppercase;letter-spacing:.3px;color:var(--tenue)}
 .hoja dl{display:grid;grid-template-columns:180px 1fr;gap:4px 12px;font-size:14px;margin:0}.hoja dt{font-weight:700;color:var(--noche)}.hoja dd{margin:0;white-space:pre-wrap}
-@media(max-width:620px){.hoja dl{grid-template-columns:1fr}.hoja dt{margin-top:6px}}
+@media(max-width:620px){.hoja dl{grid-template-columns:1fr}.hoja dt{margin-top:6px}.prov-caja{padding:18px}}
 .hoja .obs{border:1px dashed var(--trazo);border-radius:10px;padding:10px 12px;font-size:13.5px;color:var(--tenue);min-height:48px}
-@media print{header,footer.pie,.cab,.lr,.acciones,.no-print{display:none !important}.hoja{display:block !important;border:none;padding:0}body{background:#fff}}
+@media print{header,footer.pie,.cab,.cl-barra,.cl-banda,.lr,.acciones,.no-print{display:none !important}.hoja{display:block !important;border:none;padding:0}body{background:#fff}}
 """
 
 
@@ -596,14 +630,13 @@ def _libro_html() -> str:
     prov = (f"<div class='prov'><div><b>Razón social:</b> {em['razon_social']}</div><div><b>{em['doc_etiqueta']}:</b> {em['ruc']}</div>"
             f"<div><b>Domicilio:</b> {em['direccion']}</div><div><b>Correo:</b> <a href='mailto:{em['correo']}'>{em['correo']}</a></div></div>")
     return f"""
-<div class='libro-cab'><span class='sello'>{_libro_svg()} LIBRO DE RECLAMACIONES</span>
-  <span style='font-size:13.5px;color:var(--tenue)'>Conforme al Código de Protección y Defensa del Consumidor (Ley N.° 29571) y su
-  Reglamento del Libro de Reclamaciones (D.S. 011-2011-PCM y modificatorias).</span></div>
-<h1 style='margin-top:14px'>Hoja de reclamación</h1>
-<p class='sub'>Registra aquí tu <b>reclamo</b> (disconformidad con el producto o servicio) o tu <b>queja</b> (malestar por la
+<div class='libro-cab'>{_libro_svg()}<h1>Libro de Reclamaciones</h1></div>
+<p class='libro-ley'><span class='sello-lr'>LIBRO DE RECLAMACIONES</span> Conforme al Código de Protección y Defensa del Consumidor (Ley N.° 29571) y su
+  Reglamento del Libro de Reclamaciones (D.S. 011-2011-PCM y modificatorias).</p>
+<p class='libro-intro'><b>Hoja de reclamación.</b> Registra aquí tu <b>reclamo</b> (disconformidad con el producto o servicio) o tu <b>queja</b> (malestar por la
 atención). Recibirás un <b>número de hoja</b> al instante y te responderemos al correo indicado en un plazo máximo de
 <b>15 días hábiles</b>. Este Libro es virtual y forma parte de nuestra web; no necesitas descargar nada.</p>
-<h3 style='margin:18px 0 2px'>Datos del proveedor</h3>{prov}
+<div class='prov-caja'><h3>Datos del proveedor</h3>{prov}</div>
 <form id='lr-form' class='lr' novalidate>
   <h3>1. Identificación del consumidor reclamante</h3>
   <div class='row'>
@@ -622,25 +655,28 @@ atención). Recibirás un <b>número de hoja</b> al instante y te responderemos 
 
   <h3>2. Identificación del bien contratado</h3>
   <div class='row'>
-    <div><label for='b_tipo'>Tipo *</label><select id='b_tipo' name='b_tipo'><option value='Servicio'>Servicio (reserva, matrícula, suscripción)</option><option value='Producto'>Producto (marketplace)</option></select></div>
+    <div><span class='lbl' id='lblTipo'>Tipo *</span><div class='radio-row pastillas' role='radiogroup' aria-labelledby='lblTipo'>
+      <label title='Reserva, matrícula, suscripción'><input type='radio' name='b_tipo' value='Servicio' checked> Servicio</label>
+      <label title='Marketplace'><input type='radio' name='b_tipo' value='Producto'> Producto</label></div></div>
     <div><label for='b_monto'>Monto reclamado (S/)</label><input id='b_monto' name='b_monto' inputmode='decimal' placeholder='Ej.: 60.00'></div>
   </div>
   <label for='b_desc'>Descripción del bien o servicio</label><input id='b_desc' name='b_desc' placeholder='Ej.: Reserva de cancha de fútbol · 12/07 20:00 · N.º de operación'>
 
   <h3>3. Detalle de la reclamación</h3>
-  <div class='radio-row'>
-    <label><input type='radio' name='d_tipo' value='Reclamo' checked> <b>Reclamo</b> (disconformidad con el producto o servicio)</label>
-    <label><input type='radio' name='d_tipo' value='Queja'> <b>Queja</b> (malestar por la atención al público)</label></div>
+  <div class='radio-row pastillas' role='radiogroup' aria-label='Reclamo o queja'>
+    <label><input type='radio' name='d_tipo' value='Reclamo' checked> Reclamo</label>
+    <label><input type='radio' name='d_tipo' value='Queja'> Queja</label></div>
+  <p class='libro-ley' style='margin-top:10px'><b>Reclamo:</b> disconformidad con el producto o servicio. <b>Queja:</b> malestar o descontento por la atención al público (no se relaciona con el producto o servicio).</p>
   <label for='d_detalle'>Detalle *</label><textarea id='d_detalle' name='d_detalle' required></textarea>
   <label for='d_pedido'>Pedido del consumidor *</label><textarea id='d_pedido' name='d_pedido' required placeholder='¿Qué solución solicitas?'></textarea>
-  <div class='acciones' style='margin-top:18px;align-items:center'><button type='submit' class='btn'>Registrar reclamo</button><span class='hint'>Los campos con * son obligatorios.</span></div>
+  <div class='acciones' style='margin-top:18px;align-items:center'><button type='submit' class='btn enviar'>Enviar reclamo</button><span class='hint'>Los campos con * son obligatorios.</span></div>
   <p style='font-size:12.5px;color:var(--tenue);margin-top:14px'>La formulación del reclamo no impide acudir a otras vías de solución de controversias ni es requisito previo
   para interponer una denuncia ante INDECOPI. El proveedor debe dar respuesta en un plazo no mayor a quince (15) días hábiles,
   prorrogable por otros quince (15) cuando la naturaleza del reclamo lo justifique, comunicándolo al consumidor.</p>
   <div class='aviso err' id='lr-err'><b>No pudimos registrar tu reclamo.</b> Inténtalo de nuevo en unos minutos o escríbenos a
   <a href='mailto:{em['correo']}'>{em['correo']}</a> y lo registramos por ti.</div>
 </form>
-<div class='aviso' id='lr-ok' style='display:none;margin-top:18px;padding:14px 16px;border-radius:12px;border:1px solid #BFE3CF;background:#F1FAF5;font-size:14px'>
+<div class='aviso' id='lr-ok' style='display:none;margin-top:18px;padding:14px 16px;border-radius:12px;border:1px solid #BFE3CF;background:#F3F5FF;font-size:14px'>
   <b>✅ Reclamo registrado.</b> Tu hoja es la <b id='lr-num'></b>. Guarda tu copia (abajo puedes imprimirla o guardarla como PDF).
   Te responderemos al correo indicado en un máximo de <b>15 días hábiles</b>.
   <div class='acciones no-print' style='margin-top:10px'><button type='button' class='btn sec' id='btnImprimir'>🖨️ Imprimir / guardar copia</button><a class='btn sec' href='/'>Volver al inicio</a></div>
@@ -664,8 +700,8 @@ atención). Recibirás un <b>número de hoja</b> al instante y te responderemos 
 
 def _libro_svg() -> str:
     try:
-        from web.ui import LIBRO_SVG
-        return LIBRO_SVG
+        from web import iconos
+        return iconos.svg("libro", 64, clase="ic-libro", grueso=1.6)
     except Exception:  # noqa: BLE001
         return "📕"
 

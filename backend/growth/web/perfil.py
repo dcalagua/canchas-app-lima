@@ -25,9 +25,9 @@ _CSS_PERFIL = """
 .perf-id{background:#fff;border-radius:24px;box-shadow:0 6px 20px rgba(0,0,0,.08);display:grid;grid-template-columns:minmax(0,1fr) minmax(0,150px);align-items:center;padding:26px 22px}
 .perf-yo{text-align:center;min-width:0}
 .perf-av{position:relative;width:104px;height:104px;margin:0 auto 10px}
-.perf-av img,.perf-av .ini{width:104px;height:104px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;background:var(--noche,#0A1B3D);color:#fff;font-size:42px;font-weight:700}
+.perf-av img,.perf-av .ini{width:104px;height:104px;border-radius:50%;object-fit:cover;display:flex;align-items:center;justify-content:center;background:var(--noche,#333333);color:#fff;font-size:42px;font-weight:700}
 .perf-av .pro{position:absolute;right:-4px;bottom:4px;background:#F2C94C;color:#3a2a00;border:3px solid #fff;border-radius:99px;font-size:12px;font-weight:800;padding:3px 8px}
-.perf-av .ok{position:absolute;left:-2px;bottom:6px;background:#0B7A57;color:#fff;border:3px solid #fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px}
+.perf-av .ok{position:absolute;left:-2px;bottom:6px;background:#3056ED;color:#fff;border:3px solid #fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:13px}
 .perf-yo b{display:block;font-size:22px;line-height:1.2;overflow-wrap:anywhere}
 .perf-yo small{display:block;color:#6a6a6a;font-size:13px;margin-top:4px;overflow-wrap:anywhere}
 .perf-stats{border-left:1px solid #EBEBEB;padding-left:18px;display:grid;gap:10px}
@@ -39,7 +39,7 @@ _CSS_PERFIL = """
 .perf-tile{position:relative;background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:26px 14px 18px;text-align:center;color:inherit;text-decoration:none;cursor:pointer;border:0;font:inherit}
 .perf-tile .em{font-size:52px;line-height:1;display:block;margin-bottom:12px}
 .perf-tile b{font-size:15px}
-.perf-tile .nov{position:absolute;top:12px;right:12px;background:#0A1B3D;color:#fff;font-size:12px;font-weight:800;letter-spacing:.6px;border-radius:99px;padding:4px 8px}
+.perf-tile .nov{position:absolute;top:12px;right:12px;background:#333333;color:#fff;font-size:12px;font-weight:800;letter-spacing:.6px;border-radius:99px;padding:4px 8px}
 .perf-ban{display:flex;gap:14px;align-items:center;background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px;color:inherit;text-decoration:none;margin-bottom:16px}
 .perf-ban .em{font-size:44px;flex:none}
 .perf-ban b{display:block;font-size:16px}
@@ -54,7 +54,7 @@ _CSS_PERFIL = """
 .perf-it .em{font-size:24px;width:30px;text-align:center;flex:none}
 .perf-it .tx{flex:1;min-width:0}
 .perf-it .tx small{display:block;color:#6a6a6a;font-size:13px;margin-top:2px}
-.perf-it .app{font-size:12px;font-weight:700;color:#08654A;background:#E9F6EE;border-radius:99px;padding:3px 9px;white-space:nowrap}
+.perf-it .app{font-size:12px;font-weight:700;color:#2442C4;background:#E9F6EE;border-radius:99px;padding:3px 9px;white-space:nowrap}
 .perf-it .bdg{background:#E0245E;color:#fff;font-size:12px;font-weight:800;border-radius:99px;min-width:22px;height:22px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center}
 .perf-it .chev{color:#b0b0b0;font-size:22px;line-height:1}
 .perf-it.rojo{color:#C0392B}

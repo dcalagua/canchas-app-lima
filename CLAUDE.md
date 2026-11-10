@@ -224,6 +224,31 @@ fija la marca vieja por env en `tests/conftest.py`;
 `test_dominio_raiz.py` la redirección. Las referencias a "pichangol.app" de
 más abajo son históricas.
 
+## REDISEÑO AZUL de la web (9-nov-2026, rama `feat/web-rediseno-azul`)
+
+PDF del diseñador ("Soluciones EBIM", 7 frames). Detalle y pendientes:
+`docs/plan/REDISENO_AZUL.md`. Solo web (el APK sigue con su paleta).
+- **Paleta** (`web/ui.py::TOKENS`): azul `#3056ED` (CTA, barra, pie) · `#2442C4`
+  (hover) · `#7E98FF` SOLO decoración (con texto blanco no llega a AA) · tinte
+  `#E3E8FF` · texto `#333333`. Los nombres viejos (`--esmeralda`, `--noche`,
+  `--tinte`) apuntan a estos valores; el verde queda SOLO para estados (`--ok-*`).
+  **No escribir verdes de marca a mano** en pantallas nuevas.
+- **CSS del rediseño** en `web/estilos_rediseno.py`, al FINAL de `ui.CSS`.
+- **Cabecera** = barra azul fija + pastillas por deporte + franja celeste con el
+  buscador (`ui.cabecera(extra_banda=)`); el `<header>` es `display:contents`
+  (solo la barra es sticky; quien mida la cabecera suma sus franjas).
+- **Íconos de línea** en `web/iconos.py` (`iconos.svg("futbol")`, `currentColor`).
+- **Logo**: `static/brand/cl_*`; `ui.wordmark(color="blanco"|"azul")` y
+  `ui.logo_apilado()` usan el del diseñador solo si la marca es CanchaLibre y la
+  torre no tiene logo propio. `marca_logo` cae a `logo_canchalibre.png`.
+- **Portada**: los estilos de sus secciones viven en `legal/home.html` (bajo
+  `.marca`); el precio de Pro sale de `pro_precio_soles` (`{{PRO_PRECIO}}`).
+  Las tarjetas de servicios conservan `class="prod"` (Culqi: ≥5 servicios).
+  Orden: canchas → Qué ofrecemos → Servicios → Cómo funciona → Pagos →
+  "Compra segura" (Términos/Devoluciones/Privacidad/Libro en 4 tarjetas con
+  desplegables; el formulario del Libro sigue integrado en la raíz) → Contacto.
+- Test `tests/test_rediseno_azul.py`; barrido e2e en verde (204 pantallas).
+
 ## Dominio oficial: `pichangol.app`
 
 El dominio de marca **YA ESTÁ REGISTRADO Y VIVO**. En Railway (`pg-backend`) el

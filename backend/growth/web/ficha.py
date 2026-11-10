@@ -20,7 +20,7 @@ import config
 import empresa
 from pagos import cargo_servicio as _cs
 from pagos import devoluciones as _dev
-from web import beneficios, datos, horarios, osm, pago_hospedado, sesion, ui
+from web import beneficios, datos, horarios, iconos, osm, pago_hospedado, sesion, ui
 from reservas import reglas as _reglas
 from pagos import cobro_directo as _cd
 from web import dividir_pago as _dividir_web
@@ -260,7 +260,7 @@ _JS_RESERVA = (r"""
       if(C.senaPct > 0 && !bonoActivo()){
         if(bl) h += '<div class="linea" style="color:var(--tenue);font-size:13px"><span>Con ' + esc(C.nombreBoleador.toLowerCase()) + ' la reserva se paga completa en línea (quítalo si prefieres solo la seña).</span></div>';
         else {
-          var op = function(m, tit, sub){ var on = modoPago === m; return '<label class="op-sena" data-modo="' + m + '" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1.5px solid ' + (on ? 'var(--esmeralda)' : 'var(--trazo)') + ';border-radius:14px;cursor:pointer;background:' + (on ? '#EEF8F1' : '#fff') + '"><input type="radio" name="modoPago" ' + (on ? 'checked' : '') + ' style="width:auto;flex:none;margin-top:3px;accent-color:#0B7A57"><span><b>' + tit + '</b><br><small style="color:var(--tenue)">' + sub + '</small></span></label>'; };
+          var op = function(m, tit, sub){ var on = modoPago === m; return '<label class="op-sena" data-modo="' + m + '" style="display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1.5px solid ' + (on ? 'var(--esmeralda)' : 'var(--trazo)') + ';border-radius:14px;cursor:pointer;background:' + (on ? '#EEF8F1' : '#fff') + '"><input type="radio" name="modoPago" ' + (on ? 'checked' : '') + ' style="width:auto;flex:none;margin-top:3px;accent-color:#3056ED"><span><b>' + tit + '</b><br><small style="color:var(--tenue)">' + sub + '</small></span></label>'; };
           h += '<div style="display:grid;gap:8px;margin:10px 0 4px">' +
             op('sena', 'Pagar seña ' + C.senaPct + ' % ahora · ' + fmt(senaTotal()), 'Asegura tu hora; el resto (' + fmt(t - senaTotal()) + ') lo pagas en la cancha.') +
             op('total', 'Pagar todo ahora · ' + fmt(t), 'No pagas nada en la cancha.') + '</div>';
@@ -504,7 +504,7 @@ _JS_RESERVA = (r"""
         Culqi.settings({ title: '⟦MARCA⟧', currency: 'PEN', amount: j.total_centimos });
         Culqi.options({ lang: 'es', installments: false,
           paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false },
-          style: { logo: C.logo, bannerColor: '#0F1B2D', buttonBackground: '#0B7A57', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
+          style: { logo: C.logo, bannerColor: '#333333', buttonBackground: '#3056ED', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
         window.culqi = function(){
           if(Culqi.token){
             var token = Culqi.token.id, medio = (Culqi.token.iin && Culqi.token.iin.card_brand) ? 'tarjeta' : 'yape';
@@ -731,8 +731,8 @@ def _acciones_local(c: dict, ses: dict | None) -> str:
     except Exception:  # noqa: BLE001
         con_bodega = False
     return ("<div class='acciones acc-local'>"
-            f"<a class='btn sec' href='/mensajes/nuevo?cancha={cid}'>💬 Escribir al local</a>"
-            + (f"<a class='btn sec' href='/bodega/{cid}/pedir'>🧃 Bodega del local</a>" if con_bodega else "")
+            f"<a class='btn' href='/mensajes/nuevo?cancha={cid}'>{iconos.svg('chat', 20)} Escribir al local</a>"
+            + (f"<a class='btn dark' href='/bodega/{cid}/pedir'>{iconos.svg('bodega', 20)} Bodega del local</a>" if con_bodega else "")
             + "</div>")
 
 

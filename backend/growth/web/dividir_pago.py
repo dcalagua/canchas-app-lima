@@ -261,7 +261,7 @@ _JS_PAG = r"""
     Culqi.publicKey = C.pk;
     Culqi.settings({title: C.marca, currency: 'PEN', amount: t.monto_centimos});
     Culqi.options({lang: 'es', installments: false, paymentMethods: {yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false},
-                   style: {bannerColor: '#0F1B2D', buttonBackground: '#0B7A57', buttonText: 'Pagar', buttonTextColor: '#FFFFFF'}});
+                   style: {bannerColor: '#333333', buttonBackground: '#3056ED', buttonText: 'Pagar', buttonTextColor: '#FFFFFF'}});
     var listo = false;
     window.culqi = function(){
       if(Culqi.token){
