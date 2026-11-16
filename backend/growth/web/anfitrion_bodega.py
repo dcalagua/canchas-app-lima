@@ -36,6 +36,8 @@ from marketing import packshot as packshot_svc
 from pagos import router as _pagos
 from web import almacen, datos, sesion, ui
 from web import bodega_datos as bd
+from web import estilos_v_comercio as vc
+from web import vista_anfitrion as va
 from web.anfitrion import _entrar
 from web.ui import PLAY_URL, e
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
@@ -63,8 +65,8 @@ SUGERENCIAS = {
            "Otros": ["Hielo", "Cigarros", "Toalla", "Gorra"]},
 }
 _TZ = {"PE": "America/Lima", "BO": "America/La_Paz", "EC": "America/Guayaquil"}
-TABS = [("caja", "🛒 Caja"), ("productos", "📦 Productos"), ("reporte", "📊 Reporte"),
-        ("pedidos", "🛎️ Pedidos"), ("cuentas", "📒 Cuentas")]
+TABS = [("caja", "Caja"), ("productos", "Productos"), ("reporte", "Reporte"),
+        ("pedidos", "Pedidos"), ("cuentas", "Cuentas")]
 _ID_OK = re.compile(r"^[A-Za-z0-9_.\-]{1,120}$")
 
 
@@ -156,10 +158,6 @@ def _dueno_json(request: Request) -> tuple[str | None, JSONResponse | None]:
     return email, None
 
 
-def _cab(ses: dict | None) -> str:
-    return ui.cabecera(ses=ses, volver="/anfitrion", modo="anfitrion")
-
-
 # ── Página ────────────────────────────────────────────────────────────────────
 
 CSS = r"""
@@ -232,34 +230,45 @@ CSS = r"""
 
 
 def _tabs(sel: str, pendientes: int, abiertas: int) -> str:
-    out = []
-    for k, t in TABS:
-        if k == "pedidos" and pendientes:
-            t = f"{t} ({pendientes})"
-        if k == "cuentas" and abiertas:
-            t = f"{t} ({abiertas})"
-        out.append(f"<a class='chip{' sel' if k == sel else ''}' href='{BASE}?tab={k}'>{e(t)}</a>")
-    return "<nav class='bod-tabs' aria-label='Bodega'>" + "".join(out) + "</nav>"
+    contar = {}
+    if pendientes:
+        contar["Pedidos"] = pendientes
+    if abiertas:
+        contar["Cuentas"] = abiertas
+    return ("<div class='vc-bod-tabs'>" + va.segmentado([(f"{BASE}?tab={k}", t, k == sel) for k, t in TABS], etiqueta="Bodega", contar=contar)
+            + "</div>")
+
+
+_FUNCIONES = [("billete", "Caja rápida", "Vende en segundos y cobra con {medio} o efectivo; el stock baja solo."),
+              ("caja", "Stock con alertas", "Te avisamos cuando un producto está por acabarse para reponerlo a tiempo."),
+              ("barras", "Reportes de venta", "Lo que más se vende, cuánto vendiste hoy y en la semana, y tu stock valorizado."),
+              ("qr", "Carta digital con QR", "Tus clientes escanean el QR en la cancha y ven tu carta con precios al día.")]
 
 
 def _vista_pro(ses: dict) -> HTMLResponse:
-    cuerpo = ("<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
-              "<div class='panel' style='max-width:560px;margin:26px auto 0;text-align:center'>"
-              "<div style='font-size:44px'>🧃🍺</div><h1 style='font-size:22px;margin:10px 0 6px'>Administra tu bodega</h1>"
-              "<p class='sub'>Caja rápida, stock con alertas de reposición, reportes de venta y la carta digital con QR para tus "
-              "clientes. Tú cobras con tu Yape o efectivo, como siempre.</p>"
-              f"<p class='sub'>La bodega es parte de <b>{MARCA} Pro</b>. Actívalo en Perfil → 👑 {MARCA} Pro y vuelve aquí.</p>"
-              f"<div class='acciones' style='justify-content:center'><a class='btn' href='/pro'>👑 Activar con {MARCA} Pro</a>"
-              "<a class='btn sec' href='/anfitrion'>Volver al menú</a></div></div>")
-    return ui.shell("Mi bodega", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mi bodega · Modo anfitrión",
-                    extra_head=f"<style>{CSS}</style>")
+    """Sin Pro: qué trae la bodega + activar Pro (precio REAL del país de la
+    billetera, el mismo que cobra `/pro`)."""
+    from web.jugador_pro import _monto, estado_pro
+    email = ses["email"]
+    iso = pais_dueno(email)
+    st = estado_pro(email)
+    medio = "tu Yape" if iso == "PE" else "tu QR o transferencia"
+    banner = (f"<div class='vc-pro-banner'>{vc.cuadro('corona', 'azul')}<div class='tx'><b>La bodega es parte de {MARCA} Pro</b>"
+              f"<small>Actívalo por {e(_monto(st['sim'], st['precio']))}/mes y vuelve aquí: todo queda listo para usar.</small></div>"
+              f"<a class='btn' href='/pro'>{vc.ico('corona', 18)}Activar con {MARCA} Pro</a></div>")
+    tarjetas = "".join(
+        f"<div class='vc-func-it'>{vc.cuadro(ic, suave=True, tam=22)}<span class='va-pill azul'>{vc.ico('corona', 13, 2.6)}Pro</span><h3>{e(t)}</h3><p>{e(d.format(medio=medio))}</p></div>"
+        for ic, t, d in _FUNCIONES)
+    cuerpo = (va.cabecera("Mi bodega", "Caja rápida, stock con alertas de reposición, reportes de venta y carta digital con QR. "
+                          f"Tú cobras con {medio} o efectivo, como siempre.")
+              + banner + f"<div class='vc-func'>{tarjetas}</div>")
+    return ui.shell("Mi bodega", va.vista(cuerpo, "vc-bodega"), sesion=ses, ancho=True, titulo_tab="Mi bodega · Modo anfitrión")
 
 
 def _vacio() -> str:
-    return ("<div class='anf-vacio' style='margin-top:10px'><div style='font-size:48px'>📦</div>"
-            "<h2 style='color:var(--noche);font-size:18px;margin:8px 0 4px'>Arma tu bodega en 2 minutos</h2>"
-            "<p style='margin:0 0 14px'>Agrega tus productos con precio y stock; luego vendes con un tap desde la Caja.</p>"
-            "<button type='button' class='btn' data-nuevo>＋ Agregar mi primer producto</button></div>")
+    return va.vacio("caja", "Arma tu bodega en 2 minutos",
+                    "Agrega tus productos con precio y stock; luego vendes con un tap desde la Caja.",
+                    "<button type='button' class='btn' data-nuevo>＋ Agregar mi primer producto</button>")
 
 
 def _vista_caja(prods: list[dict], sim: str) -> str:
@@ -312,17 +321,18 @@ def _vista_reporte(prods: list[dict], ventas: list[dict], sim: str, iso: str) ->
     top = sorted(unidades.items(), key=lambda kv: kv[1], reverse=True)[:5]
     bajos = [p for p in prods if bd.stock_bajo(p)]
     valorizado = sum(p["stock"] * p["precio"] for p in prods)
-    kpis = ("<div class='kpis' style='margin-top:0'>"
-            f"<div class='kpi'><small>Hoy</small><b>{e(_m(sim, sum(v['total'] for v in ventas_hoy)))}</b></div>"
-            f"<div class='kpi'><small>Últimos 7 días</small><b>{e(_m(sim, sum(v['total'] for v in ventas7)))}</b></div>"
-            f"<div class='kpi'><small>Ventas hoy</small><b>{len(ventas_hoy)}</b></div>"
-            f"<div class='kpi'><small>Stock valorizado</small><b>{e(_m(sim, valorizado))}</b></div></div>")
+    kpis = va.kpis([
+        va.kpi("billete", "Hoy", e(_m(sim, sum(v['total'] for v in ventas_hoy))), color="verde"),
+        va.kpi("calendario", "Últimos 7 días", e(_m(sim, sum(v['total'] for v in ventas7)))),
+        va.kpi("recibo", "Ventas hoy", str(len(ventas_hoy)), color="naranja"),
+        va.kpi("caja", "Stock valorizado", e(_m(sim, valorizado)), color="morado"),
+    ])
     out = [f"<div class='brep'>{kpis}"]
     if bajos:
-        out.append("<h3>⚠️ Para reponer</h3><ul>" + "".join(
+        out.append("<h3>Para reponer</h3><ul>" + "".join(
             f"<li class='bajo'>{e(p['nombre'])}: quedan {p['stock']}</li>" for p in bajos) + "</ul>")
     if top:
-        out.append("<h3>🏆 Lo más vendido (7 días)</h3><ul>" + "".join(
+        out.append("<h3>Lo más vendido (7 días)</h3><ul>" + "".join(
             f"<li>{e(n)} — {u} und.</li>" for n, u in top) + "</ul>")
     if not ventas:
         out.append("<p class='sub' style='text-align:center;margin-top:24px'>Aún no registras ventas. Ve a la Caja y prueba una.</p>")
@@ -341,7 +351,7 @@ def _vista_pedidos(pedidos: list[dict], cfg: dict) -> str:
             f"<small class='sub' style='margin:0'>📍 Zonas: {e(zonas)}</small>"
             "<button type='button' class='btn sec' data-zonas style='padding:8px 14px'>📍 Zonas de entrega</button></div></div>")]
     if not orden:
-        out.append("<div class='anf-vacio'>🛎️ Sin pedidos aún. Activa el switch y tus clientes podrán pedir desde su cancha 🍺</div>")
+        out.append(va.vacio("campana", "Sin pedidos aún", "Activa el interruptor y tus clientes podrán pedir desde su cancha."))
     for p in orden:
         est = p["estado"]
         cab = (f"<div class='t'><b>{e(bd.resumen(p['items']))} → {e(p['zona'])}</b><b style='white-space:nowrap'>{e(_m(p['moneda'], p['total']))}</b></div>"
@@ -376,7 +386,7 @@ def _vista_cuentas(cuentas: list[dict], cfg: dict, sim: str) -> str:
             + (f"<p class='sub' style='margin:12px 0 8px'>Tope por cuenta (pasado el tope, se cobra al entregar)</p><div class='chips'>{topes}</div>"
                if cfg["permite_cuenta"] else "") + "</div>")]
     if not abiertas:
-        out.append("<div class='anf-vacio'>📒 Sin cuentas abiertas. Al entregar un pedido (o cobrar en caja) elige «A la cuenta 📒» y el cliente paga al salir.</div>")
+        out.append(va.vacio("libro", "Sin cuentas abiertas", "Al entregar un pedido (o cobrar en caja) elige «A la cuenta» y el cliente paga al salir."))
     for c in abiertas:
         out.append(f"<div class='bcta'><div class='t'><b>📒 {e(c['cliente_nombre'] or c['cliente'])}</b><b>{e(_m(c['moneda'], c['total']))}</b></div>"
                    f"<div style='font-size:13px;margin-top:4px'>{e(bd.resumen(c['items']))}</div>"
@@ -446,20 +456,18 @@ def pagina_bodega(request: Request, tab: str = "caja") -> HTMLResponse:
                      for c in cuentas if c["estado"] == "abierta"],
         "firma": [[p["id"], p["estado"]] for p in pedidos],
     }
+    cab = va.cabecera("Mi bodega", "Tu caja: vende, controla stock y recibe pedidos a la cancha. La plata de la caja es tuya: cero comisión.",
+                      acciones=f"<button type='button' class='btn sec' data-abrir='modalCarta'>{vc.ico('qr', 18)}Carta digital y QR</button>")
     cuerpo = (
-        "<div class='bod'><a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
-        "<div class='bod-top'><div><h1 class='anf-hola' style='margin-top:6px'>Mi bodega</h1>"
-        "<p class='sub' style='margin:0'>Tu POS: vende, controla stock y recibe pedidos a la cancha. La plata de la caja es tuya: "
-        "cero comisión.</p></div>"
-        "<button type='button' class='btn sec' data-abrir='modalCarta'>🧾 Carta digital y QR</button></div>"
-        f"{_tabs(tab, pendientes, abiertas)}{cuerpo_tab}</div>"
+        f"<div class='bod'>{cab}"
+        f"{_tabs(tab, pendientes, abiertas)}{va.panel(cuerpo_tab, clase='vc-bod-panel')}</div>"
         "<div class='bbarra' id='bBarra'><button type='button' class='btn lg' id='bCobrar'>Cobrar</button></div>"
         f"{_modal_carta(carta, _base_landing(request))}"
         "<div class='modal' id='bModal' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:480px'>"
         "<div class='modal-cab'><button type='button' class='cerrar' data-cerrar-modal aria-label='Cerrar'>✕</button><h3 id='bModalTit'></h3></div>"
         "<div class='modal-cuerpo' id='bModalCuerpo'></div></div></div>"
         f"<script>var BOD={ui.json_js(cfg_js, ensure_ascii=False)};</script><script>{JS}</script>")
-    return ui.shell("Mi bodega", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mi bodega · Modo anfitrión",
+    return ui.shell("Mi bodega", va.vista(cuerpo, "vc-bodega"), sesion=ses, ancho=True, titulo_tab="Mi bodega · Modo anfitrión",
                     extra_head=f"<style>{CSS}</style>")
 
 

@@ -910,18 +910,17 @@ def test_modo_anfitrion_en_la_web_como_airbnb(db, monkeypatch):
     assert "Cambiar a modo jugador" in menu
     html = cli.get("/anfitrion/mis-canchas").text
     assert "todavía no tienes canchas registradas" in html and "href='/anfitrion/nueva'" in html
-    # Sin canchas, cada pestaña marca la SUYA (antes todas pintaban "Hoy" y
-    # parecía que el clic no hacía nada) y explica qué verá ahí.
+    # Sin canchas, cada ruta vieja explica qué verá ahí (con su título) y ofrece registrar.
     for ruta, nombre, texto in (("/anfitrion/canchas", "Canchas", "Todavía no tienes canchas a tu nombre"),
                                 ("/anfitrion/calendario", "Calendario", "Tu calendario aparecerá aquí"),
                                 ("/anfitrion/reservas", "Reservas", "Aquí verás las reservas de tus canchas")):
         pag = cli.get(ruta).text
-        assert f"class='cat sel' href='{ruta}'" in pag, ruta
-        assert "class='cat sel' href='/anfitrion/mis-canchas'" not in pag, ruta
+        assert "class='anf-subtabs'" not in pag, ruta  # rediseño: sin sub-pestañas, la barra lleva todo
+        assert "href='/anfitrion/nueva'" in pag, ruta
         assert texto in pag and f"<title>{nombre} · Modo anfitrión" in pag, ruta
     # Ingresos sirve sin canchas (academia, torneos): billetera y cuenta de cobro.
     ing = cli.get("/anfitrion/ingresos").text
-    assert "class='cat sel' href='/anfitrion/ingresos'" in ing and "Cuenta de cobro" in ing
+    assert "<h1>" in ing and "Ingresos" in ing and "Cuenta de cobro" in ing
     aca = cli.get("/anfitrion/verificador").text  # el verificador también es web (web/anfitrion_verificador.py)
     assert "Visitas pendientes" in aca and "Validar reclamo por código" in aca
     assert cli.get("/anfitrion/nada").status_code == 404
@@ -938,12 +937,14 @@ def test_modo_anfitrion_en_la_web_como_airbnb(db, monkeypatch):
     monkeypatch.setattr(sesion, "_tokeninfo", lambda t: {"email": "dueno@x.com", "email_verified": "true", "aud": "cid-web", "name": "Don Dueño", "exp": "9999999999"})
     cli.post("/web/sesion", json={"credential": "x"})
     hoy = cli.get("/anfitrion/mis-canchas").text
-    assert "¡Hola, Don!" in hoy and "href='/anfitrion'" in hoy and "Cambiar a modo jugador" in hoy and "class='anf-modo' href='/'" in hoy  # la pastilla "Modo anfitrión" lleva al modo jugador
-    assert "Próximos 7 días <small>(1)</small>" in hoy and "Ana" in hoy and "999888777" in hoy and "Pagada en línea · yape" in hoy
-    for k in ("/anfitrion/mis-canchas", "/anfitrion/calendario", "/anfitrion/reservas", "/anfitrion/ingresos", "/anfitrion/canchas"):
-        assert f"href='{k}'" in hoy
+    assert "Mis canchas" in hoy and "href='/anfitrion'" in hoy and "Cambiar a modo jugador" in hoy and "class='anf-modo' href='/'" in hoy  # la pastilla "Modo anfitrión" lleva al modo jugador
+    # Vista unificada: locales y canchas + calendario de la elegida; accesos a la lista y a Ingresos.
+    for k in ("/anfitrion/reservas", "/anfitrion/ingresos", "/anfitrion/nueva", "/anfitrion/cancha/c_lima/editar", "/reservar/c_lima"):
+        assert f"href='{k}'" in hoy, k
+    assert "Cancha Central" in hoy and "Nocturna" in hoy and "Editar local" in hoy
     cal = cli.get(f"/anfitrion/calendario?cancha=c_lima&desde={f}").text
-    assert "Calendario" in cal and "pagada" in cal and "Semana siguiente" in cal and "23:00" in cal
+    assert "<title>Calendario" in cal and "pagada" in cal and "Semana siguiente" in cal and "23:00" in cal
+    assert "Ana" in cal and "999888777" in cal and '"medio": "yape"' in cal  # la reserva web pagada con Yape, con su celular
     res = cli.get("/anfitrion/reservas").text
     assert "Próximas" in res and "19:00–20:00" in res
     ing = cli.get("/anfitrion/ingresos").text
@@ -1023,7 +1024,7 @@ def test_editar_cancha_desde_la_web_como_el_app(db, monkeypatch):
     assert borradas == ["https://sb.test/storage/v1/object/public/canchas/c_lima/vieja.jpg"]
     # Vuelve a Canchas con el aviso; la ficha pública y el explorador ya muestran lo nuevo.
     can = cli.get("/anfitrion/canchas?guardado=c_lima").text
-    assert "Guardamos los cambios de <b>Cancha 1 · Grass</b>" in can and "06:00–00:00 · 90 min" in can
+    assert "Guardamos los cambios de <b>Cancha 1 · Grass</b>" in can and "06:00–00:00 · turnos de 90 min" in can
     ficha = cli.get("/reservar/c_lima").text
     assert "Cancha 1 · Grass" in ficha and "Árbitro" in ficha and "Parrilla" in ficha
     assert "🅿️ Estacionamiento" in cli.get("/").text  # el chip del explorador reconoce la clave del app
@@ -1061,7 +1062,7 @@ def test_calendario_web_reserva_manual_bloqueo_y_marcar_pagado(db, monkeypatch):
     monkeypatch.setattr(sesion, "_tokeninfo", lambda t: {"email": "dueno@x.com", "email_verified": "true", "aud": "cid-web", "name": "Don Dueño", "exp": "9999999999"})
     cli.post("/web/sesion", json={"credential": "x"})
     cal = cli.get(f"/anfitrion/calendario?cancha=c_lima&desde={f}").text
-    assert "data-t='libre'" in cal and f"data-rid='{rid}'" in cal and "Reserva manual" in cal and "Bloquear turno" in cal and "Marcar pagada" in cal
+    assert "data-t='libre'" in cal and f"data-rid='{rid}'" in cal and "Reserva manual" in cal and "Bloquear este turno" in cal and "Bloquear todo el día" in cal and "Marcar pagada" in cal
     assert "parte de <b>Pichangol Pro</b>" not in cal  # candado apagado por defecto (fail-open)
     # Bloquear / desbloquear.
     assert cli.post("/anfitrion/bloqueo", json={"cancha_id": "c_lima", "fecha": f, "hora": "10:00"}).json()["ok"]
@@ -1103,10 +1104,10 @@ def test_calendario_web_reserva_manual_bloqueo_y_marcar_pagado(db, monkeypatch):
     assert cli.post(f"/anfitrion/reserva/{rid}/quitar").status_code == 400
     assert cli.post(f"/anfitrion/reserva/{r['id']}/quitar").json()["ok"] and r["id"] not in db.reservas
     assert pushes[-1] == ("juan@gmail.com", "Reserva cancelada 📅", "reserva_manual")
-    # "Hoy" muestra el botón para cobrar en efectivo.
+    # Mis canchas: la reserva por cobrar de hoy está en el calendario con "Marcar como pagada" en su menú.
     db.reservas[rid].update({"pagado": False, "medio_pago": "efectivo", "fecha": _hoy_iso()})
     hoy = cli.get("/anfitrion/mis-canchas").text
-    assert f"data-pagar='{rid}'" in hoy and "Marcar pagada" in hoy
+    assert f"data-rid='{rid}'" in hoy and "Marcar como pagada" in hoy and "/pagado" in hoy
     # Candado Pro (env): sin Pro → 402 y aviso en el calendario; con Pro → pasa.
     monkeypatch.setattr(config, "WEB_MANUAL_REQUIERE_PRO", True)
     assert cli.post("/anfitrion/bloqueo", json={"cancha_id": "c_lima", "fecha": f, "hora": "12:00"}).status_code == 402
@@ -1267,7 +1268,9 @@ def test_mi_academia_en_la_web_como_el_app(db, monkeypatch):
     assert a["planes"][0]["meses"] == 1 and a["planes"][0]["frecuenciaSemana"] == 2 and a["planes"][1]["meses"] == 3
     assert a["descuentoHermano2"] == 10 and a["retribucionClubPct"] == 11 and a["sedes"] == [] and a["horarios"] == {}
     lista = cli.get("/anfitrion/academia?guardado=1").text
-    assert "Academia Baseline" in lista and "Club Lawn Tennis" in lista and f"/anfitrion/academia/{aid}/editar" in lista and f"/l/{aid}" in lista and "Academia guardada" in lista
+    assert "Academia Baseline" in lista and "Club Lawn Tennis" in lista and f"/anfitrion/academia/{aid}/editar" in lista and "Academia guardada" in lista
+    # Sin landing generada en el app no se ofrece "Ver landing": el acceso va a la ficha pública.
+    assert f"/l/{aid}" not in lista and f"href='/academia/{aid}'" in lista
     # Editar conserva lo que la web no toca (sedes, ranking); la moneda queda fija.
     db.academias[aid]["partidos"] = [{"id": "p1"}]
     db.academias[aid]["sedes"] = [{"id": "s1", "nombre": "Sede 2", "direccion": ""}]
@@ -1318,8 +1321,9 @@ def test_registrar_y_reclamar_cancha_desde_la_web_como_el_app(db, monkeypatch):
     assert cli.post("/anfitrion/nueva", json={}).status_code == 401
     _entrar_como(cli, monkeypatch, "nuevo@gmail.com", "Nuevo Dueño")
     html = cli.get("/anfitrion/nueva?place=gp_abc&nombre=Complejo%20Sol&direccion=Av.%20Sol%201&lat=-12.1&lng=-77.03").text
-    for t in ("Pon tu cancha en Pichangol", "value='Complejo Sol'", "value='Av. Sol 1'", "Verificación de propiedad", "id='mapaSede'",
-              "data-g='deportes'", "data-g='relacion'", "Registrar mi cancha", "+51", "DNI"):
+    for t in ("value='Complejo Sol'", "value='Av. Sol 1'", "Verificación de propiedad", "id='mapaSede'",
+              "data-g='deportes'", "data-g='relacion'", "Publicar mi local", "+51", "DNI", "Agregar local",
+              "Así lo verán los jugadores", "Para publicar necesitas", "Guardar borrador"):
         assert t in html, t
     assert "href='/anfitrion/nueva'>Pon tu cancha en Pichangol" in cli.get("/").text  # entrada desde la portada/menú
     assert "¿Es tuya? Reclámala" in cli.get("/").text
@@ -1352,7 +1356,7 @@ def test_registrar_y_reclamar_cancha_desde_la_web_como_el_app(db, monkeypatch):
     assert rec[0].solicitante_lat == -12.1001 and rec[0].nombre_local == "Complejo Sol"
     # Panel del dueño: la cancha aparece "En verificación" (sin reservas en línea todavía).
     panel = cli.get(f"/anfitrion/canchas?registrada={ids[0]}").text
-    assert "Registramos <b>Complejo Sol</b>" in panel and "En verificación" in panel and "Aún sin verificar" in panel
+    assert "Registramos <b>Complejo Sol</b>" in panel and "En verificación" in panel
     assert "En verificación" in cli.get("/anfitrion/mis-canchas").text
     assert cli.post("/web/asegurar", json={"cancha_id": ids[0], "horas": [{"fecha": _manana(), "hora": "19:00"}], "extras": [],
                                            "nombre": "Ana", "celular": "999", "email": "ana@x.com"}).json()["error"] == "no_verificada"
@@ -1696,7 +1700,7 @@ def test_agregar_cancha_a_local_desde_la_web_como_el_app(db, monkeypatch):
     assert "activa al instante" in pag and "data-g='deporte' data-v='tenis'" in pag and "Agregar cancha" in pag
     # "Mis canchas" lleva al flujo corto, no a "Pon tu cancha".
     mc = cli.get("/anfitrion/canchas").text
-    assert "href='/anfitrion/cancha/c_lima/agregar'" in mc and "Agregar cancha a este local" in mc
+    assert "href='/anfitrion/cancha/c_lima/agregar'" in mc and "Agregar cancha a un local" in mc
     # "Pon tu cancha" prellenado con un local que ya es mío → redirige a agregar.
     r = cli.get("/anfitrion/nueva?nombre=club%20raqueta&lat=-12.09&lng=-77.0&deporte=tenis", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/anfitrion/cancha/c_lima/agregar?deporte=tenis"
@@ -1790,9 +1794,9 @@ def test_servicios_extra_catalogo_global_por_local_y_por_persona(db, monkeypatch
     assert "Editar local" in le and "Club Raqueta" in le and "data-v='techado'" in le and "🏊 Piscina" in le and "por persona" in le
     assert "data-serv='piscina' data-ambito='local'" in le and "data-serv='arbitro'" not in le and "Cancha Central" in le and "Nocturna" in le
     assert cli.get("/anfitrion/local/c_gye/editar").status_code == 200 and cli.get("/anfitrion/local/c_pend/editar").status_code == 404
-    # Mis canchas: agrupado por deporte dentro del local + botón Editar local.
+    # Mis canchas: las canchas agrupadas por local, con "Editar local" bajo cada uno.
     mc = cli.get("/anfitrion/canchas").text
-    assert "class='anf-dep'>⚽ Fútbol · 2 canchas" in mc and "href='/anfitrion/local/c_lima/editar'" in mc
+    assert "Cancha Central" in mc and "Nocturna" in mc and "href='/anfitrion/local/c_lima/editar'>Editar local" in mc
     # Guardar el local: piscina (S/ 15 por persona) + entrada general + estacionamiento gratis → se escribe en Cancha Central
     # y Nocturna (mismo local), cada una conserva sus servicios de cancha; Club Sur no se toca; los de cancha en el cuerpo se ignoran.
     db.canchas["c_noche"]["servicios_extra"] = [{"clave": "pecheras", "precio": 5}]

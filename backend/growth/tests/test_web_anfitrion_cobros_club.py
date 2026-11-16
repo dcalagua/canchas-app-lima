@@ -103,7 +103,7 @@ def test_aprobar_y_rechazar_voucher_desde_la_web(web):
     b, pid2 = _voucher("15:00")
     html = cli.get("/anfitrion/pagos-por-confirmar").text
     assert "Pagos por confirmar" in html and f"/anfitrion/pagos-por-confirmar/{pid}/imagen" in html and "S/ 30.00" in html
-    assert "Por revisar <small>(2)</small>" in html and "No llegó el pago" in html
+    assert "Por revisar<i>2</i>" in html and "No llegó el pago" in html
     # Insignias en el menú y banner en Hoy.
     assert "aria-label='2 por revisar'" in cli.get("/anfitrion").text
     assert "2 pagos por confirmar" in cli.get("/anfitrion/mis-canchas").text
@@ -126,6 +126,10 @@ def test_aprobar_y_rechazar_voucher_desde_la_web(web):
     assert any("monto distinto" in p[2].lower() for p in web["pushes"])
     hist = cli.get("/anfitrion/pagos-por-confirmar?estado=historial").text
     assert "Aprobado" in hist and "Rechazado" in hist and "Monto distinto" in hist
+    # Rediseño: conteos en el segmentado y en los chips; el chip filtra.
+    assert "Resueltos<i>2</i>" in hist and "Aprobados: 1" in hist and "Rechazados: 1" in hist and "Vencidos: 0" in hist
+    solo = cli.get("/anfitrion/pagos-por-confirmar?estado=historial&ver=rechazado").text
+    assert f"data-pid='{pid2}'" in solo and f"data-pid='{pid}'" not in solo
     # Ingresos: la deuda de comisión con signo "−" y la tarjeta de comisión.
     ing = cli.get("/anfitrion/ingresos").text
     assert "Comisiones por pagar" in ing and "−S/ 2.00" in ing
@@ -162,7 +166,7 @@ def reglas_db(web, monkeypatch):
 def test_guardar_reglas_y_aplicar_a_hermanas(web, reglas_db):
     cli = _cli()
     html = cli.get("/anfitrion/reglas/c_lima").text
-    assert "Reglas de Cancha Central" in html and "Aplicar también a" in html and "Nocturna" in html
+    assert "Reglas de Cancha Central" in html and "Copiar a otras canchas" in html and "Nocturna" in html
     assert _cli("otro@x.com").get("/anfitrion/reglas/c_lima").status_code == 404
     r = cli.post("/anfitrion/reglas/guardar", json={"cancha_ids": ["c_lima", "c_noche"],
                                                     "reglas": {"max_turnos": 2, "franjas": [{"nombre": "Hora punta", "dias": ["lun"],
@@ -196,7 +200,7 @@ def test_calendario_y_manual_respetan_dia_cerrado_y_franja(web, reglas_db):
     assert f"data-b='{martes}'" not in cal  # el día cerrado no ofrece turnos
     assert f"data-b='{lunes}' data-f='{lunes}' data-h='19:00' data-fin='20:00' data-p='90'" in cal  # franja
     assert f"data-b='{lunes}' data-f='{lunes}' data-h='21:00' data-fin='22:00' data-p='95'" in cal  # franja + luz
-    assert "data-dia=" in cal and "cal-dias" in cal  # vista por día en móvil
+    assert "data-dia=" in cal and "mc-dias" in cal  # vista por día en móvil (Mis canchas unificado)
     # Reserva manual: día cerrado rechazado; precio sugerido con franja + luz.
     r = cli.post("/anfitrion/reserva-manual", json={"cancha_id": "c_lima", "fecha": martes, "hora": "19:00", "nombre": "X"})
     assert r.status_code == 400 and "cerrado" in r.json()["error"]
@@ -226,3 +230,54 @@ def test_horario_por_dia_cambia_las_filas_del_calendario(web):
     martes = (date.fromisoformat(lunes) + timedelta(days=1)).isoformat()
     assert f"data-b='{martes}' data-f='{martes}' data-h='15:00'" in cal  # el martes sigue con el horario general
     assert "Fuera de horario" in cal
+
+
+# ── Rediseño: Cobros del club y Copiar reglas ────────────────────────────────
+
+def test_cobros_del_club_tarjetas_de_estado_y_panel_de_comision(web):
+    web["repo"].reemplazar_medios("dueno@x.com", [{"tipo": "yape", "titular": "Club", "numero": "987654321", "banco": "",
+                                                    "cuenta": "", "cci": "", "qr_url": "", "nota": ""}])
+    html = _cli().get("/anfitrion/cobros-club").text
+    assert "Cobro en línea (Culqi)" in html and "No conectado" in html and "1 activo" in html
+    assert "Saldo para comisiones" in html and "Deuda vs. tope" in html and "S/ 0.00 de S/ 50.00" in html
+    assert "/mi-billetera#recargar" in html and "También puedes recargar desde la app" in html
+    # Sin la fila de chips de navegación vieja ni el enlace "‹ Modo anfitrión".
+    assert "anf-back" not in html and "anf-subtabs" not in html
+
+
+def test_copiar_reglas_a_otras_canchas_respeta_dueno_y_moneda(web, reglas_db):
+    db = web["db"]
+    franja = {"nombre": "Hora punta", "dias": ["lun"], "desde": "18:00", "hasta": "23:00", "precio_hora": 90}
+    db.canchas["c_lima"]["reglas_reserva"] = {"max_turnos": 2, "cancelacion_horas": 24, "franjas": [franja],
+                                              "recargo_luz": {"desde": "19:00", "monto": 5}}
+    propia_gye = {"nombre": "Noche", "dias": ["sab"], "desde": "20:00", "hasta": "23:00", "precio_hora": 12}
+    db.canchas["c_gye"]["reglas_reserva"] = {"franjas": [propia_gye]}
+    cli = _cli()
+    r = cli.post("/anfitrion/reglas/c_lima/copiar", json={"destinos": ["c_noche", "c_gye", "c_noche"]}).json()
+    assert r["ok"] and r["copiadas"] == 2
+    noche = reglas_db["c_noche"]
+    assert noche["max_turnos"] == 2 and noche["franjas"][0]["precio_hora"] == 90 and noche["recargo_luz"]["monto"] == 5
+    # c_gye cobra en $: recibe la política pero CONSERVA sus franjas y no recibe el recargo en soles.
+    gye = reglas_db["c_gye"]
+    assert gye["max_turnos"] == 2 and gye["cancelacion_horas"] == 24
+    assert gye["franjas"][0]["precio_hora"] == 12 and "recargo_luz" not in gye
+    assert [x["id"] for x in r["sin_precios"]] == ["c_gye"] and r["sin_precios"][0]["moneda"] == "$"
+    # Una cancha ajena en la lista: no se copia a NINGUNA.
+    db.canchas["c_ajena"] = {**db.canchas["c_lima"], "id": "c_ajena", "dueno": "otro@x.com"}
+    reglas_db.clear()
+    assert cli.post("/anfitrion/reglas/c_lima/copiar", json={"destinos": ["c_noche", "c_ajena"]}).status_code == 404
+    assert not reglas_db
+    # Otro dueño (o la recepción, que no tiene canchas propias): 404. Sin destinos: 400. Solo JSON.
+    assert _cli("otro@x.com").post("/anfitrion/reglas/c_lima/copiar", json={"destinos": ["c_noche"]}).status_code == 404
+    assert cli.post("/anfitrion/reglas/c_lima/copiar", json={"destinos": ["c_lima"]}).json()["error"] == "sin_destinos"
+    assert cli.post("/anfitrion/reglas/c_lima/copiar", content="x", headers={"Content-Type": "text/plain"}).status_code == 415
+    # La página: columna de canchas con "Con reglas" y el botón de copiar con las otras canchas.
+    html = cli.get("/anfitrion/reglas/c_lima").text
+    assert "Con reglas" in html and "rgCopiar" in html and '"otra_moneda": true' in html
+
+
+def test_copiar_reglas_sin_columna_no_escribe(web, monkeypatch):
+    from web import anfitrion_cobros_club as acc
+    monkeypatch.setattr(datos, "col_reglas_disponible", lambda: False)
+    st, r = acc.copiar_reglas_de("dueno@x.com", "c_lima", ["c_noche"])
+    assert st == 503 and r["error"] == "reglas_no_disponibles"

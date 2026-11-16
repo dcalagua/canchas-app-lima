@@ -1873,9 +1873,24 @@ def aplicar_descuento_slot(cancha_id: str, fecha: str, hora: str, pct: int) -> b
         return False
 
 
+# Mensaje extra del aviso: POR SELECCIÓN (regla "nada de texto libre"; el
+# diseño traía un campo libre "Mensaje o promo" que no se copia). La clave
+# viaja al servidor y aquí se convierte en el texto; cualquier otra cosa se ignora.
+PROMOS_LLENAR = {"ultima": "¡Último momento: aprovecha!", "amigos": "Arma tu partido con tus amigos.",
+                 "rapido": "Responde rápido: estas horas vuelan.", "luces": "Cancha lista y con luz para jugar."}
+
+
+def promo_llenar(clave) -> str:
+    return PROMOS_LLENAR.get(str(clave or "").strip(), "")
+
+
+def _donde(c: dict) -> str:
+    return f"{c['club']} · {c['nombre']}" if c.get("club") else c.get("nombre") or "mi cancha"
+
+
 def texto_aviso(c: dict, nombre: str, horas: list[str], precios: list[int], dia: str, descuento: int, promo: str, sim: str) -> str:
-    """`_texto` del app."""
-    donde = f"{c['club']} · {c['nombre']}" if c.get("club") else c.get("nombre") or "mi cancha"
+    """`_texto` del app (la vista previa "Así les llega" lo replica en JS)."""
+    donde = _donde(c)
     off = f" 🔥 {descuento}% OFF" if descuento > 0 else ""
     desde = min(precios) if precios else 0
     extra = f"\n{promo}" if promo else ""
@@ -1885,8 +1900,10 @@ def texto_aviso(c: dict, nombre: str, horas: list[str], precios: list[int], dia:
 
 @router.get("/anfitrion/llenar", response_class=HTMLResponse)
 def pagina_llenar(request: Request, cancha: str = "", dia: int = 0) -> HTMLResponse:
-    from web.anfitrion import _cabecera, _contexto
+    from web.anfitrion import _contexto
     from web.router import _moneda_de, _pais_de
+    from web import estilos_v_comercio as vc
+    from web import vista_anfitrion as va
     ses, canchas, resp = _contexto(request, "/anfitrion/llenar")
     if resp is not None:
         return resp
@@ -1897,57 +1914,98 @@ def pagina_llenar(request: Request, cancha: str = "", dia: int = 0) -> HTMLRespo
     sim = _moneda_de(c)[0]
     libres = horas_libres(c, base, ahora)
     desc = datos.descuentos(c["id"], [base.isoformat(), (base + timedelta(days=1)).isoformat()])
+    valle_pct = int(c.get("descuento_valle") or 0)
     slots = []
     for h in libres:
         fr = horarios.fecha_real(base.isoformat(), c.get("hora_apertura") or "", c.get("hora_cierre") or "", h)
         slots.append({"h": h, "p0": horarios.precio_turno_de(c, h, 0), "pa": horarios.precio_turno_de(c, h, desc.get((fr, h), 0)),
                       "d": desc.get((fr, h), 0),
+                      "v": bool(valle_pct > 0 and horarios.es_valle(h, c.get("valle_desde") or "", c.get("valle_hasta") or "")),
                       "px": {str(p): horarios.precio_turno_de(c, h, p) for p in (10, 15, 20, 30)}})
     n_cli = len(clientes_de(canchas, ahora.date()))
-    opts = "".join(f"<a class='chip{' sel' if x['id'] == c['id'] else ''}' href='/anfitrion/llenar?cancha={quote(x['id'])}&dia={dia}'>"
-                   f"{e((x['club'] + ' · ' + x['nombre']) if x.get('club') else x['nombre'])}</a>" for x in canchas)
-    dias = "".join(f"<a class='chip{' sel' if i == dia else ''}' href='/anfitrion/llenar?cancha={quote(c['id'])}&dia={i}'>{t}</a>" for i, t in ((0, "Hoy"), (1, "Mañana")))
-    cfg = {"cancha": c["id"], "dia": dia, "sim": sim, "slots": slots, "n": n_cli}
-    lista = ("<div class='jp-slots' id='llSlots'></div><button type='button' class='btn sec' style='margin-top:10px' id='llTodas'>Seleccionar todas</button>"
-             if slots else f"<p class='sub'>{'No quedan horas libres hoy. 🎉' if dia == 0 else 'No hay horas libres mañana. 🎉'}</p>")
-    descs = "".join(f"<button type='button' class='chip{' sel' if p == 0 else ''}' data-desc='{p}'>{'Sin desc.' if p == 0 else f'{p}%'}</button>" for p in (0, 10, 15, 20, 30))
-    cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap jp-form'><a class='jp-volver' href='/anfitrion/hoy'>‹ Hoy</a>"
-              "<h1>Llenar cancha</h1><p class='sub'>Elige las horas vacías y avísalas a tus clientes: no dejes la cancha sin jugar.</p>"
-              f"<label class='l'>Cancha</label><div class='jp-chips'>{opts}</div>"
-              f"<div class='jp-chips'>{dias}</div><label class='l'>Horas libres</label>{lista}"
-              f"<div id='llDescBox' style='display:none'><label class='l'>Descuento para llenar (opcional)</label><div class='jp-chips' id='llDesc'>{descs}</div>"
-              "<p class='ayuda' id='llDescAyuda'>Sin descuento: precio normal.</p></div>"
-              "<label class='l'>Mensaje o promo (opcional)</label><input type='text' id='llPromo' aria-label='Mensaje o promo (opcional)' maxlength='160' placeholder='Ej.: 20% off hoy'>"
-              f"<div class='jp-acc'><button type='button' class='btn' id='llGo' disabled>Elige horas para avisar</button></div></div>"
-              f"<script>window.LL={_js(cfg)};</script><script>{_JS_BASE}{_JS_LLENAR}</script>")
-    return ui.shell("Llenar cancha", cuerpo, nav=_cabecera("", ses), sesion=ses, ancho=True, titulo_tab=f"Llenar cancha · {MARCA}")
+
+    def _sub(x: dict) -> str:
+        monto, unidad = horarios.precio_publico(x)
+        dep = DEPORTES.get(str(x.get("deporte") or ""), (str(x.get("deporte") or "").capitalize(), ""))[0]
+        return f"{dep} · {_moneda_de(x)[0]} {monto:g} /{'turno' if unidad.startswith('por turno') else 'h'}"
+    lateral = va.lista_lateral(canchas, c["id"], lambda x: f"/anfitrion/llenar?cancha={quote(x['id'])}&dia={dia}", sub=_sub,
+                               contar=f"{len(canchas)}", filtro=len(canchas) > 6)
+    fecha_txt = f"{horarios.DIAS[base.weekday()].lower()} {base.day} {horarios.MESES[base.month - 1]}"
+    seg = va.segmentado([(f"/anfitrion/llenar?cancha={quote(c['id'])}&dia={i}", t, i == dia) for i, t in ((0, "Hoy"), (1, "Mañana"))],
+                        etiqueta="Día")
+    descs = "".join(f"<button type='button' class='{'sel' if p == 0 else ''}' data-desc='{p}' aria-pressed='{'true' if p == 0 else 'false'}'>"
+                    f"{'Precio normal' if p == 0 else f'−{p} %'}</button>" for p in (0, 10, 15, 20, 30))
+    promos = ("<button type='button' class='sel' data-promo='' aria-pressed='true'>Sin mensaje extra</button>"
+              + "".join(f"<button type='button' data-promo='{k}' aria-pressed='false'>{e(t)}</button>" for k, t in PROMOS_LLENAR.items()))
+    if slots:
+        centro = ("<div class='vc-slots' id='llSlots' role='group' aria-label='Horas libres'></div>"
+                  "<div class='vc-ll-sel'><b id='llCuenta'>0 horas seleccionadas</b>"
+                  "<button type='button' class='vc-link' id='llTodas'>Seleccionar todas</button></div>"
+                  f"<span class='vc-ll-lbl' id='llDescLbl'>Descuento para llenarlas</span><div class='vc-chips' id='llDesc' role='group' aria-labelledby='llDescLbl'>{descs}</div>"
+                  "<p class='vc-ayuda' id='llDescAyuda'>Precio normal: no cambia lo que se cobra.</p>"
+                  f"<span class='vc-ll-lbl' id='llPromoLbl'>Mensaje extra (opcional)</span><div class='vc-chips' id='llPromo' role='group' aria-labelledby='llPromoLbl'>{promos}</div>")
+    else:
+        centro = va.vacio("calendario", "No quedan horas libres hoy" if dia == 0 else "No hay horas libres mañana",
+                          "Tu cancha está llena: no hace falta avisar a nadie.")
+    medio = va.panel(centro, "Horas libres", f"{c.get('nombre') or 'Cancha'} · {fecha_txt}", acciones=seg)
+    local = c.get("club") or c.get("nombre") or "Tu local"
+    derecha = va.panel(
+        f"<div class='vc-chat'><div class='vc-chat-cab'><span class='vc-chat-av' aria-hidden='true'>{e(local[:1].upper())}</span>"
+        f"<div><b>{e(local)}</b><small>Chat del local</small></div></div>"
+        "<div class='vc-burbuja vacia' id='llVista' aria-live='polite'>Elige una o más horas para ver el mensaje.</div></div>"
+        f"<p class='vc-nota vc-ll-cli'>{vc.ico('info', 16)}<span>Se avisa a tus {n_cli} cliente{'s' if n_cli != 1 else ''}: con app, por el chat del local; "
+        "sin app, por WhatsApp. Cada uno lo recibe con su nombre.</span></p>"
+        f"<button type='button' class='btn vc-ll-go' id='llGo' disabled>{vc.ico('megafono', 18)}<span>Elige horas para avisar</span></button>",
+        "Así les llega")
+    cfg = {"cancha": c["id"], "dia": dia, "sim": sim, "slots": slots, "n": n_cli, "donde": _donde(c),
+           "diaTxt": "hoy" if dia == 0 else "mañana", "marca": MARCA, "promos": PROMOS_LLENAR}
+    cuerpo = (va.cabecera("Llenar cancha", "Elige las horas vacías y avísalas a tus clientes: no dejes la cancha sin jugar.")
+              + f"<div class='va-tres vc-ll'>{lateral}{medio}{derecha}</div>"
+              + f"<script>window.LL={_js(cfg)};window.LL_ICO={_js({'chk': vc.ico('check', 13, 3), 'sol': vc.ico('sol', 13, 2.4)})};</script>"
+              + f"<style>{_CSS}</style><script>{_JS_BASE}{_JS_LLENAR}</script>")   # _CSS: filas del diálogo de WhatsApp
+    return ui.shell("Llenar cancha", va.vista(cuerpo, "vc-llenar"), sesion=ses, ancho=True, titulo_tab=f"Llenar cancha · {MARCA}")
 
 
 _JS_LLENAR = (r"""
-var sel = {}, desc = 0;
-function precio(s){ return (sel[s.h] && desc > 0) ? s.px[String(desc)] : (sel[s.h] ? s.p0 : s.pa); }
+var sel = {}, desc = 0, promo = '';
+function precio(s){ return sel[s.h] ? (desc > 0 ? s.px[String(desc)] : s.p0) : s.pa; }
+function texto(){
+  var hs = Object.keys(sel).sort(); if(!hs.length) return '';
+  var ps = LL.slots.filter(function(s){ return sel[s.h]; }).map(function(s){ return desc > 0 ? s.px[String(desc)] : s.p0; });
+  return '¡Hola <nombre>! 🎾 Tengo libre ' + LL.donde + ' ' + LL.diaTxt + ': ' + hs.join(', ') + ' (desde ' + LL.sim + ' ' + Math.min.apply(null, ps)
+    + (desc > 0 ? ' 🔥 ' + desc + '% OFF' : '') + '). ¿La quieres? Resérvala en ' + LL.marca + ' o respóndeme por aquí.' + (promo ? '\n' + LL.promos[promo] : '');
+}
 function pintar(){
   var box = document.getElementById('llSlots');
-  if(box) box.innerHTML = LL.slots.map(function(s){ return "<button type='button' class='jp-slot" + (sel[s.h] ? ' sel' : '') + "' data-h='" + s.h + "'><b>" + s.h + "</b><small>" + jpEsc(LL.sim) + ' ' + precio(s) + (s.d && !sel[s.h] ? ' · −' + s.d + '%' : '') + "</small></button>"; }).join('');
+  if(box) box.innerHTML = LL.slots.map(function(s){
+    var on = !!sel[s.h], et = '';
+    if(on && desc > 0) et = ' · −' + desc + '%'; else if(!on && s.d) et = ' · −' + s.d + '%';
+    return "<button type='button' class='vc-slot" + (on ? ' sel' : '') + "' data-h='" + s.h + "' aria-pressed='" + on + "'><span class='chk'>" + LL_ICO.chk + "</span><b>" + s.h + "</b><small>"
+      + jpEsc(LL.sim) + ' ' + precio(s) + et + (s.v && !s.d ? " <span class='valle' title='Hora feliz'>" + LL_ICO.sol + "</span>" : '') + "</small></button>";
+  }).join('');
   var n = Object.keys(sel).length, go = document.getElementById('llGo');
-  go.disabled = !n; go.textContent = n ? 'Avisar a mis clientes (' + LL.n + ')' : 'Elige horas para avisar';
-  document.getElementById('llDescBox').style.display = n ? '' : 'none';
-  var t = document.getElementById('llTodas'); if(t) t.textContent = n === LL.slots.length ? 'Quitar todas' : 'Seleccionar todas';
-  document.getElementById('llDescAyuda').textContent = desc > 0 ? 'Se cobra ' + desc + '% menos en esas horas: es el precio REAL al reservar (no solo el aviso).' : 'Sin descuento: precio normal.';
-  document.querySelectorAll('#llDesc [data-desc]').forEach(function(b){ b.classList.toggle('sel', +b.dataset.desc === desc); });
+  go.disabled = !n; go.querySelector('span').textContent = n ? 'Avisar ' + n + (n === 1 ? ' hora' : ' horas') : 'Elige horas para avisar';
+  var c = document.getElementById('llCuenta'); if(c) c.textContent = n + (n === 1 ? ' hora seleccionada' : ' horas seleccionadas');
+  var t = document.getElementById('llTodas'); if(t) t.textContent = LL.slots.length && n === LL.slots.length ? 'Quitar todas' : 'Seleccionar todas';
+  var a = document.getElementById('llDescAyuda'); if(a) a.textContent = desc > 0 ? 'Se cobra ' + desc + '% menos en esas horas: es el precio REAL al reservar (no solo el aviso).' : 'Precio normal: no cambia lo que se cobra.';
+  document.querySelectorAll('#llDesc [data-desc]').forEach(function(b){ var s = +b.dataset.desc === desc; b.classList.toggle('sel', s); b.setAttribute('aria-pressed', s); });
+  document.querySelectorAll('#llPromo [data-promo]').forEach(function(b){ var s = b.dataset.promo === promo; b.classList.toggle('sel', s); b.setAttribute('aria-pressed', s); });
+  var v = document.getElementById('llVista'), tx = texto();
+  if(v){ v.textContent = tx || 'Elige una o más horas para ver el mensaje.'; v.classList.toggle('vacia', !tx); }
 }
 document.addEventListener('click', function(ev){
   var t;
   if((t = ev.target.closest('[data-h]'))){ if(sel[t.dataset.h]) delete sel[t.dataset.h]; else sel[t.dataset.h] = 1; pintar(); return; }
   if((t = ev.target.closest('#llTodas'))){ if(Object.keys(sel).length === LL.slots.length) sel = {}; else LL.slots.forEach(function(s){ sel[s.h] = 1; }); pintar(); return; }
   if((t = ev.target.closest('[data-desc]'))){ desc = +t.dataset.desc; pintar(); return; }
+  if((t = ev.target.closest('[data-promo]'))){ promo = t.dataset.promo; pintar(); return; }
 });
 document.getElementById('llGo').addEventListener('click', function(){
   var horas = Object.keys(sel); if(!horas.length) return;
   if(!LL.n){ pcgAvisar({titulo: 'Aún sin clientes', icono: 'ℹ️', mensaje: 'Aún no tienes clientes registrados para avisar.'}); return; }
   pcgConfirmar({titulo: 'Avisar a tus clientes', icono: '📣', mensaje: 'Se aplicará el precio elegido a ' + horas.length + ' hora(s) y se avisará a tus ' + LL.n + ' cliente(s): por el chat de ⟦MARCA⟧ a los que tienen la app y por WhatsApp a los demás.', confirmar: 'Avisar', cancelar: 'Cancelar'}).then(function(ok){
     if(!ok) return;
-    jpPost('/anfitrion/llenar/avisar', {cancha_id: LL.cancha, dia: LL.dia, horas: horas, descuento: desc, promo: document.getElementById('llPromo').value}, 'Avisando…').then(function(j){
+    jpPost('/anfitrion/llenar/avisar', {cancha_id: LL.cancha, dia: LL.dia, horas: horas, descuento: desc, promo: promo}, 'Avisando…').then(function(j){
       if(!j.ok){ jpFallo(j); return; }
       var msg = j.enviados > 0 ? '✅ Avisé a ' + j.enviados + ' cliente(s) por la app 📲' : (j.whatsapp.length ? 'Ningún cliente tiene la app aún.' : 'Listo.');
       if(!j.whatsapp.length){ pcgAvisar({titulo: 'Aviso enviado', icono: '📣', mensaje: msg}).then(function(){ pcgRecargar(); }); return; }
@@ -1992,7 +2050,7 @@ def avisar_libres(request: Request, body: dict = Body(default_factory=dict)) -> 
     clientes = clientes_de(canchas, ahora.date())
     if not clientes:
         return JSONResponse({"ok": False, "mensaje": "Aún no tienes clientes registrados para avisar."}, status_code=400)
-    promo = re.sub(r"\s+", " ", str(body.get("promo") or "")).strip()[:160]
+    promo = promo_llenar(body.get("promo"))   # solo las frases del catálogo (sin texto libre)
     precios = []
     for h in horas:
         fr = horarios.fecha_real(base.isoformat(), c.get("hora_apertura") or "", c.get("hora_cierre") or "", h)

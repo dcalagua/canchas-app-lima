@@ -30,7 +30,7 @@ import io
 import json
 import time
 from datetime import date, datetime, timedelta, timezone
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -42,8 +42,9 @@ from pagos import cobro_directo as cd
 from reservas import reglas as _reglas
 from web import almacen, datos, horarios, permisos, sesion, ui
 from web import cobro_directo_web as cdw
+from web import vista_anfitrion as va
 from web import dividir_pago as _dividir_web
-from web.anfitrion import _cabecera, _motivo_cierre, _sesion_o_entrar
+from web.anfitrion import _motivo_cierre, _sesion_o_entrar
 from web.router import PLAY_URL, _moneda_de, e
 
 router = APIRouter(tags=["web-anfitrion-cobros-club"])
@@ -147,8 +148,55 @@ async def _cuerpo(request: Request):
 
 
 def _pagina(titulo: str, cuerpo: str, ses: dict, volver: str = "/anfitrion", volver_txt: str = "Modo anfitrión") -> HTMLResponse:
+    """Página con el formato ANTERIOR (la usa Devoluciones de `web/dividir_pago.py`).
+    La barra del modo anfitrión la pone `ui.shell` sola."""
     html = f"<a class='anf-back' href='{e(volver)}'>‹ {e(volver_txt)}</a>{cuerpo}<style>{CSS}</style>"
-    return ui.shell(titulo, html, nav=_cabecera("", ses), sesion=ses, ancho=True, titulo_tab=f"{titulo} · Modo anfitrión · {MARCA}")
+    return ui.shell(titulo, html, sesion=ses, ancho=True, titulo_tab=f"{titulo} · Modo anfitrión · {MARCA}")
+
+
+def pagina_vista(titulo: str, cuerpo: str, ses: dict, clase: str = "") -> HTMLResponse:
+    """Vista del rediseño (kit `web/vista_anfitrion.py` + `web/estilos_v_club.py`)."""
+    return ui.shell(titulo, va.vista(cuerpo, f"vcl {clase}".strip()), sesion=ses, ancho=True,
+                    titulo_tab=f"{titulo} · Modo anfitrión · {MARCA}")
+
+
+# Íconos de los medios de pago (línea blanca sobre cuadrado azul). Celular y QR
+# no están en `web/iconos.py`: van aquí (mismo trazo 24×24).
+_SVG_EXTRA = {
+    "celular": "<rect x='7' y='2.5' width='10' height='19' rx='2.2'/><path d='M11 18h2'/>",
+    "qr": "<rect x='3.5' y='3.5' width='6.5' height='6.5' rx='1'/><rect x='14' y='3.5' width='6.5' height='6.5' rx='1'/>"
+          "<rect x='3.5' y='14' width='6.5' height='6.5' rx='1'/><path d='M14 14h2.5v2.5H14zM20.5 14v.01M14 20.5h.01M17 20.5h3.5V17'/>",
+    "candado": "<rect x='5' y='11' width='14' height='9.5' rx='2'/><path d='M8 11V8a4 4 0 0 1 8 0v3'/>",
+    "personas": "<circle cx='9' cy='8' r='3.2'/><path d='M3.5 19.5a5.5 5.5 0 0 1 11 0'/><circle cx='17' cy='9' r='2.6'/><path d='M15.8 14.2a4.6 4.6 0 0 1 4.7 5.3'/>",
+    "check": "<path d='M5 12.5l4.2 4.2L19 7'/>",
+    "x": "<path d='M6 6l12 12M18 6L6 18'/>",
+    "copiar": "<rect x='8.5' y='8.5' width='11' height='11' rx='2'/><path d='M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5'/>",
+}
+ICONO_MEDIO = {"yape": "celular", "plin": "celular", "transferencia": "edificio", "billetera": "billete", "qr": "qr"}
+
+
+def svg(nombre: str, tam: int = 18) -> str:
+    """Ícono de línea: los de `web/iconos.py` o los extra de este módulo."""
+    from web import iconos
+    cuerpo = _SVG_EXTRA.get(nombre)
+    if cuerpo is None:
+        return iconos.svg(nombre, tam, grueso=2.2)
+    return (f"<svg class='ic-l' viewBox='0 0 24 24' width='{tam}' height='{tam}' fill='none' stroke='currentColor' "
+            f"stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'>{cuerpo}</svg>")
+
+
+def ico(nombre: str, tono: str = "azul", tam: int = 18) -> str:
+    """Ícono blanco en cuadrado de color (como `va.icono`, sin estilos en línea)."""
+    return f"<span class='va-ic vcl-ic {e(tono)}'>{svg(nombre, tam)}</span>"
+
+
+def _panel(titulo: str, sub: str, contenido: str, *, icono: str = "", acciones: str = "", clase: str = "", id_: str = "") -> str:
+    """Panel con ícono a la izquierda del título (Culqi, Comisión…)."""
+    tid = f"t_{id_ or hashlib.md5(titulo.encode()).hexdigest()[:6]}"
+    return (f"<section class='va-panel {e(clase)}'" + (f" id='{e(id_)}'" if id_ else "") + f" aria-labelledby='{tid}'>"
+            f"<div class='vcl-pcab'>{ico(icono) if icono else ''}<div class='vcl-pcab-t'><h2 id='{tid}'>{e(titulo)}</h2>"
+            + (f"<p>{e(sub)}</p>" if sub else "") + "</div>"
+            + (f"<div class='vcl-pcab-acc'>{acciones}</div>" if acciones else "") + f"</div>{contenido}</section>")
 
 
 # ── Cobros de tu club (club_pagos_screen.dart) ───────────────────────────────
@@ -194,6 +242,39 @@ def tarjeta_comision(est: dict, email: str, iso: str) -> str:
             f"<a class='btn sec' href='{PLAY_URL}' rel='noopener'>O desde la app</a></div></section>")
 
 
+SUB_COBROS = f"El pago de cada reserva llega directo a tu cuenta. {MARCA} cobra solo su comisión por reserva."
+
+
+def _saldo_de(email: str) -> int:
+    from db.store import stores
+    return stores.saldo_centimos(email) + stores.saldo_promo_centimos(email)
+
+
+def _estado_tarjetas(est: dict, email: str) -> str:
+    """Las 3 tarjetas de estado de arriba: cobro en línea, pagos manuales y
+    saldo para comisiones (datos reales de `cdw.estado_club`)."""
+    iso = est["moneda"]
+    cq = est.get("culqi") or {}
+    if cq.get("no_aplica"):
+        c1 = ("Cobro en línea", "Por ahora tu país cobra con pagos manuales", va.pill("No disponible", "gris"))
+    elif cq.get("configurada"):
+        c1 = ("Cobro en línea (Culqi)", "Tarjeta y Yape automático",
+              va.pill("Conectado", "ok") if cq.get("modo") == "live" else va.pill("Conectado · pruebas", "warn"))
+    else:
+        c1 = ("Cobro en línea (Culqi)", "Tarjeta y Yape automático", va.pill("No conectado", "warn"))
+    n = len(est.get("medios") or [])
+    nombres = " · ".join(cd.ETIQUETA_MEDIO.get(k, k).replace(" bancaria", "").replace(" digital", "") for k in est["medios_permitidos"])
+    c2 = ("Pagos manuales", nombres, va.pill(f"{n} activo{'s' if n != 1 else ''}", "ok") if n else va.pill("Sin medios", "gris"))
+    com = est.get("comision") or {}
+    saldo, deuda = _saldo_de(email), int(com.get("deuda_centimos") or 0)
+    tono = "bad" if com.get("suspendido") or (saldo <= 0 and deuda > 0) else ("warn" if saldo <= 0 else "ok")
+    c3 = ("Saldo para comisiones", "Recarga para no pausar cobros", va.pill(_plata(saldo, iso), tono))
+    icos = ("tarjeta", "celular" if est["pais"] == "PE" else "qr", "billete")
+    return "<div class='vcl-est'>" + "".join(
+        f"<div class='vcl-est-it'>{ico(i)}<div class='tx'><b>{e(t)}</b><small>{e(s)}</small></div>{p}</div>"
+        for i, (t, s, p) in zip(icos, (c1, c2, c3))) + "</div>"
+
+
 @router.get("/anfitrion/cobros-club", response_class=HTMLResponse)
 def pagina_cobros_club(request: Request) -> HTMLResponse:
     ses, resp = _sesion_o_entrar(request, "/anfitrion/cobros-club")
@@ -203,72 +284,99 @@ def pagina_cobros_club(request: Request) -> HTMLResponse:
     if permisos.es_solo_encargado(email):
         from web import anfitrion_encargados as _enc
         return _enc.sin_permiso(ses, "")
+    cab = va.cabecera("Cobros de tu club", SUB_COBROS)
     if not datos.canchas_de_dueno(email):
-        cuerpo = ("<h1 class='anf-hola'>Cobros de tu club</h1><div class='anf-vacio' style='margin-top:16px'>"
-                  "Primero registra tu cancha: aquí conectarás tu Culqi y tus medios de pago.</div>"
-                  "<p style='margin-top:14px'><a class='btn' href='/anfitrion/nueva'>Registrar mi cancha</a></p>")
-        return _pagina("Cobros de tu club", cuerpo, ses)
+        cuerpo = cab + va.panel(va.vacio("tarjeta", "Primero registra tu cancha",
+                                         "Aquí conectarás tu Culqi y tus medios de pago para cobrar cada reserva.",
+                                         "<a class='btn' href='/anfitrion/nueva'>Registrar mi cancha</a>"))
+        return pagina_vista("Cobros de tu club", cuerpo, ses)
     est = cdw.estado_club(email, _base_webhook(request))
     iso, pais = est["moneda"], est["pais"]
     pend = int(est.get("pendientes") or 0)
+    aviso_pend = va.aviso(f"<b>Tienes {pend} {'pago' if pend == 1 else 'pagos'} por confirmar.</b> Revísalo{'' if pend == 1 else 's'} "
+                          "antes de que venza el plazo y la reserva se libere sola.", "warn",
+                          "<a href='/anfitrion/pagos-por-confirmar'>Revisar ›</a>", "recibo") if pend else ""
+    comision = panel_comision(est, email, iso)
     if not est["disponible"]:
-        bloque = "<div class='aviso warn' style='margin-top:16px'>El cobro directo aún no está disponible en este ambiente.</div>"
-    else:
-        bloque = (
-            (f"<a class='cc-pend' href='/anfitrion/pagos-por-confirmar'><span aria-hidden='true'>🧾</span><span><b>Pagos por confirmar</b>"
-             f"<small>{pend} por revisar</small></span><span class='cl-insignia'>{pend}</span><span class='chev' aria-hidden='true'>›</span></a>"
-             if pend else "")
-            + _bloque_culqi(est)
-            + "<section class='panel' aria-labelledby='tMedios'><h2 id='tMedios'>Pagos manuales</h2>"
-              "<p class='sub'>El jugador te paga y sube su comprobante; tú lo confirmas en Pagos por confirmar.</p>"
-              "<div id='ccMedios'></div>"
-              "<div class='acciones' style='margin-top:12px'><button type='button' class='btn sec' id='ccAgregar'>＋ Agregar medio de pago</button></div>"
-              "<form id='ccMedioForm' hidden novalidate style='margin-top:14px'></form></section>")
+        cuerpo = (cab + va.aviso("El cobro directo aún no está disponible en este ambiente.", "warn", ico="reloj")
+                  + f"<div class='va-dos'><div></div><div>{comision}</div></div>")
+        return pagina_vista("Cobros de tu club", cuerpo, ses)
+    sub_medios = ("El jugador paga y sube su comprobante; tú lo confirmas en Pagos por confirmar." if pais == "PE" else
+                  "En tu país los jugadores te pagan con QR, transferencia o billetera: agrégalos aquí y confirma cada "
+                  "comprobante en Pagos por confirmar.")
+    medios = _panel("Pagos manuales", sub_medios,
+                    "<div id='ccMedios' aria-live='polite'></div><form id='ccMedioForm' class='vcl-form' hidden novalidate></form>",
+                    acciones="<button type='button' class='btn suave' id='ccAgregar'>＋ Agregar medio</button>", id_="ccMediosP")
+    izq = _bloque_culqi(est) + medios
     cfg = {"pais": pais, "moneda": iso, "permitidos": est["medios_permitidos"], "medios": est["medios"],
            "bancos": _bancos_de(pais), "billeteras": _billeteras_de(pais), "qr": almacen.disponible(),
-           "etiquetas": cd.ETIQUETA_MEDIO, "errores": ERRORES}
-    cuerpo = ("<h1 class='anf-hola'>Cobros de tu club</h1>"
-              f"<p class='sub'>El pago de cada reserva llega directo a tu cuenta. {e(MARCA)} cobra solo su comisión por reserva.</p>"
-              + bloque + tarjeta_comision(est, email, iso)
-              + "<section class='panel' aria-labelledby='tReglas'><h2 id='tReglas'>Reglas de reserva</h2>"
-                "<p class='sub'>Horarios por día, precios por franja y tu política de cancelación.</p>"
-                "<a class='btn sec' href='/anfitrion/reglas'>Configurar reglas</a></section>"
+           "etiquetas": cd.ETIQUETA_MEDIO, "errores": ERRORES,
+           "iconos": {k: ico(v) for k, v in ICONO_MEDIO.items()}}
+    cuerpo = (cab + _estado_tarjetas(est, email) + aviso_pend
+              + f"<div class='va-dos vcl-cobros'><div class='vcl-col'>{izq}</div><div class='vcl-col'>{comision}</div></div>"
               + f"<script>window.__club={_js(cfg)};</script><script>{JS_CLUB}</script>")
-    return _pagina("Cobros de tu club", cuerpo, ses)
+    return pagina_vista("Cobros de tu club", cuerpo, ses)
+
+
+def panel_comision(est: dict, email: str, iso: str) -> str:
+    """Panel "Comisión <marca>" del rediseño: saldo disponible, comisiones por
+    pagar, tope antes de pausar y la barra deuda vs. tope (misma fuente que
+    `tarjeta_comision`: `cdw.estado_club`)."""
+    com = est.get("comision") or {}
+    deuda, tope = int(com.get("deuda_centimos") or 0), int(com.get("tope_centimos") or 0)
+    saldo = _saldo_de(email)
+    pct = 0 if tope <= 0 else min(100, round(deuda * 100 / tope))
+    aviso = ""
+    if com.get("suspendido"):
+        aviso = va.aviso(f"<b>Cobros en línea pausados.</b> Tienes {_plata(deuda, iso)} de comisiones por pagar (el tope es "
+                         f"{_plata(tope, iso)}). Recarga tu saldo y la deuda se paga sola; mientras tanto el pago en la cancha "
+                         "sigue funcionando.", "bad")
+    elif deuda:
+        aviso = va.aviso(f"Tienes {_plata(deuda, iso)} de comisiones por pagar. Si pasa de {_plata(tope, iso)} se pausan tus "
+                         "cobros en línea. Recarga tu saldo y se paga sola.", "warn")
+    tono = "bad" if pct >= 80 else ("warn" if pct >= 50 else "ok")
+    cont = (f"<div class='vcl-saldo'><small>Saldo disponible</small><b>{_plata(saldo, iso)}</b>"
+            "<p>De aquí sale la comisión de cada reserva.</p></div>"
+            "<div class='vcl-mini'>"
+            f"<div><small>Comisiones por pagar</small><b>{_plata(deuda, iso)}</b><p>Se paga sola al recargar</p></div>"
+            f"<div><small>Tope antes de pausar</small><b>{_plata(tope, iso)}</b><p>Deuda máxima</p></div></div>"
+            f"<div class='vcl-barra-t'><b>Deuda vs. tope</b><span>{_plata(deuda, iso)} de {_plata(tope, iso)}</span></div>"
+            f"<div class='vcl-barra {tono}' role='progressbar' aria-label='Deuda de comisiones frente al tope' aria-valuemin='0' "
+            f"aria-valuemax='100' aria-valuenow='{pct}'><i class='p{pct // 5 * 5}'></i></div>"
+            "<p class='vcl-nota'>Al llegar al tope se pausan los cobros en línea.</p>" + aviso
+            + f"<a class='btn vcl-ancho' href='/mi-billetera#recargar'>{svg('billete', 18)} Recargar saldo</a>"
+            f"<a class='vcl-link-c' href='{e(PLAY_URL)}' rel='noopener'>También puedes recargar desde la app</a>")
+    return _panel(f"Comisión {MARCA}", "Sale de tu saldo prepago.", cont, icono="billete", clase="vcl-com", id_="tComision")
 
 
 def _bloque_culqi(est: dict) -> str:
     cq = est.get("culqi") or {}
     if cq.get("no_aplica"):
-        return ("<section class='panel' aria-labelledby='tCulqi'><h2 id='tCulqi'>Pagos con tarjeta</h2>"
-                "<p class='sub'>En tu país los jugadores te pagan con QR, transferencia o billetera: agrégalos abajo y "
-                "confirma cada comprobante.</p></section>")
+        return ""
+    titulo, sub = "Tarjeta y Yape con tu Culqi", "La plata cae en tu cuenta. Llaves en Culqi → Desarrollo → API Keys."
     if cq.get("configurada"):
         modo = "Producción" if cq.get("modo") == "live" else "Pruebas"
-        return ("<section class='panel' aria-labelledby='tCulqi'><h2 id='tCulqi'>Tarjeta y Yape con tu Culqi</h2>"
-                f"<div class='cc-ok'><span aria-hidden='true'>✅</span><div><b>Culqi conectado</b>"
-                f"<small><span class='pill {'ok' if modo == 'Producción' else 'warn'}'>{modo}</span></small></div></div>"
-                "<dl class='cc-dl'>"
+        cont = ("<div class='vcl-ok'>" + svg("check", 18) + "<b>Culqi conectado</b>"
+                + va.pill(modo, "ok" if modo == "Producción" else "warn") + "</div>"
+                "<dl class='vcl-dl'>"
                 f"<dt>Llave pública</dt><dd><code>{e(cq.get('public_key'))}</code></dd>"
                 f"<dt>Llave secreta</dt><dd><code>{e(cq.get('secret_key'))}</code></dd></dl>"
-                + ("" if cq.get("verificada") else "<p class='aviso warn'>No pudimos comprobar la llave con Culqi; se reintentará al cobrar.</p>")
+                + ("" if cq.get("verificada") else va.aviso("No pudimos comprobar la llave con Culqi; se reintentará al cobrar.", "warn"))
                 + "<label for='ccWebhook'>Webhook (pégalo en tu panel de Culqi → Eventos)</label>"
-                f"<div class='cc-copiar'><input id='ccWebhook' readonly value='{e(cq.get('webhook_url'))}'>"
-                "<button type='button' class='btn sec' data-copiar='ccWebhook'>Copiar</button></div>"
-                "<div class='acciones' style='margin-top:14px'><button type='button' class='btn sec cc-rojo' id='ccDesconectar'>Desconectar Culqi</button></div>"
-                "</section>")
+                f"<div class='vcl-copiar'><input id='ccWebhook' readonly value='{e(cq.get('webhook_url'))}'>"
+                f"<button type='button' class='btn sec' data-copiar='ccWebhook'>{svg('copiar', 16)} Copiar</button></div>"
+                "<div class='vcl-pie'><span></span><button type='button' class='btn peligro' id='ccDesconectar'>Desconectar Culqi</button></div>")
+        return _panel(titulo, sub, cont, icono="tarjeta", id_="tCulqi")
     sin_cifrado = not est.get("cifrado")
-    return ("<section class='panel' aria-labelledby='tCulqi'><h2 id='tCulqi'>Tarjeta y Yape con tu Culqi</h2>"
-            "<p class='sub'>Cobra en línea con tu propia cuenta Culqi: la plata cae en tu cuenta. Encuentra tus llaves en "
-            "tu panel de Culqi → Desarrollo → API Keys.</p>"
-            + ("<div class='aviso warn'>" + e(ERRORES["cifrado_no_configurado"]) + "</div>" if sin_cifrado else "")
-            + "<form id='ccCulqi' novalidate>"
-            "<label for='ccPk'>Llave pública</label><input id='ccPk' autocomplete='off' spellcheck='false' maxlength='120' placeholder='pk_live_…'>"
-            "<label for='ccSk'>Llave secreta</label><input id='ccSk' type='password' autocomplete='off' spellcheck='false' maxlength='120' placeholder='sk_live_…'>"
-            "<p class='sub' style='font-size:13px'>La llave secreta se guarda cifrada y nunca se vuelve a mostrar.</p>"
+    cont = ((va.aviso(e(ERRORES["cifrado_no_configurado"]), "warn") if sin_cifrado else "")
+            + "<form id='ccCulqi' novalidate><div class='vcl-llaves'>"
+            "<div><label for='ccPk'>Llave pública</label><input id='ccPk' autocomplete='off' spellcheck='false' maxlength='120' placeholder='pk_live_…'></div>"
+            "<div><label for='ccSk'>Llave secreta</label><input id='ccSk' type='password' autocomplete='off' spellcheck='false' maxlength='120' placeholder='sk_live_…'></div></div>"
             "<div class='aviso err' id='ccCulqiErr' role='alert' hidden></div>"
-            f"<div class='acciones'><button type='submit' class='btn' id='ccConectar'{' disabled' if sin_cifrado else ''}>Conectar Culqi</button></div>"
-            "</form></section>")
+            f"<div class='vcl-pie'><small class='vcl-candado'>{svg('candado', 14)} La llave secreta se guarda cifrada y nunca se vuelve a mostrar.</small>"
+            f"<button type='submit' class='btn' id='ccConectar'{' disabled' if sin_cifrado else ''}>Conectar Culqi</button></div>"
+            "</form>")
+    return _panel(titulo, sub, cont, icono="tarjeta", id_="tCulqi")
 
 
 @router.post("/anfitrion/cobros-club/culqi")
@@ -346,76 +454,153 @@ def _subir_qr(email: str, crudo: bytes) -> JSONResponse:
 
 # ── Pagos por confirmar (pagos_por_confirmar_screen.dart) ───────────────────
 
-def _turno_txt(p: dict) -> tuple[str, str]:
-    filas = datos.reservas_de(list(p.get("reserva_ids") or []))
-    if not filas:
-        return "", ""
-    f0, f1 = filas[0], filas[-1]
-    return (horarios.fecha_larga(str(f0.get("fecha") or "")),
-            f"{f0.get('hora_inicio')}–{f1.get('hora_fin')}" + (f" · {len(filas)} turnos" if len(filas) > 1 else ""))
+def _turnos_de(pagos: list[dict]) -> dict[str, tuple[str, str]]:
+    """{pago_id: (día, rango)} con UNA sola consulta para toda la bandeja."""
+    ids = [str(i) for p in pagos for i in (p.get("reserva_ids") or [])]
+    filas = {str(f.get("id")): f for f in datos.reservas_de(list(dict.fromkeys(ids)))} if ids else {}
+    out: dict[str, tuple[str, str]] = {}
+    for p in pagos:
+        fs = sorted((filas[str(i)] for i in (p.get("reserva_ids") or []) if str(i) in filas),
+                    key=lambda f: (str(f.get("fecha") or ""), str(f.get("hora_inicio") or "")))
+        if not fs:
+            out[str(p["id"])] = ("", "")
+            continue
+        f0, f1 = fs[0], fs[-1]
+        out[str(p["id"])] = (horarios.fecha_larga(str(f0.get("fecha") or "")),
+                             f"{f0.get('hora_inicio')}–{f1.get('hora_fin')}" + (f" · {len(fs)} turnos" if len(fs) > 1 else ""))
+    return out
 
 
-def _tarjeta_voucher(p: dict, canchas: dict, historial: bool) -> str:
+ESTADO_VOUCHER = {"aprobado": ("Aprobado", "ok", "check"), "rechazado": ("Rechazado", "bad", "x"),
+                  "vencido": ("Venció sin revisar", "gris", "reloj")}
+
+
+def _fila_voucher(p: dict, canchas: dict, historial: bool, turno: tuple[str, str]) -> list[str]:
+    """Celdas de la tabla de Pagos por confirmar (la fila lleva `data-pid`)."""
     c = canchas.get(p.get("cancha_id")) or {}
     lugar = (c.get("club") or "").strip()
     nombre_c = c.get("nombre") or "Cancha"
-    dia, rango = _turno_txt(p)
+    dia, rango = turno
     pid = str(p["id"])
     monto = _plata(int(p.get("monto_centimos") or 0), str(p.get("moneda") or "PEN"))
-    medio = cd.ETIQUETA_MEDIO.get(str(p.get("medio") or ""), str(p.get("medio") or ""))
+    medio_k = str(p.get("medio") or "")
+    medio = cd.ETIQUETA_MEDIO.get(medio_k, medio_k).replace(" bancaria", "")
     jugador = (p.get("jugador_nombre") or "").strip() or p.get("jugador_email") or "Jugador"
     estado = str(p.get("estado") or "")
+    comp = (f"<button type='button' class='vcl-mini-img' data-zoom='{e(pid)}' aria-label='Ver el comprobante de {e(jugador)} en grande'>"
+            f"{svg('recibo', 22)}<img src='/anfitrion/pagos-por-confirmar/{e(pid)}/imagen' alt='Comprobante de {e(jugador)}' loading='lazy'></button>")
+    op = p.get("operacion") or ""
+    monto_td = (f"<b class='vcl-monto'>{e(monto)}</b><small class='vcl-medio'>{svg(ICONO_MEDIO.get(medio_k, 'tarjeta'), 13)}"
+                f"{e(medio)}" + (f" · N.º {e(op)}" if op else " · sin N.º de operación") + "</small>")
+    jug_td = f"<b>{e(jugador)}</b>" + (f"<small>{e(p.get('jugador_email'))}</small>" if p.get("jugador_email") and p.get("jugador_email") != jugador else "")
+    cancha_td = (f"<b>{e(nombre_c)}</b>" + (f"<small>{e(lugar)}</small>" if lugar and lugar != nombre_c else "")
+                 + (f"<small>{e(dia)} · {e(rango)}</small>" if dia else ""))
     if historial:
-        pill = {"aprobado": "<span class='pill ok'>Aprobado</span>", "rechazado": "<span class='pill bad'>Rechazado</span>",
-                "vencido": "<span class='pill gris'>Venció sin revisar</span>"}.get(estado, f"<span class='pill gris'>{e(estado)}</span>")
+        txt, tono, ic = ESTADO_VOUCHER.get(estado, (estado or "Resuelto", "gris", ""))
         motivo = str(p.get("motivo_rechazo") or "")
         motivo = "" if motivo in ("sin_revision", "apartado_perdido") else cdw.MOTIVOS_RECHAZO.get(motivo, motivo)
         por = str(p.get("resuelto_por") or "").strip().lower()
-        por_txt = f"<small class='sub'>Por {e(por)} (recepción)</small>" if por and por != str(p.get("dueno") or "").lower() else ""
-        acciones = (f"<div class='acc'>{pill}" + (f"<small class='sub'>Motivo: {e(motivo)}</small>" if motivo else "") + por_txt + "</div>")
+        det = ""
+        if motivo:
+            det = f"<small>Motivo: {e(motivo)}</small>"
+        if estado == "vencido":
+            det += "<small>Por el sistema: nadie lo revisó a tiempo</small>"
+        elif por and por != str(p.get("dueno") or "").lower():
+            det += f"<small>Por {e(por)} (recepción)</small>"
+        est_td = va.pill(txt, tono, ic) + det
+        acc = f"<button type='button' class='vcl-ver' data-zoom='{e(pid)}'>Ver</button>"
     else:
-        acciones = (f"<div class='acc'><span class='vv-vence' data-vence='{e(p.get('vence_en'))}'>Vence pronto</span>"
-                    f"<button type='button' class='btn' data-aprobar='{e(pid)}' data-monto='{e(monto)}'>✅ Aprobar</button>"
-                    f"<button type='button' class='btn sec cc-rojo' data-rechazar='{e(pid)}'>Rechazar</button></div>")
-    return (f"<article class='vv' data-pid='{e(pid)}' aria-label='Pago de {e(jugador)}'>"
-            f"<button type='button' class='vv-img' data-zoom='{e(pid)}' aria-label='Ver el comprobante en grande'>"
-            f"<img src='/anfitrion/pagos-por-confirmar/{e(pid)}/imagen' alt='Comprobante de {e(jugador)}' loading='lazy'></button>"
-            f"<div class='vv-cuerpo'><div class='vv-monto'>{e(monto)}</div>"
-            f"<div class='sub' style='margin:0'><b>{e(medio)}</b> · N.º de operación <b>{e(p.get('operacion') or '—')}</b></div>"
-            f"<div style='margin-top:6px'><b>{e(jugador)}</b><small class='sub' style='display:block;margin:0'>{e(p.get('jugador_email') or '')}</small></div>"
-            f"<div class='sub' style='margin:6px 0 0'>{e(nombre_c)}{(' · ' + e(lugar)) if lugar and lugar != nombre_c else ''}"
-            f"{(' · ' + e(dia) + ' ' + e(rango)) if dia else ''}</div>{acciones}</div></article>")
+        est_td = (va.pill("Por revisar", "warn", "reloj")
+                  + f"<small class='vv-vence' data-vence='{e(p.get('vence_en'))}'>Vence pronto</small>")
+        acc = (f"<div class='vcl-acc'><button type='button' class='btn' data-aprobar='{e(pid)}' data-monto='{e(monto)}'>Aprobar</button>"
+               f"<button type='button' class='btn peligro' data-rechazar='{e(pid)}'>Rechazar</button></div>")
+    return [comp, monto_td, jug_td, cancha_td, est_td, acc]
+
+
+def tabla_filas(cabeceras: list[str], filas: list[list[str]], *, clase: str = "", attrs: list[str] | None = None) -> str:
+    """= `va.tabla` (mismo marcado: en el celular cada fila es una tarjeta) con
+    atributos por fila (`data-pid` que usa el JS para quitarla)."""
+    attrs = attrs or [""] * len(filas)
+    cab = "".join(f"<th scope='col'>{e(c)}</th>" for c in cabeceras)
+    cuerpo = "".join(f"<tr {a}>" + "".join(f"<td data-et='{e(cabeceras[i] if i < len(cabeceras) else '')}'><div class='vcl-c'>{v}</div></td>"
+                                           for i, v in enumerate(f)) + "</tr>" for f, a in zip(filas, attrs))
+    return f"<div class='va-tabla-w'><table class='va-tabla {e(clase)}'><thead><tr>{cab}</tr></thead><tbody>{cuerpo}</tbody></table></div>"
+
+
+def _locales_operables(canchas: list[dict]) -> list[tuple[str, str, set]]:
+    """[(local_key, nombre, {cancha_id})] de las canchas que se operan."""
+    import fidelidad
+    g: dict[str, list] = {}
+    for c in canchas:
+        k = fidelidad.local_key(c)
+        g.setdefault(k, [(c.get("club") or "").strip() or c.get("nombre") or "Local", set()])[1].add(c["id"])
+    return [(k, n, ids) for k, (n, ids) in g.items()]
 
 
 @router.get("/anfitrion/pagos-por-confirmar", response_class=HTMLResponse)
-def pagina_pagos_por_confirmar(request: Request, estado: str = "") -> HTMLResponse:
+def pagina_pagos_por_confirmar(request: Request, estado: str = "", local: str = "", ver: str = "") -> HTMLResponse:
     ses, resp = _sesion_o_entrar(request, "/anfitrion/pagos-por-confirmar")
     if resp is not None:
         return resp
     email = ses["email"]
     historial = estado == "historial"
-    canchas = {c["id"]: c for c in permisos.canchas_para(email, permisos.VOUCHERS)}
-    pagos = cdw.bandeja_operable(email, "historial" if historial else "en_revision") if cd.disponible() else []
-    pend = len(pagos) if not historial else cdw.pendientes_operables(email)
-    tabs = ("<div class='anf-tabs' role='tablist'>"
-            f"<a class='chip{'' if historial else ' sel'}' role='tab' aria-selected='{'false' if historial else 'true'}' href='/anfitrion/pagos-por-confirmar'>Por revisar <small>({pend})</small></a>"
-            f"<a class='chip{' sel' if historial else ''}' role='tab' aria-selected='{'true' if historial else 'false'}' href='/anfitrion/pagos-por-confirmar?estado=historial'>Resueltos</a></div>")
+    lista_c = permisos.canchas_para(email, permisos.VOUCHERS)
+    canchas = {c["id"]: c for c in lista_c}
+    locales = _locales_operables(lista_c)
+    loc = next((x for x in locales if x[0] == local), None)
+    disp = cd.disponible()
+    en_rev = cdw.bandeja_operable(email, "en_revision") if disp else []
+    resueltos = cdw.bandeja_operable(email, "historial") if disp else []
+    if loc is not None:
+        en_rev = [p for p in en_rev if p.get("cancha_id") in loc[2]]
+        resueltos = [p for p in resueltos if p.get("cancha_id") in loc[2]]
+    cuenta = {k: sum(1 for p in resueltos if p.get("estado") == k) for k in ESTADO_VOUCHER}
+    ver = ver if historial and ver in ESTADO_VOUCHER else ""
+    pagos = ([p for p in resueltos if not ver or p.get("estado") == ver] if historial else en_rev)
+
+    def url(**kw) -> str:
+        q = {"estado": "historial" if historial else "", "local": loc[0] if loc else "", "ver": ver} | kw
+        qs = "&".join(f"{k}={quote(str(v))}" for k, v in q.items() if v)
+        return "/anfitrion/pagos-por-confirmar" + (f"?{qs}" if qs else "")
+
+    seg = va.segmentado([(url(estado="", ver=""), "Por revisar", not historial), (url(estado="historial", ver=""), "Resueltos", historial)],
+                        etiqueta="Pagos", contar={"Por revisar": len(en_rev), "Resueltos": len(resueltos)})
+    sel_local = ""
+    if len(locales) > 1:
+        sel_local = ("<label class='vcl-sel'><span class='vh'>Local</span><select data-ir aria-label='Filtrar por local'>"
+                     f"<option value='{e(url(local=''))}'>Todos los locales</option>"
+                     + "".join(f"<option value='{e(url(local=k))}'{' selected' if loc and loc[0] == k else ''}>{e(n)}</option>"
+                               for k, n, _ in locales) + "</select></label>")
+    chips = ""
+    if historial:
+        chips = "<div class='vcl-chips' role='group' aria-label='Filtrar resueltos'>" + "".join(
+            f"<a class='vcl-chip {tono}{' sel' if ver == k else ''}' href='{e(url(ver='' if ver == k else k))}'"
+            + (" aria-current='true'" if ver == k else "") + f">{svg(ic, 14)}{e(txt.replace('Venció sin revisar', 'Vencidos').replace('Aprobado', 'Aprobados').replace('Rechazado', 'Rechazados'))}: {cuenta[k]}</a>"
+            for k, (txt, tono, ic) in ESTADO_VOUCHER.items()) + "</div>"
+    barra = f"<div class='vcl-barra-f'>{seg}<div class='vcl-filtros'>{sel_local}{chips}</div></div>"
     if pagos:
-        lista = "<div class='vv-lista'>" + "".join(_tarjeta_voucher(p, canchas, historial) for p in pagos) + "</div>"
-    elif not cd.disponible():
-        lista = "<div class='anf-vacio'>El cobro directo aún no está disponible en este ambiente.</div>"
+        turnos = _turnos_de(pagos)
+        filas = [_fila_voucher(p, canchas, historial, turnos.get(str(p["id"]), ("", ""))) for p in pagos]
+        tabla = tabla_filas(["Comprobante", "Monto y operación", "Jugador", "Cancha", "Estado", ""], filas, clase="vcl-vv",
+                            attrs=[f"class='vv' data-pid='{e(str(p['id']))}'" for p in pagos])
+        lista = va.panel(tabla, clase="vcl-tabla-p")
+    elif not disp:
+        lista = va.panel(va.vacio("recibo", "Aún no disponible", "El cobro directo aún no está disponible en este ambiente."))
+    elif historial:
+        lista = va.panel(va.vacio("recibo", "Nada por aquí" if ver else "Aún no resolviste pagos",
+                                  "Prueba con otro filtro." if ver else "Los comprobantes que apruebes, rechaces o que venzan aparecen aquí."))
     else:
-        lista = ("<div class='anf-vacio'>" + ("Aún no resolviste pagos." if historial else
-                 "No tienes vouchers pendientes. Cuando un jugador te pague por Yape, Plin o transferencia, su comprobante aparece aquí.")
-                 + "</div>")
+        lista = va.panel(va.vacio("recibo", "No tienes comprobantes por revisar",
+                                  "Cuando un jugador te pague por " + ("Yape, Plin o transferencia" if any(_pais_de_c(c) == "PE" for c in lista_c) or not lista_c
+                                                                       else "QR, transferencia o billetera")
+                                  + ", su comprobante aparece aquí para que lo confirmes."))
     cfg = {"motivos": [{"k": k, "n": n} for k, n in MOTIVOS_RECHAZO]}
-    cuerpo = ("<h1 class='anf-hola'>Pagos por confirmar</h1>"
-              "<p class='sub'>Compara cada comprobante con el movimiento en tu Yape, Plin o banco. Si no lo revisas a tiempo, "
-              "la reserva se libera sola.</p>" + _dividir_web.aviso_devoluciones(email) + tabs + lista
+    medios_txt = "tu Yape, Plin o banco" if any(_pais_de_c(c) == "PE" for c in lista_c) else "tu banco o billetera"
+    cuerpo = (va.cabecera("Pagos por confirmar", f"Compara cada comprobante con el movimiento en {medios_txt}. "
+                          "Si no lo revisas a tiempo, la reserva se libera sola.")
+              + _dividir_web.aviso_devoluciones(email) + barra + lista
               + f"<script>window.__vv={_js(cfg)};</script><script>{JS_VOUCHERS}</script>")
-    if permisos.es_solo_encargado(email):  # la recepción no ve Cobros del club
-        return _pagina("Pagos por confirmar", cuerpo, ses)
-    return _pagina("Pagos por confirmar", cuerpo, ses, "/anfitrion/cobros-club", "Cobros de tu club")
+    return pagina_vista("Pagos por confirmar", cuerpo, ses)
 
 
 @router.get("/anfitrion/pagos-por-confirmar/{pid}/imagen")
@@ -484,6 +669,7 @@ def _cancha_propia(email: str, cancha_id: str) -> tuple[dict | None, list[dict]]
 
 @router.get("/anfitrion/reglas", response_class=HTMLResponse)
 def pagina_reglas_elegir(request: Request):
+    """Sin cancha elegida: abre la primera (la columna izquierda deja cambiar)."""
     ses, resp = _sesion_o_entrar(request, "/anfitrion/reglas")
     if resp is not None:
         return resp
@@ -491,23 +677,24 @@ def pagina_reglas_elegir(request: Request):
     if not canchas and permisos.es_solo_encargado(ses["email"]):
         from web import anfitrion_encargados as _enc
         return _enc.sin_permiso(ses, "")
-    if len(canchas) == 1:
-        return RedirectResponse(f"/anfitrion/reglas/{canchas[0]['id']}", status_code=303)
-    if not canchas:
-        cuerpo = ("<h1 class='anf-hola'>Reglas de reserva</h1><div class='anf-vacio'>Registra tu cancha para configurar sus reglas.</div>"
-                  "<p style='margin-top:14px'><a class='btn' href='/anfitrion/nueva'>Registrar mi cancha</a></p>")
-        return _pagina("Reglas de reserva", cuerpo, ses)
-    filas = "".join(
-        f"<a class='anf-item' href='/anfitrion/reglas/{e(c['id'])}'><span class='txt'><b>{e(c['nombre'])}</b>"
-        f"<small>{e(c.get('club') or '')}{' · con reglas' if _reglas.de_cancha(c) else ' · horario general'}</small></span>"
-        "<span class='chev' aria-hidden='true'>›</span></a>" for c in canchas)
-    cuerpo = ("<h1 class='anf-hola'>Reglas de reserva</h1><p class='sub'>Elige la cancha. Luego puedes aplicar las mismas reglas "
-              f"a las demás canchas de tu local.</p><div class='anf-menu' style='margin-left:0'>{filas}</div>")
-    return _pagina("Reglas de reserva", cuerpo, ses)
+    if canchas:
+        return RedirectResponse(f"/anfitrion/reglas/{quote(_ordenar_por_local(canchas)[0]['id'])}", status_code=303)
+    cuerpo = (va.cabecera("Reglas de reserva", SUB_REGLAS)
+              + va.panel(va.vacio("horario", "Registra tu cancha para configurar sus reglas",
+                                  "Horario por día, días cerrados, precios por franja y tu política de cancelación.",
+                                  "<a class='btn' href='/anfitrion/nueva'>Registrar mi cancha</a>")))
+    return pagina_vista("Reglas de reserva", cuerpo, ses)
+
+
+SUB_REGLAS = "Elige una cancha y ajusta sus reglas. Puedes copiarlas a las demás canchas de tu local."
 
 
 def _opciones_hora() -> list[str]:
     return [f"{h:02d}:{m:02d}" for h in range(24) for m in (0, 30)]
+
+
+def _ordenar_por_local(canchas: list[dict]) -> list[dict]:
+    return sorted(canchas, key=lambda x: ((x.get("club") or x.get("nombre") or "").strip().lower(), x.get("nombre") or ""))
 
 
 @router.get("/anfitrion/reglas/{cancha_id}", response_class=HTMLResponse)
@@ -522,55 +709,74 @@ def pagina_reglas(request: Request, cancha_id: str) -> HTMLResponse:
         r.status_code = 404
         return r
     from pagos import devoluciones
-    sim, _iso = _moneda_de(c)
+    sim, iso = _moneda_de(c)
     club = (c.get("club") or "").strip().lower()
+    canchas = _ordenar_por_local(canchas)
     otras = [x for x in canchas if x["id"] != c["id"]]
     otras.sort(key=lambda x: ((x.get("club") or "").strip().lower() != club, x.get("nombre") or ""))
     hoy = horarios.ahora_local(_pais_de_c(c)).date()
+    precio, unidad = horarios.precio_publico(c)
     cfg = {"cancha": c["id"], "moneda": sim, "reglas": _reglas.de_cancha(c),
            "base": {"apertura": c.get("hora_apertura") or "07:00", "cierre": c.get("hora_cierre") or "23:00",
-                    "paso": int(c.get("duracion_slot_min") or 60)},
+                    "paso": int(c.get("duracion_slot_min") or 60), "precio": round(float(precio or 0), 2),
+                    "unidad": "turno" if unidad != "por hora" else "hora"},
            "horas": _opciones_hora(), "motivos": MOTIVOS_CIERRE, "nombres": NOMBRES_FRANJA,
            "dias": [{"k": k, "n": n} for k, n in zip(_reglas.DIAS_SEMANA, ("Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"))],
+           "meses": horarios.MESES, "diasCortos": horarios.DIAS,
            "global_cancelacion": float(devoluciones.horas_minimas({k: v for k, v in c.items() if k != "reglas_reserva"})),
-           "hoy": hoy.isoformat(), "disponible": datos.col_reglas_disponible()}
-    hermanas = "".join(
-        f"<label class='chk rg-her'><input type='checkbox' value='{e(x['id'])}'{' checked' if (x.get('club') or '').strip().lower() == club and club else ''}>"
-        f" {e(x['nombre'])}<small> · {e(x.get('club') or 'otro local')}</small></label>" for x in otras)
-    cuerpo = (
-        f"<h1 class='anf-hola'>Reglas de {e(c['nombre'])}</h1>"
-        f"<p class='sub'>Horario general {e(cfg['base']['apertura'])}–{e(cfg['base']['cierre'])} · turnos de {cfg['base']['paso']} min. "
-        "Lo que no configures aquí sigue igual que siempre.</p>"
-        + ("" if cfg["disponible"] else "<div class='aviso warn'>Las reglas de reserva aún no están activas en este ambiente: puedes verlas pero no guardarlas.</div>")
-        + "<form id='rgForm' novalidate>"
-          "<section class='panel'><h2>Horario por día</h2><p class='sub'>El cierre es la hora en que empieza el último turno.</p><div id='rgSemana'></div></section>"
-          "<section class='panel'><h2>Días cerrados</h2><p class='sub'>Feriados, mantenimiento o eventos: ese día no se reserva.</p>"
-          "<div id='rgCierres'></div><div class='rg-fila'><div><label for='rgCierreF'>Fecha</label>"
-          f"<input type='date' id='rgCierreF' min='{hoy.isoformat()}'></div></div>"
-          "<label>Motivo</label><div class='chips' id='rgCierreM' role='group' aria-label='Motivo del cierre'></div>"
-          "<div class='acciones'><button type='button' class='btn sec' id='rgCierreAdd'>＋ Agregar día cerrado</button></div></section>"
-          "<section class='panel'><h2>Precios por franja</h2><p class='sub'>Un precio distinto en ciertos días y horas (manda sobre la hora feliz). "
-          "Si dos franjas cubren el mismo turno, manda la primera.</p><div id='rgFranjas'></div>"
-          "<div class='acciones'><button type='button' class='btn sec' id='rgFranjaNueva'>＋ Agregar franja</button></div>"
-          "<div id='rgFranjaForm' hidden></div></section>"
-          "<section class='panel'><h2>Recargo de luz</h2><p class='sub'>Un monto fijo por turno desde que se prenden las luces.</p><div id='rgLuz'></div></section>"
-          "<section class='panel'><h2>Ventana de reserva</h2><label>Anticipación mínima</label><div class='chips' id='rgAntMin' role='group'></div>"
-          "<label>Hasta cuántos días antes se puede reservar</label><div class='chips' id='rgAntMax' role='group'></div></section>"
-          "<section class='panel'><h2>Turnos por reserva</h2><label>Mínimo de turnos seguidos</label><div class='chips' id='rgMin' role='group'></div>"
-          "<label>Máximo de turnos seguidos</label><div class='chips' id='rgMax' role='group'></div>"
-          "<label>Reservas por jugador al día</label><div class='chips' id='rgTope' role='group'></div></section>"
-          "<section class='panel'><h2>Cancelación</h2><p class='sub'>Hasta cuántas horas antes el jugador cancela con devolución.</p>"
-          "<div class='chips' id='rgCanc' role='group'></div></section>"
-          "<section class='panel'><h2>Vista previa</h2><p class='sub'>Así verá el jugador ese día (con lo que tienes en pantalla, aunque no lo hayas guardado).</p>"
-          f"<div class='rg-fila'><div><label for='rgVistaF'>Día</label><input type='date' id='rgVistaF' value='{hoy.isoformat()}' min='{hoy.isoformat()}'></div>"
-          "<div style='align-self:end'><button type='button' class='btn sec' id='rgVistaBtn'>Ver ese día</button></div></div>"
-          "<div id='rgVista' aria-live='polite' style='margin-top:12px'></div></section>"
-        + (f"<section class='panel'><h2>Aplicar también a</h2><p class='sub'>Las mismas reglas en otras canchas tuyas (se reemplazan las que tengan).</p>{hermanas}</section>" if otras else "")
-        + "<div class='aviso err' id='rgErr' role='alert' hidden></div>"
-          f"<div class='rg-barra'><a class='btn sec' href='/anfitrion/calendario?cancha={e(c['id'])}'>Ver calendario</a>"
-          f"<button type='submit' class='btn' id='rgGuardar'{'' if cfg['disponible'] else ' disabled'}>Guardar reglas</button></div></form>"
-        + f"<script>window.__rg={_js(cfg)};</script><script>{JS_REGLAS}</script>")
-    return _pagina(f"Reglas de {c['nombre']}", cuerpo, ses, "/anfitrion/canchas", "Mis canchas")
+           "hoy": hoy.isoformat(), "disponible": datos.col_reglas_disponible(),
+           "otras": [{"id": x["id"], "nombre": x.get("nombre") or "Cancha", "club": (x.get("club") or "").strip() or "Otro local",
+                      "mismo": (x.get("club") or "").strip().lower() == club and bool(club),
+                      "otra_moneda": _moneda_de(x)[1] != iso, "moneda": _moneda_de(x)[0]} for x in otras]}
+    con_reglas = [x for x in canchas if _reglas.de_cancha(x)]
+    lat = va.lista_lateral(canchas, c["id"], lambda x: f"/anfitrion/reglas/{x['id']}", contar=f"{len(con_reglas)} con reglas",
+                           sub=lambda x: f"{x.get('hora_apertura') or '07:00'}–{x.get('hora_cierre') or '23:00'} · turnos de {int(x.get('duracion_slot_min') or 60)} min",
+                           insignia=lambda x: va.pill("Con reglas", "ok") if _reglas.de_cancha(x) else "",
+                           filtro=len(canchas) > 6)
+    mismas = [x for x in otras if (x.get("club") or "").strip().lower() == club and club]
+    copiar_txt = f"Copiar a {mismas[0]['nombre']}" if len(mismas) == 1 and len(otras) == 1 else "Copiar a otras canchas"
+    copiar = (f"<button type='button' class='btn sec' id='rgCopiar'{'' if cfg['disponible'] else ' disabled'}>{svg('copiar', 16)} {e(copiar_txt)}</button>"
+              if otras else "")
+    sub_top = " · ".join(x for x in ((c.get("club") or "").strip(), f"{sim} {precio:.2f} {unidad}") if x)
+    top = (f"<section class='va-panel vcl-rg-top'><div class='vcl-rg-tit'><h2>{e(c['nombre'])}</h2><p>{e(sub_top)}</p></div>"
+           f"<div class='vcl-rg-acc'>{copiar}<button type='submit' class='btn rg-guardar'{'' if cfg['disponible'] else ' disabled'}>Guardar cambios</button></div></section>")
+    editar = f"/anfitrion/cancha/{quote(c['id'])}/editar"
+    horario = va.panel(
+        "<div id='rgSemana'></div><div class='vcl-rg-pie'><button type='button' class='vcl-link' id='rgPorDia'></button></div>"
+        f"<p class='vcl-nota'>El cierre es la hora en que empieza el último turno. Turnos de {int(cfg['base']['paso'])} min "
+        f"(se cambia en <a href='{e(editar)}'>Editar cancha</a>).</p>",
+        "Horario de atención", "Por día de la semana", clase="vcl-rg-p")
+    franjas = va.panel(
+        "<div id='rgFranjas'></div><div class='vcl-rg-pie'><button type='button' class='vcl-link' id='rgFranjaNueva'>＋ Agregar franja</button></div>"
+        "<div id='rgFranjaForm' class='vcl-form' hidden></div>"
+        "<h3 class='vcl-h3'>Recargo de luz</h3><p class='vcl-nota vcl-nota-a'>Un monto fijo por turno desde que se prenden las luces.</p><div id='rgLuz'></div>",
+        "Franjas y precios", "Precio distinto según el día y la hora (manda sobre la hora feliz)", clase="vcl-rg-p")
+    cierres = va.panel(
+        "<div id='rgCierres'></div>"
+        "<button type='button' class='vcl-agregar' id='rgCierreAbrir'>＋ Agregar día cerrado</button>"
+        "<div id='rgCierreBox' class='vcl-form' hidden><label for='rgCierreF'>Fecha</label>"
+        f"<input type='date' id='rgCierreF' min='{hoy.isoformat()}'>"
+        "<label>Motivo</label><div class='chips' id='rgCierreM' role='group' aria-label='Motivo del cierre'></div>"
+        "<div class='vcl-form-acc'><button type='button' class='btn' id='rgCierreAdd'>Agregar día cerrado</button>"
+        "<button type='button' class='btn sec' id='rgCierreNo'>Cancelar</button></div></div>"
+        "<p class='vcl-nota'>Se muestran rayados en el calendario y nadie puede reservar esos días.</p>",
+        "Días cerrados", "Feriados, mantenimiento o eventos", clase="vcl-rg-p")
+    politica = va.panel("<div id='rgPolitica' class='vcl-pol'></div>", "Cancelación y reserva", "Lo que ve el jugador al reservar",
+                        clase="vcl-rg-p")
+    vista = va.panel(
+        f"<div class='vcl-rg-vista'><div><label for='rgVistaF'>Día</label><input type='date' id='rgVistaF' value='{hoy.isoformat()}' min='{hoy.isoformat()}'></div>"
+        "<button type='button' class='btn sec' id='rgVistaBtn'>Ver ese día</button></div>"
+        "<div id='rgVista' aria-live='polite'></div>",
+        "Vista previa", "Así verá el jugador ese día con lo que tienes en pantalla, aunque no lo hayas guardado.", clase="vcl-rg-p")
+    aviso = "" if cfg["disponible"] else va.aviso("Las reglas de reserva aún no están activas en este ambiente: puedes verlas pero no guardarlas.", "warn")
+    form = ("<form id='rgForm' class='vcl-rg-main' novalidate>" + top + aviso
+            + f"<div class='vcl-rg-grid'><div class='vcl-col'>{horario}{franjas}</div><div class='vcl-col'>{cierres}{politica}</div></div>"
+            + vista + "<div class='aviso err' id='rgErr' role='alert' hidden></div>"
+            f"<div class='vcl-rg-barra'><a class='btn sec' href='/anfitrion/calendario?cancha={e(quote(c['id']))}'>Ver calendario</a>"
+            f"<button type='submit' class='btn rg-guardar'{'' if cfg['disponible'] else ' disabled'}>Guardar cambios</button></div></form>")
+    cuerpo = (va.cabecera("Reglas de reserva", SUB_REGLAS) + f"<div class='va-lado vcl-rg'>{lat}{form}</div>"
+              + f"<script>window.__rg={_js(cfg)};</script><script>{JS_REGLAS}</script>")
+    return pagina_vista(f"Reglas de {c['nombre']}", cuerpo, ses)
 
 
 def _pais_de_c(c: dict) -> str:
@@ -661,6 +867,72 @@ def _guardar_reglas(email: str, b: dict) -> JSONResponse:
     return JSONResponse(r)
 
 
+# Lo de las reglas que lleva PLATA (precio de franja, recargo de luz): solo
+# viaja a canchas que cobran en la MISMA moneda.
+CLAVES_CON_PRECIO = ("franjas", "recargo_luz")
+
+
+def copiar_reglas_de(email: str, origen_id: str, destinos: list) -> tuple[int, dict]:
+    """Copia las reglas GUARDADAS de `origen_id` (normalizadas) a otras canchas
+    del MISMO dueño. A una cancha que cobra en otra moneda NO se le copian las
+    franjas con precio ni el recargo de luz: conserva los suyos y se avisa
+    (`sin_precios`). Si una cancha no es suya, no se toca ninguna."""
+    canchas = {c["id"]: c for c in datos.canchas_de_dueno(email)}
+    origen = canchas.get(str(origen_id or ""))
+    if origen is None:
+        return 404, {"ok": False, "error": "no_es_tu_cancha"}
+    ids = [i for i in dict.fromkeys(str(x).strip() for x in (destinos or []) if str(x or "").strip()) if i != origen["id"]][:50]
+    if not ids:
+        return 400, {"ok": False, "error": "sin_destinos"}
+    if any(i not in canchas for i in ids):
+        return 404, {"ok": False, "error": "no_es_tu_cancha"}
+    if not datos.col_reglas_disponible():
+        return 503, {"ok": False, "error": "reglas_no_disponibles"}
+    norm = _reglas.de_cancha(origen)
+    iso_o = _moneda_de(origen)[1]
+    con_precio = any(k in norm for k in CLAVES_CON_PRECIO)
+    # Agrupa por las reglas que le tocan a cada destino: una escritura por
+    # grupo (casi siempre 1 o 2), nunca una consulta por cancha.
+    grupos: dict[str, tuple[dict, list[str]]] = {}
+    sin_precios: list[dict] = []
+    for i in ids:
+        d = canchas[i]
+        r = norm
+        if _moneda_de(d)[1] != iso_o and con_precio:
+            propias = _reglas.de_cancha(d)
+            r = {k: v for k, v in norm.items() if k not in CLAVES_CON_PRECIO} | {k: propias[k] for k in CLAVES_CON_PRECIO if k in propias}
+            sin_precios.append({"id": i, "nombre": d.get("nombre") or "Cancha", "moneda": _moneda_de(d)[0]})
+        r = _reglas.normalizar(r)
+        grupos.setdefault(json.dumps(r, sort_keys=True), (r, []))[1].append(i)
+    n = sum(datos.guardar_reglas(lista, email, r) for r, lista in grupos.values())
+    if n != len(ids):
+        return 409, {"ok": False, "error": "no_se_guardo"}
+    return 200, {"ok": True, "copiadas": n, "sin_precios": sin_precios, "reglas": norm}
+
+
+MSG_COPIAR = {"sin_destinos": "Elige al menos una cancha.", "no_es_tu_cancha": "Una de esas canchas no está a tu nombre.",
+              "reglas_no_disponibles": "Las reglas de reserva aún no están activas en este ambiente.",
+              "no_se_guardo": "No pudimos copiar a todas las canchas. Inténtalo de nuevo."}
+
+
+@router.post("/anfitrion/reglas/{cancha_id}/copiar")
+async def copiar_reglas(request: Request, cancha_id: str) -> JSONResponse:
+    """"Copiar a otras canchas": solo el DUEÑO y solo a canchas suyas."""
+    ses, b, malo = await _cuerpo(request)
+    if malo is not None:
+        return malo
+    return await run_in_threadpool(_copiar_reglas, ses["email"], cancha_id, b)
+
+
+def _copiar_reglas(email: str, cancha_id: str, b: dict) -> JSONResponse:
+    destinos = b.get("destinos") if isinstance(b.get("destinos"), list) else []
+    status, r = copiar_reglas_de(email, cancha_id, destinos)
+    if status != 200:
+        return JSONResponse({"ok": False, "error": r["error"], "mensaje": MSG_COPIAR.get(r["error"], r["error"])}, status_code=status)
+    print(f"[reglas-web] {email} copió las reglas de {cancha_id} a {r['copiadas']} cancha(s)", flush=True)
+    return JSONResponse(r)
+
+
 # ── estilos y scripts ────────────────────────────────────────────────────────
 
 CSS = """
@@ -720,10 +992,15 @@ var dq=$('ccDesconectar');if(dq)dq.addEventListener('click',async function(){if(
 var medios=(C.medios||[]).slice(),edit=-1,st={};
 function detalle(m){if(m.tipo==='transferencia')return [m.banco,m.cuenta?('Cuenta '+m.cuenta):'',m.cci?('CCI '+m.cci):''].filter(Boolean).join(' · ');
   if(m.tipo==='qr'||m.tipo==='billetera')return [m.banco,m.numero].filter(Boolean).join(' · ')||(m.qr_url?'Con QR':'');return m.numero||''}
+function cuenta(m){if(m.tipo==='transferencia')return "<b>"+esc([m.banco,m.cuenta].filter(Boolean).join(' · '))+"</b>"+(m.cci?"<small>CCI "+esc(m.cci)+"</small>":"");
+  if(m.tipo==='qr'||m.tipo==='billetera')return (m.qr_url?"<img class='vcl-qr' src='"+esc(m.qr_url)+"' alt='QR de "+esc(m.titular)+"'>":"")+"<b>"+esc([m.banco,m.numero].filter(Boolean).join(' · ')||(m.qr_url?'Con QR':''))+"</b>";
+  return "<b>"+esc(m.numero||'')+"</b>"}
 function pintar(){var el=$('ccMedios');if(!el)return;
-  if(!medios.length){el.innerHTML="<div class='anf-vacio'>Aún no agregas medios manuales."+(C.pais==='PE'?' Agrega tu Yape, Plin o cuenta bancaria.':' Agrega tu QR, transferencia o billetera.')+"</div>";return}
-  el.innerHTML=medios.map(function(m,i){return "<div class='cc-medio'>"+(m.qr_url?"<img src='"+esc(m.qr_url)+"' alt='QR de "+esc(m.titular)+"'>":"")+"<div><b>"+esc(C.etiquetas[m.tipo]||m.tipo)+"</b><small>"+esc(m.titular)+"</small><small>"+esc(detalle(m))+"</small></div>"
-    +"<button type='button' class='btn sec' data-editar='"+i+"'>Editar</button><button type='button' class='btn sec cc-rojo' data-quitar='"+i+"'>Quitar</button></div>"}).join('')}
+  if(!medios.length){el.innerHTML="<div class='va-vacio vcl-vacio-c'><b>Aún no agregas medios manuales</b><p>"+(C.pais==='PE'?'Agrega tu Yape, Plin o cuenta bancaria.':'Agrega tu QR, transferencia o billetera.')+"</p></div>";return}
+  var cab=['Medio','Titular','Número / cuenta',''];
+  el.innerHTML="<div class='va-tabla-w'><table class='va-tabla vcl-medios'><thead><tr>"+cab.map(function(c){return "<th scope='col'>"+c+"</th>"}).join('')+"</tr></thead><tbody>"+
+    medios.map(function(m,i){return "<tr><td data-et='Medio'><span class='vcl-med'>"+(C.iconos[m.tipo]||'')+"<b>"+esc(C.etiquetas[m.tipo]||m.tipo)+"</b></span></td><td data-et='Titular'><div class='vcl-c'>"+esc(m.titular)+"</div></td><td data-et='Número / cuenta' class='vcl-cta'><div class='vcl-c'>"+cuenta(m)+"</div></td>"
+    +"<td data-et=''><div class='vcl-acc-t'><button type='button' class='vcl-link' data-editar='"+i+"' aria-label='Editar "+esc(C.etiquetas[m.tipo]||m.tipo)+"'>Editar</button><button type='button' class='vcl-link rojo' data-quitar='"+i+"' aria-label='Quitar "+esc(C.etiquetas[m.tipo]||m.tipo)+"'>Quitar</button></div></td></tr>"}).join('')+"</tbody></table></div>"}
 function chips(ops,sel,attr){return ops.map(function(o){var v=typeof o==='string'?o:o.v,n=typeof o==='string'?o:o.n;return "<button type='button' class='chip"+(v===sel?' sel':'')+"' "+attr+"='"+esc(v)+"' aria-pressed='"+(v===sel)+"'>"+esc(n)+"</button>"}).join('')}
 function form(){var f=$('ccMedioForm'),t=st.tipo,h='';
   h+="<label>Medio</label><div class='chips' role='group' aria-label='Medio'>"+chips(C.permitidos.map(function(k){return {v:k,n:C.etiquetas[k]||k}}),t,'data-tipo')+"</div>";
@@ -735,7 +1012,7 @@ function form(){var f=$('ccMedioForm'),t=st.tipo,h='';
   if(t==='qr'||t==='billetera'){if(C.billeteras.length)h+="<label>"+(t==='qr'?'Banco o app del QR':'Billetera')+"</label><div class='chips' role='group'>"+chips(C.billeteras,st.banco,'data-banco')+"</div>";
     h+="<label for='mNum'>Número <span class='req'>celular o cuenta"+(t==='qr'?' · opcional si subes el QR':'')+"</span></label><input id='mNum' inputmode='numeric' maxlength='15' value='"+esc(st.numero||'')+"'>";
     if(C.qr)h+="<label for='mQr'>Imagen del QR</label><input type='file' id='mQr' accept='image/*'>"+(st.qr_url?"<p class='sub'>QR cargado ✓ <img src='"+esc(st.qr_url)+"' alt='' style='width:56px;height:56px;vertical-align:middle;border-radius:8px'></p>":"")}
-  h+="<div class='aviso err' id='mErr' role='alert' hidden></div><div class='acciones'><button type='submit' class='btn'>Guardar medio</button><button type='button' class='btn sec' id='mCancelar'>Cancelar</button></div>";
+  h+="<div class='aviso err' id='mErr' role='alert' hidden></div><div class='vcl-form-acc'><button type='submit' class='btn'>Guardar medio</button><button type='button' class='btn sec' id='mCancelar'>Cancelar</button></div>";
   f.innerHTML=h;f.hidden=false;var q=$('mQr');if(q)q.addEventListener('change',subirQr)}
 function leer(){['titular:mTit','numero:mNum','cuenta:mCta','cci:mCci'].forEach(function(p){var a=p.split(':'),i=$(a[1]);if(i)st[a[0]]=i.value})}
 async function subirQr(){var i=$('mQr'),f=i.files&&i.files[0];if(!f)return;leer();pcgCargando('Subiendo el QR…');
@@ -744,7 +1021,7 @@ async function subirQr(){var i=$('mQr'),f=i.files&&i.files[0];if(!f)return;leer(
 async function guardar(lista,txt){pcgCargando(txt||'Guardando…');try{var j=await post('/anfitrion/cobros-club/medios',{medios:lista});pcgCargando(false);
   if(j.ok){medios=j.medios||lista;pintar();$('ccMedioForm').hidden=true;pcgToast('Guardado ✓');return true}
   var er=$('mErr');if(er&&!$('ccMedioForm').hidden){er.textContent=msg(j);er.hidden=false}else pcgAvisar({titulo:'No se pudo',mensaje:msg(j)})}catch(e){pcgCargando(false);pcgAvisar({titulo:'No se pudo',mensaje:'Revisa tu conexión.'})}return false}
-var ag=$('ccAgregar');if(ag)ag.addEventListener('click',function(){edit=-1;st={tipo:C.permitidos[0]};form()});
+var ag=$('ccAgregar');if(ag)ag.addEventListener('click',function(){edit=-1;st={tipo:C.permitidos[0]};form();$('ccMedioForm').scrollIntoView({behavior:'smooth',block:'nearest'})});
 var fm=$('ccMedioForm');if(fm){fm.addEventListener('click',function(ev){var b=ev.target.closest('[data-tipo],[data-banco],#mCancelar');if(!b)return;
   if(b.id==='mCancelar'){fm.hidden=true;return}leer();if(b.dataset.tipo){st.tipo=b.dataset.tipo;st.banco=''}else st.banco=b.dataset.banco;form()});
   fm.addEventListener('submit',function(ev){ev.preventDefault();leer();var m={tipo:st.tipo,titular:st.titular||'',numero:st.numero||'',banco:st.banco||'',cuenta:st.cuenta||'',cci:st.cci||'',qr_url:st.qr_url||''};
@@ -763,8 +1040,10 @@ var V=window.__vv||{},motivo='';
 async function post(url,body){var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});var j={};try{j=await r.json()}catch(e){}return j}
 function quitar(pid){var a=document.querySelector(".vv[data-pid='"+pid+"']");if(a)a.remove();if(!document.querySelector('.vv'))pcgRecargar()}
 function vence(){document.querySelectorAll('[data-vence]').forEach(function(el){var t=Date.parse(el.dataset.vence);if(isNaN(t))return;var m=Math.round((t-Date.now())/60000);
-  el.classList.toggle('tarde',m<=10);el.textContent=m>0?('Vence en '+(m>=1440?(Math.floor(m/1440)+' día'+(m>=2880?'s':'')+(Math.floor(m%1440/60)?' '+Math.floor(m%1440/60)+' h':'')):m>=60?(Math.floor(m/60)+' h '+(m%60)+' min'):(m+' min'))+' · si no lo revisas, la reserva se libera'):'Venció: la reserva se liberará'})}
+  el.classList.toggle('tarde',m<=10);el.textContent=m>0?('Vence en '+(m>=1440?(Math.floor(m/1440)+' día'+(m>=2880?'s':'')+(Math.floor(m%1440/60)?' '+Math.floor(m%1440/60)+' h':'')):m>=60?(Math.floor(m/60)+' h '+(m%60)+' min'):(m+' min'))):'Venció: la reserva se liberará'})}
 vence();setInterval(vence,30000);
+document.addEventListener('error',function(ev){var t=ev.target;if(t&&t.tagName==='IMG'&&t.closest('.vcl-mini-img'))t.hidden=true},true);
+document.addEventListener('change',function(ev){var s=ev.target.closest&&ev.target.closest('select[data-ir]');if(s&&s.value)pcgIr(s.value,'Cargando…')});
 document.addEventListener('click',async function(ev){
   var z=ev.target.closest('[data-zoom]');if(z){pcgAvisar({titulo:'Comprobante',html:"<img class='vv-zoom' src='/anfitrion/pagos-por-confirmar/"+encodeURIComponent(z.dataset.zoom)+"/imagen' alt='Comprobante en grande'>",confirmar:'Cerrar'});return}
   var mo=ev.target.closest('[data-motivo]');if(mo){motivo=mo.dataset.motivo;document.querySelectorAll('[data-motivo]').forEach(function(x){var on=x===mo;x.classList.toggle('sel',on);x.setAttribute('aria-pressed',on)});return}
@@ -783,48 +1062,71 @@ document.addEventListener('click',async function(ev){
 
 JS_REGLAS = r"""
 (function(){
-var G=window.__rg,R=JSON.parse(JSON.stringify(G.reglas||{})),$=function(i){return document.getElementById(i)},cierreM=G.motivos[0],fr=null;
+var G=window.__rg,R=JSON.parse(JSON.stringify(G.reglas||{})),$=function(i){return document.getElementById(i)},cierreM=G.motivos[0],fr=null,sucio=false,copiaSel={};
+var LV=['lun','mar','mie','jue','vie'];
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function chips(ops,sel,attr){return ops.map(function(o){var on=String(o.v)===String(sel);return "<button type='button' class='chip"+(on?' sel':'')+"' "+attr+"='"+esc(o.v)+"' aria-pressed='"+on+"'>"+esc(o.n)+"</button>"}).join('')}
-function sel(id,val,opts){return "<select id='"+id+"' aria-label='"+id+"'>"+(opts||G.horas).map(function(h){return "<option"+(h===val?' selected':'')+">"+h+"</option>"}).join('')+"</select>"}
+function sel(id,val,opts,et,attrs){return "<select id='"+id+"' aria-label='"+esc(et||id)+"' "+(attrs||'')+">"+(opts||G.horas).map(function(h){var v=typeof h==='object'?h.v:h,n=typeof h==='object'?h.n:h;return "<option value='"+esc(v)+"'"+(String(v)===String(val)?' selected':'')+">"+esc(n)+"</option>"}).join('')+"</select>"}
 var NDIA={};G.dias.forEach(function(d){NDIA[d.k]=d.n});
-function semana(){var hs=R.horario_semana||{},h='';G.dias.forEach(function(d){var v=hs.hasOwnProperty(d.k)?(hs[d.k]===null?'cerrado':'otro'):'general';
-  h+="<div class='rg-dia'><b>"+d.n+"</b><div class='chips' role='group' aria-label='"+d.n+"'>"+chips([{v:'general',n:'Horario general'},{v:'cerrado',n:'Cerrado'},{v:'otro',n:'Otro horario'}],v,"data-sem='"+d.k+"' data-v")+"</div>";
-  if(v==='otro')h+="<div class='rg-horas'><label class='vh' for='ap_"+d.k+"'>Abre</label>"+sel('ap_'+d.k,hs[d.k].apertura)+"<span style='align-self:center'>a</span><label class='vh' for='ci_"+d.k+"'>Último turno</label>"+sel('ci_'+d.k,hs[d.k].cierre)+"</div>";
-  h+="</div>"});$('rgSemana').innerHTML=h}
-function cierres(){var l=R.cierres||[];$('rgCierres').innerHTML=l.length?l.map(function(c,i){return "<div class='rg-item'><div><b>"+esc(c.fecha)+"</b><small>"+esc(c.motivo||'Cerrado')+"</small></div><button type='button' class='btn sec' data-qcierre='"+i+"'>Quitar</button></div>"}).join(''):"<p class='sub'>Sin días cerrados.</p>";
+function valDia(k){var hs=R.horario_semana||{};return hs.hasOwnProperty(k)?(hs[k]===null?'cerrado':'otro'):'general'}
+function igualesLV(){var hs=R.horario_semana||{},f=function(k){return JSON.stringify(hs.hasOwnProperty(k)?hs[k]:'g')},a=f('lun');return LV.every(function(k){return f(k)===a})}
+var agrupado=igualesLV();
+function filas(){return agrupado?[{n:'Lun – Vie',ks:LV},{n:'Sábado',ks:['sab']},{n:'Domingo',ks:['dom']}]:G.dias.map(function(d){return {n:d.n,ks:[d.k]}})}
+var GEN='General · '+G.base.apertura+'–'+G.base.cierre;
+function semana(){var hs=R.horario_semana||{},h='';filas().forEach(function(f){var k=f.ks[0],v=valDia(k),id=f.ks.join('_');
+  h+="<div class='rg-dia'><b>"+esc(f.n)+"</b><div class='rg-dia-c'>"+sel('sm_'+id,v,[{v:'general',n:GEN},{v:'cerrado',n:'Cerrado'},{v:'otro',n:'Otro horario'}],'Horario de '+f.n,"data-sem='"+f.ks.join(',')+"'");
+  if(v==='otro')h+="<div class='rg-horas'><label><span>Abre</span>"+sel('ap_'+id,hs[k].apertura,null,'Abre '+f.n)+"</label><label><span>Último turno</span>"+sel('ci_'+id,hs[k].cierre,null,'Último turno '+f.n)+"</label></div>";
+  h+="</div></div>"});$('rgSemana').innerHTML=h;
+  var b=$('rgPorDia');b.hidden=!agrupado&&!igualesLV();b.textContent=agrupado?'＋ Horario distinto por día':'Agrupar lunes a viernes'}
+function leerSemana(){var hs=R.horario_semana||{};filas().forEach(function(f){var id=f.ks.join('_'),a=$('ap_'+id),c=$('ci_'+id);if(a&&c&&valDia(f.ks[0])==='otro')f.ks.forEach(function(k){hs[k]={apertura:a.value,cierre:c.value}})});
+  var l=R.recargo_luz;if(l){var ld=$('lDesde'),lm=$('lMonto');if(ld)l.desde=ld.value;if(lm)l.monto=parseFloat(lm.value)||0}}
+function fechaTxt(f){var d=new Date(f+'T12:00:00');if(isNaN(d))return f;return G.diasCortos[(d.getDay()+6)%7]+' '+d.getDate()+' '+G.meses[d.getMonth()]+(f.slice(0,4)!==G.hoy.slice(0,4)?' '+f.slice(0,4):'')}
+function cierres(){var l=R.cierres||[];$('rgCierres').innerHTML=l.length?"<ul class='vcl-cierres'>"+l.map(function(c,i){return "<li><div><b>"+esc(fechaTxt(c.fecha))+"</b><small>"+esc(c.motivo||'Cerrado')+" · todo el día</small></div><button type='button' class='vcl-link rojo' data-qcierre='"+i+"' aria-label='Quitar el "+esc(fechaTxt(c.fecha))+"'>Quitar</button></li>"}).join('')+"</ul>":"<p class='vcl-nada'>Sin días cerrados.</p>";
   $('rgCierreM').innerHTML=chips(G.motivos.map(function(m){return {v:m,n:m}}),cierreM,'data-cm')}
 function diasTxt(ds){if(ds.length===7)return 'Todos los días';if(ds.join()==='lun,mar,mie,jue,vie')return 'Lunes a viernes';if(ds.join()==='sab,dom')return 'Fin de semana';return ds.map(function(d){return NDIA[d].slice(0,3)}).join(', ')}
-function precioTxt(f){return f.precio_turno>0?(G.moneda+' '+Number(f.precio_turno).toFixed(2)+' por turno'):(G.moneda+' '+Number(f.precio_hora).toFixed(2)+' por hora')}
-function franjas(){var l=R.franjas||[];$('rgFranjas').innerHTML=l.length?l.map(function(f,i){return "<div class='rg-item'><div><b>"+esc(f.nombre||'Franja')+" · "+esc(precioTxt(f))+"</b><small>"+esc(diasTxt(f.dias))+" · "+esc(f.desde)+"–"+esc(f.hasta)+"</small></div><button type='button' class='btn sec' data-qfranja='"+i+"'>Quitar</button></div>"}).join(''):"<p class='sub'>Sin franjas: se cobra el precio general (con su hora feliz).</p>"}
-function franjaForm(){var f=fr,h="<div class='panel' style='margin-top:12px;background:var(--gris)'><label>Nombre</label><div class='chips' role='group'>"+chips(G.nombres.map(function(n){return {v:n,n:n}}),f.nombre,'data-fn')+"</div>";
-  h+="<label>Días</label><div class='chips' role='group'>"+chips([{v:'lv',n:'Lunes a viernes'},{v:'fs',n:'Fin de semana'},{v:'td',n:'Todos'}],'','data-fatajo')+"</div><div class='chips' role='group' aria-label='Días de la franja'>"+
+function precioTxt(f){return f.precio_turno>0?(G.moneda+' '+Number(f.precio_turno).toFixed(2)+' /turno'):(G.moneda+' '+Number(f.precio_hora).toFixed(2)+' /h')}
+function franjas(){var l=R.franjas||[],cab=['Franja','Tipo','Precio',''];
+  var base="<tr class='vcl-base'><td data-et='Franja'><div class='vcl-c'><b>Resto del horario</b><small>Fuera de las franjas</small></div></td><td data-et='Tipo'>Normal</td><td data-et='Precio' class='vcl-num'><b>"+esc(G.moneda+' '+Number(G.base.precio).toFixed(2)+(G.base.unidad==='hora'?' /h':' /turno'))+"</b></td><td data-et=''></td></tr>";
+  $('rgFranjas').innerHTML="<div class='va-tabla-w'><table class='va-tabla vcl-franjas'><thead><tr>"+cab.map(function(c){return "<th scope='col'>"+c+"</th>"}).join('')+"</tr></thead><tbody>"+base+l.map(function(f,i){return "<tr><td data-et='Franja'><div class='vcl-c'><b>"+esc(f.desde)+" – "+esc(f.hasta)+"</b><small>"+esc(diasTxt(f.dias))+"</small></div></td><td data-et='Tipo'>"+esc(f.nombre||'Franja')+"</td><td data-et='Precio' class='vcl-num'><b>"+esc(precioTxt(f))+"</b></td><td data-et=''><button type='button' class='vcl-link rojo' data-qfranja='"+i+"' aria-label='Quitar la franja "+esc(f.nombre||'')+"'>Quitar</button></td></tr>"}).join('')+"</tbody></table></div>"
+    +(l.length>1?"<p class='vcl-nota'>Si dos franjas cubren el mismo turno, manda la primera.</p>":"")}
+function franjaForm(){var f=fr,h="<label>Tipo</label><div class='chips' role='group' aria-label='Tipo de franja'>"+chips(G.nombres.map(function(n){return {v:n,n:n}}),f.nombre,'data-fn')+"</div>";
+  h+="<label>Días</label><div class='chips' role='group' aria-label='Atajos de días'>"+chips([{v:'lv',n:'Lunes a viernes'},{v:'fs',n:'Fin de semana'},{v:'td',n:'Todos'}],'','data-fatajo')+"</div><div class='chips' role='group' aria-label='Días de la franja'>"+
     G.dias.map(function(d){var on=f.dias.indexOf(d.k)>=0;return "<button type='button' class='chip"+(on?' sel':'')+"' data-fd='"+d.k+"' aria-pressed='"+on+"'>"+d.n.slice(0,3)+"</button>"}).join('')+"</div>";
-  h+="<div class='rg-fila'><div><label for='fDesde'>Desde</label>"+sel('fDesde',f.desde)+"</div><div><label for='fHasta'>Hasta</label>"+sel('fHasta',f.hasta)+"</div></div>";
-  h+="<label>¿Cómo cobras en esta franja?</label><div class='chips' role='group'>"+chips([{v:'hora',n:'Por hora'},{v:'turno',n:'Por turno'}],f.modo,'data-fmodo')+"</div>";
+  h+="<div class='vcl-fila2'><label><span>Desde</span>"+sel('fDesde',f.desde,null,'Desde')+"</label><label><span>Hasta</span>"+sel('fHasta',f.hasta,null,'Hasta')+"</label></div>";
+  h+="<label>¿Cómo cobras en esta franja?</label><div class='chips' role='group' aria-label='Cómo cobras'>"+chips([{v:'hora',n:'Por hora'},{v:'turno',n:'Por turno'}],f.modo,'data-fmodo')+"</div>";
   h+="<label for='fPrecio'>Precio ("+esc(G.moneda)+")</label><input id='fPrecio' type='number' min='0' step='0.5' inputmode='decimal' value='"+esc(f.precio||'')+"'>";
-  h+="<div class='aviso err' id='fErr' role='alert' hidden></div><div class='acciones'><button type='button' class='btn' id='fOk'>Agregar franja</button><button type='button' class='btn sec' id='fNo'>Cancelar</button></div></div>";
+  h+="<div class='aviso err' id='fErr' role='alert' hidden></div><div class='vcl-form-acc'><button type='button' class='btn' id='fOk'>Agregar franja</button><button type='button' class='btn sec' id='fNo'>Cancelar</button></div>";
   $('rgFranjaForm').innerHTML=h;$('rgFranjaForm').hidden=false}
 function leerFranja(){if(!fr)return;var d=$('fDesde'),hh=$('fHasta'),p=$('fPrecio');if(d)fr.desde=d.value;if(hh)fr.hasta=hh.value;if(p)fr.precio=p.value}
-function luz(){var l=R.recargo_luz,h="<div class='chips' role='group'>"+chips([{v:'no',n:'Sin recargo'},{v:'si',n:'Con recargo de luz'}],l?'si':'no','data-luz')+"</div>";
-  if(l)h+="<div class='rg-fila'><div><label for='lDesde'>Desde</label>"+sel('lDesde',l.desde)+"</div><div><label for='lMonto'>Monto por turno ("+esc(G.moneda)+")</label><input id='lMonto' type='number' min='0' step='0.5' inputmode='decimal' value='"+esc(l.monto)+"'></div></div>";
-  $('rgLuz').innerHTML=h}
-function chipsNum(id,clave,ops){$(id).innerHTML=chips(ops,R[clave]==null?'':R[clave],"data-num='"+clave+"' data-v")}
-function nums(){chipsNum('rgAntMin','anticipacion_min_horas',[{v:'',n:'Sin mínimo'},{v:1,n:'1 h antes'},{v:2,n:'2 h'},{v:3,n:'3 h'},{v:6,n:'6 h'},{v:12,n:'12 h'},{v:24,n:'1 día'}]);
-  chipsNum('rgAntMax','anticipacion_max_dias',[{v:'',n:'Sin límite'},{v:7,n:'7 días'},{v:14,n:'14 días'},{v:30,n:'30 días'},{v:60,n:'60 días'},{v:90,n:'90 días'},{v:180,n:'180 días'}]);
-  chipsNum('rgMin','min_turnos',[{v:'',n:'Sin mínimo'},{v:2,n:'2 turnos'},{v:3,n:'3 turnos'}]);
-  chipsNum('rgMax','max_turnos',[{v:'',n:'Sin máximo'},{v:1,n:'1 turno'},{v:2,n:'2'},{v:3,n:'3'},{v:4,n:'4'},{v:6,n:'6'}]);
-  chipsNum('rgTope','max_reservas_dia_jugador',[{v:'',n:'Sin tope'},{v:1,n:'1 reserva'},{v:2,n:'2'},{v:3,n:'3'}]);
-  chipsNum('rgCanc','cancelacion_horas',[{v:'',n:'La general ('+G.global_cancelacion+' h)'},{v:2,n:'2 h'},{v:6,n:'6 h'},{v:12,n:'12 h'},{v:24,n:'24 h'},{v:48,n:'48 h'}])}
-function leerSemana(){var hs=R.horario_semana||{};G.dias.forEach(function(d){var a=$('ap_'+d.k),c=$('ci_'+d.k);if(a&&c&&hs[d.k])hs[d.k]={apertura:a.value,cierre:c.value}});
-  var l=R.recargo_luz;if(l){var ld=$('lDesde'),lm=$('lMonto');if(ld)l.desde=ld.value;if(lm)l.monto=parseFloat(lm.value)||0}}
-function todo(){semana();cierres();franjas();luz();nums()}
-$('rgForm').addEventListener('click',function(ev){var b=ev.target.closest('button');if(!b)return;leerSemana();leerFranja();var d=b.dataset;
-  if(d.sem){R.horario_semana=R.horario_semana||{};if(d.v==='general')delete R.horario_semana[d.sem];else if(d.v==='cerrado')R.horario_semana[d.sem]=null;else R.horario_semana[d.sem]={apertura:G.base.apertura,cierre:G.base.cierre};semana();return}
+function luz(){var l=R.recargo_luz,h="<div class='vcl-luz'><label><span>Recargo</span>"+sel('luzSel',l?'si':'no',[{v:'no',n:'Sin recargo'},{v:'si',n:'Con recargo de luz'}],'Recargo de luz')+"</label>";
+  if(l)h+="<label><span>Desde</span>"+sel('lDesde',l.desde,null,'Recargo desde')+"</label><label><span>Monto por turno ("+esc(G.moneda)+")</span><input id='lMonto' type='number' min='0' step='0.5' inputmode='decimal' value='"+esc(l.monto)+"'></label>";
+  $('rgLuz').innerHTML=h+"</div>"}
+var POL=[['cancelacion_horas','Puede cancelar hasta',[{v:'',n:'La general ('+G.global_cancelacion+' h antes)'},{v:2,n:'2 h antes'},{v:6,n:'6 h antes'},{v:12,n:'12 h antes'},{v:24,n:'24 h antes'},{v:48,n:'48 h antes'}],' h antes'],
+  ['anticipacion_max_dias','Reservar con anticipación de',[{v:'',n:'Sin límite'},{v:7,n:'hasta 7 días'},{v:14,n:'hasta 14 días'},{v:30,n:'hasta 30 días'},{v:60,n:'hasta 60 días'},{v:90,n:'hasta 90 días'},{v:180,n:'hasta 180 días'}],' días'],
+  ['anticipacion_min_horas','Anticipación mínima',[{v:'',n:'Sin mínimo'},{v:1,n:'1 h antes'},{v:2,n:'2 h antes'},{v:3,n:'3 h antes'},{v:6,n:'6 h antes'},{v:12,n:'12 h antes'},{v:24,n:'1 día antes'}],' h antes'],
+  ['min_turnos','Mínimo de turnos seguidos',[{v:'',n:'Sin mínimo'},{v:2,n:'2 turnos'},{v:3,n:'3 turnos'}],' turnos'],
+  ['max_turnos','Máximo de turnos seguidos',[{v:'',n:'Sin máximo'},{v:1,n:'1 turno'},{v:2,n:'2 turnos'},{v:3,n:'3 turnos'},{v:4,n:'4 turnos'},{v:6,n:'6 turnos'}],' turnos'],
+  ['max_reservas_dia_jugador','Reservas por jugador al día',[{v:'',n:'Sin tope'},{v:1,n:'1 reserva'},{v:2,n:'2 reservas'},{v:3,n:'3 reservas'}],' reservas']];
+function politica(){$('rgPolitica').innerHTML=POL.map(function(p){var v=R[p[0]]==null?'':R[p[0]],ops=p[2].slice();
+  if(v!==''&&!ops.some(function(o){return String(o.v)===String(v)}))ops.push({v:v,n:v+p[3]});
+  return "<label class='vcl-pol-f'><span>"+esc(p[1])+"</span>"+sel('pol_'+p[0],v,ops,p[1],"data-num='"+p[0]+"'")+"</label>"}).join('')}
+function todo(){semana();cierres();franjas();luz();politica()}
+var F=$('rgForm');
+F.addEventListener('change',function(ev){var t=ev.target;sucio=true;
+  if(t.dataset.sem){leerSemana();R.horario_semana=R.horario_semana||{};t.dataset.sem.split(',').forEach(function(k){if(t.value==='general')delete R.horario_semana[k];else if(t.value==='cerrado')R.horario_semana[k]=null;else R.horario_semana[k]={apertura:G.base.apertura,cierre:G.base.cierre}});semana();return}
+  if(t.dataset.num){if(t.value==='')delete R[t.dataset.num];else R[t.dataset.num]=Number(t.value);return}
+  if(t.id==='luzSel'){leerSemana();if(t.value==='si')R.recargo_luz=R.recargo_luz||{desde:'18:00',monto:5};else delete R.recargo_luz;luz();return}
+});
+F.addEventListener('input',function(){sucio=true});
+F.addEventListener('click',function(ev){var b=ev.target.closest('button');if(!b)return;var d=b.dataset;
+  if(b.type==='submit'||b.id==='rgCopiar')return;leerSemana();leerFranja();
+  if(b.id==='rgPorDia'){if(agrupado){agrupado=false}else if(igualesLV()){agrupado=true}semana();return}
   if(d.cm){cierreM=d.cm;cierres();return}
-  if(b.id==='rgCierreAdd'){var f=$('rgCierreF').value;if(!f){pcgAvisar({titulo:'Falta la fecha',mensaje:'Elige el día que cierras.'});return}R.cierres=(R.cierres||[]).filter(function(c){return c.fecha!==f});R.cierres.push({fecha:f,motivo:cierreM});R.cierres.sort(function(a,b){return a.fecha<b.fecha?-1:1});cierres();return}
-  if(d.qcierre!=null){R.cierres.splice(+d.qcierre,1);cierres();return}
-  if(d.qfranja!=null){R.franjas.splice(+d.qfranja,1);franjas();return}
+  if(b.id==='rgCierreAbrir'){$('rgCierreBox').hidden=false;b.hidden=true;$('rgCierreF').focus();return}
+  if(b.id==='rgCierreNo'){$('rgCierreBox').hidden=true;$('rgCierreAbrir').hidden=false;return}
+  if(b.id==='rgCierreAdd'){var f=$('rgCierreF').value;if(!f){pcgAvisar({titulo:'Falta la fecha',mensaje:'Elige el día que cierras.'});return}R.cierres=(R.cierres||[]).filter(function(c){return c.fecha!==f});R.cierres.push({fecha:f,motivo:cierreM});R.cierres.sort(function(a,b){return a.fecha<b.fecha?-1:1});sucio=true;cierres();$('rgCierreF').value='';$('rgCierreBox').hidden=true;$('rgCierreAbrir').hidden=false;return}
+  if(d.qcierre!=null){R.cierres.splice(+d.qcierre,1);sucio=true;cierres();return}
+  if(d.qfranja!=null){R.franjas.splice(+d.qfranja,1);sucio=true;franjas();return}
   if(b.id==='rgFranjaNueva'){fr={nombre:G.nombres[0],dias:['lun','mar','mie','jue','vie'],desde:'18:00',hasta:'23:00',modo:'hora',precio:''};franjaForm();return}
   if(d.fn){fr.nombre=d.fn;franjaForm();return}
   if(d.fatajo){fr.dias=d.fatajo==='lv'?['lun','mar','mie','jue','vie']:(d.fatajo==='fs'?['sab','dom']:G.dias.map(function(x){return x.k}));franjaForm();return}
@@ -832,24 +1134,41 @@ $('rgForm').addEventListener('click',function(ev){var b=ev.target.closest('butto
   if(d.fmodo){fr.modo=d.fmodo;franjaForm();return}
   if(b.id==='fNo'){fr=null;$('rgFranjaForm').hidden=true;return}
   if(b.id==='fOk'){var p=parseFloat(fr.precio),e=$('fErr');if(!(p>0)){e.textContent='Escribe el precio de la franja.';e.hidden=false;return}if(!fr.dias.length){e.textContent='Elige al menos un día.';e.hidden=false;return}if(fr.desde===fr.hasta){e.textContent='La franja debe durar algo: cambia la hora de inicio o de fin.';e.hidden=false;return}
-    R.franjas=R.franjas||[];R.franjas.push({nombre:fr.nombre,dias:fr.dias,desde:fr.desde,hasta:fr.hasta,precio_hora:fr.modo==='hora'?p:0,precio_turno:fr.modo==='turno'?p:0});fr=null;$('rgFranjaForm').hidden=true;franjas();return}
-  if(d.luz){if(d.luz==='si')R.recargo_luz=R.recargo_luz||{desde:'18:00',monto:5};else delete R.recargo_luz;luz();return}
-  if(d.num){if(d.v==='')delete R[d.num];else R[d.num]=Number(d.v);nums();return}
+    R.franjas=R.franjas||[];R.franjas.push({nombre:fr.nombre,dias:fr.dias,desde:fr.desde,hasta:fr.hasta,precio_hora:fr.modo==='hora'?p:0,precio_turno:fr.modo==='turno'?p:0});fr=null;sucio=true;$('rgFranjaForm').hidden=true;franjas();return}
   if(b.id==='rgVistaBtn'){vista();return}
 });
 function limpio(){leerSemana();var r=JSON.parse(JSON.stringify(R));if(r.horario_semana&&!Object.keys(r.horario_semana).length)delete r.horario_semana;if(r.recargo_luz&&!(r.recargo_luz.monto>0))delete r.recargo_luz;return r}
 async function post(url,body){var r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});var j={};try{j=await r.json()}catch(e){}return j}
-async function vista(){var f=$('rgVistaF').value,box=$('rgVista');if(!f)return;box.innerHTML="<p class='sub'>Cargando…</p>";
-  var j;try{j=await post('/anfitrion/reglas/'+encodeURIComponent(G.cancha)+'/vista',{fecha:f,reglas:limpio()})}catch(e){box.innerHTML="<p class='sub'>No pudimos cargar la vista previa. Revisa tu conexión.</p>";return}
+async function vista(){var f=$('rgVistaF').value,box=$('rgVista');if(!f)return;box.innerHTML="<p class='vcl-nada'>Cargando…</p>";
+  var j;try{j=await post('/anfitrion/reglas/'+encodeURIComponent(G.cancha)+'/vista',{fecha:f,reglas:limpio()})}catch(e){box.innerHTML="<p class='vcl-nada'>No pudimos cargar la vista previa. Revisa tu conexión.</p>";return}
   if(!j.ok){box.innerHTML="<p class='aviso err'>"+esc(j.mensaje||j.error||'No se pudo')+"</p>";return}
-  if(j.cerrado){box.innerHTML="<div class='aviso warn'>🚫 "+esc(j.cerrado)+": ese día no se reserva.</div>";return}
-  if(!j.turnos.length){box.innerHTML="<p class='sub'>Ese día no hay turnos.</p>";return}
-  box.innerHTML="<p class='sub'>Horario "+esc(j.horario)+"</p><div class='rg-turnos'>"+j.turnos.map(function(t){return "<div class='rg-t'><b>"+esc(t.hora)+"–"+esc(t.fin)+"</b><small>"+esc(j.moneda)+" "+Number(t.precio).toFixed(2)+"</small>"+(t.franja?"<small>"+esc(t.franja)+"</small>":"")+(t.luz?"<small>💡 incluye luz</small>":"")+"</div>"}).join('')+"</div>"}
-$('rgForm').addEventListener('submit',async function(ev){ev.preventDefault();var er=$('rgErr');er.hidden=true;leerFranja();
-  var ids=[G.cancha];document.querySelectorAll('.rg-her input:checked').forEach(function(i){ids.push(i.value)});
-  if(ids.length>1&&!await pcgConfirmar({titulo:'Aplicar a '+ids.length+' canchas',mensaje:'Las mismas reglas reemplazan las que tengan las otras canchas elegidas.',confirmar:'Guardar en todas'}))return;
-  var b=$('rgGuardar');b.disabled=true;pcgCargando('Guardando…');try{var j=await post('/anfitrion/reglas/guardar',{cancha_ids:ids,reglas:limpio()});pcgCargando(false);b.disabled=false;
-  if(j.ok){R=j.reglas;todo();pcgToast(j.canchas>1?('Reglas guardadas en '+j.canchas+' canchas ✓'):'Reglas guardadas ✓');return}er.textContent=j.mensaje||j.error;er.hidden=false}catch(e){pcgCargando(false);b.disabled=false;er.textContent='No se pudo guardar. Revisa tu conexión.';er.hidden=false}});
+  if(j.cerrado){box.innerHTML="<div class='va-aviso warn'>"+esc(j.cerrado)+": ese día no se reserva.</div>";return}
+  if(!j.turnos.length){box.innerHTML="<p class='vcl-nada'>Ese día no hay turnos.</p>";return}
+  box.innerHTML="<p class='vcl-nota'>Horario "+esc(j.horario)+"</p><div class='rg-turnos'>"+j.turnos.map(function(t){return "<div class='rg-t'><b>"+esc(t.hora)+"–"+esc(t.fin)+"</b><small>"+esc(j.moneda)+" "+Number(t.precio).toFixed(2)+"</small>"+(t.franja?"<small>"+esc(t.franja)+"</small>":"")+(t.luz?"<small>Incluye luz</small>":"")+"</div>"}).join('')+"</div>"}
+function botones(on){document.querySelectorAll('.rg-guardar').forEach(function(b){b.disabled=!on})}
+async function guardar(paraCopiar){var er=$('rgErr');er.hidden=true;leerFranja();botones(false);pcgCargando('Guardando…');
+  try{var j=await post('/anfitrion/reglas/guardar',{cancha_ids:[G.cancha],reglas:limpio()});botones(true);
+    if(j.ok){R=j.reglas;sucio=false;if(!paraCopiar){pcgCargando(false);todo();pcgToast('Reglas guardadas ✓')}return true}
+    pcgCargando(false);er.textContent=j.mensaje||j.error;er.hidden=false;er.scrollIntoView({behavior:'smooth',block:'center'})}
+  catch(e){pcgCargando(false);botones(true);er.textContent='No se pudo guardar. Revisa tu conexión.';er.hidden=false}return false}
+F.addEventListener('submit',function(ev){ev.preventDefault();guardar(false)});
+document.addEventListener('click',function(ev){var b=ev.target.closest('[data-copia]');if(!b)return;var id=b.dataset.copia;copiaSel[id]=!copiaSel[id];b.classList.toggle('sel',!!copiaSel[id]);b.setAttribute('aria-pressed',copiaSel[id]?'true':'false')});
+async function copiar(){copiaSel={};var mismas=G.otras.filter(function(o){return o.mismo});if(mismas.length===1)copiaSel[mismas[0].id]=true;
+  var por={},orden=[];G.otras.forEach(function(o){if(!por[o.club]){por[o.club]=[];orden.push(o.club)}por[o.club].push(o)});
+  var h="<p class='vcl-dlg-p'>Elige las canchas que tendrán las mismas reglas guardadas. Se reemplazan las reglas que ya tengan.</p>";
+  orden.forEach(function(club){h+="<div class='vcl-dlg-g'><small>"+esc(club)+"</small><div class='chips' role='group' aria-label='"+esc(club)+"'>"+por[club].map(function(o){var on=!!copiaSel[o.id];return "<button type='button' class='chip"+(on?' sel':'')+"' data-copia='"+esc(o.id)+"' aria-pressed='"+on+"'>"+esc(o.nombre)+(o.otra_moneda?" · cobra en "+esc(o.moneda):"")+"</button>"}).join('')+"</div></div>"});
+  if(G.otras.some(function(o){return o.otra_moneda})&&((R.franjas||[]).length||R.recargo_luz))h+="<p class='vcl-dlg-p vcl-nota'>A una cancha que cobra en otra moneda no se le copian las franjas con precio ni el recargo de luz: conserva los suyos.</p>";
+  if(sucio)h+="<p class='vcl-dlg-p vcl-nota'>Antes guardamos los cambios que tienes en pantalla.</p>";
+  if(!await pcgConfirmar({titulo:'Copiar reglas a otras canchas',html:h,confirmar:'Copiar reglas',icono:'📋'}))return;
+  var ids=Object.keys(copiaSel).filter(function(k){return copiaSel[k]});
+  if(!ids.length){pcgAvisar({titulo:'Elige una cancha',mensaje:'Marca al menos una cancha para copiar las reglas.'});return}
+  if(sucio&&!await guardar(true))return;
+  pcgCargando('Copiando reglas…');var j;try{j=await post('/anfitrion/reglas/'+encodeURIComponent(G.cancha)+'/copiar',{destinos:ids})}catch(e){pcgCargando(false);pcgAvisar({titulo:'No se pudo copiar',mensaje:'Revisa tu conexión.'});return}
+  if(!j.ok){pcgCargando(false);pcgAvisar({titulo:'No se pudo copiar',mensaje:j.mensaje||j.error});return}
+  var msg='Reglas copiadas a '+j.copiadas+' cancha'+(j.copiadas===1?'':'s')+' ✓';
+  if(j.sin_precios&&j.sin_precios.length){pcgCargando(false);await pcgAvisar({titulo:'Reglas copiadas',icono:'📋',mensaje:'Se copiaron a '+j.copiadas+' cancha'+(j.copiadas===1?'':'s')+'. A '+j.sin_precios.map(function(x){return x.nombre+' (cobra en '+x.moneda+')'}).join(', ')+' no le copiamos las franjas con precio ni el recargo de luz: ajústalos en sus reglas.'})}
+  pcgRecargar(msg)}
+var bc=$('rgCopiar');if(bc)bc.addEventListener('click',copiar);
 todo();vista();
 })();
 """

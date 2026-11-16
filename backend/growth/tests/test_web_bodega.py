@@ -162,7 +162,8 @@ def test_sin_sesion_y_candado_pro(monkeypatch, fk):
     assert r.status_code == 302 and r.headers["location"] == "/entrar?volver=%2Fanfitrion%2Fbodega"
     stores.membresias_pro.pop(DUENO)
     html = _cli(monkeypatch, DUENO).get("/anfitrion/bodega").text
-    assert "Administra tu bodega" in html and "Activar con Pichangol Pro" in html and "bTicket" not in html
+    assert "La bodega es parte de Pichangol Pro" in html and "Activar con Pichangol Pro" in html and "bTicket" not in html
+    assert "href='/pro'" in html and "Carta digital con QR" in html and "S/ 12/mes" in html  # precio REAL de Pro (país de la billetera)
     r = _cli(monkeypatch, DUENO).post("/anfitrion/bodega/producto", json={"nombre": "Pilsen", "precio": 7})
     assert r.status_code == 402 and r.json()["requiere_pro"]
 
@@ -194,7 +195,7 @@ def test_productos_caja_reporte_y_carta(monkeypatch, fk):
     assert cli.post("/anfitrion/bodega/vender", json={"items": [{"id": "agua", "cantidad": 1}], "medio": "cortesia"}).json()["ok"]
     assert fk.ventas[-1]["total"] == 0
     rep = cli.get("/anfitrion/bodega?tab=reporte").text
-    assert "S/ 25.00" in rep and "Para reponer" in rep and "Pilsen — 3 und." in rep and "<b>2</b>" in rep
+    assert "S/ 25.00" in rep and "Para reponer" in rep and "Pilsen — 3 und." in rep and ">2</b>" in rep
     # Producto ajeno no se edita.
     fk.prods["ajeno"] = dict(fk.prods["agua"], id="ajeno", dueno="otro@x.com")
     assert cli.post("/anfitrion/bodega/producto", json={"id": "ajeno", "nombre": "X", "precio": 1}).status_code == 404
@@ -224,7 +225,7 @@ def test_pedido_a_la_cancha_con_gps_zona_y_entrega(monkeypatch, fk):
     assert fk.avisos[-1][0] == DUENO and fk.avisos[-1][1] == "🧃 Pedido a la Cancha 2" and fk.avisos[-1][4] == {"destino": "dueno"}
     # El dueño ve el pedido pendiente (badge) y confirma; el cliente ya no puede cancelar.
     html = due.get("/anfitrion/bodega?tab=pedidos").text
-    assert "🛎️ Pedidos (1)" in html and "Confirmar ✅" in html
+    assert "Pedidos<i>1</i>" in html and "Confirmar ✅" in html
     assert due.post(f"/anfitrion/bodega/pedido/{j['id']}/responder", json={"confirmar": True}).json()["ok"]
     assert fk.avisos[-1][1] == "Pedido confirmado 🏃" and fk.avisos[-1][4] == {"destino": "cliente", "dueno": DUENO}
     r = jug.post(f"/web/bodega/pedido/{j['id']}/cancelar").json()
@@ -313,7 +314,7 @@ def test_cuenta_abierta_tope_y_cierre(monkeypatch, fk):
     assert "Tu cuenta abierta" in html and "S/ 60.00" in html
     cid = next(iter(fk.cuentas))
     html = due.get("/anfitrion/bodega?tab=cuentas").text
-    assert "📒 Cuentas (1)" in html and "Cobrar y cerrar cuenta" in html and "Sin tope" in html
+    assert "Cuentas<i>1</i>" in html and "Cobrar y cerrar cuenta" in html and "Sin tope" in html
     assert due.post(f"/anfitrion/bodega/cuenta/{cid}/cerrar", json={"medio": "efectivo"}).json()["ok"]
     assert fk.ventas[-1]["total"] == 60 and fk.prods["pil"]["stock"] == 18  # stock ya había bajado
     assert due.post(f"/anfitrion/bodega/cuenta/{cid}/cerrar", json={"medio": "efectivo"}).json()["aviso"]["titulo"] == "Ya estaba cerrada"

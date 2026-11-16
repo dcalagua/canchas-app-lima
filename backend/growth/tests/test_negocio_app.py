@@ -74,7 +74,7 @@ def test_caja_por_moneda_cerrada_en_el_app_se_ve_en_la_web_y_viceversa(entorno, 
     assert len([x for x in usd["cierres"] if x["fecha"] == hoy.isoformat()]) == 2
     # La web ve el cierre que hizo el app (mismo snapshot).
     html = web.get(f"/anfitrion/caja?fecha={hoy.isoformat()}&m=PEN").text
-    assert "🔒 Caja cerrada" in html
+    assert "Caja cerrada" in html and "Cierre de caja (arqueo)" not in html
     # La web reabre soles → el app deja de verlo; dólares sigue cerrado.
     assert web.post("/anfitrion/caja/reabrir", json={"fecha": hoy.isoformat(), "m": "PEN"}).json()["ok"]
     est = app_cli.get("/negocio/estado", params={"email": YO}).json()

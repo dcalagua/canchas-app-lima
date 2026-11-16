@@ -33,6 +33,8 @@ import paises
 from db.store import stores
 from web import almacen, catalogos, datos, sesion, ui
 from web import campeonatos_logica as L
+from web import estilos_v_comercio as vc
+from web import vista_anfitrion as va
 from web.anfitrion import JS_PAGAR, _en_segundo_plano, _sesion_o_entrar
 from web.router import PLAY_URL, e
 from pagos import pozos
@@ -48,9 +50,9 @@ BASE = "/anfitrion/campeonatos"
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-def _cab(ses: dict | None) -> str:
-    tabs = f"<a class='cat sel' href='{BASE}'><span class='ico'>🏆</span>Mis campeonatos</a>"
-    return ui.cabecera(tabs=tabs, ses=ses, volver="/anfitrion", modo="anfitrion")
+def _shell(titulo: str, cuerpo: str, ses: dict, tab: str, **kw) -> HTMLResponse:
+    # La barra del modo anfitrión la pone `ui.shell` sola en toda ruta /anfitrion/*.
+    return ui.shell(titulo, va.vista(cuerpo, "vc-camp"), sesion=ses, ancho=True, titulo_tab=tab, **kw)
 
 
 def _mios(email: str) -> list[dict]:
@@ -139,21 +141,23 @@ def _hora(v) -> str:
 
 
 def _estado_pill(c: dict) -> str:
-    clave, txt, color = L.estado(c)
-    col = {"teal": "background:#E6F4EF;color:#3056ED", "morado": "background:#EFE9FF;color:#5B3FD8",
-           "naranja": "background:#FFF1E3;color:#B25E0A", "lima": "background:#EAF7E1;color:#3E7A16"}[color]
-    return f"<span class='pill' style='{col}'>{txt}</span>"
+    _clave, txt, color = L.estado(c)
+    return va.pill(txt, {"teal": "azul", "morado": "info", "naranja": "warn", "lima": "ok"}.get(color, "gris"))
 
 
 # ── Lista (`MisCampeonatosScreen`) ────────────────────────────────────────────
+def _fila_camp(c: dict, href: str, sub: str) -> str:
+    dep = str(c.get("deporte") or "tenis")
+    logo = f"<img src='{e(c['logoUrl'])}' alt=''>" if c.get("logoUrl") else f"<span aria-hidden='true'>{_EMOJI.get(dep, '🏆')}</span>"
+    return (f"<a class='vc-cmp-it' href='{href}'><span class='vc-cmp-logo'>{logo}</span><span class='tx'><b>{e(c.get('nombre') or 'Campeonato')}</b>"
+            f"<small>{e(sub)}</small>{_estado_pill(c)}</span><span class='ir' aria-hidden='true'>›</span></a>")
+
+
 def _tarjeta(c: dict) -> str:
     dep = str(c.get("deporte") or "tenis")
     n = len(c.get("participantes") or [])
     sub = f"{_NOMBRE.get(dep, dep)} · {L.FORMATOS[L.formato_de(c)]} · {n} inscrito{'s' if n != 1 else ''}{'' if c.get('academiaId') else ' · sin academia'}"
-    logo = f"<img src='{e(c['logoUrl'])}' alt=''>" if c.get("logoUrl") else f"<span>{_EMOJI.get(dep, '🏆')}</span>"
-    return (f"<a class='anf-cancha' href='{BASE}/{e(c['id'])}' style='text-decoration:none;color:inherit;align-items:center'>"
-            f"<div class='f'>{logo}</div><div style='flex:1;min-width:0'><b style='font-size:16px'>{e(c.get('nombre') or 'Campeonato')}</b>"
-            f"<div class='sub' style='margin:2px 0 6px'>{e(sub)}</div>{_estado_pill(c)}</div><span style='color:var(--tenue);font-size:22px'>›</span></a>")
+    return _fila_camp(c, f"{BASE}/{e(c['id'])}", sub)
 
 
 def _rol_en(c: dict, email: str) -> str:
@@ -169,10 +173,7 @@ def _rol_en(c: dict, email: str) -> str:
 def _tarjeta_participo(c: dict, email: str) -> str:
     dep = str(c.get("deporte") or "tenis")
     sub = f"{_rol_en(c, email)} · {_NOMBRE.get(dep, dep)} · {L.FORMATOS[L.formato_de(c)]}"
-    logo = f"<img src='{e(c['logoUrl'])}' alt=''>" if c.get("logoUrl") else f"<span>{_EMOJI.get(dep, '🏆')}</span>"
-    return (f"<a class='anf-cancha' href='/torneo/{e(c['id'])}' style='text-decoration:none;color:inherit;align-items:center'>"
-            f"<div class='f'>{logo}</div><div style='flex:1;min-width:0'><b style='font-size:16px'>{e(c.get('nombre') or 'Campeonato')}</b>"
-            f"<div class='sub' style='margin:2px 0 6px'>{e(sub)}</div>{_estado_pill(c)}</div><span style='color:var(--tenue);font-size:22px'>›</span></a>")
+    return _fila_camp(c, f"/torneo/{e(c['id'])}", sub)
 
 
 def _caja_codigo(no_encontrado: bool) -> str:
@@ -180,14 +181,15 @@ def _caja_codigo(no_encontrado: bool) -> str:
     "acá también debería ingresar el código y ver el campeonato"): código del
     TORNEO o de tu EQUIPO → página pública `/c/{id}` (con `?equipo=` si es de
     equipo: desde ahí "Unirme al equipo aquí" —web, con saldo— o en la app)."""
-    err = ("<p class='sub' style='color:#B42318;margin:8px 0 0'>No encontramos ese código. Revísalo o pídeselo de nuevo a quien te invitó.</p>"
+    err = ("<p class='vc-err' role='alert'>No encontramos ese código. Revísalo o pídeselo de nuevo a quien te invitó.</p>"
            if no_encontrado else "")
-    return (f"<form class='anf-cancha' method='get' action='{BASE}/unirme' style='align-items:center;gap:14px;margin-top:14px'>"
-            "<div class='f' style='background:#EAF7E1'><span>🎟️</span></div><div style='flex:1;min-width:0'><b style='font-size:16px'>¿Te compartieron un código?</b>"
-            "<div class='sub' style='margin:2px 0 8px'>Pega el código del campeonato o el de tu equipo para ver el torneo, como en la app.</div>"
-            "<div style='display:flex;gap:8px;flex-wrap:wrap'><input name='codigo' type='text' maxlength='12' placeholder='Ej.: 4KZ9AB' required aria-label='Código del campeonato o del equipo' "
-            "style='width:180px;text-transform:uppercase;letter-spacing:.12em;font-weight:800'><button type='submit' class='btn'>Ver campeonato</button></div>"
-            f"{err}</div></form>")
+    return va.panel(
+        f"<div class='vc-codigo-cab'>{vc.cuadro('ticket', 'rojo')}<div><b>¿Te compartieron un código?</b><small>Del campeonato o de tu equipo.</small></div></div>"
+        f"<form class='vc-codigo' method='get' action='{BASE}/unirme'><label for='codCamp'>Código</label>"
+        "<input id='codCamp' name='codigo' type='text' maxlength='12' aria-label='Código del campeonato o del equipo' placeholder='Ej.: 4KZ9AB' required autocomplete='off' autocapitalize='characters'>"
+        f"{err}<button type='submit' class='btn'>Ver campeonato</button></form><hr>"
+        f"<p class='vc-nota'>{vc.ico('info', 16)}<span>Verás el torneo igual que en la app: fixture, equipos y resultados. "
+        "Si el código es de un equipo, desde ahí te unes y pones tu parte.</span></p>", clase="vc-codigo-p")
 
 
 @router.get(BASE + "/unirme")
@@ -213,33 +215,46 @@ def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = ""
         return resp
     lista = _mios(ses["email"])
     participo = datos.campeonatos_donde_participa(ses["email"])
-    caja = _caja_codigo(bool(no_encontrado))
+    es_pro = _pro(ses["email"])
+    aviso = (va.aviso("Campeonato guardado. Ya se ve en la app y en su página pública.", "ok", ico="trofeo") if guardado
+             else va.aviso("Campeonato eliminado.", "info") if eliminado else "")
+    boton = (f"<a class='btn' href='{BASE}/nuevo'>{vc.ico('trofeo', 18)}Organizar campeonato</a>" if es_pro else
+             f"<button type='button' class='btn' data-abrir='modalPro'>{vc.ico('trofeo', 18)}Organizar campeonato</button>")
+    # El aviso "Es Pro" se abre solo cuando /nuevo devolvió aquí a alguien sin Pro (`?pro=1`).
+    modal_pro = (f"<div class='modal{' open' if (pro and not es_pro) else ''}' id='modalPro' role='dialog' aria-modal='true' aria-labelledby='modalProT'><div class='modal-caja' style='max-width:460px'>"
+                 f"<div class='modal-cab'><button type='button' class='cerrar' data-cerrar-modal aria-label='Cerrar'>✕</button><h3 id='modalProT'>Es {MARCA} Pro</h3></div>"
+                 f"<div class='modal-cuerpo'><section><p class='sub' style='margin:0 0 12px'>Crear y administrar tus propios campeonatos (fixture, inscripciones, resultados) es parte de <b>{MARCA} Pro</b>. Actívalo y vuelve aquí.</p>"
+                 f"<a class='btn' href='/pro'>{vc.ico('corona', 18)}Ver {MARCA} Pro</a></section></div></div></div>")
+    if lista:
+        principal = va.panel("".join(_tarjeta(c) for c in lista), "Organizo",
+                             f"{len(lista)} campeonato{'s' if len(lista) != 1 else ''} que organizas. Es lo mismo que ves en la app.")
+    else:
+        act = catalogos.deportes_activos()
+        deps = [d for d in catalogos.DEPORTES_CAMPEONATO if d in act or d == "natacion"]
+        chips = "".join(f"<span>{e(_NOMBRE.get(d, d))}</span>" for d in deps[:4]) + (f"<span>+{len(deps) - 4} más</span>" if len(deps) > 4 else "")
+        principal = va.panel(va.vacio("trofeo", "Aún no tienes campeonatos", "Crea tu torneo, invita y que se inscriban.",
+                                      f"<div class='vc-deps'>{chips}</div>{boton}"), clase="vc-cmp-vacio")
     sec_participo = ("" if not participo else
-                     "<h2 style='margin:26px 0 8px;font-size:18px'>Donde participo</h2>"
-                     "<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr))'>"
-                     + "".join(_tarjeta_participo(c, ses["email"]) for c in participo) + "</div>")
-    aviso = ("<div class='aviso ok' style='margin-top:14px'>✅ Campeonato guardado. Ya se ve en la app y en su página pública.</div>" if guardado
-             else "<div class='aviso ok' style='margin-top:14px'>🗑 Campeonato eliminado.</div>" if eliminado else "")
-    pro = _pro(ses["email"])
-    boton = (f"<a class='btn' href='{BASE}/nuevo'>＋ Organizar</a>" if pro else
-             "<button type='button' class='btn' onclick=\"document.getElementById('modalPro').classList.add('open')\">＋ Organizar</button>")
-    modal_pro = (f"<div class='modal{' open' if pro else ''}' id='modalPro' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:460px'>"
-                 f"<div class='modal-cab'><button type='button' class='cerrar' aria-label='Cerrar' onclick=\"this.closest('.modal').classList.remove('open')\">✕</button><h3>Es {MARCA} Pro</h3></div>"
-                 f"<div class='modal-cuerpo'><section><p class='sub' style='margin:0 0 12px'>Crear y administrar tus propios campeonatos (fixture, inscripciones, resultados) es parte de <b>{MARCA} Pro</b>. Actívalo en Perfil → 👑 {MARCA} Pro y vuelve aquí.</p>"
-                 f"<a class='btn' href='/pro'>👑 Ver {MARCA} Pro</a></section></div></div></div>")
-    if not lista:
-        cuerpo = (f"<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>{aviso}<div style='max-width:760px;margin:24px auto 0;text-align:center'>"
-                  "<div style='font-size:52px'>🏆</div><h1 class='anf-hola' style='margin-top:8px'>Aún no tienes campeonatos</h1>"
-                  "<p class='sub' style='font-size:16px'>¿Te compartieron un código? Pégalo abajo y verás el torneo. ¿Quieres el tuyo? Toca “Organizar” para crear tu torneo (fútbol, tenis, natación…), invitar y que se inscriban.</p>"
-                  f"<div class='acciones' style='margin-top:22px;justify-content:center'>{boton}</div></div>"
-                  f"<div style='max-width:760px;margin:0 auto'>{caja}{sec_participo}</div>{modal_pro}")
-        return ui.shell("Mis campeonatos", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mis campeonatos · Modo anfitrión")
-    cuerpo = ("<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
-              "<div style='display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap'>"
-              f"<div><h1 class='anf-hola' style='margin-top:6px'>Mis campeonatos</h1><p class='sub'>{len(lista)} campeonato{'s' if len(lista) != 1 else ''} que organizas. Es lo mismo que ves en la app.</p></div>{boton}</div>"
-              f"{aviso}{caja}{sec_participo}<h2 style='margin:26px 0 8px;font-size:18px'>Organizo</h2>"
-              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr))'>{''.join(_tarjeta(c) for c in lista)}</div>{modal_pro}")
-    return ui.shell("Mis campeonatos", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mis campeonatos · Modo anfitrión")
+                     va.panel("".join(_tarjeta_participo(c, ses["email"]) for c in participo), "Donde participo",
+                              "Torneos en los que estás inscrito o juegas en un equipo."))
+    cuerpo = (va.cabecera("Mis campeonatos", "Organiza torneos en tu local, invita equipos y deja que se inscriban.",
+                          acciones=boton if lista else "")
+              + aviso + f"<div class='vc-cmp'><div>{principal}{sec_participo}</div>{_caja_codigo(bool(no_encontrado))}</div>{modal_pro}"
+              f"<script>{_JS_LISTA}</script>")
+    return _shell("Mis campeonatos", cuerpo, ses, "Mis campeonatos · Modo anfitrión")
+
+
+_JS_LISTA = r"""
+(function(){
+  var m = document.getElementById('modalPro'); if(!m) return;
+  function cerrar(){ m.classList.remove('open'); }
+  document.addEventListener('click', function(ev){
+    if(ev.target.closest("[data-abrir='modalPro']")){ m.classList.add('open'); var b = m.querySelector('.cerrar'); if(b) b.focus(); return; }
+    if(ev.target.closest('[data-cerrar-modal]') || ev.target === m) cerrar();
+  });
+  document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape') cerrar(); });
+})();
+"""
 
 
 # ── Asistente crear / editar (`CrearCampeonatoScreen`) ───────────────────────
@@ -283,8 +298,7 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
 .wz .radio.dis{{opacity:.55;cursor:not-allowed}}.sw{{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px}}.sw label{{margin:0;flex:1}}.sw input{{width:20px;height:20px;flex:none;margin:0;accent-color:var(--esmeralda)}}
 .wz .pie{{display:flex;justify-content:space-between;gap:10px;margin-top:22px}}.res-busca .res-it{{display:block;width:100%;text-align:left;border:0;background:#fff;padding:10px 12px;cursor:pointer;font-family:inherit;border-bottom:1px solid var(--trazo)}}.res-busca .res-it small{{display:block;color:var(--tenue)}}
 </style>
-<div class='wz'><a class='anf-back' href='{BASE if nuevo else BASE + '/' + e(c['id'])}'>‹ {'Mis campeonatos' if nuevo else 'Volver al campeonato'}</a>
-<h1 class='anf-hola' style='margin-top:8px'>{'Organizar campeonato' if nuevo else 'Editar campeonato'}</h1>
+<div class='wz'>{va.cabecera('Organizar campeonato' if nuevo else 'Editar campeonato', 'Tres pasos: presentación, formato y reglas.', volver=BASE if nuevo else BASE + '/' + c['id'])}
 <div class='wz-pasos'><span class='on' data-p='1'></span><span data-p='2'></span><span data-p='3'></span></div>
 <div class='wz-p on panel' id='p1'><h2>{'Presenta tu campeonato' if nuevo else 'Edita tu campeonato'}</h2><p class='sub'>El logo y el nombre son la cara del torneo: salen en la app, en el afiche y en el enlace que compartes.</p>
  <div style='display:flex;gap:18px;align-items:center;margin-top:14px;flex-wrap:wrap'><div class='logo-pick' id='logoBox'>{logo}</div>
@@ -325,8 +339,7 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
  <div class='pie'><button type='button' class='btn sec' data-ir='2'>Atrás</button><button type='button' class='btn' id='btnGuardar'>{'Crear campeonato' if nuevo else 'Guardar cambios'}</button></div></div>
 </div>
 <script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_WIZARD}</script>"""
-    return ui.shell("Campeonato", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, extra_head=_LEAFLET,
-                    titulo_tab=f"{'Organizar' if nuevo else 'Editar'} campeonato · Modo anfitrión")
+    return _shell("Campeonato", cuerpo, ses, f"{'Organizar' if nuevo else 'Editar'} campeonato · Modo anfitrión", extra_head=_LEAFLET)
 
 
 _JS_WIZARD = (r"""
@@ -800,9 +813,9 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
 .edit-fotos{{margin-top:10px}}.galeria-arte{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}}.galeria-arte img{{width:100%;border-radius:12px;cursor:pointer;border:3px solid transparent}}.galeria-arte img.sel{{border-color:var(--esmeralda)}}
 .mod-form label{{display:block;margin-top:12px;font-weight:700}}.mod-form input,.mod-form select{{width:100%;margin-top:6px}}
 </style>
-<div class='det'><a class='anf-back' href='{BASE}'>‹ Mis campeonatos</a>{aviso}
+<div class='det'>{va.cabecera(c.get('nombre') or 'Campeonato', 'Invita, arma el fixture y carga resultados: es lo mismo que ves en la app.', volver=BASE, acciones=f"<a class='btn sec' href='{BASE}/{e(c['id'])}/editar'>{vc.ico('lapiz', 16)}Editar</a>")}{aviso}
 <div class='panel cab-camp'><label class='logo-pick' for='inLogo' id='logoBox' title='Cambiar logo'>{logo}</label><input type='file' id='inLogo' accept='image/*' hidden{'' if almacen.disponible() else ' disabled'}>
- <div style='flex:1;min-width:220px'><h1>{e(c.get('nombre') or '')}</h1><div class='chips' style='margin-top:8px;gap:6px'>{''.join(chips_cab)}</div><div style='margin-top:10px'>{_estado_pill(c)}</div></div></div>
+ <div style='flex:1;min-width:220px'><div class='chips' style='gap:6px'>{''.join(chips_cab)}</div><div style='margin-top:10px'>{_estado_pill(c)}</div></div></div>
 {podio}
 {("<div class='acciones' style='margin-top:12px'>" + ubic + "</div>") if ubic else ''}
 <div class='panel'><h3>Invitar</h3>{("<div class='codigo' id='codigo' title='Copiar código'>" + e(c['codigo']) + "</div><p class='sub' style='text-align:center;font-size:12.5px'>Código para unirse desde la app · toca para copiar</p>") if c.get('codigo') else ''}
@@ -821,7 +834,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
 </div>
 <div class='modal' id='modal' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:520px'><div class='modal-cab'><button type='button' class='cerrar' id='modalCerrar' aria-label='Cerrar'>✕</button><h3 id='modalTit'></h3></div><div class='modal-cuerpo mod-form' id='modalCuerpo'></div></div></div>
 <script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_DETALLE}</script>"""
-    return ui.shell(c.get("nombre") or "Campeonato", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab=f"{c.get('nombre') or 'Campeonato'} · Mis campeonatos")
+    return _shell(c.get("nombre") or "Campeonato", cuerpo, ses, f"{c.get('nombre') or 'Campeonato'} · Mis campeonatos")
 
 
 _JS_DETALLE = (r"""

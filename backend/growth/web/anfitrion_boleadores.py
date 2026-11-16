@@ -18,7 +18,8 @@ from starlette.concurrency import run_in_threadpool
 import boleadores as _bol
 import paises
 from web import datos, horarios, ui
-from web.anfitrion import _entrar, _sesion_o_entrar
+from web import vista_anfitrion as _va
+from web.anfitrion import _sesion_o_entrar
 from web.router import e
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
@@ -26,22 +27,91 @@ router = APIRouter(tags=["web-anfitrion-boleadores"])
 _JSON_INVALIDO = object()
 
 
-def _cab(ses: dict | None) -> str:
-    tabs = ("<a class='cat sel' href='/anfitrion/boleador'><span class='ico'>🎾</span>Soy boleador</a>"
-            "<a class='cat' href='/anfitrion/ingresos'><span class='ico'>💰</span>Ingresos</a>")
-    return ui.cabecera(tabs=tabs, ses=ses, volver="/anfitrion", modo="anfitrion")
+_SUB = "Peloteo por turno: eliges tu categoría, tarifa y zona, y los jugadores te reservan."
 
 
-def _candado(ses: dict, nombre: str) -> HTMLResponse:
-    cuerpo = ("<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
-              "<div class='panel' style='max-width:640px;margin:22px auto 0;text-align:center'>"
-              "<span class='anf-item-ico' style='background:#3056ED'>🎾</span>"
-              f"<h1 style='margin-top:12px;font-size:22px'>Verifica tu identidad para ser {nombre.lower()}</h1>"
-              f"<p class='sub'>Vas a estar en una cancha con jugadores que no te conocen: por eso todo {nombre.lower()} de {MARCA} tiene "
-              "identidad verificada (documento validado). Toma un minuto.</p>"
-              "<div class='acciones' style='justify-content:center'><a class='btn' href='/cuenta/identidad'>Verificar mi identidad</a>"
-              "<a class='btn sec' href='/anfitrion'>Volver al menú</a></div></div>")
-    return ui.shell(f"Soy {nombre.lower()}", cuerpo, nav=_cab(ses), sesion=ses, ancho=True)
+def _pasos(paso: int, nombre: str) -> str:
+    """Línea de tiempo 1·2·3 (captura Frame 37). [paso] = el que toca ahora
+    (los anteriores salen hechos)."""
+    from web import estilos_v_academia as sva
+    items = (("escudo_ok", "1. Verifica tu identidad", "Documento validado"),
+             ("boleador", "2. Arma tu perfil", "Categoría, tarifa y zona"),
+             ("calendario", "3. Recibe turnos", f"Los jugadores te reservan como {nombre.lower()}"))
+    li = ""
+    for n, (ico, t, d) in enumerate(items, start=1):
+        cls = "ok" if n < paso else ("sel" if n == paso else "")
+        li += (f"<li class='{cls}'" + (" aria-current='step'" if n == paso else "") + f"><span class='n'>{sva.svg('check' if n < paso else ico, 16)}</span>"
+               f"<div><b>{e(t)}</b><small>{e(d)}</small></div></li>")
+    return f"<ol class='vac-tl'>{li}</ol>"
+
+
+_JS_ID = r"""
+(function(){
+  var C = window.__bolId, $ = function(i){ return document.getElementById(i); }, pais = C.pais;
+  function pintar(){
+    var d = C.docs[pais];
+    document.querySelectorAll('[data-bol-pais]').forEach(function(b){ var on = b.dataset.bolPais === pais; b.classList.toggle('sel', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    $('bolForm').hidden = !d.web; $('bolBo').hidden = !!d.web;
+    $('bolSubId').textContent = d.web ? ('Validamos tu ' + d.doc + ' contra ' + d.registro + '. Es rápido y da confianza a los dueños de cancha.')
+                                      : ('En ' + d.nombre + ' tu ' + d.doc + ' se valida en la app.');
+    if(d.web){ $('bolLblNum').textContent = 'Número de ' + d.doc; var n = $('bolNum'); n.maxLength = d.largo; n.placeholder = d.largo + ' dígitos'; n.value = '';
+      $('bolVerTxt').textContent = 'Verificar ' + d.doc; $('bolNotaDoc').textContent = d.doc; }
+    $('bolErr').textContent = '';
+  }
+  document.querySelectorAll('[data-bol-pais]').forEach(function(b){ b.addEventListener('click', function(){ pais = b.dataset.bolPais; pintar(); }); });
+  $('bolNum').addEventListener('input', function(){ this.value = this.value.replace(/\D/g, ''); $('bolErr').textContent = ''; });
+  $('bolApp').addEventListener('click', function(){ window.open(C.play, '_blank', 'noopener'); });
+  $('bolVer').addEventListener('click', function(){
+    var btn = this, d = C.docs[pais], n = $('bolNum').value.trim(); if(btn.disabled) return;
+    if(!n){ $('bolErr').textContent = 'Escribe tu número de ' + d.doc + '.'; $('bolNum').focus(); return; }
+    if(n.length !== d.largo){ $('bolErr').textContent = 'El ' + d.doc + ' tiene ' + d.largo + ' dígitos.'; $('bolNum').focus(); return; }
+    btn.disabled = true; pcgCargando('Validando tu ' + d.doc + '…');
+    fetch('/web/cuenta/identidad', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({pais: pais, numero: n})})
+      .then(function(r){ return r.json(); }).then(function(j){ btn.disabled = false; pcgCargando(false);
+        if(!j.ok){ $('bolErr').textContent = j.mensaje || 'No se pudo. Reintenta.'; return; }
+        pcgAvisar({titulo: '¡Identidad verificada! ✓', icono: '✅', confirmar: 'Armar mi perfil',
+                   mensaje: 'Listo: ahora arma tu perfil (categoría, tarifa y locales) para recibir turnos.'})
+          .then(function(){ pcgRecargar('Abriendo tu perfil…'); }); })
+      .catch(function(){ btn.disabled = false; pcgCargando(false); $('bolErr').textContent = 'No pudimos conectar. Revisa tu conexión.'; });
+  });
+  pintar();
+})();
+"""
+
+
+def _candado(ses: dict, nombre: str, iso: str) -> HTMLResponse:
+    """Sin identidad verificada: explicación + el MISMO formulario de
+    `/cuenta/identidad` dentro de la página (POST /web/cuenta/identidad, sus
+    reglas y su tope de intentos). Bolivia: se verifica en el app (CI + selfie)."""
+    from web import estilos_v_academia as sva
+    from web import vista_anfitrion as va
+    from web.jugador_cuenta import DOC, PAISES
+    from web.router import PLAY_URL
+    iso = iso if iso in DOC else "PE"
+    docs = {i: {"doc": DOC[i][0], "largo": DOC[i][1] or 0, "registro": DOC[i][2], "web": i != "BO", "nombre": n} for i, n in PAISES}
+    seg = "".join(f"<button type='button' data-bol-pais='{i}' class='{'sel' if i == iso else ''}' aria-pressed='{'true' if i == iso else 'false'}'>{e(n)}</button>"
+                  for i, n in PAISES)
+    doc, largo, registro = DOC[iso]
+    izq = (f"<section class='va-panel'><span class='vac-bol-ic'>{sva.svg('escudo_ok', 26)}</span><h2>Tu identidad, verificada</h2>"
+           f"<p class='vac-bol-intro'>Vas a estar en una cancha con jugadores que no te conocen: por eso todo {nombre.lower()} de {MARCA} tiene "
+           "identidad verificada. Toma un minuto.</p>" + _pasos(1, nombre) + "</section>")
+    der = ("<section class='va-panel'><h2>Verificar identidad</h2>"
+           f"<p class='vac-bol-intro' id='bolSubId'>Validamos tu {e(doc)} contra {e(registro or 'el registro')}. Es rápido y da confianza a los dueños de cancha.</p>"
+           f"<span class='vac-lbl'>País</span><div class='va-seg' role='group' aria-label='País de tu documento'>{seg}</div>"
+           f"<div id='bolForm'><label class='vac-lbl' for='bolNum' id='bolLblNum'>Número de {e(doc)}</label>"
+           f"<div class='vac-doc'>{sva.svg('documento', 20)}<input id='bolNum' inputmode='numeric' autocomplete='off' maxlength='{largo or 10}' placeholder='{largo or 8} dígitos'></div>"
+           "<div class='vac-err' id='bolErr' role='alert'></div>"
+           f"<button type='button' class='btn ancho' id='bolVer'>{sva.svg('escudo_ok', 18)}<span id='bolVerTxt'>Verificar {e(doc)}</span></button>"
+           f"<div class='vac-nota'>{sva.svg('candado', 18)}<span>Solo usamos tu <span id='bolNotaDoc'>{e(doc)}</span> para confirmar tu identidad y tu edad. "
+           "No guardamos foto de tu documento ni lo mostramos a nadie.</span></div></div>"
+           "<div id='bolBo' class='vac-bo' hidden><b>En Bolivia tu CI se valida en la app</b>"
+           "La app lee tu documento con la cámara del teléfono (no se envía a ningún lado para leerlo) y suma una selfie. Ese paso no se puede "
+           "hacer desde el navegador sin bajar la seguridad. Cuando termines, vuelve aquí y arma tu perfil."
+           "<div><button type='button' class='btn' id='bolApp'>Verificar en la app</button></div></div></section>")
+    cfg = ui.json_js({"pais": iso, "docs": docs, "play": PLAY_URL}, ensure_ascii=False)
+    cuerpo = va.vista(va.cabecera(f"Soy {nombre.lower()}", _SUB, volver="/anfitrion", volver_txt="Roles")
+                      + f"<div class='vac-bol'>{izq}{der}</div><script>window.__bolId={cfg};</script><script>{_JS_ID}</script>", "vac")
+    return ui.shell(f"Soy {nombre.lower()}", cuerpo, sesion=ses, ancho=True, titulo_tab=f"Soy {nombre.lower()} · Modo anfitrión")
 
 
 def _locales_para(deporte: str) -> list[dict]:
@@ -74,15 +144,15 @@ def _tarjeta_sol(s: dict, sim: str) -> str:
     if pend:
         acc = (f"<div class='acc'><button class='btn' data-bol-acc='aceptar' data-id='{e(s['id'])}'>✅ Aceptar · ganas {e(sim)} {neto:.2f}</button>"
                f"<button class='btn sec' data-bol-acc='rechazar' data-id='{e(s['id'])}'>No puedo</button></div>"
-               f"<div class='sub' style='font-size:12px'>Responde antes de las {e(_fecha_corta(s.get('vence_en') or ''))}; si no, se le devuelve al jugador.</div>")
+               f"<div class='aco-n'>Responde antes de las {e(_fecha_corta(s.get('vence_en') or ''))}; si no, se le devuelve al jugador.</div>")
     elif s["estado"] == "aceptada":
-        acc = f"<div class='acc'><button class='btn sec' data-bol-acc='cancelar' data-id='{e(s['id'])}' style='color:var(--rojo)'>Cancelar este boleo</button></div>"
+        acc = f"<div class='acc'><button class='btn peligro' data-bol-acc='cancelar' data-id='{e(s['id'])}'>Cancelar este boleo</button></div>"
     cliente = e(s.get("cliente_nombre") or s.get("cliente_email") or "Jugador")
     return (f"<div class='bol-sol{' pend' if pend else ''}'>"
-            f"<div style='display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap'><b>{e(horarios.fecha_larga(s['fecha']))} · {e(s['hora_inicio'])}–{e(s['hora_fin'])}</b>"
-            f"<span class='pill{' ok' if s['estado'] == 'aceptada' else ''}'>{e(_bol.estado_visible(s) or s['estado'])}</span></div>"
-            f"<div class='sub' style='margin:0'>{e(s.get('club') or (s.get('data') or {}).get('cancha') or 'Cancha')} · {cliente} · {s['turnos']} turno{'s' if s['turnos'] != 1 else ''}</div>"
-            f"<div class='sub' style='margin:0'>Cobras {e(sim)} {int(s['monto_centimos']) / 100.0:.2f} − comisión {MARCA} {e(sim)} {int(s['comision_centimos']) / 100.0:.2f} = <b>{e(sim)} {neto:.2f}</b> por recibir al terminar el turno.</div>"
+            f"<div class='vac-sol-cab'><b>{e(horarios.fecha_larga(s['fecha']))} · {e(s['hora_inicio'])}–{e(s['hora_fin'])}</b>"
+            f"{_va.pill(_bol.estado_visible(s) or s['estado'], 'ok' if s['estado'] == 'aceptada' else ('warn' if pend else 'gris'))}</div>"
+            f"<div class='aco-n'>{e(s.get('club') or (s.get('data') or {}).get('cancha') or 'Cancha')} · {cliente} · {s['turnos']} turno{'s' if s['turnos'] != 1 else ''}</div>"
+            f"<div class='aco-n'>Cobras {e(sim)} {int(s['monto_centimos']) / 100.0:.2f} − comisión {MARCA} {e(sim)} {int(s['comision_centimos']) / 100.0:.2f} = <b>{e(sim)} {neto:.2f}</b> por recibir al terminar el turno.</div>"
             f"{acc}</div>")
 
 
@@ -161,15 +231,18 @@ _JS_BOL = (r"""
 
 @router.get("/anfitrion/boleador", response_class=HTMLResponse)
 def pagina_boleador(request: Request) -> HTMLResponse:
+    from web import vista_anfitrion as va
     ses, resp = _sesion_o_entrar(request, "/anfitrion/boleador")
     if resp is not None:
         return resp
     email = ses["email"]
     b = datos.boleador(email)
+    if not datos.esta_verificado(email):
+        from web.jugador_cuenta import partir_celular, perfil_completo
+        iso = _bol._pais_de_boleador(b) if b else partir_celular(perfil_completo(email).get("celular") or "")[0]
+        return _candado(ses, _bol.nombre_por_pais(iso), iso)
     pais = _bol._pais_de_boleador(b)
     nombre = _bol.nombre_por_pais(pais)
-    if not datos.esta_verificado(email):
-        return _candado(ses, nombre)
     cfg = _bol._cfg_publica(pais)
     sim = cfg["simbolo"]
     sols = datos.solicitudes_de_boleador(email)
@@ -183,35 +256,43 @@ def pagina_boleador(request: Request) -> HTMLResponse:
                          "tarifa": b.get("tarifa") or 0, "canchas": b.get("canchas") or [], "disponibilidad": disp,
                          "etiquetasSel": b.get("etiquetas") or []}, ensure_ascii=False)
     horas = "".join(f"<option value='{h:02d}:00'>{h:02d}:00</option>" for h in range(5, 24))
-    estado = ("<span class='pill ok'>Activo · recibes solicitudes</span>" if b.get("activo") else
-              ("<span class='pill'>Pausado</span>" if b else "<span class='pill'>Aún no registrado</span>"))
-    cuerpo = (
-        "<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
-        f"<h1 class='anf-hola' style='margin-top:6px'>Soy {nombre.lower()} {estado}</h1>"
-        f"<p class='sub'>Los jugadores te contratan por turno al reservar la cancha. Tú aceptas o rechazas cada solicitud. "
-        f"{MARCA} descuenta {sim} {cfg['comision']:.2f} por turno y el resto queda por recibir en tu billetera al terminar el boleo.</p>"
-        + (f"<h2 style='margin-top:22px'>Solicitudes pendientes <span class='pill'>{len(pend)}</span></h2><div style='display:grid;gap:10px'>"
-           + "".join(_tarjeta_sol(s, paises.simbolo_de_moneda(s['moneda'])) for s in pend) + "</div>" if pend else "")
-        + (f"<h2 style='margin-top:22px'>Boleos confirmados</h2><div style='display:grid;gap:10px'>"
-           + "".join(_tarjeta_sol(s, paises.simbolo_de_moneda(s['moneda'])) for s in prox) + "</div>" if prox else "")
-        + "<h2 style='margin-top:26px'>Mi perfil</h2><div class='panel' style='display:grid;gap:16px'>"
-        "<div><label>Deporte</label><div class='chips' id='deps'></div></div>"
-        f"<div><label>Mi categoría (Liga {MARCA})</label><div class='chips' id='cats'></div></div>"
-        "<div><label>Tarifa por turno</label><div class='chips' id='tarifas'></div>"
-        f"<div class='row' style='margin-top:8px'><div><label for='tarifaOtra'>Otro monto ({sim})</label><input id='tarifaOtra' inputmode='decimal' placeholder='p. ej. 35'></div></div></div>"
-        f"<div><label>Locales donde atiendes</label><div class='sub' style='margin:0 0 8px;font-size:13px'>Solo locales verificados en {MARCA}. Marca todos los que te queden bien.</div><div class='bol-box' id='locales'></div></div>"
-        "<div><label>Disponibilidad</label><div class='chips' id='dias'></div>"
-        f"<div class='row' style='margin-top:8px'><div><label for='desde'>Desde</label><select id='desde'>{horas}</select></div><div><label for='hasta'>Hasta</label><select id='hasta'>{horas}</select></div></div></div>"
-        "<div><label>Sobre ti (elige)</label><div class='chips' id='etqs'></div></div>"
-        f"<div class='row'><div><label for='nombreBol'>Nombre que ven los jugadores</label><input id='nombreBol' maxlength='60' value='{e(b.get('nombre') or ses.get('nombre') or '')}'></div>"
-        f"<div><label for='celular'>Celular (WhatsApp)</label><input id='celular' inputmode='tel' maxlength='15' value='{e(b.get('celular') or '')}'></div></div>"
-        f"<label style='display:flex;gap:10px;align-items:center;font-weight:600'><input type='checkbox' id='activo' style='width:auto;flex:none'{' checked' if (b.get('activo') if b else True) else ''}> Recibir solicitudes</label>"
-        "<div class='acciones'><button type='button' class='btn' id='btnGuardar'>Guardar mi perfil</button></div></div>"
-        + ("<h2 style='margin-top:26px'>Historial</h2><div style='display:grid;gap:10px'>"
-           + "".join(_tarjeta_sol(s, paises.simbolo_de_moneda(s['moneda'])) for s in hist) + "</div>" if hist else "")
+    estado = (va.pill("Activo · recibes solicitudes", "ok") if b.get("activo") else
+              (va.pill("Pausado", "warn") if b else va.pill("Aún no registrado", "gris")))
+    paso = 3 if b.get("activo") else 2
+
+    def _bloque(titulo: str, lista: list[dict], tono: str = "gris") -> str:
+        if not lista:
+            return ""
+        return (f"<section class='va-panel'><h2 class='vac-h2'>{e(titulo)}{va.pill(str(len(lista)), tono)}</h2><div class='vac-lista'>"
+                + "".join(_tarjeta_sol(s, paises.simbolo_de_moneda(s['moneda'])) for s in lista) + "</div></section>")
+    sols_html = (_bloque("Solicitudes pendientes", pend, "warn") + _bloque("Boleos confirmados", prox, "ok")
+                 + ("" if (pend or prox) else va.panel(va.vacio("calendario", "Sin solicitudes por ahora",
+                                                                 "Cuando un jugador te contrate al reservar, aquí aceptas o rechazas.")))
+                 + _bloque("Historial", hist))
+    perfil = va.panel(
+        "<label class='vac-lbl'>Deporte</label><div class='chips' id='deps'></div>"
+        f"<label class='vac-lbl'>Mi categoría (Liga {MARCA})</label><div class='chips' id='cats'></div>"
+        "<label class='vac-lbl'>Tarifa por turno</label><div class='chips' id='tarifas'></div>"
+        f"<div class='row'><div><label class='vac-lbl' for='tarifaOtra'>Otro monto ({e(sim)})</label><input id='tarifaOtra' inputmode='decimal' placeholder='p. ej. 35'></div></div>"
+        f"<label class='vac-lbl'>Locales donde atiendes</label><p class='aco-n'>Solo locales verificados en {MARCA}. Marca todos los que te queden bien.</p><div class='bol-box' id='locales'></div>"
+        "<label class='vac-lbl'>Disponibilidad</label><div class='chips' id='dias'></div>"
+        f"<div class='row'><div><label class='vac-lbl' for='desde'>Desde</label><select id='desde'>{horas}</select></div><div><label class='vac-lbl' for='hasta'>Hasta</label><select id='hasta'>{horas}</select></div></div>"
+        "<label class='vac-lbl'>Sobre ti (elige)</label><div class='chips' id='etqs'></div>"
+        f"<div class='row'><div><label class='vac-lbl' for='nombreBol'>Nombre que ven los jugadores</label><input id='nombreBol' maxlength='60' value='{e(b.get('nombre') or ses.get('nombre') or '')}'></div>"
+        f"<div><label class='vac-lbl' for='celular'>Celular (WhatsApp)</label><input id='celular' inputmode='tel' maxlength='15' value='{e(b.get('celular') or '')}'></div></div>"
+        f"<label class='vac-check'><input type='checkbox' id='activo'{' checked' if (b.get('activo') if b else True) else ''}> Recibir solicitudes</label>"
+        "<div class='vac-acc vac-acc-fin'><button type='button' class='btn' id='btnGuardar'>Guardar mi perfil</button></div>",
+        "Mi perfil", f"Los jugadores te ven así al reservar una cancha de tenis o pádel.", clase="vac-perfil")
+    intro = va.aviso(f"Los jugadores te contratan por turno al reservar la cancha y tú aceptas o rechazas cada solicitud. {MARCA} descuenta "
+                     f"<b>{e(sim)} {cfg['comision']:.2f} por turno</b> y el resto queda por recibir en tu billetera al terminar el boleo.", "info", ico="billete")
+    cuerpo = va.vista(
+        va.cabecera(f"Soy {nombre.lower()}", _SUB, volver="/anfitrion", volver_txt="Roles", acciones=estado)
+        + f"<div class='va-panel vac-pasos-h'>{_pasos(paso, nombre)}</div>" + intro
+        + f"<div class='vac-bol-ops'><div class='vac-sols'>{sols_html}</div><div class='vac-perfil'>{perfil}</div></div>"
         + f"<script>window.__bol={js_cfg};</script><script>{_JS_BOL}</script>"
-        f"<script>document.getElementById('desde').value={ui.json_js(disp.get('desde') or '06:00')};document.getElementById('hasta').value={ui.json_js(disp.get('hasta') or '23:00')};</script>")
-    return ui.shell(f"Soy {nombre.lower()}", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab=f"Soy {nombre.lower()} · Modo anfitrión")
+        f"<script>document.getElementById('desde').value={ui.json_js(disp.get('desde') or '06:00')};document.getElementById('hasta').value={ui.json_js(disp.get('hasta') or '23:00')};</script>",
+        "vac")
+    return ui.shell(f"Soy {nombre.lower()}", cuerpo, sesion=ses, ancho=True, titulo_tab=f"Soy {nombre.lower()} · Modo anfitrión")
 
 
 @router.get("/anfitrion/boleador/locales")

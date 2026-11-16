@@ -88,6 +88,7 @@ const RUTAS = [
   ['anf_campeonatos', '/anfitrion/campeonatos', 'dueno'], ['anf_boleador', '/anfitrion/boleador', 'dueno'],
   ['anf_mensajes', '/mensajes', 'dueno'],
   ['anf_encargados', '/anfitrion/encargados?local=demo_arena_f7', 'dueno'],
+  ['anf_perfil', '/anfitrion/perfil', 'dueno'],
   ['anf_devoluciones', '/anfitrion/cobros-club/devoluciones', 'dueno'],
 ].filter(r => !SOLO || SOLO.test(r[0]));
 

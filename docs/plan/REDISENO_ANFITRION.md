@@ -110,16 +110,43 @@ Cada fase: tests (`python -m pytest`), barrido e2e (`tests/e2e/barrido.mjs`,
 |---|---|---|
 | **F0 · Fundación** | Barra blanca con los 5 desplegables y móvil (☰ acordeón) en TODO `/anfitrion/*`; íconos de color por módulo; fondo celeste; encabezado de vista "‹ Título + acción"; kit de componentes (tarjeta KPI, panel, tabla, segmentado, píldoras de estado). Las pestañas Hoy/Calendario/… pasan a sub-navegación de Mis canchas hasta F2 | **hecha** (barra, íconos, fondo, móvil; el kit de vistas se arma con F1) |
 | F1 · Inicio | Tablero de `/anfitrion` (KPI reales, mini-calendario, pendientes, ingresos 7 días, accesos rápidos); invitaciones de encargado arriba. **Es la página principal** del modo anfitrión (aclarado por el usuario, 16-nov) | **hecha** |
-| F2 · Mis canchas | Columna de locales + calendario semanal/día + menús contextuales + bloquear día + aviso de fotos + iCal | pendiente |
-| F3 · Mi club | Cobros del club, Pagos por confirmar, Encargados, Reglas (+copiar, no-show, cobrar en cancha), Disponibilidad (+cerrar día, abrir valle), Reservas fijas | pendiente |
-| F4 · Negocio | Reportes (pestañas + gráfico), Ocupación (+sugerencias), Ingresos, Caja, Clientes, Llenar, Recordar, Bonos, Campeonatos | pendiente |
-| F5 · Academia, Comercio, Roles, Pro | Mi academia, Cobros, Plan, Tienda, Bodega, Boleador, Verificador, `/pro` | pendiente |
-| F6 · Agregar local | Asistente de 4 pasos con vista previa y borrador, conservando reclamo/GPS/fotos | pendiente |
-| F7 · Mi perfil | Página del anfitrión + preferencias de notificación + cerrar sesiones | pendiente |
-| F8 · Cierre | Barrido completo, `CLAUDE.md`, memoria | pendiente |
+| F2 · Mis canchas | Columna de locales + calendario semanal/día + menús contextuales + bloquear día + aviso de fotos + iCal | **hecha** |
+| F3 · Mi club | Cobros del club, Pagos por confirmar, Encargados, Reglas (+copiar, no-show, cobrar en cancha), Disponibilidad (+cerrar día, abrir valle), Reservas fijas | **hecha** |
+| F4 · Negocio | Reportes (pestañas + gráfico), Ocupación (+sugerencias), Ingresos, Caja, Clientes, Llenar, Recordar, Bonos, Campeonatos | **hecha** |
+| F5 · Academia, Comercio, Roles, Pro | Mi academia, Cobros, Plan, Tienda, Bodega, Boleador, Verificador, `/pro` | **hecha** |
+| F6 · Agregar local | Asistente de 4 pasos con vista previa y borrador, conservando reclamo/GPS/fotos | **hecha** |
+| F7 · Mi perfil | Página del anfitrión + preferencias de notificación + cerrar sesiones | **hecha** |
+| F8 · Cierre | Barrido completo, `CLAUDE.md`, memoria | **hecha** (16-nov-2026) |
 
 ## 7. Preguntas abiertas al director (no bloquean)
 
 2. ¿Reglas: quiere de verdad no-show "Marcar y cobrar" y el interruptor "cobrar en cancha", o eran de ejemplo?
 3. ¿Preferencias de notificación también en el APK?
 4. ¿Versión móvil del diseñador?
+
+## 8. Resultado (16-nov-2026)
+
+Todas las vistas de las capturas quedaron hechas sobre el kit `web/vista_anfitrion.py`
+(una hoja `web/estilos_v_<grupo>.py` por grupo). Funciones nuevas reales:
+
+| Función | Dónde | Test |
+|---|---|---|
+| Bloquear / desbloquear TODO el día (solo turnos libres y futuros, madrugada incluida) | `POST /anfitrion/bloqueo-dia` (`anfitrion.py`) | `test_mis_canchas_unificado.py` |
+| Vista Día = todas las canchas del local | `/anfitrion/mis-canchas?vista=dia` | idem |
+| Asistente de 4 pasos con vista previa, checklist y borrador (localStorage) sobre el MISMO POST de registro; servicios del local en el registro | `/anfitrion/nueva` | idem |
+| Copiar reglas a otras canchas del dueño (franjas con precio no cruzan monedas) | `POST /anfitrion/reglas/{id}/copiar` | `test_web_anfitrion_cobros_club.py` |
+| Sugerencias automáticas de ocupación | `anfitrion_negocio.sugerencias_ocupacion` | `test_web_anfitrion_negocio.py` |
+| Vista previa de reservas fijas | `GET /anfitrion/fijas/vista-previa` | idem |
+| Cerrar todo el día / Abrir horas valle | `POST /anfitrion/disponibilidad/lote` | idem |
+| Recordar a todos (cobros de academia) en lote | `POST /anfitrion/cobros/recordar-todos` | idem |
+| Mi perfil del anfitrión | `GET /anfitrion/perfil` (`anfitrion_perfil.py`) | `test_anfitrion_perfil.py` |
+| Preferencias de avisos (operativo encendido; Novedades APAGADA por defecto, consentimiento) | `prefs_avisos.py`, `GET/POST /web/avisos/prefs`; respetadas en `_aviso_push_usuario` y `correos.encolar` | idem |
+| Cerrar sesión en todos los dispositivos (época por correo en la cookie) | `POST /web/sesion/cerrar-todas` (`sesion.py`) | idem |
+| Verificar identidad dentro de Soy boleador (mismo endpoint de /cuenta/identidad) | `anfitrion_boleadores.py` | `test_web_academia_rediseno.py` |
+
+### Pendientes de decisión del director
+1. Reglas: ¿no-show "Marcar y cobrar" y "Aceptar cobrar en cancha"? (no existen; el diseñador los marcó "de ejemplo").
+2. Llenar cancha: el texto LIBRE de la promo se reemplazó por 4 frases a elegir (regla "sin texto libre"). Si se quiere el texto libre de vuelta, es un cambio chico.
+3. Política de privacidad: mencionar las preferencias de avisos por cuenta.
+4. Agregar local: el diseño trae "correo de contacto", "días que atiende" y "precio en horario punta", que no existen en el modelo (los dos últimos se configuran en Reglas de reserva).
+5. Los push que el APK escribe directo no pasan por las preferencias de avisos.

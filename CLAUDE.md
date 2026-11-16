@@ -278,6 +278,24 @@ del diseño que NO se copian, decisiones por defecto y fases F0–F8:
   Pendientes de hoy; Ingresos 7 días; Accesos rápidos. Recepción no ve plata.
   Sin canchas: bienvenida "Registra tu primera cancha". Test
   `tests/test_inicio_anfitrion.py`.
+- **F2–F8 hechas (16-nov-2026): TODAS las vistas** sobre el kit
+  `web/vista_anfitrion.py` (`cabecera`, `kpi(s)`, `panel`, `pasos`, `pill`,
+  `segmentado`, `vacio`, `aviso`, `lista_lateral`, `tabla`, `vista`; tokens
+  `--anf-*` en `ui.TOKENS`) y una hoja por grupo `web/estilos_v_<canchas|club|
+  negocio|comercio|academia|perfil>.py` (prefijos de clase propios: `vmc`/`mc-`,
+  `vcl-`, `vn-`, `vc-`…, para no chocar). **Toda vista nueva del anfitrión usa
+  el kit.** Mis canchas unificado (`/anfitrion/mis-canchas` = `/calendario` =
+  `/canchas`: lista de locales + calendario Semana/Día + menú contextual;
+  `POST /anfitrion/bloqueo-dia`), asistente Agregar local (mismo POST,
+  borrador en localStorage), copiar reglas (`POST /anfitrion/reglas/{id}/
+  copiar`), sugerencias de ocupación, `POST /anfitrion/disponibilidad/lote`,
+  `GET /anfitrion/fijas/vista-previa`, `POST /anfitrion/cobros/recordar-todos`,
+  Mi perfil `/anfitrion/perfil` con **preferencias de avisos**
+  (`prefs_avisos.py`; Novedades nace APAGADA por consentimiento; recibos,
+  devoluciones y cancelaciones siempre salen; los títulos clasificados están
+  amarrados por test) y **cerrar sesión en todos los dispositivos** (época por
+  correo en `sesion.py`, `stores.sesion_epocas`). Detalle y pendientes de
+  decisión en `docs/plan/REDISENO_ANFITRION.md` §8.
 
 ## Dominio oficial: `pichangol.app`
 
