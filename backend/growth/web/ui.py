@@ -752,6 +752,8 @@ from web.estilos_rediseno import CSS as _CSS_REDISENO  # noqa: E402 — rediseñ
 CSS += _CSS_REDISENO
 from web.nav_anfitrion import CSS as _CSS_NAV_ANF  # noqa: E402 — barra del modo anfitrión (16-nov-2026)
 CSS += _CSS_NAV_ANF
+from web.anfitrion_inicio import CSS as _CSS_INICIO_ANF  # noqa: E402 — tablero de /anfitrion (16-nov-2026)
+CSS += _CSS_INICIO_ANF
 
 
 def e(s) -> str:

@@ -165,33 +165,16 @@ def _sesion_o_entrar(request: Request, volver: str):
 
 @router.get("/anfitrion", response_class=HTMLResponse)
 def pagina_menu(request: Request) -> HTMLResponse:
-    """Menú del modo anfitrión, IGUAL al del app: cabecera verde con el
-    subtítulo y las cinco tarjetas (Mis canchas · Mi academia · Mis campeonatos
-    · Mi tienda · Verificador)."""
+    """Inicio del modo anfitrión = tablero del diseñador (`web/anfitrion_inicio.py`)."""
     ses, resp = _sesion_o_entrar(request, "/anfitrion")
     if resp is not None:
         return resp
     from web import anfitrion_encargados as _enc
-    enc_html, ocultar, n_vouchers = _enc.para_menu(ses["email"])  # invitaciones + locales donde ayuda
-    insignias = {"pagos-por-confirmar": n_vouchers}
-
-    def item(k: str, titulo: str, desc: str, color: str, ico: str, href: str, web: bool) -> str:
-        n = insignias.get(k) or 0
-        return (f"<a class='anf-item' href='{href}'><span class='ico' style='background:{color}' aria-hidden='true'>{ico}</span>"
-                f"<span class='txt'><b>{e(titulo)}</b><small>{e(desc)}</small></span>"
-                + (f"<span class='pill bad anf-insignia' aria-label='{n} por revisar'>{n}</span>" if n else "")
-                + ("" if web else "<span class='pill gris'>En la app</span>")
-                + "<span class='chev' aria-hidden='true'>›</span></a>")
-    grupos = ""
-    for nombre, its in GRUPOS_MENU:
-        html_its = "".join(item(*it) for it in its if it[0] not in ocultar and (it[0] != "plan-academia" or _plan_academia_activo()))
-        if html_its:
-            grupos += f"<section class='anf-grupo' aria-label='{e(nombre)}'><h2>{e(nombre)}</h2>{html_its}</section>"
-    cuerpo = ("<div class='anf-hero'><a class='volver' href='/' aria-label='Volver'>‹</a><h1>Modo anfitrión</h1>"
-              "<p>Publica tu cancha o academia y recibe reservas y alumnos.</p></div>"
-              f"<div class='anf-menu'>{enc_html}{grupos}</div>")
-    return ui.shell("Modo anfitrión", _anf(cuerpo), nav=_cabecera("", ses, tabs_visibles=False), sesion=ses, ancho=True,
-                    titulo_tab=f"Modo anfitrión · {MARCA}")
+    enc_html, _ocultar, n_vouchers = _enc.para_menu(ses["email"])  # invitaciones + locales donde ayuda
+    # Rediseño (16-nov-2026): el inicio es un TABLERO; los módulos viven en la barra
+    # (`web/nav_anfitrion.py`). Las invitaciones de encargado van arriba del tablero.
+    from web import anfitrion_inicio
+    return anfitrion_inicio.render(ses, enc_html, n_vouchers, request.query_params.get("cancha", ""))
 
 
 def _contexto(request: Request, volver: str, seccion: str = "hoy", sin_canchas_ok: bool = False, accion: str = ""):

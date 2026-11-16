@@ -266,7 +266,18 @@ del diseño que NO se copian, decisiones por defecto y fases F0–F8:
   Celular (≤1100 px): botón "Menú" + acordeón. Pastilla "Modo anfitrión" →
   modo jugador; el avatar abre el menú de la cuenta. **Módulo nuevo del
   anfitrión = agregarlo a `GRUPOS_MENU` + `nav_anfitrion.ICONOS`** (el test
-  `tests/test_nav_anfitrion.py` lo exige).
+  `tests/test_nav_anfitrion.py` lo exige). Logo de la barra = APILADO azul
+  (`cl_apilado_azul.png`, variante que eligió el usuario).
+- **F1 hecha: `/anfitrion` = TABLERO** (`web/anfitrion_inicio.py`; reemplaza al
+  menú de tarjetas, que ahora vive en la barra). Cifras reales: Reservas de hoy,
+  Pagos por confirmar (`cobro_directo_web.pendientes_operables`), Cobrado hoy
+  POR MONEDA (`anfitrion_negocio.caja_dia`; otra moneda va como "+ $ 20", nunca
+  se suman) y Ocupación; calendario semanal compacto de una cancha (`?cancha=`,
+  4 días antes → 2 después; en celular 4 días) con la misma regla de turnos que
+  el calendario operativo (reglas del club + fecha real de madrugada);
+  Pendientes de hoy; Ingresos 7 días; Accesos rápidos. Recepción no ve plata.
+  Sin canchas: bienvenida "Registra tu primera cancha". Test
+  `tests/test_inicio_anfitrion.py`.
 
 ## Dominio oficial: `pichangol.app`
 

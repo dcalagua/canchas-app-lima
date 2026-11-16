@@ -94,7 +94,7 @@ V = visual/maquetación sobre datos que ya existen · F = función nueva.
 
 | Tema | Decisión |
 |---|---|
-| Logo de la barra | Horizontal ("CanchaLibre Anfitrión.png"); la "Variante Logo" apilada queda descartada |
+| Logo de la barra | **Apilado** ("CanchaLibre Anfitrión Variante Logo": el usuario envió esa captura como la página principal); `static/brand/cl_apilado_azul.png` sale del blanco del pie recoloreado |
 | Botón principal | Azul (igual que la 1.ª entrega) |
 | Pie | En todas las páginas (el diseño solo lo dibuja en el inicio) |
 | Móvil | Adaptado por nosotros: ☰ con acordeón de los 5 grupos (no hay frames a 390 px) |
@@ -109,7 +109,7 @@ Cada fase: tests (`python -m pytest`), barrido e2e (`tests/e2e/barrido.mjs`,
 | Fase | Contenido | Estado |
 |---|---|---|
 | **F0 · Fundación** | Barra blanca con los 5 desplegables y móvil (☰ acordeón) en TODO `/anfitrion/*`; íconos de color por módulo; fondo celeste; encabezado de vista "‹ Título + acción"; kit de componentes (tarjeta KPI, panel, tabla, segmentado, píldoras de estado). Las pestañas Hoy/Calendario/… pasan a sub-navegación de Mis canchas hasta F2 | **hecha** (barra, íconos, fondo, móvil; el kit de vistas se arma con F1) |
-| F1 · Inicio | Tablero de `/anfitrion` (KPI reales, mini-calendario, pendientes, ingresos 7 días, accesos rápidos); invitaciones de encargado arriba | pendiente |
+| F1 · Inicio | Tablero de `/anfitrion` (KPI reales, mini-calendario, pendientes, ingresos 7 días, accesos rápidos); invitaciones de encargado arriba. **Es la página principal** del modo anfitrión (aclarado por el usuario, 16-nov) | **hecha** |
 | F2 · Mis canchas | Columna de locales + calendario semanal/día + menús contextuales + bloquear día + aviso de fotos + iCal | pendiente |
 | F3 · Mi club | Cobros del club, Pagos por confirmar, Encargados, Reglas (+copiar, no-show, cobrar en cancha), Disponibilidad (+cerrar día, abrir valle), Reservas fijas | pendiente |
 | F4 · Negocio | Reportes (pestañas + gráfico), Ocupación (+sugerencias), Ingresos, Caja, Clientes, Llenar, Recordar, Bonos, Campeonatos | pendiente |
@@ -120,7 +120,6 @@ Cada fase: tests (`python -m pytest`), barrido e2e (`tests/e2e/barrido.mjs`,
 
 ## 7. Preguntas abiertas al director (no bloquean)
 
-1. ¿Logo horizontal o la variante apilada en la barra?
 2. ¿Reglas: quiere de verdad no-show "Marcar y cobrar" y el interruptor "cobrar en cancha", o eran de ejemplo?
 3. ¿Preferencias de notificación también en el APK?
 4. ¿Versión móvil del diseñador?

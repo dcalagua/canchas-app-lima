@@ -176,6 +176,17 @@ def menu_html(ses: dict | None, ruta: str = "") -> str:
     return out
 
 
+def _logo(ui) -> str:
+    """Logo APILADO azul ("CANCHA / LIBRE" + isotipo), la variante que eligió el
+    usuario para la barra; con otra marca o logo propio de la torre, el de siempre."""
+    if ui._logo_propio_cl():
+        from config import MARCA
+        return (f"<a class='wm-cl anf-logo' href='/anfitrion' aria-label='{e(MARCA)} · inicio del modo anfitrión'>"
+                "<img class='wm-ico' src='/static/brand/cl_icono_azul.png' alt='' width='34' height='36'>"
+                f"<img class='anf-logo-txt' src='/static/brand/cl_apilado_azul.png' alt='{e(MARCA)}' width='84' height='36'></a>")
+    return ui.wordmark(24, '/anfitrion', color='azul')
+
+
 def barra(ses: dict | None, tabs: str = "", volver: str = "/anfitrion") -> str:
     """Cabecera completa del modo anfitrión (reemplaza a la barra azul de
     `ui.cabecera` en modo anfitrión). [tabs] = sub-navegación opcional."""
@@ -196,7 +207,7 @@ def barra(ses: dict | None, tabs: str = "", volver: str = "/anfitrion") -> str:
     sub = (f"<div class='anf-sub'><div class='wrap-xl'><nav class='anf-subtabs' aria-label='Mis canchas'>{tabs}</nav></div></div>"
            if tabs else "")
     return ("<header class='nav anf-cab'><div class='anf-barra'><div class='wrap-xl anf-barra-in'>"
-            f"<div class='cab-logo'>{ui.wordmark(24, '/anfitrion', color='azul')}</div>"
+            f"<div class='cab-logo'>{_logo(ui)}</div>"
             + (f"<nav class='anf-nav' id='anfNav' aria-label='Módulos del modo anfitrión'>{nav}</nav>"
                f"<button type='button' class='anf-nav-btn' id='anfNavBtn' aria-controls='anfNav' aria-expanded='false'>{_GRILLA}<span>Menú</span></button>"
                if nav else "<div class='anf-nav-vacia'></div>")
@@ -210,6 +221,7 @@ header.anf-cab{display:block;position:sticky;top:0;z-index:30}
 .anf-barra{background:#fff;border-bottom:1px solid #E4E9F7;position:relative;z-index:2}
 .anf-barra-in{display:flex;align-items:center;gap:20px;height:64px;position:relative}
 .anf-barra .cab-logo{flex:none;height:64px;display:flex;align-items:center}
+.anf-logo{gap:8px}.anf-logo .wm-ico{height:36px;width:auto}.anf-logo-txt{height:34px;width:auto;display:block}
 .anf-nav{flex:1;display:flex;justify-content:center;gap:2px;min-width:0}
 .anf-nav-vacia{flex:1}
 .anf-dd{position:relative}
