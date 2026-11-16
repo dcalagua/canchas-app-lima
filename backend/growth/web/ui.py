@@ -1,18 +1,20 @@
-"""Sistema de diseño de la WEB de Pichangol — el MISMO look & feel del APK
-(`lib/theme.dart`, `lib/widgets/marca.dart`, estándar Airbnb del CLAUDE.md):
+"""Sistema de diseño de la WEB de CanchaLibre (REDISEÑO AZUL, nov-2026: los
+PDF "Soluciones EBIM" del diseñador; ver `docs/plan/REDISENO_AZUL.md`):
 
-- Tipografía **DM Sans** (la equivalente libre de Airbnb Cereal, que es
-  propietaria y no se puede descargar), pesos 500/600/700/800.
-- Paleta del logo nuevo: blanco, azul noche `#0F1B2D` (texto/oscuros),
-  esmeralda `#0E8F67` (CTA/acento), dorado `#D9B45A`, papel `#F4F7FA`,
-  trazo `#DDE5EF`, texto tenue `#627080`, tinte esmeralda `#E7F4EF`.
-- Cabecera tal cual airbnb.com (`cabecera()`): logo · pestañas con ícono ·
-  "Modo anfitrión" + avatar + ☰ (menú desplegable) · buscador grande centrado
-  con desplegable de recientes/zonas; se compacta al hacer scroll.
-- Wordmark **Pichang[o]l** con la 'o' = pelota (SVG esmeralda), pin oficial
-  (`/marca/logo.png`), sello "✓ Verificada", chips blancas con
-  borde suave (seleccionada = tinte), tarjetas radio 16-20 con sombra sutil,
-  botones esmeralda radio 12, marcas de pago dibujadas (Yape/Visa/Mastercard).
+- Tipografía **DM Sans** única, pesos 500/600/700/800.
+- Paleta del diseñador: azul `#3056ED` (marca, CTA, cabecera y pie), azul
+  claro `#7E98FF` (SOLO decoración: con texto blanco no llega a AA), tinte
+  `#E3E8FF` (franjas y fondos suaves), carbón `#333333` (texto y oscuros).
+  Los tokens conservan sus nombres históricos (`--esmeralda` = CTA,
+  `--teal` = CTA oscuro, `--noche` = texto, `--tinte` = fondo suave) para no
+  tocar los ~200 lugares que ya los usan; el verde queda SOLO para estados
+  (pagado, correcto: `--ok-*`).
+- Cabecera (`cabecera()`): barra azul (logo blanco · Cómo funciona · Centro de
+  ayuda · Modo anfitrión · Iniciar sesión/avatar · ☰), pastillas por deporte
+  con ícono en una fila blanca y el buscador en una franja celeste con las
+  amenidades rápidas; se compacta al hacer scroll.
+- Logo CanchaLibre (`static/brand/cl_*`) cuando la marca es CanchaLibre; con
+  otra marca (`MARCA_NOMBRE`) vuelve al isotipo de la torre + el nombre.
 
 Todo lo público del dominio (home, catálogo, reserva, comprobante, 404) pasa
 por `shell()` para que se vea como UNA sola marca.
@@ -22,17 +24,26 @@ from __future__ import annotations
 
 import html as _html
 
+import re
+
 from fastapi.responses import HTMLResponse
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
 TOKENS = ("""
 :root{
-  /* Paleta del LOGO oficial (pin verde + pelota + arco naranja + "⟦MARCA⟧" azul noche) */
-  --blanco:#FFFFFF;--noche:#0A1B3D;--esmeralda:#0B8A3E;--teal:#067A38;--lima:#7CB518;--naranja:#F28C28;--dorado:#D9B45A;
-  --papel:#FFFFFF;--trazo:#DDE5E0;--tenue:#5F6F7A;--tinte:#E6F4EA;--gris:#EDF1EE;
+  /* Paleta del rediseño ⟦MARCA⟧ (nov-2026): azul #3056ED · azul claro #7E98FF · tinte #E3E8FF · carbón #333333 */
+  --azul:#3056ED;--azul-osc:#2442C4;--azul-claro:#7E98FF;--azul-tinte:#E3E8FF;--carbon:#333333;--azul-suave:#F3F5FF;
+  --blanco:#FFFFFF;--noche:#333333;--esmeralda:#3056ED;--teal:#2442C4;--lima:#7E98FF;--naranja:#F28C28;--dorado:#D9B45A;
+  --papel:#FFFFFF;--trazo:#DCE1F0;--tenue:#5E6573;--tinte:#E3E8FF;--gris:#F1F3F9;--gris-txt:#5C6370;
+  /* = tokens del APK (lib/theme.dart · lib/ui/ds.dart): CTA AA, texto dorado legible, foco visible */
+  --verde:var(--esmeralda);--borde:var(--trazo);--dorado-txt:#8A6A12;--info-bg:#E7F0FB;--info-fg:#1E5FB0;--foco:0 0 0 3px rgba(48,86,237,.35);
+  --esp-1:4px;--esp-2:8px;--esp-3:12px;--esp-4:16px;--esp-5:24px;--esp-6:32px;--r-sm:10px;--r-pill:999px;--dur:.18s;
   --ok-bg:#E9F4EE;--ok-fg:#1F6E49;--warn-bg:#FDF2D6;--warn-fg:#946200;--bad-bg:#FBE7E7;--bad-fg:#C0392B;
   --rojo:#C13515;--sombra:0 2px 14px rgba(15,27,45,.06);--sombra2:0 10px 30px rgba(15,27,45,.10);
   --r:16px;--r-lg:20px;--r-btn:12px;
+  /* Modo anfitrión (diseñador, 16-nov-2026): fondo celeste, texto tinta, bordes suaves y colores de estado */
+  --anf-fondo:#F2F5FF;--anf-texto:#1B2140;--anf-tenue:#4B5468;--anf-borde:#E4E9F7;--anf-linea:#EEF1FA;
+  --anf-verde:#16A15A;--anf-naranja:#EE8A12;--anf-rojo:#D92D20;--anf-morado:#7B61FF;
 }
 """).replace('⟦MARCA⟧', MARCA)
 
@@ -123,21 +134,32 @@ h1{font-size:28px;line-height:1.15}h2{font-size:20px}h3{font-size:16px}
 .slot b{font-size:15px;font-weight:800;color:var(--noche);line-height:1.1}
 .slot b small{font-weight:600;color:var(--tenue);font-size:12px}
 .slot .pr{font-size:13.5px;font-weight:700;color:var(--teal);margin-top:2px}
-.slot .tag{font-size:11px;font-weight:700;color:#946200;background:var(--warn-bg);border-radius:999px;padding:2px 7px;margin-top:3px}
-.slot .dia{font-size:11px;font-weight:700;color:var(--tenue)}
+.slot .tag{font-size:12px;font-weight:700;color:#946200;background:var(--warn-bg);border-radius:999px;padding:2px 7px;margin-top:3px}
+.slot .dia{font-size:12px;font-weight:700;color:var(--tenue)}
 .slot.sel{background:var(--noche);border-color:var(--noche)}.slot.sel b,.slot.sel b small,.slot.sel .pr,.slot.sel .dia{color:#fff}
 .slot.sel .tag{background:rgba(255,255,255,.18);color:#fff}
-.slot.off{opacity:.45;cursor:not-allowed;background:var(--gris)}.slot.off b{text-decoration:line-through}
+.slot.off{background:var(--gris);cursor:pointer}.slot.off b,.slot.off .pr{opacity:.6}.slot.off b{text-decoration:line-through}.slot .tag.esp{background:#fff;border:1px dashed var(--trazo);color:var(--tenue)}.slot .tag.esp.on{border-style:solid;border-color:var(--esmeralda);color:var(--esmeralda)}
+button.slot{font:inherit;color:inherit;text-align:left;width:100%;min-height:44px}
+.cl-aviso{display:flex;flex-direction:column;gap:4px;padding:14px 16px;border-radius:var(--r);background:var(--tinte);color:var(--ok-fg);font-size:14px}.cl-aviso b{font-size:15px}.cl-aviso.warn{background:var(--warn-bg);color:var(--warn-fg)}.cl-aviso.bad{background:var(--bad-bg);color:var(--bad-fg)}
+.politica{margin:18px 0 6px;border:1px solid var(--trazo);border-radius:var(--r);padding:0 16px}.politica summary{cursor:pointer;font-weight:800;padding:14px 0;min-height:44px;list-style-position:inside}.politica ul{list-style:none;margin:0;padding:0 0 8px}.politica li{display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--gris);font-size:14px}.politica li span:first-child{flex:none;width:22px;text-align:center}.politica a{display:inline-block;margin:4px 0 14px;font-size:13px}
 .slots-nota{font-size:12.5px;color:var(--tenue);font-weight:600;margin:8px 0 0}
 
 .strip{display:flex;gap:10px;overflow-x:auto;padding:4px 2px 8px;min-width:0;max-width:100%;scrollbar-width:none;-webkit-overflow-scrolling:touch}.strip::-webkit-scrollbar{display:none}
 .strip .chip{flex-direction:column;gap:2px;padding:10px 14px;min-width:74px;align-items:center}
-.strip .chip b{font-size:15px}.strip .chip small{font-size:11.5px}
+.strip .chip b{font-size:15px}.strip .chip small{font-size:12px}
+/* Flechas de la tira de días (solo escritorio: en el celular se desliza con el dedo). */
+.strip-wrap{position:relative;min-width:0}
+.strip-fl{display:none}
+@media (min-width:900px){
+  .strip-fl{display:flex;position:absolute;top:50%;transform:translateY(-60%);z-index:2;width:34px;height:34px;border-radius:50%;border:1px solid var(--trazo);background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.12);align-items:center;justify-content:center;font-size:20px;line-height:1;color:var(--noche);cursor:pointer}
+  .strip-fl.izq{left:-10px}.strip-fl.der{right:-10px}
+  .strip-fl[hidden]{display:none}
+}
 /* tarjetas */
 .card{background:var(--blanco);border-radius:var(--r-lg);box-shadow:var(--sombra);overflow:hidden;display:flex;flex-direction:column}
 .card:hover{box-shadow:var(--sombra2)}
 .card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;background:var(--gris)}
-.sinfoto{width:100%;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;font-size:54px;background:linear-gradient(135deg,#E7F4EF,#CFE9DD)}
+.sinfoto{width:100%;aspect-ratio:4/3;display:flex;align-items:center;justify-content:center;font-size:54px;background:linear-gradient(135deg,#E3E8FF,#C9D3FF)}
 .cb{padding:14px 16px 16px;display:flex;flex-direction:column;gap:5px;flex:1}
 .cb .m{font-size:13px;color:var(--tenue);font-weight:600}
 .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
@@ -168,12 +190,12 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .linea{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:7px 0;border-bottom:1px solid var(--trazo)}
 .linea:last-child{border-bottom:0}.linea b{font-weight:700}
 /* Boleadores (sparring por turno) en la ficha de reserva y en Modo anfitrión */
-.fid-box{border:1px dashed var(--verde);background:#F1FAF5;border-radius:14px;padding:12px 14px;margin:0 0 14px}.fid-box .sellos{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 2px}.fid-box .sello{width:26px;height:26px;border-radius:50%;border:2px solid #CFE8DA;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;background:#fff}.fid-box .sello.on{background:var(--verde);border-color:var(--verde)}.fid-usar{display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:700;cursor:pointer}.fid-usar input{width:auto;flex:none}.ben-box .ben-it+.ben-it{margin-top:10px;padding-top:10px;border-top:1px solid #DCEFE4}.ben-box .sub{margin:2px 0 0;font-size:13px}.bol-box{display:grid;gap:10px;margin:4px 0 12px}
+.fid-box{border:1px dashed var(--verde);background:#F3F5FF;border-radius:14px;padding:12px 14px;margin:0 0 14px}.fid-box .sellos{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 2px}.fid-box .sello{width:26px;height:26px;border-radius:50%;border:2px solid #C9D3FF;display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#fff;background:#fff}.fid-box .sello.on{background:var(--verde);border-color:var(--verde)}.fid-usar{display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:700;cursor:pointer}.fid-usar input{width:auto;flex:none}.ben-box .ben-it+.ben-it{margin-top:10px;padding-top:10px;border-top:1px solid #DCE3FF}.ben-box .sub{margin:2px 0 0;font-size:13px}.bol-box{display:grid;gap:10px;margin:4px 0 12px}
 .bol-card{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--trazo);border-radius:16px;background:var(--blanco);cursor:pointer;box-shadow:0 1px 3px rgba(10,27,61,.06);transition:box-shadow .15s,border-color .15s}
 .bol-card:hover{box-shadow:0 4px 14px rgba(10,27,61,.10)}.bol-card.sel{border-color:var(--noche);box-shadow:0 0 0 2px var(--noche) inset}
 .bol-card img,.bol-card .ini{width:48px;height:48px;border-radius:50%;object-fit:cover;flex:none;background:var(--tinte);display:inline-flex;align-items:center;justify-content:center;font-weight:800;color:var(--esmeralda);font-size:18px}
 .bol-card .nom{font-weight:800;color:var(--noche)}.bol-card .cat{display:inline-block;background:var(--tinte);color:var(--esmeralda);font-weight:800;font-size:12px;padding:2px 8px;border-radius:999px;margin-left:6px}
-.bol-card .det{color:var(--tenue);font-size:12.5px;margin-top:2px}.bol-card .pre{margin-left:auto;text-align:right;white-space:nowrap;font-weight:800;color:var(--noche)}.bol-card .pre small{display:block;color:var(--tenue);font-weight:600;font-size:11.5px}
+.bol-card .det{color:var(--tenue);font-size:12.5px;margin-top:2px}.bol-card .pre{margin-left:auto;text-align:right;white-space:nowrap;font-weight:800;color:var(--noche)}.bol-card .pre small{display:block;color:var(--tenue);font-weight:600;font-size:12px}
 .bol-card .chk{width:22px;height:22px;border-radius:50%;border:2px solid var(--trazo);flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:13px;color:#fff}.bol-card.sel .chk{background:var(--esmeralda);border-color:var(--esmeralda)}
 .bol-sol{border:1px solid var(--trazo);border-radius:16px;padding:14px 16px;background:var(--blanco);display:grid;gap:6px}.bol-sol.pend{border-color:#F2C94C;background:#FFFBEA}
 .bol-sol .acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
@@ -181,7 +203,8 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .barra-fija{display:none}
 @media(max-width:900px){
   .barra-fija{display:flex;position:fixed;left:0;right:0;bottom:0;background:var(--blanco);border-top:1px solid var(--trazo);padding:12px 16px calc(12px + env(safe-area-inset-bottom));gap:12px;align-items:center;justify-content:space-between;z-index:30;box-shadow:0 -6px 20px rgba(15,27,45,.08)}
-  .barra-fija .t{font-weight:800;font-size:18px}.barra-fija .btn{flex:1;max-width:60%}
+  .barra-fija .t{font-weight:800;font-size:18px;white-space:nowrap}.barra-fija>div:first-child{flex:none}
+  .barra-fija .btn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-left:12px;padding-right:12px}
   body.con-barra{padding-bottom:88px}
 }
 /* marcas de pago */
@@ -191,8 +214,8 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .mc{display:inline-block;width:34px;height:21px;position:relative}.mc i{position:absolute;top:0;width:21px;height:21px;border-radius:50%}
 .mc i:first-child{left:0;background:#EB001B}.mc i:last-child{left:13px;background:#F79E1B;opacity:.92}
 .candado{display:inline-flex;align-items:center;gap:6px;background:var(--noche);color:#fff;font-size:12px;font-weight:700;padding:6px 10px;border-radius:10px}
-.medio-pago .mp-t{font-weight:800;font-size:14px;margin-bottom:8px}.medio-pago .chip{padding:9px 12px}.medio-pago .chip small{font-size:11px;font-weight:800;color:var(--esmeralda)}
-.mp-mini{display:inline-flex;align-items:center;gap:6px;background:var(--blanco);border:1px solid var(--trazo);border-radius:999px;padding:6px 10px;cursor:pointer;font:inherit;flex:none}.mp-mini b{color:var(--gris);font-weight:700}
+.medio-pago .mp-t{font-weight:800;font-size:14px;margin-bottom:8px}.medio-pago .chip{padding:9px 12px}.medio-pago .chip small{font-size:12px;font-weight:800;color:var(--esmeralda)}
+.mp-mini{display:inline-flex;align-items:center;gap:6px;background:var(--blanco);border:1px solid var(--trazo);border-radius:999px;padding:6px 10px;cursor:pointer;font:inherit;flex:none}.mp-mini b{color:var(--tenue);font-weight:700}
 .pcg-rp{text-align:left;display:grid;gap:7px;margin:2px 0 6px}.pcg-rp .rp-l{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:12px;font-size:14px;color:var(--noche)}.pcg-rp .rp-l span{min-width:0;overflow-wrap:anywhere;line-height:1.3}.pcg-rp .rp-l b{white-space:nowrap}
 .pcg-rp .rp-t{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:baseline;gap:12px;border-top:1px solid var(--trazo);padding-top:10px;margin-top:4px;font-size:17px;font-weight:800;color:var(--noche)}
 .pcg-rp .rp-d{font-size:12.5px;color:#717171;margin-top:-2px}.pcg-rp .rp-d summary{cursor:pointer;color:var(--esmeralda);font-weight:700;list-style:none}.pcg-rp .rp-d summary::-webkit-details-marker{display:none}.pcg-rp .rp-d summary::before{content:'ⓘ ';}.pcg-rp .rp-d[open] summary{margin-bottom:6px}
@@ -205,7 +228,8 @@ input:focus,select:focus{outline:2px solid var(--esmeralda);outline-offset:0;bor
 .galeria.una{grid-template-columns:1fr;grid-template-rows:300px}.galeria.una .principal{grid-row:auto}
 @media(max-width:640px){.galeria.una{grid-template-rows:220px}}
 .galeria .principal{grid-row:1/3}
-@media(max-width:640px){.galeria{grid-template-columns:1fr;grid-template-rows:220px}.galeria .principal{grid-row:auto}.galeria>*:not(.principal){display:none}}
+/* Celular: carrusel deslizable; la siguiente foto asoma para que se note que hay más. */
+@media(max-width:640px){.galeria:not(.una){display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;border-radius:var(--r-lg);gap:8px}.galeria:not(.una)::-webkit-scrollbar{display:none}.galeria:not(.una)>*{flex:0 0 86%;height:230px;scroll-snap-align:start;border-radius:var(--r-lg)}.galeria .principal{grid-row:auto}}
 ul.datos{list-style:none;padding:0;margin:10px 0 0;font-size:14px;color:var(--tenue);font-weight:600}
 ul.datos li{margin:6px 0;display:flex;gap:8px;align-items:flex-start}
 .amen{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.amen span{background:var(--gris);border-radius:999px;padding:5px 10px;font-size:12.5px;font-weight:700;color:var(--tenue)}
@@ -257,6 +281,10 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .cab-logo{grid-area:logo;display:flex;align-items:center;height:64px}
 .cab-tabs{grid-area:tabs;display:flex;justify-content:center;justify-content:safe center;align-items:flex-end;gap:4px;min-width:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .cab-tabs::-webkit-scrollbar{display:none}
+/* Pestañas que no caben: un degradado en el borde avisa que hay más (antes "Pickleball" salía cortado sin pista) */
+.cab-tabs.mas-der{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 48px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 48px),transparent)}
+.cab-tabs.mas-izq{-webkit-mask-image:linear-gradient(90deg,transparent,#000 48px);mask-image:linear-gradient(90deg,transparent,#000 48px)}
+.cab-tabs.mas-izq.mas-der{-webkit-mask-image:linear-gradient(90deg,transparent,#000 48px,#000 calc(100% - 48px),transparent);mask-image:linear-gradient(90deg,transparent,#000 48px,#000 calc(100% - 48px),transparent)}
 .cab-der{grid-area:der;display:flex;justify-content:flex-end;align-items:center;gap:6px;height:64px}
 .cab-busq{grid-area:busq;display:flex;justify-content:center;margin-top:2px}
 .cat{display:flex;align-items:center;gap:7px;padding:14px 10px 12px;border-bottom:2px solid transparent;color:var(--tenue);font-size:13.5px;font-weight:600;white-space:nowrap;cursor:pointer;text-decoration:none;user-select:none;transition:color .15s;position:relative}
@@ -290,7 +318,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .busq .seg:focus-within{background:var(--blanco);box-shadow:0 6px 20px rgba(10,27,61,.16);z-index:1}
 .busq .seg:focus-within+.seg:before,.busq .seg:hover+.seg:before{display:none}
 .busq .seg input{caret-color:var(--noche)}
-.busq .seg select{padding-right:18px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%230A1B3D' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right center/14px;cursor:pointer}
+.busq .seg select{padding-right:18px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23333333' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round' d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right center/14px;cursor:pointer}
 .busq .seg small{font-size:12px;font-weight:700;color:var(--noche);line-height:1.1;margin-bottom:2px}
 .busq .seg input,.busq .seg select{border:0;padding:0;margin:0;background:transparent;font-size:14px;font-weight:500;color:var(--noche);height:auto;width:100%;min-width:0;outline:none;box-shadow:none;font-family:inherit;line-height:1.2;-webkit-appearance:none;appearance:none}
 .busq .seg input::placeholder{color:var(--tenue);font-weight:500}
@@ -325,7 +353,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .cal-mes{min-width:0}
 .cal-tit{text-align:center;font-weight:700;font-size:15px;padding:12px 0 14px}
 .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px 0;justify-items:center}
-.cal-dn{font-size:11.5px;color:var(--tenue);font-weight:600;padding:4px 0 8px}
+.cal-dn{font-size:12px;color:var(--tenue);font-weight:600;padding:4px 0 8px}
 .cal-d{width:40px;height:40px;border-radius:50%;border:0;background:transparent;font-family:inherit;font-weight:600;font-size:13.5px;color:var(--noche);cursor:pointer}
 .cal-d:hover{box-shadow:inset 0 0 0 1.5px var(--noche)}
 .cal-d.off{color:#C4CBC7;text-decoration:line-through;cursor:default;box-shadow:none}
@@ -385,11 +413,16 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 /* panel del anfitrión */
 .anf-hola{font-size:28px;margin:26px 0 4px}
 .anf-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0 12px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.anf-tabs .chip.sel small{color:inherit;opacity:.85}
 .anf-tabs .chip.sel{background:var(--noche);color:#fff;border-color:var(--noche)}
 .anf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:14px}
 .anf-res{background:var(--blanco);border:1px solid var(--trazo);border-radius:16px;padding:14px 16px;box-shadow:var(--sombra);min-width:0}
 .anf-res .hora{font-size:20px;font-weight:800}
 .anf-res .quien{display:flex;align-items:center;gap:10px;margin-top:8px}
+.anf-res .quien>div{flex:1;min-width:0}
+.anf-res .quien .sub{overflow-wrap:anywhere}
+.anf-res .quien>b{flex:none}
 .anf-res .quien .av{width:36px;height:36px;border-radius:50%;background:var(--tinte);color:var(--teal);display:inline-flex;align-items:center;justify-content:center;font-weight:800}
 .anf-res .acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.anf-res .acc .btn{padding:8px 12px;font-size:13px;flex:0 0 auto;min-width:0}
 .anf-vacio{background:var(--gris);border-radius:16px;padding:26px;text-align:center;color:var(--tenue);font-weight:600}
@@ -414,7 +447,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .anf-cancha .f img{width:100%;height:100%;object-fit:cover}
 .anf-cancha .acciones .btn{flex:0 0 auto;min-width:0;padding:8px 12px;font-size:13px}.anf-local{background:var(--blanco);border:1px solid var(--trazo);border-radius:18px;padding:14px;box-shadow:var(--sombra);min-width:0}.anf-local .cab{display:flex;gap:14px;align-items:flex-start}.anf-local .cab .f{flex:none;width:84px;height:84px;border-radius:12px;overflow:hidden;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:34px}.anf-local .cab .f img{width:100%;height:100%;object-fit:cover}.anf-local .cab .ico{display:inline-flex;color:var(--verde);flex:none;vertical-align:-3px}.anf-local .cab .tit{display:flex;gap:8px;align-items:center;min-width:0}.anf-local .filas{margin-top:12px;border-top:1px solid var(--trazo)}.anf-dep{font-size:12px;font-weight:800;color:var(--tenue);text-transform:uppercase;letter-spacing:.4px;padding:12px 0 2px}.anf-fila{display:flex;gap:10px;padding:12px 0;border-bottom:1px solid var(--trazo)}.anf-fila .ico{flex:none;width:32px;height:32px;border-radius:50%;background:var(--tinte);display:flex;align-items:center;justify-content:center;font-size:16px}.anf-local .acciones .btn{flex:0 0 auto;min-width:0;padding:8px 12px;font-size:13px}
 /* calendario interactivo del anfitrión */
-.cal-act td[data-t]{cursor:pointer}.cal-act td.libre:hover{background:var(--tinte)}.cal-act td .li{opacity:0;font-size:11px;color:var(--teal);font-weight:800;text-align:center}
+.cal-act td[data-t]{cursor:pointer}.cal-act td.libre:hover{background:var(--tinte)}.cal-act td .li{opacity:0;font-size:12px;color:var(--teal);font-weight:800;text-align:center}
 .cal-act td.libre:hover .li{opacity:1}.cal-act td.res:hover .oc,.cal-act td.bloq:hover .bl{filter:brightness(.95)}
 .modal .quien .av{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--tinte);color:var(--teal);font-weight:800;flex:none}
 .chk{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;cursor:pointer}.chk input{width:18px;height:18px;padding:0;margin:0;accent-color:var(--esmeralda)}.chk small{font-weight:500;color:var(--tenue)}
@@ -479,7 +512,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .barra-guardar{position:sticky;bottom:0;background:var(--blanco);border-top:1px solid var(--trazo);padding:12px 0;margin-top:26px;z-index:15}
 .barra-guardar .wrap-xl{display:flex;align-items:center;justify-content:space-between;gap:16px}
 .barra-guardar .btn{flex:none;padding:13px 26px}#msgGuardar.err{color:var(--bad-fg);font-weight:700}
-@media(max-width:560px){#msgGuardar:not(.err){display:none}.barra-guardar .btn{width:100%}}
+@media(max-width:560px){#msgGuardar:not(.err){display:none}.barra-guardar .btn{flex:1 1 0;min-width:0;width:auto;padding-left:12px;padding-right:12px}}
 @media(max-width:900px){.edit-grid{grid-template-columns:1fr;gap:8px}.edit-nav{position:static;flex-direction:row;overflow-x:auto;gap:6px;padding-bottom:6px}.edit-nav-it{white-space:nowrap;border:1px solid var(--trazo);padding:8px 12px;border-radius:999px;font-size:13.5px}}
 .mov{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--trazo);font-size:14px}
 .mov small{display:block;color:var(--tenue);font-weight:600}
@@ -521,7 +554,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
   body.pcg-chat header.nav,body.pcg-chat #abrirApp{display:none}
   body.pcg-chat{overflow:hidden;overscroll-behavior:none}
 }
-@media(max-width:560px){.busq .seg{padding:0 9px}.busq .seg small{font-size:11px}.busq .seg input{font-size:13px}.busq .seg.donde{flex:1.5}.busq .seg.hora{flex:.8}.cab-tabs{margin:0 -16px;padding:0 16px}.cat{padding:12px 8px 10px}}
+@media(max-width:560px){.busq .seg{padding:0 9px}.busq .seg small{font-size:12px}.busq .seg input{font-size:13px}.busq .seg.donde{flex:1.5}.busq .seg.hora{flex:.8}.cab-tabs{margin:0 -16px;padding:0 16px}.cat{padding:12px 8px 10px}}
 /* filtros del explorador (botón + chips) */
 .filtros{flex:none;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--trazo);border-radius:14px;padding:10px 14px;font-weight:700;font-size:13.5px;background:var(--blanco);cursor:pointer;color:var(--noche);font-family:inherit}
 .filtros:hover{border-color:var(--noche)}.filtros.on{border-color:var(--noche);box-shadow:inset 0 0 0 1px var(--noche)}
@@ -530,7 +563,7 @@ footer.pie{margin-top:56px;background:var(--blanco);border-top:1px solid var(--t
 .barra-filtros .qchips{display:flex;gap:8px;overflow-x:auto;scrollbar-width:none;min-width:0;padding:4px 0}
 .barra-filtros .qchips::-webkit-scrollbar{display:none}
 .barra-filtros .chip{font-size:13.5px;padding:10px 14px;border-radius:14px}
-.filtros .n{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;border-radius:999px;background:var(--noche);color:#fff;font-size:11px;margin-left:6px;padding:0 5px}
+.filtros .n{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;border-radius:999px;background:var(--noche);color:#fff;font-size:12px;margin-left:6px;padding:0 5px}
 body.sin-scroll{overflow:hidden}
 .modal{display:none;position:fixed;inset:0;background:rgba(10,27,61,.5);z-index:60;align-items:center;justify-content:center;padding:24px 16px}
 .modal.open{display:flex}
@@ -542,6 +575,30 @@ body.sin-scroll{overflow:hidden}
 .modal-cuerpo{overflow-y:auto;padding:8px 24px 16px;flex:1;min-height:0}
 .modal-cuerpo section{padding:22px 0;border-bottom:1px solid var(--trazo)}.modal-cuerpo section:last-child{border-bottom:0}
 .modal-cuerpo h4{margin:0 0 14px;font-size:18px;font-weight:600}
+/* Accesibilidad (W2.7): foco visible en TODO lo interactivo, no solo en inputs */
+a:focus-visible,button:focus-visible,summary:focus-visible,[role=button]:focus-visible,.chip:focus-visible,[tabindex]:focus-visible{outline:3px solid var(--esmeralda);outline-offset:2px}
+button.btn,a.btn,button.chip,a.chip,.redondo{min-height:44px}.redondo{min-width:44px}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important;scroll-behavior:auto!important}}
+/* Pago con comprobante (cobro directo al club) */
+.vch-ov{position:fixed;inset:0;background:rgba(10,27,61,.5);z-index:78;display:flex;align-items:center;justify-content:center;padding:24px 16px}
+.vch{background:var(--blanco);border-radius:var(--r-lg);max-width:520px;width:100%;max-height:calc(100dvh - 48px);overflow-y:auto;padding:20px 22px;box-shadow:var(--sombra2)}
+.vch-cab{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.vch-cab h3{margin:2px 0 0;font-size:22px}
+.vch-k{font-size:12px;font-weight:700;color:var(--ok-fg);text-transform:uppercase;letter-spacing:.04em}
+.vch-x{width:44px;height:44px;border-radius:50%;border:1px solid var(--trazo);background:var(--blanco);font-size:16px;cursor:pointer;flex:none}
+.vch-reloj{margin:12px 0 4px;padding:10px 12px;border-radius:var(--r-btn);background:var(--warn-bg);color:var(--warn-fg);font-size:14px}
+.vch-pasos{padding-left:20px;margin:10px 0 0}.vch-pasos>li{margin:0 0 16px;font-size:15px}.vch-pasos input[type=text],.vch-pasos input:not([type]){margin-top:6px}
+.vch-medio{border:1px solid var(--trazo);border-radius:var(--r);padding:12px 14px;margin:10px 0}
+.vch-mt{font-weight:800}.vch-tit{font-size:14px;color:var(--tenue);margin:2px 0 6px}
+.vch-dato{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px dashed var(--trazo)}.vch-dato span{font-size:13px;color:var(--tenue);min-width:58px}
+.vch-dato b{flex:1;min-width:0;overflow-wrap:anywhere;font-size:16px}
+.vch-copiar{min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--trazo);background:var(--blanco);font-weight:700;cursor:pointer}
+.vch-qr{display:block;max-width:200px;width:100%;margin:8px auto 0;border-radius:var(--r-btn)}
+.vch-nota{font-size:13px;color:var(--tenue);margin-top:6px}
+.vch-foto{display:flex;align-items:center;justify-content:center;min-height:52px;margin-top:6px;border:2px dashed var(--trazo);border-radius:var(--r);cursor:pointer;font-weight:700}
+.vch-foto input{position:absolute;opacity:0;width:1px;height:1px}.vch-foto:focus-within{outline:3px solid var(--esmeralda);outline-offset:2px}
+.vch-prev{display:block;max-height:220px;max-width:100%;margin:10px auto 0;border-radius:var(--r-btn)}
+.vch-pie{font-size:12.5px;margin-top:10px}
+@media (max-width:600px){.vch-ov{align-items:flex-end;padding:0}.vch{border-radius:22px 22px 0 0;max-height:92dvh;padding:16px 18px calc(16px + env(safe-area-inset-bottom,0px))}}
 .pcg-dlg{display:none;position:fixed;inset:0;background:rgba(10,27,61,.5);z-index:80;align-items:center;justify-content:center;padding:24px 16px}.pcg-dlg.open{display:flex}
 .pcg-dlg .caja{background:var(--blanco);border-radius:24px;width:100%;max-width:420px;padding:28px 24px 20px;text-align:center;box-shadow:0 12px 40px rgba(10,27,61,.3);animation:pop .18s ease-out;display:flex;flex-direction:column;align-items:center;max-height:calc(100vh - 48px);max-height:calc(100dvh - 48px)}
 .pcg-dlg .ico{width:56px;height:56px;border-radius:50%;background:var(--tinte);display:inline-flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:12px;flex:none}.pcg-dlg .ico.mal{background:#FDECE8}
@@ -556,7 +613,7 @@ body.sin-scroll{overflow:hidden}
 .pcg-dlg .caja::before{content:'';display:block;width:40px;height:4px;border-radius:2px;background:#DDDDDD;margin:0 auto 12px;flex:none}
 .pcg-dlg .ico{width:44px;height:44px;font-size:21px;margin-bottom:8px}.pcg-dlg h3{font-size:17px}.pcg-dlg p,.pcg-dlg .msg{font-size:14px;margin-bottom:14px}.pcg-dlg .btn{padding:13px 16px;font-size:15px}.pcg-dlg .txt{padding:10px;font-size:14.5px}}
 @keyframes subir{0%{transform:translateY(40px);opacity:0}100%{transform:none;opacity:1}}
-.pcg-barra{position:fixed;top:0;left:0;right:0;height:3px;z-index:120;pointer-events:none;opacity:0;transition:opacity .25s}.pcg-barra.on{opacity:1}.pcg-barra i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--esmeralda),#7CB518);box-shadow:0 0 8px rgba(11,138,62,.5)}.pcg-barra.on i{animation:pcgBarra 8s cubic-bezier(.1,.7,.2,1) forwards}.pcg-barra.fin i{animation:none;width:100%;transition:width .2s}@keyframes pcgBarra{0%{width:0}20%{width:45%}60%{width:75%}100%{width:92%}}
+.pcg-barra{position:fixed;top:0;left:0;right:0;height:3px;z-index:120;pointer-events:none;opacity:0;transition:opacity .25s}.pcg-barra.on{opacity:1}.pcg-barra i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--esmeralda),#7E98FF);box-shadow:0 0 8px rgba(48,86,237,.5)}.pcg-barra.on i{animation:pcgBarra 8s cubic-bezier(.1,.7,.2,1) forwards}.pcg-barra.fin i{animation:none;width:100%;transition:width .2s}@keyframes pcgBarra{0%{width:0}20%{width:45%}60%{width:75%}100%{width:92%}}
 .pcg-velo{display:none;position:fixed;inset:0;background:rgba(10,27,61,.35);backdrop-filter:blur(2px);z-index:90;align-items:center;justify-content:center;padding:16px}.pcg-velo.open{display:flex}
 .pcg-velo .tarjeta{background:var(--blanco);border-radius:20px;padding:24px 28px;display:flex;flex-direction:column;align-items:center;gap:14px;color:var(--noche);font-weight:700;font-size:15px;box-shadow:0 12px 40px rgba(10,27,61,.3);min-width:220px;text-align:center}
 .pcg-velo .aro{width:46px;height:46px;border-radius:50%;border:4px solid var(--gris);border-top-color:var(--esmeralda);animation:pcgGiro .8s linear infinite}@keyframes pcgGiro{to{transform:rotate(360deg)}}
@@ -613,6 +670,11 @@ body.sin-scroll{overflow:hidden}
 .lst .foto{position:relative;border-radius:14px;overflow:hidden;aspect-ratio:1/0.95;background:var(--gris)}
 .lst .fotos{display:flex;height:100%;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
 .lst .fotos::-webkit-scrollbar{display:none}
+/* Canchas de Google aún sin registrar: sin foto, tarjeta baja; se muestran 8 y "Ver más". */
+#gridDesc .lst .foto:has(.sinfoto){aspect-ratio:16/9}
+#gridDesc .lst .sinfoto{font-size:40px}
+#gridDesc .lst.desc-extra{display:none!important}
+.desc-mas{display:flex;justify-content:center;margin:18px 0 6px}
 .lst .fotos img,.lst .fotos .sinfoto{flex:0 0 100%;width:100%;height:100%;object-fit:cover;scroll-snap-align:start;aspect-ratio:auto;display:block}
 .lst .fotos .sinfoto{font-size:56px;display:flex}
 .lst .fotos img{color:transparent}
@@ -637,7 +699,7 @@ body.sin-scroll{overflow:hidden}
 .lst.pend .foto img,.lst.pend .foto .sinfoto{filter:saturate(.55)}
 .btn-mapa{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:25;background:var(--noche);color:#fff;border:0;border-radius:999px;padding:13px 20px;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 8px 24px rgba(15,27,45,.28);display:inline-flex;align-items:center;gap:8px;font-family:inherit}
 .btn-mapa:hover{transform:translateX(-50%) scale(1.03)}
-.ubic-mini{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13.5px;font-weight:600;color:var(--tenue);padding:14px 0 0}
+.ubic-mini{display:flex;align-items:flex-start;gap:8px;flex-wrap:nowrap;font-size:13.5px;font-weight:600;color:var(--tenue);padding:14px 0 0}.ubic-mini>span:first-child{flex:none}.ubic-mini #ubicTxt{flex:1;min-width:0}.ubic-mini select{width:auto;display:inline-block;padding:4px 8px;border:1px solid var(--trazo);border-radius:999px;font:inherit;font-weight:700;background:var(--blanco);min-height:32px}
 .ubic-mini button{border:0;background:transparent;color:var(--esmeralda);font-weight:800;cursor:pointer;font-family:inherit;font-size:13.5px;padding:0;text-decoration:underline}
 .vacio{padding:40px 0;text-align:center;color:var(--tenue);font-weight:600}
 /* sesión con Google */
@@ -645,16 +707,58 @@ body.sin-scroll{overflow:hidden}
 .links a.yo:hover{background:var(--blanco);box-shadow:var(--sombra)}
 .avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;display:inline-flex;align-items:center;justify-content:center;background:var(--tinte);color:var(--teal);font-weight:800;font-size:13px}
 @media(max-width:640px){.links a.yo,.links a.entrar{display:inline-flex}.links a.yo .nom{display:none}}
+/* Servicios extra de la ficha: fila tocable de 48 px; la cantidad sale solo al marcarlo. */
+/* Acciones del local en la ficha: en el celular el texto no se parte en dos líneas. */
+.acc-local{margin:6px 0 14px}
+.acc-local .btn{white-space:nowrap}
+@media (max-width:600px){.acc-local .btn{font-size:14px;padding-left:10px;padding-right:10px}}
+label.extra{display:flex;gap:10px;align-items:center;flex-wrap:wrap;min-height:48px;margin:8px 0;padding:8px 12px;border:1px solid var(--trazo);border-radius:var(--r-sm);font-weight:600;cursor:pointer}
+label.extra:has(input:checked){border-color:var(--esmeralda);background:var(--tinte)}
+label.extra input[type=checkbox]{width:20px;height:20px;flex:none;margin:0;accent-color:var(--esmeralda)}
+label.extra small{color:var(--tenue)}
+label.extra select.cant{display:none;width:auto;margin-left:auto;padding:6px 10px}
+label.extra:has(input:checked) select.cant{display:block}
 .login-box{background:var(--tinte);border-radius:var(--r);padding:16px 18px;margin-top:8px}
 .login-box b{font-size:15px}
 .quien{display:flex;align-items:center;gap:12px;margin:10px 0 4px;padding:12px 14px;border:1px solid var(--trazo);border-radius:var(--r);background:var(--blanco)}
 .quien img{width:40px;height:40px;border-radius:50%;object-fit:cover}
 .quien .m{font-size:13px;color:var(--tenue);font-weight:600}
 .quien>div{flex:1;min-width:0}.quien .btn{padding:8px 12px;font-size:13px}
-.marca{margin-top:48px;border-top:1px solid var(--trazo)}
+.marca{margin-top:56px;border-top:0}
 .marca section{padding:44px 0}
 .marca section:first-child{border-top:0}
+/* Accesibilidad (ronda 3, al FINAL de la hoja para ganar a las reglas de arriba): ningún texto visible bajo 12px (el <small> del navegador
+   baja a ~10.8px dentro de un texto de 13px) */
+small{font-size:max(12px,.83em)}
+/* …y en pantallas TÁCTILES todo lo que se toca mide al menos 44px de alto (en
+   escritorio, con mouse, el diseño queda igual). Solo cambia el alto del área
+   táctil: los textos y colores no se mueven. */
+@media (pointer:coarse){
+  .chip,.btn,.mp-mini,.mj-chip,select,.bil-nav a,.jp-link,.anf-back,.pr-back,.pr-limpiar,.tn-sec a,.busq-mini,.ubic-mini select{min-height:44px}
+  .anf-back,.pr-back,.pr-limpiar,.tn-sec a,.viaje .vacc .lnk{display:inline-flex;align-items:center}
+  .viaje .vacc .lnk{min-height:44px}
+  .wm{min-height:44px}
+  .lst .corazon{min-width:44px;min-height:44px;top:4px;right:4px}
+  .mj-cab .vol{min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  .anf-hero .volver{min-width:44px;min-height:44px;display:inline-flex;align-items:center}
+  .modal-cab .cerrar{min-width:44px;min-height:44px;top:10px;left:10px}
+  /* Pie: cada enlace es una fila de 44px (antes ~20px con 7px de margen). */
+  .pie-cols a{display:flex;align-items:center;min-height:44px;margin:0}
+  .pie-cols a.libro{display:inline-flex;margin-top:8px}
+  .pie-redes a{width:44px;height:44px}
+  .pie-bajo a{display:inline-flex;align-items:center;min-height:44px}
+}
 """
+from web.estilos_anfitrion import CSS as _CSS_ANFITRION  # noqa: E402 — modo anfitrión (va al final)
+CSS += _CSS_ANFITRION
+from web.estilos_rediseno import CSS as _CSS_REDISENO  # noqa: E402 — rediseño azul (nov-2026): lo último, gana
+CSS += _CSS_REDISENO
+from web.nav_anfitrion import CSS as _CSS_NAV_ANF  # noqa: E402 — barra del modo anfitrión (16-nov-2026)
+CSS += _CSS_NAV_ANF
+from web.anfitrion_inicio import CSS as _CSS_INICIO_ANF  # noqa: E402 — tablero de /anfitrion (16-nov-2026)
+CSS += _CSS_INICIO_ANF
+from web.vista_anfitrion import CSS_TODO as _CSS_VISTAS_ANF  # noqa: E402 — kit + vistas del modo anfitrión (16-nov-2026)
+CSS += _CSS_VISTAS_ANF
 
 
 def e(s) -> str:
@@ -730,18 +834,42 @@ def boton_whatsapp(texto: str, etiqueta: str = "💬 WhatsApp", clase: str = "bt
 
 
 PELOTA_SVG = (
-    "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='12' cy='12' r='10' fill='#0E8F67'/>"
+    "<svg viewBox='0 0 24 24' aria-hidden='true'><circle cx='12' cy='12' r='10' fill='#3056ED'/>"
     "<path fill='#fff' d='M12 6.2l3.3 2.4-1.3 3.9H10l-1.3-3.9L12 6.2z'/>"
     "<path fill='none' stroke='#fff' stroke-width='1.4' d='M12 6.2V3.5M15.3 8.6l2.6-.9M14 12.5l1.9 2.3M10 12.5l-1.9 2.3M8.7 8.6l-2.6-.9'/>"
     "<path fill='#fff' opacity='.9' d='M6.2 8.5l2.5-.8.9 2.6-2.3 1.8-1.7-1.3zM17.8 8.5l-2.5-.8-.9 2.6 2.3 1.8 1.7-1.3zM9.1 15.6h5.8l.8 2.6-3.7 1.9-3.7-1.9z'/></svg>"
 )
 
 
-def wordmark(tam: int = 22, href: str = "/") -> str:
-    """Logo oficial (el configurable de la torre, `/marca/logo.png`) +
-    "Pichangol" en azul noche, peso 800, SIN cursiva (pedido del director)."""
-    return (f"<a class='wm' href='{href}' style='font-size:{tam}px' aria-label='{MARCA}'>"
+def _logo_propio_cl() -> bool:
+    """¿Se usa el logo dibujado de CanchaLibre? Sí si la marca es CanchaLibre y
+    el operador NO subió un logo propio en la torre (ese siempre manda)."""
+    import marca_logo
+    return MARCA.replace(" ", "").lower() == "canchalibre" and not marca_logo.personalizado()
+
+
+def wordmark(tam: int = 22, href: str = "/", color: str = "blanco") -> str:
+    """Logo de la marca. Con CanchaLibre: isotipo + wordmark del diseñador
+    (`static/brand/cl_icono_<color>.png` + `cl_wordmark_<color>.png`; `color`
+    = "blanco" sobre las franjas azules, "azul" sobre fondo claro). Con otra
+    marca o con un logo subido en la torre: ese logo (`/marca/logo.png`) + el
+    nombre en texto, como antes."""
+    if _logo_propio_cl():
+        c = "azul" if color == "azul" else "blanco"
+        return (f"<a class='wm wm-cl {c}' href='{href}' style='font-size:{tam}px' aria-label='{MARCA}'>"
+                f"<img class='wm-ico' src='/static/brand/cl_icono_{c}.png' alt='' width='34' height='36'>"
+                f"<img class='wm-txt' src='/static/brand/cl_wordmark_{c}.png' alt='{MARCA}' width='163' height='16'></a>")
+    return (f"<a class='wm {'' if color == 'azul' else 'sobre-azul'}' href='{href}' style='font-size:{tam}px' aria-label='{MARCA}'>"
             f"<img src='{_logo_url()}' alt=''><span>{MARCA}</span></a>")
+
+
+def logo_apilado(href: str = "/") -> str:
+    """Logo grande de dos líneas del pie ("CANCHA / LIBRE" en blanco); con otra
+    marca, el wordmark normal."""
+    if _logo_propio_cl():
+        return (f"<a class='wm-apilado' href='{href}' aria-label='{MARCA}'>"
+                f"<img src='/static/brand/cl_apilado_blanco.png' alt='{MARCA}' width='236' height='101'></a>")
+    return wordmark(24, href)
 
 
 def _logo_url() -> str:
@@ -861,6 +989,87 @@ def medio_pago_mini(pasarela: str = "culqi") -> str:
     return f"<button type='button' class='mp-mini' id='medioPagoMini' data-medio='{e(m)}' aria-label='Medio de pago'></button>"
 
 
+_PLUS_CODE = re.compile(r"^\s*[23456789CFGHJMPQRVWX]{4,8}\+[23456789CFGHJMPQRVWX]{2,3}\b[,\s]*", re.I)
+
+
+def codigo_corto(ref: str) -> str:
+    """Código legible y estable de una reserva ("CL-7K2P9Q", siglas de la marca) para el
+    comprobante, en vez del id interno (`web_1787…_0`, `grp_…`). El id real
+    sigue en la URL y en el title, para soporte."""
+    import zlib
+    n = zlib.crc32(str(ref or "").encode()) or 1
+    alfabeto = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ"   # sin 0/O ni 1/I
+    out = ""
+    while n and len(out) < 6:
+        n, r = divmod(n, len(alfabeto))
+        out += alfabeto[r]
+    pref = "".join(ch for ch in MARCA if ch.isupper())[:3] or "R"   # CanchaLibre → "CL"
+    return f"{pref}-" + out.ljust(6, "2")
+
+
+def monto(v: float, sim: str = "S/", dec: int = 2) -> str:
+    """"S/ 56 070.00": separador de miles con espacio (igual en toda la web)."""
+    return f"{sim} {float(v or 0):,.{dec}f}".replace(",", " ")
+
+
+def unir_lugar(*partes: str, sep: str = ", ") -> str:
+    """Une partes de una ubicación sin repetir: si una ya está contenida en lo
+    anterior (sin tildes ni mayúsculas) se omite. "Calle Los Laureles 365, San
+    Isidro" + "San Isidro" → sin el segundo "San Isidro"."""
+    import unicodedata
+
+    def norm(t: str) -> str:
+        return "".join(ch for ch in unicodedata.normalize("NFD", t.lower()) if unicodedata.category(ch) != "Mn")
+    out: list[str] = []
+    for p in partes:
+        p = str(p or "").strip()
+        if p and norm(p) not in norm(sep.join(out)):
+            out.append(p)
+    return sep.join(out)
+
+
+def direccion_legible(texto: str) -> str:
+    """Dirección para personas: Google a veces la da como Plus Code
+    ("373R+J63, Lurigancho-Chosica 15468, …"), que nadie entiende; se quita."""
+    t = _PLUS_CODE.sub("", str(texto or "")).strip(" ,")
+    return t or str(texto or "").strip()
+
+
+def js_seguro(texto: str) -> str:
+    """Texto JSON listo para ir DENTRO de un <script>: `</script>` (o `<!--`)
+    en un dato de usuario —nombre de club, de jugador, nota de un medio de
+    pago— no puede cerrar el script e inyectar HTML (XSS persistente)."""
+    return (str(texto).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
+
+
+def json_js(obj, **kw) -> str:
+    """`json.dumps` seguro para incrustar en HTML/JS (ver `js_seguro`)."""
+    import json as _json
+    return js_seguro(_json.dumps(obj, **kw))
+
+
+def selector_medio_directo(directo: dict) -> str:
+    """Selector del checkout cuando el club cobra DIRECTO (el dinero va a su
+    cuenta): Yape / Tarjeta con el Culqi DEL CLUB si lo conectó y, si publicó
+    medios manuales, "Pagar con comprobante" (Yape, Plin, transferencia… y se
+    sube el voucher). `pcgMedioPago()` devuelve 'yape' | 'tarjeta' | 'voucher'."""
+    culqi = bool(directo.get("culqi_public_key"))
+    medios = directo.get("medios") or []
+    nombres = " · ".join(dict.fromkeys(e(m.get("etiqueta") or m.get("tipo") or "") for m in medios if m))
+    chips = ""
+    if culqi:
+        chips += ("<button type='button' class='chip sel' data-medio='yape'><span class='yape'>Yape</span> Yape <small>Recomendado</small></button>"
+                  "<button type='button' class='chip' data-medio='tarjeta'><span class='visa'>VISA</span><span class='mc'><i></i><i></i></span> Tarjeta</button>")
+    if medios:
+        chips += (f"<button type='button' class='chip{'' if culqi else ' sel'}' data-medio='voucher' data-nombre='comprobante' "
+                  f"data-corto='🧾 Comprobante'>🧾 Pagar con comprobante</button>")
+    pie = ("🔒 Pagas directo al club" + (" · Culqi" if culqi else "")
+           + (f". Con comprobante: {nombres}; el club lo confirma." if medios else "."))
+    return ("<div class='medio-pago' id='medioPago'><div class='mp-t'>¿Cómo quieres pagar?</div>"
+            f"<div class='chips'>{chips}</div><div class='sub' style='font-size:12px;margin-top:8px'>{pie}</div></div>")
+
+
 _FLAGS = {
     "PE": "<svg class='flag' viewBox='0 0 3 2'><rect width='3' height='2' fill='#D91023'/><rect x='1' width='1' height='2' fill='#fff'/></svg>",
     "EC": "<svg class='flag' viewBox='0 0 4 2'><rect width='4' height='2' fill='#FFD100'/><rect y='1' width='4' height='.5' fill='#0057B8'/><rect y='1.5' width='4' height='.5' fill='#D91023'/></svg>",
@@ -874,11 +1083,11 @@ def bandera(iso: str) -> str:
 
 
 def sello_verificada() -> str:
-    return "<span class='pill'>✓ Verificada</span>"
+    return "<span class='pill sello-ok'>✓ Verificada</span>"
 
 
 def check_svg() -> str:
-    return ("<div class='check'><svg viewBox='0 0 24 24'><path fill='none' stroke='#0E8F67' stroke-width='3' "
+    return ("<div class='check'><svg viewBox='0 0 24 24'><path fill='none' stroke='#3056ED' stroke-width='3' "
             "stroke-linecap='round' stroke-linejoin='round' d='M5 12.5l4.5 4.5L19 7'/></svg></div>")
 
 
@@ -913,23 +1122,33 @@ def redes_pie(em: dict) -> str:
                       for r in rs) + "</div>")
 
 
+def _titulo_raquetas() -> str:
+    from web import catalogos
+    return catalogos.titulo_raquetas()
+
+
 def footer() -> str:
     """Pie de página con columnas (estilo Airbnb) + datos del comercio que
     exigen Culqi/INDECOPI (razón social, RUC, contacto, Libro de Reclamaciones,
     políticas de devolución y términos, redes oficiales) en TODAS las páginas."""
     import empresa
+    from web import catalogos
+    from web import iconos as _iconos
     em = empresa.datos()
+    activos = catalogos.deportes_activos()
+    deps_pie = " · ".join(catalogos.NOMBRE_DEPORTE.get(d, d).capitalize() for d in activos)
     return (
         "<footer class='pie'><div class='wrap-xl'><div class='pie-cols'>"
-        f"<div>{wordmark(20)}<div>Reserva, juega, repite.</div>"
-        "<div style='margin-top:10px;font-size:12.5px'>Fútbol · Tenis · Pádel · Pickleball<br>Perú · Ecuador · Bolivia</div>"
+        f"<div>{logo_apilado()}<div class='pie-lema'>Reserva, juega, repite.</div>"
+        f"<div class='pie-deps'>{e(deps_pie)}<br>Perú · Ecuador · Bolivia</div>"
         f"{redes_pie(em)}</div>"
-        "<div><h4>Reservar</h4><a href=\"/canchas\">Todas las canchas</a><a href='/canchas?deporte=futbol'>Canchas de fútbol</a>"
-        "<a href='/canchas?deporte=tenis'>Canchas de tenis</a><a href='/canchas?deporte=padel'>Canchas de pádel</a><a href='/tenis'>Tenis y pádel: torneos y partner</a>"
+        "<div><h4>Reservar</h4><a href=\"/canchas\">Todas las canchas</a>"
+        + "".join(f"<a href='/canchas?deporte={d}'>Canchas de {catalogos.NOMBRE_DEPORTE.get(d, d)}</a>" for d in activos[:3])
+        + f"<a href='/tenis'>{e(catalogos.titulo_raquetas())}: torneos y partner</a>"
         "<a href='/canchas?deporte=academias'>Academias</a><a href='/#servicios'>Servicios y precios</a></div>"
-        "<div><h4>Soporte</h4><a href='/#contacto'>Contacto</a><a href='/#como'>Cómo funciona</a>"
+        "<div><h4>Soporte</h4><a href='/ayuda'>Centro de ayuda</a><a href='/#contacto'>Contacto</a><a href='/#como'>Cómo funciona</a>"
         "<a href='/#pagos'>Pagos y seguridad</a><a href='/legal/devoluciones'>Cambios, cancelaciones y devoluciones</a>"
-        f"<a class='libro' href='/libro-de-reclamaciones'>{LIBRO_SVG}<span>Libro de Reclamaciones</span></a></div>"
+        f"<a class='libro' href='/libro-de-reclamaciones'>{_iconos.svg('libro', 16)}<span>Libro de Reclamaciones</span></a></div>"
         f"<div><h4>{MARCA}</h4><a href='https://play.google.com/store/apps/details?id=pe.ebim.pichangol' rel='noopener'>Descarga la app</a>"
         f"<a href='/anfitrion/nueva'>Pon tu cancha en {MARCA}</a>"
         "<a href=\"/legal/terminos\">Términos y condiciones</a><a href=\"/legal/privacidad\">Política de privacidad</a>"
@@ -985,7 +1204,7 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
     if ses:
         nombre = ses.get("nombre") or ses.get("email") or ""
         cuenta = (f"<div class='yo'>{_avatar(ses)}<div><b>{e(nombre)}</b><small>{e(ses.get('email'))}</small></div></div>"
-                  "<hr><a class='b' href='/perfil'>👤 Perfil</a><a class='b' href='/mensajes'>💬 Mensajes <span class='bdg-msj' data-badge-mensajes hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:11px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/buscar'>🔎 Busca tu cancha</a><a class='b' href='/novedades'>📰 Novedades</a><a class='b' href='/canales'>📢 Canales</a><a class='b' href='/partidos'>⚽ Juega ya</a><a class='b' href='/mis-reservas'>📅 Mis reservas</a>"
+                  "<hr><a class='b' href='/perfil'>👤 Perfil</a><a class='b' href='/mensajes'>💬 Mensajes <span class='bdg-msj' data-badge-mensajes hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:12px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/buscar'>🔎 Busca tu cancha</a><a class='b' href='/novedades'>📰 Novedades</a><a class='b' href='/canales'>📢 Canales</a><a class='b' href='/partidos'>⚽ Juega ya</a><a class='b' href='/notificaciones'>🔔 Notificaciones <span data-badge-avisos hidden style='background:#E0245E;color:#fff;border-radius:99px;font-size:12px;font-weight:800;padding:1px 7px;margin-left:6px'></span></a><a class='b' href='/mis-reservas'>📅 Mis reservas</a><a class='b' href='/mis-favoritos'>♥ Mis favoritos</a>"
                   "<button type='button' onclick='window.pcgSalir&&pcgSalir()'>Cerrar sesión</button>")
         avatar = f"<a class='redondo' href='/perfil' title='{e(ses.get('email'))}' aria-label='Tu perfil'>{_avatar(ses)}</a>"
     else:
@@ -993,7 +1212,9 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
             cuenta = f"<a class='b' href='{entrar}'>Iniciar sesión o registrarse</a>"
         else:
             cuenta = f"<a class='b' href='{PLAY_URL}' rel='noopener'>Iniciar sesión en la app</a>"
-        avatar = f"<a class='redondo' href='{entrar if _s.activo() else PLAY_URL}' aria-label='Iniciar sesión'>{_USER_SVG}</a>"
+        # Rediseño azul: sin sesión va la pastilla "Iniciar sesión o registrarse" (en el celular, "Entrar").
+        avatar = (f"<a class='entrar-pill' href='{entrar if _s.activo() else PLAY_URL}'>"
+                  "<span class='l'>Iniciar sesión o registrarse</span><span class='c'>Entrar</span></a>")
     # "Modo anfitrión" abre el panel del dueño EN LA WEB (como airbnb.com/hosting);
     # dentro del panel el enlace se vuelve "Cambiar a modo jugador".
     host = ("<a class='host' href='/'>Cambiar a modo jugador</a>" if modo == "anfitrion"
@@ -1005,7 +1226,7 @@ def menu_cuenta(ses: dict | None, volver: str = "/", modo: str = "") -> str:
         "<div class='menu'><button type='button' class='redondo' id='btnMenu' aria-label='Menú' aria-expanded='false'>"
         f"{_HAMB_SVG}</button>"
         f"<div class='menu-panel' id='menuPanel' role='menu'>{cuenta}<hr>"
-        "<a href='/tenis'>🎾 Tenis y pádel</a><a href='/#como'>Cómo funciona</a><a href='/#contacto'>Centro de ayuda</a><hr>"
+        f"<a href='/tenis'>🎾 {e(_titulo_raquetas())}</a><a href='/#como'>Cómo funciona</a><a href='/ayuda'>Centro de ayuda</a><hr>"
         + ("<a class='b' href='/'>Cambiar a modo jugador</a>" if modo == "anfitrion" else "<a class='b' href='/anfitrion'>Modo anfitrión</a>")
         + f"<a href='/anfitrion/nueva'>Pon tu cancha en {MARCA}</a>"
         f"<a href='{PLAY_URL}' rel='noopener'>Descarga la app</a><hr>"
@@ -1018,24 +1239,47 @@ def busq_mini(href: str = "/canchas", id_: str = "") -> str:
     """Pastilla compacta de las páginas interiores (Airbnb al hacer scroll)."""
     # En móvil (≤900 px) se muestra como la de airbnb.com en el celular: lupa a
     # la izquierda + dos líneas ("¿Dónde juegas?" / "Cualquier zona · …").
+    from web import iconos
     return (f"<a class='busq-mini' href='{href}'{(' id=' + chr(39) + id_ + chr(39)) if id_ else ''}><i class='lupa-mov'>{LUPA_SVG}</i>"
             "<div class='mov'><b>¿Dónde juegas?</b><small>Cualquier zona · Cualquier deporte · Cuándo quieras</small></div>"
-            f"<span>Cualquier zona</span><span>Cualquier deporte</span><span class='tenue'>Cuándo quieras</span><i>{LUPA_SVG}</i></a>")
+            f"<span>{iconos.svg('pin', 18)}Dónde</span><span>{iconos.svg('calendario', 18)}Cuándo</span>"
+            f"<span>{iconos.svg('reloj', 18)}Hora</span><i>{LUPA_SVG}<b>Buscar</b></i></a>")
 
 
-def cabecera(*, tabs: str = "", busq: str = "", ses: dict | None = None, volver: str = "/", modo: str = "") -> str:
-    """Cabecera tipo airbnb.com: logo a la izquierda, pestañas con ícono al
-    centro, "Modo dueño" + avatar + ☰ a la derecha y, debajo, el buscador
-    grande centrado. Sin [busq] (páginas interiores) queda la fila simple."""
-    clase = "" if busq else (" anfitrion" if modo == "anfitrion" else " simple")
-    return ("<header class='nav abnb'>"
-            f"<div class='wrap-xl cab{clase}'>"
-            f"<div class='cab-logo'>{wordmark(24, '/anfitrion' if modo == 'anfitrion' else '/')}</div>"
-            + (f"<nav class='cab-tabs' aria-label='Secciones'>{tabs}</nav>" if tabs else "")
-            + ("" if modo == "anfitrion" else f"<div class='cab-mini'>{busq_mini('#', 'busqMini') if busq else busq_mini('/canchas')}</div>")
-            + f"{menu_cuenta(ses, volver, modo)}"
-            + (f"<div class='cab-busq'>{busq}</div>" if busq else "")
-            + f"</div></header><script>{JS_NAV}</script>")
+_CAB_LINKS = "<nav class='cab-links' aria-label='Ayuda'><a href='/#como'>Cómo funciona</a><a href='/ayuda'>Centro de ayuda</a></nav>"
+
+
+def cabecera(*, tabs: str = "", busq: str = "", ses: dict | None = None, volver: str = "/", modo: str = "",
+             extra_banda: str = "") -> str:
+    """Cabecera del rediseño azul (PDF del diseñador, nov-2026), en franjas:
+    1. barra azul: logo blanco · Cómo funciona / Centro de ayuda · Modo
+       anfitrión + Iniciar sesión (o avatar) + ☰;
+    2. fila blanca con las pastillas por deporte (`tabs`, solo explorador);
+    3. franja celeste con el buscador grande (`busq`) y las amenidades rápidas
+       (`extra_banda`) o, en las páginas interiores, el buscador chico.
+    En modo anfitrión las pestañas (Hoy, Calendario…) van dentro de la barra y
+    no hay franja. Al hacer scroll en el explorador se compacta: quedan la
+    barra y la pastilla chica al centro (`.cab.chica` + `header.compacta`)."""
+    anf = modo == "anfitrion"
+    if anf:
+        # Rediseño del modo anfitrión (16-nov-2026): barra blanca con los cinco desplegables.
+        from web import nav_anfitrion
+        return nav_anfitrion.barra(ses, tabs, volver)
+    clase = "" if busq else (" anfitrion" if anf else " simple")
+    barra = (f"<div class='cl-barra'><div class='wrap-xl cab{clase}'>"
+             f"<div class='cab-logo'>{wordmark(24, '/anfitrion' if anf else '/')}</div>"
+             + (f"<nav class='cab-tabs' aria-label='Secciones'>{tabs}</nav>" if (tabs and anf) else "")
+             + ("" if anf else _CAB_LINKS)
+             + (f"<div class='cab-mini'>{busq_mini('#', 'busqMini')}</div>" if busq else "")
+             + f"{menu_cuenta(ses, volver, modo)}</div></div>")
+    fila_tabs = (f"<div class='cl-fila-tabs'><div class='wrap-xl'><nav class='cab-tabs cl-pills' aria-label='Deportes'>{tabs}</nav></div></div>"
+                 if (tabs and not anf) else "")
+    banda = ("" if anf else
+             f"<div class='cl-banda{' grande' if busq else ''}'><div class='wrap-xl cl-banda-in'>"
+             + (f"<div class='cab-busq'>{busq}</div>{extra_banda}" if busq else busq_mini('/canchas'))
+             + "</div></div>")
+    return (f"<header class='nav abnb cl{' cl-anf' if anf else ''}'>{barra}{fila_tabs}{banda}"
+            f"</header><script src='{_seg().url_nav()}'></script>")
 
 
 # JS de la cabecera: menú ☰ (abre/cierra, se cierra al hacer clic fuera o con
@@ -1060,6 +1304,48 @@ JS_NAV = (r"""
     var b = ev.target.closest && ev.target.closest('#medioPago [data-medio]'); if(b){ mpSet(b.dataset.medio); return; }
     var mini = ev.target.closest && ev.target.closest('#medioPagoMini'); if(mini && (mini.dataset.medio === 'yape' || mini.dataset.medio === 'tarjeta')){ mpSet(mini.dataset.medio === 'yape' ? 'tarjeta' : 'yape'); }
   });
+  // FOTOS QUE NUNCA SE VEN ROTAS (W2.2): una URL de Google caducada (o cualquier imagen que falle)
+  // se reemplaza por un fondo neutro con el ícono del deporte, en vez del ícono de imagen rota.
+  var FOTO_RESPALDO = "data:image/svg+xml;charset=utf-8," + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 400 300'><rect width='400' height='300' fill='#E3E8FF'/><rect x='110' y='85' width='180' height='130' rx='10' fill='none' stroke='#B9D9CC' stroke-width='6'/><line x1='200' y1='85' x2='200' y2='215' stroke='#B9D9CC' stroke-width='6'/><circle cx='200' cy='150' r='26' fill='none' stroke='#B9D9CC' stroke-width='6'/></svg>");
+  function fotoRota(img){
+    if(!img || img.tagName !== 'IMG' || img.dataset.fallo || img.src.indexOf('data:') === 0) return;
+    if(img.closest && img.closest('.vch, .pcg-dlg, #pcgDlg')) return;   // vistas previas propias
+    img.dataset.fallo = '1'; img.removeAttribute('srcset'); img.src = FOTO_RESPALDO; img.classList.add('foto-respaldo');
+    if(!img.getAttribute('alt')) img.setAttribute('alt', '');
+  }
+  document.addEventListener('error', function(ev){ fotoRota(ev.target); }, true);
+  document.addEventListener('DOMContentLoaded', function(){
+    Array.prototype.forEach.call(document.images, function(i){ if(i.complete && i.naturalWidth === 0 && i.getAttribute('src')) fotoRota(i); });
+  });
+  // Errores de JavaScript del usuario → logs del servidor ([js]), máx. 5 por página.
+  (function(){ var n = 0;
+    function enviar(msg, src, linea){ if(n++ >= 5 || !navigator.sendBeacon) return;
+      try { navigator.sendBeacon('/web/js-error', JSON.stringify({m: String(msg).slice(0, 300), s: String(src || '').slice(0, 200), l: linea || 0, u: location.pathname, ua: navigator.userAgent.slice(0, 120)})); } catch(e){} }
+    window.addEventListener('error', function(ev){ if(ev && ev.message) enviar(ev.message, ev.filename, ev.lineno); });
+    window.addEventListener('unhandledrejection', function(ev){ enviar('promesa: ' + ((ev && ev.reason && (ev.reason.message || ev.reason)) || '')); });
+  })();
+  function bordesTabs(){
+    document.querySelectorAll('.cab-tabs').forEach(function(t){
+      var mas = t.scrollWidth > t.clientWidth + 2;
+      t.classList.toggle('mas-izq', mas && t.scrollLeft > 4);
+      t.classList.toggle('mas-der', mas && t.scrollLeft + t.clientWidth < t.scrollWidth - 4);
+      if(!t.dataset.bordes){ t.dataset.bordes = '1'; t.addEventListener('scroll', bordesTabs, {passive: true}); }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', bordesTabs); window.addEventListener('resize', bordesTabs);
+  // Tiras desplazables con flechas (.strip-wrap): se muestran solo si hay más hacia ese lado.
+  function flechasStrip(){
+    document.querySelectorAll('.strip-wrap').forEach(function(w){
+      var s = w.querySelector('.strip'), iz = w.querySelector('.strip-fl.izq'), de = w.querySelector('.strip-fl.der');
+      if(!s || !iz || !de) return;
+      iz.hidden = s.scrollLeft <= 4; de.hidden = s.scrollLeft + s.clientWidth >= s.scrollWidth - 4;
+      if(!w.dataset.fl){ w.dataset.fl = '1'; s.addEventListener('scroll', flechasStrip, {passive: true});
+        if(window.MutationObserver) new MutationObserver(flechasStrip).observe(s, {childList: true}); }
+    });
+  }
+  document.addEventListener('click', function(ev){ var f = ev.target.closest && ev.target.closest('.strip-fl'); if(!f) return;
+    var s = f.parentNode.querySelector('.strip'); if(s) s.scrollBy({left: (f.classList.contains('izq') ? -1 : 1) * s.clientWidth * 0.8, behavior: 'smooth'}); });
+  document.addEventListener('DOMContentLoaded', flechasStrip); window.addEventListener('resize', flechasStrip);
   window.pcgMedioPago = function(){ var s = document.querySelector('#medioPago [data-medio].sel'); return s ? s.dataset.medio : 'yape'; };
   document.addEventListener('DOMContentLoaded', function(){ if(document.getElementById('medioPagoMini')) mpSet(window.pcgMedioPago()); });
   // WhatsApp: en móvil se usa el texto con emojis (data-wa-movil); en escritorio queda el href sin emojis (WhatsApp Windows los rompe).
@@ -1069,20 +1355,21 @@ JS_NAV = (r"""
   if(b && p){
     b.addEventListener('click', function(ev){ ev.stopPropagation(); var on = !p.classList.contains('open'); p.classList.toggle('open', on); b.setAttribute('aria-expanded', on ? 'true' : 'false'); });
     document.addEventListener('click', function(ev){ if(!p.contains(ev.target)){ p.classList.remove('open'); b.setAttribute('aria-expanded', 'false'); } });
-    document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape'){ p.classList.remove('open'); document.querySelectorAll('.sug.open').forEach(function(s){ s.classList.remove('open'); }); } });
+    document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape'){ var abierto = p.classList.contains('open'); p.classList.remove('open'); b.setAttribute('aria-expanded', 'false'); if(abierto) b.focus(); document.querySelectorAll('.sug.open').forEach(function(s){ s.classList.remove('open'); }); } });
   }
   // Al hacer scroll la cabecera se compacta (pastilla chica al centro); al tocarla vuelve el buscador grande.
   var cab = document.querySelector('.cab:not(.simple)'), mini = document.getElementById('busqMini');
   if(cab && mini){
-    var compactar = function(){ cab.classList.toggle('chica', window.innerWidth > 1060 && window.scrollY > 90); };
+    var hdr = cab.closest('header');
+    var compactar = function(){ var on = window.innerWidth > 1060 && window.scrollY > 90; cab.classList.toggle('chica', on); if(hdr) hdr.classList.toggle('compacta', on); };
     window.addEventListener('scroll', compactar, {passive: true}); window.addEventListener('resize', compactar); compactar();
     mini.addEventListener('click', function(ev){ ev.preventDefault(); window.scrollTo({top: 0, behavior: 'smooth'});
-      setTimeout(function(){ cab.classList.remove('chica'); var q = document.getElementById('sQ'); if(q) q.focus(); }, 350); });
+      setTimeout(function(){ cab.classList.remove('chica'); if(hdr) hdr.classList.remove('compacta'); var q = document.getElementById('sQ'); if(q) q.focus(); }, 350); });
   }
   window.pcgSalir = function(){ pcgCargando('Cerrando sesión…'); fetch('/web/salir', {method: 'POST'}).then(function(){ location.reload(); }); };
   // ── Diálogos y preloader de TODA la web (regla del director, sep-2026: nada de confirm()/alert() del navegador) ──
   // pcgConfirmar({titulo, mensaje, confirmar, cancelar, destructivo, icono}) → Promise<bool>; pcgAvisar({...}) → Promise; mismo formato que dialogo_pichangol.dart.
-  function dlg(){ var d = document.getElementById('pcgDlg'); if(d) return d; d = document.createElement('div'); d.id = 'pcgDlg'; d.className = 'pcg-dlg'; d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true');
+  function dlg(){ var d = document.getElementById('pcgDlg'); if(d) return d; d = document.createElement('div'); d.id = 'pcgDlg'; d.className = 'pcg-dlg'; d.setAttribute('role', 'dialog'); d.setAttribute('aria-modal', 'true'); d.setAttribute('aria-labelledby', 'pcgDlgTit'); d.setAttribute('aria-describedby', 'pcgDlgMsg');
     d.innerHTML = "<div class='caja'><div class='ico' id='pcgDlgIco'></div><h3 id='pcgDlgTit'></h3><div class='msg' id='pcgDlgMsg'></div><button type='button' class='btn' id='pcgDlgOk'></button><button type='button' class='txt' id='pcgDlgNo'></button></div>";
     document.body.appendChild(d); return d; }
   function abrirDlg(o, conCancelar){ return new Promise(function(res){ var d = dlg(), ok = d.querySelector('#pcgDlgOk'), no = d.querySelector('#pcgDlgNo'), ico = d.querySelector('#pcgDlgIco');
@@ -1090,8 +1377,18 @@ JS_NAV = (r"""
     if(o.logo){ ico.innerHTML = "<img src='/marca/logo.png' alt='⟦MARCA⟧'>"; } else { ico.textContent = o.icono || (o.destructivo ? '🗑' : (conCancelar ? '❓' : 'ℹ️')); }
     ico.classList.toggle('mal', !!o.destructivo); ico.classList.toggle('marca', !!o.logo);
     ok.textContent = o.confirmar || (conCancelar ? 'Sí, continuar' : 'Entendido'); ok.classList.toggle('mal', !!o.destructivo); no.textContent = o.cancelar || 'Cancelar'; no.style.display = conCancelar ? '' : 'none';
-    function fin(v){ d.classList.remove('open'); ok.onclick = no.onclick = d.onclick = null; document.removeEventListener('keydown', esc); res(v); }
-    function esc(ev){ if(ev.key === 'Escape') fin(false); }
+    // Accesible: el foco queda DENTRO del diálogo (Tab da la vuelta) y vuelve al botón que lo abrió.
+    var antes = document.activeElement;
+    function fin(v){ d.classList.remove('open'); ok.onclick = no.onclick = d.onclick = null; document.removeEventListener('keydown', esc); try { if(antes && antes.focus) antes.focus(); } catch(e){} res(v); }
+    function esc(ev){
+      if(ev.key === 'Escape'){ fin(false); return; }
+      if(ev.key === 'Tab'){
+        var f = Array.prototype.filter.call(d.querySelectorAll('button,a[href],summary,input,select,textarea,[tabindex]:not([tabindex="-1"])'), function(x){ return x.offsetParent !== null && !x.disabled; });
+        if(!f.length) return; var pri = f[0], ult = f[f.length - 1];
+        if(ev.shiftKey && document.activeElement === pri){ ev.preventDefault(); ult.focus(); }
+        else if(!ev.shiftKey && document.activeElement === ult){ ev.preventDefault(); pri.focus(); }
+      }
+    }
     ok.onclick = function(){ fin(true); }; no.onclick = function(){ fin(false); }; d.onclick = function(ev){ if(ev.target === d) fin(false); };
     document.addEventListener('keydown', esc); d.classList.add('open'); setTimeout(function(){ (conCancelar && o.destructivo ? no : ok).focus(); }, 40); }); }
   window.pcgConfirmar = function(o){ return abrirDlg(o || {}, true); };
@@ -1153,7 +1450,7 @@ JS_NAV = (r"""
     setTimeout(function(){ if(!e.defaultPrevented) navegando(); }, 0);
   });
   document.addEventListener('submit', function(e){ if(!e.defaultPrevented && !(e.target.target && e.target.target !== '_self')) navegando(); });
-  var FONDO = /\/web\/(mensajes\/(no-leidos|hilo|bandeja)|foto|descubrir|sesion$|pago\/[^\/]+\/estado)|\/static\//;
+  var FONDO = /\/web\/(mensajes\/(no-leidos|hilo|bandeja)|foto|descubrir|favoritos$|avisos\/nuevos|sesion$|pago\/[^\/]+\/estado|dividir\/[^\/]+\/estado)|\/static\//;
   if(window.fetch && !window.fetch.__pcg){ var f0 = window.fetch; var fw = function(rec, op){ var url = typeof rec === 'string' ? rec : ((rec && rec.url) || '');
       if(FONDO.test(url)) return f0.apply(this, arguments);
       nBar++; var t = setTimeout(function(){ if(nBar > 0) barra(true); }, 250);
@@ -1226,7 +1523,7 @@ JS_ABRIR_APP = (r"""
   function banner(){
     if(document.getElementById('abrirApp')) return;
     var st = document.createElement('style');
-    st.textContent = ".abrir-app{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 14px;background:#0A1B3D;color:#fff;font:600 14px/1.25 'DM Sans',system-ui,sans-serif}.abrir-app img{width:36px;height:36px;border-radius:10px;background:#fff;padding:3px;flex:none}.abrir-app .t{flex:1;min-width:0}.abrir-app .t small{display:block;font-weight:500;opacity:.8;font-size:12px}.abrir-app .ir{flex:none;background:#0B8A3E;color:#fff;border:0;border-radius:999px;padding:9px 16px;font:700 14px 'DM Sans',system-ui,sans-serif;width:auto}.abrir-app .x{flex:none;background:transparent;border:0;color:#fff;opacity:.7;font-size:20px;line-height:1;padding:6px;width:auto}@media(min-width:901px){.abrir-app{display:none}}";
+    st.textContent = ".abrir-app{display:flex;align-items:center;gap:10px;padding:10px 12px 10px 14px;background:#333333;color:#fff;font:600 14px/1.25 'DM Sans',system-ui,sans-serif}.abrir-app img{width:36px;height:36px;border-radius:10px;background:#fff;padding:3px;flex:none}.abrir-app .t{flex:1;min-width:0}.abrir-app .t small{display:block;font-weight:500;opacity:.8;font-size:12px}.abrir-app .ir{flex:none;background:#3056ED;color:#fff;border:0;border-radius:999px;padding:9px 16px;font:700 14px 'DM Sans',system-ui,sans-serif;width:auto}.abrir-app .x{flex:none;background:transparent;border:0;color:#fff;opacity:.7;font-size:20px;line-height:1;padding:6px;width:auto}@media(min-width:901px){.abrir-app{display:none}}";
     var d = document.createElement('div'); d.id = 'abrirApp'; d.className = 'abrir-app'; d.setAttribute('role', 'region'); d.setAttribute('aria-label', 'Abrir en la app');
     d.innerHTML = "<img src='/marca/logo.png' alt=''><div class='t'>Abrir en la app ⟦MARCA⟧<small>Reserva más rápido y recibe avisos de tus partidos</small></div><button type='button' class='ir' id='abrirAppIr'>Abrir</button><button type='button' class='x' id='abrirAppX' aria-label='Seguir en la web'>&times;</button>";
     document.head.appendChild(st); document.body.insertBefore(d, document.body.firstChild);
@@ -1238,10 +1535,43 @@ JS_ABRIR_APP = (r"""
 """).replace('⟦MARCA⟧', MARCA)
 JS_ABRIR_APP = JS_ABRIR_APP.replace("pe.ebim.pichangol", APP_PAQUETE)
 JS_NAV = JS_NAV + JS_ABRIR_APP
+from web.nav_anfitrion import JS as _JS_NAV_ANF  # noqa: E402
+JS_NAV = JS_NAV + _JS_NAV_ANF
+from web.vista_anfitrion import JS as _JS_VISTAS_ANF  # noqa: E402
+JS_NAV = JS_NAV + _JS_VISTAS_ANF
 
 
 def nav_simple(ses: dict | None = None, volver: str = "/canchas") -> str:
     return cabecera(ses=ses, volver=volver)
+
+
+# Base del sitio de la request en curso (la pone `main._a11y_seo`): respaldo
+# para armar URLs ABSOLUTAS cuando el ambiente no tiene PUBLIC_BASE_URL.
+import contextvars as _cv
+BASE_REQUEST: _cv.ContextVar[str] = _cv.ContextVar("pcg_base_request", default="")
+# Ruta de la request en curso (la pone el mismo middleware): `shell()` la usa para
+# poner la barra del modo anfitrión en TODO `/anfitrion/*` y marcar el módulo actual.
+RUTA_REQUEST: _cv.ContextVar[str] = _cv.ContextVar("pcg_ruta_request", default="")
+
+META_NOINDEX = "<meta name='robots' content='noindex,nofollow'>"
+
+
+def base_publica() -> str:
+    """Base ABSOLUTA del sitio para og:image / og:url / canonical: la del
+    ambiente (`PUBLIC_BASE_URL`), si no la de la request y, en último caso, el
+    dominio de la marca (`MARCA_URL`). Sin barra final."""
+    import config as _cfg
+    return (_cfg.url_limpia(getattr(_cfg, "PUBLIC_BASE_URL", "")) or _cfg.url_limpia(BASE_REQUEST.get())
+            or _cfg.url_limpia(getattr(_cfg, "MARCA_URL", "")))
+
+
+def url_absoluta(u: str) -> str:
+    """'/marca/logo-og.png' → 'https://<base>/marca/logo-og.png'. Lo que ya es
+    absoluto (https://…, //…, data:) queda igual."""
+    u = (u or "").strip()
+    if not u or re.match(r"^(?:[a-z][a-z0-9+.-]*:|//)", u, re.I):
+        return u
+    return base_publica() + (u if u.startswith("/") else "/" + u)
 
 
 def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
@@ -1258,32 +1588,60 @@ def shell(titulo: str, cuerpo: str, *, desc: str = "", extra_head: str = "",
         (`interactive-widget=resizes-content`).
       - "mensajes": bandeja / nuevo chat / grupos: en móvil la cabecera queda
         en UNA fila (logo + avatar + ☰), sin la pastilla de búsqueda."""
-    clases = " ".join(c for c in ("con-barra" if con_barra else "",
+    # Modo anfitrión: TODA página /anfitrion/* con sesión lleva la barra con los
+    # desplegables (antes academia, tienda, bodega… salían con la del jugador).
+    anf = bool(sesion) and (RUTA_REQUEST.get() or "").startswith("/anfitrion")
+    if anf and not nav:
+        nav = cabecera(ses=sesion, volver="/anfitrion", modo="anfitrion")
+    anf = anf or "class='nav anf-cab'" in (nav or "")
+    clases = " ".join(c for c in ("con-barra" if con_barra else "", "pcg-anf" if anf else "",
                                   {"chat": "pcg-chat", "mensajes": "pcg-msj"}.get(pantalla, "")) if c)
     vp_extra = ",interactive-widget=resizes-content" if pantalla == "chat" else ""
+    import config as _cfg
+    og_image = url_absoluta(og_image)
+    canonical = url_absoluta(canonical)
     page = (
         "<!doctype html><html lang='es'><head><meta charset='utf-8'>"
         f"<meta name='viewport' content='width=device-width,initial-scale=1,viewport-fit=cover{vp_extra}'>"
+        + ("" if _cfg.sitio_indexable() else META_NOINDEX) +
         f"<title>{e(titulo_tab or (titulo + f' · {MARCA}'))}</title>"
         f"<meta name='description' content='{e(desc or titulo)}'>"
         f"<meta property='og:title' content='{e(titulo)} · {MARCA}'>"
         f"<meta property='og:description' content='{e(desc or 'Reserva, juega, repite.')}'>"
         f"<meta property='og:image' content='{e(og_image)}'><meta property='og:type' content='website'>"
         + (f"<link rel='canonical' href='{e(canonical)}'><meta property='og:url' content='{e(canonical)}'>" if canonical else "")
-        + "<meta name='theme-color' content='#0F1B2D'>"
+        + "<meta name='theme-color' content='#3056ED'>"
         f"<link rel='icon' type='image/png' href='{_logo_url()}'>"
         f"<link rel='apple-touch-icon' href='{_logo_url()}'>"
+        # Instalable ("Agregar a inicio"): en iPhone no hay app, la web hace de app.
+        "<link rel='manifest' href='/manifest.webmanifest'>"
+        "<meta name='apple-mobile-web-app-capable' content='yes'><meta name='mobile-web-app-capable' content='yes'>"
+        f"<meta name='apple-mobile-web-app-title' content='{e(MARCA)}'>"
         "<link rel='preconnect' href='https://fonts.googleapis.com'><link rel='preconnect' href='https://fonts.gstatic.com' crossorigin>"
         "<link href='https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,500;9..40,600;9..40,700;9..40,800&display=swap' rel='stylesheet'>"
-        f"<style>{CSS}</style>{extra_head}"
-        + (f"<script type='application/ld+json'>{jsonld}</script>" if jsonld else "")
+        f"<link rel='stylesheet' href='{_seg().url_css()}'>{extra_head}"
+        + (f"<script type='application/ld+json'>{js_seguro(jsonld)}</script>" if jsonld else "")
         + "</head><body" + (f" class='{clases}'" if clases else "") + ">"
         f"{nav or nav_simple(sesion)}"
         f"<main class='{'wrap-xl' if ancho else 'wrap'}'>{cuerpo}</main>"
         + ("" if pantalla == "chat" else footer()) +
         "</body></html>")
+    if "data-badge-avisos" in page:
+        # Avisos nuevos desde el último que se vio en /notificaciones (localStorage).
+        page = page.replace("</body></html>", "<script>(function(){var v=0;try{v=parseInt(localStorage.getItem('pcg_avisos_visto')||'0',10)||0;}catch(e){}"
+                            "fetch('/web/avisos/nuevos?desde='+v).then(function(r){return r.json();}).then(function(j){if(!j||!j.n)return;"
+                            "document.querySelectorAll('[data-badge-avisos]').forEach(function(b){b.textContent=j.n>9?'9+':j.n;b.hidden=false;});"
+                            "}).catch(function(){});})();</script></body></html>")
     if "data-badge-mensajes" in page:
         # Badge de no leídos (mensajería web): pinta el último valor y lo refresca.
         from web.jugador_mensajes import JS_BADGE_MENSAJES
         page = page.replace("</body></html>", JS_BADGE_MENSAJES + "</body></html>")
-    return HTMLResponse(page, headers={"Cache-Control": "no-store"})
+    # private + no-cache: nada se guarda en cachés compartidas y el navegador
+    # revalida siempre, pero el botón "atrás" puede usar su copia en memoria
+    # (con no-store, cada "atrás" recargaba la página entera).
+    return HTMLResponse(page, headers={"Cache-Control": "private, no-cache"})
+
+
+def _seg():
+    from web import seguridad_web
+    return seguridad_web

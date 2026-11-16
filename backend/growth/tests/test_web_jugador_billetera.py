@@ -75,7 +75,8 @@ def test_movimientos_web_son_los_mismos_del_apk(monkeypatch):
     assert all(m["moneda"] == "PEN" for m in api)
 
     html = _cli().get("/mi-billetera").text
-    assert "Mi billetera" in html and "S/ 50.00" in html and "⭐ Destacado" in html
+    # Sin canchas (solo juega): sin el sello de "destacado", que es de los dueños.
+    assert "Mi billetera" in html and "S/ 50.00" in html and "destacadas" not in html and "Pausado" not in html
     assert "Por recibir" in html and "S/ 57.00" in html and "Registra tu cuenta de cobro" in html
     assert "href='/anfitrion/ingresos'" in html
     assert "Cobrado al cliente" in html and "Comisión Pichangol" in html
@@ -99,6 +100,9 @@ def test_regalo_bono_y_recarga_culqi_solo_soles(monkeypatch):
     for m in (20, 50, 100, 200):
         assert f"data-monto='{m}'" in html
     assert "min='10' max='1000'" in html and "checkout.culqi.com/js/v4" in html and "id='medioPago'" in html
+    # Culqi (≈260 KB) NO bloquea la página: lo pide el JS tras el `load`.
+    assert "<script src='https://checkout.culqi.com/js/v4'>" not in html and '"culqiJs"' in html
+    assert "cargarCulqi" in jb._JS_BILLETERA
 
     cargos = []
     monkeypatch.setattr(culqi, "crear_cargo", lambda **kw: (cargos.append(kw) or {"ok": True, "charge_id": "chr_rw1"}))

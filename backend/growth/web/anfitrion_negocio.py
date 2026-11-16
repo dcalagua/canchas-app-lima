@@ -51,8 +51,11 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from db import pg
 from db.store import stores
+from reservas import reglas as _reglas
 from web import datos, horarios, sesion, ui
-from web.anfitrion import (JS_PAGAR, _cabecera, _contexto, _en_segundo_plano, _pais_de, _sesion_o_entrar)
+from web import vista_anfitrion as va
+from web.estilos_anfitrion import RAMPA
+from web.anfitrion import (JS_PAGAR, _cabecera, _contexto, _en_segundo_plano, _motivo_cierre, _pais_de, _sesion_o_entrar)
 from web.router import PLAY_URL, _moneda_de, e
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
@@ -311,7 +314,7 @@ def marcar_cuota_cobrada(academia_id: str, alumno_id: str, cuota_id: str) -> dic
                 conn.rollback()
                 return None
             cur.execute("UPDATE pichangol_matriculas SET data = %s::jsonb, updated_at = now() WHERE id = %s",
-                        (json.dumps(data), alumno_id))
+                        (ui.json_js(data), alumno_id))
             conn.commit()
             return hecha
     except Exception as ex:  # noqa: BLE001
@@ -455,8 +458,8 @@ def crear_fija(email: str, canchas: list[dict], body: dict, fid: str = "") -> di
     if not 1 <= dia <= 7:
         raise ErrNegocio("Elige el día de la semana.")
     hora = str(body.get("hora") or "")
-    if hora not in _slots(c):
-        raise ErrNegocio("Elige la hora.")
+    if hora not in _slots_dia_semana(c, dia):
+        raise ErrNegocio("Elige la hora." if hora not in _slots(c) else "Ese día la cancha no atiende a esa hora (reglas del club).")
     nombre = re.sub(r"\s+", " ", str(body.get("nombre") or "")).strip()[:80]
     if not nombre:
         raise ErrNegocio("Escribe el nombre del cliente.")
@@ -565,9 +568,10 @@ def _por_moneda(canchas: list[dict], m: str) -> tuple[list[dict], str, str, str]
     iso, sim = next(((i, s) for i, s in ms if i == (m or "").upper()), ms[0])
     sub = [c for c in canchas if _moneda_de(c)[1] == iso]
     chips = ""
-    if len(ms) > 1:
-        chips = ("<div class='chips ng-mon'>" + "".join(
-            f"<a class='chip{' sel' if i == iso else ''}' href='?m={i}'>{e(s)} · {e(i)}</a>" for i, s in ms) + "</div>")
+    if len(ms) > 1:  # selector de moneda (va en las acciones de la cabecera)
+        chips = ("<nav class='va-seg vn-mon' aria-label='Moneda'>" + "".join(
+            f"<a class='{'sel' if i == iso else ''}' href='?m={i}'" + (" aria-current='page'" if i == iso else "")
+            + f">{e(s)} · {e(i)}</a>" for i, s in ms) + "</nav>")
     return sub, iso, sim, chips
 
 
@@ -587,9 +591,134 @@ def _tabs_rep(activo: str) -> str:
 
 
 def _pagina(titulo: str, cuerpo: str, ses: dict, activo: str, tab: str = "") -> HTMLResponse:
-    html = ("<a class='anf-back' href='/anfitrion/mis-canchas'>‹ Mis canchas</a>" + _nav(activo) + cuerpo
-            + f"<style>{CSS}</style><script>{JS_TIP}</script>")
+    # Los estilos de "Tu negocio" viajan en el CSS versionado del sitio
+    # (`web/estilos_anfitrion.py`); `.anf-ng` acota los que tocan clases genéricas.
+    html = ("<div class='anf-pag anf-ng'><a class='anf-back' href='/anfitrion/mis-canchas'>‹ Mis canchas</a>" + _nav(activo) + cuerpo
+            + f"</div><script>{JS_TIP}</script>")
     return ui.shell(titulo, html, nav=_cabecera(tab, ses), sesion=ses, ancho=True, titulo_tab=f"{titulo} · Modo anfitrión")
+
+
+# ── Rediseño del diseñador (16-nov-2026): vistas con el kit ─────────────────
+# `_pagina` queda para quien lo importa desde otro módulo (Recordar reservas,
+# `web/jugador_pro.py`); las páginas de este módulo usan `_render`: la barra
+# superior del modo anfitrión va sola (`ui.shell`) y la vista lleva el kit
+# (`web/vista_anfitrion.py`) + la hoja `web/estilos_v_negocio.py` (`.vn-*`).
+
+# Íconos de línea que `web/iconos.py` no trae (mismo trazo 24×24, currentColor).
+_SVG = {
+    "fuego": "<path d='M12 21c-3.9 0-6.5-2.6-6.5-6.2 0-3.4 2.4-5.6 3.9-7.7.4 1.6 1.2 2.7 2.3 3.3.2-3 1.4-5.6 3.6-7.4.3 3 1.7 4.6 2.9 6.4"
+             ".9 1.4 1.3 2.9 1.3 4.6C19.5 18.4 16 21 12 21z'/>",
+    "xcirc": "<circle cx='12' cy='12' r='9'/><path d='M9 9l6 6M15 9l-6 6'/>",
+    "check": "<circle cx='12' cy='12' r='9'/><path d='M8 12.3l2.7 2.7L16.2 9.5'/>",
+    "alerta": "<path d='M12 3.5l9.5 16.5h-19z'/><path d='M12 10v4.5M12 17.4v.01' stroke-width='2.6'/>",
+    "sol": "<circle cx='12' cy='12' r='4'/><path d='M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4'/>",
+    "luna": "<path d='M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z'/>",
+    "candado": "<rect x='4.5' y='10.5' width='15' height='10' rx='2'/><path d='M8 10.5V7.5a4 4 0 0 1 8 0v3'/>",
+    "enviar": "<path d='M21 3L10.5 13.5M21 3l-6.5 18-4-7.5-7.5-4z'/>",
+    "lapiz": "<path d='M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z'/><path d='M13.5 6.5l4 4'/>",
+    "pausa": "<path d='M9 5.5v13M15 5.5v13'/>",
+    "play": "<path d='M7.5 5l11 7-11 7z'/>",
+    "basura": "<path d='M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13'/>",
+    "mas": "<path d='M12 5v14M5 12h14'/>",
+    "usuario": "<circle cx='12' cy='8' r='4'/><path d='M4.5 20.5c.8-4 3.8-6 7.5-6s6.7 2 7.5 6'/>",
+    "repetir": "<path d='M4 11V9a3 3 0 0 1 3-3h12l-3-3M20 13v2a3 3 0 0 1-3 3H5l3 3'/>",
+    "pastel": "<path d='M12 3a9 9 0 1 0 9 9h-9z'/><path d='M15 2.6A9 9 0 0 1 21.4 9H15z'/>",
+    "celular": "<rect x='6.5' y='2.5' width='11' height='19' rx='2.2'/><path d='M11 18.2h2'/>",
+    "info": "<circle cx='12' cy='12' r='9'/><path d='M12 11v5.5M12 7.6v.01' stroke-width='2.6'/>",
+    "descargar": "<path d='M12 4v11M7 10.5l5 5 5-5M5 20h14'/>",
+}
+
+
+def _svg(clave: str, tam: int = 18, grueso: float = 2.2) -> str:
+    from web import iconos
+    if iconos.existe(clave):
+        return iconos.svg(clave, tam, grueso=grueso)
+    cuerpo = _SVG.get(clave, "")
+    if not cuerpo:
+        return ""
+    return (f"<svg class='ic-l' viewBox='0 0 24 24' width='{tam}' height='{tam}' fill='none' stroke='currentColor' "
+            f"stroke-width='{grueso}' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'>{cuerpo}</svg>")
+
+
+def _ic(clave: str, color: str = "azul", tam: int = 18) -> str:
+    """Ícono blanco en cuadrado de color (`va-ic` del kit; color por clase)."""
+    if color == "suave":
+        return f"<span class='va-ic suave'>{_svg(clave, tam)}</span>"
+    return f"<span class='va-ic vn-c-{e(color)}'>{_svg(clave, tam)}</span>"
+
+
+def _cifra(ico: str, titulo: str, valor: str, *, color: str = "azul", sub: str = "", tono: str = "") -> str:
+    """Tarjeta de cifra del kit (`va-kpi`) con los íconos de este módulo.
+    [valor] es HTML ya escapado; [tono] "warn" (dorado) · "bad" · "ok"."""
+    v = f"<b class='{e(tono)}'>{valor}</b>" if tono else f"<b>{valor}</b>"
+    return (f"<div class='va-kpi'><div class='va-kpi-c'>{_ic(ico, color)}<span>{e(titulo)}</span></div>"
+            f"<div class='va-kpi-v'>{v}" + (f"<small>{sub}</small>" if sub else "") + "</div></div>")
+
+
+def _render(titulo: str, contenido: str, ses: dict, *, js: str = "", tab: str = "", clase: str = "") -> HTMLResponse:
+    """Página del módulo con el kit: barra del anfitrión (sola, `ui.shell`) +
+    vista de 1120 px. [js] = scripts propios (van después de los comunes)."""
+    html = va.vista(contenido, f"vn {clase}".strip()) + f"<script>{JS_TIP}{JS_VN}{js}</script>"
+    return ui.shell(titulo, html, sesion=ses, ancho=True, titulo_tab=f"{tab or titulo} · Modo anfitrión")
+
+
+TABS_ICO = {"resumen": "barras", "ocupacion": "fuego", "cobros": "billete", "cancelaciones": "xcirc"}
+
+
+def _tabs_rep(activo: str) -> str:
+    """Pestañas subrayadas con ícono de Reportes (Resumen · Ocupación · Cobros ·
+    Cancelaciones), como el diseño."""
+    return ("<nav class='vn-tabs' aria-label='Reportes'>" + "".join(
+        f"<a href='{href}' class='{'sel' if k == activo else ''}'" + (" aria-current='page'" if k == activo else "")
+        + f">{_svg(TABS_ICO[k], 17)}{e(n)}</a>" for k, n, href in TABS_REPORTES) + "</nav>")
+
+
+def _grafico(valores: list[float], etiquetas: list[str], sim: str, titulo: str, *, hoy_idx: int = -1, cada: int = 1,
+             col: str = "Día") -> str:
+    """Barras verticales de UNA serie con líneas guía: rótulo con el monto en la
+    barra más alta y en la de hoy (la de hoy en azul claro, como el diseño),
+    tooltip por barra y "Ver como tabla ›" (tabla accesible desplegable).
+    [cada] = cada cuántas barras se escribe la etiqueta del eje (30 días)."""
+    mx = max(valores) if valores else 0
+    paso = 1
+    for p in (1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000):
+        paso = p
+        if p * 4 >= mx:
+            break
+    techo = max(paso * 4, 1)
+    guias = "".join(f"<i style='bottom:{k * 25}%'></i>" for k in range(5))
+    i_max = valores.index(mx) if mx > 0 else -1
+    barras = ""
+    for i, (v, t) in enumerate(zip(valores, etiquetas)):
+        rot = v > 0 and (i == i_max or i == hoy_idx)
+        etq = t if (i == hoy_idx or i % cada == 0) else ""
+        barras += (f"<div class='vn-bar{' hoy' if i == hoy_idx else ''}' data-tip='{e(t)} · {e(_m(v, sim))}' tabindex='0'>"
+                   f"<div class='vn-bar-c'>" + (f"<small>{e(_m(v, sim, 0))}</small>" if rot else "")
+                   + f"<i style='height:{0 if techo <= 0 else round(v * 100 / techo, 2)}%'></i></div>"
+                   f"<span>{e(etq)}</span></div>")
+    tabla = "".join(f"<tr><th scope='row'>{e(t)}</th><td>{e(_m(v, sim))}</td></tr>" for v, t in zip(valores, etiquetas))
+    return (f"<div class='vn-graf'><div class='vn-guias' aria-hidden='true'>{guias}</div>"
+            f"<div class='vn-barras' role='img' aria-label='{e(titulo)}'>{barras}</div></div>"
+            f"<details class='vn-tabla'><summary>Ver como tabla ›</summary><table class='va-tabla'><thead><tr><th scope='col'>{e(col)}</th>"
+            f"<th scope='col'>Cobrado</th></tr></thead><tbody>{tabla}</tbody></table></details>")
+
+
+def _hbarras_v(filas: list[tuple[str, float, str]], sim: str) -> str:
+    """Barras horizontales (ingreso por cancha / por medio), normalizadas al máximo."""
+    mx = max((v for _, v, _ in filas), default=0)
+    return "".join(
+        f"<div class='vn-hb' data-tip='{e(n)} · {e(_m(v, sim))}'><div class='vn-hb-t'><b>{e(n)}</b>"
+        + (f"<small>{e(sub)}</small>" if sub else "") + f"<span>{e(_m(v, sim))}</span></div>"
+        f"<div class='vn-hb-p'><i style='width:{0 if mx <= 0 else max(2, round(v / mx * 100))}%'></i></div></div>"
+        for n, v, sub in filas)
+
+
+def _fecha_picker(dia: date, hoy: date, campos: dict, etiqueta: str) -> str:
+    """Botón "📅 Hoy · mié 11 nov" que abre el calendario del navegador (el
+    `<input type=date>` va encima, transparente) y envía el formulario."""
+    ocultos = "".join(f"<input type='hidden' name='{e(k)}' value='{e(v)}'>" for k, v in campos.items())
+    return (f"<form method='get' class='vn-fecha'>{ocultos}<span class='vn-fecha-t'>{_svg('calendario', 16)}{e(etiqueta)}</span>"
+            f"<input type='date' name='fecha' value='{dia.isoformat()}' aria-label='Elegir día' data-vn-fecha></form>")
 
 
 def _hoy_de(canchas: list[dict]) -> datetime:
@@ -598,6 +727,22 @@ def _hoy_de(canchas: list[dict]) -> datetime:
 
 def _slots(c: dict) -> list[str]:
     return horarios.slots(c.get("hora_apertura") or "07:00", c.get("hora_cierre") or "23:00", int(c.get("duracion_slot_min") or 60))
+
+
+def _slots_dia_semana(c: dict, dia: int) -> list[str]:
+    """Turnos del día de la semana `dia` (1 = lunes) con el horario por día
+    de las REGLAS del club (`null` = cerrado ese día); sin regla, el general."""
+    hs = (_reglas.de_cancha(c).get("horario_semana") or {})
+    clave = _reglas.DIAS_SEMANA[(dia - 1) % 7]
+    if clave not in hs:
+        return _slots(c)
+    if hs[clave] is None:
+        return []
+    return horarios.slots(hs[clave]["apertura"], hs[clave]["cierre"], int(c.get("duracion_slot_min") or 60))
+
+
+def _n_res(n: int) -> str:
+    return f"{n} reserva{'' if n == 1 else 's'}"
 
 
 def _fecha_bonita(iso: str, hoy: date) -> str:
@@ -615,36 +760,6 @@ def _fecha_bonita(iso: str, hoy: date) -> str:
     return f"{horarios.DIAS[d.weekday()].lower()} {d.day} {MESES_CORTO[d.month - 1]}"
 
 
-def _barras(valores: list[float], etiquetas: list[str], sim: str, titulo: str, alto: int = 150) -> str:
-    """Barras verticales de UNA serie (un solo tono, esquinas redondeadas en el
-    extremo del dato, anclado a la base), valor directo solo en el máximo y en
-    el último, tooltip por barra y la tabla con los mismos números."""
-    mx = max(valores) if valores else 0
-    barras = []
-    for i, (v, t) in enumerate(zip(valores, etiquetas)):
-        h = 0 if mx <= 0 else max(3, round(v / mx * (alto - 22)))
-        rot = v > 0 and (v == mx or i == len(valores) - 1)
-        barras.append(f"<div class='ng-bar' data-tip='{e(t)} · {e(_m(v, sim))}' tabindex='0'>"
-                      + (f"<small>{e(_m(v, sim, 0))}</small>" if rot else "<small></small>")
-                      + f"<i style='height:{h}px'></i><span>{e(t)}</span></div>")
-    tabla = "".join(f"<tr><td>{e(t)}</td><td>{e(_m(v, sim))}</td></tr>" for v, t in zip(valores, etiquetas))
-    return (f"<div class='ng-barras' role='img' aria-label='{e(titulo)}' style='height:{alto + 26}px'>{''.join(barras)}</div>"
-            f"<details class='ng-tabla'><summary>Ver como tabla</summary><table><tbody>{tabla}</tbody></table></details>")
-
-
-def _hbarras(filas: list[tuple[str, float, str]], sim: str) -> str:
-    """Barras horizontales (ingreso por cancha), normalizadas al máximo."""
-    mx = max((v for _, v, _ in filas), default=0)
-    return "".join(
-        f"<div class='ng-hb' data-tip='{e(n)} · {e(_m(v, sim))}'><div class='ng-hb-t'><b>{e(n)}</b>{f'<small>{e(sub)}</small>' if sub else ''}"
-        f"<span>{e(_m(v, sim))}</span></div><div class='ng-hb-p'><i style='width:{0 if mx <= 0 else max(2, round(v / mx * 100))}%'></i></div></div>"
-        for n, v, sub in filas)
-
-
-def _kpi(titulo: str, valor: str, sub: str = "", clase: str = "") -> str:
-    return f"<div class='kpi {clase}'><small>{e(titulo)}</small><b>{valor}</b>{f'<small>{sub}</small>' if sub else ''}</div>"
-
-
 def _json_ok(**kw) -> JSONResponse:
     return JSONResponse({"ok": True, **kw})
 
@@ -656,7 +771,7 @@ def _err(msg: str, status: int = 400, **kw) -> JSONResponse:
 # ── Reportes · Resumen (reportes_screen.dart) ───────────────────────────────
 
 @router.get("/anfitrion/reportes", response_class=HTMLResponse)
-def pagina_resumen(request: Request, m: str = "") -> HTMLResponse:
+def pagina_resumen(request: Request, m: str = "", d: str = "7") -> HTMLResponse:
     ses, canchas, resp = _contexto(request, "/anfitrion/reportes")
     if resp is not None:
         return resp
@@ -664,38 +779,44 @@ def pagina_resumen(request: Request, m: str = "") -> HTMLResponse:
     ahora = _hoy_de(canchas)
     hoy = ahora.date()
     clave = hoy.isoformat()[:7]
+    ndias = 30 if d == "30" else 7
     ids = [c["id"] for c in canchas]
-    filas = reservas_dueno(ids, (hoy - timedelta(days=40)).replace(day=1).isoformat(), (hoy + timedelta(days=62)).isoformat())
+    desde = min((hoy - timedelta(days=40)).replace(day=1), hoy - timedelta(days=ndias - 1))
+    filas = reservas_dueno(ids, desde.isoformat(), (hoy + timedelta(days=62)).isoformat())
     del_mes = [r for r in filas if r["fecha"].startswith(clave) and not es_noshow(r)]
     ingreso = sum(r["precio"] for r in del_mes if r["pagado"])
     por_cobrar = sum(r["precio"] for r in del_mes if not r["pagado"])
     serie, etq = [], []
-    for i in range(6, -1, -1):
-        d = hoy - timedelta(days=i)
-        serie.append(float(sum(r["precio"] for r in filas if r["fecha"] == d.isoformat() and r["pagado"])))
-        etq.append("Hoy" if i == 0 else f"{horarios.DIAS[d.weekday()][:3]} {d.day}")
+    for i in range(ndias - 1, -1, -1):
+        dd = hoy - timedelta(days=i)
+        serie.append(float(sum(r["precio"] for r in filas if r["fecha"] == dd.isoformat() and r["pagado"])))
+        etq.append("Hoy" if i == 0 else (f"{horarios.DIAS[dd.weekday()]} {dd.day}" if ndias == 7 else f"{dd.day} {MESES_CORTO[dd.month - 1]}"))
     res_hoy = sum(1 for r in filas if r["fecha"] == hoy.isoformat() and not es_noshow(r))
     slots_hoy = sum(len(_slots(c)) for c in canchas)
     pct = (res_hoy * 100) // slots_hoy if slots_hoy else 0
-    cuerpo = (
-        _tabs_rep("resumen") + chips
-        + f"<h1 class='anf-hola'>Reportes · {MESES_LARGO[hoy.month - 1]}</h1>"
-        "<p class='sub'>Tu cuaderno, en tiempo real: lo que cobras en tus canchas.</p>"
-        "<div class='ng-hero'><small>Ingresos del mes (cobrado)</small>"
-        f"<b>{e(_m(ingreso, sim, 0))}</b><small>Últimos 7 días</small>"
-        + _barras(serie, etq, sim, "Cobrado por día, últimos 7 días") + "</div>"
-        "<div class='kpis'>"
-        + _kpi("Reservas del mes", str(len(del_mes)))
-        + _kpi("Por cobrar del mes", e(_m(por_cobrar, sim, 0)))
-        + _kpi("Ocupación de hoy", f"{pct}%", f"{res_hoy} de {slots_hoy} turnos")
-        + "</div>"
-        + ("" if filas else "<div class='anf-vacio' style='margin-top:16px'>Aún no hay reservas en tus canchas. "
-           "Cuando lleguen, aquí verás tus números reales.</div>")
-        + "<div class='kpis ng-atajos'>"
-        "<a class='kpi' href='/anfitrion/ocupacion'><small>Ocupación</small><b>Mapa de calor y horas pico</b></a>"
-        "<a class='kpi' href='/anfitrion/reportes/cobros'><small>Cobros</small><b>Por período, local y cancha</b></a>"
-        "<a class='kpi' href='/anfitrion/ingresos'><small>Billetera</small><b>Saldo y por recibir</b></a></div>")
-    return _pagina("Reportes", cuerpo, ses, "reportes")
+    seg = va.segmentado([(f"?d=7&m={iso}", "7 días", ndias == 7), (f"?d=30&m={iso}", "30 días", ndias == 30)], etiqueta="Período del gráfico")
+    grafico = _grafico(serie, etq, sim, f"Cobrado por día, últimos {ndias} días", hoy_idx=len(serie) - 1, cada=1 if ndias == 7 else 5)
+    ingresos = ("<section class='va-panel vn-ing' aria-labelledby='vnIngT'><div class='vn-ing-cab'>"
+                f"<div class='vn-ing-t'>{_ic('billete')}<h2 id='vnIngT'>Ingresos del mes (cobrado)</h2></div>{seg}</div>"
+                f"<b class='vn-ing-v'>{e(_m(ingreso, sim, 0))}</b>"
+                + (grafico if filas else va.vacio("barras", "Aún no hay reservas en tus canchas",
+                                                   "Cuando lleguen, aquí verás tus números reales."))
+                + "</section>")
+    lado = ("<div class='vn-col'>"
+            + _cifra("calendario", "Reservas del mes", str(len(del_mes)))
+            + _cifra("recibo", "Por cobrar del mes", e(_m(por_cobrar, sim, 0)), tono="warn" if por_cobrar else "")
+            + _cifra("pastel", "Ocupación de hoy", f"{pct}%", sub=f"{res_hoy} de {slots_hoy} turnos") + "</div>")
+    mas = "".join(
+        f"<a class='vn-mas' href='{h}'>{_ic(ico, 'suave')}<span><b>{e(t)}</b><small>{e(s)}</small></span><i aria-hidden='true'>›</i></a>"
+        for t, s, h, ico in (("Ocupación", "Mapa de calor y horas pico", "/anfitrion/ocupacion", "fuego"),
+                             ("Cobros", "Por período, local y cancha", "/anfitrion/reportes/cobros", "billete"),
+                             ("Billetera", "Saldo y por recibir", "/anfitrion/ingresos", "tarjeta")))
+    cuerpo = (va.cabecera(f"Reportes · {MESES_LARGO[hoy.month - 1]}", "Tu cuaderno, en tiempo real: lo que cobras en tus canchas.",
+                          acciones=chips)
+              + _tabs_rep("resumen")
+              + f"<div class='vn-dos'>{ingresos}{lado}</div>"
+              + f"<h2 class='vn-sec'>Más reportes</h2><div class='vn-mas-g'>{mas}</div>")
+    return _render("Reportes", cuerpo, ses)
 
 
 # ── Reportes · Cobros (reporte_canchas_screen.dart) ─────────────────────────
@@ -763,17 +884,19 @@ def _resumen_comision(email: str, iso: str, sim: str) -> str:
             com_on += com
             n_on += 1
     total = rec_on + rec_sal
+    tit = f"Cuánto vas a recibir de {MARCA}"
     if total <= 0:
-        return (f"<div class='ng-card'><h3>Cuánto vas a recibir de {MARCA}</h3><p class='sub' style='margin:0'>Nada pendiente por ahora. "
-                "Cuando un jugador pague en línea, el neto aparece aquí y en tu billetera.</p></div>")
+        return va.panel("<p class='vn-tenue'>Nada pendiente por ahora. Cuando un jugador pague en línea, el neto aparece aquí y en tu billetera.</p>",
+                        tit)
+
     def bloque(t, s, v):
-        return f"<div class='ng-rc'><div><b>{e(t)}</b><small>{s}</small></div><span>{e(_m(v, sim))}</span></div>"
-    return (f"<div class='ng-card'><h3>Cuánto vas a recibir de {MARCA}</h3>"
-            + (bloque(f"Reservas online ({n_on})", f"La comisión ({e(_m(com_on, sim))}) se descontó del pago · recibes el neto", rec_on) if n_on else "")
-            + (bloque(f"Reservas pagadas con tu saldo ({n_sal})", f"Recibes el 100% · la comisión ({e(_m(com_sal, sim))}) salió de tu billetera", rec_sal) if n_sal else "")
-            + f"<div class='ng-rc tot'><b>Total por recibir</b><span>{e(_m(total, sim))}</span></div>"
-            f"<p class='ng-nota'>✓ Este total es EXACTO el \"Por recibir\" de tu <a href='/anfitrion/ingresos'>billetera</a>. "
-            f"Comisión total: {e(_m(com_on + com_sal, sim))} ({e(_m(com_on, sim))} del pago + {e(_m(com_sal, sim))} de tu saldo).</p></div>")
+        return f"<div class='vn-rc'><div><b>{e(t)}</b><small>{s}</small></div><span>{e(_m(v, sim))}</span></div>"
+    return va.panel(
+        (bloque(f"Reservas online ({n_on})", f"La comisión ({e(_m(com_on, sim))}) se descontó del pago · recibes el neto", rec_on) if n_on else "")
+        + (bloque(f"Reservas pagadas con tu saldo ({n_sal})", f"Recibes el 100% · la comisión ({e(_m(com_sal, sim))}) salió de tu billetera", rec_sal) if n_sal else "")
+        + f"<div class='vn-rc tot'><b>Total por recibir</b><span>{e(_m(total, sim))}</span></div>"
+        f"<p class='vn-nota'>Este total es EXACTO el \"Por recibir\" de tu <a href='/anfitrion/ingresos'>billetera</a>. "
+        f"Comisión total: {e(_m(com_on + com_sal, sim))} ({e(_m(com_on, sim))} del pago + {e(_m(com_sal, sim))} de tu saldo).</p>", tit)
 
 
 @router.get("/anfitrion/reportes/cobros", response_class=HTMLResponse)
@@ -818,32 +941,36 @@ def pagina_cobros_reporte(request: Request, r: str = "mes", desde: str = "", has
         c = por_id.get(cid) or {}
         locales.setdefault((c.get("club") or "").strip() or "Mi local", []).append((c.get("nombre") or "Cancha", v, ""))
     bloque_locales = "".join(
-        f"<div class='ng-local'><div class='ng-local-h'><b>{e(loc)}</b><span>{e(_m(sum(v for _, v, _ in lst), sim))}</span></div>{_hbarras(lst, sim)}</div>"
+        f"<div class='vn-local'><div class='vn-local-h'><b>{e(loc)}</b><span>{e(_m(sum(v for _, v, _ in lst), sim))}</span></div>{_hbarras_v(lst, sim)}</div>"
         for loc, lst in sorted(locales.items(), key=lambda kv: -sum(v for _, v, _ in kv[1])))
-    chips_r = "".join(f"<a class='chip{' sel' if k == rango else ''}' href='?r={k}&m={iso}'>{t}</a>" for k, t in RANGOS)
+    seg = va.segmentado([(f"?r={k}&m={iso}", t, k == rango) for k, t in RANGOS], etiqueta="Período")
     txt_rango = f"{a.day} {MESES_CORTO[a.month - 1]} {a.year} – {b.day} {MESES_CORTO[b.month - 1]} {b.year}" if rango != "todo" else "Todo el historial"
-    lista = "".join(_fila_reserva(x, por_id.get(x["cancha_id"]), hoy, sim) for x in del_rango[:120])
+    filas = [[f"<b>{e(x['jugador'] or 'Jugador')}</b><small>{e((por_id.get(x['cancha_id']) or {}).get('nombre') or 'Cancha')}</small>",
+              f"{e(_fecha_bonita(x['fecha'], hoy))}<small>{e(x['hora_inicio'])}</small>",
+              _pill_estado(x), f"<b>{e(_m(total_con_extras(x), sim))}</b>"] for x in del_rango[:120]]
+    csv_url = f"/anfitrion/reportes/cobros.csv?r={rango}&desde={a.isoformat()}&hasta={b.isoformat()}&m={iso}"
     cuerpo = (
-        _tabs_rep("cobros") + chips
-        + "<h1 class='anf-hola'>Reporte de cobros</h1><p class='sub'>Facturación de tus canchas por período, local y cancha.</p>"
-        f"<div class='chips' style='margin-top:12px'>{chips_r}</div>"
-        f"<form class='ng-custom' method='get'><input type='hidden' name='r' value='custom'><input type='hidden' name='m' value='{iso}'>"
+        va.cabecera("Reporte de cobros", "Facturación de tus canchas por período, local y cancha.",
+                    acciones=chips + f"<a class='btn sec' href='{e(csv_url)}'>{_svg('descargar', 17)} Descargar CSV</a>")
+        + _tabs_rep("cobros")
+        + f"<div class='vn-filtros'>{seg}"
+        f"<form class='vn-rango' method='get'><input type='hidden' name='r' value='custom'><input type='hidden' name='m' value='{iso}'>"
         f"<label>Desde<input type='date' name='desde' value='{a.isoformat() if rango != 'todo' else ''}' required></label>"
         f"<label>Hasta<input type='date' name='hasta' value='{b.isoformat() if rango != 'todo' else ''}' required></label>"
-        f"<button class='btn sec' type='submit'>Ver período</button></form>"
-        f"<p class='sub' style='margin-top:6px'>{e(txt_rango)}</p>"
-        "<div class='kpis'>" + _kpi("Cobrado", e(_m(facturado, sim, 0))) + _kpi("Por cobrar", e(_m(por_cobrar, sim, 0)))
-        + _kpi("Reservas", str(n)) + _kpi("Ticket promedio por reserva", e(_m(ticket, sim)))
-        + _kpi(f"Comisión {MARCA} estimada", e(_m(comision, sim)), "5 % de las reservas que trajo la app") + "</div>"
+        "<button class='btn sec' type='submit'>Ver período</button></form></div>"
+        f"<p class='vn-tenue vn-rango-t'>{e(txt_rango)}</p>"
+        + "<div class='vn-k5'>" + va.kpis([_cifra("check", "Cobrado", e(_m(facturado, sim, 0))),
+                   _cifra("recibo", "Por cobrar", e(_m(por_cobrar, sim, 0)), tono="warn" if por_cobrar else ""),
+                   _cifra("calendario", "Reservas", str(n)), _cifra("etiqueta", "Ticket promedio por reserva", e(_m(ticket, sim))),
+                   _cifra("billete", f"Comisión {MARCA} estimada", e(_m(comision, sim)), sub="5 % de las reservas que trajo la app")]) + "</div>"
         + _resumen_comision(ses["email"], iso, sim)
-        + "<h2 class='ng-h2'>Ingresos cobrados (últimos 6 meses)</h2><div class='ng-card'>"
-        + _barras(tot6, [f"{MESES_CORTO[mm - 1]} {str(yy)[2:]}" for yy, mm in meses], sim, "Cobrado por mes, últimos 6 meses") + "</div>"
-        + (f"<h2 class='ng-h2'>Por local y cancha</h2>{bloque_locales}" if bloque_locales else "")
-        + f"<h2 class='ng-h2'>Reservas ({n}) <small>· {sum(1 for x in del_rango if x['pagado'])} pagadas</small></h2>"
-        + (f"<div class='ng-lista'>{lista}</div>" if lista else "<div class='anf-vacio'>Sin reservas en este rango.</div>")
-        + (f"<p class='sub'>Se muestran las 120 más recientes. El CSV trae todas.</p>" if len(del_rango) > 120 else "")
-        + f"<p style='margin-top:16px'><a class='btn' href='/anfitrion/reportes/cobros.csv?r={rango}&desde={a.isoformat()}&hasta={b.isoformat()}&m={iso}'>⬇ Descargar reporte (CSV)</a></p>")
-    return _pagina("Reporte de cobros", cuerpo, ses, "reportes")
+        + va.panel(_grafico(tot6, [f"{MESES_CORTO[mm - 1]} {str(yy)[2:]}" for yy, mm in meses], sim, "Cobrado por mes, últimos 6 meses",
+                            hoy_idx=5, col="Mes"), "Ingresos cobrados (últimos 6 meses)")
+        + (va.panel(bloque_locales, "Por local y cancha") if bloque_locales else "")
+        + va.panel(va.tabla(["Jugador", "Cuándo", "Estado", "Monto"], filas, vacia=va.vacio("calendario", "Sin reservas en este rango"))
+                   + (f"<p class='vn-tenue'>Se muestran las 120 más recientes. El CSV trae todas.</p>" if len(del_rango) > 120 else ""),
+                   f"Reservas ({n})", f"{sum(1 for x in del_rango if x['pagado'])} pagadas"))
+    return _render("Reporte de cobros", cuerpo, ses)
 
 
 def _estado_txt(x: dict) -> str:
@@ -854,12 +981,9 @@ def _estado_txt(x: dict) -> str:
     return "Pagada" if x["pagado"] else "Por cobrar"
 
 
-def _fila_reserva(x: dict, c: dict | None, hoy: date, sim: str) -> str:
+def _pill_estado(x: dict) -> str:
     est = _estado_txt(x)
-    clase = {"Pagada": "ok", "Por cobrar": "warn", "No-show": "bad", "Bono": ""}.get(est, "")
-    return (f"<div class='ng-fila'><div class='ng-fila-t'><b>{e(x['jugador'] or 'Jugador')}</b>"
-            f"<small>{e((c or {}).get('nombre') or 'Cancha')} · {e(x['hora_inicio'])} · {e(_fecha_bonita(x['fecha'], hoy))}</small></div>"
-            f"<span class='pill {clase}'>{e(est)}</span><b class='ng-monto'>{e(_m(total_con_extras(x), sim))}</b></div>")
+    return va.pill(est, {"Pagada": "ok", "Por cobrar": "warn", "No-show": "bad", "Bono": "info"}.get(est, "gris"))
 
 
 @router.get("/anfitrion/reportes/cobros.csv")
@@ -877,7 +1001,7 @@ def descargar_csv(request: Request, r: str = "mes", desde: str = "", hasta: str 
         c = por_id.get(x["cancha_id"]) or {}
         w.writerow([x["fecha"], f"{x['hora_inicio']}-{x['hora_fin']}", c.get("club") or "", c.get("nombre") or "", x["jugador"],
                     x["usuario"], x["medio_pago"], _estado_txt(x), f"{x['precio']:.2f}", f"{total_con_extras(x):.2f}"])
-    nombre = f"pichangol-cobros-{a.isoformat()}-{b.isoformat()}.csv" if rango != "todo" else "pichangol-cobros.csv"
+    nombre = f"{MARCA.lower()}-cobros-{a.isoformat()}-{b.isoformat()}.csv" if rango != "todo" else f"{MARCA.lower()}-cobros.csv"
     return Response("﻿" + buf.getvalue(), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f"attachment; filename={nombre}"})
 
@@ -885,7 +1009,7 @@ def descargar_csv(request: Request, r: str = "mes", desde: str = "", hasta: str 
 # ── Reportes · Ocupación (analitica_ocupacion_screen.dart) ──────────────────
 
 PERIODOS = [("d30", "30 días"), ("d90", "90 días"), ("mes", "Este mes"), ("todo", "Todo")]
-RAMPA = ["#E6F4EA", "#BFE3CB", "#8DCBA3", "#52AC77", "#1E8F4E", "#0B6E3A"]  # un solo tono, claro → oscuro
+# RAMPA (escala del mapa de calor) vive en `web/estilos_anfitrion.py`: cada celda lleva `n<nivel>`.
 
 
 def _resenas(ids: list[str]) -> list[dict]:
@@ -901,12 +1025,91 @@ def _resenas(ids: list[str]) -> list[dict]:
     return []
 
 
+DIAS_PLURAL = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábados", "domingos"]
+# Umbrales de las sugerencias automáticas de Ocupación (reglas, sin IA).
+SUG_MIN_DIAS = 14        # período mínimo para sacar conclusiones
+SUG_MIN_RESERVAS = 20    # reservas mínimas en el período
+SUG_LLENA = 0.6          # una hora "se llena" si se ocupa ≥ 60 % de las veces que se ofrece
+SUG_CASI_TODOS = 0.75    # … "casi todos los días" desde el 75 %
+SUG_MANANA_VACIA = 0.10  # las mañanas de un día "casi no se usan" si se ocupan ≤ 10 %
+SUG_MIN_CAP = 8          # turnos ofrecidos mínimos para juzgar una hora o una mañana
+
+
+def sugerencias_ocupacion(activas: list[dict], canchas: list[dict], desde: date, hoy: date) -> list[dict]:
+    """Dos sugerencias automáticas sobre el mapa de calor (diseño, Frame 22):
+    (1) la hora que se llena casi siempre → subir el precio de punta (Reglas);
+    (2) el día cuyas mañanas casi no se usan → promo de hora valle (Llenar
+    cancha). Tasa = reservas / turnos ofrecidos en el período (por día de la
+    semana, con el horario de las reglas del club). Sin datos suficientes
+    (menos de `SUG_MIN_DIAS` días o `SUG_MIN_RESERVAS` reservas) no sugiere nada."""
+    dias = (hoy - desde).days + 1
+    if dias < SUG_MIN_DIAS or len(activas) < SUG_MIN_RESERVAS or not canchas:
+        return []
+    n_wd = [0] * 7
+    for i in range(dias):
+        n_wd[(desde + timedelta(days=i)).weekday()] += 1
+    ofrece: dict[tuple[str, int, str], bool] = {}
+    cap: dict[tuple[int, str], int] = {}
+    for c in canchas:
+        for wd in range(7):
+            for h in _slots_dia_semana(c, wd + 1):
+                ofrece[(c["id"], wd, h)] = True
+                cap[(wd, h)] = cap.get((wd, h), 0) + n_wd[wd]
+    uso: dict[tuple[int, str], int] = {}
+    por_cancha_hora: dict[tuple[str, str], int] = {}
+    for r in activas:
+        try:
+            wd = date.fromisoformat(r["fecha"]).weekday()
+        except ValueError:
+            continue
+        h = r["hora_inicio"]
+        if not ofrece.get((r["cancha_id"], wd, h)):
+            continue
+        uso[(wd, h)] = uso.get((wd, h), 0) + 1
+        por_cancha_hora[(r["cancha_id"], h)] = por_cancha_hora.get((r["cancha_id"], h), 0) + 1
+    out: list[dict] = []
+    # (1) hora que se llena
+    horas = sorted({h for (_wd, h) in cap})
+    mejor, tasa_mejor = "", 0.0
+    for h in horas:
+        c_h = sum(cap.get((wd, h), 0) for wd in range(7))
+        if c_h < SUG_MIN_CAP:
+            continue
+        t = sum(uso.get((wd, h), 0) for wd in range(7)) / c_h
+        if t > tasa_mejor:
+            mejor, tasa_mejor = h, t
+    if mejor and tasa_mejor >= SUG_LLENA:
+        cid = max((c["id"] for c in canchas), key=lambda x: por_cancha_hora.get((x, mejor), 0))
+        out.append({"tipo": "punta", "titulo": f"{mejor} se llena {'casi todos los días' if tasa_mejor >= SUG_CASI_TODOS else 'la mayoría de los días'}",
+                    "texto": "Es tu mejor hora: puedes subir el precio de punta.", "cta": "Reglas de reserva",
+                    "href": f"/anfitrion/reglas/{quote(cid)}", "tasa": round(tasa_mejor, 2)})
+    # (2) mañanas vacías (turnos que empiezan antes de las 12:00)
+    peor, tasa_peor = -1, 2.0
+    for wd in range(7):
+        c_m = sum(v for (d, h), v in cap.items() if d == wd and (horarios.hora_en_minutos(h) or 0) < 12 * 60)
+        if c_m < SUG_MIN_CAP:
+            continue
+        t = sum(v for (d, h), v in uso.items() if d == wd and (horarios.hora_en_minutos(h) or 0) < 12 * 60) / c_m
+        if t < tasa_peor:
+            peor, tasa_peor = wd, t
+    if peor >= 0 and tasa_peor <= SUG_MANANA_VACIA:
+        out.append({"tipo": "valle", "titulo": f"Las mañanas de los {DIAS_PLURAL[peor]} casi no se usan",
+                    "texto": "Lánzalas con una promo de hora valle.", "cta": "Llenar cancha", "href": "/anfitrion/llenar",
+                    "tasa": round(tasa_peor, 2)})
+    return out
+
+
 @router.get("/anfitrion/ocupacion", response_class=HTMLResponse)
-def pagina_ocupacion(request: Request, p: str = "d90", m: str = "") -> HTMLResponse:
+def pagina_ocupacion(request: Request, p: str = "d90", m: str = "", cancha: str = "") -> HTMLResponse:
     ses, canchas, resp = _contexto(request, "/anfitrion/ocupacion")
     if resp is not None:
         return resp
     canchas, iso, sim, chips = _por_moneda(canchas, m)
+    todas_c = canchas
+    if cancha and any(c["id"] == cancha for c in canchas):
+        canchas = [c for c in canchas if c["id"] == cancha]
+    else:
+        cancha = ""
     hoy = _hoy_de(canchas).date()
     ids = [c["id"] for c in canchas]
     por_id = {c["id"]: c for c in canchas}
@@ -949,20 +1152,32 @@ def pagina_ocupacion(request: Request, p: str = "d90", m: str = "") -> HTMLRespo
     ing_mes = sum(r["precio"] for r in mias if r["fecha"].startswith(mes) and r["pagado"] and not es_noshow(r))
     ing_pas = sum(r["precio"] for r in mias if r["fecha"].startswith(pasado) and r["pagado"] and not es_noshow(r))
     var = "" if ing_pas <= 0 else f"{'▲' if ing_mes >= ing_pas else '▼'} {abs(round((ing_mes - ing_pas) * 100 / ing_pas))} % vs mes pasado"
-    # Mapa de calor: filas = horas, columnas = L..D.
-    cab = "<div></div>" + "".join(f"<div class='hm-d'>{d}</div>" for d in DIAS_CORTO)
-    cuerpo_hm = ""
-    for h in horas_l:
-        cuerpo_hm += f"<div class='hm-h'>{e(h)}</div>"
-        for ds in range(7):
+    # Mapa de calor como el diseño: filas = días (L..D), columnas = horas.
+    n_h = len(horas_l)
+    hm = "<div></div>" + "".join(f"<div class='vn-hm-h'>{e(h[:2] if h.endswith(':00') else h[2:])}</div>" for h in horas_l)
+    for ds in range(7):
+        hm += f"<div class='vn-hm-d'>{horarios.DIAS[ds]}</div>"
+        for h in horas_l:
             v = celda.get((ds, h), 0)
             nivel = 0 if v == 0 or mx == 0 else min(5, 1 + int((v / mx) * 4.999))
-            fondo = "var(--gris)" if v == 0 else RAMPA[nivel]
-            cuerpo_hm += (f"<div class='hm-c' style='background:{fondo}' tabindex='0' "
-                          f"data-tip='{DIAS_TIT[ds]} {e(h)} · {v} reserva{'s' if v != 1 else ''}'></div>")
-    leyenda = ("<div class='hm-ley'><span>Menos</span><i style='background:var(--gris)'></i>"
-               + "".join(f"<i style='background:{c}'></i>" for c in RAMPA[1:]) + "<span>Más</span></div>")
-    tabla_hm = "".join(f"<tr><td>{e(h)}</td>" + "".join(f"<td>{celda.get((d, h), 0)}</td>" for d in range(7)) + "</tr>" for h in horas_l)
+            hm += (f"<div class='hm-c vn-hm-c n{nivel}' tabindex='0' "
+                   f"data-tip='{DIAS_TIT[ds]} {e(h)} · {v} reserva{'s' if v != 1 else ''}'></div>")
+    leyenda = ("<div class='vn-hm-ley' aria-hidden='true'><span>Menos</span><i class='hm-c n0'></i>"
+               + "".join(f"<i class='hm-c n{i}'></i>" for i in range(1, len(RAMPA))) + "<span>Más reservas</span></div>")
+    tabla_hm = "".join(f"<tr><th scope='row'>{DIAS_TIT[d]}</th>" + "".join(f"<td>{celda.get((d, h), 0)}</td>" for h in horas_l) + "</tr>"
+                       for d in range(7))
+    media = any(not h.endswith(":00") for h in horas_l)
+    mapa = ((f"<div class='vn-hm-w'><div class='vn-hm' style='grid-template-columns:44px repeat({n_h},minmax(26px,1fr))' role='img' "
+             f"aria-label='Reservas por día de la semana y hora'>{hm}</div></div>"
+             + (f"<p class='vn-nota'>“:30” = turnos que empiezan a la media hora, por los turnos de más de una hora.</p>" if media else "")
+             + "<details class='vn-tabla'><summary>Ver como tabla ›</summary><div class='va-tabla-w'><table class='va-tabla'><thead><tr><th scope='col'>Día</th>"
+             + "".join(f"<th scope='col'>{e(h)}</th>" for h in horas_l) + f"</tr></thead><tbody>{tabla_hm}</tbody></table></div></details>")
+            if horas_l else "<p class='vn-tenue'>Configura el horario de tus canchas para ver el mapa.</p>")
+    sugs = sugerencias_ocupacion(activas, canchas, desde, hoy)
+    sug_html = "".join(
+        f"<div class='vn-sug {x['tipo']}'>{_ic('fuego' if x['tipo'] == 'punta' else 'etiqueta', 'suave')}"
+        f"<div class='vn-sug-t'><b>{e(x['titulo'])}</b><small>{e(x['texto'])}</small></div>"
+        f"<a href='{e(x['href'])}'>{e(x['cta'])} ›</a></div>" for x in sugs)
     ing_filas = [((por_id.get(cid) or {}).get("nombre") or "Cancha", float(v), (por_id.get(cid) or {}).get("club") or "")
                  for cid, v in sorted(ing.items(), key=lambda kv: -kv[1])]
     # Reputación real (⭐ de pichangol_resenas).
@@ -970,34 +1185,36 @@ def pagina_ocupacion(request: Request, p: str = "d90", m: str = "") -> HTMLRespo
     estrellas = [int(x.get("estrellas") or 0) for x in res if int(x.get("estrellas") or 0) > 0]
     prom = sum(estrellas) / len(estrellas) if estrellas else 0
     ult = [x for x in res if str(x.get("comentario") or "").strip()][:3]
-    rep = ("<div class='ng-card'><h3>Tu reputación</h3>"
-           + (f"<div class='ng-rep'><b>{prom:.1f}</b><span>{'★' * round(prom)}{'☆' * (5 - round(prom))}</span><small>{len(estrellas)} reseña{'s' if len(estrellas) != 1 else ''}</small></div>"
-              + "".join(f"<div class='ng-resena'><b>{'★' * int(x.get('estrellas') or 0)}</b> {e(x.get('comentario'))}<small>{e(x.get('autor_nombre') or '')}</small></div>" for x in ult)
-              if estrellas else "<p class='sub' style='margin:0'>Aún no tienes reseñas. Llegan cuando los jugadores califican su reserva.</p>")
-           + "</div>")
-    chips_p = "".join(f"<a class='chip{' sel' if k == p else ''}' href='?p={k}&m={iso}'>{t}</a>" for k, t in PERIODOS)
+    rep = va.panel(
+        (f"<div class='vn-rep'><b>{prom:.1f}</b><span aria-label='{prom:.1f} de 5'>{'★' * round(prom)}{'☆' * (5 - round(prom))}</span>"
+         f"<small>{len(estrellas)} reseña{'s' if len(estrellas) != 1 else ''}</small></div>"
+         + "".join(f"<div class='vn-resena'><b>{'★' * int(x.get('estrellas') or 0)}</b> {e(x.get('comentario'))}<small>{e(x.get('autor_nombre') or '')}</small></div>" for x in ult)
+         if estrellas else "<p class='vn-tenue'>Aún no tienes reseñas. Llegan cuando los jugadores califican su reserva.</p>"), "Tu reputación")
+    seg = va.segmentado([(f"?p={k}&m={iso}" + (f"&cancha={quote(cancha)}" if cancha else ""), t, k == p) for k, t in PERIODOS], etiqueta="Período")
+    opts = "<option value=''>Todas las canchas</option>" + "".join(
+        f"<option value='{e(c['id'])}'{' selected' if c['id'] == cancha else ''}>{e(c.get('nombre') or 'Cancha')}"
+        + (f" · {e(c.get('club'))}" if c.get("club") and len({x.get('club') for x in todas_c}) > 1 else "") + "</option>" for c in todas_c)
+    sel = (f"<form method='get' class='vn-sel'><input type='hidden' name='p' value='{p}'><input type='hidden' name='m' value='{iso}'>"
+           f"<label class='vh' for='vnCancha'>Cancha</label>{_svg('cancha', 17)}<select id='vnCancha' name='cancha' data-vn-auto>{opts}</select>"
+           "<noscript><button class='btn sec' type='submit'>Ver</button></noscript></form>") if len(todas_c) > 1 else ""
     cuerpo = (
-        _tabs_rep("ocupacion") + chips
-        + "<h1 class='anf-hola'>Ocupación</h1><p class='sub'>Cuándo se llenan tus canchas: decide precios, promos de hora valle y en qué cancha invertir.</p>"
-        f"<div class='chips' style='margin-top:12px'>{chips_p}</div>"
-        "<div class='kpis'>" + _kpi("Ocupación promedio", f"{ocup}%", f"{len(activas)} reservas en {dias} día{'s' if dias != 1 else ''}")
-        + _kpi("Hora pico", e(hora_pico or "—"), f"{por_hora.get(hora_pico, 0)} reservas" if hora_pico else "")
-        + _kpi("Día pico", e(DIAS_TIT[dia_pico] if dia_pico >= 0 else "—"), f"{por_dia[dia_pico]} reservas" if dia_pico >= 0 else "")
-        + _kpi("No-show", f"{ns_pct}%", f"{noshows} de {len(en)}", "bad" if ns_pct >= 10 else "") + "</div>"
-        + ("<div class='anf-vacio' style='margin-top:16px'>Sin reservas en este período. Cuando lleguen, aquí verás cuándo se llena tu local.</div>"
-           if not activas else "")
-        + "<h2 class='ng-h2'>Mapa de calor · hora × día</h2><div class='ng-card'>"
-        + (f"<div class='hm' role='img' aria-label='Reservas por hora y día de la semana'>{cab}{cuerpo_hm}</div>{leyenda}"
-           f"<details class='ng-tabla'><summary>Ver como tabla</summary><div class='tabla'><table><thead><tr><th>Hora</th>"
-           + "".join(f"<th>{d}</th>" for d in DIAS_CORTO) + f"</tr></thead><tbody>{tabla_hm}</tbody></table></div></details>"
-           if horas_l else "<p class='sub'>Configura el horario de tus canchas para ver el mapa.</p>")
-        + "</div>"
-        + (f"<h2 class='ng-h2'>Ingreso cobrado por cancha</h2><div class='ng-card'>{_hbarras(ing_filas, sim)}</div>" if ing_filas else "")
-        + "<h2 class='ng-h2'>Mes vs mes</h2><div class='kpis' style='margin-top:0'>"
-        + _kpi(f"{MESES_LARGO[hoy.month - 1].capitalize()} (cobrado)", e(_m(ing_mes, sim, 0)), e(var))
-        + _kpi(f"{MESES_LARGO[int(pasado[5:7]) - 1].capitalize()} (cobrado)", e(_m(ing_pas, sim, 0))) + "</div>"
+        va.cabecera("Ocupación", "Cuándo se llenan tus canchas: decide precios, promos de hora valle y en qué cancha invertir.", acciones=chips)
+        + _tabs_rep("ocupacion")
+        + f"<div class='vn-filtros'>{seg}{sel}</div>"
+        + va.kpis([_cifra("pastel", "Ocupación promedio", f"{ocup}%", sub=f"{_n_res(len(activas))} en {dias} día{'s' if dias != 1 else ''}"),
+                   _cifra("reloj", "Hora pico", e(hora_pico or "Sin datos"), sub=_n_res(por_hora.get(hora_pico, 0)) if hora_pico else ""),
+                   _cifra("calendario", "Día pico", e(DIAS_TIT[dia_pico] if dia_pico >= 0 else "Sin datos"),
+                          sub=_n_res(por_dia[dia_pico]) if dia_pico >= 0 else ""),
+                   _cifra("alerta", "No-show", f"{ns_pct}%", sub=f"{noshows} de {len(en)}", tono="bad" if ns_pct >= 10 else "")])
+        + ("" if activas else va.aviso("Sin reservas en este período. Cuando lleguen, aquí verás cuándo se llena tu local.", "info", ico="info"))
+        + va.panel(mapa, "Mapa de calor · día × hora", acciones=leyenda if horas_l else "", clase="vn-hm-p")
+        + (f"<div class='vn-sugs'>{sug_html}</div>" if sug_html else "")
+        + (va.panel(_hbarras_v(ing_filas, sim), "Ingreso cobrado por cancha") if ing_filas else "")
+        + "<h2 class='vn-sec'>Mes vs mes</h2>"
+        + va.kpis([_cifra("billete", f"{MESES_LARGO[hoy.month - 1].capitalize()} (cobrado)", e(_m(ing_mes, sim, 0)), sub=e(var)),
+                   _cifra("billete", f"{MESES_LARGO[int(pasado[5:7]) - 1].capitalize()} (cobrado)", e(_m(ing_pas, sim, 0)), color="claro")])
         + rep)
-    return _pagina("Ocupación", cuerpo, ses, "reportes")
+    return _render("Ocupación", cuerpo, ses)
 
 
 # ── Reportes · Cancelaciones (cancelaciones_screen.dart) ────────────────────
@@ -1051,25 +1268,29 @@ def pagina_cancelaciones(request: Request) -> HTMLResponse:
         if d.tzinfo:
             d = d.astimezone(timezone(timedelta(hours=-5)))
         return f"{_fecha_bonita(d.date().isoformat(), hoy)} · {d.strftime('%H:%M')}"
-    tarjetas = "".join(
-        f"<div class='anf-res'><div class='ng-fila-t' style='display:flex;justify-content:space-between;gap:8px'><b>🚫 {e(x['jugador'] or 'Jugador')}</b>"
-        f"<small>{e(cuando(x['cuando']))}</small></div>"
-        f"<div class='sub' style='margin:4px 0 8px'>{e(x['lugar'])} · {e(horarios.fecha_larga(x['fecha']))} · {e(x['hora'])}"
-        f"{(' · ' + e(x['quien'])) if x['quien'] else ''}</div>"
-        f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>{e(x['monto'])}</b>"
-        f"<span class='pill {'ok' if x['favor'] else 'gris'}' style='white-space:normal'>{e(x['estado'])}</span></div></div>" for x in items)
-    cuerpo = (_tabs_rep("cancelaciones")
-              + "<h1 class='anf-hola'>Cancelaciones</h1><p class='sub'>Reservas que se cancelaron en tus canchas y qué pasó con la plata.</p>"
-              + (f"<div class='anf-grid' style='margin-top:16px'>{tarjetas}</div>" if items
-                 else "<div class='anf-vacio' style='margin-top:16px'>Sin cancelaciones. 🎉</div>"))
-    return _pagina("Cancelaciones", cuerpo, ses, "reportes")
+    filas = [[f"<b>{e(x['jugador'] or 'Jugador')}</b><small>Cancelada {e(cuando(x['cuando']))}</small>",
+              f"{e(x['lugar'])}<small>{e(horarios.fecha_larga(x['fecha']))} · {e(x['hora'])}{(' · ' + e(x['quien'])) if x['quien'] else ''}</small>",
+              f"<b>{e(x['monto'])}</b>", va.pill(x["estado"], "ok" if x["favor"] else "gris")] for x in items]
+    n_favor = sum(1 for x in items if x["favor"])
+    cuerpo = (va.cabecera("Cancelaciones", "Reservas que se cancelaron en tus canchas y qué pasó con la plata.")
+              + _tabs_rep("cancelaciones")
+              + (va.kpis([_cifra("xcirc", "Cancelaciones", str(len(items))),
+                          _cifra("check", "Con plata de por medio", str(n_favor), sub="revisa la devolución o la seña a tu favor")]) if items else "")
+              + va.panel(va.tabla(["Jugador", "Dónde y cuándo", "Monto", "Qué pasó con la plata"], filas, clase="vn-canc",
+                                  vacia=va.vacio("calendario", "Sin cancelaciones", "Cuando alguien cancele, aquí verás qué pasó con la plata.")),
+                         "Historial" if items else ""))
+    return _render("Cancelaciones", cuerpo, ses)
 
 
 # ── Caja del día (caja_dia_screen.dart) ─────────────────────────────────────
 
 def _medio_etq(k: str, pais: str) -> str:
-    return {"yape": "📱 Yape/Plin" if pais == "PE" else "📱 QR/transf.", "tarjeta": "💳 Tarjeta", "efectivo": "💵 Efectivo",
-            "manual": "✍️ Manual", "sena": "🔒 Señas (online)"}.get(k, "🌐 Online")
+    """Nombre del medio por país: Yape/Plin solo en Perú (fuera, QR o transferencia)."""
+    return {"yape": "Yape / Plin" if pais == "PE" else "QR / transferencia", "tarjeta": "Tarjeta", "efectivo": "Efectivo",
+            "manual": "Manual", "sena": "Señas (online)"}.get(k, "Online")
+
+
+_MEDIO_ICO = {"yape": "celular", "tarjeta": "tarjeta", "efectivo": "billete", "manual": "lapiz", "sena": "candado"}
 
 
 def caja_dia(filas: list[dict], iso: str, canchas: list[dict]) -> dict:
@@ -1117,7 +1338,7 @@ def _autocerrar(neg: dict, filas: list[dict], canchas: list[dict], iso_mon: str,
 
 
 @router.get("/anfitrion/caja", response_class=HTMLResponse)
-def pagina_caja(request: Request, fecha: str = "", m: str = "") -> HTMLResponse:
+def pagina_caja(request: Request, fecha: str = "", m: str = "", ver: str = "") -> HTMLResponse:
     ses, canchas, resp = _contexto(request, "/anfitrion/caja")
     if resp is not None:
         return resp
@@ -1132,65 +1353,90 @@ def pagina_caja(request: Request, fecha: str = "", m: str = "") -> HTMLResponse:
     por_id = {c["id"]: c for c in canchas}
     filas = reservas_dueno(ids, min(dia, hoy - timedelta(days=45)).isoformat(), max(dia, hoy).isoformat())
     neg = _negocio(ses["email"])
-    antes = json.dumps(neg["cierres"], sort_keys=True)
+    antes = ui.json_js(neg["cierres"], sort_keys=True)
     _autocerrar(neg, filas, canchas, iso_mon, ahora)
-    if json.dumps(neg["cierres"], sort_keys=True) != antes:
+    if ui.json_js(neg["cierres"], sort_keys=True) != antes:
         _persistir()
     c = caja_dia(filas, dia.isoformat(), canchas)
     pais = _pais_de(canchas[0]) if canchas else "PE"
     cierre = next((x for x in neg["cierres"] if x.get("fecha") == dia.isoformat() and x.get("moneda", "PEN") == iso_mon), None)
-    medios = "".join(f"<div class='ng-rc'><div><b>{e(_medio_etq(k, pais))}</b></div><span>{e(_m(v, sim, 0))}</span></div>"
-                     for k, v in sorted(c["medios"].items(), key=lambda kv: -kv[1]))
-    lista = ""
-    for r in c["lista"]:
+    # Por dónde entró la plata: barras por medio sobre el total cobrado.
+    medios = "".join(
+        f"<div class='vn-medio'>{_ic(_MEDIO_ICO.get(k, 'tarjeta'), 'suave', 16)}<div class='vn-medio-t'><div><b>{e(_medio_etq(k, pais))}</b>"
+        f"<span>{e(_m(v, sim, 0))}</span></div><div class='vn-hb-p'><i style='width:{max(2, round(v * 100 / c['cobrado'])) if c['cobrado'] else 0}%'>"
+        "</i></div></div></div>" for k, v in sorted(c["medios"].items(), key=lambda kv: -kv[1]))
+    medios_panel = va.panel(
+        (medios + f"<div class='vn-medio-tot'><span>Total cobrado</span><b>{e(_m(c['cobrado'], sim, 0))}</b></div>") if medios
+        else "<p class='vn-tenue'>Todavía no entró plata este día.</p>", "Por dónde entró la plata")
+    pend = [r for r in c["lista"] if not r["pagado"] and not es_bono(r)]
+    ver = ver if ver in ("pendientes", "todas") else ("pendientes" if pend else "todas")
+    lista = pend if ver == "pendientes" else c["lista"]
+    filas_html = ""
+    for r in lista:
         cn = por_id.get(r["cancha_id"]) or {}
         t = total_con_extras(r)
         if es_bono(r):
-            acc = "<span class='pill'>Bono</span>"
+            acc = va.pill("Bono", "info")
         elif r["pagado"]:
             medio = r["medio_pago"]
-            acc = (f"<span class='pill ok'>Pagada en línea · {e(medio)}</span>" if medio in ("yape", "tarjeta")
-                   else f"<button type='button' class='btn sec mini-b' data-pagar='{e(r['id'])}' data-v='0'>↩ Marcar por cobrar</button>")
+            acc = (va.pill(f"Pagada en línea · {medio}", "ok") if medio in ("yape", "tarjeta")
+                   else f"<button type='button' class='btn sec vn-mini' data-pagar='{e(r['id'])}' data-v='0'>Marcar por cobrar</button>")
         else:
-            acc = f"<button type='button' class='btn mini-b' data-pagar='{e(r['id'])}' data-v='1'>✅ Marcar pagado</button>"
-        sena = (f"<small class='ng-sena'>Seña {e(sim)} {r['sena']} pagada · cobra {e(_m(t - r['sena'], sim))}</small>"
+            acc = f"<button type='button' class='btn vn-mini' data-pagar='{e(r['id'])}' data-v='1'>{_svg('check', 16)} Marcar pagado</button>"
+        sena = (f"<small class='vn-sena'>Seña {e(sim)} {r['sena']} pagada · cobra {e(_m(t - r['sena'], sim))}</small>"
                 if r["sena"] > 0 and not r["pagado"] else "")
-        lista += (f"<div class='ng-fila'><div class='ng-fila-t'><b>{e(r['hora_inicio'])}–{e(r['hora_fin'])} · {e(r['jugador'] or 'Jugador')}</b>"
-                  f"<small>{e(cn.get('nombre') or 'Cancha')}{'' if r['traida_por_app'] else ' · propio'}</small>{sena}</div>"
-                  f"<b class='ng-monto'>{e(_m(t, sim))}</b>{acc}</div>")
-    etq = _fecha_bonita(dia.isoformat(), hoy)
-    if cierre:
-        estado = (f"<div class='ng-cierre{' auto' if cierre.get('automatico') else ''}'><div><b>{'🤖 Cierre automático (sin confirmar)' if cierre.get('automatico') else '🔒 Caja cerrada'}</b>"
-                  f"<small>Cobrado {e(_m(cierre.get('cobrado', 0), sim, 0))} · por cobrar {e(_m(cierre.get('porCobrar', 0), sim, 0))} · {cierre.get('reservas', 0)} reservas</small></div>"
-                  + ("<button type='button' class='btn' data-caja='cerrar'>Confirmar arqueo</button>" if cierre.get("automatico") else "")
-                  + "<button type='button' class='btn sec' data-caja='reabrir'>Reabrir</button></div>")
+        filas_html += (f"<div class='vn-fila'>{_ic('reloj', 'suave', 16)}<div class='vn-fila-t'><b>{e(r['hora_inicio'])}–{e(r['hora_fin'])} · "
+                       f"{e(r['jugador'] or 'Jugador')}</b><small>{e(cn.get('nombre') or 'Cancha')}{'' if r['traida_por_app'] else ' · reserva propia'}</small>"
+                       f"{sena}</div><b class='vn-monto'>{e(_m(t, sim))}</b><div class='vn-fila-a'>{acc}</div></div>")
+    q = f"fecha={dia.isoformat()}&m={iso_mon}"
+    seg = va.segmentado([(f"?{q}&ver=pendientes", "Por cobrar", ver == "pendientes"), (f"?{q}&ver=todas", f"Todas ({len(c['lista'])})", ver == "todas")],
+                        etiqueta="Reservas que se muestran")
+    if filas_html:
+        lista_html = f"<div class='vn-lista'>{filas_html}</div>"
+        if ver == "pendientes" and len(c["lista"]) > len(pend):
+            lista_html += f"<a class='vn-ver-todas' href='?{e(q)}&ver=todas'>Ver las {len(c['lista'])} reservas del día ›</a>"
     else:
-        estado = "<button type='button' class='btn' data-caja='cerrar'>🔒 Cerrar caja del día</button>"
+        lista_html = va.vacio("calendario", "No hay reservas este día" if not c["lista"] else "Nada por cobrar",
+                              "" if not c["lista"] else "Todas las reservas de este día ya están cobradas.")
+    reservas_panel = va.panel(lista_html, "Reservas del día", acciones=seg if c["lista"] else "")
+    # Cierre de caja (arqueo).
+    if cierre:
+        auto = bool(cierre.get("automatico"))
+        cierre_html = (f"<div class='vn-arqueo'>{_ic('candado', 'naranja' if auto else 'verde', 17)}<div><b>"
+                       f"{'Cierre automático (sin confirmar)' if auto else 'Caja cerrada'}</b>"
+                       f"<small>Cobrado {e(_m(cierre.get('cobrado', 0), sim, 0))} · por cobrar {e(_m(cierre.get('porCobrar', 0), sim, 0))} · "
+                       f"{_n_res(cierre.get('reservas', 0))}</small></div></div><div class='vn-arqueo-a'>"
+                       + ("<button type='button' class='btn' data-caja='cerrar'>Confirmar arqueo</button>" if auto else "")
+                       + "<button type='button' class='btn sec' data-caja='reabrir'>Reabrir</button></div>")
+    else:
+        cierre_html = (f"<div class='vn-arqueo'>{_ic('candado', 'naranja', 17)}<div><b>Cierre de caja (arqueo)</b>"
+                       "<small>Cuenta el efectivo y cierra el día.</small></div></div>"
+                       "<div class='vn-arqueo-a'><button type='button' class='btn' data-caja='cerrar'>Cerrar caja del día</button></div>")
+    prev = [y for y in neg["cierres"] if y.get("moneda", "PEN") == iso_mon][:20]
     historial = "".join(
-        f"<a class='ng-fila' href='/anfitrion/caja?fecha={e(x['fecha'])}&m={iso_mon}'><div class='ng-fila-t'><b>{e(horarios.fecha_larga(x['fecha']))}</b>"
-        f"<small>{x.get('reservas', 0)} reservas · por cobrar {e(_m(x.get('porCobrar', 0), sim, 0))}</small></div>"
-        f"<span class='pill {'gris' if x.get('automatico') else 'ok'}'>{'Automático' if x.get('automatico') else 'Confirmado'}</span>"
-        f"<b class='ng-monto'>{e(_m(x.get('cobrado', 0), sim, 0))}</b></a>"
-        for x in [y for y in neg["cierres"] if y.get("moneda", "PEN") == iso_mon][:20])
+        f"<a class='vn-fila vn-hist' href='/anfitrion/caja?fecha={e(x['fecha'])}&m={iso_mon}'><div class='vn-fila-t'><b>{e(horarios.fecha_larga(x['fecha']))}</b>"
+        f"<small>{_n_res(x.get('reservas', 0))} · por cobrar {e(_m(x.get('porCobrar', 0), sim, 0))}</small></div>"
+        + va.pill("Automático" if x.get("automatico") else "Confirmado", "gris" if x.get("automatico") else "ok")
+        + f"<b class='vn-monto'>{e(_m(x.get('cobrado', 0), sim, 0))}</b></a>" for x in prev)
+    cierre_html += (f"<details class='vn-cierres'><summary>Cierres anteriores ({len(prev)})</summary><div class='vn-lista'>{historial}</div></details>"
+                    if historial else "")
     cfg = {"fecha": dia.isoformat(), "m": iso_mon, "resumen": f"Cobrado: {sim} {c['cobrado']}" + "".join(
         f"\n{_medio_etq(k, pais)}: {sim} {v}" for k, v in c["medios"].items()) + f"\nPor cobrar: {sim} {c['por_cobrar']}\nReservas: {c['reservas']}"}
+    etq = _fecha_bonita(dia.isoformat(), hoy)
+    etq = f"Hoy · {horarios.DIAS[hoy.weekday()].lower()} {hoy.day} {MESES_CORTO[hoy.month - 1]}" if dia == hoy else (
+        f"{etq} · {horarios.DIAS[dia.weekday()].lower()} {dia.day} {MESES_CORTO[dia.month - 1]}" if etq in ("Ayer", "Mañana") else etq)
+    nav_dia = (f"<div class='vn-dia'><a class='vn-flecha' href='?fecha={(dia - timedelta(days=1)).isoformat()}&m={iso_mon}' aria-label='Día anterior'>‹</a>"
+               + _fecha_picker(dia, hoy, {"m": iso_mon}, etq)
+               + f"<a class='vn-flecha' href='?fecha={(dia + timedelta(days=1)).isoformat()}&m={iso_mon}' aria-label='Día siguiente'>›</a>"
+               + (f"<a class='btn suave vn-hoy' href='?m={iso_mon}'>Hoy</a>" if dia != hoy else "") + "</div>")
     cuerpo = (
-        chips + "<h1 class='anf-hola'>Caja del día</h1><p class='sub'>La plata del día de un vistazo, el cobro en efectivo y el cierre de caja (arqueo).</p>"
-        "<div class='ng-dia'>"
-        f"<a class='ng-flecha' href='?fecha={(dia - timedelta(days=1)).isoformat()}&m={iso_mon}' aria-label='Día anterior'>‹</a>"
-        f"<form method='get'><input type='hidden' name='m' value='{iso_mon}'><input type='date' name='fecha' value='{dia.isoformat()}' onchange='this.form.submit()' aria-label='Elegir día'></form>"
-        f"<b>{e(etq)}</b>"
-        f"<a class='ng-flecha' href='?fecha={(dia + timedelta(days=1)).isoformat()}&m={iso_mon}' aria-label='Día siguiente'>›</a>"
-        + (f"<a class='chip' href='?m={iso_mon}'>Hoy</a>" if dia != hoy else "") + "</div>"
-        "<div class='kpis'>" + _kpi("Cobrado", e(_m(c["cobrado"], sim, 0)), "", "ok") + _kpi("Por cobrar", e(_m(c["por_cobrar"], sim, 0)))
-        + _kpi("Reservas", str(c["reservas"])) + _kpi("Ocupación", f"{c['ocupacion']}%") + "</div>"
-        + (f"<div class='ng-card'><h3>Por dónde entró la plata</h3>{medios}</div>" if medios else "")
-        + f"<div class='ng-cierre-box'>{estado}</div>"
-        "<h2 class='ng-h2'>Reservas del día</h2>"
-        + (f"<div class='ng-lista'>{lista}</div>" if lista else "<div class='anf-vacio'>No hay reservas este día.</div>")
-        + (f"<h2 class='ng-h2'>Cierres anteriores</h2><div class='ng-lista'>{historial}</div>" if historial else "")
-        + f"<script>window.__caja={json.dumps(cfg, ensure_ascii=False)};{JS_PAGAR}{JS_CAJA}</script>")
-    return _pagina("Caja del día", cuerpo, ses, "caja")
+        va.cabecera("Caja del día", "La plata del día de un vistazo, el cobro en efectivo y el cierre de caja (arqueo).", acciones=chips + nav_dia)
+        + va.kpis([_cifra("check", "Cobrado", e(_m(c["cobrado"], sim, 0))),
+                   _cifra("recibo", "Por cobrar", e(_m(c["por_cobrar"], sim, 0)), tono="warn" if c["por_cobrar"] else ""),
+                   _cifra("calendario", "Reservas", str(c["reservas"])), _cifra("pastel", "Ocupación", f"{c['ocupacion']}%")])
+        + f"<div class='va-dos'><div>{reservas_panel}</div><div>{medios_panel}"
+        + va.panel(cierre_html, clase="vn-cierre") + "</div></div>")
+    return _render("Caja del día", cuerpo, ses, js=f"window.__caja={ui.json_js(cfg, ensure_ascii=False)};{JS_PAGAR}{JS_CAJA}")
 
 
 @router.post("/anfitrion/caja/cerrar")
@@ -1224,7 +1470,9 @@ def reserva_noshow(request: Request, res_id: str) -> JSONResponse:
     ses = sesion.de_request(request)
     if not ses:
         return _err("sesion_requerida", 401)
-    ids = [c["id"] for c in datos.canchas_de_dueno(ses["email"])]
+    from web import permisos  # dueño o su recepción (encargado del local)
+    operables = permisos.canchas_para(ses["email"], permisos.NOSHOW)
+    ids = [c["id"] for c in operables]
     if not ids:
         return _err("Esta reserva no es de tus canchas.", 404)
     fila = next((r for r in reservas_dueno(ids, "2020-01-01", "2100-01-01") if r["id"] == res_id), None)
@@ -1234,6 +1482,7 @@ def reserva_noshow(request: Request, res_id: str) -> JSONResponse:
         return _err("Esta reserva se pagó en línea: no se marca como no-show.", 409)
     if not marcar_noshow(res_id, ids):
         return _err("No pudimos guardar en este momento.", 503)
+    permisos.auditar(ses["email"], next((c for c in operables if c["id"] == fila.get("cancha_id")), None), "noshow", res_id)
     print(f"[noshow-web] {ses['email']} marcó no-show {res_id}", flush=True)
     return _json_ok()
 
@@ -1242,7 +1491,7 @@ def reserva_noshow(request: Request, res_id: str) -> JSONResponse:
 
 SEGMENTOS = [("todos", "Todos"), ("vip", "VIP"), ("recurrente", "Recurrentes"), ("nuevo", "Nuevos"),
              ("riesgo", "En riesgo"), ("moroso", "Deudores")]
-SEG_COLOR = {"vip": "#B8860B", "recurrente": "#0B8A3E", "nuevo": "#2F6FDE", "riesgo": "#C0392B", "moroso": "#946200"}
+# Color de cada insignia de segmento: `.ng-badge.s-<segmento>` en `web/estilos_anfitrion.py`.
 DIAS_RIESGO = 30
 MEDIOS_LABEL = {"yape": "Yape", "tarjeta": "Tarjeta", "efectivo": "Efectivo", "sena": "Seña + saldo", "manual": "Manual", "online": "Online", "bono": "Bono"}
 
@@ -1316,7 +1565,7 @@ def _wa(tel: str) -> str:
 
 
 @router.get("/anfitrion/clientes", response_class=HTMLResponse)
-def pagina_clientes(request: Request, seg: str = "todos", orden: str = "frecuentes", m: str = "") -> HTMLResponse:
+def pagina_clientes(request: Request, seg: str = "todos", orden: str = "gasto", m: str = "") -> HTMLResponse:
     from web.jugador_liga import avatar, perfiles
     ses, canchas, resp = _contexto(request, "/anfitrion/clientes")
     if resp is not None:
@@ -1329,59 +1578,82 @@ def pagina_clientes(request: Request, seg: str = "todos", orden: str = "frecuent
     fotos = perfiles([c["email"] for c in todos if c["email"]])
     notas = _negocio(ses["email"])["notas"]
     seg = seg if seg in dict(SEGMENTOS) else "todos"
-    orden = orden if orden in ("frecuentes", "gasto", "recientes") else "frecuentes"
+    orden = orden if orden in ("frecuentes", "gasto", "recientes") else "gasto"
     lista = [c for c in todos if seg == "todos" or seg in c["segmentos"]]
     if orden == "gasto":
-        lista.sort(key=lambda c: -c["gastado"])
+        lista.sort(key=lambda c: (-c["gastado"], -c["reservas"]))
     elif orden == "recientes":
         lista.sort(key=lambda c: c["ultima"], reverse=True)
     else:
         lista.sort(key=lambda c: (-c["reservas"], -c["gastado"]))
     recurrentes = sum(1 for c in todos if "recurrente" in c["segmentos"])
     nuevos = sum(1 for c in todos if "nuevo" in c["segmentos"])
+    deudores = [c for c in todos if c["por_cobrar"] > 0]
+    te_deben = sum(c["por_cobrar"] for c in deudores)
     chips_seg = "".join(
-        f"<a class='chip{' sel' if k == seg else ''}' href='?seg={k}&orden={orden}&m={iso_mon}'>{e(t)} · "
-        f"{len(todos) if k == 'todos' else sum(1 for c in todos if k in c['segmentos'])}</a>" for k, t in SEGMENTOS)
-    chips_ord = "".join(f"<a class='chip{' sel' if k == orden else ''}' href='?seg={seg}&orden={k}&m={iso_mon}'>{t}</a>"
-                        for k, t in (("frecuentes", "Frecuentes"), ("gasto", "Mayor gasto"), ("recientes", "Recientes")))
-    tarjetas, fichas = "", {}
+        f"<a class='vn-chip{' sel' if k == seg else ''}' href='?seg={k}&orden={orden}&m={iso_mon}'" + (" aria-current='page'" if k == seg else "")
+        + f">{e(t)} · {len(todos) if k == 'todos' else sum(1 for c in todos if k in c['segmentos'])}</a>" for k, t in SEGMENTOS)
+
+    def th(k: str, t: str) -> str:
+        sel = k == orden
+        return (f"<th scope='col'{' aria-sort=' + chr(39) + 'descending' + chr(39) if sel else ''}><a class='vn-orden{' sel' if sel else ''}' "
+                f"href='?seg={seg}&orden={k}&m={iso_mon}'>{e(t)}{' ↓' if sel else ''}</a></th>")
+    filas_html, fichas = "", {}
     for i, c in enumerate(lista):
         p = fotos.get(c["email"]) or {}
         nom = c["visible"]
         contacto = c["email"] or c["telefono"] or "Cliente de mostrador"
-        badge = (f"<span class='ng-badge' style='background:{SEG_COLOR[c['badge']]}'>{e(dict(SEGMENTOS)[c['badge']])}</span>" if c["badge"] else "")
-        ult = _fecha_bonita(c["ultima"], hoy) if c["ultima"] else "—"
-        tarjetas += (f"<button type='button' class='ng-cli' data-cli='{i}' data-q='{e((nom + ' ' + c['email']).lower())}'>{badge}"
-                     f"<div class='ng-cli-h'>{avatar(nom, p.get('foto_url') or '', 'ng-av')}<div style='min-width:0'><b>{e(nom)}</b>"
-                     f"<small>{e(contacto)}{(' · ' + e(c['nivel'])) if c['nivel'] else ''}</small></div></div>"
-                     f"<div class='ng-cli-d'><span><b>{c['reservas']}</b>reservas</span><span><b>{e(_m(c['gastado'], sim, 0))}</b>gastado</span>"
-                     f"<span><b>{e(ult)}</b>última vez</span></div>"
-                     + (f"<div class='ng-debe'>Debe {e(_m(c['por_cobrar'], sim))}</div>" if c["por_cobrar"] > 0 else "")
-                     + "</button>")
+        badge = va.pill({"vip": "VIP", "nuevo": "Nuevo", "riesgo": "En riesgo"}.get(c["badge"], ""), {"moroso": "warn", "riesgo": "bad", "vip": "azul", "nuevo": "ok"}.get(c["badge"], "gris"),
+                        "estrella" if c["badge"] == "vip" else "") if c["badge"] and c["badge"] != "moroso" else ""
+        ult = _fecha_bonita(c["ultima"], hoy) if c["ultima"] else "Sin fecha"
+        wa = _wa(c["telefono"])
+        if c["por_cobrar"] > 0:
+            deuda = va.pill(f"Debe {_m(c['por_cobrar'], sim)}", "warn")
+            msg = f"Hola {nom}, te recordamos tu saldo pendiente de {_m(c['por_cobrar'], sim)} por tu reserva. ¡Gracias!"
+            acc = ((f"<a class='vn-acc' target='_blank' rel='noopener' href='{e(ui.enlace_whatsapp(msg, wa))}'>{_svg('chat', 16)}Recordar pago</a>" if wa else "")
+                   + f"<button type='button' class='vn-acc' data-cli='{i}'>Ver</button>")
+        else:
+            deuda = "<span class='vn-al-dia'>Al día</span>"
+            acc = f"<button type='button' class='vn-acc' data-cli='{i}'>Ver</button>"
+        filas_html += (f"<tr data-q='{e((nom + ' ' + c['email'] + ' ' + c['telefono']).lower())}'>"
+                       f"<td data-et='Cliente'><div class='vn-cli'>{avatar(nom, p.get('foto_url') or '', 'vn-av')}<div><b>{e(nom)}</b>{badge}"
+                       f"<small>{e(contacto)}{(' · ' + e(c['nivel'])) if c['nivel'] else ''}</small></div></div></td>"
+                       f"<td data-et='Reservas'><b>{c['reservas']}</b></td><td data-et='Gastado'><b>{e(_m(c['gastado'], sim, 0))}</b></td>"
+                       f"<td data-et='Última vez'>{e(ult)}</td><td data-et='Deuda'>{deuda}</td>"
+                       f"<td data-et='Acciones' class='vn-td-acc'>{acc}</td></tr>")
         suyas = sorted(c["filas"], key=lambda r: r["fecha"], reverse=True)
         pagadas = [r for r in suyas if r["pagado"]]
         ticket = sum(total_con_extras(r) for r in pagadas) / len(pagadas) if pagadas else 0
         fichas[i] = {
             "nombre": nom, "contacto": contacto, "foto": p.get("foto_url") or "", "clave": c["clave"], "nota": notas.get(c["clave"], ""),
-            "wa": _wa(c["telefono"]), "debe": round(c["por_cobrar"], 2), "moneda": sim,
-            "datos": [["Ticket promedio", _m(ticket, sim)], ["Cancha favorita", _moda((por_id.get(r["cancha_id"]) or {}).get("nombre", "") for r in suyas) or "—"],
-                      ["Horario favorito", _moda(r["hora_inicio"] for r in suyas) or "—"],
-                      ["Paga con", MEDIOS_LABEL.get(_moda(r["medio_pago"] for r in suyas), "—")],
+            "wa": wa, "debe": round(c["por_cobrar"], 2), "moneda": sim,
+            "datos": [["Ticket promedio", _m(ticket, sim)], ["Cancha favorita", _moda((por_id.get(r["cancha_id"]) or {}).get("nombre", "") for r in suyas) or "Sin datos"],
+                      ["Horario favorito", _moda(r["hora_inicio"] for r in suyas) or "Sin datos"],
+                      ["Paga con", MEDIOS_LABEL.get(_moda(r["medio_pago"] for r in suyas), "Sin datos")],
                       ["No-show", f"{round(c['noshows'] * 100 / c['reservas']) if c['reservas'] else 0}%"], ["Reservas", str(c["reservas"])]],
             "historial": [[_fecha_bonita(r["fecha"], hoy), r["hora_inicio"], (por_id.get(r["cancha_id"]) or {}).get("nombre", ""),
                            _estado_txt(r), _m(total_con_extras(r), sim)] for r in suyas[:30]]}
+    if lista:
+        tabla = ("<div class='va-tabla-w'><table class='va-tabla vn-clientes'><thead><tr><th scope='col'>Cliente</th>"
+                 + th("frecuentes", "Reservas") + th("gasto", "Gastado") + th("recientes", "Última vez")
+                 + "<th scope='col'>Deuda</th><th scope='col' class='vn-th-acc'>Acciones</th></tr></thead>"
+                 f"<tbody id='listaCli'>{filas_html}</tbody></table></div>"
+                 "<div id='cliVacio' hidden>" + va.vacio("lupa", "Ningún cliente coincide con tu búsqueda") + "</div>")
+    else:
+        tabla = va.vacio("comparar", "Aún no tienes clientes" if not todos else "Nadie en este segmento por ahora",
+                         "Aparecen cuando alguien reserva en tus canchas." if not todos else "")
     cuerpo = (
-        chips_m + "<h1 class='anf-hola'>Base de clientes</h1><p class='sub'>Quién reserva en tus canchas, cuánto gastó, cuándo volvió y quién te debe. "
-        "Sale de tus reservas reales.</p>"
-        "<div class='kpis'>" + _kpi("Clientes", str(len(todos))) + _kpi("Recurrentes", str(recurrentes)) + _kpi("Nuevos este mes", str(nuevos)) + "</div>"
-        f"<div class='chips' style='margin-top:16px'>{chips_seg}</div>"
-        "<div class='ng-busca'><input type='search' id='qCli' placeholder='Buscar cliente por nombre o correo…' aria-label='Buscar cliente'>"
-        f"<div class='chips'>{chips_ord}</div></div>"
-        + (f"<div class='ng-clis' id='listaCli'>{tarjetas}</div><div class='anf-vacio' id='cliVacio' style='display:none'>Ningún cliente coincide con tu búsqueda.</div>"
-           if lista else "<div class='anf-vacio' style='margin-top:14px'>" + ("Aún no tienes clientes: aparecen cuando alguien reserva en tus canchas."
-                                                                               if not todos else "Nadie en este segmento por ahora.") + "</div>")
-        + f"<script>window.__cli={json.dumps(fichas, ensure_ascii=False)};{JS_CLIENTES}</script>")
-    return _pagina("Clientes", cuerpo, ses, "clientes")
+        va.cabecera("Base de clientes", "Quién reserva en tus canchas, cuánto gastó, cuándo volvió y quién te debe. Sale de tus reservas reales.",
+                    acciones=chips_m)
+        + va.kpis([_cifra("comparar", "Clientes", str(len(todos))), _cifra("repetir", "Recurrentes", str(recurrentes)),
+                   _cifra("usuario", "Nuevos este mes", str(nuevos)),
+                   _cifra("alerta", "Te deben", e(_m(te_deben, sim, 0)), sub=f"{len(deudores)} deudor{'es' if len(deudores) != 1 else ''}",
+                          tono="warn" if te_deben else "")])
+        + "<div class='vn-filtros'><label class='vn-buscar'><span class='vh'>Buscar cliente</span>" + _svg("lupa", 18)
+        + "<input type='search' id='qCli' placeholder='Buscar por nombre o correo…' aria-label='Buscar cliente'></label>"
+        f"<nav class='vn-chips' aria-label='Segmentos'>{chips_seg}</nav></div>"
+        + va.panel(tabla, clase="vn-cli-p"))
+    return _render("Clientes", cuerpo, ses, js=f"window.__cli={ui.json_js(fichas, ensure_ascii=False)};{JS_CLIENTES}")
 
 
 @router.post("/anfitrion/clientes/nota")
@@ -1414,39 +1686,55 @@ def pagina_bonos(request: Request, local: str = "") -> HTMLResponse:
     ses, canchas, resp = _contexto(request, "/anfitrion/bonos")
     if resp is not None:
         return resp
-    locs = _locales(canchas)
-    club, sim = next(((c, s) for c, s in locs if c == local), locs[0] if locs else ("", "S/"))
     email = ses["email"].lower()
-    bonos = [b for b in ofertas_de_dueno(email) if b["club"] == club]
+    locs = _locales(canchas)
+    ofertas = ofertas_de_dueno(email)
+    if not local and len(locs) > 1:   # sin elegir: el primer local que ya tiene bonos
+        con_bonos = {b["club"] for b in ofertas}
+        local = next((c for c, _s in locs if c in con_bonos), "")
+    club, sim = next(((c, s) for c, s in locs if c == local), locs[0] if locs else ("", "S/"))
+    bonos = [b for b in ofertas if b["club"] == club]
     vend = [v for v in vendidos_de_dueno(email) if v["club"] == club]
-    chips = ("<div class='chips' style='margin-top:12px'>" + "".join(
-        f"<a class='chip{' sel' if c == club else ''}' href='?local={quote(c)}'>{e(c)}</a>" for c, _ in locs) + "</div>") if len(locs) > 1 else ""
-    tarj = "".join(
-        f"<div class='ng-bono{'' if b['activo'] else ' pausa'}' data-bono='{e(json.dumps({'id': b['id'], 'nombre': b['nombre'], 'horas': b['horas'], 'precio': b['precio']}))}'>"
-        f"<div class='ng-bono-h'>{b['horas']}h</div><div style='min-width:0;flex:1'><b>{e(b['nombre'] or str(b['horas']) + ' horas')}</b>"
-        f"<small>{e(_m(b['precio'], sim))} · {e(_m(b['precio'] / b['horas'] if b['horas'] else b['precio'], sim))}/hora</small>"
-        f"<span class='pill {'ok' if b['activo'] else 'gris'}'>{'A la venta' if b['activo'] else 'Pausado'}</span></div>"
-        "<div class='ng-bono-a'><button type='button' class='btn sec mini-b' data-acc='editar'>Editar</button>"
-        f"<button type='button' class='btn sec mini-b' data-acc='activo' data-v='{0 if b['activo'] else 1}'>{'Pausar' if b['activo'] else 'Reanudar'}</button>"
-        "<button type='button' class='btn sec mini-b' data-acc='eliminar'>Retirar</button></div></div>" for b in bonos)
+    if len(locs) > 1:
+        opts = "".join(f"<option value='{e(c)}'{' selected' if c == club else ''}>{e(c)}</option>" for c, _ in locs)
+        sel_local = (f"<form method='get' class='vn-sel vn-sel-local'><label for='vnLocal'>Local:</label>"
+                     f"<select id='vnLocal' name='local' data-vn-auto>{opts}</select>"
+                     "<noscript><button class='btn sec' type='submit'>Ver</button></noscript></form>")
+    else:
+        sel_local = f"<span class='vn-sel vn-sel-local'><span>Local:</span><b>{e(club)}</b></span>"
+    tarj = ""
+    for b in bonos:
+        por_hora = b["precio"] / b["horas"] if b["horas"] else b["precio"]
+        datos_b = ui.json_js({"id": b["id"], "nombre": b["nombre"], "horas": b["horas"], "precio": b["precio"]})
+        nombre_b = b["nombre"] or f"Pack {b['horas']} horas"
+        tarj += (f"<article class='vn-bono{'' if b['activo'] else ' pausa'}' data-bono='{e(datos_b)}'>"
+                 f"<div class='vn-bono-h'><span class='vn-bono-n' aria-hidden='true'>{b['horas']}h</span><div><h3>{e(nombre_b)}</h3>"
+                 + va.pill("A la venta" if b["activo"] else "Pausado", "ok" if b["activo"] else "gris", "check" if b["activo"] else "")
+                 + f"</div></div><b class='vn-bono-p'>{e(_m(b['precio'], sim))}</b><small class='vn-bono-ph'>{e(_m(por_hora, sim))} por hora</small>"
+                 "<div class='vn-bono-a'>"
+                 f"<button type='button' class='vn-bbtn' data-acc='editar'>{_svg('lapiz', 15)}Editar</button>"
+                 f"<button type='button' class='vn-bbtn' data-acc='activo' data-v='{0 if b['activo'] else 1}'>{_svg('pausa' if b['activo'] else 'play', 15)}"
+                 f"{'Pausar' if b['activo'] else 'Reanudar'}</button>"
+                 f"<button type='button' class='vn-bbtn rojo' data-acc='eliminar'>{_svg('basura', 15)}Retirar</button></div></article>")
+    tarj += (f"<button type='button' class='vn-bono-nuevo' id='nuevoBono'><span>{_svg('mas', 24, 2.6)}</span><b>Nuevo bono</b>"
+             "<small>Ej.: pack de 10 horas</small></button>")
     total = sum(v["precio"] for v in vend)
     hv, hu = sum(v["horas_total"] for v in vend), sum(v["horas_usadas"] for v in vend)
-    vendidos = "".join(
-        f"<div class='ng-fila'><div class='ng-fila-t'><b>{e(v['comprador_nombre'] or v['comprador'].split('@')[0] or 'Jugador')}</b>"
-        f"<small>{e(_m(v['precio'], sim))} · le quedan {v['saldo']} de {v['horas_total']} h</small></div><b class='ng-monto'>{v['saldo']} h</b></div>"
-        for v in vend)
+    vendidos = [[f"<b>{e(v['comprador_nombre'] or v['comprador'].split('@')[0] or 'Jugador')}</b>",
+                 e(_m(v["precio"], sim)), f"le quedan {v['saldo']} de {v['horas_total']} h",
+                 va.pill(f"{v['saldo']} h", "ok" if v["saldo"] else "gris")] for v in vend]
     cuerpo = (
-        f"<h1 class='anf-hola'>Bonos · {e(club)}</h1><p class='sub'>Vende packs de horas con descuento. El jugador paga por adelantado y descuenta "
-        "1 hora al reservar en tu local.</p>" + chips
-        + "<p style='margin-top:14px'><button type='button' class='btn' id='nuevoBono'>＋ Nuevo bono</button></p>"
-        + (f"<div class='ng-bonos'>{tarj}</div>" if tarj else
-           "<div class='anf-vacio' style='margin-top:14px'>🎟️ Aún no tienes bonos. Crea packs de horas con descuento para fidelizar y cobrar por adelantado.</div>")
-        + ("<h2 class='ng-h2'>Bonos vendidos</h2><p class='sub'>Esta plata ya entró a tu billetera (\"por recibir\") al venderse. Cuando el jugador reserva con su "
-           "bono, NO vuelve a pagarte: descuenta de estas horas.</p>"
-           f"<div class='kpis'>{_kpi('Vendido', e(_m(total, sim)))}{_kpi('Horas usadas', f'{hu} / {hv}')}</div><div class='ng-lista' style='margin-top:12px'>{vendidos}</div>"
-           if vend else "")
-        + f"<script>window.__bonos={json.dumps({'club': club, 'moneda': sim}, ensure_ascii=False)};{JS_BONOS}</script>")
-    return _pagina("Bonos", cuerpo, ses, "bonos")
+        va.cabecera("Bonos", "Vende packs de horas con descuento. El jugador paga por adelantado y descuenta 1 hora al reservar en tu local.",
+                    acciones=sel_local)
+        + va.pasos([("etiqueta", "1. Creas el pack", "Horas y precio total"),
+                    ("billete", "2. El jugador paga adelantado", "En línea, desde la app o la web"),
+                    ("bono", "3. Descuenta 1 h por reserva", "Solo en este local")])
+        + f"<h2 class='vh'>Bonos · {e(club)}</h2><div class='vn-bonos'>{tarj}</div>"
+        + (va.panel(va.kpis([_cifra("billete", "Vendido", e(_m(total, sim))), _cifra("reloj", "Horas usadas", f"{hu} / {hv}")])
+                    + va.tabla(["Jugador", "Pagó", "Saldo", "Horas"], vendidos), "Bonos vendidos",
+                    "Esta plata ya entró a tu billetera (\"por recibir\") al venderse. Cuando el jugador reserva con su bono, NO vuelve a "
+                    "pagarte: descuenta de estas horas.") if vend else ""))
+    return _render("Bonos", cuerpo, ses, js=f"window.__bonos={ui.json_js({'club': club, 'moneda': sim}, ensure_ascii=False)};{JS_BONOS}")
 
 
 @router.post("/anfitrion/bonos/guardar")
@@ -1499,6 +1787,73 @@ def eliminar_bono(request: Request, bono_id: str) -> JSONResponse:
 
 # ── Reservas fijas (reservas_fijas_screen.dart) ─────────────────────────────
 
+def _ocurrencias_fija(c: dict, dia_semana: int, hora: str, semanas: int, ahora: datetime) -> list[dict]:
+    """Las próximas [semanas] fechas de un cliente fijo con lo que pasaría con
+    cada una (MISMA regla que `generar_fijas` y que la vista previa del
+    modal): `base` (día de la semana), `fecha` real del turno y `estado`
+    cerrado (reglas del club) · fuera (la hora no existe ese día) · pasado ·
+    ok (se intenta crear; lo ocupado/bloqueado se decide contra la base)."""
+    hoy = ahora.date()
+    delta = (int(dia_semana or 1) - 1 - hoy.weekday()) % 7
+    out = []
+    for w in range(semanas):
+        base = (hoy + timedelta(days=delta + 7 * w)).isoformat()
+        cd = _reglas.cancha_del_dia(c, base)
+        if cd.get("_cerrado"):
+            out.append({"w": w, "base": base, "fecha": base, "estado": "cerrado", "cd": cd})
+            continue
+        if hora not in horarios.slots_de(cd):
+            out.append({"w": w, "base": base, "fecha": base, "estado": "fuera", "cd": cd})
+            continue
+        fr = horarios.fecha_real(base, cd["hora_apertura"], cd["hora_cierre"], hora)
+        mins = horarios.hora_en_minutos(hora) or 0
+        pasado = fr < hoy.isoformat() or (fr == hoy.isoformat() and mins < ahora.hour * 60 + ahora.minute)
+        out.append({"w": w, "base": base, "fecha": fr, "estado": "pasado" if pasado else "ok", "cd": cd})
+    return out
+
+
+def vista_previa_fija(c: dict, dia_semana: int, hora: str, semanas: int = 4, ahora: datetime | None = None) -> dict:
+    """Lo que creará "Guardar y generar reservas" ANTES de guardar (modal
+    "Nuevo cliente fijo"): fechas que se crean y las que se saltan (ocupado o
+    bloqueado, día cerrado, hora fuera del horario). Una sola consulta de
+    ocupados para todas las fechas."""
+    ahora = ahora or horarios.ahora_local(_pais_de(c))
+    occ = _ocurrencias_fija(c, dia_semana, hora, semanas, ahora)
+    vivas = [o["fecha"] for o in occ if o["estado"] == "ok"]
+    tomados = datos.ocupados(c["id"], vivas) if vivas else set()
+    crea, salta = [], []
+    for o in occ:
+        if o["estado"] == "ok" and (o["fecha"], hora) in tomados:
+            salta.append({"fecha": o["fecha"], "motivo": "ocupado o bloqueado"})
+        elif o["estado"] == "ok":
+            crea.append(o["fecha"])
+        elif o["estado"] == "cerrado":
+            salta.append({"fecha": o["fecha"], "motivo": "el club cierra ese día"})
+        elif o["estado"] == "fuera":
+            salta.append({"fecha": o["fecha"], "motivo": "esa hora no se atiende ese día"})
+    return {"crea": crea, "salta": salta, "texto": _texto_fechas(crea, hora)}
+
+
+def _texto_fechas(fechas: list[str], hora: str) -> str:
+    """"Mié 18, 25 nov y 2 dic · 21:00" (agrupa por mes, como el diseño)."""
+    if not fechas:
+        return ""
+    ds = [date.fromisoformat(f) for f in fechas]
+    grupos: list[tuple[int, list[int]]] = []
+    for d in ds:
+        if grupos and grupos[-1][0] == d.month:
+            grupos[-1][1].append(d.day)
+        else:
+            grupos.append((d.month, [d.day]))
+    if len(grupos) == 1:   # "11, 18 y 25 nov"
+        mth, dias = grupos[0]
+        txt = (str(dias[0]) if len(dias) == 1 else ", ".join(str(x) for x in dias[:-1]) + f" y {dias[-1]}") + f" {MESES_CORTO[mth - 1]}"
+    else:                  # "18, 25 nov y 2 dic"
+        partes = [", ".join(str(x) for x in dias) + f" {MESES_CORTO[mth - 1]}" for mth, dias in grupos]
+        txt = ", ".join(partes[:-1]) + " y " + partes[-1]
+    return f"{horarios.DIAS[ds[0].weekday()]} {txt} · {hora}"
+
+
 def generar_fijas(email: str, canchas: list[dict], semanas: int = 4, solo: str = "") -> dict:
     """= `AppState.generarReservasFijas`: para cada fija ACTIVA, las próximas
     [semanas] ocurrencias como RESERVA MANUAL (misma fila que
@@ -1515,28 +1870,30 @@ def generar_fijas(email: str, canchas: list[dict], semanas: int = 4, solo: str =
         if c is None:
             continue
         hora = str(f.get("hora") or "")
-        if hora not in _slots(c):
-            omitidas.append("hora fuera del horario")
-            continue
         ahora = horarios.ahora_local(_pais_de(c))
         hoy = ahora.date()
-        delta = (int(f.get("diaSemana") or 1) - 1 - hoy.weekday()) % 7
         hechas = set(f.get("hechas") or [])
         nuevas_para_push = []
-        for w in range(semanas):
-            base = (hoy + timedelta(days=delta + 7 * w)).isoformat()
+        for o in _ocurrencias_fija(c, int(f.get("diaSemana") or 1), hora, semanas, ahora):
+            w, base, fr, cd = o["w"], o["base"], o["fecha"], o["cd"]
             if base in hechas:
                 continue
-            fr = horarios.fecha_real(base, c["hora_apertura"], c["hora_cierre"], hora)
-            mins = horarios.hora_en_minutos(hora) or 0
-            if fr < hoy.isoformat() or (fr == hoy.isoformat() and mins < ahora.hour * 60 + ahora.minute):
+            # Cancha EFECTIVA del día (reglas del club): un día cerrado o sin
+            # ese turno no genera reserva (se reintenta si el club lo abre).
+            if o["estado"] == "cerrado":
+                omitidas.append(f"{horarios.fecha_larga(base)} cerrado")
+                continue
+            if o["estado"] == "fuera":
+                omitidas.append("hora fuera del horario")
+                continue
+            if o["estado"] == "pasado":
                 continue
             if (fr, hora) in datos.ocupados(c["id"], [fr]):
                 omitidas.append(f"{horarios.fecha_larga(fr)} ocupado o bloqueado")
                 hechas.add(base)
                 continue
             paso = int(c.get("duracion_slot_min") or 60)
-            precio = horarios.precio_turno_de(c, hora, datos.descuentos(c["id"], [fr]).get((fr, hora), 0))
+            precio = horarios.precio_turno_de(cd, hora, datos.descuentos(c["id"], [fr]).get((fr, hora), 0))
             fila = {"id": f"man_{int(time.time() * 1000)}_f{w}", "cancha_id": c["id"], "jugador": f.get("clienteNombre") or "Cliente",
                     "nivel": "", "fecha": fr, "dia": horarios.etiqueta_dia(fr, hoy), "hora_inicio": hora,
                     "hora_fin": horarios.hora_fin(hora, paso), "estado": "confirmada", "traida_por_app": False, "precio": precio,
@@ -1564,7 +1921,7 @@ def generar_fijas(email: str, canchas: list[dict], semanas: int = 4, solo: str =
 
 
 @router.get("/anfitrion/fijas", response_class=HTMLResponse)
-def pagina_fijas(request: Request) -> HTMLResponse:
+def pagina_fijas(request: Request, cancha: str = "") -> HTMLResponse:
     ses, canchas, resp = _contexto(request, "/anfitrion/fijas")
     if resp is not None:
         return resp
@@ -1572,29 +1929,71 @@ def pagina_fijas(request: Request) -> HTMLResponse:
     _persistir()
     neg = _negocio(ses["email"])
     por_id = {c["id"]: c for c in canchas}
+    hoy = _hoy_de(canchas).date()
 
     def nom(cid):
         c = por_id.get(cid) or {}
         return f"{c['club']} · {c['nombre']}" if c.get("club") and c.get("club") != c.get("nombre") else (c.get("nombre") or "Cancha")
-    filas = "".join(
-        f"<div class='ng-fila{'' if f.get('activo', True) else ' pausa'}' data-fija='{e(f['id'])}'><span class='ng-ico'>🔁</span>"
-        f"<div class='ng-fila-t'><b>{e(f.get('clienteNombre') or 'Cliente')}</b>"
-        f"<small>{DIAS_TIT[int(f.get('diaSemana') or 1) - 1]} · {e(f.get('hora'))} · {e(nom(f.get('canchaId')))}"
-        f"{(' · ' + e(f['clienteTelefono'])) if f.get('clienteTelefono') else ''}</small></div>"
-        f"<label class='ng-sw' title='{'Activa' if f.get('activo', True) else 'Pausada'}'><input type='checkbox' data-acc='activo' {'checked' if f.get('activo', True) else ''}><i></i></label>"
-        "<button type='button' class='btn sec mini-b' data-acc='quitar' aria-label='Quitar'>Quitar</button></div>"
-        for f in neg["fijas"] if f.get("canchaId") in por_id)
-    cfg = {"canchas": [{"id": c["id"], "nombre": nom(c["id"]), "slots": _slots(c)} for c in canchas],
-           "hoy": _hoy_de(canchas).date().weekday() + 1}
-    aviso = (f"<div class='ng-ok'>✅ Se crearon {res['creadas']} reserva{'s' if res['creadas'] != 1 else ''} de tus clientes fijos para las próximas semanas.</div>"
-             if res["creadas"] else "")
+    cancha = cancha if cancha in por_id else ""
+    fijas = [f for f in neg["fijas"] if f.get("canchaId") in por_id and (not cancha or f.get("canchaId") == cancha)]
+    # Próximas reservas de cada fija: UNA consulta de las próximas 5 semanas.
+    prox = reservas_dueno(list(por_id), hoy.isoformat(), (hoy + timedelta(days=35)).isoformat()) if fijas else []
+    filas = []
+    for f in fijas:
+        dia = int(f.get("diaSemana") or 1)
+        suyas = sorted(r["fecha"] for r in prox if r["cancha_id"] == f.get("canchaId") and r["hora_inicio"] == f.get("hora")
+                       and r["jugador"] == (f.get("clienteNombre") or "Cliente") and not es_noshow(r)
+                       and date.fromisoformat(r["fecha"]).weekday() == dia - 1)
+        activo = f.get("activo", True)
+        prox_txt = (", ".join(f"{date.fromisoformat(x).day} {MESES_CORTO[date.fromisoformat(x).month - 1]}" for x in suyas[:4])
+                    if suyas else ("Pausado" if not activo else "Sin fechas libres"))
+        tel = f.get("clienteTelefono") or ""
+        filas.append([
+            f"<div class='vn-cli'>{_ic('repetir', 'suave', 16)}<div><b>{e(f.get('clienteNombre') or 'Cliente')}</b>"
+            f"<small>{e(tel or f.get('clienteEmail') or 'Sin contacto')}</small></div></div>",
+            e(nom(f.get("canchaId"))), f"<b>{DIAS_TIT[dia - 1]}</b><small>{e(f.get('hora'))}</small>",
+            (va.pill(f"{len(suyas)} próximas", "ok") + f"<small>{e(prox_txt)}</small>") if suyas else f"<small>{e(prox_txt)}</small>",
+            f"<div class='vn-fija-a' data-fija='{e(f['id'])}'>"
+            f"<label class='vn-sw' title='{'Activa' if activo else 'Pausada'}'><input type='checkbox' data-acc='activo' {'checked' if activo else ''} "
+            f"aria-label='{'Pausar' if activo else 'Reactivar'} a {e(f.get('clienteNombre') or 'Cliente')}'><i></i></label>"
+            f"<button type='button' class='vn-bbtn rojo' data-acc='quitar'>{_svg('basura', 15)}Quitar</button></div>"])
+    cfg = {"canchas": [{"id": c["id"], "nombre": nom(c["id"]), "paso": int(c.get("duracion_slot_min") or 60),
+                        "slots": {str(d): _slots_dia_semana(c, d) for d in range(1, 8)}} for c in canchas],
+           "hoy": hoy.weekday() + 1, "sel": cancha}
+    opts = "<option value=''>Todas las canchas</option>" + "".join(
+        f"<option value='{e(c['id'])}'{' selected' if c['id'] == cancha else ''}>{e(nom(c['id']))}</option>" for c in canchas)
+    sel = (f"<form method='get' class='vn-sel'><label class='vh' for='vnFC'>Cancha</label><select id='vnFC' name='cancha' data-vn-auto>{opts}</select>"
+           "<noscript><button class='btn sec' type='submit'>Ver</button></noscript></form>") if len(canchas) > 1 else ""
+    vacio = va.vacio("intercambio", "Aún no tienes clientes fijos" if not cancha else "Sin clientes fijos en esta cancha",
+                     "Agrega al equipo que juega cada semana y olvídate de anotarlo a mano.",
+                     "<button type='button' class='btn suave' data-nueva-fija>+ Agregar cliente fijo</button>")
+    aviso = (va.aviso(f"Se crearon {res['creadas']} reserva{'s' if res['creadas'] != 1 else ''} de tus clientes fijos para las próximas semanas.",
+                      "ok", ico="check") if res["creadas"] else "")
     cuerpo = (
-        "<h1 class='anf-hola'>Reservas fijas</h1><p class='sub'>Tus pensionados: el equipo que juega siempre el mismo día y hora. "
-        "Se crean solas sus reservas de las próximas 4 semanas (respetando lo ocupado y tus bloqueos).</p>" + aviso
-        + "<p style='margin-top:14px'><button type='button' class='btn' id='nuevaFija'>＋ Cliente fijo</button></p>"
-        + (f"<div class='ng-lista'>{filas}</div>" if filas else "<div class='anf-vacio' style='margin-top:14px'>🔁 Aún no tienes clientes fijos.</div>")
-        + f"<script>window.__fijas={json.dumps(cfg, ensure_ascii=False)};{JS_FIJAS}</script>")
-    return _pagina("Reservas fijas", cuerpo, ses, "fijas")
+        va.cabecera("Reservas fijas", "Tus pensionados: el equipo que juega siempre el mismo día y hora. Sus reservas de las próximas "
+                    "4 semanas se crean solas.", acciones="<button type='button' class='btn' id='nuevaFija' data-nueva-fija>+ Cliente fijo</button>")
+        + aviso
+        + va.pasos([("calendario", "1. Elige cancha, día y hora", "Ej.: todos los miércoles 21:00"),
+                    ("intercambio", "2. Se crean 4 semanas", "Respetando lo ocupado y tus bloqueos"),
+                    ("chat", "3. Avisas al cliente", "Por WhatsApp o ve sus reservas en la app")])
+        + va.panel(va.tabla(["Cliente", "Cancha", "Día y hora", "Próximas reservas", "Acciones"], filas, clase="vn-fijas", vacia=vacio),
+                   "Clientes fijos", acciones=sel))
+    return _render("Reservas fijas", cuerpo, ses, js=f"window.__fijas={ui.json_js(cfg, ensure_ascii=False)};{JS_FIJAS}")
+
+
+@router.get("/anfitrion/fijas/vista-previa")
+def fija_vista_previa(request: Request, cancha_id: str = "", dia: int = 0, hora: str = "") -> JSONResponse:
+    """Vista previa del modal "Nuevo cliente fijo": qué fechas se crearán y
+    cuáles se saltan (misma regla que `generar_fijas`)."""
+    ses = sesion.de_request(request)
+    if not ses:
+        return _err("sesion_requerida", 401)
+    c = next((x for x in datos.canchas_de_dueno(ses["email"]) if x["id"] == cancha_id), None)
+    if c is None:
+        return _err("Esta cancha no está a tu nombre.", 404)
+    if not 1 <= int(dia or 0) <= 7 or hora not in _slots_dia_semana(c, int(dia)):
+        return _err("Elige el día y la hora.")
+    return _json_ok(**vista_previa_fija(c, int(dia), hora))
 
 
 @router.post("/anfitrion/fijas/nueva")
@@ -1634,6 +2033,70 @@ def quitar_fija(request: Request, fid: str) -> JSONResponse:
 
 # ── Disponibilidad (disponibilidad_screen.dart, hecha real) ─────────────────
 
+def _es_valle(c: dict, h: str) -> bool:
+    """Hora valle de la cancha: la franja con descuento si el dueño la
+    configuró; si no, las mañanas (antes de las 12:00)."""
+    if int(c.get("descuento_valle") or 0) > 0:
+        return horarios.es_valle(h, c.get("valle_desde") or "", c.get("valle_hasta") or "")
+    return (horarios.hora_en_minutos(h) or 0) < 12 * 60
+
+
+def _turnos_del_dia(c: dict, base: str, ahora: datetime) -> tuple[dict, list[dict]]:
+    """Turnos de la cancha en el día `base` con su estado: (cancha del día,
+    [{hora, fecha real, pasado, valle, reserva, bloqueado}]). Dos consultas
+    (reservas y bloqueos de las fechas reales del día)."""
+    hoy = ahora.date()
+    cd = _reglas.cancha_del_dia(c, base)
+    sl = horarios.slots_de(cd)
+    fechas = sorted({horarios.fecha_real(base, cd["hora_apertura"], cd["hora_cierre"], h) for h in sl} | {base})
+    reservas = {(r["fecha"], r["hora_inicio"]): r for r in reservas_dueno([c["id"]], fechas[0], fechas[-1]) if not es_noshow(r)}
+    bloq = {(f, h) for (_cid, f, h) in datos.bloqueos_de([c["id"]], fechas)}
+    out = []
+    for h in sl:
+        fr = horarios.fecha_real(base, cd["hora_apertura"], cd["hora_cierre"], h)
+        out.append({"hora": h, "fecha": fr, "valle": _es_valle(c, h), "reserva": reservas.get((fr, h)), "bloqueado": (fr, h) in bloq,
+                    "pasado": fr < hoy.isoformat() or (fr == hoy.isoformat() and (horarios.hora_en_minutos(h) or 0) < ahora.hour * 60 + ahora.minute)})
+    return cd, out
+
+
+def turnos_para_lote(turnos: list[dict], accion: str, ocupados: set | None = None) -> list[dict]:
+    """Turnos que toca una acción en lote de Disponibilidad. Nunca toca los
+    que ya pasaron ni los reservados (tampoco los apartados web en espera de
+    pago: [ocupados] = `datos.ocupados`, que los incluye).
+    cerrar_dia → los abiertos; abrir_valle → los de hora valle que están cerrados."""
+    ocupados = ocupados or set()
+    out = []
+    for t in turnos:
+        if t["pasado"] or t["reserva"]:
+            continue
+        if accion == "cerrar_dia" and not t["bloqueado"] and (t["fecha"], t["hora"]) not in ocupados:
+            out.append(t)
+        elif accion == "abrir_valle" and t["valle"] and t["bloqueado"]:
+            out.append(t)
+    return out
+
+
+def _bloquear_lote(cancha_id: str, pares: list[tuple[str, str]], bloquear: bool) -> bool:
+    """Bloquea / desbloquea VARIOS turnos en UNA sentencia (misma tabla y clave
+    que `datos.bloquear`: PK (cancha_id, fecha, hora))."""
+    if not pg.habilitado or not cancha_id or not pares:
+        return False
+    fechas, horas = [f for f, _h in pares], [h for _f, h in pares]
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            if bloquear:
+                cur.execute("INSERT INTO pichangol_bloqueos (cancha_id, fecha, hora) SELECT %s, f, h FROM unnest(%s::text[], %s::text[]) AS t(f, h) "
+                            "ON CONFLICT DO NOTHING", (cancha_id, fechas, horas))
+            else:
+                cur.execute("DELETE FROM pichangol_bloqueos b USING unnest(%s::text[], %s::text[]) AS t(f, h) "
+                            "WHERE b.cancha_id = %s AND b.fecha = t.f AND b.hora = t.h", (fechas, horas, cancha_id))
+            conn.commit()
+            return True
+    except Exception as ex:  # noqa: BLE001
+        print(f"[bloqueo-web] lote falló {cancha_id} ({len(pares)}): {ex}", flush=True)
+        return False
+
+
 @router.get("/anfitrion/disponibilidad", response_class=HTMLResponse)
 def pagina_disponibilidad(request: Request, cancha: str = "", fecha: str = "") -> HTMLResponse:
     ses, canchas, resp = _contexto(request, "/anfitrion/disponibilidad")
@@ -1647,43 +2110,117 @@ def pagina_disponibilidad(request: Request, cancha: str = "", fecha: str = "") -
     except ValueError:
         dia = hoy
     base = dia.isoformat()
-    sl = _slots(c)
-    fechas = sorted({horarios.fecha_real(base, c["hora_apertura"], c["hora_cierre"], h) for h in sl} | {base})
-    reservadas = {(r["fecha"], r["hora_inicio"]) for r in reservas_dueno([c["id"]], fechas[0], fechas[-1]) if not es_noshow(r)}
-    bloq = {(f, h) for (_cid, f, h) in datos.bloqueos_de([c["id"]], fechas)}
-    valle_cfg = int(c.get("descuento_valle") or 0) > 0
-    filas = ""
-    abiertas = 0
-    for h in sl:
-        fr = horarios.fecha_real(base, c["hora_apertura"], c["hora_cierre"], h)
-        pasado = fr < hoy.isoformat() or (fr == hoy.isoformat() and (horarios.hora_en_minutos(h) or 0) < ahora.hour * 60 + ahora.minute)
-        valle = horarios.es_valle(h, c.get("valle_desde") or "", c.get("valle_hasta") or "") if valle_cfg else (horarios.hora_en_minutos(h) or 0) < 12 * 60
-        ocupada = (fr, h) in reservadas
-        abierta = not ocupada and (fr, h) not in bloq
-        abiertas += 1 if abierta and not pasado else 0
-        estado = "Reservada" if ocupada else ("Hora valle" if valle else "Horario regular")
-        extra = ("<small class='ng-valle'>Prioriza abrirla</small>" if valle and not ocupada and not pasado else "")
-        madr = " · madrugada" if fr != base else ""
-        ctrl = ("<span class='ng-lock' title='Reservada'>🔒</span>" if ocupada else
-                f"<label class='ng-sw'><input type='checkbox' data-f='{fr}' data-h='{e(h)}' {'checked' if abierta else ''} {'disabled' if pasado else ''}"
-                f" aria-label='{e(h)} abierta'><i></i></label>")
-        filas += (f"<div class='ng-fila{' pasada' if pasado else ''}'><b class='ng-hora'>{e(h)}</b><div class='ng-fila-t'><b>{estado}{madr}</b>{extra}"
-                  f"{'<small>Ya pasó</small>' if pasado and not ocupada else ''}</div>{ctrl}</div>")
-    chips = "".join(f"<a class='chip{' sel' if x['id'] == c['id'] else ''}' href='?cancha={e(x['id'])}&fecha={base}'>{e(x['nombre'])}</a>" for x in canchas)
+    # Cancha EFECTIVA del día con las reglas del club (horario del día,
+    # cierres especiales): un día cerrado no tiene turnos que abrir.
+    cd, turnos = _turnos_del_dia(c, base, ahora)
+    abiertas = sum(1 for t in turnos if not t["reserva"] and not t["bloqueado"] and not t["pasado"])
+    reservadas = sum(1 for t in turnos if t["reserva"])
+    vivos = [t for t in turnos if not t["pasado"] and not t["reserva"] and not t["bloqueado"]]
+    # (los apartados web en espera de pago tampoco se cierran: misma cuenta que el endpoint)
+    ocup = datos.ocupados(c["id"], sorted({t["fecha"] for t in vivos})) if vivos else set()
+    n_cerrar = len(turnos_para_lote(turnos, "cerrar_dia", ocup))
+    n_valle = len(turnos_para_lote(turnos, "abrir_valle"))
+    tarjetas = ""
+    for t in turnos:
+        h, fr, r = t["hora"], t["fecha"], t["reserva"]
+        abierta = not r and not t["bloqueado"]
+        franja = (f"<span class='vn-franja'>{_svg('sol' if t['valle'] else 'luna', 15)}{'Hora valle' if t['valle'] else 'Hora punta'}"
+                  f"{' · madrugada' if fr != base else ''}</span>")
+        if r:
+            quien = (r["jugador"] or "Reserva").split(" ")[0]
+            ctrl = f"<span class='vn-lock' title='Reservada' aria-label='Reservada'>{_svg('candado', 15)}</span>"
+            pie = f"<small class='vn-res'>{e(quien)} · {'pagada' if r['pagado'] else 'por cobrar'}</small>"
+            clase = " reservada"
+        else:
+            ctrl = (f"<label class='vn-sw'><input type='checkbox' data-f='{fr}' data-h='{e(h)}' {'checked' if abierta else ''} {'disabled' if t['pasado'] else ''}"
+                    f" aria-label='{e(h)} abierta'><i></i></label>")
+            if t["pasado"]:
+                pie, clase = "<small>Ya pasó</small>", " pasada"
+            elif t["valle"]:
+                pie, clase = ("<small class='vn-prio'>Prioriza abrirla</small>", "" if abierta else " cerrada")
+            else:
+                pie, clase = (f"<small>{'Abierta' if abierta else 'Cerrada'}</small>", "" if abierta else " cerrada")
+        tarjetas += f"<div class='vn-turno{clase}'><div class='vn-turno-h'><b>{e(h)}</b>{ctrl}</div>{franja}{pie}</div>"
+    # Semana del día elegido (lunes a domingo) + flechas de semana.
+    lunes = dia - timedelta(days=dia.weekday())
+    q = f"cancha={quote(c['id'])}"
+    tira = "".join(
+        f"<a class='vn-dsem{' sel' if d == dia else ''}{' hoy' if d == hoy else ''}' href='?{q}&fecha={d.isoformat()}'"
+        + (" aria-current='date'" if d == dia else "") + f"><small>{horarios.DIAS[d.weekday()]}</small><b>{d.day}</b></a>"
+        for d in (lunes + timedelta(days=i) for i in range(7)))
+    etq_f = f"{'Hoy · ' if dia == hoy else ''}{dia.day:02d}/{dia.month:02d}/{dia.year}"
+    semana = (f"<div class='va-panel vn-semana'><a class='vn-flecha' href='?{q}&fecha={(dia - timedelta(days=7)).isoformat()}' aria-label='Semana anterior'>‹</a>"
+              f"<nav class='vn-dsems' aria-label='Días de la semana'>{tira}</nav>"
+              f"<a class='vn-flecha' href='?{q}&fecha={(dia + timedelta(days=7)).isoformat()}' aria-label='Semana siguiente'>›</a>"
+              + _fecha_picker(dia, hoy, {"cancha": c["id"]}, etq_f)
+              + (f"<a class='btn suave vn-hoy' href='?{q}'>Hoy</a>" if lunes != hoy - timedelta(days=hoy.weekday()) else "") + "</div>")
+    resumen = (f"<div class='vn-resumen'>{va.pill(f'{abiertas} turno' + ('s' if abiertas != 1 else '') + ' abierto' + ('s' if abiertas != 1 else ''), 'ok', 'check')}"
+               f"{va.pill(f'{reservadas} reservada' + ('s' if reservadas != 1 else ''), 'warn')}"
+               f"{va.pill(horarios.duracion_texto(int(c.get('duracion_slot_min') or 60)) + ' por turno', 'gris', 'reloj')}</div>"
+               "<div class='vn-lote'>"
+               f"<button type='button' class='btn sec' data-lote='cerrar_dia' data-n='{n_cerrar}'{' disabled' if not n_cerrar else ''}>Cerrar todo el día</button>"
+               f"<button type='button' class='btn' data-lote='abrir_valle' data-n='{n_valle}'{' disabled' if not n_valle else ''}"
+               f" title='{'' if n_valle else 'No hay horas valle cerradas'}'>Abrir horas valle</button></div>")
+    if tarjetas:
+        cuerpo_dia = (f"<div class='vn-dia-cab'>{resumen}</div><div class='vn-turnos'>{tarjetas}</div>"
+                      f"<p class='vn-nota'>{_svg('info', 16)} Las mañanas (horas valle) son las que más conviene llenar. "
+                      "Los turnos reservados no se pueden cerrar.</p>")
+    elif cd.get("_cerrado"):
+        cuerpo_dia = va.vacio("calendario", f"{_motivo_cierre(cd['_cerrado'])}: ese día no hay turnos",
+                              cta=f"<a class='btn suave' href='/anfitrion/reglas/{quote(c['id'])}'>Ver reglas de reserva</a>")
+    else:
+        cuerpo_dia = va.vacio("reloj", "Configura el horario de esta cancha",
+                              cta=f"<a class='btn suave' href='/anfitrion/reglas/{quote(c['id'])}'>Reglas de reserva</a>")
+    opts = "".join(f"<option value='{e(x['id'])}'{' selected' if x['id'] == c['id'] else ''}>{e(x.get('nombre') or 'Cancha')}"
+                   + (f" · {e(x.get('club'))}" if x.get("club") else "") + "</option>" for x in canchas)
+    sel_mov = (f"<form method='get' class='vn-sel vn-sel-mov'><input type='hidden' name='fecha' value='{base}'>"
+               f"<label class='vh' for='vnDC'>Cancha</label>{_svg('cancha', 17)}<select id='vnDC' name='cancha' data-vn-auto>{opts}</select></form>")
+    lateral = va.lista_lateral(canchas, c["id"], lambda x: f"?cancha={quote(x['id'])}&fecha={base}", contar=f"{len(canchas)}")
     cuerpo = (
-        "<h1 class='anf-hola'>Disponibilidad</h1><p class='sub'>Abre las horas que quieres publicar en la app y en la web; las cerradas no se pueden "
-        "reservar. Las mañanas (horas valle) son las que más conviene llenar.</p>"
-        f"<div class='chips' style='margin-top:12px'>{chips}</div>"
-        "<div class='ng-dia'>"
-        f"<a class='ng-flecha' href='?cancha={e(c['id'])}&fecha={(dia - timedelta(days=1)).isoformat()}' aria-label='Día anterior'>‹</a>"
-        f"<form method='get'><input type='hidden' name='cancha' value='{e(c['id'])}'><input type='date' name='fecha' value='{base}' onchange='this.form.submit()' aria-label='Elegir día'></form>"
-        f"<b>{e(_fecha_bonita(base, hoy))}</b>"
-        f"<a class='ng-flecha' href='?cancha={e(c['id'])}&fecha={(dia + timedelta(days=1)).isoformat()}' aria-label='Día siguiente'>›</a></div>"
-        f"<p class='sub'>{abiertas} turno{'s' if abiertas != 1 else ''} abierto{'s' if abiertas != 1 else ''} · "
-        f"{e(horarios.duracion_texto(int(c.get('duracion_slot_min') or 60)))} por turno</p>"
-        + (f"<div class='ng-card ng-dispo'>{filas}</div>" if filas else "<div class='anf-vacio'>Configura el horario de esta cancha.</div>")
-        + f"<script>window.__dispo={json.dumps({'cancha': c['id']})};{JS_DISPO}</script>")
-    return _pagina("Disponibilidad", cuerpo, ses, "disponibilidad")
+        va.cabecera("Disponibilidad", "Abre las horas que quieres publicar en la app y en la web; las cerradas no se pueden reservar.")
+        + f"<div class='va-lado vn-dispo'>{lateral}<div class='vn-dispo-d'>{sel_mov}{semana}{cuerpo_dia}</div></div>")
+    return _render("Disponibilidad", cuerpo, ses,
+                   js=f"window.__dispo={ui.json_js({'cancha': c['id'], 'base': base})};{JS_DISPO}")
+
+
+@router.post("/anfitrion/disponibilidad/lote")
+def disponibilidad_lote(request: Request, body: dict = Body(default_factory=dict)) -> JSONResponse:
+    """Acciones en lote de Disponibilidad (diseño, Frame 18): "Cerrar todo el
+    día" (bloquea los turnos abiertos que no pasaron ni están reservados) y
+    "Abrir horas valle" (desbloquea los de hora valle). Mismos candados que
+    el bloqueo de un turno (`/anfitrion/bloqueo`): dueño o su recepción con
+    permiso de bloquear y el Pro del DUEÑO si se exige."""
+    from web import permisos
+    from web.anfitrion import _RESP_PRO, _canchas_sesion, _pro_ok
+    ses, canchas = _canchas_sesion(request, permisos.BLOQUEAR)
+    if not ses:
+        return _err("sesion_requerida", 401)
+    c = next((x for x in canchas if x["id"] == str(body.get("cancha_id") or "")), None)
+    if c is None:
+        return _err("Esta cancha no está a tu nombre.", 404)
+    accion = str(body.get("accion") or "")
+    if accion not in ("cerrar_dia", "abrir_valle"):
+        return _err("Acción inválida.")
+    if not _pro_ok(c.get("dueno") or ses["email"]):
+        return JSONResponse(_RESP_PRO, status_code=402)
+    try:
+        base = date.fromisoformat(str(body.get("base") or "")).isoformat()
+    except ValueError:
+        return _err("Fecha inválida.")
+    cd, turnos = _turnos_del_dia(c, base, horarios.ahora_local(_pais_de(c)))
+    if cd.get("_cerrado"):
+        return _err(f"Ese día el club está cerrado ({_motivo_cierre(cd['_cerrado'])}): no hay turnos.")
+    fechas = sorted({t["fecha"] for t in turnos})
+    ocup = datos.ocupados(c["id"], fechas) if accion == "cerrar_dia" and fechas else set()
+    objetivo = turnos_para_lote(turnos, accion, ocup)
+    if not objetivo:
+        return _json_ok(n=0)
+    if not _bloquear_lote(c["id"], [(t["fecha"], t["hora"]) for t in objetivo], accion == "cerrar_dia"):
+        return _err("No pudimos guardar en este momento.", 503)
+    permisos.auditar(ses["email"], c, "bloquear" if accion == "cerrar_dia" else "desbloquear",
+                     f"{base} lote {accion} ({len(objetivo)})")
+    print(f"[bloqueo-web] {ses['email']} {accion} {c['id']} {base}: {len(objetivo)} turnos", flush=True)
+    return _json_ok(n=len(objetivo))
 
 
 # ── Cobros de academia (cobros_screen.dart) ─────────────────────────────────
@@ -1706,36 +2243,10 @@ def _msj_cobro(m: dict, deuda: float, sim: str, app: bool) -> str:
     return f"Hola {_saludo(m)}, te recuerdo el pago pendiente{de} por {sim} {deuda:.2f}. ¡Gracias! 🙌"
 
 
-@router.get("/anfitrion/cobros", response_class=HTMLResponse)
-def pagina_cobros(request: Request, academia: str = "") -> HTMLResponse:
-    from web.anfitrion_academia import _mias, _moneda
-    from web.jugador_liga import avatar
-    ses, resp = _sesion_o_entrar(request, "/anfitrion/cobros")
-    if resp is not None:
-        return resp
-    acads = _mias(ses["email"])
-    if not acads:
-        cuerpo = ("<h1 class='anf-hola'>Cobros de academia</h1><div class='anf-vacio' style='margin-top:16px'>Aún no tienes una academia. "
-                  "<a href='/anfitrion/academia'>Créala aquí</a> y cobra las mensualidades de tus alumnos.</div>")
-        return _pagina("Cobros de academia", cuerpo, ses, "cobros")
-    a = next((x for x in acads if x["id"] == academia), acads[0])
-    for x in acads:
-        x.setdefault("dueno", ses["email"])
-    from web import academia_plan_web as apw
-    # PLAN ACADEMIA: los yapeos que reportaron los alumnos SIEMPRE se confirman aquí,
-    # aunque el plan esté vencido (es plata de los alumnos, no del plan).
-    por_confirmar = apw.seccion_por_confirmar(acads)
-    if not apw.beneficios(a):
-        chips = ("<div class='chips' style='margin-top:12px'>" + "".join(
-            f"<a class='chip{' sel' if x['id'] == a['id'] else ''}' href='?academia={e(x['id'])}'>{e(x.get('nombre') or 'Academia')}</a>" for x in acads)
-            + "</div>") if len(acads) > 1 else ""
-        cuerpo = (f"<h1 class='anf-hola'>Cobros · {e(a.get('nombre') or 'Mi academia')}</h1>{chips}{por_confirmar}" + apw.paywall(a))
-        return _pagina("Cobros de academia", cuerpo, ses, "cobros")
-    sim = _moneda(a)
-    hoy = date.today().isoformat()
+def _morosos(mats: list[dict], hoy: str) -> tuple[float, float, float, list]:
+    """(por cobrar, vencido, cobrado este mes, [(matrícula, deuda, vencida, pendientes)]):
+    vencidos primero y, dentro, la deuda más grande primero."""
     mes = hoy[:7]
-    mats = datos.matriculas_de_academias([a["id"]])
-    recordados = _negocio(ses["email"])["recordados"]
     por_cobrar = vencido = cobrado = 0.0
     morosos = []
     for m in mats:
@@ -1747,45 +2258,122 @@ def pagina_cobros(request: Request, academia: str = "") -> HTMLResponse:
         if deuda > 0:
             morosos.append((m, deuda, venc, pend))
     morosos.sort(key=lambda t: (not t[2], -t[1]))
+    return por_cobrar, vencido, cobrado, morosos
 
-    def dias_rec(mid):
-        try:
-            return (datetime.now(timezone.utc) - datetime.fromisoformat(recordados[mid])).days
-        except (KeyError, ValueError, TypeError):
-            return None
-    por_recordar = [t for t in morosos if dias_rec(t[0]["id"]) is None or dias_rec(t[0]["id"]) >= 7]
+
+def _dias_recordado(recordados: dict, mid: str) -> int | None:
+    try:
+        t = datetime.fromisoformat(str(recordados[mid]).replace("Z", "+00:00"))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - t).days
+    except (KeyError, ValueError, TypeError):
+        return None
+
+
+RECORDAR_CADA_DIAS = 7  # a un alumno no se le recuerda dos veces en la misma semana
+
+
+def _por_recordar(morosos: list, recordados: dict) -> list:
+    """Los que deben y no recibieron un recordatorio en la última semana."""
+    out = []
+    for t in morosos:
+        d = _dias_recordado(recordados, t[0]["id"])
+        if d is None or d >= RECORDAR_CADA_DIAS:
+            out.append(t)
+    return out
+
+
+def _tel_alumno(m: dict) -> str:
+    return str(m.get("apoderadoWhatsapp") if m.get("apoderadoNombre") and m.get("apoderadoWhatsapp") else m.get("whatsapp") or "")
+
+
+def _selector_academia(acads: list[dict], a: dict) -> str:
+    if len(acads) < 2:
+        return ""
+    opts = "".join(f"<option value='{e(x['id'])}'{' selected' if x['id'] == a['id'] else ''}>{e(x.get('nombre') or 'Academia')}</option>" for x in acads)
+    return (f"<form method='get' class='vn-sel'><label class='vh' for='vnAc'>Academia</label>{_svg('academias', 17)}"
+            f"<select id='vnAc' name='academia' data-vn-auto>{opts}</select>"
+            "<noscript><button class='btn sec' type='submit'>Ver</button></noscript></form>")
+
+
+@router.get("/anfitrion/cobros", response_class=HTMLResponse)
+def pagina_cobros(request: Request, academia: str = "") -> HTMLResponse:
+    from web.anfitrion_academia import _mias, _moneda
+    from web.jugador_liga import avatar
+    ses, resp = _sesion_o_entrar(request, "/anfitrion/cobros")
+    if resp is not None:
+        return resp
+    acads = _mias(ses["email"])
+    if not acads:
+        cuerpo = (va.cabecera("Cobros de academia", "Quién debe, recordatorios por la app o WhatsApp y el cobro en efectivo por cuota.")
+                  + va.panel(va.vacio("academias", "Aún no tienes una academia", "Créala y cobra las mensualidades de tus alumnos desde aquí.",
+                                      "<a class='btn' href='/anfitrion/academia'>Crear mi academia</a>")))
+        return _render("Cobros de academia", cuerpo, ses)
+    a = next((x for x in acads if x["id"] == academia), acads[0])
+    for x in acads:
+        x.setdefault("dueno", ses["email"])
+    from web import academia_plan_web as apw
+    # PLAN ACADEMIA: los yapeos que reportaron los alumnos SIEMPRE se confirman aquí,
+    # aunque el plan esté vencido (es plata de los alumnos, no del plan).
+    por_confirmar = apw.seccion_por_confirmar(acads)
+    sel = _selector_academia(acads, a)
+    titulo = f"Cobros · {a.get('nombre') or 'Mi academia'}"
+    sub = "Quién debe, recordatorios por la app o WhatsApp y el cobro en efectivo por cuota."
+    if not apw.beneficios(a):
+        cuerpo = (va.cabecera(titulo, "Confirma aquí los pagos que te reportaron tus alumnos; el resto de la gestión de cobros es parte "
+                              "del Plan Academia.", acciones=sel) + por_confirmar + apw.paywall(a))
+        return _render("Cobros de academia", cuerpo, ses)
+    sim = _moneda(a)
+    hoy = date.today().isoformat()
+    mats = datos.matriculas_de_academias([a["id"]])
+    recordados = _negocio(ses["email"])["recordados"]
+    por_cobrar, vencido, cobrado, morosos = _morosos(mats, hoy)
+    por_recordar = _por_recordar(morosos, recordados)
+    n_venc = sum(1 for t in morosos if t[2])
     fichas, filas = {}, ""
     for m, deuda, venc, pend in morosos:
-        tel = str(m.get("apoderadoWhatsapp") if m.get("apoderadoNombre") and m.get("apoderadoWhatsapp") else m.get("whatsapp") or "")
+        tel = _tel_alumno(m)
         app = bool((m.get("email") or "").strip())
-        d = dias_rec(m["id"])
+        d = _dias_recordado(recordados, m["id"])
         fichas[m["id"]] = {"nombre": m.get("nombre") or "Alumno", "app": app, "wa": ui.enlace_whatsapp(_msj_cobro(m, deuda, sim, False), _wa(tel)) if _wa(tel) else "",
                            "cuotas": [{"id": c.get("id"), "concepto": c.get("concepto") or "Cuota", "monto": float(c.get("monto") or 0),
                                        "vence": str(c.get("vencimiento") or "")[:10], "auto": bool(c.get("autoDebito"))} for c in pend]}
-        filas += (f"<div class='ng-fila' data-al='{e(m['id'])}'>{avatar(m.get('nombre') or '?', m.get('fotoUrl') or '', 'ng-av')}"
-                  f"<div class='ng-fila-t'><b>{e(m.get('nombre') or 'Alumno')}{' · ' + e(m['apoderadoNombre']) if m.get('apoderadoNombre') else ''}</b>"
-                  f"<small>Debe {e(_m(deuda, sim))} · {len(pend)} cuota{'s' if len(pend) != 1 else ''}"
-                  f"{' · recordado hace ' + str(d) + ' día' + ('s' if d != 1 else '') if d is not None else ''}{' · 📲 tiene la app' if app else ''}</small></div>"
-                  + ("<span class='pill bad'>Vencido</span>" if venc else "")
-                  + "<button type='button' class='btn sec mini-b' data-acc='cobrar'>Cobrar</button>"
-                  "<button type='button' class='btn mini-b' data-acc='recordar'>Recordar</button></div>")
-    chips = ("<div class='chips' style='margin-top:12px'>" + "".join(
-        f"<a class='chip{' sel' if x['id'] == a['id'] else ''}' href='?academia={e(x['id'])}'>{e(x.get('nombre') or 'Academia')}</a>" for x in acads)
-        + "</div>") if len(acads) > 1 else ""
+        canal = (va.pill("Tiene la app", "azul", "celular") if app else (va.pill("WhatsApp", "ok", "whatsapp") if _wa(tel) else va.pill("Sin contacto", "gris")))
+        rec = f"<small>Recordado hace {d} día{'s' if d != 1 else ''}</small>" if d is not None else ""
+        filas += (f"<tr data-al='{e(m['id'])}'><td data-et='Alumno'><div class='vn-cli'>{avatar(m.get('nombre') or '?', m.get('fotoUrl') or '', 'vn-av')}"
+                  f"<div><b>{e(m.get('nombre') or 'Alumno')}</b>"
+                  + (f"<small>con {e(m['apoderadoNombre'])}</small>" if m.get("apoderadoNombre") else "") + f"{rec}</div></div></td>"
+                  f"<td data-et='Deuda'><b class='vn-rojo'>{e(_m(deuda, sim))}</b></td>"
+                  f"<td data-et='Cuotas'>{len(pend)} cuota{'s' if len(pend) != 1 else ''}</td>"
+                  f"<td data-et='Estado'>{va.pill('Vencido', 'bad', 'reloj') if venc else va.pill('Por vencer', 'warn', 'reloj')}</td>"
+                  f"<td data-et='Canal'>{canal}</td>"
+                  f"<td data-et='Acciones' class='vn-td-acc'><button type='button' class='btn sec vn-mini' data-acc='cobrar'>{_svg('billete', 16)}Cobrar</button>"
+                  f"<button type='button' class='btn vn-mini' data-acc='recordar'>{_svg('enviar', 16)}Recordar</button></td></tr>")
+    if filas:
+        tabla = ("<div class='va-tabla-w'><table class='va-tabla vn-deben'><thead><tr><th scope='col'>Alumno</th><th scope='col'>Deuda</th>"
+                 "<th scope='col'>Cuotas</th><th scope='col'>Estado</th><th scope='col'>Canal</th><th scope='col' class='vn-th-acc'>Acciones</th>"
+                 f"</tr></thead><tbody id='morosos'>{filas}</tbody></table></div>")
+    else:
+        tabla = va.vacio("billete", "Todos al día", "Ningún alumno debe cuotas en esta academia.")
+    banner = ""
+    if por_recordar:
+        n = len(por_recordar)
+        banner = (f"<div class='va-panel vn-banner'>{_ic('campana', 'naranja', 18)}<div class='vn-banner-t'><b>Tienes {n} alumno{'s' if n != 1 else ''} por recordar</b>"
+                  "<small>Deben y no se les recordó en la última semana.</small></div>"
+                  f"<button type='button' class='btn' id='recTodos'>{_svg('enviar', 17)} Recordar a todos</button></div>")
+    acciones = (sel + f"<a class='btn sec' href='/anfitrion/academia/alumnos?academia={e(a['id'])}'>Ver todos los alumnos</a>"
+                f"<a class='btn' href='/anfitrion/cobros/agregar?academia={e(a['id'])}'>+ Agregar cuota</a>")
     cuerpo = (
-        f"<h1 class='anf-hola'>Cobros · {e(a.get('nombre') or 'Mi academia')}</h1><p class='sub'>Lo que abres a diario para cobrar: quién debe, "
-        "recordatorios por la app o WhatsApp y el cobro en efectivo por cuota.</p>" + chips + por_confirmar
-        + "<div class='kpis'>" + _kpi("Por cobrar", e(_m(por_cobrar, sim))) + _kpi("Vencido", e(_m(vencido, sim)), "", "bad" if vencido > 0 else "")
-        + _kpi("Cobrado este mes", e(_m(cobrado, sim)), "", "ok") + "</div>"
-        + (f"<div class='ng-rec'><b>🔔 Tienes {len(por_recordar)} alumno{'s' if len(por_recordar) != 1 else ''} por recordar</b>"
-           "<small>Deben y no se les recordó en la última semana.</small><button type='button' class='btn' id='recTodos'>Recordar a todos</button></div>"
-           if por_recordar else "")
-        + "<h2 class='ng-h2'>Quién debe</h2>"
-        + (f"<div class='ng-lista' id='morosos'>{filas}</div>" if filas else "<div class='anf-vacio'>Todos al día 🎉</div>")
-        + f"<p style='margin-top:16px;display:flex;gap:10px;flex-wrap:wrap'><a class='btn' href='/anfitrion/cobros/agregar?academia={e(a['id'])}'>➕ Agregar cuota</a>"
-          f"<a class='btn sec' href='/anfitrion/academia/alumnos?academia={e(a['id'])}'>Ver todos los alumnos</a></p>"
-        + f"<script>window.__cob={json.dumps({'academia': a['id'], 'moneda': sim, 'fichas': fichas, 'porRecordar': [t[0]['id'] for t in por_recordar]}, ensure_ascii=False)};{JS_COBROS}</script>")
-    return _pagina("Cobros de academia", cuerpo, ses, "cobros")
+        va.cabecera(titulo, sub, acciones=acciones) + por_confirmar
+        + va.kpis([_cifra("recibo", "Por cobrar", e(_m(por_cobrar, sim))),
+                   _cifra("alerta", "Vencido", e(_m(vencido, sim)), color="rojo" if vencido > 0 else "azul",
+                          sub=f"{n_venc} alumno{'s' if n_venc != 1 else ''}" if n_venc else "", tono="bad" if vencido > 0 else ""),
+                   _cifra("check", "Cobrado este mes", e(_m(cobrado, sim)))])
+        + banner
+        + va.panel(tabla, "Quién debe", clase="vn-deben-p"))
+    cfg = {"academia": a["id"], "moneda": sim, "fichas": fichas, "porRecordar": [t[0]["id"] for t in por_recordar]}
+    return _render("Cobros de academia", cuerpo, ses, js=f"window.__cob={ui.json_js(cfg, ensure_ascii=False)};{JS_COBROS}")
 
 
 def _mat_de(email: str, academia_id: str, alumno_id: str):
@@ -1818,6 +2406,73 @@ def recordar_cobro(request: Request, body: dict = Body(default_factory=dict)) ->
         canal = "app"
     marcar_recordado_de(ses["email"], m["id"])
     return _json_ok(canal=canal)
+
+
+def _mensajes_academia_lote(academia_id: str, autor: str, autor_nombre: str, envios: list[tuple[str, str]]) -> bool:
+    """Varios mensajes del PROFE en los hilos de la academia en UNA sentencia
+    (= `mensaje_academia` por cada uno); el trigger dispara cada push."""
+    if not pg.habilitado or not envios:
+        return False
+    base = time.time_ns() // 1000
+    ids = [f"msg_{base + i}_w" for i in range(len(envios))]
+    ems = [em.strip().lower() for em, _t in envios]
+    try:
+        with pg.conexion() as conn, conn.cursor() as cur:
+            cur.execute("INSERT INTO pichangol_mensajes (id, hilo, tipo, ref_id, academia_id, cuenta_email, autor_email, autor_nombre, es_profe, texto) "
+                        "SELECT t.id, %s || '|' || t.em, 'academia', %s, %s, t.em, %s, %s, true, t.tx "
+                        "FROM unnest(%s::text[], %s::text[], %s::text[]) AS t(id, em, tx)",
+                        (academia_id, academia_id, academia_id, autor.lower(), autor_nombre, ids, ems, [tx for _em, tx in envios]))
+            conn.commit()
+            return True
+    except Exception as ex:  # noqa: BLE001
+        print(f"[cobros-web] recordatorio en lote falló ({len(envios)}): {ex}", flush=True)
+        return False
+
+
+@router.post("/anfitrion/cobros/recordar-todos")
+def recordar_todos(request: Request, body: dict = Body(default_factory=dict)) -> JSONResponse:
+    """"Recordar a todos" (diseño, Frame 31): a cada alumno que debe y NO se le
+    recordó en la última semana. Los que tienen la app reciben el mensaje por
+    el chat de la academia (con push) en UNA escritura; los demás vuelven como
+    enlaces de WhatsApp (se anotan al abrirlos, como el individual). Nunca
+    repite un aviso de esta semana. Es parte del Plan Academia."""
+    from web import academia_plan_web as apw
+    from web.anfitrion_academia import _mia, _moneda
+    from web.jugador_liga import mi_nombre
+    ses = sesion.de_request(request)
+    if not ses:
+        return _err("sesion_requerida", 401)
+    a = _mia(ses["email"], str(body.get("academia_id") or ""))
+    if a is None:
+        return _err("Esa academia no es tuya.", 404)
+    a.setdefault("dueno", ses["email"])
+    if not apw.beneficios(a):
+        return _err("Los recordatorios son parte del Plan Academia.", 402, codigo="plan_academia")
+    sim = _moneda(a)
+    with _LOCK:
+        recordados = dict(_negocio(ses["email"])["recordados"])
+    _p, _v, _c, morosos = _morosos(datos.matriculas_de_academias([a["id"]]), date.today().isoformat())
+    pend = _por_recordar(morosos, recordados)
+    por_app = [(m, deuda) for m, deuda, _venc, _pd in pend if (m.get("email") or "").strip()]
+    wa, sin = [], []
+    for m, deuda, _venc, _pd in pend:
+        if (m.get("email") or "").strip():
+            continue
+        tel = _wa(_tel_alumno(m))
+        if tel:
+            wa.append({"id": m["id"], "nombre": m.get("nombre") or "Alumno", "wa": ui.enlace_whatsapp(_msj_cobro(m, deuda, sim, False), tel)})
+        else:
+            sin.append(m.get("nombre") or "Alumno")
+    n_app = 0
+    if por_app:
+        envios = [(m["email"], _msj_cobro(m, deuda, sim, True)) for m, deuda in por_app]
+        if not _mensajes_academia_lote(a["id"], ses["email"], mi_nombre(ses), envios):
+            return _err("No se pudo enviar por la app. Reintenta.", 503)
+        for m, _d in por_app:
+            marcar_recordado_de(ses["email"], m["id"])
+        n_app = len(por_app)
+    print(f"[cobros-web] {ses['email']} recordó a todos en {a['id']}: app={n_app} wa={len(wa)} sin={len(sin)}", flush=True)
+    return _json_ok(app=n_app, whatsapp=wa, sin_contacto=sin)
 
 
 @router.post("/anfitrion/cobros/cuota")
@@ -1911,7 +2566,7 @@ def agregar_cuotas_db(email: str, academia_id: str, alumno_id: str, armar) -> li
                 return None
             data["cuotas"] = [c for c in (data.get("cuotas") or []) if isinstance(c, dict)] + nuevas
             cur.execute("UPDATE pichangol_matriculas SET data = %s::jsonb, updated_at = now() WHERE id = %s",
-                        (json.dumps(data), alumno_id))
+                        (ui.json_js(data), alumno_id))
             conn.commit()
             return nuevas
     except Exception as ex:  # noqa: BLE001
@@ -1928,19 +2583,21 @@ def pagina_agregar_cuota(request: Request, academia: str = "", alumno: str = "")
         return resp
     acads = _mias(ses["email"])
     if not acads:
-        return _pagina("Agregar cuota", "<h1 class='anf-hola'>Agregar cuota</h1><div class='anf-vacio' style='margin-top:16px'>Aún no tienes una academia. "
-                       "<a href='/anfitrion/academia'>Créala aquí</a>.</div>", ses, "cobros")
+        return _render("Agregar cuota", va.cabecera("Agregar cuota", volver="/anfitrion/cobros") + va.panel(va.vacio(
+            "academias", "Aún no tienes una academia", "Créala y luego agrega cuotas a tus alumnos.",
+            "<a class='btn' href='/anfitrion/academia'>Crear mi academia</a>")), ses)
     a = next((x for x in acads if x["id"] == academia), acads[0])
     sim = _moneda(a)
     mats = sorted(datos.matriculas_de_academias([a["id"]]), key=lambda m: str(m.get("nombre") or "").lower())
     planes = _planes(a)
-    chips = ("<div class='chips' style='margin-top:12px'>" + "".join(
-        f"<a class='chip{' sel' if x['id'] == a['id'] else ''}' href='?academia={e(x['id'])}'>{e(x.get('nombre') or 'Academia')}</a>" for x in acads)
-        + "</div>") if len(acads) > 1 else ""
+    sel = _selector_academia(acads, a)
+    volver = f"/anfitrion/cobros?academia={quote(a['id'])}"
+    titulo_v = f"Agregar cuota · {a.get('nombre') or 'Mi academia'}"
     if not mats:
-        cuerpo = (f"<h1 class='anf-hola'>Agregar cuota</h1>{chips}<div class='anf-vacio' style='margin-top:16px'>Aún no tienes alumnos en esta academia. "
-                  "Cuando se matriculen (desde la app o la web) podrás agregarles cuotas aquí.</div>")
-        return _pagina("Agregar cuota", cuerpo, ses, "cobros")
+        cuerpo = (va.cabecera(titulo_v, volver=volver, acciones=sel)
+                  + va.panel(va.vacio("comparar", "Aún no tienes alumnos en esta academia",
+                                      "Cuando se matriculen (desde la app o la web) podrás agregarles cuotas aquí.")))
+        return _render("Agregar cuota", cuerpo, ses)
     opts = "".join(f"<option value='{e(m['id'])}'{' selected' if m['id'] == alumno else ''}>{e(m.get('nombre') or 'Alumno')}"
                    f"{' · ' + e(m['apoderadoNombre']) if m.get('apoderadoNombre') else ''}</option>" for m in mats)
     grupos: dict[str, list[dict]] = {}
@@ -1965,26 +2622,18 @@ def pagina_agregar_cuota(request: Request, academia: str = "", alumno: str = "")
            "h3": float(a.get("descuentoHermano3") or 0), "prepago": float(a.get("descuentoPrepago") or 0)}
     meses = "".join(f"<option value='{n}'>{n} {'mes' if n == 1 else 'meses'}</option>" for n in range(1, 13))
     cuerpo = (
-        f"<a class='anf-back' href='/anfitrion/cobros?academia={e(a['id'])}'>‹ Cobros</a>"
-        f"<h1 class='anf-hola'>Agregar cuota · {e(a.get('nombre') or 'Mi academia')}</h1>"
-        "<p class='sub'>Inscribe a un alumno en un plan (genera sus cuotas mensuales por cobrar) o regístrale una clase suelta. "
-        "Aparece al instante en su app, en “Mis clases y pagos”.</p>" + chips
-        + "<div class='ng-card ag-card'><label class='ag-l' for='agAl'>Alumno</label>"
+        va.cabecera(titulo_v, "Inscribe a un alumno en un plan (genera sus cuotas mensuales por cobrar) o regístrale una clase suelta. "
+                    "Aparece al instante en su app, en “Mis clases y pagos”.", volver=volver, acciones=sel)
+        + "<section class='va-panel ag-card'><label class='ag-l' for='agAl'>Alumno</label>"
         f"<select id='agAl'>{opts}</select>"
         "<div class='ag-l'>¿Qué le cobras?</div>"
-        + (tarjetas if planes else "<p class='sub'>Tu academia aún no tiene planes con precio. <a href='/anfitrion/academia'>Agrégalos</a> o registra una clase suelta.</p>" + tarjetas)
+        + (tarjetas if planes else "<p class='vn-tenue'>Tu academia aún no tiene planes con precio. <a href='/anfitrion/academia'>Agrégalos</a> o registra una clase suelta.</p>" + tarjetas)
         + f"<div id='agMesesBox' hidden><label class='ag-l' for='agMeses'>¿Por cuántos meses?</label><select id='agMeses'>{meses}</select></div>"
-        f"<div id='agMontoBox' hidden><label class='ag-l' for='agMonto'>Monto</label><div class='inp-moneda' style='max-width:220px'><span>{e(sim)}</span>"
+        f"<div id='agMontoBox' hidden><label class='ag-l' for='agMonto'>Monto</label><div class='inp-moneda ag-monto'><span>{e(sim)}</span>"
         "<input id='agMonto' inputmode='decimal' maxlength='9' placeholder='0.00'></div></div>"
         "<div class='ag-prev' id='agPrev' hidden></div>"
-        "<button type='button' class='btn' id='agOk' disabled style='margin-top:14px;width:100%'>Agregar</button></div>"
-        + "<style>.ag-card select{width:100%;max-width:420px;padding:11px;border-radius:12px;border:1px solid var(--trazo);font:inherit;background:#fff}"
-          ".ag-l{display:block;font-weight:800;margin:16px 0 8px}.ag-prog{font-weight:800;margin:12px 0 6px;color:var(--tenue);font-size:13px}"
-          ".ag-op{display:flex;gap:10px;align-items:center;border:1px solid var(--trazo);border-radius:14px;padding:11px 13px;margin-bottom:8px;cursor:pointer;min-width:0}"
-          ".ag-op input{width:auto;flex:none}.ag-op small{display:block;color:var(--tenue)}.ag-op:has(input:checked){background:#EBEBEB;border-color:#D8D8D8}"
-          ".ag-prev{margin-top:14px;background:#EEF7E3;color:#14463A;border-radius:14px;padding:12px;font-size:14px;line-height:1.45}</style>"
-        + f"<script>window.__ag={json.dumps(cfg, ensure_ascii=False)};{JS_AGREGAR_CUOTA}</script>")
-    return _pagina("Agregar cuota", cuerpo, ses, "cobros")
+        "<button type='button' class='btn ag-ok' id='agOk' disabled>Agregar</button></section>")
+    return _render("Agregar cuota", cuerpo, ses, js=f"window.__ag={ui.json_js(cfg, ensure_ascii=False)};{JS_AGREGAR_CUOTA}")
 
 
 @router.post("/anfitrion/cobros/agregar")
@@ -2077,94 +2726,7 @@ JS_AGREGAR_CUOTA = r"""
 
 # ── estilos y scripts ───────────────────────────────────────────────────────
 
-CSS = r"""
-.kpis{grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr))}.kpi{min-width:0}.kpi b{overflow-wrap:anywhere}
-.ng-nav{display:flex;gap:8px;overflow-x:auto;padding:4px 0 10px;margin:8px 0 6px;scrollbar-width:none}.ng-nav::-webkit-scrollbar{display:none}
-.ng-nav .chip{flex:none;font-size:13.5px;padding:8px 13px}.ng-nav .chip span{font-size:15px}
-.ng-tabs{display:flex;gap:22px;border-bottom:1px solid var(--trazo);margin:6px 0 16px;overflow-x:auto;scrollbar-width:none}
-.ng-tabs a{padding:10px 0;font-weight:700;color:var(--tenue);text-decoration:none;border-bottom:3px solid transparent;white-space:nowrap}
-.ng-tabs a.sel{color:var(--noche);border-bottom-color:var(--esmeralda)}
-.ng-mon{margin:0 0 10px}
-.ng-h2{margin-top:28px;font-size:19px}.ng-h2 small{color:var(--tenue);font-size:14px;font-weight:600}
-.ng-hero,.ng-card{background:var(--blanco);border:1px solid var(--trazo);border-radius:20px;padding:18px 20px;box-shadow:var(--sombra);margin-top:16px;min-width:0}
-.ng-card h3{margin:0 0 8px;font-size:16px}
-.ng-hero>small{display:block;color:var(--tenue);font-weight:600}.ng-hero>b{display:block;font-size:34px;color:var(--esmeralda);margin:4px 0}
-.ng-barras{display:flex;align-items:flex-end;gap:8px;margin-top:10px;min-width:0}
-.ng-bar{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:default;outline:none}
-.ng-bar i{display:block;width:100%;max-width:44px;background:var(--esmeralda);border-radius:4px 4px 0 0;transition:opacity .15s}
-.ng-bar:hover i,.ng-bar:focus i{opacity:.8}
-.ng-bar small{font-size:11px;font-weight:700;color:var(--noche);min-height:15px;white-space:nowrap}
-.ng-bar span{font-size:11px;color:var(--tenue);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
-.ng-tabla{margin-top:10px;font-size:13px;color:var(--tenue)}.ng-tabla summary{cursor:pointer;font-weight:700}
-.ng-tabla table{border-collapse:collapse;margin-top:6px}.ng-tabla td,.ng-tabla th{padding:4px 10px;border-bottom:1px solid var(--trazo);text-align:left}
-.ng-hb{margin:10px 0}.ng-hb-t{display:flex;gap:8px;align-items:baseline;min-width:0}.ng-hb-t b{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ng-hb-t small{color:var(--tenue);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}.ng-hb-t span{margin-left:auto;font-weight:800;white-space:nowrap}
-.ng-hb-p{height:10px;background:var(--gris);border-radius:6px;margin-top:5px;overflow:hidden}.ng-hb-p i{display:block;height:100%;background:var(--esmeralda);border-radius:6px}
-.ng-local{background:var(--blanco);border:1px solid var(--trazo);border-radius:16px;padding:12px 16px;margin-top:12px}
-.ng-local-h{display:flex;justify-content:space-between;gap:8px}.ng-local-h span{font-weight:800}
-.ng-rc{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--trazo)}.ng-rc:first-of-type{border-top:0}
-.ng-rc div{min-width:0}.ng-rc small{display:block;color:var(--tenue);font-size:12px}.ng-rc span{font-weight:800;color:var(--esmeralda);white-space:nowrap}
-.ng-rc.tot b{font-size:15px}.ng-rc.tot span{font-size:17px}
-.ng-nota{font-size:12.5px;color:var(--tenue);margin:8px 0 0}
-.ng-custom{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-top:10px}.ng-custom label{display:flex;flex-direction:column;font-size:12.5px;font-weight:700;color:var(--tenue);gap:4px}
-.ng-custom input{width:auto}
-.ng-lista{display:flex;flex-direction:column;gap:8px;margin-top:10px}
-.ng-fila{display:flex;align-items:center;gap:10px;background:var(--blanco);border:1px solid var(--trazo);border-radius:14px;padding:11px 14px;min-width:0;text-decoration:none;color:inherit;flex-wrap:wrap}
-.ng-fila.pausa,.ng-fila.pasada{opacity:.6}
-.ng-fila-t{flex:1;min-width:150px}.ng-fila-t b{display:block;overflow:hidden;text-overflow:ellipsis}.ng-fila-t small{display:block;color:var(--tenue);font-size:12.5px}
-.ng-monto{white-space:nowrap}
-.ng-sena{color:var(--teal)!important;font-weight:700}
-.mini-b{padding:8px 12px!important;font-size:13px!important}
-.pill.gris{background:var(--gris);color:var(--tenue)}.pill.bad{background:var(--bad-bg);color:var(--bad-fg)}.pill.warn{background:var(--warn-bg);color:var(--warn-fg)}.pill.ok{background:var(--ok-bg);color:var(--ok-fg)}
-.kpi.bad b{color:var(--bad-fg)}.kpi.ok b{color:var(--esmeralda)}
-.ng-atajos a{text-decoration:none;color:inherit}.ng-atajos b{font-size:15px}
-.ng-dia{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap}.ng-dia input{width:auto}.ng-dia>b{font-size:17px}
-.ng-flecha{width:38px;height:38px;border-radius:50%;border:1px solid var(--trazo);display:inline-flex;align-items:center;justify-content:center;text-decoration:none;color:var(--noche);font-size:22px;background:var(--blanco);box-shadow:0 1px 3px rgba(0,0,0,.06)}
-.ng-cierre-box{margin-top:16px}.ng-cierre{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--ok-bg);border-radius:16px;padding:12px 16px}
-.ng-cierre.auto{background:var(--warn-bg)}.ng-cierre>div{flex:1;min-width:180px}.ng-cierre small{display:block;color:var(--tenue)}
-.ng-av{width:42px;height:42px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#0E8F67;color:#fff;font-weight:800;font-size:17px}
-.ng-busca{display:flex;flex-direction:column;gap:10px;margin:14px 0 4px}
-.ng-clis{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(280px,100%),1fr));gap:12px;margin-top:12px}
-.ng-cli{position:relative;text-align:left;background:var(--blanco);border:1px solid var(--trazo);border-radius:18px;padding:14px 16px;box-shadow:var(--sombra);cursor:pointer;font:inherit;color:inherit;min-width:0}
-.ng-cli:hover{box-shadow:var(--sombra2)}
-.ng-cli-h{display:flex;gap:12px;align-items:center;min-width:0;padding-right:70px}.ng-cli-h b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ng-cli-h small{display:block;color:var(--tenue);font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ng-cli-d{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:12px;font-size:12px;color:var(--tenue)}
-.ng-cli-d b{display:block;color:var(--noche);font-size:14px}
-.ng-debe{margin-top:8px;font-size:12.5px;font-weight:800;color:var(--warn-fg);background:var(--warn-bg);border-radius:999px;padding:4px 10px;display:inline-block}
-.ng-badge{position:absolute;top:12px;right:12px;color:#fff;font-size:11px;font-weight:800;padding:4px 9px;border-radius:999px}
-.ng-ficha{text-align:left}.ng-ficha .fh{display:flex;gap:12px;align-items:center;margin-bottom:12px}.ng-ficha .fh small{display:block;color:var(--tenue)}
-.ng-ficha .dts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ng-ficha .dts div{background:var(--gris);border-radius:12px;padding:8px 10px}
-.ng-ficha .dts small{display:block;color:var(--tenue);font-size:11.5px}.ng-ficha .acc{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
-.ng-ficha textarea{width:100%;min-height:70px;border:1px solid var(--trazo);border-radius:12px;padding:10px;font:inherit;box-sizing:border-box}
-.ng-ficha .hist{font-size:13px;margin-top:10px}.ng-ficha .hist div{display:flex;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--trazo)}
-.ng-bonos{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:12px;margin-top:14px}
-.ng-bono{display:flex;flex-wrap:wrap;gap:12px;align-items:center;background:var(--blanco);border:1px solid var(--trazo);border-radius:18px;padding:14px;box-shadow:var(--sombra)}
-.ng-bono.pausa{opacity:.7}.ng-bono b{display:block}.ng-bono small{display:block;color:var(--tenue);margin:2px 0 6px}
-.ng-bono-h{width:54px;height:54px;border-radius:16px;background:var(--tinte);color:var(--teal);font-weight:800;font-size:18px;display:flex;align-items:center;justify-content:center;flex:none}
-.ng-bono-a{display:flex;gap:6px;flex-wrap:wrap;width:100%}
-.ng-ico{font-size:20px}
-.ng-sw{position:relative;display:inline-block;width:46px;height:28px;flex:none;cursor:pointer}.ng-sw input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
-.ng-sw i{position:absolute;inset:0;background:#CFD8D3;border-radius:999px;transition:.2s}.ng-sw i:after{content:'';position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:.2s}
-.ng-sw input:checked+i{background:var(--esmeralda)}.ng-sw input:checked+i:after{left:21px}.ng-sw input:disabled+i{opacity:.45}
-.ng-sw input:focus-visible+i{outline:2px solid var(--noche);outline-offset:2px}
-.ng-dispo{padding:6px 12px}.ng-dispo .ng-fila{border:0;border-bottom:1px solid var(--trazo);border-radius:0;box-shadow:none}.ng-dispo .ng-fila:last-child{border-bottom:0}
-.ng-hora{width:56px;font-size:16px;flex:none}.ng-valle{color:var(--warn-fg)!important;font-weight:700}.ng-lock{font-size:18px}
-.ng-ok{background:var(--ok-bg);color:var(--ok-fg);border-radius:14px;padding:12px 14px;font-weight:700;margin-top:12px}
-.ng-rec{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;background:var(--warn-bg);border-radius:16px;padding:14px 16px;margin-top:16px}
-.ng-rec b{flex:1 1 240px}.ng-rec small{flex:1 1 100%;order:3;color:var(--warn-fg)}
-.ng-form label{display:block;font-weight:700;font-size:13px;margin:12px 0 6px;text-align:left}.ng-form select,.ng-form input{width:100%;box-sizing:border-box}
-.ng-form .chips{gap:6px}.ng-form .chip{padding:7px 11px;font-size:13px}.ng-form .err{color:var(--bad-fg);font-size:13px;margin-top:8px;text-align:left;min-height:1em}
-.ng-cuota{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid var(--trazo);text-align:left}
-.ng-cuota small{display:block;color:var(--tenue)}
-.hm{display:grid;grid-template-columns:48px repeat(7,minmax(0,1fr));gap:3px;min-width:0}
-.hm-d{text-align:center;font-size:12px;font-weight:800;color:var(--tenue)}.hm-h{font-size:11.5px;color:var(--tenue);display:flex;align-items:center}
-.hm-c{height:20px;border-radius:4px;outline:none}.hm-c:hover,.hm-c:focus{box-shadow:0 0 0 2px var(--noche)}
-.hm-ley{display:flex;align-items:center;gap:3px;justify-content:flex-end;margin-top:10px;font-size:11.5px;color:var(--tenue)}.hm-ley i{width:16px;height:12px;border-radius:3px;display:inline-block}.hm-ley span{margin:0 4px}
-.ng-rep{display:flex;align-items:baseline;gap:10px}.ng-rep b{font-size:32px}.ng-rep span{color:#E0A100;font-size:18px}.ng-rep small{color:var(--tenue)}
-.ng-resena{padding:8px 0;border-top:1px solid var(--trazo);font-size:14px}.ng-resena b{color:#E0A100}.ng-resena small{display:block;color:var(--tenue)}
-.ng-tip{position:fixed;z-index:9999;pointer-events:none;background:var(--noche);color:#fff;font-size:12.5px;font-weight:700;padding:6px 10px;border-radius:8px;box-shadow:0 4px 14px rgba(0,0,0,.2);max-width:240px;display:none}
-"""
+# CSS de estas páginas: `web/estilos_anfitrion.py` (va en el CSS versionado del sitio).
 
 # Tooltip para las barras y el mapa de calor (hover y foco/toque).
 JS_TIP = r"""
@@ -2188,7 +2750,7 @@ document.addEventListener('click',async function(ev){var b=ev.target.closest('[d
 """
 
 JS_CLIENTES = r"""
-(function(){var q=document.getElementById('qCli');if(q)q.addEventListener('input',function(){var v=q.value.trim().toLowerCase(),n=0;document.querySelectorAll('.ng-cli').forEach(function(c){var ok=!v||c.dataset.q.indexOf(v)>=0;c.style.display=ok?'':'none';if(ok)n++;});var z=document.getElementById('cliVacio');if(z)z.style.display=n?'none':'';});
+(function(){var q=document.getElementById('qCli');if(q)q.addEventListener('input',function(){var v=q.value.trim().toLowerCase(),n=0;document.querySelectorAll('#listaCli tr').forEach(function(c){var ok=!v||c.dataset.q.indexOf(v)>=0;c.hidden=!ok;if(ok)n++;});var z=document.getElementById('cliVacio');if(z)z.hidden=!!n;});
 document.addEventListener('click',function(ev){var b=ev.target.closest('[data-cli]');if(!b)return;var c=window.__cli[b.dataset.cli];if(!c)return;
   var av=c.foto?'<img class="ng-av" src="'+ngEsc(c.foto)+'" alt="" referrerpolicy="no-referrer">':'<span class="ng-av">'+ngEsc((c.nombre||'?').charAt(0).toUpperCase())+'</span>';
   var h='<div class="ng-ficha"><div class="fh">'+av+'<div><b>'+ngEsc(c.nombre)+'</b><small>'+ngEsc(c.contacto)+'</small></div></div><div class="dts">';
@@ -2197,7 +2759,7 @@ document.addEventListener('click',function(ev){var b=ev.target.closest('[data-cl
     if(c.debe>0){var msg='Hola '+c.nombre+' 👋 Te recordamos tu saldo pendiente de '+c.moneda+c.debe.toFixed(2)+' por tu reserva. ¡Gracias!';h+='<a class="btn mini-b" target="_blank" rel="noopener" href="https://wa.me/'+c.wa+'?text='+encodeURIComponent(msg)+'">Recordar cobro</a>';}}
   h+='<a class="btn sec mini-b" href="/anfitrion/calendario">📝 Reservar</a></div>';
   if(c.debe>0)h+='<div class="ng-debe">Te debe '+ngEsc(c.moneda)+' '+c.debe.toFixed(2)+'</div>';
-  h+='<label style="display:block;font-weight:800;margin:14px 0 6px;text-align:left">Notas privadas</label><textarea id="ngNota" maxlength="600" placeholder="Solo tú las ves. Ej: prefiere Cancha 2, juega martes, paga efectivo.">'+ngEsc(c.nota)+'</textarea>';
+  h+='<label class="nota-l" for="ngNota">Notas privadas</label><textarea id="ngNota" maxlength="600" placeholder="Solo tú las ves. Ej: prefiere Cancha 2, juega martes, paga efectivo.">'+ngEsc(c.nota)+'</textarea>';
   h+='<div class="hist"><b>Historial de reservas</b>';c.historial.forEach(function(r){h+='<div><span>'+ngEsc(r[0])+' · '+ngEsc(r[1])+' · '+ngEsc(r[2])+'</span><span>'+ngEsc(r[3])+' · '+ngEsc(r[4])+'</span></div>';});
   if(!c.historial.length)h+='<div>Sin reservas registradas.</div>';h+='</div></div>';
   pcgConfirmar({titulo:'Ficha del cliente',html:h,confirmar:'Guardar nota',cancelar:'Cerrar',icono:'👤'}).then(async function(ok){if(!ok)return;var t=(document.getElementById('ngNota')||{}).value||'';
@@ -2206,11 +2768,11 @@ document.addEventListener('click',function(ev){var b=ev.target.closest('[data-cl
 
 JS_BONOS = r"""
 (function(){var B=window.__bonos;
-function form(b){b=b||{};var hs=[2,4,5,8,10,12,20];var h='<div class="ng-form"><label>¿Cuántas horas trae el pack?</label><div class="chips" id="bH">';
+function form(b){b=b||{};var hs=[2,4,5,8,10,12,20];var h='<div class="ng-form"><label id="bHl">¿Cuántas horas trae el pack?</label><div class="chips" id="bH" role="group" aria-labelledby="bHl">';
   hs.forEach(function(x){h+='<button type="button" class="chip'+(b.horas==x?' sel':'')+'" data-h="'+x+'">'+x+' h</button>';});
-  h+='</div><input type="number" id="bHo" min="1" max="200" inputmode="numeric" placeholder="Otra cantidad de horas" value="'+(b.horas&&hs.indexOf(b.horas)<0?b.horas:'')+'" style="margin-top:8px">';
-  h+='<label>Precio del pack ('+ngEsc(B.moneda)+')</label><input type="number" id="bP" min="0.5" step="0.5" inputmode="decimal" value="'+(b.precio||'')+'">';
-  h+='<label>Nombre (opcional)</label><input type="text" id="bN" maxlength="60" placeholder="Ej: Pack mensual" value="'+ngEsc(b.nombre||'')+'"><div class="err" id="bE"></div></div>';return h;}
+  h+='</div><input type="number" id="bHo" min="1" max="200" inputmode="numeric" placeholder="Otra cantidad de horas" aria-label="Otra cantidad de horas" value="'+(b.horas&&hs.indexOf(b.horas)<0?b.horas:'')+'" style="margin-top:8px">';
+  h+='<label for="bP">Precio del pack ('+ngEsc(B.moneda)+')</label><input type="number" id="bP" min="0.5" step="0.5" inputmode="decimal" value="'+(b.precio||'')+'">';
+  h+='<label for="bN">Nombre (opcional)</label><input type="text" id="bN" maxlength="60" placeholder="Ej: Pack mensual" value="'+ngEsc(b.nombre||'')+'"><div class="err" id="bE"></div></div>';return h;}
 async function editar(b){var nuevo=!b;var p=pcgConfirmar({titulo:nuevo?'Nuevo bono':'Editar bono',html:form(b),confirmar:'Guardar bono',icono:'🎟️'});
   setTimeout(function(){var g=document.getElementById('bH');if(g)g.addEventListener('click',function(ev){var c=ev.target.closest('[data-h]');if(!c)return;g.querySelectorAll('.chip').forEach(function(x){x.classList.toggle('sel',x===c);});document.getElementById('bHo').value='';});},60);
   var ok=await p;if(!ok)return;var sel=document.querySelector('#bH .chip.sel');var horas=parseInt(document.getElementById('bHo').value||(sel?sel.dataset.h:'0'),10);
@@ -2218,7 +2780,7 @@ async function editar(b){var nuevo=!b;var p=pcgConfirmar({titulo:nuevo?'Nuevo bo
   var j=await ngPost('/anfitrion/bonos/guardar',{id:b?b.id:'',club:B.club,horas:horas,precio:precio,nombre:nombre});
   if(j&&j.ok){pcgRecargar('Bono guardado ✅');}else if(j){await pcgAvisar({titulo:'No se pudo guardar',mensaje:j.error||'Reintenta.'});editar(b?Object.assign({},b,{horas:horas,precio:precio,nombre:nombre}):{horas:horas,precio:precio,nombre:nombre});}}
 var n=document.getElementById('nuevoBono');if(n)n.addEventListener('click',function(){editar(null);});
-document.addEventListener('click',async function(ev){var a=ev.target.closest('.ng-bono [data-acc]');if(!a)return;var b=JSON.parse(a.closest('.ng-bono').dataset.bono);
+document.addEventListener('click',async function(ev){var a=ev.target.closest('.vn-bono [data-acc]');if(!a)return;var b=JSON.parse(a.closest('.vn-bono').dataset.bono);
   if(a.dataset.acc==='editar'){editar(b);return;}
   if(a.dataset.acc==='activo'){var j=await ngPost('/anfitrion/bonos/'+encodeURIComponent(b.id)+'/activo',{activo:a.dataset.v==='1'});if(j&&j.ok)pcgRecargar();else if(j)pcgAvisar({titulo:'No se pudo',mensaje:j.error});return;}
   var ok=await pcgConfirmar({titulo:'Retirar bono',mensaje:'¿Quitar "'+(b.nombre||b.horas+' horas')+'" de tu local? Los jugadores que ya lo compraron conservan sus horas.',confirmar:'Retirar',destructivo:true});
@@ -2226,32 +2788,65 @@ document.addEventListener('click',async function(ev){var a=ev.target.closest('.n
 """
 
 JS_FIJAS = r"""
-(function(){var F=window.__fijas,D=['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
-function form(v){v=v||{};var h='<div class="ng-form"><label>Cancha</label><select id="fC">';F.canchas.forEach(function(c){h+='<option value="'+ngEsc(c.id)+'"'+(v.c===c.id?' selected':'')+'>'+ngEsc(c.nombre)+'</option>';});
-  h+='</select><label>Día de la semana</label><div class="chips" id="fD">';D.forEach(function(d,i){h+='<button type="button" class="chip'+((v.d||F.hoy)===i+1?' sel':'')+'" data-d="'+(i+1)+'">'+d.slice(0,3)+'</button>';});
-  h+='</div><label>Hora</label><select id="fH"></select><label>Cliente</label><input type="text" id="fN" maxlength="80" placeholder="Nombre del cliente o equipo" value="'+ngEsc(v.n||'')+'">';
-  h+='<label>WhatsApp (opcional)</label><input type="tel" id="fT" maxlength="20" inputmode="tel" value="'+ngEsc(v.t||'')+'"><label>Correo (opcional: así ve sus reservas en la app)</label><input type="email" id="fE" maxlength="120" value="'+ngEsc(v.e||'')+'"><div class="err" id="fErr">'+ngEsc(v.err||'')+'</div></div>';return h;}
-function horas(sel){var id=document.getElementById('fC').value,c=F.canchas.find(function(x){return x.id===id;})||F.canchas[0],s=document.getElementById('fH');s.innerHTML='<option value="">Elige la hora</option>'+c.slots.map(function(h){return '<option'+(h===sel?' selected':'')+'>'+h+'</option>';}).join('');}
-async function nueva(v){var p=pcgConfirmar({titulo:'Nuevo cliente fijo',html:form(v),confirmar:'Guardar y generar reservas',icono:'🔁'});
-  setTimeout(function(){horas(v&&v.h);document.getElementById('fC').addEventListener('change',function(){horas();});var g=document.getElementById('fD');g.addEventListener('click',function(ev){var c=ev.target.closest('[data-d]');if(!c)return;g.querySelectorAll('.chip').forEach(function(x){x.classList.toggle('sel',x===c);});});},60);
-  var ok=await p;if(!ok)return;var d=document.querySelector('#fD .chip.sel');v={c:document.getElementById('fC').value,d:d?parseInt(d.dataset.d,10):0,h:document.getElementById('fH').value,n:document.getElementById('fN').value.trim(),t:document.getElementById('fT').value,e:document.getElementById('fE').value.trim()};
+(function(){var F=window.__fijas,D=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'],tPrev=null;
+function cancha(){var id=(document.getElementById('fC')||{}).value;return F.canchas.find(function(x){return x.id===id;})||F.canchas[0];}
+function diaSel(){var d=document.querySelector('#fD .vn-chip.sel');return d?parseInt(d.dataset.d,10):0;}
+function fin(h,paso){var p=h.split(':'),m=(+p[0])*60+(+p[1])+paso;m=m%1440;return ('0'+Math.floor(m/60)).slice(-2)+':'+('0'+(m%60)).slice(-2);}
+function form(v){v=v||{};var h='<div class="vn-form"><label for="fC">Cancha</label><select id="fC">';
+  F.canchas.forEach(function(c){h+='<option value="'+ngEsc(c.id)+'"'+((v.c||F.sel)===c.id?' selected':'')+'>'+ngEsc(c.nombre)+'</option>';});
+  h+='</select><label id="fDl">Día de la semana</label><div class="vn-chips vn-dias" id="fD" role="group" aria-labelledby="fDl">';
+  D.forEach(function(d,i){var s=(v.d||F.hoy)===i+1;h+='<button type="button" class="vn-chip'+(s?' sel':'')+'" aria-pressed="'+s+'" data-d="'+(i+1)+'">'+d+'</button>';});
+  h+='</div><label for="fH">Hora</label><select id="fH"></select>';
+  h+='<label for="fN">Cliente</label><input type="text" id="fN" maxlength="80" autocomplete="off" placeholder="Nombre del cliente o equipo" value="'+ngEsc(v.n||'')+'">';
+  h+='<div class="vn-form-2"><div><label for="fT">WhatsApp (opcional)</label><input type="tel" id="fT" maxlength="20" inputmode="tel" value="'+ngEsc(v.t||'')+'"></div>';
+  h+='<div><label for="fE">Correo (opcional)</label><input type="email" id="fE" maxlength="120" placeholder="Para ver sus reservas" value="'+ngEsc(v.e||'')+'"></div></div>';
+  h+='<div class="vn-prev" id="fPrev" aria-live="polite"></div><div class="err" id="fErr" role="alert">'+ngEsc(v.err||'')+'</div></div>';return h;}
+function horas(sel){var c=cancha(),d=diaSel(),s=document.getElementById('fH'),lst=(c.slots[String(d)]||[]);
+  s.innerHTML=lst.length?'<option value="">Elige la hora</option>'+lst.map(function(h){return '<option value="'+h+'"'+(h===sel?' selected':'')+'>'+h+' – '+fin(h,c.paso)+'</option>';}).join(''):'<option value="">Ese día el club no atiende</option>';
+  previa();}
+function previa(){clearTimeout(tPrev);var box=document.getElementById('fPrev');if(!box)return;var c=cancha(),d=diaSel(),h=(document.getElementById('fH')||{}).value;
+  if(!h){box.innerHTML='<b>Elige el día y la hora</b><small>Te mostramos qué reservas se crearán antes de guardar.</small>';return;}
+  box.innerHTML='<b>Calculando…</b>';
+  tPrev=setTimeout(async function(){try{var r=await fetch('/anfitrion/fijas/vista-previa?cancha_id='+encodeURIComponent(c.id)+'&dia='+d+'&hora='+encodeURIComponent(h));var j=await r.json();
+    if(!j.ok){box.innerHTML='<b>'+ngEsc(j.error||'No se pudo calcular')+'</b>';return;}
+    var n=j.crea.length,t='<b>'+(n?'Se crearán '+n+' reserva'+(n===1?'':'s'):'No se creará ninguna reserva por ahora')+'</b>';
+    if(j.texto)t+='<span>'+ngEsc(j.texto)+'</span>';
+    if(j.salta.length)t+='<small>Se salta'+(j.salta.length===1?'':'n')+': '+j.salta.map(function(x){var p=x.fecha.split('-');return +p[2]+'/'+(+p[1])+' ('+ngEsc(x.motivo)+')';}).join(', ')+'.</small>';
+    t+='<small>Si un turno está ocupado o bloqueado, se salta.</small>';box.innerHTML=t;}catch(e){box.innerHTML='<b>Sin conexión para calcular</b>';}},250);}
+async function nueva(v){var p=pcgConfirmar({titulo:'Nuevo cliente fijo',html:form(v),confirmar:'Guardar y generar reservas',cancelar:'Cancelar',icono:'🔁'});
+  setTimeout(function(){horas(v&&v.h);document.getElementById('fC').addEventListener('change',function(){horas();});document.getElementById('fH').addEventListener('change',previa);
+    var g=document.getElementById('fD');g.addEventListener('click',function(ev){var c=ev.target.closest('[data-d]');if(!c)return;g.querySelectorAll('.vn-chip').forEach(function(x){x.classList.toggle('sel',x===c);x.setAttribute('aria-pressed',x===c);});horas();});},60);
+  var ok=await p;if(!ok)return;v={c:document.getElementById('fC').value,d:diaSel(),h:document.getElementById('fH').value,n:document.getElementById('fN').value.trim(),t:document.getElementById('fT').value,e:document.getElementById('fE').value.trim()};
   if(!v.h){v.err='Elige la hora.';return nueva(v);}if(!v.n){v.err='Escribe el nombre del cliente.';return nueva(v);}
   var j=await ngPost('/anfitrion/fijas/nueva',{cancha_id:v.c,dia:v.d,hora:v.h,nombre:v.n,telefono:v.t,email:v.e},'Generando reservas…');
   if(j&&j.ok){await pcgAvisar({titulo:'Cliente fijo guardado ✅',mensaje:'Se crearon '+j.creadas+' reserva(s) de las próximas semanas.'+(j.omitidas&&j.omitidas.length?' Omitidas: '+j.omitidas.join('; ')+'.':''),icono:'🔁'});pcgRecargar();}
   else if(j){v.err=j.error||'No se pudo guardar.';nueva(v);}}
-var n=document.getElementById('nuevaFija');if(n)n.addEventListener('click',function(){nueva();});
-document.addEventListener('change',async function(ev){var i=ev.target.closest('.ng-fila [data-acc="activo"]');if(!i)return;var id=i.closest('[data-fija]').dataset.fija;
-  var j=await ngPost('/anfitrion/fijas/'+encodeURIComponent(id)+'/activo',{activo:i.checked});if(j&&j.ok){pcgToast(i.checked?'Reactivada: se completan sus próximas semanas':'Pausada: ya no se generan sus reservas');i.closest('.ng-fila').classList.toggle('pausa',!i.checked);}else{i.checked=!i.checked;if(j)pcgAvisar({titulo:'No se pudo',mensaje:j.error});}});
-document.addEventListener('click',async function(ev){var b=ev.target.closest('.ng-fila [data-acc="quitar"]');if(!b)return;var id=b.closest('[data-fija]').dataset.fija;
+document.addEventListener('click',function(ev){if(ev.target.closest('[data-nueva-fija]'))nueva();});
+document.addEventListener('change',async function(ev){var i=ev.target.closest('[data-fija] [data-acc="activo"]');if(!i)return;var id=i.closest('[data-fija]').dataset.fija;
+  var j=await ngPost('/anfitrion/fijas/'+encodeURIComponent(id)+'/activo',{activo:i.checked});if(j&&j.ok){pcgToast(i.checked?'Reactivada: se completan sus próximas semanas':'Pausada: ya no se generan sus reservas');i.closest('tr').classList.toggle('vn-pausa',!i.checked);}else{i.checked=!i.checked;if(j)pcgAvisar({titulo:'No se pudo',mensaje:j.error});}});
+document.addEventListener('click',async function(ev){var b=ev.target.closest('[data-fija] [data-acc="quitar"]');if(!b)return;var id=b.closest('[data-fija]').dataset.fija;
   var ok=await pcgConfirmar({titulo:'Quitar cliente fijo',mensaje:'Se deja de generar sus reservas. Las que ya están creadas siguen en tu agenda.',confirmar:'Quitar',destructivo:true});if(!ok)return;
   var j=await ngPost('/anfitrion/fijas/'+encodeURIComponent(id)+'/quitar',{},'Quitando…');if(j&&j.ok)pcgRecargar();else if(j)pcgAvisar({titulo:'No se pudo',mensaje:j.error});});})();
 """
 
 JS_DISPO = (r"""
-document.addEventListener('change',async function(ev){var i=ev.target.closest('.ng-dispo input[type=checkbox]');if(!i)return;var abrir=i.checked;
-  var j=await ngPost('/anfitrion/bloqueo',{cancha_id:window.__dispo.cancha,fecha:i.dataset.f,hora:i.dataset.h,bloquear:!abrir},abrir?'Abriendo…':'Cerrando…');
-  if(j&&j.ok){pcgToast(abrir?'Turno abierto ✅':'Turno cerrado');}else{i.checked=!abrir;if(j)pcgAvisar({titulo:j.error==='requiere_pro'?'Es ⟦MARCA⟧ Pro':'No se pudo',mensaje:j.mensaje||j.error||'Reintenta.'});}});
+document.addEventListener('change',async function(ev){var i=ev.target.closest('.vn-turnos input[type=checkbox]');if(!i)return;var abrir=i.checked;
+  var j=await ngPost('/anfitrion/bloqueo',{cancha_id:window.__dispo.cancha,fecha:i.dataset.f,base:window.__dispo.base,hora:i.dataset.h,bloquear:!abrir},abrir?'Abriendo…':'Cerrando…');
+  if(j&&j.ok){pcgToast(abrir?'Turno abierto ✅':'Turno cerrado');var t=i.closest('.vn-turno');if(t){t.classList.toggle('cerrada',!abrir);var s=t.querySelector('small');if(s&&!s.classList.contains('vn-prio'))s.textContent=abrir?'Abierta':'Cerrada';}}
+  else{i.checked=!abrir;if(j)pcgAvisar({titulo:j.error==='requiere_pro'?'Es ⟦MARCA⟧ Pro':'No se pudo',mensaje:j.mensaje||j.error||'Reintenta.'});}});
+document.addEventListener('click',async function(ev){var b=ev.target.closest('[data-lote]');if(!b||b.disabled)return;var D=window.__dispo,n=+b.dataset.n||0,cerrar=b.dataset.lote==='cerrar_dia';
+  var ok=await pcgConfirmar(cerrar?{titulo:'Cerrar todo el día',mensaje:'Se cierran '+n+' turno'+(n===1?'':'s')+' abiertos de este día. Los reservados y los que ya pasaron no cambian.',confirmar:'Cerrar el día',destructivo:true,icono:'🔒'}
+    :{titulo:'Abrir horas valle',mensaje:'Se abren '+n+' turno'+(n===1?'':'s')+' de hora valle que estaban cerrados, para que los puedan reservar.',confirmar:'Abrir horas valle',icono:'☀️'});
+  if(!ok)return;var j=await ngPost('/anfitrion/disponibilidad/lote',{cancha_id:D.cancha,base:D.base,accion:b.dataset.lote},cerrar?'Cerrando turnos…':'Abriendo turnos…');
+  if(j&&j.ok){pcgRecargar(j.n?(cerrar?'Día cerrado':'Horas valle abiertas'):'No había turnos que cambiar');}
+  else if(j){pcgAvisar({titulo:j.error==='requiere_pro'?'Es ⟦MARCA⟧ Pro':'No se pudo',mensaje:j.mensaje||j.error||'Reintenta.'});}});
 """).replace('⟦MARCA⟧', MARCA)
+
+# Comunes a las vistas: selects que se envían solos y botón de fecha que abre el calendario.
+JS_VN = r"""
+document.addEventListener('change',function(ev){var s=ev.target.closest('[data-vn-auto],[data-vn-fecha]');if(s&&s.form){if(window.pcgBarra)window.pcgBarra(true);s.form.submit();}});
+document.addEventListener('click',function(ev){var f=ev.target.closest('.vn-fecha');if(!f)return;var i=f.querySelector('input[type=date]');if(i&&i.showPicker&&ev.target!==i){try{i.showPicker();}catch(e){}}});
+"""
 
 JS_COBROS = r"""
 (function(){var C=window.__cob;
@@ -2268,12 +2863,15 @@ document.addEventListener('click',async function(ev){var b=ev.target.closest('[d
   var j=await ngPost('/anfitrion/cobros/cuota',{academia_id:C.academia,alumno_id:id,cuota_id:b.dataset.cuota},'Registrando el cobro…');
   if(j&&j.ok){b.textContent='✅ Cobrada';C._cambio=true;pcgToast('Pago registrado ✓');}else{b.disabled=false;b.textContent='💵 Cobrada';if(j)pcgToast(j.error||'No se pudo');}
   if(dlg&&!dlg.dataset.ngw){dlg.dataset.ngw='1';var ok=document.getElementById('pcgDlgOk');ok.addEventListener('click',function(){if(C._cambio)pcgRecargar('Actualizando…');});}});
-var t=document.getElementById('recTodos');if(t)t.addEventListener('click',async function(){var app=C.porRecordar.filter(function(i){return C.fichas[i]&&C.fichas[i].app;}),sin=C.porRecordar.filter(function(i){return C.fichas[i]&&!C.fichas[i].app;});
-  var n=0;for(var k=0;k<app.length;k++){if(await recordar(app[k],true))n++;}
-  if(sin.length){var h='<p style="text-align:left">'+(n?'Recordé a '+n+' por la app 📲. ':'')+'Estos no tienen la app: avísales por WhatsApp.</p>';
-    sin.forEach(function(i){var f=C.fichas[i];h+='<div class="ng-cuota"><b>'+ngEsc(f.nombre)+'</b>'+(f.wa?'<a class="btn mini-b" target="_blank" rel="noopener" href="'+ngEsc(f.wa)+'" data-marca="'+ngEsc(i)+'">💬 Enviar</a>':'<small>Sin WhatsApp</small>')+'</div>';});
+var t=document.getElementById('recTodos');if(t)t.addEventListener('click',async function(){
+  var j=await ngPost('/anfitrion/cobros/recordar-todos',{academia_id:C.academia},'Enviando recordatorios…');if(!j)return;
+  if(!j.ok){pcgAvisar({titulo:'No se pudo',mensaje:j.error||'Reintenta.'});return;}
+  var n=j.app||0,wa=j.whatsapp||[],sin=j.sin_contacto||[];
+  if(wa.length||sin.length){var h='<p class="vn-dlg-p">'+(n?'Recordé a '+n+' por la app 📲. ':'')+(wa.length?'Estos no tienen la app: avísales por WhatsApp.':'')+'</p>';
+    wa.forEach(function(f){h+='<div class="ng-cuota"><b>'+ngEsc(f.nombre)+'</b><a class="btn mini-b" target="_blank" rel="noopener" href="'+ngEsc(f.wa)+'" data-marca="'+ngEsc(f.id)+'">💬 Enviar</a></div>';});
+    sin.forEach(function(x){h+='<div class="ng-cuota"><b>'+ngEsc(x)+'</b><small>Sin WhatsApp ni app</small></div>';});
     await pcgAvisar({titulo:'Avisar por WhatsApp',html:h,confirmar:'Listo',icono:'💬'});pcgRecargar();}
-  else{await pcgAvisar({titulo:n?'Recordatorios enviados':'Nadie por recordar',mensaje:n?'Recordé a '+n+' por la app 📲':'¡Nadie debe! 🎉'});pcgRecargar();}});
+  else{await pcgAvisar({titulo:n?'Recordatorios enviados':'Nadie por recordar',mensaje:n?'Recordé a '+n+' por la app 📲':'Ya les recordaste a todos esta semana.'});pcgRecargar();}});
 document.addEventListener('click',function(ev){var a=ev.target.closest('[data-marca]');if(!a)return;ngPost('/anfitrion/cobros/recordar',{academia_id:C.academia,alumno_id:a.dataset.marca,solo_marcar:true});});})();
 """
 

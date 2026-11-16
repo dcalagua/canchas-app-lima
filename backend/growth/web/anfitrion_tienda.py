@@ -32,18 +32,15 @@ from fastapi.responses import HTMLResponse, JSONResponse
 
 import paises
 from db.store import stores
+import config
 from web import almacen, catalogos, datos, sesion, ui
+from web import estilos_v_comercio as vc
+from web import vista_anfitrion as va
 from web.anfitrion import _en_segundo_plano, _entrar, _sesion_o_entrar
 from web.router import PLAY_URL, e
 
 router = APIRouter(tags=["web-anfitrion-tienda"])
 BUCKET = "productos"
-
-
-def _cab(ses: dict | None, sel: str = "productos") -> str:
-    tabs = (f"<a class='cat{' sel' if sel == 'productos' else ''}' href='/anfitrion/tienda'><span class='ico'>🛍️</span>Productos</a>"
-            f"<a class='cat{' sel' if sel == 'ventas' else ''}' href='/anfitrion/tienda#ventas'><span class='ico'>💰</span>Ventas</a>")
-    return ui.cabecera(tabs=tabs, ses=ses, volver="/anfitrion", modo="anfitrion")
 
 
 def _puede_vender(email: str) -> bool:
@@ -60,32 +57,50 @@ def _moneda_defecto(email: str) -> str:
     return "S/"
 
 
+def _shell(titulo: str, cuerpo: str, ses: dict, tab: str) -> HTMLResponse:
+    # La barra del modo anfitrión la pone `ui.shell` sola en toda ruta /anfitrion/*.
+    return ui.shell(titulo, va.vista(cuerpo, "vc-tienda"), sesion=ses, ancho=True, titulo_tab=tab)
+
+
 def _candado(ses: dict) -> HTMLResponse:
-    cuerpo = ("<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
-              "<div class='panel' style='max-width:640px;margin:22px auto 0;text-align:center'>"
-              "<span class='anf-item-ico' style='background:#7B61FF'>🏪</span>"
-              "<h2 style='margin-top:12px'>Verifica tu identidad para vender</h2>"
-              f"<p class='sub'>En el Marketplace {MARCA} venden dueños de canchas y jugadores con identidad verificada "
-              "(badge «Vendedor verificado ✓»). Verifícate desde la app: Perfil → Verificar identidad.</p>"
-              f"<div class='acciones' style='justify-content:center'><a class='btn' href='{PLAY_URL}' rel='noopener'>Abrir en la app</a>"
-              "<a class='btn sec' href='/anfitrion'>Volver al menú</a></div></div>")
-    return ui.shell("Mi tienda", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mi tienda · Modo anfitrión")
+    cta = (f"<div class='va-cab-acc' style='justify-content:center'><a class='btn' href='{PLAY_URL}' rel='noopener'>Abrir en la app</a>"
+           "<a class='btn sec' href='/anfitrion'>Volver al inicio</a></div>")
+    cuerpo = (va.cabecera("Mi tienda", f"Vende en el Marketplace {MARCA}: el comprador paga en la app y coordinas la entrega por chat.")
+              + va.panel(va.vacio("escudo", "Verifica tu identidad para vender",
+                                  f"En el Marketplace {MARCA} venden dueños de canchas y jugadores con identidad verificada "
+                                  "(badge «Vendedor verificado ✓»). Verifícate desde la app: Perfil → Verificar identidad.", cta)))
+    return _shell("Mi tienda", cuerpo, ses, "Mi tienda · Modo anfitrión")
+
+
+def _stock_txt(stock) -> tuple[str, bool]:
+    """(texto, en rojo)."""
+    if stock is None:
+        return "Stock ilimitado", False
+    if stock <= 0:
+        return "Sin stock", True
+    if stock == 1:
+        return "Último en stock", True
+    return f"Stock {stock}", False
 
 
 def _tarjeta(p: dict) -> str:
     cat = catalogos.CATEGORIAS_PRODUCTO.get(p["categoria"], ("Otros", "📦"))
-    foto = f"<img src='{e(p['foto_url'])}' alt=''>" if p["foto_url"] else f"<span>{cat[1]}</span>"
-    pill = "<span class='pill ok'>Publicado</span>" if p["activo"] else "<span class='pill'>Pausado</span>"
-    stock = "Sin stock" if (p["stock"] is not None and p["stock"] <= 0) else (f"Stock {p['stock']}" if p["stock"] is not None else "Stock ilimitado")
-    return (f"<div class='prod' data-id='{e(p['id'])}'><div class='pf'>{foto}</div>"
-            f"<div class='pb'><div style='display:flex;gap:8px;align-items:center;justify-content:space-between'><b>{e(p['nombre'])}</b>{pill}</div>"
-            f"<div class='sub' style='margin:2px 0 0'>{cat[1]} {e(cat[0])} · {e(stock)}</div>"
-            f"<div class='precio' style='margin-top:6px'>{e(p['moneda'])} {p['precio']:.2f}</div>"
-            "<div class='acciones' style='margin-top:10px'>"
-            f"<a class='btn sec' href='/anfitrion/tienda/{e(p['id'])}/editar'>✏️ Editar</a>"
-            f"<button type='button' class='btn sec' data-activo='{e(p['id'])}' data-v='{0 if p['activo'] else 1}'>{'⏸ Pausar' if p['activo'] else '▶ Publicar'}</button>"
-            f"<button type='button' class='btn sec' data-eliminar='{e(p['id'])}' style='color:var(--rojo)'>🗑</button>"
-            "</div></div></div>")
+    foto = (f"<img src='{e(p['foto_url'])}' alt='' loading='lazy'>" if p["foto_url"]
+            else f"<span class='vc-ph'>{vc.ico('imagen', 56, 1.6)}</span>")
+    pill = va.pill("Publicado", "ok", "check") if p["activo"] else va.pill("Pausado", "gris", "pausa")
+    st, rojo = _stock_txt(p["stock"])
+    activo = bool(p["activo"])
+    return (f"<article class='vc-prod' data-id='{e(p['id'])}' data-estado='{'pub' if activo else 'pau'}'>"
+            f"<div class='vc-prod-f'>{foto}{pill}</div><div class='vc-prod-b'><h3>{e(p['nombre'])}</h3>"
+            f"<div class='vc-prod-m'><span class='vc-cat'>{cat[1]} {e(cat[0])}</span><span class='vc-st{' bajo' if rojo else ''}'>{e(st)}</span></div>"
+            f"<div class='vc-precio'>{e(p['moneda'])} {p['precio']:.2f}</div>"
+            "<div class='vc-prod-acc'>"
+            f"<a class='btn sec' href='/anfitrion/tienda/{e(p['id'])}/editar'>{vc.ico('lapiz', 16)}Editar</a>"
+            f"<button type='button' class='btn sec' data-activo='{e(p['id'])}' data-v='{0 if activo else 1}'>"
+            f"{vc.ico('pausa' if activo else 'play', 16)}{'Pausar' if activo else 'Publicar'}</button>"
+            f"<button type='button' class='btn peligro vc-ico-btn vc-borrar' data-eliminar='{e(p['id'])}' aria-label='Eliminar {e(p['nombre'])}' "
+            f"title='Eliminar'>{vc.ico('papelera', 18)}</button>"
+            "</div></div></article>")
 
 
 def _ventas_de(email: str) -> list:
@@ -93,8 +108,28 @@ def _ventas_de(email: str) -> list:
                   key=lambda v: str(v.creado_en), reverse=True)
 
 
+def neto_por_recibir(email: str) -> dict[str, float]:
+    """Neto de las VENTAS del Marketplace aún no liquidadas, POR MONEDA (ISO →
+    monto). Misma cuenta que "Por recibir" de la billetera
+    (`stores.liquidaciones` + `_liquidacion_dict`), solo las de tipo
+    `venta_producto`; nunca se suman soles con dólares."""
+    from pagos.router import _liquidacion_dict, moneda_iso
+    out: dict[str, float] = {}
+    for p in stores.liquidaciones(solo_pendientes=True):
+        if p.tipo != "venta_producto" or (p.dueno_id or "").strip().lower() != email:
+            continue
+        iso = moneda_iso(p.moneda)
+        out[iso] = round(out.get(iso, 0.0) + float(_liquidacion_dict(p)["neto_soles"]), 2)
+    return out
+
+
+_ESTADO_VENTA = {"pagado": ("Pagado · retenido", "warn"), "entregado": ("Entregado", "azul"), "recibido": ("Recibido · liberado", "ok"),
+                 "liberado": ("Liberado", "ok"), "disputado": ("En disputa", "bad")}
+
 _JS_TIENDA = r"""
 document.addEventListener('click',async function(ev){
+  var f=ev.target.closest('[data-filtro]');if(f){var v=f.dataset.filtro;document.querySelectorAll('[data-filtro]').forEach(function(b){var s=b===f;b.classList.toggle('sel',s);b.setAttribute('aria-pressed',s?'true':'false')});
+    var n=0;document.querySelectorAll('.vc-prod').forEach(function(c){var ok=v==='todos'||c.dataset.estado===v;c.hidden=!ok;if(ok)n++});var x=document.getElementById('tdSin');if(x)x.hidden=n>0;return}
   var a=ev.target.closest('[data-activo]');if(a){a.disabled=true;try{var j=await (await fetch('/anfitrion/tienda/'+encodeURIComponent(a.dataset.activo)+'/activo',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({activo:a.dataset.v==='1'})})).json();if(j.ok){pcgRecargar(a.dataset.v==='1'?'Publicando…':'Pausando…');return}pcgToast(j.error||'No se pudo guardar.')}catch(e){pcgToast('No se pudo guardar.')}a.disabled=false;return}
   var d=ev.target.closest('[data-eliminar]');if(d){if(!await pcgConfirmar({titulo:'Eliminar producto',mensaje:'Se quita del Marketplace y se borra su foto.',confirmar:'Eliminar',destructivo:true}))return;d.disabled=true;pcgCargando('Eliminando…');try{var j=await (await fetch('/anfitrion/tienda/'+encodeURIComponent(d.dataset.eliminar)+'/eliminar',{method:'POST'})).json();if(j.ok){pcgRecargar();return}pcgCargando(false);pcgToast(j.error||'No se pudo eliminar.')}catch(e){pcgCargando(false);pcgToast('No se pudo eliminar.')}d.disabled=false}
 });
@@ -109,33 +144,59 @@ def pagina_tienda(request: Request, guardado: str = "") -> HTMLResponse:
     email = ses["email"]
     if not _puede_vender(email):
         return _candado(ses)
+    from pagos.router import moneda_iso, moneda_simbolo
     prods = datos.productos_de_vendedor(email)
     ventas = _ventas_de(email)
     activos = sum(1 for p in prods if p["activo"])
-    filas_v = "".join(
-        f"<tr><td>{e(str(v.creado_en)[:10])}</td><td><b>{e(v.producto_nombre)}</b></td><td>{e(v.comprador_nombre or v.comprador_email)}"
-        f"<div class='sub' style='margin:0;font-size:12px'>{e(v.comprador_email)}</div></td><td>S/ {float(v.monto_soles or 0):.2f}</td>"
-        f"<td><span class='pill{' ok' if v.estado in ('pagado', 'liberado', 'entregado') else ''}'>{e(v.estado)}</span></td></tr>" for v in ventas[:100])
-    aviso = "<div class='aviso ok' style='margin-top:14px'>✅ Producto guardado. Ya se ve en el Marketplace de la app.</div>" if guardado else ""
-    grid = ("".join(_tarjeta(p) for p in prods) if prods else
-            f"<div class='anf-vacio' style='grid-column:1/-1'>Aún no publicas productos. Raquetas, pelotas, indumentaria… lo que vendas llega a todos los jugadores de {MARCA}.</div>")
-    cuerpo = (
-        "<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
-        "<div style='display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap'>"
-        "<div><h1 class='anf-hola' style='margin-top:6px'>Mi tienda</h1>"
-        f"<p class='sub'>{len(prods)} producto{'s' if len(prods) != 1 else ''} · {activos} publicado{'s' if activos != 1 else ''} · {len(ventas)} venta{'s' if len(ventas) != 1 else ''}. "
-        f"El comprador paga en la app y coordinas la entrega por chat; {MARCA} cobra 5 % (mín. por moneda) y el neto queda por recibir.</p></div>"
-        "<a class='btn' href='/anfitrion/tienda/nuevo'>＋ Publicar producto</a></div>"
-        f"{aviso}"
-        f"<div class='prods'>{grid}</div>"
-        "<h2 id='ventas' style='margin-top:32px'>Ventas</h2>"
-        + ("<div class='tabla'><table><thead><tr><th>Fecha</th><th>Producto</th><th>Comprador</th><th>Monto</th><th>Estado</th></tr></thead>"
-           f"<tbody>{filas_v}</tbody></table></div>" if ventas else
-           "<div class='anf-vacio'>Todavía no tienes ventas. Cuando un jugador compre, verás aquí la orden y podrás coordinar la entrega por chat en la app.</div>")
-        + f"<script>{_JS_TIENDA}</script>")
+    mon_def = _moneda_defecto(email)
+    iso_def = moneda_iso(mon_def)
+    # Neto por recibir POR MONEDA: la principal (la del país del vendedor) grande y las otras como "+ $ 20.00".
+    neto = neto_por_recibir(email)
+    principal = iso_def if (iso_def in neto or not neto) else max(neto, key=lambda k: neto[k])
+    neto_v = f"{e(moneda_simbolo(principal))} {neto.get(principal, 0.0):.2f}"
+    otras = " · ".join(f"+ {moneda_simbolo(k)} {v:.2f}" for k, v in neto.items() if k != principal)
+    pct = config.COMISION_PORC
+    kpis = va.kpis([
+        va.kpi("tienda", "Productos", str(len(prods)), sub=f"{activos} publicado{'s' if activos != 1 else ''}"),
+        va.kpi("recibo", "Ventas", str(len(ventas)), sub="órdenes del Marketplace"),
+        va.kpi("billete", "Neto por recibir", neto_v, sub=otras or "de ventas por liquidar"),
+        va.kpi("etiqueta", f"Comisión {MARCA}", f"{pct:g} %",
+               sub=f"mín. {moneda_simbolo(iso_def)} {config.comision_min(iso_def):.2f} por venta"),
+    ])
+    aviso = va.aviso("Producto guardado. Ya se ve en el Marketplace de la app.", "ok", ico="check") if guardado else ""
+    if prods:
+        seg = ("<div class='va-seg' role='group' aria-label='Filtrar productos'>"
+               f"<button type='button' class='sel' data-filtro='todos' aria-pressed='true'>Todos<i>{len(prods)}</i></button>"
+               f"<button type='button' data-filtro='pub' aria-pressed='false'>Publicados<i>{activos}</i></button>"
+               f"<button type='button' data-filtro='pau' aria-pressed='false'>Pausados<i>{len(prods) - activos}</i></button></div>")
+        grid = (f"<div class='vc-sec-t'><b>Productos</b>{seg}</div><div class='vc-prods'>{''.join(_tarjeta(p) for p in prods)}</div>"
+                "<p class='vc-nota' id='tdSin' hidden>No hay productos con ese filtro.</p>")
+    else:
+        grid = va.panel(va.vacio("tienda", "Aún no publicas productos",
+                                 f"Raquetas, pelotas, indumentaria… lo que vendas llega a todos los jugadores de {MARCA}.",
+                                 f"<a class='btn' href='/anfitrion/tienda/nuevo'>{vc.ico('bolsa', 18)}Publicar mi primer producto</a>"))
+    por_id = {p["id"]: p for p in prods}
+    filas_v = []
+    for v in ventas[:100]:
+        mon = (por_id.get(v.producto_id) or {}).get("moneda") or mon_def
+        txt, tono = _ESTADO_VENTA.get(v.estado, (v.estado, "gris"))
+        filas_v.append([e(str(v.creado_en)[:10]), f"<b>{e(v.producto_nombre)}</b>",
+                        f"{e(v.comprador_nombre or v.comprador_email)}<small>{e(v.comprador_email)}</small>",
+                        f"{e(mon)} {float(v.monto_soles or 0):.2f}", va.pill(txt, tono)])
+    if ventas:
+        sec_ventas = va.panel(va.tabla(["Fecha", "Producto", "Comprador", "Monto", "Estado"], filas_v), "Ventas",
+                              f"{len(ventas)} venta{'s' if len(ventas) != 1 else ''} · el dinero queda retenido hasta que el comprador confirme que recibió",
+                              id_="ventas")
+    else:
+        sec_ventas = va.panel("<div class='vc-vacio-fila'>" + va.icono("tienda", "claro") + "<div><b>Todavía no tienes ventas.</b>"
+                              "<small>Cuando un jugador compre, verás aquí la orden y coordinarás la entrega por chat en la app.</small></div></div>",
+                              "Ventas", id_="ventas")
+    cuerpo = (va.cabecera("Mi tienda", f"Vende en el Marketplace {MARCA}: el comprador paga en la app y coordinas la entrega por chat.",
+                          acciones=f"<a class='btn' href='/anfitrion/tienda/nuevo'>{vc.ico('bolsa', 18)}Publicar producto</a>")
+              + aviso + kpis + grid + sec_ventas + f"<script>{_JS_TIENDA}</script>")
     from web.anfitrion import JS_PAGAR  # pcgToast
     cuerpo += f"<script>{JS_PAGAR}</script>"
-    return ui.shell("Mi tienda", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mi tienda · Modo anfitrión")
+    return _shell("Mi tienda", cuerpo, ses, "Mi tienda · Modo anfitrión")
 
 
 def _mio(email: str, pid: str) -> dict | None:
@@ -174,22 +235,23 @@ def _editor(ses: dict, p: dict, *, nuevo: bool) -> HTMLResponse:
                       for m in catalogos.MONEDAS)
     foto = f"<img src='{e(p['foto_url'])}' alt=''>" if p["foto_url"] else "<span class='ph'>📷</span>"
     cfg = {"id": p["id"], "foto": p["foto_url"], "nuevo": nuevo, "storage": almacen.disponible()}
+    cab = va.cabecera("Publicar producto" if nuevo else "Editar producto",
+                      f"Aparece en el Marketplace de todos los jugadores de {MARCA}." if nuevo else p["nombre"], volver="/anfitrion/tienda")
     cuerpo = f"""
-<div class='edit-top'><a class='volver-lnk' href='/anfitrion/tienda'>‹ Mi tienda</a>
-<h1 class='anf-hola' style='margin-top:8px'>{'Publicar producto' if nuevo else 'Editar producto'}</h1><p class='sub'>{f'Aparece en el Marketplace de todos los jugadores de {MARCA}.' if nuevo else e(p['nombre'])}</p></div>
+{cab}
 <div class='edit-grid'><nav class='edit-nav'><a class='edit-nav-it' href='#sec-foto'>Foto</a><a class='edit-nav-it' href='#sec-datos'>Producto</a><a class='edit-nav-it' href='#sec-precio'>Precio y stock</a></nav>
 <form id='fProd' class='edit-form' autocomplete='off' novalidate>
- <section class='panel edit-sec' id='sec-foto'><h2>Foto</h2><p class='sub'>Una foto clara sobre fondo simple vende más.</p>
+ <section class='va-panel edit-sec' id='sec-foto'><h2>Foto</h2><p class='sub'>Una foto clara sobre fondo simple vende más.</p>
   <div class='foto-una' id='fotoBox'>{foto}</div>
   <div class='acciones' style='margin-top:12px'><label class='btn sec' for='inFoto'>📷 {'Subir foto' if not p['foto_url'] else 'Cambiar foto'}</label><input type='file' id='inFoto' accept='image/*' hidden{'' if almacen.disponible() else ' disabled'}>
   <span class='sub' id='fotoMsg' style='margin:0'>{'' if almacen.disponible() else 'La subida de fotos no está disponible en este ambiente; súbela desde la app.'}</span></div>
  </section>
- <section class='panel edit-sec' id='sec-datos'><h2>Producto</h2>
+ <section class='va-panel edit-sec' id='sec-datos'><h2>Producto</h2>
   <label for='nombre'>Nombre</label><input id='nombre' maxlength='80' value='{e(p['nombre'])}' placeholder='Ej. Raqueta Wilson Pro Staff'>
   <label>Categoría</label><div class='chips' data-grupo='categoria'>{cats}</div>
   <label for='desc'>Descripción <span class='req'>opcional</span></label><textarea id='desc' rows='3' maxlength='500' placeholder='Estado, marca, talla, detalles…'>{e(p['descripcion'])}</textarea>
  </section>
- <section class='panel edit-sec' id='sec-precio'><h2>Precio y stock</h2>
+ <section class='va-panel edit-sec' id='sec-precio'><h2>Precio y stock</h2>
   <label>Moneda{'' if nuevo else ' <span class=req>fija al crear</span>'}</label><div class='chips' data-grupo='moneda'>{monedas}</div>
   <label for='precio'>Precio</label><div class='inp-moneda'><span id='monSpan'>{e(p['moneda'])}</span><input id='precio' type='number' min='0.5' step='0.5' inputmode='decimal' value='{p['precio']:.2f}' placeholder='0.00'></div>
   <label for='stock'>Stock <span class='req'>vacío = ilimitado</span></label><input id='stock' type='number' min='0' step='1' inputmode='numeric' value='{'' if p['stock'] is None else p['stock']}' placeholder='ilimitado' style='max-width:200px'>
@@ -198,8 +260,8 @@ def _editor(ses: dict, p: dict, *, nuevo: bool) -> HTMLResponse:
 </form></div>
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Se guarda en el Marketplace al instante.</span>
 <button type='button' class='btn' id='btnGuardar'>{'Publicar' if nuevo else 'Guardar cambios'}</button></div></div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{_JS_EDITOR}</script>"""
-    return ui.shell("Producto", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Producto · Mi tienda")
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{_JS_EDITOR}</script>"""
+    return _shell("Producto", cuerpo, ses, "Producto · Mi tienda")
 
 
 _JS_EDITOR = r"""

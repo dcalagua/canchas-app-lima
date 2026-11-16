@@ -20,9 +20,10 @@ import hashlib
 import time
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel
 
+import auth_usuario
 import config
 import paises
 from db.store import ahora, stores
@@ -701,9 +702,12 @@ def post_solicitar(req: SolicitarReq) -> dict:
 
 
 @router.get("/solicitudes", dependencies=_APP)
-def get_solicitudes(email: str) -> dict:
-    """Lo mío: como boleador (pendientes y aceptadas primero) y como cliente."""
-    email = (email or "").strip().lower()
+def get_solicitudes(request: Request, email: str = "") -> dict:
+    """Lo mío: como boleador (pendientes y aceptadas primero) y como cliente.
+    Identidad: token de Google si viene (C1); el `email` declarado es legado."""
+    email = auth_usuario.correo_del_cliente(request, email)
+    if not email:
+        raise HTTPException(status_code=401, detail="sesion_requerida")
     como_bol = datos.solicitudes_de_boleador(email)
     como_cli = datos.solicitudes_de_cliente(email)
     for s in como_bol + como_cli:
@@ -719,15 +723,15 @@ class RespuestaReq(BaseModel):
 
 
 @router.post("/solicitudes/{sol_id}/aceptar", dependencies=_APP)
-def post_aceptar(sol_id: str, req: RespuestaReq) -> dict:
-    return aceptar(sol_id, req.email)
+def post_aceptar(sol_id: str, req: RespuestaReq, request: Request) -> dict:
+    return aceptar(sol_id, auth_usuario.correo_del_cliente(request, req.email))
 
 
 @router.post("/solicitudes/{sol_id}/rechazar", dependencies=_APP)
-def post_rechazar(sol_id: str, req: RespuestaReq) -> dict:
-    return rechazar(sol_id, req.email, req.motivo)
+def post_rechazar(sol_id: str, req: RespuestaReq, request: Request) -> dict:
+    return rechazar(sol_id, auth_usuario.correo_del_cliente(request, req.email), req.motivo)
 
 
 @router.post("/solicitudes/{sol_id}/cancelar", dependencies=_APP)
-def post_cancelar(sol_id: str, req: RespuestaReq) -> dict:
-    return cancelar_boleador(sol_id, req.email, req.motivo)
+def post_cancelar(sol_id: str, req: RespuestaReq, request: Request) -> dict:
+    return cancelar_boleador(sol_id, auth_usuario.correo_del_cliente(request, req.email), req.motivo)

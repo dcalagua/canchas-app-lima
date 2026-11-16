@@ -27,7 +27,9 @@ class PichangolWordmark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = TextStyle(
+    // Hereda la fuente de la marca del tema (DM Sans); un TextStyle suelto
+    // caía a la fuente del sistema.
+    final style = (Theme.of(context).textTheme.titleLarge ?? const TextStyle()).copyWith(
       fontSize: fontSize, fontWeight: FontWeight.w800, color: color,
       letterSpacing: -0.5, height: 1,
     );

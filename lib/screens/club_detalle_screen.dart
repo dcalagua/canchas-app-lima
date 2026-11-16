@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../services/club_pagos_service.dart';
+import 'checkout_directo_screen.dart';
 import '../data/reservas_repo.dart';
 import '../models/club.dart';
 import '../models/fotos_propias.dart';
@@ -83,6 +85,14 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   /// Horas reservables reales de la cancha elegida (apertura→cierre, paso = duración).
   /// Para "Hoy" se omiten las horas que ya pasaron.
   List<String> get _horas {
+    // REGLAS DEL DUEÑO: el día (horario de ese día de la semana, cierres,
+    // anticipación) lo decide el servidor; mientras llega, la grilla local.
+    if (_cancha.tieneReglas) {
+      final srv = appState.diaServidor(_cancha, _fechaIso);
+      if (srv != null) return srv.horas;
+      final c = _cancha, f = _fechaIso;
+      Future.microtask(() => appState.cargarDiaServidor(c, f));
+    }
     int? desde;
     if (_dia == 'Hoy') {
       final n = DateTime.now();
@@ -90,6 +100,22 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     }
     return _cancha.horariosSlots(desdeMinutos: desde);
   }
+
+  /// La grilla del día con REGLAS llega del servidor: redibuja al llegar.
+  void _alCambiarApp() {
+    if (mounted && _cancha.tieneReglas) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    appState.removeListener(_alCambiarApp);
+    super.dispose();
+  }
+
+  /// Motivo si el club NO atiende el día elegido (reglas del dueño).
+  String get _cerradoHoy => _cancha.tieneReglas ? (appState.diaServidor(_cancha, _fechaIso)?.cerrado ?? '') : '';
+  String get _textoCerrado =>
+      _cerradoHoy == 'cerrado' ? 'El club no atiende este día.' : 'El club no atiende este día: $_cerradoHoy.';
 
   /// Fecha real (ISO) según el día elegido; "Hoy/Mañana" es solo la etiqueta.
   String get _fechaIso {
@@ -103,6 +129,7 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
   @override
   void initState() {
     super.initState();
+    appState.addListener(_alCambiarApp);
     // Refresca el snapshot con la versión MÁS FRESCA (por si el dueño acaba de
     // editar duración de slot / precio / horario): el jugador debe ver el
     // cambio al instante, no el snapshot con el que se abrió la ficha.
@@ -599,6 +626,27 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
     }
     if (!mounted) return;
     final slots = _slotsOrd; // bloque contiguo ordenado (1 o varias horas)
+    // COBRO DIRECTO AL CLUB (plan A4/A5): si el club cobra con su propio
+    // Culqi o con sus medios manuales, la reserva va por el flujo del SERVIDOR
+    // (precio con las reglas del club, apartado con vencimiento, pago a la
+    // cuenta del club). Sin eso, el flujo de siempre.
+    final dir = await ClubPagosService.checkout(_cancha.id);
+    if (!mounted) return;
+    if (dir.ok && dir.datos['directo'] == true) {
+      final res = await CheckoutDirectoScreen.abrir(
+        context,
+        cancha: _cancha,
+        horas: [for (final h in slots) (fecha: _fechaSlot(h), hora: h)],
+        fechaTexto: _dia,
+        checkout: dir.datos,
+        deporte: _deporteEfectivo.name,
+      );
+      if (!mounted) return;
+      if (res == ResultadoCheckout.confirmada || res == ResultadoCheckout.enRevision) {
+        setState(() => _slots.clear());
+      }
+      return;
+    }
     // Total del bloque = SUMA del precio efectivo de cada hora (respeta valle/
     // descuento por hora, así 2 h no es un simple ×2). La comisión de Pichangol
     // es 100% del lado del dueño; nunca se le suma al jugador.
@@ -1289,9 +1337,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     const SizedBox(height: 14),
                     if (_horas.isEmpty)
                       Text(
-                          _dia == 'Hoy'
-                              ? 'No quedan horas para hoy. Elige "Mañana".'
-                              : 'Sin horas configuradas.',
+                          _cerradoHoy.isNotEmpty
+                              ? _textoCerrado
+                              : _dia == 'Hoy'
+                                  ? 'No quedan horas para hoy. Elige "Mañana".'
+                                  : 'Sin horas configuradas.',
                           style: t.bodyMedium
                               ?.copyWith(color: textoTenueDe(context)))
                     else
@@ -1421,9 +1471,11 @@ class _ClubDetalleScreenState extends State<ClubDetalleScreen> {
                     ],
                     if (_horas.isEmpty)
                       Text(
-                        _dia == 'Hoy'
-                            ? 'No quedan horarios para hoy. Elige "Mañana".'
-                            : 'Sin horarios disponibles.',
+                        _cerradoHoy.isNotEmpty
+                            ? _textoCerrado
+                            : _dia == 'Hoy'
+                                ? 'No quedan horarios para hoy. Elige "Mañana".'
+                                : 'Sin horarios disponibles.',
                         style: t.bodyMedium?.copyWith(color: textoTenueDe(context)),
                       )
                     else ...[

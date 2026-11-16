@@ -10,7 +10,7 @@ import pathlib
 import re
 
 RAIZ = pathlib.Path(__file__).resolve().parents[1]
-ARCHIVOS = ["web/ui.py", "web/anfitrion.py", "web/anfitrion_academia.py",
+ARCHIVOS = ["web/ui.py", "web/anfitrion.py", "web/estilos_anfitrion.py", "web/anfitrion_negocio.py", "web/anfitrion_academia.py",
             "web/anfitrion_campeonatos.py", "legal/router.py", "propiedad/panel.py"]
 
 

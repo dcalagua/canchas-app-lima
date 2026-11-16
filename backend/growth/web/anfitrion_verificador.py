@@ -57,6 +57,7 @@ from propiedad import reclamos
 from propiedad import service as otp_svc
 from verificacion_fisica import service as vf_svc
 from web import almacen, catalogos, datos, ui
+from web import vista_anfitrion as _va
 from web.anfitrion import _ESTADO_RECLAMO, _sesion_o_entrar, aviso_fotos_reclamo
 from web.router import PLAY_URL, e
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
@@ -195,45 +196,8 @@ def _fotos_validas(urls, carpeta: str) -> list[str]:
 
 
 # ── Estilos y JS ─────────────────────────────────────────────────────────────
-_CSS = """
-<style>
-.vf-wrap{max-width:760px;margin:0 auto}
-.vf-tabs{display:flex;gap:8px;margin:18px 0 6px;flex-wrap:wrap}
-.vf-tabs .chip{cursor:pointer}
-.vf-info{display:flex;gap:10px;align-items:flex-start;background:var(--tinte);color:var(--teal);border-radius:14px;padding:12px 14px;font-size:14px;line-height:1.4;margin:12px 0}
-.vf-radios{display:flex;gap:8px;overflow-x:auto;padding:4px 0 8px;scrollbar-width:none}
-.vf-radios::-webkit-scrollbar{display:none}
-.vf-lista{display:grid;gap:10px;margin-top:8px}
-.vf-card{display:flex;gap:12px;align-items:center;background:var(--blanco);border-radius:16px;box-shadow:var(--sombra);padding:14px 16px;cursor:pointer;border:1px solid transparent;min-width:0;text-align:left;width:100%;font-family:inherit;color:inherit}
-.vf-card:hover{border-color:var(--trazo)}
-.vf-card .txt{flex:1;min-width:0}.vf-card b{display:block;font-size:15.5px;overflow-wrap:anywhere}
-.vf-card small{display:block;color:var(--tenue);font-size:13px;overflow-wrap:anywhere}
-.vf-card .dist{color:var(--teal);font-weight:800;font-size:13px}
-.vf-dem{flex:none;background:var(--tinte);color:var(--teal);border-radius:12px;padding:8px 10px;text-align:center;font-weight:900;font-size:18px;line-height:1}
-.vf-dem small{display:block;color:var(--teal);font-weight:600;font-size:10px;margin-top:3px}
-.vf-fotos{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.vf-fotos .f{position:relative;width:84px;height:84px;border-radius:12px;overflow:hidden;background:var(--gris)}
-.vf-fotos .f img{width:100%;height:100%;object-fit:cover;display:block}
-.vf-fotos .f button{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;border:0;background:rgba(0,0,0,.6);color:#fff;cursor:pointer;font-size:13px;line-height:1}
-.vf-msg{margin-top:12px;border-radius:12px;padding:11px 14px;font-weight:600;font-size:14px;line-height:1.4;display:none}
-.vf-msg.ok{display:block;background:var(--ok-bg);color:var(--ok-fg)}.vf-msg.bad{display:block;background:var(--bad-bg);color:var(--bad-fg)}.vf-msg.warn{display:block;background:var(--warn-bg);color:var(--warn-fg)}
-.vf-cod{font-size:26px!important;letter-spacing:8px;text-align:center;font-weight:800;max-width:260px}
-.vf-nota{font-size:12.5px;color:var(--tenue);font-style:italic;margin-top:12px}
-.vf-vacio{text-align:center;color:var(--tenue);padding:40px 10px}
-.vf-pasos{list-style:none;margin:16px 0 0;padding:0;display:grid;gap:0}
-.vf-pasos li{display:grid;grid-template-columns:30px minmax(0,1fr);gap:12px;position:relative;padding-bottom:16px}
-.vf-pasos li:not(:last-child)::before{content:'';position:absolute;left:14px;top:30px;bottom:0;width:2px;background:var(--trazo)}
-.vf-pasos .n{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;background:var(--gris);color:var(--tenue)}
-.vf-pasos li.hecho .n{background:var(--ok-bg);color:var(--ok-fg)}.vf-pasos li.actual .n{background:var(--warn-bg);color:var(--warn-fg)}.vf-pasos li.mal .n{background:var(--bad-bg);color:var(--bad-fg)}
-.vf-pasos b{display:block;font-size:15px}.vf-pasos small{display:block;color:var(--tenue);font-size:13px;line-height:1.35}
-.vf-acc{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.vf-acc .btn{flex:1 1 220px}
-.vf-tel{display:flex;align-items:center;border:1px solid var(--trazo);border-radius:12px;overflow:hidden;max-width:320px;background:var(--blanco)}
-.vf-tel span{padding:0 10px;font-weight:800;color:var(--tenue)}.vf-tel input{border:0!important;border-radius:0!important;min-width:0}
-.vf-estado{display:flex;gap:12px;align-items:flex-start}
-.vf-estado .ico{flex:none;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;background:var(--warn-bg)}
-.vf-estado.ok .ico{background:var(--ok-bg)}.vf-estado.bad .ico{background:var(--bad-bg)}
-@media(max-width:560px){.vf-card{padding:12px 13px}.vf-acc .btn{flex:1 1 100%}}
-</style>"""
+# Estilos: `web/estilos_v_academia.py` (clases .vf-*), en el CSS del sitio.
+_CSS = ""
 
 # Utilidades compartidas: GPS del navegador y compresión/subida de fotos.
 _JS_BASE = r"""
@@ -292,7 +256,8 @@ _JS_VERIFICADOR = r"""
   var C = window.__vf, pos = null, radio = C.radio, visitas = [], actual = null;
   var $ = function(id){ return document.getElementById(id); };
   function tab(t){
-    document.querySelectorAll('[data-vtab]').forEach(function(ch){ ch.classList.toggle('sel', ch.dataset.vtab === t); });
+    document.querySelectorAll('[data-vtab]').forEach(function(ch){ var on = ch.dataset.vtab === t; ch.classList.toggle('sel', on); ch.setAttribute('aria-selected', on ? 'true' : 'false'); });
+    var ps = document.querySelector('.va-pasos'); if(ps) ps.style.display = t === 'visitas' ? '' : 'none';
     $('secVisitas').style.display = t === 'visitas' ? '' : 'none';
     $('secCodigo').style.display = t === 'codigo' ? '' : 'none';
     $('secCaptura').style.display = 'none';
@@ -301,30 +266,42 @@ _JS_VERIFICADOR = r"""
   document.querySelectorAll('[data-vtab]').forEach(function(ch){ ch.addEventListener('click', function(){ tab(ch.dataset.vtab); }); });
   function lblRadio(r){ return r == null ? 'Todas' : r + ' km'; }
   function pintarRadios(){
-    $('radios').innerHTML = C.radios.map(function(r){ return '<span class="chip' + (String(r) === String(radio) ? ' sel' : '') + '" data-r="' + (r == null ? '' : r) + '">' + lblRadio(r) + '</span>'; }).join('');
-    $('radios').querySelectorAll('.chip').forEach(function(ch){ ch.addEventListener('click', function(){ radio = ch.dataset.r === '' ? null : +ch.dataset.r; pintarRadios(); cargar(); }); });
+    $('radios').innerHTML = C.radios.map(function(r){ var on = String(r) === String(radio); return '<button type="button" class="' + (on ? 'sel' : '') + '" aria-pressed="' + on + '" data-r="' + (r == null ? '' : r) + '">' + lblRadio(r) + '</button>'; }).join('');
+    $('radios').querySelectorAll('button').forEach(function(ch){ ch.addEventListener('click', function(){ radio = ch.dataset.r === '' ? null : +ch.dataset.r; pintarRadios(); cargar(); }); });
   }
   function dist(m){ return m < 1000 ? 'a ' + Math.round(m) + ' m' : 'a ' + (m / 1000).toFixed(1) + ' km'; }
   var MOT = {sin_documentos: 'Sin documentos', ia_no_concluyente: 'La IA no pudo confirmarla', alto_valor: 'Local de alto valor'};
   var EST = {agendada: 'Agendada', en_sitio: 'En sitio'};
+  function ordenadas(){
+    var l = visitas.slice();
+    if($('orden').value === 'cerca') l.sort(function(a, b){ return (a.distancia_m == null ? 1e12 : a.distancia_m) - (b.distancia_m == null ? 1e12 : b.distancia_m); });
+    return l;
+  }
   function pintar(){
-    var box = $('lista');
-    if(!visitas.length){ box.innerHTML = '<div class="vf-vacio">No hay visitas pendientes cerca de ti.' + (radio != null && pos ? '<br><span class="sub">Prueba con un radio mayor o "Todas".</span>' : '') + '</div>'; return; }
-    box.innerHTML = visitas.map(function(v, i){
+    var box = $('lista'); $('cntVisitas').textContent = visitas.length;
+    if(!visitas.length){
+      var filtro = radio != null && pos;
+      box.innerHTML = '<div class="va-vacio"><span class="va-vacio-ic">' + C.icoPinG + '</span><b>No hay visitas pendientes' + (filtro ? ' cerca de ti' : '') + '</b>' +
+        '<p>' + (filtro ? 'Amplía la distancia para ver más canchas.' : (pos ? 'Cuando un local necesite una visita, aparece aquí.' : 'Activa la ubicación para ver las canchas cercanas.')) + '</p>' +
+        (filtro ? '<button type="button" class="btn suave" id="verTodas">' + C.icoPin + 'Ver todas las visitas</button>' : '') + '</div>';
+      if($('verTodas')) $('verTodas').addEventListener('click', function(){ radio = null; pintarRadios(); cargar(); });
+      return; }
+    var lista = ordenadas();
+    box.innerHTML = lista.map(function(v, i){
       return '<button type="button" class="vf-card" data-i="' + i + '"><div class="txt"><b>' + vfEsc(v.nombre) + (v.cancha ? ' · ' + vfEsc(v.cancha) : '') + '</b>' +
         '<small>' + vfEsc(EST[v.estado] || v.estado) + ' · ' + vfEsc(MOT[v.motivo] || v.motivo) + (v.zona ? ' · ' + vfEsc(v.zona) : '') + '</small>' +
         (v.direccion ? '<small>📍 ' + vfEsc(v.direccion) + '</small>' : '') +
         (v.distancia_m != null ? '<span class="dist">🚶 ' + dist(v.distancia_m) + '</span>' : '') + '</div>' +
         '<div class="vf-dem">' + v.demanda + '<small>pedidos</small></div></button>';
     }).join('');
-    box.querySelectorAll('.vf-card').forEach(function(b){ b.addEventListener('click', function(){ abrir(visitas[+b.dataset.i]); }); });
+    box.querySelectorAll('.vf-card').forEach(function(b){ b.addEventListener('click', function(){ abrir(lista[+b.dataset.i]); }); });
   }
   function cargar(){
-    $('lista').innerHTML = '<div class="vf-vacio">Buscando visitas…</div>';
+    $('lista').innerHTML = '<div class="va-vacio"><p>Buscando visitas…</p></div>';
     var q = pos ? ('?lat=' + pos.lat + '&lng=' + pos.lng + (radio != null ? '&radio_km=' + radio : '')) : '';
     $('subVisitas').textContent = pos ? 'Cerca de ti (' + lblRadio(radio) + ') · la más pedida primero.' : 'Todas las visitas · la más pedida primero.';
     fetch('/anfitrion/verificador/visitas' + q).then(function(r){ return r.json(); }).then(function(j){ visitas = (j && j.visitas) || []; pintar(); })
-      .catch(function(){ $('lista').innerHTML = '<div class="vf-vacio">No pudimos cargar las visitas. Revisa tu conexión.</div>'; });
+      .catch(function(){ $('lista').innerHTML = '<div class="va-vacio"><p>No pudimos cargar las visitas. Revisa tu conexión.</p></div>'; });
   }
   var fotosCap = vfFotos('capFotoIn', 'capFotos', C.maxFotos), fotosVal = vfFotos('valFotoIn', 'valFotos', C.maxFotos);
   function abrir(v){
@@ -382,6 +359,13 @@ _JS_VERIFICADOR = r"""
       });
     }).catch(function(){ pcgCargando(false); vfMsg('valMsg', 'bad', 'No se pudo enviar. Revisa tu conexión.'); });
   });
+  $('orden').addEventListener('change', pintar);
+  $('btnGps').addEventListener('click', function(){
+    pcgCargando('Buscando tu ubicación…');
+    vfUbicar().then(function(p){ pcgCargando(false);
+      if(!p){ pcgAvisar({titulo: 'Ubicación bloqueada', icono: '📍', mensaje: 'Tu navegador no nos deja leer tu ubicación. Permítela en los ajustes del sitio (el candado junto a la dirección) y vuelve a intentar.'}); return; }
+      pos = p; $('sinGps').style.display = 'none'; cargar(); });
+  });
   pintarRadios();
   tab(location.hash === '#codigo' ? 'codigo' : 'visitas');
   vfUbicar().then(function(p){ pos = p; if(!p){ $('sinGps').style.display = ''; } cargar(); });
@@ -390,60 +374,66 @@ _JS_VERIFICADOR = r"""
 
 
 # ── Páginas del verificador ──────────────────────────────────────────────────
-def _cab(ses: dict | None, sel: str) -> str:
-    tabs = (f"<a class='cat{' sel' if sel == 'verificador' else ''}' href='/anfitrion/verificador'><span class='ico'>🛡️</span>Verificador</a>"
-            f"<a class='cat{' sel' if sel == 'canchas' else ''}' href='/anfitrion/canchas'><span class='ico'>🏟️</span>Mis canchas</a>")
-    return ui.cabecera(tabs=tabs, ses=ses, volver="/anfitrion", modo="anfitrion")
-
-
 @router.get("/anfitrion/verificador", response_class=HTMLResponse)
 def pagina_verificador(request: Request) -> HTMLResponse:
+    from web import estilos_v_academia as sva
+    from web import vista_anfitrion as va
     ses, resp = _sesion_o_entrar(request, "/anfitrion/verificador")
     if resp is not None:
         return resp
-    cfg = json.dumps({"radios": list(RADIOS), "radio": 50, "maxFotos": MAX_FOTOS, "storage": almacen.disponible()})
-    cuerpo = (
-        _CSS + "<div class='vf-wrap'><a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
-        "<h1 class='anf-hola' style='margin-top:6px'>Verificador</h1>"
-        "<p class='sub'>Rol de campo: visitas con foto, GPS y firma. Úsalo desde el celular, estando en la cancha.</p>"
-        "<div class='vf-tabs'><span class='chip sel' data-vtab='visitas'>📋 Visitas pendientes</span>"
-        "<span class='chip' data-vtab='codigo'>📍 Validar reclamo por código</span></div>"
-        # Visitas
-        "<section id='secVisitas'>"
-        "<div class='vf-info'><span>🛡️</span><span>Vas a la cancha, tomas fotos del sitio y tu GPS, y confirmas que existe: "
-        "así queda “Verificada” y se puede reservar.</span></div>"
-        "<p class='sub' id='subVisitas' style='margin:4px 0'>Cerca de ti · la más pedida primero.</p>"
-        "<p id='sinGps' style='display:none;color:var(--rojo);font-weight:700;font-size:14px;margin:6px 0'>Activa la ubicación para ver solo las canchas cercanas a ti.</p>"
-        "<div class='vf-radios chips' id='radios'></div><div class='vf-lista' id='lista'></div></section>"
-        # Captura de una visita
-        "<section id='secCaptura' style='display:none'><div class='panel'>"
-        "<button type='button' class='btn sec' id='capVolver' style='padding:8px 14px'>‹ Visitas</button>"
-        "<h2 id='capTitulo' style='margin-top:14px;overflow-wrap:anywhere'>Verificar cancha</h2><p class='sub' id='capSub'></p>"
-        "<a class='btn sec' id='capIr' target='_blank' rel='noopener' href='#'>🧭 Cómo llegar</a>"
-        "<div style='margin-top:18px'><label>Fotos del sitio</label>"
-        f"<label class='btn' style='display:inline-flex;cursor:pointer;margin-top:6px'>📷 Tomar foto del sitio<input id='capFotoIn' type='file' accept='image/*' capture='environment' multiple style='display:none'></label>"
-        "<div class='vf-fotos' id='capFotos'></div></div>"
-        f"<div style='margin-top:16px'><label for='capFirma'>Firma (tu nombre)</label><input id='capFirma' maxlength='80' autocomplete='name' value='{e(ses.get('nombre') or '')}'></div>"
+    cfg = ui.json_js({"radios": list(RADIOS), "radio": 50, "maxFotos": MAX_FOTOS, "storage": almacen.disponible(),
+                      "icoPin": sva.svg("pin", 18), "icoPinG": sva.svg("pin", 30)})
+    tabs = ("<div class='va-seg' role='tablist' aria-label='Qué vas a hacer'>"
+            "<button type='button' role='tab' class='sel' data-vtab='visitas'>Visitas pendientes</button>"
+            "<button type='button' role='tab' data-vtab='codigo'>Validar reclamo por código</button></div>")
+    pasos = ("<div class='va-pasos'>"
+             f"<div class='va-paso'>{sva.suave('pin')}<div><b>1. Vas a la cancha</b><small>Con el celular y la ubicación activa</small></div></div>"
+             f"<div class='va-paso'>{sva.suave('camara')}<div><b>2. Tomas fotos y GPS</b><small>Del sitio y de las canchas</small></div></div>"
+             f"<div class='va-paso'>{sva.suave('lapiz')}<div><b>3. Confirmas y firmas</b><small>La cancha queda “Verificada”</small></div></div></div>")
+    visitas = (
+        "<section id='secVisitas'><div class='vac-vf'>"
+        "<div class='va-panel'><h2>Cerca de ti</h2>"
+        f"<div class='vac-gps' id='sinGps' style='display:none' role='status'><b>{sva.svg('pin', 16)}Ubicación desactivada</b>"
+        "<p>Actívala para ver solo las canchas cercanas.</p>"
+        f"<button type='button' class='btn' id='btnGps'>{sva.svg('pin', 15)}Activar ubicación</button></div>"
+        "<span class='vac-lbl'>Distancia</span><div class='va-seg' id='radios' role='group' aria-label='Distancia'></div>"
+        "<label class='vac-lbl' for='orden'>Orden</label>"
+        "<select id='orden'><option value='demanda'>La más pedida primero</option><option value='cerca'>La más cercana primero</option></select></div>"
+        "<div class='va-panel'><h2>Visitas pendientes<span class='vac-cnt' id='cntVisitas'>0</span></h2>"
+        "<p class='aco-n' id='subVisitas'>Cerca de ti · la más pedida primero.</p>"
+        "<div class='vf-lista' id='lista'></div></div></div></section>")
+    captura = (
+        "<section id='secCaptura' style='display:none'><div class='va-panel vac-cap'>"
+        "<button type='button' class='btn sec' id='capVolver'>‹ Visitas</button>"
+        "<h2 id='capTitulo' style='margin-top:14px;overflow-wrap:anywhere'>Verificar cancha</h2><p class='aco-n' id='capSub'></p>"
+        "<a class='btn sec' id='capIr' target='_blank' rel='noopener' href='#'>Cómo llegar</a>"
+        "<span class='vac-lbl'>Fotos del sitio</span>"
+        f"<label class='btn'>{sva.svg('camara', 18)}Tomar foto del sitio<input id='capFotoIn' type='file' accept='image/*' capture='environment' multiple hidden></label>"
+        "<div class='vf-fotos' id='capFotos'></div>"
+        f"<label class='vac-lbl' for='capFirma'>Firma (tu nombre)</label><input id='capFirma' maxlength='80' autocomplete='name' value='{e(ses.get('nombre') or '')}'>"
         "<div class='vf-msg' id='capMsg'></div>"
-        "<div class='acciones' style='margin-top:18px'><button type='button' class='btn' id='capEnviar' style='width:100%'>✔️ Confirmar y firmar</button></div>"
+        f"<div class='vac-acc vac-acc-fin'><button type='button' class='btn ancho' id='capEnviar'>{sva.svg('lapiz', 18)}Confirmar y firmar</button></div>"
         "<p class='vf-nota'>Las fotos son del establecimiento, no documentos personales. No se piden documentos de identidad ni recibos.</p>"
-        "</div></section>"
-        # Validar por código
-        "<section id='secCodigo' style='display:none'><div class='panel'>"
+        "</div></section>")
+    codigo = (
+        "<section id='secCodigo' style='display:none'><div class='va-panel vac-cap'>"
         "<h2>Validación en sitio</h2>"
-        "<p class='sub'>Ingresa el código del reclamo estando EN el local. Tu GPS debe coincidir con la ubicación de la cancha "
+        "<p class='aco-n'>Ingresa el código del reclamo estando EN el local. Tu GPS debe coincidir con la ubicación de la cancha "
         f"(máximo {int(config.RECLAMO_VALIDACION_GPS_MAX_M)} m).</p>"
-        "<label for='valCodigo'>Código del reclamo</label>"
+        "<label class='vac-lbl' for='valCodigo'>Código del reclamo</label>"
         "<input id='valCodigo' class='vf-cod' inputmode='numeric' maxlength='6' autocomplete='one-time-code' placeholder='••••••'>"
-        "<div style='margin-top:14px'><label class='btn sec' style='display:inline-flex;cursor:pointer'>📷 Tomar foto del sitio (opcional)"
-        "<input id='valFotoIn' type='file' accept='image/*' capture='environment' multiple style='display:none'></label>"
-        "<div class='vf-fotos' id='valFotos'></div></div>"
+        f"<label class='btn sec vac-foto-op'>{sva.svg('camara', 18)}Tomar foto del sitio (opcional)"
+        "<input id='valFotoIn' type='file' accept='image/*' capture='environment' multiple hidden></label>"
+        "<div class='vf-fotos' id='valFotos'></div>"
         "<div class='vf-msg' id='valMsg'></div>"
-        "<div class='acciones' style='margin-top:18px'><button type='button' class='btn' id='valEnviar' style='width:100%'>📍 Validar en sitio</button></div>"
-        "</div></section></div>"
-        f"<script>window.__vf={cfg};</script><script>{_JS_BASE}{_JS_VERIFICADOR}</script>")
-    return ui.shell("Verificador", cuerpo, nav=_cab(ses, "verificador"), sesion=ses, ancho=True,
-                    titulo_tab="Verificador · Modo anfitrión")
+        f"<div class='vac-acc vac-acc-fin'><button type='button' class='btn ancho' id='valEnviar'>{sva.svg('pin', 18)}Validar en sitio</button></div>"
+        "</div></section>")
+    cuerpo = va.vista(
+        _CSS + va.cabecera("Verificador", "Rol de campo: visitas con foto, GPS y firma. Úsalo desde el celular, estando en la cancha.",
+                           volver="/anfitrion", volver_txt="Roles", acciones=tabs)
+        + pasos + visitas + captura + codigo
+        + f"<script>window.__vf={cfg};</script><script>{_JS_BASE}{_JS_VERIFICADOR}</script>", "vac")
+    return ui.shell("Verificador", cuerpo, sesion=ses, ancho=True, titulo_tab="Verificador · Modo anfitrión")
 
 
 def _ses_json(request: Request):
@@ -572,6 +562,11 @@ def _pasos(r, modo: str, verificada: bool, otp) -> str:
     def li(clase: str, n: str, tit: str, txt: str) -> str:
         return f"<li class='{clase}'><span class='n'>{n}</span><div><b>{tit}</b><small>{txt}</small></div></li>"
 
+    if verificada and not r:
+        # Verificada sin reclamo guardado (aprobada por la torre o legado):
+        # no tiene sentido decir "aún no hay solicitud".
+        return ("<ol class='vf-pasos'>" + li("hecho", "✓", "Propiedad confirmada", "Tu cancha está verificada por el equipo.")
+                + li("hecho", "✓", "Activa: recibe reservas", "Tu cancha ya acepta reservas en línea.") + "</ol>")
     pasos = [li("hecho" if r else "actual", "✓" if r else "1", "Solicitud enviada",
                 f"El {e(_fecha(r.creado_en))}" if r else "Aún no hay una solicitud a tu nombre en el servidor.")]
     if otp is not None:
@@ -689,12 +684,12 @@ def pagina_verificacion(cancha_id: str, request: Request) -> HTMLResponse:
         pre = catalogos.TEL_PREFIJO.get(iso, "51")
         n = catalogos.TEL_LONGITUD.get(iso, 9)
         if otp is not None:
-            otp_html = (f"<div class='panel' style='margin-top:16px'><h2>📲 WhatsApp del local</h2>"
+            otp_html = (f"<div class='va-panel'><h2>📲 WhatsApp del local</h2>"
                         f"<p class='sub'>✅ Confirmado por código a {e(otp.telefono_enmascarado or '')} el {e(_fecha(otp.creado_en))}. "
                         "Ya está en tu solicitud para que el equipo la apruebe.</p></div>")
         else:
             otp_html = (
-                "<div class='panel' style='margin-top:16px'><h2>📲 Confirma el WhatsApp del local</h2>"
+                "<div class='va-panel'><h2>📲 Confirma el WhatsApp del local</h2>"
                 "<p class='sub'>Te enviamos un código por WhatsApp o SMS al teléfono del local. Confirmarlo acelera la "
                 "revisión: prueba que controlas ese número.</p>"
                 f"<div id='otpPaso1'><label for='otpTel'>Teléfono del local (WhatsApp)</label>"
@@ -705,12 +700,12 @@ def pagina_verificacion(cancha_id: str, request: Request) -> HTMLResponse:
                 "<div class='vf-acc'><button type='button' class='btn' id='btnOtpOk'>Confirmar código</button>"
                 "<button type='button' class='btn sec' id='btnOtpOtro'>Cambiar número</button></div></div>"
                 "<div class='vf-msg' id='otpMsg'></div></div>")
-    cfg = json.dumps({"base": f"/anfitrion/verificacion/{cancha_id}", "telLen": catalogos.TEL_LONGITUD.get(iso, 9)})
+    cfg = ui.json_js({"base": f"/anfitrion/verificacion/{cancha_id}", "telLen": catalogos.TEL_LONGITUD.get(iso, 9)})
     cuerpo = (
-        _CSS + "<div class='vf-wrap'><a class='anf-back' href='/anfitrion/canchas'>‹ Mis canchas</a>"
-        f"<h1 class='anf-hola' style='margin-top:6px;overflow-wrap:anywhere'>{e(nombre)}</h1>"
-        "<p class='sub'>Existir no es lo mismo que ser el dueño: las reservas en línea se habilitan cuando confirmamos que el local es tuyo.</p>"
-        f"<div class='panel'><div class='vf-estado {clase_box}'><span class='ico'>{_ICONO.get(clase, '⏳')}</span>"
+        _CSS + _va.cabecera(nombre, "Existir no es lo mismo que ser el dueño: las reservas en línea se habilitan cuando confirmamos que el local es tuyo.",
+                            volver="/anfitrion/canchas")
+        + "<div class='vf-wrap'>"
+        f"<div class='va-panel'><div class='vf-estado {clase_box}'><span class='ico'>{_ICONO.get(clase, '⏳')}</span>"
         f"<div><h2 style='margin:0'>{e(tit)}</h2><p class='sub' style='margin:4px 0 0'>{e(txt)}</p>"
         + (f"<p class='sub' style='margin:4px 0 0;font-size:13px'>Solicitud #{r.id} · enviada el {e(_fecha(r.creado_en))}</p>" if r else "")
         + "</div></div>"
@@ -723,7 +718,8 @@ def pagina_verificacion(cancha_id: str, request: Request) -> HTMLResponse:
            f"<a href='{PLAY_URL}' rel='noopener'>app de {MARCA}</a>.</p>")
         + "</div>"
         f"<script>window.__ve={cfg};</script><script>{_JS_BASE}{_JS_ESTADO}</script>")
-    return ui.shell("Verificación de mi cancha", cuerpo, nav=_cab(ses, "canchas"), sesion=ses, ancho=True,
+    cuerpo = _va.vista(cuerpo, "vac")
+    return ui.shell("Verificación de mi cancha", cuerpo, sesion=ses, ancho=True,
                     titulo_tab="Verificación · Modo anfitrión")
 
 

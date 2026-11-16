@@ -32,10 +32,15 @@ import 'models/models.dart';
 //   Verde esmeralda #0E8F67 → CTA / acento principal
 //   Dorado suave    #D9B45A → calificaciones / energía / PRO
 //   Gris claro      #E9EEF4 → fondos suaves / bordes
-const Color lima = Color(0xFF0E8F67);   // Verde esmeralda — CTA / acento principal
+// CANCHALIBRE · ajuste de accesibilidad (oct-2026, rediseño B1): el esmeralda
+// anterior #0E8F67 con texto blanco daba 4.08:1 (no pasa WCAG AA en botones de
+// 15-16 px). #0B7A57 da 5.34:1 sobre blanco y 4.96:1 sobre `papel`.
+const Color lima = Color(0xFF0B7A57);   // Verde esmeralda — CTA / acento principal
 const Color sage = Color(0xFF33465E);   // azul noche medio (degradado de headers)
-const Color teal = Color(0xFF0B7A58);   // esmeralda profundo — acento secundario
-const Color amarillo = Color(0xFFD9B45A); // dorado suave (calificaciones/energía)
+const Color teal = Color(0xFF08654A);   // esmeralda profundo — acento secundario
+const Color amarillo = Color(0xFFD9B45A); // dorado suave (calificaciones/energía) — SOLO rellenos/íconos
+/// Dorado para TEXTO: `amarillo` sobre blanco da 1.98:1 (ilegible); este da 5.06:1.
+const Color doradoTexto = Color(0xFF8A6A12);
 const Color naranja = Color(0xFFE07A3E);  // naranja balón (acento de íconos)
 const Color morado = Color(0xFF7B61FF);   // violeta (acento de íconos)
 const Color verde = Color(0xFF33465E);  // azul noche medio
@@ -231,6 +236,14 @@ LinearGradient gradienteDeporte(Deporte d) => const LinearGradient(
       colors: [Color(0xFF3D5470), sage, Color(0xFF16233A)],
     );
 
+/// SOLO tests (goldens): nombre de una fuente YA cargada con `FontLoader`. En
+/// la app es null y la fuente de la marca (DM Sans) llega por google_fonts.
+@visibleForTesting
+String? fuenteDePrueba;
+
+TextTheme _fuenteMarca(TextTheme t) =>
+    fuenteDePrueba != null ? t.apply(fontFamily: fuenteDePrueba) : GoogleFonts.dmSansTextTheme(t);
+
 ThemeData buildTheme() {
   final scheme = ColorScheme.fromSeed(
     seedColor: lima,
@@ -245,9 +258,9 @@ ThemeData buildTheme() {
     brightness: Brightness.light,
   );
 
-  // Tipografía de la marca nueva: Montserrat (títulos SemiBold w600/w700).
+  // Tipografía ÚNICA app = web (rediseño B1, oct-2026): DM Sans (títulos w600/w700).
   final base = ThemeData(useMaterial3: true, colorScheme: scheme);
-  final dm = GoogleFonts.montserratTextTheme(base.textTheme);
+  final dm = _fuenteMarca(base.textTheme);
   final textTheme = dm.copyWith(
     displayLarge: dm.displayLarge?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.5),
     displayMedium: dm.displayMedium?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.5),
@@ -281,7 +294,7 @@ ThemeData buildTheme() {
         backgroundColor: lima, foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+        textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700, fontSize: 16),
       ),
     ),
     // Inputs Airbnb: blanco, borde #DDDDDD, foco negro Hof, radio 12.
@@ -301,17 +314,17 @@ ThemeData buildTheme() {
         borderRadius: BorderRadius.circular(12),
         borderSide: const BorderSide(color: bosque, width: 1.6),
       ),
-      labelStyle: const TextStyle(color: textoTenue),
-      hintStyle: const TextStyle(color: textoTenue),
+      labelStyle: TextStyle(fontFamily: textTheme.bodyMedium?.fontFamily, color: textoTenue),
+      hintStyle: TextStyle(fontFamily: textTheme.bodyMedium?.fontFamily, color: textoTenue),
     ),
     chipTheme: ChipThemeData(
       backgroundColor: const Color(0xFFE9EEF4),
-      labelStyle: const TextStyle(
+      labelStyle: TextStyle(fontFamily: textTheme.bodyMedium?.fontFamily, 
           fontWeight: FontWeight.w700, fontSize: 12, color: bosque),
       // Chip SELECCIONADO: verde sólido con texto/check blancos (legible en
       // claro y oscuro; antes el verde claro dejaba el texto invisible).
       selectedColor: lima,
-      secondaryLabelStyle: const TextStyle(
+      secondaryLabelStyle: TextStyle(fontFamily: textTheme.bodyMedium?.fontFamily, 
           fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white),
       checkmarkColor: Colors.white,
       side: const BorderSide(color: trazo),
@@ -327,7 +340,7 @@ ThemeData buildTheme() {
       indicatorColor: Colors.transparent, // ← sin pastilla (look Airbnb)
       indicatorShape: const RoundedRectangleBorder(),
       labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-      labelTextStyle: WidgetStateProperty.resolveWith((s) => TextStyle(
+      labelTextStyle: WidgetStateProperty.resolveWith((s) => TextStyle(fontFamily: textTheme.bodyMedium?.fontFamily, 
           fontSize: 12,
           fontWeight: FontWeight.w600,
           color: s.contains(WidgetState.selected) ? lima : textoTenue)),
@@ -342,14 +355,14 @@ ThemeData buildTheme() {
         side: const BorderSide(color: bosque, width: 1.3),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700, fontSize: 15),
       ),
     ),
     // Botón terciario (texto): negro Hof.
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: bosque,
-        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
       ),
     ),
     // Elevated = mismo CTA coral+blanco por si alguna pantalla lo usa.
@@ -358,7 +371,7 @@ ThemeData buildTheme() {
         backgroundColor: lima, foregroundColor: Colors.white, elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+        textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700, fontSize: 16),
       ),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -375,7 +388,7 @@ ThemeData buildTheme() {
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: bosque,
-      contentTextStyle: const TextStyle(
+      contentTextStyle: TextStyle(fontFamily: textTheme.bodyMedium?.fontFamily, 
           color: Colors.white, fontWeight: FontWeight.w600),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
@@ -420,7 +433,7 @@ ThemeData buildThemeOscuro() {
   );
 
   final base = ThemeData(useMaterial3: true, colorScheme: scheme);
-  final dm = GoogleFonts.montserratTextTheme(base.textTheme);
+  final dm = _fuenteMarca(base.textTheme);
   final textTheme = dm.copyWith(
     displayLarge: dm.displayLarge?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.5),
     displayMedium: dm.displayMedium?.copyWith(fontWeight: FontWeight.w700, letterSpacing: -0.5),
@@ -452,7 +465,7 @@ ThemeData buildThemeOscuro() {
         backgroundColor: lima, foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+        textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700, fontSize: 16),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
@@ -471,17 +484,17 @@ ThemeData buildThemeOscuro() {
         borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(color: lima, width: 1.6),
       ),
-      labelStyle: const TextStyle(color: _oscTenue),
-      hintStyle: const TextStyle(color: _oscTenue),
+      labelStyle: TextStyle(fontFamily: textTheme.bodyMedium?.fontFamily, color: _oscTenue),
+      hintStyle: TextStyle(fontFamily: textTheme.bodyMedium?.fontFamily, color: _oscTenue),
     ),
     chipTheme: ChipThemeData(
       backgroundColor: _oscSuperficie2,
-      labelStyle: const TextStyle(
+      labelStyle: TextStyle(fontFamily: textTheme.bodyMedium?.fontFamily, 
           fontWeight: FontWeight.w700, fontSize: 12, color: _oscTexto),
       // Chip SELECCIONADO: verde sólido con texto/check blancos (legible sobre
       // fondo oscuro; el verde claro dejaba el texto casi invisible).
       selectedColor: lima,
-      secondaryLabelStyle: const TextStyle(
+      secondaryLabelStyle: TextStyle(fontFamily: textTheme.bodyMedium?.fontFamily, 
           fontWeight: FontWeight.w700, fontSize: 12, color: Colors.white),
       checkmarkColor: Colors.white,
       side: BorderSide.none,
@@ -495,7 +508,7 @@ ThemeData buildThemeOscuro() {
       indicatorColor: Colors.transparent,
       indicatorShape: const RoundedRectangleBorder(),
       labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-      labelTextStyle: WidgetStateProperty.resolveWith((s) => TextStyle(
+      labelTextStyle: WidgetStateProperty.resolveWith((s) => TextStyle(fontFamily: textTheme.bodyMedium?.fontFamily, 
           fontSize: 12,
           fontWeight: FontWeight.w600,
           color: s.contains(WidgetState.selected) ? lima : _oscTenue)),
@@ -509,13 +522,13 @@ ThemeData buildThemeOscuro() {
         side: const BorderSide(color: _oscTrazo, width: 1.4),
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 15),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+        textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700, fontSize: 15),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: lima,
-        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+        textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700),
       ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
@@ -523,7 +536,7 @@ ThemeData buildThemeOscuro() {
         backgroundColor: lima, foregroundColor: Colors.white, elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 16),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+        textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w700, fontSize: 16),
       ),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
@@ -538,7 +551,7 @@ ThemeData buildThemeOscuro() {
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
       backgroundColor: _oscSuperficie2,
-      contentTextStyle: const TextStyle(
+      contentTextStyle: TextStyle(fontFamily: textTheme.bodyMedium?.fontFamily, 
           color: _oscTexto, fontWeight: FontWeight.w600),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),

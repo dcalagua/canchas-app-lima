@@ -10,6 +10,7 @@ local, prórroga por local. `ok` y `vencido` dejan de pedir fotos a Google."""
 import os
 import sys
 from datetime import date, datetime, timezone
+from urllib.parse import unquote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -136,7 +137,7 @@ def test_web_foto_no_llama_a_google_para_local_ok_ni_vencido(db, _base):
     r = cli.get("/web/foto", params={"id": "c_noche"}).json()  # hermana sin fotos: muestra las del local
     assert r["origen"] == "propias" and r["fotos"][0].startswith(f"{SB}/c_lima/") and not _base["google"]
     html = cli.get("/").text
-    assert f"{SB}/c_lima/web_0.jpg" in html
+    assert f"{SB}/c_lima/web_0.jpg" in unquote(html)  # vía miniatura (/web/mini?u=…)
     # Local VENCIDO (Club Sur): ni la guardada ni la de Google; placeholder sin pedir nada.
     fl.lanzar(avisar=False)
     _base["hoy"]["d"] = date(2026, 11, 5)
@@ -144,8 +145,8 @@ def test_web_foto_no_llama_a_google_para_local_ok_ni_vencido(db, _base):
     r = cli.get("/web/foto", params={"id": "c_gye"}).json()
     assert r == {"ok": True, "fotos": [], "origen": "sin_google"} and not _base["google"]
     ficha = cli.get("/reservar/c_gye").text
-    assert GOOGLE not in ficha and "/web/foto?id=c_gye" not in ficha
-    assert GOOGLE not in cli.get("/").text
+    assert "AF1Qip-google" not in ficha and "/web/foto?id=c_gye" not in ficha  # ni con el ancho reescrito
+    assert "AF1Qip-google" not in cli.get("/").text
     # El APK sabe qué canchas ya no usan Google.
     pub = cli.get("/config/fotos-locales").json()
     assert pub["lanzada"] and pub["minimo"] == 3 and set(pub["sin_google"]) == {"c_lima", "c_noche", "c_gye"}
@@ -232,15 +233,17 @@ def test_dueno_ve_el_aviso_en_la_web_y_en_el_app(db, _base, monkeypatch):
     fl.lanzar(avisar=False)
     _fotos(db, "c_lima", 1)
     mc = cli.get("/anfitrion/canchas").text
-    assert "Sube 3 fotos de Club Sur antes del 31 oct" in mc and "/anfitrion/cancha/c_gye/editar#sec-fotos" in mc
-    assert "Sube 2 fotos de Club Raqueta" in mc and "/anfitrion/cancha/c_lima/editar#sec-fotos" in mc
-    assert "Sube 3 fotos de Club Sur" in cli.get("/anfitrion/mis-canchas").text
+    # Dos locales con fotos pendientes: UN solo aviso con la lista (antes, un banner por local).
+    assert "2 de tus locales necesitan fotos tuyas" in mc and mc.count("class='aviso warn'") == 1
+    assert "<b>Club Sur</b>: faltan 3 fotos · antes del 31 oct" in mc and "/anfitrion/cancha/c_gye/editar#sec-fotos" in mc
+    assert "<b>Club Raqueta</b>: faltan 2 fotos" in mc and "/anfitrion/cancha/c_lima/editar#sec-fotos" in mc
+    assert "2 de tus locales necesitan fotos tuyas" in cli.get("/anfitrion/mis-canchas").text
     ed = cli.get("/anfitrion/cancha/c_gye/editar").text
     assert "Tu local lleva <b>0 de 3</b> fotos propias" in ed
     _base["hoy"]["d"] = date(2026, 11, 3)
     fl.invalidar()
     mc = cli.get("/anfitrion/canchas").text
-    assert "Club Sur ya no muestra fotos" in mc and "class='aviso err'" in mc
+    assert "<b>Club Sur</b>: faltan 3 fotos · ya no muestra fotos" in mc and "class='aviso err'" in mc
     # APK: estado de los locales del dueño.
     j = cli.get("/fotos-locales/mios", params={"email": "dueno@x.com"}).json()
     sur = next(x for x in j["locales"] if x["key"] == K_SUR)

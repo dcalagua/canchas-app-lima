@@ -260,6 +260,19 @@ ANDROID_CERT_SHA256 = os.getenv("ANDROID_CERT_SHA256", "").strip()
 
 # Ambiente de la torre/backend (QAS / PRD). Lo pone Railway por servicio.
 PICHANGOL_ENTORNO = (os.getenv("PICHANGOL_ENTORNO", "") or "").strip().upper()
+_ENTORNOS_PRODUCCION = ("PRD", "PROD", "PRODUCCION")
+
+
+def sitio_indexable() -> bool:
+    """¿Los buscadores pueden indexar este ambiente? Solo PRODUCCIÓN (o sin
+    `PICHANGOL_ENTORNO`, el comportamiento de siempre). En QAS/DEV/… todas las
+    páginas llevan `noindex,nofollow` y `robots.txt` lo bloquea todo: así las
+    páginas de prueba (pg.ebim.pe, *.up.railway.app) no compiten en Google con
+    el dominio de la marca. Lee el valor en cada llamada (los tests lo cambian)."""
+    ent = (PICHANGOL_ENTORNO or "").strip().upper()
+    return not ent or ent in _ENTORNOS_PRODUCCION
+
+
 # A dónde mandar a quien NO tiene la app (botón "Abrir/Unirme en la app" de la
 # página del campeonato, pie "Descargar la app"). En PRODUCCIÓN es Play Store;
 # en dev/QAS el Release de GitHub (el APK de pruebas no está en Play).
@@ -346,6 +359,14 @@ COINCIDENCIA_MAX_M = float(os.getenv("VERIF_COINCIDENCIA_MAX_M", "200"))
 CULQI_SECRET_KEY = os.getenv("CULQI_SECRET_KEY", "")
 CULQI_PUBLIC_KEY = os.getenv("CULQI_PUBLIC_KEY", "")
 CULQI_API_BASE = os.getenv("CULQI_API_BASE", "https://api.culqi.com/v2")
+# COBRO DIRECTO AL CLUB (plan A4): clave Fernet con la que se CIFRAN las llaves
+# secretas de Culqi de cada club en `cl_pasarela_club`. Sin ella NO se puede
+# guardar una cuenta (falla cerrado). Generar: `python -c "from cryptography.
+# fernet import Fernet; print(Fernet.generate_key().decode())"`. Rotarla obliga
+# a que cada club vuelva a cargar su llave.
+PAGOS_ENC_KEY = os.getenv("PAGOS_ENC_KEY", "")
+# Minutos que un apartado espera la revisión del VOUCHER por el club (A5).
+VOUCHER_PLAZO_MIN = int(os.getenv("VOUCHER_PLAZO_MIN", "60"))
 # Cancelación desde la web: horas mínimas de anticipación para devolver el 100 %.
 WEB_CANCELACION_HORAS = float(os.getenv("WEB_CANCELACION_HORAS", "6"))
 # Token compartido opcional para el webhook de Culqi: se pasa como ?t=<token> en

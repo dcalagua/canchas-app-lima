@@ -121,12 +121,12 @@ label.pd-f{cursor:pointer}label.pd-f:hover{background:#F7F7F7}
 .pd-total b{font-size:20px;color:#4A1257}
 .pd-pasos{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;align-items:center;margin-top:14px}
 .pd-pasos ol{margin:0;padding-left:20px;font-size:14px;line-height:1.55}
-.pd-mock{width:150px;border-radius:16px;background:#742284;color:#fff;padding:12px 12px 10px;font-size:11px;box-shadow:0 8px 20px rgba(116,34,132,.25);text-align:center}
+.pd-mock{width:150px;border-radius:16px;background:#742284;color:#fff;padding:12px 12px 10px;font-size:12px;box-shadow:0 8px 20px rgba(116,34,132,.25);text-align:center}
 .pd-mock .t{font-weight:800;font-size:13px}.pd-mock .mo{font-size:20px;font-weight:900;margin:4px 0}
 .pd-mock .cod{background:#fff;color:#4A1257;border-radius:10px;padding:6px 4px;margin-top:8px;outline:3px solid #F2C94C;outline-offset:2px;position:relative}
 .pd-mock .cod b{display:block;font-size:18px;letter-spacing:4px}
-.pd-mock .cod:after{content:'← este';position:absolute;right:-50px;top:50%;transform:translateY(-50%);color:#B7791F;font-weight:800;font-size:11px}
-.pd-mock .op{opacity:.85;margin-top:8px;font-size:10px}
+.pd-mock .cod:after{content:'← este';position:absolute;right:-50px;top:50%;transform:translateY(-50%);color:#B7791F;font-weight:800;font-size:12px}
+.pd-mock .op{opacity:.85;margin-top:8px;font-size:12px}
 .pd-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:14px}
 .pd-form label{display:block;font-weight:700;font-size:13px;margin-bottom:4px}
 .pd-form input{width:100%;box-sizing:border-box}
@@ -134,18 +134,18 @@ label.pd-f{cursor:pointer}label.pd-f:hover{background:#F7F7F7}
 .pd-enviar{width:100%;margin-top:12px;background:#742284}
 .pd-nota{color:var(--tenue);font-size:12px;margin-top:8px}
 .pq-app{display:flex;gap:12px;align-items:center;background:#EEF6F1;border-radius:16px;padding:12px 14px;margin-top:12px}
-.pq-app .logo{width:46px;height:46px;border-radius:12px;background:#0B8A3E;color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;flex:none}
+.pq-app .logo{width:46px;height:46px;border-radius:12px;background:#3056ED;color:#fff;font-size:22px;display:flex;align-items:center;justify-content:center;flex:none}
 .pq-app .tx{min-width:0;flex:1}.pq-app b{display:block;overflow-wrap:anywhere}.pq-app small{color:var(--tenue);font-size:12.5px}
 .pq-iniciar{width:100%;margin-top:12px}
-.pq-panel{margin-top:14px;border:2px solid #0B8A3E;border-radius:18px;padding:16px;text-align:center;background:#fff}
+.pq-panel{margin-top:14px;border:2px solid #3056ED;border-radius:18px;padding:16px;text-align:center;background:#fff}
 .pq-panel img{width:100%;max-width:260px;aspect-ratio:1;object-fit:contain;border-radius:14px;border:1px solid var(--trazo);background:#fff}
-.pq-monto{font-size:34px;font-weight:900;color:#0A1B3D;margin:8px 0 0;letter-spacing:.3px}
+.pq-monto{font-size:34px;font-weight:900;color:#333333;margin:8px 0 0;letter-spacing:.3px}
 .pq-extra{font-size:12.5px;color:#5b6575;margin:2px 0 8px}
 .pq-extra b{color:#B54708}
 .pq-pasos{text-align:left;margin:10px auto 0;max-width:420px;padding-left:20px;font-size:14px;line-height:1.55}
 .pq-acc{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:12px}.pq-acc .btn{flex:1 1 150px}
 .pq-est{display:flex;gap:8px;align-items:center;justify-content:center;font-size:13px;color:#344054;margin-top:12px}
-.pq-est .sp{width:14px;height:14px;border-radius:50%;border:2px solid #CFE7D8;border-top-color:#0B8A3E;animation:pqg 1s linear infinite;flex:none}
+.pq-est .sp{width:14px;height:14px;border-radius:50%;border:2px solid #CFE7D8;border-top-color:#3056ED;animation:pqg 1s linear infinite;flex:none}
 @keyframes pqg{to{transform:rotate(360deg)}}
 @media(max-width:560px){.pd-pasos{grid-template-columns:minmax(0,1fr)}.pd-mock{margin:0 auto}.pd-form{grid-template-columns:minmax(0,1fr)}}
 """
@@ -473,34 +473,60 @@ def qr_estado(iid: str, request: Request) -> JSONResponse:
 # ── Lado academia: plan, candado y pagos por confirmar ───────────────────────
 
 CSS_PLAN = """
-.pl-card{background:#fff;border:1px solid var(--trazo);border-radius:22px;box-shadow:var(--sombra2);overflow:hidden;max-width:620px;margin:18px auto 0}
-.pl-top{background:linear-gradient(135deg,#0A1B3D,#067A38);color:#fff;padding:20px 22px}
-.pl-top .pill{background:rgba(255,255,255,.18);color:#fff}
-.pl-top h2{margin:10px 0 2px;font-size:22px;color:#fff;overflow-wrap:anywhere}
-.pl-precio{font-size:34px;font-weight:900;margin-top:10px}.pl-precio small{font-size:15px;font-weight:600;opacity:.85}
-.pl-body{padding:18px 22px 22px}
-.pl-ben{display:flex;gap:12px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--trazo)}
-.pl-ben:first-child{border-top:0}.pl-ben .ic{font-size:20px;flex:none;width:28px;text-align:center}
-.pl-ben b{display:block;font-size:14.5px}.pl-ben small{color:var(--tenue);font-size:12.5px}
-.pl-sw{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:16px;padding:12px 14px;border-radius:14px;background:var(--gris)}
-.pl-sw input{width:46px;height:26px;flex:none;accent-color:var(--esmeralda)}
-.pl-sw .tx{min-width:0}.pl-sw small{display:block;color:var(--tenue);font-size:12px}
-.pl-banner{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:14px}
-.pl-banner .btn{flex:none}
-.pw-card{text-align:center;max-width:560px;margin:22px auto 0}
-.pw-card .em{font-size:44px}
 .pc-card{border:1px solid #E5D3EA;background:#FCF7FD;border-radius:18px;padding:14px 16px;min-width:0}
 .pc-cod{font-size:34px;font-weight:900;letter-spacing:8px;color:#4A1257;text-align:center;background:#fff;border-radius:14px;padding:8px;margin:10px 0;border:2px dashed #C9A5D3}
 .pc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(300px,100%),1fr));gap:12px;margin-top:12px}
 .pc-acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.pc-acc .btn{flex:1 1 auto}
 .pc-mot .chip{margin:4px 4px 0 0}
 """
+# (Lo del plan —banner, tarjeta, candado— vive en `web/estilos_v_academia.py`;
+# aquí solo quedan las tarjetas de "Pagos por confirmar", que pinta Cobros.)
+
+_ICO_BEN = ("campana", "lapiz", "barras", "billete")
+
+
+def beneficios_de(a: dict | None = None) -> list[tuple[str, str, str]]:
+    """Lo que incluye el Plan Academia, con el cobro directo del PAÍS de la
+    academia (Perú: Yape con el código de seguridad; Ecuador / Bolivia: QR de
+    cobro con monto único). Sin academia, los dos textos."""
+    pais = ap.pais_de(a) if a else ""
+    if pais == "PE":
+        directo = "En Perú por Yape: confirmas con el código de seguridad de su comprobante."
+    elif pais in ("EC", "BO"):
+        directo = f"En {ap.NOMBRE_PAIS.get(pais, pais)} con tu QR de cobro y un monto único por pago."
+    else:
+        directo = "En Perú por Yape (confirmas con el código de seguridad); en Ecuador y Bolivia con tu QR de cobro y un monto único."
+    return [(ic, t, d) for ic, (_e, t, d) in zip(_ICO_BEN, BENEFICIOS[:3])] + [
+        ("billete", "Tus alumnos te pagan directo · 0 % de comisión",
+         directo + " Tu celular Android lo confirma solo (actívalo en la app → Plan Academia).")]
+
+
+def _lista_beneficios(a: dict | None) -> str:
+    from web import estilos_v_academia as sva
+    return "".join(f"<div class='vac-ben'>{sva.suave(ic)}<div><b>{e(t)}</b><small>{e(d)}</small></div></div>"
+                   for ic, t, d in beneficios_de(a))
+
+
+def _progreso(a: dict, est: dict) -> tuple[int, int, float]:
+    """(día actual, total de días, % recorrido) del tramo vigente: la prueba
+    gratis o el mes pagado. Sale del registro del plan (`stores.planes_academia`)."""
+    r = ap._reg(str(a.get("id") or "")) or {}
+    if est.get("estado") == "prueba":
+        ini, fin = ap._de_iso(r.get("prueba_desde")), ap._de_iso(r.get("prueba_hasta"))
+        total = max(1, (fin - ini).days) if ini and fin else max(1, ap.prueba_dias())
+    else:
+        total = ap.DIAS_PERIODO
+    restan = max(0, int(est.get("dias_restantes") or 0))
+    dia = min(total, max(1, total - restan + 1))
+    return dia, total, round(dia / total * 100, 1)
 
 
 def banner_plan(acads: list[dict]) -> str:
-    """Avisos arriba de Mi academia: prueba (días que quedan) o plan vencido."""
+    """Avisos arriba de Mi academia: prueba (días que quedan, barra "Día X de
+    N"), plan vigente o plan vencido (candado)."""
     if not activo():
         return ""
+    from web import estilos_v_academia as sva
     out = ""
     for a in acads:
         est = ap.estado(a)
@@ -508,37 +534,50 @@ def banner_plan(acads: list[dict]) -> str:
         nombre = e(a.get("nombre") or "Tu academia")
         if est["estado"] == "prueba":
             d = int(est.get("dias_restantes") or 0)
-            out += (f"<div class='aviso warn pl-banner'><span>🎁 <b>{nombre}</b>: te quedan {d} día{'s' if d != 1 else ''} de prueba gratis del Plan Academia.</span>"
+            dia, total, pct = _progreso(a, est)
+            out += (f"<div class='vac-banner warn'><span class='va-ic'>{sva.svg('regalo')}</span>"
+                    f"<div class='vac-banner-t'><b>Te queda{'n' if d != 1 else ''} {d} día{'s' if d != 1 else ''} de prueba gratis del Plan Academia</b>"
+                    f"<small>{nombre} · termina el {e(est.get('vence_txt') or '')}</small></div>"
+                    f"<div class='vac-banner-bar'><div class='vac-barra warn' role='progressbar' aria-valuemin='1' aria-valuemax='{total}' aria-valuenow='{dia}' "
+                    f"aria-label='Día {dia} de {total} de tu prueba'><i style='width:{pct}%'></i></div><small>Día {dia} de {total}</small></div>"
                     f"<a class='btn sec' href='{url}'>Ver plan</a></div>")
         elif est["estado"] == "vencida":
-            out += (f"<div class='aviso bad pl-banner'><span><b>{nombre}</b> · Tu plan venció: tus alumnos no reciben recordatorios y no aceptas matrículas.</span>"
+            out += (f"<div class='vac-banner bad'><span class='va-ic'>{sva.svg('candado')}</span>"
+                    f"<div class='vac-banner-t'><b>Tu plan venció · {nombre}</b>"
+                    "<small>Tus alumnos no reciben recordatorios y no aceptas matrículas. Los pagos que ya te reportaron siguen en Cobros.</small></div>"
                     f"<a class='btn' href='{url}'>Activar por {e(est['simbolo'])} {est['precio']:.2f}</a></div>")
-    return f"<style>{CSS_PLAN}</style>{out}" if out else ""
+        elif est["estado"] == "activa":
+            out += (f"<div class='vac-banner ok'><span class='va-ic'>{sva.svg('check')}</span>"
+                    f"<div class='vac-banner-t'><b>Plan Academia activo hasta el {e(est.get('vence_txt') or '')}</b>"
+                    f"<small>{nombre} · {'se renueva solo con tu saldo' if est.get('auto_renovar') else 'renovación automática apagada'}</small></div>"
+                    f"<a class='btn sec' href='{url}'>Ver plan</a></div>")
+    return out
 
 
 def pill_plan(a: dict) -> str:
     if not activo():
         return ""
+    from web import vista_anfitrion as va
     est = ap.estado(a)
     if est["estado"] == "prueba":
-        return f"<span class='pill dorado'>🎁 Prueba · {int(est.get('dias_restantes') or 0)} d</span>"
+        return va.pill(f"Prueba · {int(est.get('dias_restantes') or 0)} d", "warn")
     if est["estado"] == "activa":
-        return "<span class='pill ok'>✓ Plan activo</span>"
-    return "<span class='pill bad'>Plan vencido</span>"
+        return va.pill("Plan activo", "ok")
+    return va.pill("Plan vencido", "bad")
 
 
 def paywall(a: dict) -> str:
     """Tarjeta que reemplaza a una página de gestión sin plan vigente."""
+    from web import estilos_v_academia as sva
     est = ap.estado(a)
     url = f"/anfitrion/academia/plan?academia={up.quote(str(a.get('id') or ''))}"
-    ben = "".join(f"<div class='pl-ben' style='text-align:left'><span class='ic'>{ic}</span><div><b>{e(t)}</b><small>{e(d)}</small></div></div>"
-                  for ic, t, d in BENEFICIOS)
-    return (f"<style>{CSS_PLAN}</style><div class='panel pw-card'><div class='em'>🔒</div><h2>Activa tu Plan Academia</h2>"
-            f"<p class='sub'>El plan de <b>{e(a.get('nombre') or 'tu academia')}</b> venció. Mientras tanto tu academia solo muestra su ficha pública "
+    return (f"<style>{CSS_PLAN}</style><section class='va-panel vac-pw'><span class='vac-pw-ic'>{sva.svg('candado', 30)}</span>"
+            "<h2>Activa tu Plan Academia</h2>"
+            f"<p>El plan de <b>{e(a.get('nombre') or 'tu academia')}</b> venció. Mientras tanto tu academia solo muestra su ficha pública "
             "y los pagos que ya te reportaron tus alumnos siguen en «Cobros» para que los confirmes.</p>"
-            f"<div style='margin-top:12px'>{ben}</div>"
-            f"<div class='acciones' style='justify-content:center;margin-top:14px'><a class='btn' href='{url}'>Activar por {e(est['simbolo'])} {est['precio']:.2f} al mes</a>"
-            f"<a class='btn sec' href='/anfitrion/cobros?academia={e(up.quote(str(a.get('id') or '')))}'>💜 Pagos por confirmar</a></div></div>")
+            f"{_lista_beneficios(a)}"
+            f"<div class='vac-pw-acc'><a class='btn' href='{url}'>Activar por {e(est['simbolo'])} {est['precio']:.2f} al mes</a>"
+            f"<a class='btn sec' href='/anfitrion/cobros?academia={e(up.quote(str(a.get('id') or '')))}'>Pagos por confirmar</a></div></section>")
 
 
 def _mias(email: str) -> list[dict]:
@@ -549,24 +588,35 @@ def _mias(email: str) -> list[dict]:
 
 
 def _tarjeta_plan(a: dict, email: str) -> str:
+    """Tarjeta del plan (columna izquierda de la captura "Plan Academia"):
+    cabecera azul con estado y precio REAL de la moneda de la academia, tramo
+    vigente con su barra, pagar con saldo y renovación automática."""
     from db.store import stores
+    from web import estilos_v_academia as sva
     est = ap.estado(a)
     sim, precio = est["simbolo"], float(est["precio"])
+    dia, total, pct = _progreso(a, est)
+    vence = e(est.get("vence_txt") or "")
     if est["estado"] == "prueba":
         d = int(est.get("dias_restantes") or 0)
-        estado = f"<span class='pill'>🎁 Prueba gratis · quedan {d} día{'s' if d != 1 else ''}</span>"
-        detalle = f"Tu prueba gratis termina el {e(est.get('vence_txt') or '')}. Si activas ahora, el mes se suma al final de la prueba: no pierdes días."
+        pill = f"<span class='vac-plan-pill'>{sva.svg('regalo', 15)}Prueba gratis · queda{'n' if d != 1 else ''} {d} día{'s' if d != 1 else ''}</span>"
+        tramo = (f"<div class='vac-plan-fila'><span>Tu prueba</span><b>termina el {vence}</b></div>"
+                 f"<div class='vac-barra warn'><i style='width:{pct}%'></i></div>")
+        detalle = "Si activas ahora, el mes se suma al final de la prueba: no pierdes días."
         boton = f"Activar ya · {sim} {precio:.2f}"
     elif est["estado"] == "activa":
-        estado = f"<span class='pill'>✓ Activo hasta el {e(est.get('vence_txt') or '')}</span>"
+        pill = f"<span class='vac-plan-pill'>{sva.svg('check', 15)}Activo hasta el {vence}</span>"
+        tramo = (f"<div class='vac-plan-fila'><span>Tu mes</span><b>vence el {vence}</b></div>"
+                 f"<div class='vac-barra'><i style='width:{pct}%'></i></div>")
         detalle = ("Se renueva solo con tu saldo al vencer." if est.get("auto_renovar") else
                    "La renovación automática está apagada: al vencer, tu academia se queda solo con su ficha pública.")
         boton = f"Pagar un mes más · {sim} {precio:.2f}"
     else:
-        estado = "<span class='pill' style='background:#C13515'>Vencido</span>"
+        pill = f"<span class='vac-plan-pill bad'>{sva.svg('candado', 15)}Vencido</span>"
+        tramo = (f"<div class='vac-plan-fila'><span>Tu plan</span><b>venció el {vence}</b></div>"
+                 "<div class='vac-barra bad'><i style='width:100%'></i></div>") if vence else ""
         detalle = "Tu academia solo muestra su ficha pública: sin matrículas nuevas, sin recordatorios a tus alumnos y sin panel."
         boton = f"Pagar con mi saldo · {sim} {precio:.2f}"
-    ben = "".join(f"<div class='pl-ben'><span class='ic'>{ic}</span><div><b>{e(t)}</b><small>{e(d)}</small></div></div>" for ic, t, d in BENEFICIOS)
     try:
         from pagos.router import moneda_billetera
         mon_b = moneda_billetera(email)
@@ -574,20 +624,26 @@ def _tarjeta_plan(a: dict, email: str) -> str:
         mon_b = est["moneda"]
     saldo = stores.saldo_centimos(email) / 100.0
     cd = ap.cobro_directo(a)
-    aviso_yape = ("" if cd else
-                  f"<div class='aviso warn' style='margin-top:14px'>Registra tu Yape para que tus alumnos te paguen directo. "
-                  f"<a href='/anfitrion/academia/{e(a['id'])}/editar#sec-cobro' style='font-weight:700'>Registrar mi Yape ›</a></div>")
+    if cd:
+        aviso_cobro = ""
+    elif ap.medio_cobro_de_pais(ap.pais_de(a)) == "yape":
+        aviso_cobro = ("<div class='va-aviso warn' style='margin:16px 0 0'><div class='va-aviso-t'>Registra tu Yape para que tus alumnos te paguen directo.</div>"
+                       f"<div class='va-aviso-acc'><a href='/anfitrion/academia/{e(a['id'])}/editar#sec-cobro'>Registrar mi Yape ›</a></div></div>")
+    else:
+        aviso_cobro = ("<div class='va-aviso warn' style='margin:16px 0 0'><div class='va-aviso-t'>Sube tu QR de cobro para que tus alumnos te paguen directo.</div>"
+                       f"<div class='va-aviso-acc'><a href='/anfitrion/academia/{e(a['id'])}/editar#sec-cobro'>Subir mi QR ›</a></div></div>")
     renueva = bool(est.get("auto_renovar"))
-    return (f"<div class='pl-card' data-acad='{e(a['id'])}'><div class='pl-top'>{estado}<h2>Plan Academia · {e(a.get('nombre') or 'Academia')}</h2>"
-            f"<div class='pl-precio'>{e(sim)} {precio:.2f} <small>al mes</small></div></div><div class='pl-body'>"
-            f"<p class='sub' style='margin-top:0'>{detalle}</p>{ben}"
-            f"<button type='button' class='btn lg' style='width:100%;margin-top:14px' data-plan-pagar='{e(a['id'])}' data-precio='{precio:.2f}' data-sim='{e(sim)}'>{e(boton)}</button>"
-            f"<p class='sub' style='font-size:12.5px;text-align:center;margin-top:6px'>Tu saldo: {e(ap.SIMBOLO.get(mon_b, mon_b))} {saldo:.2f} · "
-            "<a href='/mi-billetera#recargar'>Recargar</a></p>"
-            f"<label class='pl-sw'><span class='tx'><b>Renovación automática</b><small>Cada {ap.DIAS_PERIODO} días con tu saldo, después de tu primer pago. "
+    return (f"<div class='vac-plan-card' data-acad='{e(a['id'])}'><div class='vac-plan-top'>{pill}"
+            f"<h2>Plan Academia</h2><div class='acad'>{e(a.get('nombre') or 'Academia')}</div>"
+            f"<div class='vac-plan-precio'><b>{e(sim)} {precio:.2f}</b><span>al mes</span></div></div><div class='vac-plan-body'>"
+            f"{tramo}<p class='vac-plan-nota'>{e(detalle)}</p>"
+            f"<button type='button' class='btn ancho' data-plan-pagar='{e(a['id'])}' data-precio='{precio:.2f}' data-sim='{e(sim)}'>{e(boton)}</button>"
+            f"<div class='vac-saldo'>{sva.svg('billete', 15)}<span>Tu saldo: {e(ap.SIMBOLO.get(mon_b, mon_b))} {saldo:.2f} ·</span>"
+            "<a href='/mi-billetera#recargar'>Recargar</a></div>"
+            f"<label class='vac-sw'>{sva.svg('intercambio', 18)}<span class='tx'><b>Renovación automática</b><small>Cada {ap.DIAS_PERIODO} días con tu saldo, después de tu primer pago. "
             "Puedes apagarla cuando quieras.</small></span>"
-            f"<input type='checkbox' role='switch' data-plan-renovar='{e(a['id'])}'{' checked' if renueva else ''}></label>"
-            f"{aviso_yape}</div></div>")
+            f"<input type='checkbox' role='switch' aria-label='Renovación automática' data-plan-renovar='{e(a['id'])}'{' checked' if renueva else ''}></label>"
+            f"{aviso_cobro}</div></div>")
 
 
 JS_PLAN = r"""
@@ -631,8 +687,9 @@ JS_PLAN = r"""
 
 @router.get("/anfitrion/academia/plan", response_class=HTMLResponse)
 def pagina_plan(request: Request, academia: str = "") -> HTMLResponse:
+    from web import estilos_v_academia as sva
+    from web import vista_anfitrion as va
     from web.anfitrion import _sesion_o_entrar
-    from web.anfitrion_academia import _cab
     ses, resp = _sesion_o_entrar(request, "/anfitrion/academia/plan" + (f"?academia={up.quote(academia)}" if academia else ""))
     if resp is not None:
         return resp
@@ -641,18 +698,25 @@ def pagina_plan(request: Request, academia: str = "") -> HTMLResponse:
     if not acads:
         return HTMLResponse("", status_code=302, headers={"Location": "/anfitrion/academia"})
     if not activo():
-        cuerpo = ("<a class='anf-back' href='/anfitrion/academia'>‹ Mi academia</a><div class='panel pw-card' style='max-width:560px;margin:22px auto 0;text-align:center'>"
-                  f"<h1 style='font-size:22px'>Plan Academia</h1><p class='sub'>Hoy tu academia no paga plan: {MARCA} cobra una comisión solo cuando tus alumnos pagan en línea.</p></div>")
-        return ui.shell("Plan Academia", cuerpo, nav=_cab(ses, "academias"), sesion=ses, ancho=True, titulo_tab="Plan Academia · Modo anfitrión")
+        cuerpo = va.vista(va.cabecera("Plan Academia", "Tu academia no paga un plan mensual.", volver="/anfitrion/academia")
+                          + va.panel(va.vacio("academias", "Sin plan mensual",
+                                              f"Hoy tu academia no paga plan: {MARCA} cobra una comisión solo cuando tus alumnos pagan en línea.")),
+                          "vac")
+        return ui.shell("Plan Academia", cuerpo, sesion=ses, ancho=True, titulo_tab="Plan Academia · Modo anfitrión")
     a = next((x for x in acads if x.get("id") == academia), acads[0])
-    chips = ("<div class='chips' style='margin-top:12px;justify-content:center'>" + "".join(
-        f"<a class='chip{' sel' if x['id'] == a['id'] else ''}' href='/anfitrion/academia/plan?academia={e(up.quote(x['id']))}'>{e(x.get('nombre') or 'Academia')}</a>"
-        for x in acads) + "</div>") if len(acads) > 1 else ""
-    cuerpo = (f"<style>{CSS_PLAN}</style><a class='anf-back' href='/anfitrion/academia'>‹ Mi academia</a>"
-              "<div style='text-align:center;margin-top:8px'><h1 class='anf-hola' style='margin:0'>Plan Academia</h1>"
-              f"<p class='sub'>Un precio fijo al mes. {ap.prueba_dias()} días de prueba gratis. Tus alumnos te pagan directo: {MARCA} no cobra comisión.</p></div>"
-              f"{chips}{_tarjeta_plan(a, email)}<script>{JS_PLAN}</script>")
-    return ui.shell("Plan Academia", cuerpo, nav=_cab(ses, "academias"), sesion=ses, ancho=True, titulo_tab="Plan Academia · Modo anfitrión")
+    selector = ""
+    if len(acads) > 1:
+        selector = "<div class='vac-acads'>" + va.segmentado(
+            [(f"/anfitrion/academia/plan?academia={up.quote(x['id'])}", x.get("nombre") or "Academia", x["id"] == a["id"]) for x in acads],
+            etiqueta="Academia") + "</div>"
+    derecha = (f"<div><span class='vac-incl-t'>Qué incluye</span>{_lista_beneficios(a)}"
+               f"<div class='vac-franja'><span class='ck'>{sva.svg('check', 14, 3)}</span><div><b>Precio fijo, sin comisión por alumno.</b>"
+               "<small>Lo que cobras a tus alumnos es 100 % tuyo.</small></div></div></div>")
+    cuerpo = va.vista(
+        va.cabecera("Plan Academia", f"Un precio fijo al mes. {ap.prueba_dias()} días de prueba gratis. Tus alumnos te pagan directo: {MARCA} no cobra comisión.",
+                    volver="/anfitrion/academia")
+        + selector + f"<div class='vac-plan'>{_tarjeta_plan(a, email)}{derecha}</div><script>{JS_PLAN}</script>", "vac")
+    return ui.shell("Plan Academia", cuerpo, sesion=ses, ancho=True, titulo_tab="Plan Academia · Modo anfitrión")
 
 
 def _ses_json(request: Request):
@@ -734,10 +798,10 @@ def seccion_por_confirmar(acads: list[dict]) -> str:
                         f"<div class='sub' style='margin:10px 0 0;font-size:12px;text-align:center'>Código de seguridad</div><div class='pc-cod'>{e(g['codigo'])}</div>")
                      + (f"<div class='sub' style='margin:0;font-size:12.5px;text-align:center'>N.º de operación: <b>{e(g['operacion'])}</b></div>" if g.get("operacion") else "")
                      + f"<div class='sub' style='margin:4px 0 0;font-size:12px;text-align:center'>Reportado el {e(ap.fecha_txt(g.get('fecha')))}</div>"
-                     f"<div class='pc-acc'><button type='button' class='btn' data-pc-ok='{e(json.dumps(dato, ensure_ascii=False))}'>✅ Confirmar</button>"
-                     f"<button type='button' class='btn sec' data-pc-no='{e(json.dumps(dato, ensure_ascii=False))}'>No lo encontré</button></div></div>")
-    motivos = json.dumps(MOTIVOS_RECHAZO, ensure_ascii=False)
-    motivos_qr = json.dumps(MOTIVOS_RECHAZO_QR, ensure_ascii=False)
+                     f"<div class='pc-acc'><button type='button' class='btn' data-pc-ok='{e(ui.json_js(dato, ensure_ascii=False))}'>✅ Confirmar</button>"
+                     f"<button type='button' class='btn sec' data-pc-no='{e(ui.json_js(dato, ensure_ascii=False))}'>No lo encontré</button></div></div>")
+    motivos = ui.json_js(MOTIVOS_RECHAZO, ensure_ascii=False)
+    motivos_qr = ui.json_js(MOTIVOS_RECHAZO_QR, ensure_ascii=False)
     return (f"<style>{CSS_PLAN}</style><section id='porConfirmar' style='margin-top:16px'><h2 class='ng-h2' style='margin-bottom:2px'>💜 Pagos por confirmar</h2>"
             "<p class='sub' style='margin:0'>Tus alumnos te pagaron directo. Compara el código (Yape) o el monto exacto (QR) con la notificación de tu app y confirma con un toque.</p>"
             f"<div class='pc-grid'>{tarjetas}</div></section><script>window.__pcMotivos={motivos};window.__pcMotivosQr={motivos_qr};{JS_POR_CONFIRMAR}</script>")

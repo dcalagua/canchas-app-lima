@@ -312,7 +312,7 @@ class _Cliente {
 ({Color color, String label}) _segEstilo(String seg) {
   switch (seg) {
     case 'vip':
-      return (color: amarillo, label: 'VIP');
+      return (color: doradoTexto, label: 'VIP'); // texto: dorado legible (AA)
     case 'recurrente':
       return (color: teal, label: 'Recurrente');
     case 'nuevo':

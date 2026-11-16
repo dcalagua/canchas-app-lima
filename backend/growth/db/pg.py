@@ -134,8 +134,137 @@ def _tomar():
     return _nueva_pool()
 
 
+# ── Medidor de idas y vueltas a la base POR REQUEST (oct-2026) ──────────────
+# Con la base a ~115 ms (PRD: backend en Virginia, Postgres en São Paulo) lo que
+# manda es CUÁNTOS viajes hace una página, no cuánto tarda cada consulta. El
+# middleware de `main.py` abre un medidor por request (`medir_request`) y cada
+# viaje del pool (execute, BEGIN/COMMIT, conexión nueva) suma ahí; la línea
+# `[perf]` de las requests lentas lo incluye. Costo: un ContextVar.get() y un
+# perf_counter() por consulta. `PERF_SQL=1` además lo registra en TODA request
+# y lo devuelve en la cabecera `Server-Timing` (diagnóstico local / Railway).
+import contextvars as _cv
+
+PERF_SQL = os.getenv("PERF_SQL", "").strip().lower() in ("1", "true", "si", "sí")
+_medidor: _cv.ContextVar = _cv.ContextVar("pcg_medidor_sql", default=None)
+
+
+class MedidorSQL:
+    __slots__ = ("viajes", "ms", "conexiones", "memo")
+
+    def __init__(self, memo: bool = False):
+        self.viajes, self.ms, self.conexiones = 0, 0.0, 0
+        # Memoria de LECTURAS de esta request (solo GET/HEAD): las páginas
+        # piden lo mismo varias veces (la cancha, las canchas del dueño, los
+        # perfiles del chat…). Se vacía sola con cualquier escritura a la base.
+        self.memo = {} if memo else None
+
+    def resumen(self) -> str:
+        extra = f" · {self.conexiones} conexión(es) nueva(s)" if self.conexiones else ""
+        return f"sql={self.viajes} viajes/{int(self.ms)} ms{extra}"
+
+
+def medir_request(memo: bool = False) -> "MedidorSQL":
+    """Abre un medidor para la request actual (lo heredan las tareas y los
+    hilos del threadpool, que copian el contexto) y lo devuelve. [memo] =
+    activar la memoria de lecturas de la request (`memo_request`)."""
+    m = MedidorSQL(memo)
+    _medidor.set(m)
+    return m
+
+
+def memo_request() -> dict | None:
+    """Diccionario de lecturas YA hechas en esta request (None fuera de una
+    request GET/HEAD: crons, POST, tests que llaman funciones directo). Quien
+    lo usa guarda COPIAS y la clave incluye todo lo que define el resultado."""
+    m = _medidor.get()
+    return m.memo if m is not None else None
+
+
+_SIN = object()
+
+
+def memo_leer(clave, calcular):
+    """`calcular()` una sola vez por request (GET/HEAD); las siguientes
+    lecturas con la misma [clave] reciben una COPIA de lo ya leído. Fuera de
+    una request (o en POST) llama a `calcular()` siempre."""
+    m = memo_request()
+    if m is None:
+        return calcular()
+    v = m.get(clave, _SIN)
+    if v is not _SIN:
+        return _copia(v)
+    v = calcular()
+    m[clave] = _copia(v)
+    return v
+
+
+def memo_guardar(clave, valor) -> None:
+    """Deja [valor] memorizado (precargas en lote: una consulta para varias)."""
+    m = memo_request()
+    if m is not None:
+        m[clave] = _copia(valor)
+
+
+def memo_por_clave(prefijo: str, claves, leer) -> dict:
+    """Lectura POR CLAVE con la memoria de la request: solo viajan a la base
+    las claves que aún no se leyeron en esta request (p. ej. la bandeja y el
+    encabezado del chat piden los mismos perfiles). `leer(faltan)` devuelve
+    {clave: valor} (las ausentes = no existen) o None si falló: lo fallido no
+    se memoriza. Fuera de una request GET llama a `leer(claves)` tal cual."""
+    claves = list(claves)
+    m = memo_request()
+    if m is None:
+        return leer(claves) or {} if claves else {}
+    out: dict = {}
+    faltan = []
+    for k in claves:
+        if (prefijo, k) in m:
+            v = m[(prefijo, k)]
+            if v is not None:
+                out[k] = _copia(v)
+        else:
+            faltan.append(k)
+    if faltan:
+        leidos = leer(faltan)
+        if leidos is None:
+            return out
+        for k in faltan:
+            if k in leidos:
+                out[k] = leidos[k]
+            m[(prefijo, k)] = _copia(leidos.get(k))
+    return out
+
+
+def memo_tiene(clave) -> bool:
+    m = memo_request()
+    return m is not None and clave in m
+
+
+def _copia(v):
+    import copy
+    return copy.deepcopy(v)
+
+
+def olvidar_memo() -> None:
+    """Tras escribir en la base, lo leído antes en la request ya no vale."""
+    m = _medidor.get()
+    if m is not None and m.memo:
+        m.memo.clear()
+
+
+def _medir(t0: float, conexion: bool = False) -> None:
+    m = _medidor.get()
+    if m is not None:
+        m.viajes += 1
+        m.ms += (_time.perf_counter() - t0) * 1000
+        if conexion:
+            m.conexiones += 1
+
+
 def _nueva_pool():
+    t0 = _time.perf_counter()
     conn = _conn()
+    _medir(t0, conexion=True)
     conn.autocommit = True  # transacción perezosa (ver `_ConexionPerezosa`)
     return conn
 
@@ -179,11 +308,19 @@ class _CursorPerezoso:
     def execute(self, sql, params=None, **kw):
         if not es_lectura(sql):
             self._conx._abrir()
-        return self._cur.execute(sql, params, **kw) if params is not None else self._cur.execute(sql, **kw)
+        t0 = _time.perf_counter()
+        try:
+            return self._cur.execute(sql, params, **kw) if params is not None else self._cur.execute(sql, **kw)
+        finally:
+            _medir(t0)
 
     def executemany(self, sql, params_seq, **kw):
         self._conx._abrir()
-        return self._cur.executemany(sql, params_seq, **kw)
+        t0 = _time.perf_counter()
+        try:
+            return self._cur.executemany(sql, params_seq, **kw)
+        finally:
+            _medir(t0)
 
     def __getattr__(self, nombre):
         return getattr(self._cur, nombre)
@@ -206,12 +343,23 @@ class _ConexionPerezosa:
     """Envuelve una conexión en autocommit; `commit()`/`rollback()` solo viajan
     si de verdad hay una transacción abierta."""
 
-    def __init__(self, conn):
-        self._conn, self._en_tx = conn, False
+    def __init__(self, conn, atomica: bool = True):
+        self._conn, self._en_tx, self._atomica = conn, False, atomica
+
+    def _viaje(self, sql, params=None, **kw):
+        t0 = _time.perf_counter()
+        try:
+            return self._conn.execute(sql, params, **kw) if params is not None else self._conn.execute(sql, **kw)
+        finally:
+            _medir(t0)
 
     def _abrir(self):
-        if not self._en_tx:
-            self._conn.execute("BEGIN")
+        """Primera escritura: abre la transacción (salvo `atomica=False`, donde
+        cada sentencia se confirma sola, sin BEGIN/COMMIT = 2 viajes menos) y
+        olvida lo memorizado en la request."""
+        olvidar_memo()
+        if not self._en_tx and self._atomica:
+            self._viaje("BEGIN")
             self._en_tx = True
 
     def cursor(self, *a, **k):
@@ -220,30 +368,32 @@ class _ConexionPerezosa:
     def execute(self, sql, params=None, **kw):
         if not es_lectura(sql):
             self._abrir()
-        return self._conn.execute(sql, params, **kw) if params is not None else self._conn.execute(sql, **kw)
+        return self._viaje(sql, params, **kw)
 
     def commit(self):
         if self._en_tx:
             self._en_tx = False
-            self._conn.execute("COMMIT")
+            self._viaje("COMMIT")
 
     def rollback(self):
         if self._en_tx:
             self._en_tx = False
-            self._conn.execute("ROLLBACK")
+            self._viaje("ROLLBACK")
 
     def __getattr__(self, nombre):
         return getattr(self._conn, nombre)
 
 
 @_cm
-def conexion():
+def conexion(atomica: bool = True):
     """`with pg.conexion() as conn:` — conexión del pool; commit al salir,
     rollback y descarte si hubo error. Reemplaza a `with _conn() as conn`
     (que cierra la conexión) en los caminos calientes de la web. Transacción
-    perezosa: ver `_ConexionPerezosa`."""
+    perezosa: ver `_ConexionPerezosa`. `atomica=False` SOLO para una única
+    sentencia de escritura que no necesita ir junto a otra (p. ej. un upsert
+    en lote con `unnest`): se confirma sola, 1 viaje en vez de 3."""
     crudo = _tomar()
-    conn = _ConexionPerezosa(crudo)
+    conn = _ConexionPerezosa(crudo, atomica)
     try:
         yield conn
     except BaseException:

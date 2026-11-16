@@ -147,6 +147,22 @@ _CONSULTAS: dict[str, str] = {
           and g.id is null
     """,
     # Doc/selfie de identidad que ya nadie referencia (minimización, Ley 29733).
+    # MINIATURAS de la web (`web/miniaturas.py`): `canchas/mini/<bucket>/<ruta
+    # de la original>/<clave16>_<ancho>.webp`. Su "fila dueña" es la FOTO
+    # ORIGINAL, cuya ruta va en el nombre: se marca huérfana solo si tiene ese
+    # formato exacto y la original YA NO EXISTE en su bucket (la cancha o el
+    # producto se borró y el barrido ya se llevó la foto). Lo que está en
+    # `mini/` sin ese formato no se toca (se reporta como desconocido).
+    "miniaturas": """
+        select 'canchas', o.name from storage.objects o
+        where o.bucket_id = 'canchas'
+          and o.name ~ '^mini/(canchas|productos)/.+/[0-9a-f]{16}_[0-9]+\\.(webp|jpg)$'
+          and o.created_at < now() - interval '1 day'
+          and not exists (
+            select 1 from storage.objects s
+            where s.bucket_id = split_part(o.name, '/', 2)
+              and s.name = regexp_replace(o.name, '^mini/[^/]+/(.+)/[^/]+$', '\\1'))
+    """,
     "verificacion": """
         select 'verificacion', o.name from storage.objects o
         left join pichangol_verificaciones v on o.name in (v.doc_path, v.selfie_path)
@@ -166,7 +182,7 @@ _SQL_DESCONOCIDOS = """
     where o.bucket_id = 'canchas' and c.id is null
       and split_part(o.name, '/', 1) not in
           ('entrenador', 'bodega', 'campeonatos', 'recargas', 'ilustraciones',
-           'afiches')
+           'afiches', 'mini')
     limit 25
 """
 
@@ -202,6 +218,8 @@ _REFERENCIA: dict[str, str] = {
     "canales_posts": "pichangol_canal_posts",
     "grupos": "pichangol_grupos",
     "verificacion": "pichangol_verificaciones",
+    # Las miniaturas se cruzan contra las fotos originales del propio Storage.
+    "miniaturas": "storage.objects",
 }
 
 

@@ -187,7 +187,7 @@ def test_reporte_y_confirmacion_desde_la_web(db, monkeypatch):
     assert not cli.post("/web/academia/pago-directo/reportar", json={"alumno_id": aid, "cuota_ids": [c0], "codigo": "701"}).json()["ok"]
     # La academia: "Pagos por confirmar" en Cobros con el código en grande.
     _entrar_como(cli, monkeypatch, DUENO, "Profe")
-    cob = cli.get("/anfitrion/cobros?academia=ac_1").text
+    cob = cli.get("/anfitrion/cobros?academia=ac_1").text.split("<main", 1)[1]  # solo la vista, no la barra
     assert "Pagos por confirmar" in cob and "class='pc-cod'>701<" in cob and "05775701" in cob and "Compara el código" in cob
     # Rechazar exige un motivo de la lista.
     assert cli.post("/anfitrion/academia/pago-directo/resolver", json={"academia_id": "ac_1", "alumno_id": aid, "cuota_ids": [c0],
@@ -196,7 +196,7 @@ def test_reporte_y_confirmacion_desde_la_web(db, monkeypatch):
     assert j["ok"] and j["aceptado"]
     c = db.matriculas[aid]["cuotas"][0]
     assert c["pagada"] and c["operacionId"] == "yape:05775701" and c["medioPago"] == "yape_directo"
-    assert "Pagos por confirmar" not in cli.get("/anfitrion/cobros?academia=ac_1").text
+    assert "Pagos por confirmar" not in cli.get("/anfitrion/cobros?academia=ac_1").text.split("<main", 1)[1]  # (la barra sí lo nombra: es un módulo)
     assert any(p[0] == PAPA and "confirmado" in p[1].lower() for p in db.pushes)
     # Rechazo: el alumno lo ve y puede volver a reportar.
     _entrar_como(cli, monkeypatch, PAPA, "Papá Pérez")
@@ -235,7 +235,7 @@ def test_paywall_y_ficha_sin_matricula_cuando_vence_el_plan(db, monkeypatch):
     assert "Tu plan venció" in cli.get("/anfitrion/academia").text
     for ruta in ("/anfitrion/academia/alumnos?academia=ac_1", "/anfitrion/academia/sedes?academia=ac_1", "/anfitrion/academia/ranking?academia=ac_1"):
         assert "Activa tu Plan Academia" in cli.get(ruta).text, ruta
-    cob = cli.get("/anfitrion/cobros?academia=ac_1").text
+    cob = cli.get("/anfitrion/cobros?academia=ac_1").text.split("<main", 1)[1]  # solo la vista, no la barra
     assert "Activa tu Plan Academia" in cob and "Pagos por confirmar" in cob and "Quién debe" not in cob
     assert cli.post("/anfitrion/academia/pago-directo/resolver", json={"academia_id": "ac_1", "alumno_id": aid, "aceptar": True}).json()["ok"]
     # Plan: vencido → sin saldo pide recargar → con saldo queda activo; renovación automática.
@@ -328,7 +328,7 @@ def test_pago_por_qr_con_monto_unico_en_la_web(db, monkeypatch):
     assert cli.post(f"/web/academia/pago-qr/{iid}/pagado").json()["intencion"]["estado"] == "reportado"
     # La academia lo ve en «Pagos por confirmar» con el monto exacto.
     _entrar_como(cli, monkeypatch, DUENO, "Profe")
-    cob = cli.get("/anfitrion/cobros?academia=ac_1").text
+    cob = cli.get("/anfitrion/cobros?academia=ac_1").text.split("<main", 1)[1]  # solo la vista, no la barra
     assert "Monto exacto por QR" in cob and "$ 250.01" in cob
     # Llega la notificación de DeUna! al celular de la academia → pagada sola.
     yape_auto.vincular(DUENO)

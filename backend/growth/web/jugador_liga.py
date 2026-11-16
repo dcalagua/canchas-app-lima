@@ -103,13 +103,19 @@ def perfiles(emails) -> dict[str, dict]:
     es = sorted({(x or "").strip().lower() for x in emails if (x or "").strip()})
     if not pg.habilitado or not es:
         return {}
+    # Por correo con la memoria de la request (la bandeja y el encabezado del
+    # chat piden los mismos perfiles: el segundo pedido no vuelve a la base).
+    return pg.memo_por_clave("perfil", es, _perfiles)
+
+
+def _perfiles(es: list[str]) -> dict[str, dict] | None:
     try:
         with pg.conexion() as conn, conn.cursor() as cur:
             cur.execute("SELECT email, nombre, foto_url, celular FROM pichangol_perfiles WHERE lower(email) = ANY(%s)", (es,))
             return {str(f[0]).lower(): {"nombre": str(f[1] or ""), "foto_url": str(f[2] or ""), "celular": str(f[3] or "")}
                     for f in cur.fetchall()}
     except Exception:  # noqa: BLE001
-        return {}
+        return None
 
 
 def mi_nombre(ses: dict) -> str:
@@ -138,7 +144,7 @@ def aviso_push(email: str, titulo: str, cuerpo: str, tipo: str = "aviso", data: 
             with pg.conexion() as conn, conn.cursor() as cur:
                 if data:
                     cur.execute("INSERT INTO pichangol_avisos (email, titulo, cuerpo, tipo, data, creado) "
-                                "VALUES (%s, %s, %s, %s, %s::jsonb, now())", (em, titulo, cuerpo, tipo, json.dumps(data)))
+                                "VALUES (%s, %s, %s, %s, %s::jsonb, now())", (em, titulo, cuerpo, tipo, ui.json_js(data)))
                 else:
                     cur.execute("INSERT INTO pichangol_avisos (email, titulo, cuerpo, tipo, creado) VALUES (%s, %s, %s, %s, now())",
                                 (em, titulo, cuerpo, tipo))
@@ -200,7 +206,7 @@ def _ocultar_correo(email: str) -> str:
 
 
 _CSS_BASE = """
-.lg-av{width:40px;height:40px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#0E8F67;color:#fff;font-weight:800;font-size:16px}
+.lg-av{width:40px;height:40px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#3056ED;color:#fff;font-weight:800;font-size:16px}
 .lg-wrap{max-width:760px;margin:10px auto 60px}
 .lg-wrap h1{font-size:28px;margin:4px 0 6px;letter-spacing:-.3px}
 .lg-card{background:#fff;border-radius:18px;box-shadow:0 6px 20px rgba(0,0,0,.07);padding:16px;margin:0 0 12px;min-width:0}
@@ -210,7 +216,7 @@ _CSS_BASE = """
 .lg-vacio{text-align:center;color:#6a6a6a;padding:28px 12px}
 .lg-vacio .em{font-size:52px;display:block;margin-bottom:8px}
 .pcg-dlg .caja .lg-opc{display:flex;align-items:center;gap:12px;width:100%;border:1px solid #E4E4E4;background:#fff;border-radius:12px;padding:8px 10px;margin:0 0 8px;font:inherit;cursor:pointer;text-align:left}
-.pcg-dlg .caja .lg-opc.sel{border:1.5px solid #0B8A3E;background:#EAF7EF}
+.pcg-dlg .caja .lg-opc.sel{border:1.5px solid #3056ED;background:#EAF7EF}
 .pcg-dlg .caja .lg-opc b{flex:1;min-width:0;overflow-wrap:anywhere}
 .lg-sets{display:grid;grid-template-columns:minmax(0,1fr) 72px 72px;gap:6px;align-items:center;margin-top:6px;font-size:13.5px}
 .lg-sets select{padding:8px;border-radius:10px;border:1px solid #E4E4E4;font:inherit;width:100%}
@@ -282,14 +288,14 @@ def chip_nivel(deporte: str, nivel: float, compacto: bool = False) -> str:
 
 _CSS_NIVEL = """
 .lg-niv{display:inline-flex;align-items:center;gap:4px;background:#fff;border:1px solid #E4E4E4;border-radius:99px;padding:7px 12px;box-shadow:0 2px 6px rgba(0,0,0,.06);font-size:14px;font-weight:600;white-space:nowrap}
-.lg-niv b{color:#067A38;font-weight:900}
+.lg-niv b{color:#2442C4;font-weight:900}
 .lg-niv.c{padding:3px 9px;font-size:12.5px}
 .nv-q{margin:18px 0 4px}
 .nv-q .t{display:flex;justify-content:space-between;gap:10px;font-weight:700}
-.nv-q .t span{color:#0E8F67;font-weight:800;white-space:nowrap}
-.nv-q input[type=range]{width:100%;accent-color:#0B8A3E;margin-top:8px}
+.nv-q .t span{color:#3056ED;font-weight:800;white-space:nowrap}
+.nv-q input[type=range]{width:100%;accent-color:#3056ED;margin-top:8px}
 .nv-sw{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0 6px;font-weight:700}
-.nv-sw input{width:auto;flex:none;transform:scale(1.4);accent-color:#0B8A3E}
+.nv-sw input{width:auto;flex:none;transform:scale(1.4);accent-color:#3056ED}
 .nv-res{text-align:center;padding:26px 10px}
 .nv-res .em{font-size:56px;display:block}
 .nv-res .lg-niv{font-size:18px;padding:10px 18px;margin:14px 0}
@@ -344,7 +350,7 @@ def pagina_mi_nivel(request: Request, deporte: str = "") -> HTMLResponse:
         "<button type='button' class='btn sec' id='nvOtro'>Evaluar otro deporte</button></div></div>"
         "</div>"
         "<script>(function(){\n"
-        "var dep=" + json.dumps(dep0) + ",$=function(i){return document.getElementById(i)};\n"
+        "var dep=" + ui.json_js(dep0) + ",$=function(i){return document.getElementById(i)};\n"
         "function pinta(){var a=+$('nvAn').value,f=+$('nvFr').value;$('nvAnT').textContent=a+' '+(a===1?'año':'años')+(a>=10?'+':'');$('nvFrT').textContent=f+(f>=5?'+':'')+' por semana'}\n"
         "$('nvAn').oninput=pinta;$('nvFr').oninput=pinta;pinta();\n"
         "$('nvDep').addEventListener('click',function(ev){var b=ev.target.closest('[data-dep]');if(!b)return;dep=b.dataset.dep;"
@@ -745,44 +751,44 @@ def hay_dobles(d: dict, dep: str) -> bool:
 # ═════════════════════════════ LIGA (páginas) ════════════════════════════════
 
 _CSS_LIGA = """
-.lg-hero{background:linear-gradient(135deg,#067A38,#0E8F67);color:#fff;border-radius:20px;padding:18px;box-shadow:0 10px 24px rgba(0,0,0,.14);margin:6px 0 14px}
+.lg-hero{background:linear-gradient(135deg,#2442C4,#3056ED);color:#fff;border-radius:20px;padding:18px;box-shadow:0 10px 24px rgba(0,0,0,.14);margin:6px 0 14px}
 .lg-hero .top{display:flex;gap:14px;align-items:center}
 .lg-hero .bola{width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;font-size:30px;flex:none}
 .lg-hero b{font-size:19px;display:block}
 .lg-hero small{color:rgba(255,255,255,.8);font-size:13px}
 .lg-hero .est{display:inline-flex;gap:8px;align-items:center;background:rgba(255,255,255,.16);border-radius:99px;padding:8px 12px;margin-top:14px;font-weight:700;font-size:13px;max-width:100%;overflow-wrap:anywhere}
 .lg-hero .acc{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
-.lg-hero .acc .btn{margin:0;background:#fff;color:#0A1B3D;padding:9px 14px;font-size:13.5px}
+.lg-hero .acc .btn{margin:0;background:#fff;color:#333333;padding:9px 14px;font-size:13.5px}
 .lg-tabs{display:flex;gap:4px;border-bottom:1px solid #EBEBEB;margin:0 0 14px;overflow-x:auto;scrollbar-width:none}
 .lg-tabs a{padding:10px 12px;font-weight:700;color:#6a6a6a;text-decoration:none;border-bottom:2px solid transparent;white-space:nowrap;display:inline-flex;gap:6px;align-items:center}
-.lg-tabs a.sel{color:#0A1B3D;border-color:#0A1B3D}
-.lg-bdg{background:#E0245E;color:#fff;border-radius:99px;font-size:11.5px;font-weight:800;min-width:20px;height:20px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center}
+.lg-tabs a.sel{color:#333333;border-color:#333333}
+.lg-bdg{background:#E0245E;color:#fff;border-radius:99px;font-size:12px;font-weight:800;min-width:20px;height:20px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center}
 .lg-fil{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
 .lg-fil a.chip{text-decoration:none}
-.lg-info{display:flex;gap:12px;align-items:center;background:#EAF7EF;color:#067A38;border-radius:16px;padding:12px 14px;margin:0 0 10px;font-size:13.5px;line-height:1.35}
+.lg-info{display:flex;gap:12px;align-items:center;background:#EAF7EF;color:#2442C4;border-radius:16px;padding:12px 14px;margin:0 0 10px;font-size:13.5px;line-height:1.35}
 .lg-info .em{font-size:24px;flex:none}
-.lg-campeon{display:flex;gap:12px;align-items:center;background:linear-gradient(135deg,#067A38,#0E8F67);color:#fff;border-radius:18px;padding:14px 16px;margin:10px 0}
+.lg-campeon{display:flex;gap:12px;align-items:center;background:linear-gradient(135deg,#2442C4,#3056ED);color:#fff;border-radius:18px;padding:14px 16px;margin:10px 0}
 .lg-campeon .em{font-size:34px}
 .lg-campeon b{font-size:18px;display:block;overflow-wrap:anywhere}
 .lg-campeon small{color:rgba(255,255,255,.8)}
-.lg-mipos{display:flex;align-items:center;gap:12px;border:1.5px solid #0B8A3E;background:#fff;border-radius:16px;padding:12px 14px;margin:0 0 12px}
-.lg-mipos .pos{font-size:26px;font-weight:900;color:#067A38;flex:none}
+.lg-mipos{display:flex;align-items:center;gap:12px;border:1.5px solid #3056ED;background:#fff;border-radius:16px;padding:12px 14px;margin:0 0 12px}
+.lg-mipos .pos{font-size:26px;font-weight:900;color:#2442C4;flex:none}
 .lg-fila{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #EBEBEB;border-radius:14px;padding:10px 12px;margin:0 0 8px;min-width:0}
-.lg-fila.yo{border-color:#0B8A3E;background:#F4FBF6}
+.lg-fila.yo{border-color:#3056ED;background:#F4FBF6}
 .lg-fila .n{width:26px;text-align:center;font-weight:800;color:#6a6a6a;flex:none}
 .lg-fila .n.med{font-size:19px}
 .lg-fila .q{flex:1;min-width:0}
 .lg-fila .q b{display:flex;gap:6px;align-items:center;min-width:0}
 .lg-fila .q b span.t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .lg-fila .q small{display:block;color:#6a6a6a;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lg-pro{background:#0A1B3D;color:#fff;font-size:9.5px;font-weight:900;border-radius:6px;padding:2px 6px;letter-spacing:.5px;flex:none}
+.lg-pro{background:#333333;color:#fff;font-size:12px;font-weight:900;border-radius:6px;padding:2px 6px;letter-spacing:.5px;flex:none}
 .lg-st{display:flex;gap:2px;flex:none}
 .lg-st div{width:28px;text-align:center}
 .lg-st div.pts{width:38px}
 .lg-st b{display:block;font-size:14px}
-.lg-st .pts b{font-size:17px;color:#067A38}
-.lg-st small{font-size:9.5px;color:#6a6a6a;font-weight:600}
-.lg-st .g b{color:#0B8A3E}.lg-st .p b{color:#C0392B}
+.lg-st .pts b{font-size:17px;color:#2442C4}
+.lg-st small{font-size:12px;color:#6a6a6a;font-weight:600}
+.lg-st .g b{color:#3056ED}.lg-st .p b{color:#C0392B}
 .lg-fila .btn{margin:0;padding:7px 12px;font-size:13px;flex:none}
 .lg-reto{background:#fff;border:1px solid #EBEBEB;border-radius:14px;padding:14px;margin:0 0 8px}
 .lg-reto .cab{display:flex;gap:12px;align-items:flex-start}
@@ -790,7 +796,7 @@ _CSS_LIGA = """
 .lg-reto .q{flex:1;min-width:0}
 .lg-reto .q .r1{display:flex;gap:8px;align-items:flex-start;justify-content:space-between}
 .lg-reto .q .r1 b{overflow-wrap:anywhere}
-.lg-reto .est{border-radius:8px;padding:3px 8px;font-size:11.5px;font-weight:800;white-space:nowrap;flex:none}
+.lg-reto .est{border-radius:8px;padding:3px 8px;font-size:12px;font-weight:800;white-space:nowrap;flex:none}
 .lg-reto small{display:block;color:#6a6a6a;font-size:12.5px;margin-top:2px}
 .lg-reto .acc{display:flex;gap:10px;margin-top:10px}
 .lg-reto .acc .btn{flex:1;margin:0}
@@ -801,10 +807,10 @@ _CSS_LIGA = """
 .lg-jug .q small{display:block;color:#6a6a6a;font-size:12.5px;overflow-wrap:anywhere}
 .lg-jug .btn{margin:0;flex:none;padding:8px 14px}
 .lg-yo{display:flex;align-items:center;gap:12px;background:#EAF7EF;border-radius:18px;padding:14px;margin:0 0 12px;flex-wrap:wrap}
-.lg-yo .q{flex:1;min-width:0;color:#067A38}
+.lg-yo .q{flex:1;min-width:0;color:#2442C4}
 .lg-yo .q b{display:block}
 .lg-yo .btn{margin:0;padding:8px 12px;font-size:13.5px}
-.lg-invita{background:linear-gradient(135deg,#067A38,#0E8F67);color:#fff;border-radius:18px;padding:16px;margin:0 0 12px}
+.lg-invita{background:linear-gradient(135deg,#2442C4,#3056ED);color:#fff;border-radius:18px;padding:16px;margin:0 0 12px}
 .lg-invita b{font-size:17px}
 .lg-invita p{color:rgba(255,255,255,.85);font-size:13px;margin:4px 0 12px}
 .lg-invita .btn{margin:0;width:100%}
@@ -858,7 +864,7 @@ def pagina_liga(request: Request, tab: str = "ranking", deporte: str = "", modal
 
     det = " · ".join(x for x in ((mi_circ or {}).get("zona"), ("Cat. " + mi_circ["categoria"]) if (mi_circ or {}).get("categoria") else "") if x)
     estado = ((f"✅ Estás en el circuito{' · ' + e(det) if det else ''}") if mi_circ else "🏆 Únete al circuito y deja que te reten")
-    hero = (f"<div class='lg-hero'><div class='top'><span class='bola'>🎾</span><div><b>Liga de tenis {MARCA}</b>"
+    hero = (f"<div class='lg-hero'><div class='top'><span class='bola'>🎾</span><div><h1 style='font:inherit;margin:0;color:inherit'><b>Liga de tenis {MARCA}</b></h1>"
             "<small>Rankea, reta y sube en tu ciudad</small></div></div>"
             f"<div class='est'>{estado}</div><div class='acc'>"
             + ("" if mi_circ else "<button type='button' class='btn' onclick='lgUnirme()'>Unirme al circuito</button>")
@@ -885,7 +891,7 @@ def pagina_liga(request: Request, tab: str = "ranking", deporte: str = "", modal
     cuerpo = (f"<style>{_CSS_BASE}{_CSS_NIVEL}{_CSS_LIGA}</style><div class='lg-wrap'>"
               "<a class='sub' href='/perfil' style='text-decoration:none'>‹ Perfil</a>"
               + hero + tabs + contenido + "</div>"
-              "<script>window.LG=" + json.dumps(cfg).replace("</", "<\\/") + ";</script><script>" + _JS_LIGA + "</script>")
+              "<script>window.LG=" + ui.json_js(cfg).replace("</", "<\\/") + ";</script><script>" + _JS_LIGA + "</script>")
     return ui.shell(f"Liga de tenis {MARCA}", cuerpo, sesion=ses, titulo_tab=f"Liga de tenis · {MARCA}")
 
 
@@ -899,7 +905,7 @@ def _tab_ranking(email: str, mi_circ: dict | None, deporte: str, modalidad: str,
     deportes = deportes_con_ranking(d)
     if not deportes:
         en = bool(mi_circ)
-        return ("<div class='lg-vacio'><span class='em'>🏆</span><b style='font-size:18px;color:#0A1B3D'>El ranking global está por arrancar</b>"
+        return ("<div class='lg-vacio'><span class='em'>🏆</span><b style='font-size:18px;color:#333333'>El ranking global está por arrancar</b>"
                 "<p>" + ("Ya estás en el circuito. Reta a otros jugadores para ser de los primeros en aparecer en la tabla de tu ciudad."
                          if en else "Únete al circuito, reta a otros jugadores y sé de los primeros en aparecer en la tabla de tu ciudad.") + "</p>"
                 + ("<a class='btn' href='/liga?tab=retar'>🎾 Ver jugadores para retar</a>" if en
@@ -985,7 +991,7 @@ def _tab_ranking(email: str, mi_circ: dict | None, deporte: str, modalidad: str,
     return h + filas
 
 
-_ESTADOS = {"pendiente": ("Pendiente", "#B7791F", "#FFF6E0", "⏳"), "aceptado": ("Aceptado", "#067A38", "#EAF7EF", "🤝"),
+_ESTADOS = {"pendiente": ("Pendiente", "#B7791F", "#FFF6E0", "⏳"), "aceptado": ("Aceptado", "#2442C4", "#EAF7EF", "🤝"),
             "por_confirmar": ("Por confirmar", "#D9730D", "#FDEFE3", "🕓"), "jugado": ("Jugado", "#6B46C1", "#F1ECFB", "🏆"),
             "disputado": ("En disputa", "#C0392B", "#FBEAEA", "⚠️"), "rechazado": ("Rechazado", "#C0392B", "#FBEAEA", "❌")}
 
@@ -998,7 +1004,7 @@ def _lado_nombre(r: dict, lado: str) -> str:
 
 def _tarjeta_reto(r: dict, soy_retado: bool, email: str) -> str:
     estado = str(r.get("estado") or "")
-    etq, color, fondo, emo = _ESTADOS.get(estado, (estado, "#0E8F67", "#EAF7EF", "🎾"))
+    etq, color, fondo, emo = _ESTADOS.get(estado, (estado, "#3056ED", "#EAF7EF", "🎾"))
     lr, ld = _lado_nombre(r, "retador"), _lado_nombre(r, "retado")
     otro = lr if soy_retado else ld
     ganador = str(r.get("ganador_email") or "").lower()
@@ -1013,7 +1019,7 @@ def _tarjeta_reto(r: dict, soy_retado: bool, email: str) -> str:
     if estado == "por_confirmar" and ganador:
         info += f"<small style='color:#D9730D;font-weight:700'>Reportaron que ganó {e(lr if gano_retador else ld)}</small>"
     if estado == "jugado" and ganador:
-        info += f"<small style='font-weight:700;color:#0A1B3D'>Ganó {e(lr if gano_retador else ld)}{' (confirmado por plazo)' if r.get('auto_confirmado') else ''}</small>"
+        info += f"<small style='font-weight:700;color:#333333'>Ganó {e(lr if gano_retador else ld)}{' (confirmado por plazo)' if r.get('auto_confirmado') else ''}</small>"
     datos = (f" data-id='{rid}' data-retador='{e(lr)}' data-retado='{e(ld)}' data-otro='{e(otro)}'")
     acc = ""
     if estado == "pendiente" and soy_retado:
@@ -1071,7 +1077,7 @@ def _tab_retar(email: str, mi_circ: dict | None, deporte: str, parejos: bool) ->
              "<button type='button' class='btn sec' style='color:#C0392B' onclick='lgSalir()'>Salir</button></div>")
     else:
         h = ("<div class='lg-invita'><b>¿Quieres que te reten?</b><p>Únete al circuito con tu deporte y zona. Aparecerás aquí para que otros te reten y empieces a sumar en el ranking.</p>"
-             "<button type='button' class='btn' style='background:#fff;color:#067A38' onclick='lgUnirme()'>＋ Unirme al circuito</button></div>")
+             "<button type='button' class='btn' style='background:#fff;color:#2442C4' onclick='lgUnirme()'>＋ Unirme al circuito</button></div>")
     h += ("<div class='lg-card' style='padding:12px 14px'><b>🔎 Buscar a un jugador</b>"
           "<div class='lg-busca'><input type='search' id='lgQ' placeholder='Nombre del jugador' autocomplete='off' aria-label='Buscar jugador'></div>"
           "<div class='lg-res' id='lgQRes'></div></div>")
@@ -1421,7 +1427,7 @@ window.lgUnirme = function(){
     C.deportes.map(function(d){ return "<button type='button' class='chip" + (d[0] === dep ? ' sel' : '') + "' data-v='" + d[0] + "'>" + esc(d[1]) + "</button>"; }).join('') +
     "</div><div class='lg-sec'>Zona</div><div class='lg-chips' id='uPais'>" +
     C.paises.map(function(p){ return "<button type='button' class='chip" + (p[0] === pais ? ' sel' : '') + "' data-v='" + p[0] + "'>" + esc(p[1]) + "</button>"; }).join('') +
-    "</div><div class='lg-geo'><select id='g1'></select><select id='g2'></select><select id='g3'></select></div>" +
+    "</div><div class='lg-geo'><select id='g1' aria-label='Región'></select><select id='g2' aria-label='Provincia o ciudad'></select><select id='g3' aria-label='Distrito o zona'></select></div>" +
     "<div class='lg-sec'>Categoría *</div><div class='sub' style='margin:-4px 0 6px;font-size:12.5px'>Obligatoria: la liga te ordena y te reta por tu nivel.</div><div class='lg-chips' id='uCat'>" +
     C.categorias.map(function(k){ return "<button type='button' class='chip" + (k === cat ? ' sel' : '') + "' data-v='" + esc(k) + "'>" + esc(k) + "</button>"; }).join('') + "</div></div>";
   var arbol = null;
@@ -1464,7 +1470,7 @@ var slots = {}, envBtn = document.getElementById('lgDobEnviar');
 function listo(){ var ok = slots.companero && slots.rival1 && slots.rival2; envBtn.disabled = !ok; envBtn.style.opacity = ok ? 1 : .5; }
 document.querySelectorAll('[data-slot]').forEach(function(s){ s.addEventListener('click', function(){
   var k = s.dataset.slot;
-  var p = pcgConfirmar({titulo: s.querySelector('small').textContent, icono: '🔎', html: "<input type='search' id='dqQ' placeholder='Nombre del jugador' autocomplete='off' style='width:100%'><div class='lg-res' id='dqRes'></div>", confirmar: 'Cerrar', cancelar: 'Cancelar'});
+  var p = pcgConfirmar({titulo: s.querySelector('small').textContent, icono: '🔎', html: "<input type='search' id='dqQ' aria-label='Buscar jugador por nombre' placeholder='Nombre del jugador' autocomplete='off' style='width:100%'><div class='lg-res' id='dqRes'></div>", confirmar: 'Cerrar', cancelar: 'Cancelar'});
   var inp = document.getElementById('dqQ'); setTimeout(function(){ inp.focus(); }, 60);
   buscador(inp, document.getElementById('dqRes'), {boton: function(){ return ''; }, click: function(x){
     var usado = Object.keys(slots).some(function(o){ return o !== k && slots[o] && slots[o].ref === x.ref; });

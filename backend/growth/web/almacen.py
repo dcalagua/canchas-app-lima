@@ -38,10 +38,13 @@ def prefijo_carpeta(carpeta: str, bucket: str = BUCKET) -> str:
     return url_publica(f"{urllib.parse.quote(carpeta, safe='')}/", bucket)
 
 
-def subir(bucket: str, ruta: str, datos: bytes, content_type: str = "image/jpeg", *, max_bytes: int | None = None) -> str | None:
+def subir(bucket: str, ruta: str, datos: bytes, content_type: str = "image/jpeg", *, max_bytes: int | None = None,
+          cache_control: str = "") -> str | None:
     """Sube (upsert) `datos` a `bucket/ruta` por la REST de Storage y devuelve
     la URL pública con `?v=` para saltar cachés (como el app). None si falló.
-    `max_bytes` permite subir archivos grandes (videos de la biblioteca de marca)."""
+    `max_bytes` permite subir archivos grandes (videos de la biblioteca de marca).
+    Una FOTO de cancha/producto deja sus miniaturas listas en segundo plano
+    (`web/miniaturas.py`), así el primer visitante no paga la espera."""
     if not disponible() or not datos or len(datos) > (max_bytes or MAX_BYTES):
         return None
     ruta_q = "/".join(urllib.parse.quote(p, safe="") for p in ruta.split("/"))
@@ -51,7 +54,8 @@ def subir(bucket: str, ruta: str, datos: bytes, content_type: str = "image/jpeg"
         headers={"apikey": config.SUPABASE_ANON_KEY,
                  "Authorization": f"Bearer {config.SUPABASE_ANON_KEY}",
                  "Content-Type": content_type or "image/jpeg",
-                 "x-upsert": "true"})
+                 "x-upsert": "true",
+                 **({"cache-control": cache_control} if cache_control else {})})
     try:
         with urllib.request.urlopen(req, timeout=max(30, len(datos) // 200_000)) as r:  # noqa: S310
             r.read()
@@ -61,7 +65,11 @@ def subir(bucket: str, ruta: str, datos: bytes, content_type: str = "image/jpeg"
     except Exception as e:  # noqa: BLE001
         print(f"[foto-web] subida falló {bucket}/{ruta}: {e}", flush=True)
         return None
-    return f"{url_publica(ruta_q, bucket)}?v={int(time.time() * 1000)}"
+    url = f"{url_publica(ruta_q, bucket)}?v={int(time.time() * 1000)}"
+    if (content_type or "").startswith("image/") and not ruta.startswith("mini/"):
+        from web import miniaturas
+        miniaturas.precalentar(url, datos)
+    return url
 
 
 def subir_foto(cancha_id: str, datos: bytes, content_type: str = "image/jpeg") -> str | None:

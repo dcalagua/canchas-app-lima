@@ -18,7 +18,11 @@
 --
 -- Y la torre (/admin → Mantenimiento → "Limpiar almacenamiento") barre lo que
 -- el teléfono no alcanzó, incluyendo la media de chats/canales/grupos cuya
--- fila ya no existe.
+-- fila ya no existe, y las MINIATURAS de la web (canchas/mini/<bucket>/<ruta
+-- de la original>/<clave>_<ancho>.webp, `web/miniaturas.py`) cuya foto
+-- original ya no está. El backend las SUBE con la llave anon como el resto de
+-- las fotos de la web (misma policy de insert/update del bucket `canchas`);
+-- la policy de delete de abajo ya las cubre: no hace falta SQL nuevo.
 --
 -- PROTEGIDO (sin policy de delete = imborrable desde el app):
 --   · canchas/recargas/*  — constancias de pago QR: registro contable/antifraude.

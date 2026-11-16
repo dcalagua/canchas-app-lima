@@ -125,14 +125,42 @@ def estado_pro(email: str) -> dict:
             "saldo": stores.saldo_centimos(email) / 100.0}
 
 
-_BENEFICIOS = [("🪪", "Carnet oficial verificado", "Tu ficha de jugador con la insignia Pro."),
-               ("📊", "Ranking y estadísticas", "Apareces en el ranking del circuito con tus números."),
-               ("🏆", "Prioridad en torneos", "Acceso preferente cuando abramos inscripciones."),
-               ("💚", "Apoyas tu comunidad", "Ayudas a que tu academia crezca su circuito.")]
+def beneficios_pro(es_dueno: bool) -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:
+    """(para tu local, para ti): SOLO lo que el código de verdad reserva a Pro
+    (candados reales: bodega, crear campeonatos, tope de retos, insignia PRO en
+    ranking/carnet, reserva manual si `WEB_MANUAL_REQUIERE_PRO`, salir en la
+    publicidad de la marca como local Pro). Nada de "prioridad en torneos" ni
+    "apoyas tu comunidad": no existen (plan del rediseño, sección 4)."""
+    try:
+        lim = int(stores.cfg("retos_free_limite_semana") or 3)
+    except (TypeError, ValueError):
+        lim = 3
+    camp = ("trofeo", "Campeonatos con tu marca", "Crea tus torneos: inscripciones con pago, fixture, resultados y afiche.")
+    local: list[tuple[str, str, str]] = []
+    if es_dueno:
+        local = [("bodega", "Mi bodega", "Caja rápida, stock con alertas y carta digital con QR para tu local."), camp,
+                 ("megafono", "Más visibilidad", "Tu local puede salir en la publicidad de la marca.")]
+        if config.WEB_MANUAL_REQUIERE_PRO:
+            local.append(("calendario", "Reserva manual y bloqueos", "Anota reservas de tus clientes y bloquea horas en tu calendario."))
+    ti = [("carnet", "Insignia PRO", "Tu carnet de jugador y tu puesto en el ranking llevan la insignia PRO."),
+          ("intercambio", "Retos sin límite", f"Reta en la liga cuantas veces quieras (gratis: {lim} por semana).")]
+    if not es_dueno:
+        ti.append(camp)
+    return local, ti
+
+
+def _es_dueno(email: str) -> bool:
+    try:
+        from web import datos
+        return bool(datos.canchas_de_dueno(email))
+    except Exception:  # noqa: BLE001
+        return False
 
 
 @router.get("/pro", response_class=HTMLResponse)
 def pagina_pro(request: Request) -> HTMLResponse:
+    from web import estilos_v_comercio as vc
+    from web import vista_anfitrion as va
     ses, resp = _gate(request, "/pro", f"{MARCA} Pro", f"La membresía {MARCA} Pro se activa desde la app.")
     if resp:
         return resp
@@ -140,46 +168,61 @@ def pagina_pro(request: Request) -> HTMLResponse:
     st = estado_pro(email)
     sim, precio = st["sim"], st["precio"]
     p_txt = _monto(sim, precio)
+    dueno = _es_dueno(email)
     if st["activa"]:
         sub = f"Eres Pro. Vigente hasta el {_fecha(st['hasta'])}."
     elif st["hasta"]:
-        sub = f"Tu membresía venció el {_fecha(st['hasta'])}. Reactívala y vuelve al circuito."
+        sub = f"Tu membresía venció el {_fecha(st['hasta'])}. Reactívala cuando quieras."
+    elif dueno:
+        sub = "Para tu local: bodega, campeonatos con tu marca y más visibilidad. Para ti: insignia PRO y retos sin límite."
     else:
-        sub = "Sé parte del circuito: tu carnet oficial, tu ranking y tus estadísticas."
-    hero = (f"<section class='pr-hero'><div class='pr-hero-t'><span class='pr-corona'>👑</span><b>{MARCA} Pro</b>"
-            + ("<span class='pr-activo'>ACTIVO</span>" if st["activa"] else "") + "</div>"
-            f"<p>{e(sub)}</p><div class='pr-precio'><b>{e(p_txt)}</b><span>/mes</span></div></section>")
-    bens = "".join(f"<li><span class='pr-ic'>{ic}</span><div><b>{e(t)}</b><small>{e(d)}</small></div></li>" for ic, t, d in _BENEFICIOS)
-    nota = (f"<div class='pr-nota'><span class='pr-bur'>👛</span><div>Se cobra de tu saldo {MARCA} (la misma billetera de la app). "
-            f"Tu saldo hoy: <b>{e(_monto(sim, st['saldo']))}</b>. "
-            + ("Se renueva solo cada mes." if not st["cortesia"] else "")
-            + " <a href='/mi-billetera#recargar'>Recargar saldo</a></div></div>")
-    # Estado de la renovación (solo con membresía vigente).
+        sub = "Tu insignia PRO en el carnet y el ranking, retos sin límite y tus propios campeonatos."
+    if st["cortesia"] and st["activa"]:
+        pie_precio = f"Pro de cortesía hasta el {_fecha(st['hasta'])}"
+    elif st["activa"] and st["auto"]:
+        pie_precio = f"Se renueva solo el {_fecha(st['hasta'])}."
+    elif st["activa"]:
+        pie_precio = f"Vigente hasta el {_fecha(st['hasta'])}; no se renovará."
+    else:
+        pie_precio = "Se renueva solo cada mes."
+    cab_plan = (f"<div class='vc-plan-cab'><div class='vc-plan-t'><span class='vc-corona'>{vc.ico('corona', 22)}</span><h2>{MARCA} Pro</h2>"
+                + ("<span class='vc-activo'>ACTIVO</span>" if st["activa"] else "") + "</div>"
+                f"<div class='pr-precio'><b>{e(p_txt)}</b><span>/mes</span></div><p>{e(pie_precio)}</p></div>")
+    poco = st["saldo"] < precio and not st["activa"]
+    saldo = (f"<div class='vc-saldo'>{vc.ico('cartera', 18)}<div><b>Se cobra de tu saldo {MARCA}</b><small>La misma billetera de la app.</small>"
+             f"<div class='fila'><span class='{'poco' if poco else ''}'>Tu saldo hoy: {e(_monto(sim, st['saldo']))}</span>"
+             "<a href='/mi-billetera#recargar'>Recargar saldo</a></div></div></div>")
     renov = ""
     if st["activa"] and st["cortesia"]:
-        renov = (f"<div class='pr-card'><b>🎁 Pro de cortesía</b><small>Te lo regaló {MARCA}. No se renueva solo: al vencer, "
+        renov = (f"<div class='vc-renov'><b>Pro de cortesía</b><small>Te lo regaló {MARCA}. No se renueva solo: al vencer, "
                  "puedes seguir pagando desde tu saldo.</small></div>")
     elif st["activa"]:
         if st["auto"]:
-            renov = ("<div class='pr-card'><div class='pr-card-t'><b>🔄 Renovación automática activada</b>"
-                     f"<small>El {e(_fecha(st['hasta']))} se cobrará {e(p_txt)} de tu saldo. Si no te alcanza, la membresía simplemente vence.</small></div>"
+            renov = ("<div class='vc-renov'><b>Renovación automática activada</b>"
+                     f"<small>El {e(_fecha(st['hasta']))} se cobrará {e(p_txt)} de tu saldo. Si no te alcanza, la membresía simplemente vence.</small>"
                      "<button type='button' class='btn sec' id='btnAuto' data-auto='0'>Cancelar renovación</button></div>")
         else:
-            renov = ("<div class='pr-card warn'><div class='pr-card-t'><b>⏸️ Renovación automática cancelada</b>"
-                     f"<small>Sigues siendo Pro hasta el {e(_fecha(st['hasta']))}; después no se cobrará nada.</small></div>"
+            renov = ("<div class='vc-renov warn'><b>Renovación automática cancelada</b>"
+                     f"<small>Sigues siendo Pro hasta el {e(_fecha(st['hasta']))}; después no se cobrará nada.</small>"
                      "<button type='button' class='btn sec' id='btnAuto' data-auto='1'>Reactivar renovación</button></div>")
     boton = (f"Renovar 1 mes ({p_txt})" if st["activa"] else f"Activar por {p_txt}/mes")
+    plan = (f"<section class='vc-plan' aria-label='{MARCA} Pro'>{cab_plan}<div class='vc-plan-b'>{saldo}{renov}"
+            f"<button type='button' class='btn pr-cta' id='btnPro'>{vc.ico('corona', 18)}{e(boton)}</button>"
+            "<p class='pr-link'><a href='/pro/planes'>Compara Gratis vs Pro ›</a></p></div></section>")
+    local, ti = beneficios_pro(dueno)
+
+    def _lista(titulo: str, items) -> str:
+        if not items:
+            return ""
+        return (f"<h2 class='vc-ben-t'>{e(titulo)}</h2><ul class='vc-ben'>" + "".join(
+            f"<li>{vc.cuadro(ic, suave=True)}<div class='tx'><b>{e(t)}</b><small>{e(d)}</small></div>"
+            f"<span class='ok' aria-label='Incluido'>{vc.ico('check_c', 20)}</span></li>" for ic, t, d in items) + "</ul>")
     cfg = {"sim": sim, "precio": precio, "saldo": st["saldo"], "activa": st["activa"], "hasta": _fecha(st["hasta"])}
-    cuerpo = (
-        "<div class='pr-wrap'><a class='pr-back' href='/perfil'>‹ Perfil</a>" + hero
-        + "<h2 class='pr-h2'>Qué incluye</h2><ul class='pr-ben'>" + bens + "</ul>"
-        + "<p class='pr-link'><a href='/pro/planes'>Compara Gratis vs Pro ›</a></p>"
-        + renov + nota
-        + f"<button type='button' class='btn pr-cta' id='btnPro'>{e(boton)}</button>"
-        + "</div>"
-        + f"<style>{CSS}</style><script>window.__pro={json.dumps(cfg, ensure_ascii=False)};{JS_PRO}</script>")
-    return ui.shell(f"{MARCA} Pro", cuerpo, sesion=ses, titulo_tab=f"{MARCA} Pro",
-                    desc=f"Membresía {MARCA} Pro: carnet oficial, ranking y retos sin límite.")
+    cuerpo = (va.cabecera(f"{MARCA} Pro", sub, volver="/perfil", volver_txt="Perfil")
+              + f"<div class='vc-pro'>{plan}<div>{_lista('Para tu local', local)}{_lista('Para ti', ti)}</div></div>"
+              + f"<script>window.__pro={ui.json_js(cfg, ensure_ascii=False)};{JS_PRO}</script>")
+    return ui.shell(f"{MARCA} Pro", va.vista(cuerpo, "vc-pro-p"), sesion=ses, titulo_tab=f"{MARCA} Pro",
+                    desc=f"Membresía {MARCA} Pro: insignia PRO, retos sin límite, bodega y campeonatos.")
 
 
 @router.post("/web/pro/suscribir")
@@ -264,7 +307,7 @@ def pagina_tarjetas(request: Request) -> HTMLResponse:
     lst = _tarjetas(email)
     filas = ""
     for m in lst:
-        nom, col = _MARCA.get(str(m.get("marca") or "").strip().lower(), (str(m.get("marca") or "Tarjeta").title(), "#0A1B3D"))
+        nom, col = _MARCA.get(str(m.get("marca") or "").strip().lower(), (str(m.get("marca") or "Tarjeta").title(), "#333333"))
         filas += (f"<div class='pr-tj' data-id='{e(m.get('id'))}'><span class='pr-tj-ic' style='background:{col}'>💳</span>"
                   f"<div class='pr-tj-t'><b>{e(nom)} ···· {e(m.get('ultimos4') or '')}</b><small>Guardada para 1 toque</small></div>"
                   "<button type='button' class='btn sec pr-del'>Eliminar</button></div>")
@@ -278,7 +321,7 @@ def pagina_tarjetas(request: Request) -> HTMLResponse:
               + (f"<div class='pr-lista' id='tjs'>{filas}</div>" if filas else vacio) + agregar
               + f"<p class='pr-seg'>🔒 Tus tarjetas se guardan de forma segura en Culqi. {MARCA} nunca ve ni guarda el número completo: "
                 "solo la marca y los últimos 4 dígitos.</p></div>"
-              + f"<style>{CSS}</style><script>window.__tj={json.dumps({'pk': config.CULQI_PUBLIC_KEY if disponible else ''})};{JS_TARJETAS}</script>")
+              + f"<style>{CSS}</style><script>window.__tj={ui.json_js({'pk': config.CULQI_PUBLIC_KEY if disponible else ''})};{JS_TARJETAS}</script>")
     head = "<script src='https://checkout.culqi.com/js/v4'></script>" if disponible else ""
     return ui.shell("Métodos de pago", cuerpo, sesion=ses, titulo_tab="Métodos de pago", extra_head=head)
 
@@ -541,10 +584,15 @@ def _texto_rec(r: dict, dia: str, c: dict | None) -> str:
             "¡Te esperamos! Si no puedes venir, avísame por aquí.")
 
 
+_REC_VISIBLES = 8   # filas a la vista; el resto con "Ver los N jugadores ›"
+
+
 @router.get("/anfitrion/recordatorios", response_class=HTMLResponse)
 def pagina_recordatorios(request: Request, dia: str = "manana") -> HTMLResponse:
     from web.anfitrion import _contexto
-    from web.anfitrion_negocio import _hoy_de, _pagina
+    from web.anfitrion_negocio import _hoy_de
+    from web import estilos_v_comercio as vc
+    from web import vista_anfitrion as va
     ses, canchas, resp = _contexto(request, "/anfitrion/recordatorios")
     if resp is not None:
         return resp
@@ -552,12 +600,13 @@ def pagina_recordatorios(request: Request, dia: str = "manana") -> HTMLResponse:
     base = _hoy_de(canchas).date() + timedelta(days=1 if manana else 0)
     iso = base.isoformat()
     dlab = "mañana" if manana else "hoy"
+    fecha_txt = f"{horarios.DIAS[base.weekday()].lower()} {base.day} {horarios.MESES[base.month - 1]}"
     por_id = {c["id"]: c for c in canchas}
     filas = _reservas_dia(canchas, iso)
     app_ok = recordados_por_app(ses["email"], [r["id"] for r in filas])
     marcas = _marcas(ses["email"])
-    items, pend_app, pend_wa = "", 0, 0
-    fichas = {}
+    pend_app, pend_wa = 0, 0
+    fichas, trs = {}, []
     for g in _grupos(filas):
         r = g[0]
         c = por_id.get(r.get("cancha_id"))
@@ -573,36 +622,48 @@ def pagina_recordatorios(request: Request, dia: str = "manana") -> HTMLResponse:
         if not ya and canal == "wa":
             pend_wa += 1
         fin = g[-1].get("hora_fin") or ""
-        lugar = (c.get("club") + " · " if c and c.get("club") else "") + (c.get("nombre") if c else "Cancha")
+        jug = r.get("jugador") or "Cliente"
         if ya:
-            acc = "<span class='pill ok'>✓ Recordado</span>"
+            acc = va.pill("Recordado", "ok", "")
         elif canal == "app":
-            acc = "<button type='button' class='btn mini-b' data-acc='app'>Recordar 📲</button>"
+            acc = f"<button type='button' class='btn' data-acc='app' aria-label='Recordar a {e(jug)}'>{vc.ico('enviar', 16)}Recordar</button>"
         elif canal == "wa":
-            acc = (f"<a class='btn mini-b pr-wa' data-acc='wa' target='_blank' rel='noopener' "
-                   f"href='{e(ui.enlace_whatsapp(txt, tel))}'>WhatsApp</a>")
+            acc = (f"<a class='btn' data-acc='wa' target='_blank' rel='noopener' aria-label='Recordar a {e(jug)} por WhatsApp' "
+                   f"href='{e(ui.enlace_whatsapp(txt, tel))}'>{vc.ico('whatsapp', 16)}WhatsApp</a>")
         else:
-            acc = "<span class='pill'>Sin contacto</span>"
-        ini = (r.get("jugador") or "?").strip()[:1].upper() or "?"
-        items += (f"<div class='ng-fila' data-res='{e(r['id'])}'><span class='pr-ini'>{e(ini)}</span>"
-                  f"<div class='ng-fila-t'><b>{e(r.get('jugador') or 'Cliente')}</b>"
-                  f"<small>{e(r.get('hora_inicio') or '')}{'–' + e(fin) if fin else ''} · {e(lugar)}"
-                  f"{' · 📲 tiene la app' if canal == 'app' else (' · WhatsApp' if canal == 'wa' else '')}</small></div>{acc}</div>")
-    chips = (f"<div class='chips' style='margin-top:12px'><a class='chip{'' if manana else ' sel'}' href='?dia=hoy'>Hoy</a>"
-             f"<a class='chip{' sel' if manana else ''}' href='?dia=manana'>Mañana</a></div>")
+            acc = va.pill("Sin contacto", "gris")
+        canal_p = (va.pill("Chat de la app", "azul", "chat") if canal == "app" else va.pill("WhatsApp", "ok", "whatsapp") if canal == "wa"
+                   else va.pill("Sin celular ni cuenta", "gris"))
+        ini = (jug.strip()[:1].upper() or "?")
+        celdas = [f"<span class='vc-hora'>{vc.ico('reloj', 16)}{e(r.get('hora_inicio') or '')}{'–' + e(fin) if fin else ''}</span>",
+                  f"<span class='vc-jug'><span class='vc-av' aria-hidden='true'>{e(ini)}</span>{e(jug)}</span>",
+                  f"<span class='vc-cel'><b>{e(c.get('nombre') if c else 'Cancha')}</b>" + (f"<small>{e(c['club'])}</small>" if c and c.get("club") else "") + "</span>",
+                  canal_p, f"<span data-res='{e(r['id'])}'>{acc}</span>"]
+        trs.append(celdas)
+    cab = ["Hora", "Jugador", "Cancha", "Canal", "Acción"]
+    cuerpo_t = "".join(
+        f"<tr{' class=vc-mas' if i >= _REC_VISIBLES else ''}>" + "".join(f"<td data-et='{e(cab[k])}'>{v}</td>" for k, v in enumerate(f)) + "</tr>"
+        for i, f in enumerate(trs))
+    tabla = ("<div class='va-tabla-w'><table class='va-tabla'><thead><tr>" + "".join(f"<th scope='col'>{e(h)}</th>" for h in cab)
+             + f"</tr></thead><tbody>{cuerpo_t}</tbody></table></div>"
+             + (f"<button type='button' class='vc-link vc-ver' id='recVer' aria-expanded='false'>Ver los {len(trs)} jugadores ›</button>"
+                if len(trs) > _REC_VISIBLES else ""))
     banner = ""
     if pend_app:
-        banner = (f"<div class='ng-rec'><b>🔔 {pend_app} jugador{'es' if pend_app != 1 else ''} con la app por recordar</b>"
-                  "<small>Les llega por el chat del local con notificación.</small>"
-                  "<button type='button' class='btn' id='recTodos'>Recordar a todos</button></div>")
+        banner = va.panel(f"{vc.cuadro('campana', 'naranja')}<div class='tx'><b>{pend_app} jugador{'es' if pend_app != 1 else ''} con la app por recordar · {e(fecha_txt)}</b>"
+                          "<small>Les llega por el chat del local con notificación.</small></div>"
+                          f"<button type='button' class='btn' id='recTodos'>{vc.ico('enviar', 18)}Recordar a todos</button>", clase="vc-rec-banner")
     elif pend_wa:
-        banner = (f"<div class='ng-rec'><b>📱 {pend_wa} por recordar por WhatsApp</b><small>No tienen la app: toca “WhatsApp” en cada uno.</small></div>")
-    cuerpo = ("<h1 class='anf-hola'>Recordar reservas</h1><p class='sub'>Evita que te dejen plantada la cancha: recuérdales su reserva "
-              f"de {dlab}. A quien tiene la app le llega por el chat; a los demás, por WhatsApp.</p>" + chips + banner
-              + (f"<div class='ng-lista' id='recLista'>{items}</div>" if items else
-                 f"<div class='anf-vacio' style='margin-top:16px'>No tienes reservas para {dlab}.</div>")
-              + f"<style>{CSS}</style><script>window.__rec={json.dumps({'fecha': iso, 'fichas': fichas})};{JS_RECORDAR}</script>")
-    return _pagina("Recordar reservas", cuerpo, ses, "")
+        banner = va.panel(f"{vc.cuadro('whatsapp', 'verde')}<div class='tx'><b>{pend_wa} por recordar por WhatsApp · {e(fecha_txt)}</b>"
+                          "<small>No tienen la app: toca “WhatsApp” en cada uno.</small></div>", clase="vc-rec-banner")
+    seg = va.segmentado([("?dia=hoy", "Hoy", not manana), ("?dia=manana", "Mañana", manana)], etiqueta="Día")
+    lista = (va.panel(tabla, id_="recLista") if trs else
+             va.panel(va.vacio("calendario", f"No tienes reservas para {dlab}", "Cuando te reserven, aquí podrás recordarles su turno.")))
+    cuerpo = (va.cabecera("Recordar reservas", "Evita que te dejen plantada la cancha. A quien tiene la app le llega por el chat; "
+                          "a los demás, por WhatsApp.", acciones=seg)
+              + banner + lista
+              + f"<script>window.__rec={ui.json_js({'fecha': iso, 'fichas': fichas})};{JS_RECORDAR}</script>")
+    return ui.shell("Recordar reservas", va.vista(cuerpo, "vc-rec"), sesion=ses, ancho=True, titulo_tab="Recordar reservas · Modo anfitrión")
 
 
 def _validar_reservas(email: str, fecha: str, ids: list[str]):
@@ -677,25 +738,12 @@ def marcar_recordatorio(request: Request, body: dict = Body(default_factory=dict
 CSS = r"""
 .pr-wrap{max-width:640px;margin:0 auto;padding:8px 0 40px;min-width:0}
 .pr-back{display:inline-block;margin:6px 0 12px;color:var(--tenue);font-weight:700;text-decoration:none}
-.pr-h1{font-size:26px;margin:4px 0 6px}.pr-h2{font-size:18px;margin:22px 0 10px}
-.pr-hero{background:linear-gradient(135deg,#14463A,#1E5C4C);color:#fff;border-radius:22px;padding:22px}
-.pr-hero-t{display:flex;align-items:center;gap:10px;font-size:22px}.pr-hero-t b{font-weight:900}
-.pr-corona{font-size:28px}.pr-activo{margin-left:auto;background:#7CB518;color:#fff;border-radius:999px;padding:4px 11px;font-size:11px;font-weight:900}
-.pr-hero p{margin:10px 0 0;color:rgba(255,255,255,.9);line-height:1.4}
-.pr-precio{margin-top:14px;display:flex;align-items:flex-end;gap:4px}.pr-precio b{font-size:32px;font-weight:900}.pr-precio span{color:rgba(255,255,255,.75);padding-bottom:6px}
-.pr-ben{list-style:none;margin:0;padding:0;display:grid;gap:12px}
-.pr-ben li{display:flex;gap:12px;align-items:flex-start}.pr-ben b{display:block;font-size:15px}.pr-ben small{color:var(--tenue)}
-.pr-ic{width:40px;height:40px;flex:none;border-radius:12px;background:#F4F1FF;display:grid;place-items:center;font-size:21px}
-.pr-link a{font-weight:800;color:var(--esmeralda,#0B8A3E)}
-.pr-card{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:#fff;border:1px solid var(--trazo);border-radius:18px;padding:14px 16px;margin-top:16px;box-shadow:var(--sombra)}
-.pr-card.warn{background:#FFF8EC;border-color:#F2C77E}.pr-card small{display:block;color:var(--tenue);margin-top:3px}.pr-card-t{flex:1 1 240px;min-width:0}
-.pr-nota{display:flex;gap:10px;align-items:flex-start;background:#EEF7E3;color:#14463A;border-radius:14px;padding:12px;margin-top:16px;font-size:13.5px;line-height:1.4}
-.pr-nota a{font-weight:800;color:#067A38}.pr-bur{width:32px;height:32px;flex:none;border-radius:50%;background:#7CB518;display:grid;place-items:center}
+.pr-h1{font-size:26px;margin:4px 0 6px}
 .btn.pr-cta{display:block;width:100%;margin-top:20px;padding:15px;font-size:16px;text-align:center;box-sizing:border-box}
 .pr-tabla{border:1px solid var(--trazo);border-radius:18px;overflow:hidden;background:#fff;margin-top:14px}
 .pr-fila{display:grid;grid-template-columns:minmax(0,1fr) 92px 92px;gap:8px;align-items:center;padding:12px 14px;border-top:1px solid var(--trazo)}
 .pr-fila.cab{border-top:0;background:#F7F7F7;font-weight:800}.pr-f-t{display:flex;gap:8px;min-width:0;overflow-wrap:anywhere}
-.pr-c{text-align:center;font-size:13.5px}.pr-c.pro{font-weight:800}.pr-si{color:#0B8A3E;font-weight:900;font-size:17px}.pr-no{color:#B0B0B0}
+.pr-c{text-align:center;font-size:13.5px}.pr-c.pro{font-weight:800}.pr-si{color:#3056ED;font-weight:900;font-size:17px}.pr-no{color:#B0B0B0}
 .pr-lista{display:grid;gap:10px;margin-top:14px}
 .pr-tj{display:flex;gap:12px;align-items:center;background:#fff;border:1px solid var(--trazo);border-radius:16px;padding:12px 14px;box-shadow:var(--sombra)}
 .pr-tj-ic{width:44px;height:30px;border-radius:7px;display:grid;place-items:center;flex:none}.pr-tj-t{flex:1;min-width:0}.pr-tj-t small{display:block;color:var(--tenue)}
@@ -714,8 +762,7 @@ CSS = r"""
 .pr-sug-f{width:84px;height:84px;flex:none;border-radius:14px;overflow:hidden;background:#EEF3EE;display:grid;place-items:center;font-size:32px}
 .pr-sug-f img{width:100%;height:100%;object-fit:cover}.pr-sug-t{flex:1;min-width:0}.pr-sug-t b{display:block;overflow-wrap:anywhere}
 .pr-sug-t small{display:block;color:var(--tenue);font-size:12.5px;overflow-wrap:anywhere}.pr-sug-p{display:block;margin-top:4px;font-size:13px}
-.pr-sug-b{flex:none;font-weight:800;color:#0B8A3E;font-size:13px}
-.pr-ini{width:38px;height:38px;border-radius:50%;background:#0F8F7E;color:#fff;display:grid;place-items:center;font-weight:800;flex:none}
+.pr-sug-b{flex:none;font-weight:800;color:#3056ED;font-size:13px}
 @media (max-width:600px){.pr-fila{grid-template-columns:minmax(0,1fr) 64px 70px;padding:11px 10px}.pr-sug-b{display:none}.pr-sug-f{width:72px;height:72px}}
 """
 
@@ -792,7 +839,7 @@ JS_TARJETAS = r"""
         Culqi.settings({title: 'Guardar tarjeta', currency: 'PEN', amount: 100});
         Culqi.options({lang: 'es', installments: false,
           paymentMethods: {tarjeta: true, yape: false, bancaMovil: false, agente: false, billetera: false, cuotealo: false},
-          style: {logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Guardar tarjeta', buttonTextColor: '#FFFFFF'}});
+          style: {logo: '', bannerColor: '#333333', buttonBackground: '#3056ED', buttonText: 'Guardar tarjeta', buttonTextColor: '#FFFFFF'}});
         window.culqi = function(){
           if(Culqi.token){
             var token = Culqi.token.id;
@@ -839,7 +886,9 @@ JS_RECORDAR = r"""
 (function(){
   var C = window.__rec || {}, lista = document.getElementById('recLista');
   function post(url, body){ return fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body || {})}).then(function(r){ return r.json(); }); }
-  function hecho(fila){ var b = fila.querySelector('[data-acc]'); if(b) b.outerHTML = "<span class='pill ok'>✓ Recordado</span>"; }
+  function hecho(fila){ var b = fila.querySelector('[data-acc]'); if(b) b.outerHTML = "<span class='va-pill ok'>Recordado</span>"; }
+  var ver = document.getElementById('recVer');
+  if(ver) ver.addEventListener('click', function(){ var t = lista.querySelector('.va-tabla-w'); t.classList.add('vc-todos'); ver.remove(); });
   if(lista) lista.addEventListener('click', function(ev){
     var b = ev.target.closest('[data-acc]'); if(!b) return;
     var fila = b.closest('[data-res]'), f = C.fichas[fila.dataset.res]; if(!f) return;

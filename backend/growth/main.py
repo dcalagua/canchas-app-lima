@@ -8,14 +8,16 @@ Ejecutar (desde este directorio):
 from __future__ import annotations
 
 import os
+import re
 import time
 
 import asyncio
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 
 import config
+import config_publica
 from compliance.consent import consent_store
 from concierge.router import router as concierge_router
 from convocatorias.router import router as convocatorias_router
@@ -24,6 +26,8 @@ from entrenador.router import router as entrenador_router
 from db.store import seed_verificadores, stores
 from legal.router import router as legal_router
 from web.router import router as web_router
+from reservas.router import router as reservas_router
+from web.cobro_directo_web import router as cobro_directo_router
 from web.portal_tenis import router as portal_tenis_router
 from web.anfitrion import router as anfitrion_router
 from web.anfitrion_academia import router as anfitrion_academia_router
@@ -43,6 +47,14 @@ from web.academia_plan_web import router as academia_plan_web_router
 from web.jugador_clases import router as jugador_clases_router
 from web.jugador_market import router as jugador_market_router
 from web.jugador_billetera import router as jugador_billetera_router
+from web.jugador_favoritos import router as jugador_favoritos_router
+from web.jugador_resenas import router as jugador_resenas_router
+from web.jugador_espera import router as jugador_espera_router
+from web.jugador_avisos import router as jugador_avisos_router
+from web.ayuda import router as ayuda_router
+from web.seo import router as seo_router
+from web.anfitrion_agenda import router as anfitrion_agenda_router
+from web.jugador_reprogramar import router as jugador_reprogramar_router
 from web.pago_hospedado import router as pago_hospedado_router
 from web.jugador_liga import router as jugador_liga_router
 from web.jugador_campeonatos import router as jugador_campeonatos_router
@@ -141,11 +153,16 @@ async def _persistir(request: Request, call_next):
     Referrer-Policy y, en la torre /admin, anti-iframe (clickjacking),
     sin caché de respuestas de la API y sin permisos de cámara/micro/GPS."""
     t0 = time.time()
+    medidor = pg.medir_request(memo=request.method in ("GET", "HEAD"))
     response = await call_next(request)
     ms = int((time.time() - t0) * 1000)
     if ms > 700:
-        print(f"[perf] {request.method} {request.url.path} tardó {ms} ms", flush=True)
+        print(f"[perf] {request.method} {request.url.path} tardó {ms} ms · {medidor.resumen()}", flush=True)
+    elif pg.PERF_SQL and medidor.viajes:
+        print(f"[sql] {request.method} {request.url.path} {ms} ms · {medidor.resumen()}", flush=True)
     h = response.headers
+    if pg.PERF_SQL:
+        h["Server-Timing"] = f'db;dur={int(medidor.ms)};desc="{medidor.viajes} viajes", app;dur={ms}'
     h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     h.setdefault("X-Content-Type-Options", "nosniff")
     h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
@@ -171,6 +188,87 @@ def _persistir_al_apagar() -> None:
         except Exception:  # noqa: BLE001
             pass
 
+class _SeoAmbiente:
+    """ASGI puro (va DENTRO del gzip de `seguridad_web`, así ve el HTML sin
+    comprimir): (1) guarda la base de la request para que `ui.shell` arme
+    og:image/canonical ABSOLUTOS cuando el ambiente no tiene PUBLIC_BASE_URL;
+    (2) FUERA de producción (`config.sitio_indexable()` falso: QAS, DEV…) toda
+    respuesta lleva `X-Robots-Tag: noindex, nofollow` y toda página HTML el
+    `<meta name="robots">` (lo pone `ui.shell`; aquí se inyecta en las páginas
+    que no pasan por él: landings, campeonato, legal, retornos de pasarela)."""
+
+    _RE_ROBOTS = re.compile(rb"<meta[^>]+name=[\"']?robots", re.I)
+    _RE_HEAD = re.compile(rb"<head[^>]*>", re.I)
+    _RE_CHARSET = re.compile(rb"<meta[^>]*charset[^>]*>", re.I)
+    _RE_DOCTYPE = re.compile(rb"<!doctype[^>]*>", re.I)
+
+    def __init__(self, app):
+        self.app = app
+
+    @classmethod
+    def con_meta(cls, cuerpo: bytes) -> bytes:
+        if not cuerpo.strip() or cls._RE_ROBOTS.search(cuerpo[:8192]):
+            return cuerpo
+        meta = b"<meta name='robots' content='noindex,nofollow'>"
+        for rx in (cls._RE_HEAD, cls._RE_CHARSET, cls._RE_DOCTYPE):
+            m = rx.search(cuerpo, 0, 8192)
+            if m:
+                return cuerpo[:m.end()] + meta + cuerpo[m.end():]
+        return meta + cuerpo
+
+    async def __call__(self, scope, receive, send):
+        if scope.get("type") != "http":
+            return await self.app(scope, receive, send)
+        from web import ui as _ui
+        hdrs = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers") or []}
+        host = (hdrs.get("x-forwarded-host") or hdrs.get("host") or "").split(",")[0].strip()
+        proto = (hdrs.get("x-forwarded-proto") or scope.get("scheme") or "http").split(",")[0].strip()
+        token = _ui.BASE_REQUEST.set(f"{proto}://{host}" if host else "")
+        token_ruta = _ui.RUTA_REQUEST.set(scope.get("path") or "")
+        try:
+            if config.sitio_indexable():
+                return await self.app(scope, receive, send)
+            inicio: dict = {}
+            partes: list[bytes] = []
+
+            async def _send(msg):
+                if msg["type"] == "http.response.start":
+                    cab = [(k, v) for k, v in msg.get("headers") or [] if k.lower() != b"x-robots-tag"]
+                    cab.append((b"x-robots-tag", b"noindex, nofollow"))
+                    msg = dict(msg, headers=cab)
+                    tipo = next((v for k, v in cab if k.lower() == b"content-type"), b"")
+                    codif = next((v for k, v in cab if k.lower() == b"content-encoding"), b"")
+                    if tipo.lower().startswith(b"text/html") and not codif and scope.get("method") != "HEAD":
+                        inicio["msg"] = msg     # se manda junto al cuerpo (cambia el largo)
+                        return
+                    return await send(msg)
+                if msg["type"] == "http.response.body" and inicio:
+                    partes.append(msg.get("body", b""))
+                    if msg.get("more_body"):
+                        return
+                    cuerpo = self.con_meta(b"".join(partes))
+                    ini = inicio.pop("msg")
+                    cab = [(k, v) for k, v in ini["headers"] if k.lower() != b"content-length"]
+                    cab.append((b"content-length", str(len(cuerpo)).encode()))
+                    await send(dict(ini, headers=cab))
+                    return await send({"type": "http.response.body", "body": cuerpo, "more_body": False})
+                return await send(msg)
+
+            return await self.app(scope, receive, _send)
+        finally:
+            _ui.RUTA_REQUEST.reset(token_ruta)
+            _ui.BASE_REQUEST.reset(token)
+
+
+app.add_middleware(_SeoAmbiente)
+
+# Rendimiento y seguridad de la web pública (gzip, CSS/JS versionados,
+# anti-iframe, CSP en modo reporte, CSRF y límites por IP): web/seguridad_web.py.
+from web import seguridad_web as _seguridad_web  # noqa: E402
+_seguridad_web.instalar(app)
+from web import errores as _errores  # noqa: E402  — 404/500 con la marca para el navegador
+_errores.instalar(app)
+
 app.include_router(puntos_router)
 app.include_router(entrenador_router)
 app.include_router(solicitudes_router)
@@ -188,11 +286,23 @@ app.include_router(legal_router)
 from marca_logo import router as marca_logo_router  # noqa: E402
 app.include_router(marca_logo_router)  # /marca/logo.png + torre → Logo de la marca
 app.include_router(web_router)
+app.include_router(__import__("web.miniaturas", fromlist=["router"]).router)  # /web/mini: miniaturas de las fotos de nuestro Storage
+app.include_router(reservas_router)
+app.include_router(cobro_directo_router)
+app.include_router(__import__("web.dividir_pago", fromlist=["router"]).router)  # /dividir/{token}: cada uno paga su parte (antes del comodín /anfitrion)
 app.include_router(portal_tenis_router)  # /tenis: portada de raqueta (canchas, torneos con marca del organizador, partner, liga)
 app.include_router(academia_web_router)  # ficha pública /academia/{id} + matrícula web
 app.include_router(jugador_market_router)  # /marketplace, /mis-ordenes, /mis-bonos, /bonos/{id}
 app.include_router(jugador_clases_router)  # /mis-clases: Mis clases y pagos del jugador
 app.include_router(jugador_billetera_router)  # /mi-billetera, /mis-pagos, /mis-puntos, /mi-pais
+app.include_router(jugador_reprogramar_router)  # /reserva/{ref}/cambiar: reprogramar
+app.include_router(anfitrion_agenda_router)  # /anfitrion/agenda/<token>.ics (Google Calendar)
+app.include_router(seo_router)  # /sitemap.xml
+app.include_router(ayuda_router)  # /ayuda: centro de ayuda (FAQ)
+app.include_router(jugador_avisos_router)  # /notificaciones: avisos de la cuenta
+app.include_router(jugador_espera_router)  # /web/espera: lista de espera de turnos ocupados
+app.include_router(jugador_resenas_router)  # POST /web/resena: calificar después de jugar
+app.include_router(jugador_favoritos_router)  # /mis-favoritos + /web/favoritos (♥ en la cuenta)
 app.include_router(pago_hospedado_router)  # /web/pago/*: cobro web en USD/BOB por pasarela hospedada (Ecuador / Bolivia)
 app.include_router(jugador_liga_router)  # /mi-nivel, /liga
 app.include_router(jugador_campeonatos_router)  # /torneo/{id}: inscribirse / crear o unirse a un equipo pagando con saldo
@@ -213,6 +323,9 @@ app.include_router(anfitrion_campeonatos_router)  # antes del comodín /anfitrio
 app.include_router(anfitrion_boleadores_router)  # antes del comodín /anfitrion/{modulo}
 app.include_router(anfitrion_negocio_router)  # reportes, caja, clientes, bonos, fijas, disponibilidad, cobros (antes del comodín)
 app.include_router(anfitrion_verificador_router)  # /anfitrion/verificador, /anfitrion/verificacion/{id} (antes del comodín)
+app.include_router(__import__("web.anfitrion_cobros_club", fromlist=["router"]).router)  # cobros del club, pagos por confirmar y reglas (antes del comodín)
+app.include_router(__import__("web.anfitrion_encargados", fromlist=["router"]).router)  # encargados del local (rol Recepción), antes del comodín
+app.include_router(__import__("web.anfitrion_perfil", fromlist=["router"]).router)  # /anfitrion/perfil (Mi perfil del anfitrión) + /web/avisos/prefs + /web/sesion/cerrar-todas (antes del comodín)
 app.include_router(anfitrion_router)
 app.include_router(boleadores_router)  # /boleadores/* (APK + ficha web)
 app.include_router(fidelidad_router)
@@ -239,6 +352,17 @@ async def _iniciar_correos() -> None:
     # Conexiones del pool siempre "tibias" (la base está lejos: abrir una nueva
     # cuesta ~1 s; ver `pg._mantener_tibias`).
     pg.iniciar_tibias()
+
+
+@app.on_event("startup")
+async def _iniciar_cron_vouchers() -> None:
+    """Cobro directo al club (plan A5): cada minuto vencen los vouchers que el
+    club no revisó a tiempo y se suelta el horario. En los tests no corre."""
+    import sys
+    if "pytest" in sys.modules:
+        return
+    from web import cobro_directo_web
+    cobro_directo_web.arrancar_cron()
 
 
 @app.on_event("startup")
@@ -453,6 +577,15 @@ async def _iniciar_cron_holds_web() -> None:
             except Exception as ex:  # noqa: BLE001
                 print(f"[pago-web] barrido falló: {ex}", flush=True)
             try:
+                # PAGOS DIVIDIDOS: avisa antes de vencer, suelta partes tomadas sin
+                # pagar, vence (devolviendo) y reintenta confirmar las completas.
+                from pagos import division as _division
+                r = await asyncio.to_thread(_division.barrer)
+                if any((r or {}).values()):
+                    print(f"[dividir] barrido: {r}", flush=True)
+            except Exception as ex:  # noqa: BLE001
+                print(f"[dividir] barrido falló: {ex}", flush=True)
+            try:
                 from web import datos as _datos
                 filas = await asyncio.to_thread(_datos.liberar_holds_vencidos_todos)
                 if filas:
@@ -531,11 +664,16 @@ async def _iniciar_cron_storage() -> None:
 
 
 @app.get("/robots.txt", include_in_schema=False)
-def robots_txt():
+def robots_txt(request: Request):
     """Los robots pueden indexar las páginas públicas, pero NO llamar a las
     rutas JSON ni a la torre: un buscador que ejecuta el JS de la portada
-    disparaba consultas pagadas a Google Places (oct-2026)."""
+    disparaba consultas pagadas a Google Places (oct-2026). Anuncia el sitemap."""
     from fastapi.responses import PlainTextResponse
+    from web import seo as _seo
+    if not config.sitio_indexable():
+        # QAS / DEV: nada se indexa (las páginas de prueba no van a Google) y
+        # sin Sitemap, que solo anuncia producción.
+        return PlainTextResponse("User-agent: *\nDisallow: /\n", headers={"Cache-Control": "public, max-age=3600"})
     return PlainTextResponse(
         "User-agent: *\n"
         "Disallow: /web/\n"
@@ -543,26 +681,48 @@ def robots_txt():
         "Disallow: /pagos/\n"
         "Disallow: /anfitrion\n"
         "Disallow: /entrar\n"
-        "Disallow: /mensajes\n",
+        "Disallow: /mensajes\n"
+        f"Sitemap: {_seo.base_url(request)}/sitemap.xml\n",
         headers={"Cache-Control": "public, max-age=86400"})
 
 
 @app.get("/health")
 def health() -> dict:
-    return {"ok": True}
+    """Vivo + estado de la base (C4): "ok" | "error" | "off" (sin DATABASE_URL).
+    Siempre 200 para que un corte de la base no reinicie el servicio en bucle;
+    el monitoreo mira el campo `db`."""
+    db = "off"
+    if pg.habilitado:
+        try:
+            with pg.conexion() as conn, conn.cursor() as cur:
+                cur.execute("select 1")
+                cur.fetchone()
+            db = "ok"
+        except Exception:  # noqa: BLE001
+            db = "error"
+    return {"ok": True, "db": db}
 
 
 # --- config_incentivos (configurable en caliente; nada hardcodeado) ---
 @app.get("/config/incentivos")
-def get_config() -> dict:
-    return dict(stores.config)
+def get_config(request: Request) -> dict:
+    """Reglas de negocio editables. Anónimo: solo la lista blanca pública. Con
+    X-Admin-Token válido: todo lo editable. Los secretos (2FA de la torre,
+    cuenta BCP, tokens) NUNCA salen por aquí (ver `config_publica`)."""
+    from propiedad.admin_auth import token_admin_valido
+    if token_admin_valido(request.headers.get("X-Admin-Token")):
+        return config_publica.para_admin(stores.config)
+    return config_publica.publica(stores.config)
 
 
 @app.put("/config/incentivos/{clave}", dependencies=[Depends(_require_admin)])
 def put_config(clave: str, req: ConfigRequest) -> dict:
     """ADMIN: reescribe una clave de config (modo_aprobacion, exigir_ubicacion,
     topes de puntos, etc.). Protegido por token: mutar esto sin auth permitía a
-    cualquiera cambiar reglas del sistema."""
+    cualquiera cambiar reglas del sistema. Las claves sensibles (secretos 2FA,
+    cuenta BCP) no se tocan por esta vía genérica."""
+    if config_publica.es_sensible(clave):
+        raise HTTPException(status_code=403, detail="clave_protegida")
     stores.config[clave] = req.valor
     return {"clave": clave, "valor": req.valor}
 

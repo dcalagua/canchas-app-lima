@@ -498,7 +498,26 @@ def avisos_dueno(email: str, canchas: list[dict] | None = None, hoy: date | None
     except Exception:  # noqa: BLE001
         return ""
     em = (email or "").strip().lower()
-    return "".join(aviso_html(x) for x in lst if x.get("dueno") == em)
+    mios = [x for x in lst if x.get("dueno") == em and x.get("estado") in ("pendiente", "vencido")]
+    if len(mios) <= 1:
+        return "".join(aviso_html(x) for x in mios)
+    # Varios locales: UN aviso con la lista (antes se apilaba un banner por local).
+    from html import escape as e
+    filas = []
+    for x in mios:
+        falta = x.get("faltan") or 0
+        if x["estado"] == "vencido":
+            cuando = "ya no muestra fotos"
+        else:
+            d = x.get("dias_restantes") or 0
+            cuando = "hoy es el último día" if d == 0 else f"antes del {fecha_corta(x.get('vence'))}"
+        filas.append(f"<li><b>{e(x.get('local') or 'Tu local')}</b>: faltan {falta} foto{'s' if falta != 1 else ''} · {cuando} "
+                     f"<a href='{e(url_subir(x))}' style='font-weight:700;white-space:nowrap'>Subir fotos ›</a></li>")
+    clase = "err" if any(x["estado"] == "vencido" for x in mios) else "warn"
+    return (f"<div class='aviso {clase}' style='margin:12px 0 0'>📷 <b>{len(mios)} de tus locales necesitan fotos tuyas</b>"
+            f"<ul style='margin:6px 0 6px 18px;padding:0'>{''.join(filas)}</ul>"
+            "<span class='sub' style='margin:0'>Las de Google no se pueden guardar (sus términos no lo permiten): "
+            "las tuyas quedan para siempre.</span></div>")
 
 
 def para_app(est: dict) -> dict:

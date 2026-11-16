@@ -57,13 +57,39 @@ Deporte? deportePorNombre(String? s) {
 /// Pádel se retiró del piloto: sigue en el enum para no romper datos antiguos
 /// al cargarlos, pero no se muestra ni se puede elegir. Muchos locales alquilan
 /// también vóley y básquet (misma loza multiuso), por eso entran al catálogo.
-const List<Deporte> deportesActivos = [
+///
+/// Desde oct-2026 la lista la decide la TORRE (`GET /config/canal` →
+/// `deportes_activos`, ver [aplicarDeportesActivos]): así se reactiva pádel o se
+/// suma un deporte sin publicar un APK nuevo. Sin respuesta, queda esta base.
+const List<Deporte> deportesActivosBase = [
   Deporte.futbol,
   Deporte.tenis,
   Deporte.pickleball,
   Deporte.voley,
   Deporte.basquet,
 ];
+
+List<Deporte> deportesActivos = List.of(deportesActivosBase);
+
+/// Aplica la lista de la torre (nombres de [Deporte]); ignora los que este APK
+/// no conoce y nunca deja la lista vacía. Devuelve true si cambió.
+bool aplicarDeportesActivos(List<dynamic>? nombres) {
+  if (nombres == null) return false;
+  final nueva = <Deporte>[
+    for (final n in nombres)
+      if (deportePorNombre(n?.toString()) case final d?)
+        if (d != Deporte.natacion) d,
+  ];
+  final vistos = <Deporte>{};
+  nueva.retainWhere(vistos.add); // sin repetidos, en el orden de la torre
+  if (nueva.isEmpty) return false;
+  final igual = nueva.length == deportesActivos.length &&
+      [for (var i = 0; i < nueva.length; i++) nueva[i] == deportesActivos[i]]
+          .every((x) => x);
+  if (igual) return false;
+  deportesActivos = nueva;
+  return true;
+}
 
 /// Deportes ofrecibles al crear una ACADEMIA. Incluye natación (disciplina de
 /// academia/clases, no de cancha reservable), por eso va aparte de
@@ -373,6 +399,13 @@ class Cancha {
   /// local. Se lee con `FidelidadConfig.de(fidelidad)`. Columna `fidelidad`.
   final Map<String, dynamic> fidelidad;
 
+  /// REGLAS DE RESERVA del dueño (oct-2026, columna `reglas_reserva`): horario
+  /// por día, franjas de precio, cierres, ventana… Las ESCRIBE solo el backend
+  /// (`PUT /reservas/reglas`) y las APLICA el backend: si hay reglas, la grilla
+  /// de horas y precios del día se pide al servidor (`AppState.cargarDiaServidor`).
+  final Map<String, dynamic> reglasReserva;
+  bool get tieneReglas => reglasReserva.isNotEmpty;
+
   /// PRECIO POR TURNO (pedido del director, 29-sep-2026: "cobrar 15 soles la
   /// hora o 15 por 1.5 h"). > 0 = la cancha cobra este monto por CADA turno
   /// (`duracionSlotMin`); 0 = cobra por hora (`precioHora` × duración / 60).
@@ -500,6 +533,7 @@ class Cancha {
     this.serviciosExtra = const [],
     this.permiteBoleadores = true,
     this.fidelidad = const {},
+    this.reglasReserva = const {},
     this.precioTurno = 0,
     this.descuentoValle = 0,
     this.valleDesde = '',
@@ -701,6 +735,7 @@ class Cancha {
       serviciosExtra: serviciosExtra ?? this.serviciosExtra,
       permiteBoleadores: permiteBoleadores ?? this.permiteBoleadores,
       fidelidad: fidelidad ?? this.fidelidad,
+      reglasReserva: reglasReserva,
       precioTurno: precioTurno ?? this.precioTurno,
       descuentoValle: descuentoValle ?? this.descuentoValle,
       valleDesde: valleDesde ?? this.valleDesde,
@@ -738,6 +773,7 @@ class Cancha {
         'serviciosExtra': serviciosExtra.map((s) => s.toJson()).toList(),
         'permiteBoleadores': permiteBoleadores,
         'fidelidad': fidelidad,
+        'reglasReserva': reglasReserva,
         'precioTurno': precioTurno,
         'descuentoValle': descuentoValle,
         'valleDesde': valleDesde,
@@ -783,6 +819,9 @@ class Cancha {
         permiteBoleadores: (j['permiteBoleadores'] ?? true) as bool,
         fidelidad: j['fidelidad'] is Map
             ? Map<String, dynamic>.from(j['fidelidad'] as Map)
+            : const {},
+        reglasReserva: j['reglasReserva'] is Map
+            ? Map<String, dynamic>.from(j['reglasReserva'] as Map)
             : const {},
         precioTurno: ((j['precioTurno'] ?? 0) as num).toDouble(),
         descuentoValle: (j['descuentoValle'] ?? 0) as int,

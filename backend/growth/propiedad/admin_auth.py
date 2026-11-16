@@ -174,19 +174,53 @@ def otpauth_uri(usuario: str, secreto: str) -> str:
     return f"otpauth://totp/{etiqueta}?secret={secreto}&issuer={quote(EMISOR)}&algorithm=SHA1&digits={TOTP_DIGITOS}&period={TOTP_PASO}"
 
 
+def _fernet_2fa():
+    """Fernet para el secreto TOTP. Con `META_TOKEN_KEY` se usa esa clave (vía
+    `redes`); sin ella se DERIVA una de `ADMIN_PANEL_TOKEN` (antes caía a base64,
+    que es reversible por cualquiera que vea el valor). Rotar ADMIN_PANEL_TOKEN
+    sin META_TOKEN_KEY obliga a re-enrolar el 2FA (falla cerrado, no abierto)."""
+    if not config.ADMIN_PANEL_TOKEN:
+        return None
+    try:
+        from cryptography.fernet import Fernet
+        k = hashlib.sha256(f"2fa:{config.ADMIN_PANEL_TOKEN}".encode()).digest()
+        return Fernet(base64.urlsafe_b64encode(k))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _cifrar(texto: str) -> str:
     from marketing import redes
-    return redes.cifrar(texto)
+    if config.META_TOKEN_KEY:
+        return redes.cifrar(texto)
+    f = _fernet_2fa()
+    if f is None:
+        return ""  # sin ninguna clave no se guarda en claro ni en base64
+    return "a:" + f.encrypt(texto.encode()).decode()
 
 
 def _descifrar(enc: str) -> str:
     from marketing import redes
-    return redes.descifrar(enc)
+    if (enc or "").startswith("a:"):
+        f = _fernet_2fa()
+        try:
+            return f.decrypt(enc[2:].encode()).decode() if f is not None else ""
+        except Exception:  # noqa: BLE001
+            return ""
+    return redes.descifrar(enc)  # compat: "f:" (Fernet META) y "b:" (legado)
 
 
 def secreto_de(usuario: str) -> str:
-    """Secreto TOTP en claro del operador enrolado ("" si no enroló)."""
-    return _descifrar(stores.config.get(_cfg_key(_CFG_SECRETO, usuario), "") or "")
+    """Secreto TOTP en claro del operador enrolado ("" si no enroló). Un secreto
+    legado en base64 ("b:") se re-cifra al leerlo."""
+    k = _cfg_key(_CFG_SECRETO, usuario)
+    enc = stores.config.get(k, "") or ""
+    sec = _descifrar(enc)
+    if sec and enc.startswith("b:"):
+        nuevo = _cifrar(sec)
+        if nuevo:
+            stores.config[k] = nuevo
+    return sec
 
 
 def enrolado(usuario: str) -> bool:
@@ -204,17 +238,40 @@ def iniciar_enrolamiento(usuario: str) -> str:
     return sec
 
 
-def _hash_rec(codigo: str) -> str:
-    limpio = "".join(ch for ch in (codigo or "").upper() if ch.isalnum())
-    return hashlib.sha256(f"rec:{limpio}".encode()).hexdigest()
+def _limpio(codigo: str) -> str:
+    return "".join(ch for ch in (codigo or "").upper() if ch.isalnum())
+
+
+def _hash_rec_legado(codigo: str) -> str:
+    """Formato viejo (sha256 sin sal de 32 bits): solo para validar códigos ya
+    entregados; los nuevos usan `_hash_rec`."""
+    return hashlib.sha256(f"rec:{_limpio(codigo)}".encode()).hexdigest()
+
+
+def _hash_rec(codigo: str, sal: bytes | None = None) -> str:
+    """scrypt con sal por código: `s2$<sal_hex>$<hash_hex>`."""
+    sal = sal or secrets.token_bytes(16)
+    h = hashlib.scrypt(_limpio(codigo).encode(), salt=sal, n=2**14, r=8, p=1, dklen=32)
+    return f"s2${sal.hex()}${h.hex()}"
+
+
+def _coincide_rec(guardado: str, codigo: str) -> bool:
+    if guardado.startswith("s2$"):
+        try:
+            _, sal_hex, _ = guardado.split("$", 2)
+            return hmac.compare_digest(guardado, _hash_rec(codigo, bytes.fromhex(sal_hex)))
+        except Exception:  # noqa: BLE001
+            return False
+    return hmac.compare_digest(guardado, _hash_rec_legado(codigo))
 
 
 def generar_recuperacion(usuario: str) -> list[str]:
-    """8 códigos de un solo uso (XXXX-XXXX). Se guardan hasheados; se muestran UNA vez."""
+    """8 códigos de un solo uso (XXXX-XXXX-XXXX-XXXX, 64 bits). Se guardan con
+    scrypt + sal; se muestran UNA vez."""
     codigos = []
     for _ in range(RECUPERACION_N):
-        raw = secrets.token_hex(4).upper()
-        codigos.append(f"{raw[:4]}-{raw[4:]}")
+        raw = secrets.token_hex(8).upper()
+        codigos.append("-".join(raw[i:i + 4] for i in range(0, 16, 4)))
     stores.config[_cfg_key(_CFG_REC, usuario)] = json.dumps([_hash_rec(c) for c in codigos])
     return codigos
 
@@ -233,11 +290,10 @@ def usar_recuperacion(usuario: str, codigo: str) -> bool:
         hashes = json.loads(stores.config.get(k, "") or "[]")
     except Exception:  # noqa: BLE001
         hashes = []
-    h = _hash_rec(codigo)
     ok = False
     restantes = []
     for x in hashes:
-        if not ok and hmac.compare_digest(x, h):
+        if not ok and _coincide_rec(x, codigo):
             ok = True
             continue
         restantes.append(x)

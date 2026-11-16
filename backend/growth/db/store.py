@@ -167,6 +167,8 @@ CONFIG_DEFAULT: dict[str, str] = {
     # del admin, activa al instante) | "nuevo_flujo" (exige validación en sitio
     # antes de activar). Se puede sobreescribir por cancha (modo_aprobacion_overrides).
     "modo_aprobacion": "marcha_blanca",
+    # Deportes que la app ofrece (plan A1, `GET /config/canal`): coma, en orden.
+    "deportes_activos": "futbol,tenis,pickleball,voley,basquet",
     # Si "1", el admin sólo puede APROBAR un reclamo si el GPS del dispositivo
     # desde donde se envió coincide con la ubicación de la cancha (anti-fraude
     # ligero: "estar en el lugar" al reclamar). "0" = no se exige (piloto).
@@ -784,6 +786,14 @@ class Stores:
         # radio, franjas, días, avisos, disponible, ubicación aproximada),
         # partidos ya avisados {partido_id: {t, n}} y avisos por persona y día.
         self.juego_prefs: dict[str, dict] = {}
+        # Favoritos de la web por correo {"ids": [...], "t"} (`web/jugador_favoritos.py`).
+        self.favoritos_web: dict[str, dict] = {}
+        # Mi perfil del anfitrión (16-nov-2026): preferencias de avisos por correo
+        # {reservas, pagos, academia, novedades: bool, t} (`prefs_avisos.py`) y
+        # la ÉPOCA de sesión web por correo (`web/sesion.py`: "cerrar sesión en
+        # todos los dispositivos" la sube y las cookies emitidas antes caducan).
+        self.avisos_prefs: dict[str, dict] = {}
+        self.sesion_epocas: dict[str, int] = {}
         self.juego_avisos: dict[str, dict] = {}
         self.juego_avisos_dia: dict[str, dict] = {}
         # MARKETPLACE: unidades APARTADAS por el APK antes de cobrar
@@ -866,8 +876,17 @@ class Stores:
         return self.saldos.get(dueno_id, 0)
 
     def acreditar(self, dueno_id: str, centimos: int) -> int:
-        """Suma [centimos] al saldo del dueño y devuelve el nuevo saldo."""
+        """Suma [centimos] al saldo del dueño y devuelve el nuevo saldo. Si el
+        dueño debe comisiones de COBRO DIRECTO (plan A6), la plata que entra
+        las salda primero (`cobro_directo.saldar_deudas`)."""
         self.saldos[dueno_id] = self.saldos.get(dueno_id, 0) + int(centimos)
+        if int(centimos) > 0 and any(p.tipo == "comision_deuda" and p.estado == "pendiente"
+                                     and p.dueno_id == dueno_id for p in self.pagos):
+            try:
+                from pagos import cobro_directo
+                cobro_directo.saldar_deudas(dueno_id)
+            except Exception as e:  # noqa: BLE001 — saldar nunca rompe una recarga
+                print("store.acreditar: no se saldó la deuda:", e)
         return self.saldos[dueno_id]
 
     def debitar(self, dueno_id: str, centimos: int) -> int:
@@ -1038,6 +1057,8 @@ class Stores:
         # disponible y de recibir avisos de partidos (`juego.py`).
         self.juego_prefs.pop(clave, None)
         self.juego_avisos_dia.pop(clave, None)
+        self.favoritos_web.pop(clave, None)
+        self.avisos_prefs.pop(clave, None)  # la época de sesión se conserva (no revive cookies viejas)
         antes = len(self.pagos)
         self.pagos = [p for p in self.pagos if not _match(p.dueno_id)]
         return {"saldo": saldo_habia, "pagos": antes - len(self.pagos)}
@@ -1321,6 +1342,9 @@ class Stores:
             "yape_notificaciones": [dict(n) for n in self.yape_notificaciones],
             "qr_intenciones": {k: dict(v) for k, v in self.qr_intenciones.items()},
             "juego_prefs": {k: dict(v) for k, v in self.juego_prefs.items()},
+            "favoritos_web": {k: dict(v) for k, v in self.favoritos_web.items()},
+            "avisos_prefs": {k: dict(v) for k, v in self.avisos_prefs.items()},
+            "sesion_epocas": dict(self.sesion_epocas),
             "juego_avisos": {k: dict(v) for k, v in self.juego_avisos.items()},
             "juego_avisos_dia": {k: dict(v) for k, v in self.juego_avisos_dia.items()},
             "apartados_stock": {k: dict(v) for k, v in self.apartados_stock.items()},
@@ -1470,8 +1494,14 @@ class Stores:
         self.yape_notificaciones = [dict(n) for n in (data.get("yape_notificaciones") or []) if isinstance(n, dict)]
         self.qr_intenciones = {str(k): dict(v) for k, v in (data.get("qr_intenciones") or {}).items()
                                if isinstance(v, dict)}
-        for _k in ("juego_prefs", "juego_avisos", "juego_avisos_dia"):
+        for _k in ("juego_prefs", "juego_avisos", "juego_avisos_dia", "favoritos_web", "avisos_prefs"):
             setattr(self, _k, {str(k): dict(v) for k, v in (data.get(_k) or {}).items() if isinstance(v, dict)})
+        self.sesion_epocas = {}
+        for k, v in (data.get("sesion_epocas") or {}).items():
+            try:
+                self.sesion_epocas[str(k)] = int(v)
+            except (TypeError, ValueError):
+                continue
         self.publicaciones_redes = [dict(r) for r in (data.get("publicaciones_redes") or [])]
         self.admin_accesos = [dict(r) for r in (data.get("admin_accesos") or [])]
         ag = data.get("agente_fb") or {}

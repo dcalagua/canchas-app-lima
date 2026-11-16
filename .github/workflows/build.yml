@@ -19,6 +19,44 @@ env:
   FLUTTER_VERSION: "3.24.5"
 
 jobs:
+  # Red de seguridad (C4, oct-2026): antes el CI solo compilaba. El backend
+  # se despliega en cada push, así que su suite corre aquí con un Postgres
+  # real (migraciones versionadas + tests de integración).
+  backend:
+    name: Backend (pytest + Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: canchalibre
+          POSTGRES_PASSWORD: canchalibre
+          POSTGRES_DB: canchalibre
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U canchalibre"
+          --health-interval 2s --health-timeout 3s --health-retries 30
+    defaults:
+      run:
+        working-directory: backend/growth
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # = Dockerfile de producción
+          cache: pip
+          cache-dependency-path: backend/growth/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Migraciones (base local de CI)
+        env:
+          DATABASE_URL: postgresql://canchalibre:canchalibre@localhost:55432/canchalibre
+        run: python -m db.migrar --local
+      - name: pytest
+        env:
+          TEST_DATABASE_URL: postgresql://canchalibre:canchalibre@localhost:55432/canchalibre
+        run: python -m pytest -q -p no:warnings
+
   android:
     name: Android APK
     runs-on: ubuntu-latest
@@ -61,6 +99,9 @@ jobs:
 
       - name: pub get
         run: flutter pub get
+
+      - name: Tests de Flutter (sin goldens, que dependen del SO)
+        run: flutter test --exclude-tags golden
 
       # Verifica el código ANTES de compilar: si hay errores (tipos, params,
       # símbolos), falla aquí y NO se publica un APK roto. Solo bloquea por

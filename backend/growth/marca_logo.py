@@ -12,7 +12,8 @@ El operador sube un PNG/JPG en la torre → Comunicación → "🎨 Logo de la
 marca"; se normaliza a 512×512 PNG (fondo transparente si el original lo
 tiene, centrado y con margen), se guarda en Storage `canchas/marca/logo_<ms>.png`
 y la URL queda en `stores.config[marca_logo_url]` (+ `marca_logo_v` para
-saltar cachés). Sin logo propio, todo sigue con `static/brand/logo_pin.png`.
+saltar cachés). Sin logo propio, todo sigue con `static/brand/logo_canchalibre.png`
+(isotipo azul del rediseño de nov-2026; antes `logo_pin.png`).
 El ícono del APK en el celular y su pantalla de arranque NO cambian así:
 van compilados en el APK (hay que generar uno nuevo)."""
 from __future__ import annotations
@@ -32,8 +33,8 @@ from db.store import stores
 
 _DIR = os.path.dirname(os.path.abspath(__file__))
 _STATIC = os.path.join(_DIR, "static", "brand")
-LOGO_DEFECTO = os.path.join(_STATIC, "logo_pin.png")
-LOGO_OG_DEFECTO = os.path.join(_STATIC, "logo_pichangol.png")
+LOGO_DEFECTO = os.path.join(_STATIC, "logo_canchalibre.png")
+LOGO_OG_DEFECTO = os.path.join(_STATIC, "logo_canchalibre_og.png")
 
 LADO = 512           # lado del PNG normalizado
 LADO_MIN = 128       # menos que esto se ve pixelado en la cabecera

@@ -188,7 +188,7 @@ def test_mis_bonos_y_compra_de_bono_como_el_app(monkeypatch):
     assert "Club Raqueta" in html and "Compraste 10 h · S/ 400.00" in html and "Te quedan 7 h" in html and "Usaste 3 de 10 h" in html
     assert "href='/bonos/c1'" in html
     html = cli.get("/bonos/c1").text
-    assert "Tienes 7 horas de bono en este local" in html and "S/ 40.00/hora · ahorras 20 %" in html and "data-oferta='of1'" in html
+    assert "Tienes 7 horas de bono en este local" in html and "S/ 40.00/hora · <span style='white-space:nowrap'>ahorras 20\u00a0%</span>" in html and "data-oferta='of1'" in html
     r = cli.post("/web/bonos/comprar", json={"cancha_id": "c1", "oferta_id": "of1", "token": "tkn"}).json()
     assert r["ok"] and r["url"] == "/mis-bonos?nuevo=bono_chr_b1"
     f = registrados[0]

@@ -33,6 +33,8 @@ import paises
 from db.store import stores
 from web import almacen, catalogos, datos, sesion, ui
 from web import campeonatos_logica as L
+from web import estilos_v_comercio as vc
+from web import vista_anfitrion as va
 from web.anfitrion import JS_PAGAR, _en_segundo_plano, _sesion_o_entrar
 from web.router import PLAY_URL, e
 from pagos import pozos
@@ -48,9 +50,9 @@ BASE = "/anfitrion/campeonatos"
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
-def _cab(ses: dict | None) -> str:
-    tabs = f"<a class='cat sel' href='{BASE}'><span class='ico'>🏆</span>Mis campeonatos</a>"
-    return ui.cabecera(tabs=tabs, ses=ses, volver="/anfitrion", modo="anfitrion")
+def _shell(titulo: str, cuerpo: str, ses: dict, tab: str, **kw) -> HTMLResponse:
+    # La barra del modo anfitrión la pone `ui.shell` sola en toda ruta /anfitrion/*.
+    return ui.shell(titulo, va.vista(cuerpo, "vc-camp"), sesion=ses, ancho=True, titulo_tab=tab, **kw)
 
 
 def _mios(email: str) -> list[dict]:
@@ -139,21 +141,23 @@ def _hora(v) -> str:
 
 
 def _estado_pill(c: dict) -> str:
-    clave, txt, color = L.estado(c)
-    col = {"teal": "background:#E6F4EF;color:#0B7A55", "morado": "background:#EFE9FF;color:#5B3FD8",
-           "naranja": "background:#FFF1E3;color:#B25E0A", "lima": "background:#EAF7E1;color:#3E7A16"}[color]
-    return f"<span class='pill' style='{col}'>{txt}</span>"
+    _clave, txt, color = L.estado(c)
+    return va.pill(txt, {"teal": "azul", "morado": "info", "naranja": "warn", "lima": "ok"}.get(color, "gris"))
 
 
 # ── Lista (`MisCampeonatosScreen`) ────────────────────────────────────────────
+def _fila_camp(c: dict, href: str, sub: str) -> str:
+    dep = str(c.get("deporte") or "tenis")
+    logo = f"<img src='{e(c['logoUrl'])}' alt=''>" if c.get("logoUrl") else f"<span aria-hidden='true'>{_EMOJI.get(dep, '🏆')}</span>"
+    return (f"<a class='vc-cmp-it' href='{href}'><span class='vc-cmp-logo'>{logo}</span><span class='tx'><b>{e(c.get('nombre') or 'Campeonato')}</b>"
+            f"<small>{e(sub)}</small>{_estado_pill(c)}</span><span class='ir' aria-hidden='true'>›</span></a>")
+
+
 def _tarjeta(c: dict) -> str:
     dep = str(c.get("deporte") or "tenis")
     n = len(c.get("participantes") or [])
     sub = f"{_NOMBRE.get(dep, dep)} · {L.FORMATOS[L.formato_de(c)]} · {n} inscrito{'s' if n != 1 else ''}{'' if c.get('academiaId') else ' · sin academia'}"
-    logo = f"<img src='{e(c['logoUrl'])}' alt=''>" if c.get("logoUrl") else f"<span>{_EMOJI.get(dep, '🏆')}</span>"
-    return (f"<a class='anf-cancha' href='{BASE}/{e(c['id'])}' style='text-decoration:none;color:inherit;align-items:center'>"
-            f"<div class='f'>{logo}</div><div style='flex:1;min-width:0'><b style='font-size:16px'>{e(c.get('nombre') or 'Campeonato')}</b>"
-            f"<div class='sub' style='margin:2px 0 6px'>{e(sub)}</div>{_estado_pill(c)}</div><span style='color:var(--tenue);font-size:22px'>›</span></a>")
+    return _fila_camp(c, f"{BASE}/{e(c['id'])}", sub)
 
 
 def _rol_en(c: dict, email: str) -> str:
@@ -169,10 +173,7 @@ def _rol_en(c: dict, email: str) -> str:
 def _tarjeta_participo(c: dict, email: str) -> str:
     dep = str(c.get("deporte") or "tenis")
     sub = f"{_rol_en(c, email)} · {_NOMBRE.get(dep, dep)} · {L.FORMATOS[L.formato_de(c)]}"
-    logo = f"<img src='{e(c['logoUrl'])}' alt=''>" if c.get("logoUrl") else f"<span>{_EMOJI.get(dep, '🏆')}</span>"
-    return (f"<a class='anf-cancha' href='/torneo/{e(c['id'])}' style='text-decoration:none;color:inherit;align-items:center'>"
-            f"<div class='f'>{logo}</div><div style='flex:1;min-width:0'><b style='font-size:16px'>{e(c.get('nombre') or 'Campeonato')}</b>"
-            f"<div class='sub' style='margin:2px 0 6px'>{e(sub)}</div>{_estado_pill(c)}</div><span style='color:var(--tenue);font-size:22px'>›</span></a>")
+    return _fila_camp(c, f"/torneo/{e(c['id'])}", sub)
 
 
 def _caja_codigo(no_encontrado: bool) -> str:
@@ -180,14 +181,15 @@ def _caja_codigo(no_encontrado: bool) -> str:
     "acá también debería ingresar el código y ver el campeonato"): código del
     TORNEO o de tu EQUIPO → página pública `/c/{id}` (con `?equipo=` si es de
     equipo: desde ahí "Unirme al equipo aquí" —web, con saldo— o en la app)."""
-    err = ("<p class='sub' style='color:#B42318;margin:8px 0 0'>No encontramos ese código. Revísalo o pídeselo de nuevo a quien te invitó.</p>"
+    err = ("<p class='vc-err' role='alert'>No encontramos ese código. Revísalo o pídeselo de nuevo a quien te invitó.</p>"
            if no_encontrado else "")
-    return (f"<form class='anf-cancha' method='get' action='{BASE}/unirme' style='align-items:center;gap:14px;margin-top:14px'>"
-            "<div class='f' style='background:#EAF7E1'><span>🎟️</span></div><div style='flex:1;min-width:0'><b style='font-size:16px'>¿Te compartieron un código?</b>"
-            "<div class='sub' style='margin:2px 0 8px'>Pega el código del campeonato o el de tu equipo para ver el torneo, como en la app.</div>"
-            "<div style='display:flex;gap:8px;flex-wrap:wrap'><input name='codigo' type='text' maxlength='12' placeholder='Ej.: 4KZ9AB' required "
-            "style='width:180px;text-transform:uppercase;letter-spacing:.12em;font-weight:800'><button type='submit' class='btn'>Ver campeonato</button></div>"
-            f"{err}</div></form>")
+    return va.panel(
+        f"<div class='vc-codigo-cab'>{vc.cuadro('ticket', 'rojo')}<div><b>¿Te compartieron un código?</b><small>Del campeonato o de tu equipo.</small></div></div>"
+        f"<form class='vc-codigo' method='get' action='{BASE}/unirme'><label for='codCamp'>Código</label>"
+        "<input id='codCamp' name='codigo' type='text' maxlength='12' aria-label='Código del campeonato o del equipo' placeholder='Ej.: 4KZ9AB' required autocomplete='off' autocapitalize='characters'>"
+        f"{err}<button type='submit' class='btn'>Ver campeonato</button></form><hr>"
+        f"<p class='vc-nota'>{vc.ico('info', 16)}<span>Verás el torneo igual que en la app: fixture, equipos y resultados. "
+        "Si el código es de un equipo, desde ahí te unes y pones tu parte.</span></p>", clase="vc-codigo-p")
 
 
 @router.get(BASE + "/unirme")
@@ -206,39 +208,53 @@ def unirme_por_codigo(request: Request, codigo: str = "") -> RedirectResponse:
 
 
 @router.get(BASE, response_class=HTMLResponse)
-def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = "", no_encontrado: str = "") -> HTMLResponse:
+def pagina_campeonatos(request: Request, guardado: str = "", eliminado: str = "", no_encontrado: str = "",
+                       pro: str = "") -> HTMLResponse:
     ses, resp = _sesion_o_entrar(request, BASE)
     if resp is not None:
         return resp
     lista = _mios(ses["email"])
     participo = datos.campeonatos_donde_participa(ses["email"])
-    caja = _caja_codigo(bool(no_encontrado))
+    es_pro = _pro(ses["email"])
+    aviso = (va.aviso("Campeonato guardado. Ya se ve en la app y en su página pública.", "ok", ico="trofeo") if guardado
+             else va.aviso("Campeonato eliminado.", "info") if eliminado else "")
+    boton = (f"<a class='btn' href='{BASE}/nuevo'>{vc.ico('trofeo', 18)}Organizar campeonato</a>" if es_pro else
+             f"<button type='button' class='btn' data-abrir='modalPro'>{vc.ico('trofeo', 18)}Organizar campeonato</button>")
+    # El aviso "Es Pro" se abre solo cuando /nuevo devolvió aquí a alguien sin Pro (`?pro=1`).
+    modal_pro = (f"<div class='modal{' open' if (pro and not es_pro) else ''}' id='modalPro' role='dialog' aria-modal='true' aria-labelledby='modalProT'><div class='modal-caja' style='max-width:460px'>"
+                 f"<div class='modal-cab'><button type='button' class='cerrar' data-cerrar-modal aria-label='Cerrar'>✕</button><h3 id='modalProT'>Es {MARCA} Pro</h3></div>"
+                 f"<div class='modal-cuerpo'><section><p class='sub' style='margin:0 0 12px'>Crear y administrar tus propios campeonatos (fixture, inscripciones, resultados) es parte de <b>{MARCA} Pro</b>. Actívalo y vuelve aquí.</p>"
+                 f"<a class='btn' href='/pro'>{vc.ico('corona', 18)}Ver {MARCA} Pro</a></section></div></div></div>")
+    if lista:
+        principal = va.panel("".join(_tarjeta(c) for c in lista), "Organizo",
+                             f"{len(lista)} campeonato{'s' if len(lista) != 1 else ''} que organizas. Es lo mismo que ves en la app.")
+    else:
+        act = catalogos.deportes_activos()
+        deps = [d for d in catalogos.DEPORTES_CAMPEONATO if d in act or d == "natacion"]
+        chips = "".join(f"<span>{e(_NOMBRE.get(d, d))}</span>" for d in deps[:4]) + (f"<span>+{len(deps) - 4} más</span>" if len(deps) > 4 else "")
+        principal = va.panel(va.vacio("trofeo", "Aún no tienes campeonatos", "Crea tu torneo, invita y que se inscriban.",
+                                      f"<div class='vc-deps'>{chips}</div>{boton}"), clase="vc-cmp-vacio")
     sec_participo = ("" if not participo else
-                     "<h2 style='margin:26px 0 8px;font-size:18px'>Donde participo</h2>"
-                     "<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr))'>"
-                     + "".join(_tarjeta_participo(c, ses["email"]) for c in participo) + "</div>")
-    aviso = ("<div class='aviso ok' style='margin-top:14px'>✅ Campeonato guardado. Ya se ve en la app y en su página pública.</div>" if guardado
-             else "<div class='aviso ok' style='margin-top:14px'>🗑 Campeonato eliminado.</div>" if eliminado else "")
-    pro = _pro(ses["email"])
-    boton = (f"<a class='btn' href='{BASE}/nuevo'>＋ Organizar</a>" if pro else
-             "<button type='button' class='btn' onclick=\"document.getElementById('modalPro').classList.add('open')\">＋ Organizar</button>")
-    modal_pro = ("<div class='modal' id='modalPro' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:460px'>"
-                 f"<div class='modal-cab'><button type='button' class='cerrar' onclick=\"this.closest('.modal').classList.remove('open')\">✕</button><h3>Es {MARCA} Pro</h3></div>"
-                 f"<div class='modal-cuerpo'><section><p class='sub' style='margin:0 0 12px'>Crear y administrar tus propios campeonatos (fixture, inscripciones, resultados) es parte de <b>{MARCA} Pro</b>. Actívalo en Perfil → 👑 {MARCA} Pro y vuelve aquí.</p>"
-                 f"<a class='btn' href='/pro'>👑 Ver {MARCA} Pro</a></section></div></div></div>")
-    if not lista:
-        cuerpo = (f"<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>{aviso}<div style='max-width:760px;margin:24px auto 0;text-align:center'>"
-                  "<div style='font-size:52px'>🏆</div><h1 class='anf-hola' style='margin-top:8px'>Aún no tienes campeonatos</h1>"
-                  "<p class='sub' style='font-size:16px'>¿Te compartieron un código? Pégalo abajo y verás el torneo. ¿Quieres el tuyo? Toca “Organizar” para crear tu torneo (fútbol, tenis, natación…), invitar y que se inscriban.</p>"
-                  f"<div class='acciones' style='margin-top:22px;justify-content:center'>{boton}</div></div>"
-                  f"<div style='max-width:760px;margin:0 auto'>{caja}{sec_participo}</div>{modal_pro}")
-        return ui.shell("Mis campeonatos", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mis campeonatos · Modo anfitrión")
-    cuerpo = ("<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
-              "<div style='display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap'>"
-              f"<div><h1 class='anf-hola' style='margin-top:6px'>Mis campeonatos</h1><p class='sub'>{len(lista)} campeonato{'s' if len(lista) != 1 else ''} que organizas. Es lo mismo que ves en la app.</p></div>{boton}</div>"
-              f"{aviso}{caja}{sec_participo}<h2 style='margin:26px 0 8px;font-size:18px'>Organizo</h2>"
-              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr))'>{''.join(_tarjeta(c) for c in lista)}</div>{modal_pro}")
-    return ui.shell("Mis campeonatos", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab="Mis campeonatos · Modo anfitrión")
+                     va.panel("".join(_tarjeta_participo(c, ses["email"]) for c in participo), "Donde participo",
+                              "Torneos en los que estás inscrito o juegas en un equipo."))
+    cuerpo = (va.cabecera("Mis campeonatos", "Organiza torneos en tu local, invita equipos y deja que se inscriban.",
+                          acciones=boton if lista else "")
+              + aviso + f"<div class='vc-cmp'><div>{principal}{sec_participo}</div>{_caja_codigo(bool(no_encontrado))}</div>{modal_pro}"
+              f"<script>{_JS_LISTA}</script>")
+    return _shell("Mis campeonatos", cuerpo, ses, "Mis campeonatos · Modo anfitrión")
+
+
+_JS_LISTA = r"""
+(function(){
+  var m = document.getElementById('modalPro'); if(!m) return;
+  function cerrar(){ m.classList.remove('open'); }
+  document.addEventListener('click', function(ev){
+    if(ev.target.closest("[data-abrir='modalPro']")){ m.classList.add('open'); var b = m.querySelector('.cerrar'); if(b) b.focus(); return; }
+    if(ev.target.closest('[data-cerrar-modal]') || ev.target === m) cerrar();
+  });
+  document.addEventListener('keydown', function(ev){ if(ev.key === 'Escape') cerrar(); });
+})();
+"""
 
 
 # ── Asistente crear / editar (`CrearCampeonatoScreen`) ───────────────────────
@@ -282,8 +298,7 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
 .wz .radio.dis{{opacity:.55;cursor:not-allowed}}.sw{{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:16px}}.sw label{{margin:0;flex:1}}.sw input{{width:20px;height:20px;flex:none;margin:0;accent-color:var(--esmeralda)}}
 .wz .pie{{display:flex;justify-content:space-between;gap:10px;margin-top:22px}}.res-busca .res-it{{display:block;width:100%;text-align:left;border:0;background:#fff;padding:10px 12px;cursor:pointer;font-family:inherit;border-bottom:1px solid var(--trazo)}}.res-busca .res-it small{{display:block;color:var(--tenue)}}
 </style>
-<div class='wz'><a class='anf-back' href='{BASE if nuevo else BASE + '/' + e(c['id'])}'>‹ {'Mis campeonatos' if nuevo else 'Volver al campeonato'}</a>
-<h1 class='anf-hola' style='margin-top:8px'>{'Organizar campeonato' if nuevo else 'Editar campeonato'}</h1>
+<div class='wz'>{va.cabecera('Organizar campeonato' if nuevo else 'Editar campeonato', 'Tres pasos: presentación, formato y reglas.', volver=BASE if nuevo else BASE + '/' + c['id'])}
 <div class='wz-pasos'><span class='on' data-p='1'></span><span data-p='2'></span><span data-p='3'></span></div>
 <div class='wz-p on panel' id='p1'><h2>{'Presenta tu campeonato' if nuevo else 'Edita tu campeonato'}</h2><p class='sub'>El logo y el nombre son la cara del torneo: salen en la app, en el afiche y en el enlace que compartes.</p>
  <div style='display:flex;gap:18px;align-items:center;margin-top:14px;flex-wrap:wrap'><div class='logo-pick' id='logoBox'>{logo}</div>
@@ -306,10 +321,10 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
 <div class='wz-p panel' id='p3'><h2>Fechas, sede y reglas</h2>
  <div class='sw'><label>Relámpago (todo en un día)</label><input type='checkbox' id='relampago'{' checked' if c.get('relampago') else ''}></div>
  <label id='lblFechas'>{'Fecha (relámpago, un día)' if c.get('relampago') else 'Fechas de juego'}</label>
- <div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><input id='desde' type='date' value='{e(inicio)}'><input id='hastaJ' type='date' value='{e(fin)}'{' disabled' if c.get('relampago') else ''}></div>
+ <div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><input id='desde' type='date' aria-label='Fecha de inicio' value='{e(inicio)}'><input id='hastaJ' type='date' aria-label='Fecha de fin' value='{e(fin)}'{' disabled' if c.get('relampago') else ''}></div>
  {"<p class='sub' style='font-size:12.5px'>Actual: " + e(c.get('fechas')) + "</p>" if c.get('fechas') else ''}
  <label for='cierre' id='lblCierre'>Cierre de inscripciones <span class='req' id='cierreAyuda'>{'día y hora · a esa hora se cierran y se sortea solo' if c.get('relampago') else 'opcional · día y hora (sin hora = ese día a las 00:00); se sortea solo'}</span></label>
- <div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><input id='cierre' type='date' value='{e(hasta)}'><input id='cierreHora' type='time' value='{e(hasta_hora)}' placeholder='Hora'></div>
+ <div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><input id='cierre' type='date' value='{e(hasta)}'><input id='cierreHora' type='time' aria-label='Hora de cierre de inscripciones' value='{e(hasta_hora)}' placeholder='Hora'></div>
  <label for='sede'>Sede{f" <span class='req'>🔎 elige una cancha de {MARCA} o búscala en Google Maps</span>" if config.PLACES_API_KEY else f" <span class='req'>elige una cancha de {MARCA}</span>"}</label>
  <input id='sede' type='text' maxlength='80' value='{e(c.get('sede') or '')}' placeholder='Nombre de la cancha o club' autocomplete='off'><div id='resSede' class='res-busca' hidden></div>
  <div id='mapaSede' class='mapa-sede' style='margin-top:8px;height:220px'></div><div class='sub' id='ubicTxt' style='font-size:12.5px'>{'Sin ubicación: elige una sede para fijar el país y la moneda.' if c.get('sedeLat') is None else f"{float(c['sedeLat']):.5f}, {float(c['sedeLng']):.5f}"}</div>
@@ -323,9 +338,8 @@ def _editor(ses: dict, c: dict, *, nuevo: bool) -> HTMLResponse:
  <div class='estado bad' id='errGuardar' style='display:none;margin-top:12px'></div>
  <div class='pie'><button type='button' class='btn sec' data-ir='2'>Atrás</button><button type='button' class='btn' id='btnGuardar'>{'Crear campeonato' if nuevo else 'Guardar cambios'}</button></div></div>
 </div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_WIZARD}</script>"""
-    return ui.shell("Campeonato", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, extra_head=_LEAFLET,
-                    titulo_tab=f"{'Organizar' if nuevo else 'Editar'} campeonato · Modo anfitrión")
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_WIZARD}</script>"""
+    return _shell("Campeonato", cuerpo, ses, f"{'Organizar' if nuevo else 'Editar'} campeonato · Modo anfitrión", extra_head=_LEAFLET)
 
 
 _JS_WIZARD = (r"""
@@ -384,7 +398,7 @@ def pagina_nuevo(request: Request) -> HTMLResponse:
     if resp is not None:
         return resp
     if not _pro(ses["email"]):
-        return HTMLResponse("", status_code=302, headers={"Location": BASE})
+        return HTMLResponse("", status_code=302, headers={"Location": BASE + "?pro=1"})   # abre el aviso "Es Pro"
     c = {"id": L.nuevo_id(), "academiaId": "", "dueno": ses["email"], "nombre": "", "deporte": "futbol", "formato": "liga", "categoria": "",
          "sede": "", "fechas": "", "costoInscripcion": 0, "inscripcionAbierta": True, "participantes": [], "partidos": [], "cerrado": False,
          "moneda": "", "relampago": False, "exigeDni": False, "premios": "", "auspiciador": "", "organizador": ""}
@@ -789,7 +803,7 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
 <style>
 .det{{max-width:920px;margin:0 auto}}.det .panel{{margin-top:14px;padding:18px 20px}}.det h3{{margin:0 0 8px;font-size:17px}}
 .cab-camp{{display:flex;gap:16px;align-items:center;flex-wrap:wrap}}.cab-camp .logo-pick{{cursor:pointer}}.cab-camp h1{{margin:0;font-size:26px}}
-.podio{{background:#E6F4EF;border:0;text-align:center;font-size:17px}}.podio b{{display:block;color:#0B7A55;margin-bottom:6px}}
+.podio{{background:#E6F4EF;border:0;text-align:center;font-size:17px}}.podio b{{display:block;color:#3056ED;margin-bottom:6px}}
 .codigo{{font-family:ui-monospace,Menlo,monospace;font-size:34px;font-weight:800;letter-spacing:.14em;text-align:center;background:var(--gris);border-radius:16px;padding:14px;cursor:pointer;user-select:all}}
 .chip.part{{position:relative;padding-right:34px}}.chip.part.ok{{background:#EAF7E1;border-color:#9CD47A}}.chip.part .x{{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:transparent;font-weight:800;cursor:pointer;color:var(--tenue);font-family:inherit}}
 .partido{{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;border:1px solid var(--trazo);border-radius:12px;padding:10px 14px;margin-top:8px}}.partido.clic{{cursor:pointer}}.partido.clic:hover{{border-color:var(--noche)}}
@@ -799,9 +813,9 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
 .edit-fotos{{margin-top:10px}}.galeria-arte{{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}}.galeria-arte img{{width:100%;border-radius:12px;cursor:pointer;border:3px solid transparent}}.galeria-arte img.sel{{border-color:var(--esmeralda)}}
 .mod-form label{{display:block;margin-top:12px;font-weight:700}}.mod-form input,.mod-form select{{width:100%;margin-top:6px}}
 </style>
-<div class='det'><a class='anf-back' href='{BASE}'>‹ Mis campeonatos</a>{aviso}
+<div class='det'>{va.cabecera(c.get('nombre') or 'Campeonato', 'Invita, arma el fixture y carga resultados: es lo mismo que ves en la app.', volver=BASE, acciones=f"<a class='btn sec' href='{BASE}/{e(c['id'])}/editar'>{vc.ico('lapiz', 16)}Editar</a>")}{aviso}
 <div class='panel cab-camp'><label class='logo-pick' for='inLogo' id='logoBox' title='Cambiar logo'>{logo}</label><input type='file' id='inLogo' accept='image/*' hidden{'' if almacen.disponible() else ' disabled'}>
- <div style='flex:1;min-width:220px'><h1>{e(c.get('nombre') or '')}</h1><div class='chips' style='margin-top:8px;gap:6px'>{''.join(chips_cab)}</div><div style='margin-top:10px'>{_estado_pill(c)}</div></div></div>
+ <div style='flex:1;min-width:220px'><div class='chips' style='gap:6px'>{''.join(chips_cab)}</div><div style='margin-top:10px'>{_estado_pill(c)}</div></div></div>
 {podio}
 {("<div class='acciones' style='margin-top:12px'>" + ubic + "</div>") if ubic else ''}
 <div class='panel'><h3>Invitar</h3>{("<div class='codigo' id='codigo' title='Copiar código'>" + e(c['codigo']) + "</div><p class='sub' style='text-align:center;font-size:12.5px'>Código para unirse desde la app · toca para copiar</p>") if c.get('codigo') else ''}
@@ -818,9 +832,9 @@ def pagina_detalle(request: Request, cid: str, creado: str = "", guardado: str =
 <div class='panel'><h3>Galería del torneo</h3><div class='edit-fotos' id='fotos'>{fotos}</div><div class='acciones' style='margin-top:10px'><label class='btn sec' for='inFotos'>📷 Agregar fotos</label><input type='file' id='inFotos' accept='image/*' multiple hidden{'' if almacen.disponible() else ' disabled'}><span class='sub' id='fotosMsg' style='margin:0'></span></div></div>
 <div class='acciones' style='margin-top:18px;flex-wrap:wrap'><a class='btn' href='{BASE}/{e(c['id'])}/editar'>✏️ Editar campeonato</a><button type='button' class='btn sec' id='btnDuplicar'>📄 Duplicar campeonato (nueva edición)</button><button type='button' class='btn sec' id='btnEliminar' style='color:var(--rojo)'>🗑 Eliminar campeonato</button></div>
 </div>
-<div class='modal' id='modal' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:520px'><div class='modal-cab'><button type='button' class='cerrar' id='modalCerrar'>✕</button><h3 id='modalTit'></h3></div><div class='modal-cuerpo mod-form' id='modalCuerpo'></div></div></div>
-<script>var CFG={json.dumps(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_DETALLE}</script>"""
-    return ui.shell(c.get("nombre") or "Campeonato", cuerpo, nav=_cab(ses), sesion=ses, ancho=True, titulo_tab=f"{c.get('nombre') or 'Campeonato'} · Mis campeonatos")
+<div class='modal' id='modal' role='dialog' aria-modal='true'><div class='modal-caja' style='max-width:520px'><div class='modal-cab'><button type='button' class='cerrar' id='modalCerrar' aria-label='Cerrar'>✕</button><h3 id='modalTit'></h3></div><div class='modal-cuerpo mod-form' id='modalCuerpo'></div></div></div>
+<script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_DETALLE}</script>"""
+    return _shell(c.get("nombre") or "Campeonato", cuerpo, ses, f"{c.get('nombre') or 'Campeonato'} · Mis campeonatos")
 
 
 _JS_DETALLE = (r"""
@@ -860,7 +874,7 @@ $('btnFondo').addEventListener('click',function(){var r=Math.floor(Math.random()
   pintar()});
 // participantes
 $('btnAgregar').addEventListener('click',function(){var eq=CFG.deporte==='futbol';
-  modal(eq?'Nuevo equipo':'Nuevo participante',"<label>"+(eq?'Nombre del equipo':'Nombre (jugador o pareja "A / B")')+"</label><input id='pNombre' type='text' maxlength='80'><label>WhatsApp <span class='req'>opcional</span></label><input id='pTel' type='text' inputmode='tel' maxlength='20'>"+pie('Agregar'),
+  modal(eq?'Nuevo equipo':'Nuevo participante',"<label>"+(eq?'Nombre del equipo':'Nombre (jugador o pareja "A / B")')+"</label><input id='pNombre' type='text' aria-label='Nombre del participante' maxlength='80'><label>WhatsApp <span class='req'>opcional</span></label><input id='pTel' type='text' aria-label='WhatsApp (opcional)' inputmode='tel' maxlength='20'>"+pie('Agregar'),
     async function(){try{await post('/participante',{nombre:$('pNombre').value,contacto:$('pTel').value});pcgRecargar()}catch(e){err(e.message)}})});
 document.addEventListener('click',async function(ev){var q=ev.target.closest('[data-quitar]');if(q){ev.stopPropagation();var pq=CFG.participantes.filter(function(x){return x.id===q.dataset.quitar})[0];if(!await pcgConfirmar({titulo:'Quitar participante',mensaje:'¿Quitas a '+(pq?pq.nombre:'este participante')+' del campeonato?',confirmar:'Quitar',destructivo:true}))return;try{var jq=await post('/participante/'+encodeURIComponent(q.dataset.quitar)+'/eliminar',{},'Quitando…');if(jq.aviso){await pcgAvisar({titulo:'Pozo ya liquidado',mensaje:jq.aviso,icono:'💰'})}pcgRecargar(jq.devueltos?jq.devueltos+' jugador(es) recuperaron su parte':undefined)}catch(e){pcgToast(e.message)}return}
   var ch=ev.target.closest('.chip.part[data-equipo="1"]');if(ch){var p=CFG.participantes.filter(function(x){return x.id===ch.dataset.pid})[0];if(!p)return;
@@ -869,7 +883,7 @@ document.addEventListener('click',async function(ev){var q=ev.target.closest('[d
     var invitar=enlaceEq?"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><button type='button' class='btn sec' data-copiar-eq='"+esc(enlaceEq)+"'>🔗 Copiar enlace del equipo</button><a class='btn sec' target='_blank' rel='noopener' href='https://wa.me/?text="+encodeURIComponent('Únete a mi equipo «'+p.nombre+'» en "'+CFG.nombre+'" (⟦MARCA⟧). Toca y quedas inscrito: '+enlaceEq)+"'>💬 WhatsApp</a></div><p class='sub' style='margin:6px 0 0;font-size:12px'>Quien abra el enlace con la app entra directo al equipo, sin escribir el código"+(CFG.fixture?" (también con el fixture publicado, mientras la inscripción siga abierta)":"")+".</p>":'';
     var st=CFG.pozos[p.id],pozoHtml='',pago={};
     if(CFG.cuotaEq>0){var pz=st?st.pozo_centimos:0,tot=CFG.cuotaEq,pct=Math.min(100,Math.round(pz*100/tot)),comp=st?st.completo:false;(st?st.aportes:[]).forEach(function(a){pago[(a.email||'').toLowerCase()]=a.centimos});
-      pozoHtml="<section><b>"+(comp?"✅ Equipo inscrito · pozo completo":"💰 Pozo del equipo")+"</b><div style='height:8px;border-radius:999px;background:#EEF1F4;margin:8px 0 6px;overflow:hidden'><div style='height:100%;width:"+pct+"%;background:"+(comp?'#0B8A3E':'#F28C28')+"'></div></div><p class='sub' style='margin:0'>"+esc(CFG.mon)+" "+fmtC(pz)+" de "+fmtC(tot)+" · cada jugador pone "+esc(CFG.mon)+" "+fmtC(CFG.cuotaJug)+(comp?"":" · faltan "+esc(CFG.mon)+" "+fmtC(tot-pz))+(st&&st.liquidado?" · neto "+esc(CFG.mon)+" "+fmtC(st.neto_centimos)+" por recibir: ⟦MARCA⟧ te lo transfiere (Ingresos)":"")+"</p></section>"}
+      pozoHtml="<section><b>"+(comp?"✅ Equipo inscrito · pozo completo":"💰 Pozo del equipo")+"</b><div style='height:8px;border-radius:999px;background:#EEF1F4;margin:8px 0 6px;overflow:hidden'><div style='height:100%;width:"+pct+"%;background:"+(comp?'#3056ED':'#F28C28')+"'></div></div><p class='sub' style='margin:0'>"+esc(CFG.mon)+" "+fmtC(pz)+" de "+fmtC(tot)+" · cada jugador pone "+esc(CFG.mon)+" "+fmtC(CFG.cuotaJug)+(comp?"":" · faltan "+esc(CFG.mon)+" "+fmtC(tot-pz))+(st&&st.liquidado?" · neto "+esc(CFG.mon)+" "+fmtC(st.neto_centimos)+" por recibir: ⟦MARCA⟧ te lo transfiere (Ingresos)":"")+"</p></section>"}
     modal(p.nombre,"<section><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b>Código: "+esc(p.codigo||'—')+"</b>"+falta+"</div><p class='sub' style='margin:6px 0 0'>Capitán: "+esc(p.capitanEmail||'—')+"</p>"+invitar+"</section>"+pozoHtml+"<section><b>Plantel ("+p.roster.length+(CFG.maxJug?"/"+CFG.maxJug:"")+")</b>"+
       (p.roster.map(function(i){var em=(i.email||'').toLowerCase();return "<div class='marca'><span class='pos'>"+(i.email?'✅':'👤')+"</span><span class='nom'>"+esc(i.nombre)+(i.email&&i.email===p.capitanEmail?" <span class='pill'>Capitán</span>":'')+(CFG.cuotaEq>0?(pago[em]?" <span class='pill'>pagó "+esc(CFG.mon)+" "+fmtC(pago[em])+"</span>":" <span class='pill' style='background:#FFF1E3;color:#B25E0A'>sin pagar</span>"):'')+"</span></div>"}).join('')||"<p class='sub'>Sin jugadores aún. Comparte el enlace del equipo: cada jugador entra"+(CFG.cuotaEq>0?" y pone su parte":"")+" desde la app.</p>")+"</section>",null)}});
 function fmtC(c){var v=(c||0)/100;return Math.abs(v-Math.round(v))<0.005?String(Math.round(v)):v.toFixed(2)}
@@ -888,9 +902,9 @@ function armarGrupos(){var ps=CFG.participantes,n=ps.length,maxG=Math.floor(n/2)
   if(!prev.length)repartir();
   function cuerpo(){var ops='';for(var i=1;i<=maxG;i++)ops+="<option value='"+i+"'"+(i===k?' selected':'')+">"+i+" grupo"+(i>1?'s':'')+"</option>";
     var filas=ps.map(function(p){var sel='';for(var i=0;i<k;i++)sel+="<option value='"+i+"'"+(asig[p.id]===i?' selected':'')+">Grupo "+CFG.letras[i]+"</option>";
-      return "<div class='marca' style='align-items:center'><span class='nom' style='flex:1'>"+esc(p.nombre)+"</span><select data-gm='"+esc(p.id)+"' style='width:auto;min-width:130px'>"+sel+"</select></div>"}).join('');
+      return "<div class='marca' style='align-items:center'><span class='nom' style='flex:1'>"+esc(p.nombre)+"</span><select data-gm='"+esc(p.id)+"' aria-label='Grupo de "+esc(p.nombre)+"' style='width:auto;min-width:130px'>"+sel+"</select></div>"}).join('');
     var res=[];for(var i=0;i<k;i++){res.push(CFG.letras[i]+': '+ps.filter(function(p){return asig[p.id]===i}).length)}
-    return "<label>Cantidad de grupos</label><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><select id='gmK' style='width:auto'>"+ops+"</select><button type='button' class='btn sec' id='gmRep'>Repartir parejo</button></div>"+
+    return "<label>Cantidad de grupos</label><div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><select id='gmK' aria-label='Cantidad de grupos' style='width:auto'>"+ops+"</select><button type='button' class='btn sec' id='gmRep'>Repartir parejo</button></div>"+
       "<p class='sub' id='gmRes' style='margin:8px 0 4px'>Equipos por grupo · "+res.join(' · ')+"</p><div style='max-height:50vh;overflow:auto'>"+filas+"</div>"+pie('Generar fixture con estos grupos')}
   function pintar(){modal('✋ Armar los grupos',cuerpo(),async function(){var grupos=[];for(var i=0;i<k;i++)grupos.push([]);ps.forEach(function(p){grupos[asig[p.id]||0].push(p.id)});
       var vacio=grupos.findIndex(function(g){return g.length<2});if(vacio>=0){err('El grupo '+CFG.letras[vacio]+' necesita al menos 2 equipos.');return}
@@ -905,7 +919,7 @@ async function sortear(body){try{var j=await post('/fixture',body,'Sorteando el 
   pcgToast(e.message)}}
 // resultado
 document.addEventListener('click',function(ev){var t=ev.target.closest('.partido.clic');if(!t)return;
-  modal('Cargar resultado',"<div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><div><label>"+esc(t.dataset.a)+"</label><input id='mA' type='number' min='0' inputmode='numeric' value='"+esc(t.dataset.ma)+"'></div><div><label>"+esc(t.dataset.b)+"</label><input id='mB' type='number' min='0' inputmode='numeric' value='"+esc(t.dataset.mb)+"'></div></div>"+pie('Guardar'),
+  modal('Cargar resultado',"<div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><div><label>"+esc(t.dataset.a)+"</label><input id='mA' type='number' aria-label='Resultado de "+esc(t.dataset.a)+"' min='0' inputmode='numeric' value='"+esc(t.dataset.ma)+"'></div><div><label>"+esc(t.dataset.b)+"</label><input id='mB' type='number' aria-label='Resultado de "+esc(t.dataset.b)+"' min='0' inputmode='numeric' value='"+esc(t.dataset.mb)+"'></div></div>"+pie('Guardar'),
     async function(){var a=$('mA').value,b=$('mB').value;if(a===''||b===''){err('Escribe ambos marcadores.');return}try{await post('/resultado',{partido:t.dataset.pid,a:+a,b:+b});pcgRecargar()}catch(e){err(e.message)}})});
 var br=$('btnRanking');if(br)br.addEventListener('click',async function(){try{var j=await post('/ranking',{},'Sumando al ranking…');pcgToast(j.n?j.n+' partido(s) sumado(s) al ranking de la academia.':'Aún no hay partidos jugados para sumar.')}catch(e){pcgToast(e.message)}});
 // natación
@@ -915,7 +929,7 @@ var bp=$('btnPrueba');if(bp)bp.addEventListener('click',function(){
   $('modalCuerpo').addEventListener('click',function(ev){var b=ev.target.closest('.chip[data-v]');if(!b)return;b.parentNode.querySelectorAll('.chip').forEach(function(x){x.classList.remove('sel')});b.classList.add('sel')})});
 document.addEventListener('click',async function(ev){var q=ev.target.closest('[data-quitar-prueba]');if(q){if(!await pcgConfirmar({titulo:'Eliminar prueba',mensaje:'Se borra la prueba y todos sus tiempos registrados.',confirmar:'Eliminar',destructivo:true}))return;try{await post('/prueba/'+encodeURIComponent(q.dataset.quitarPrueba)+'/eliminar',{},'Eliminando…');pcgRecargar()}catch(e){pcgToast(e.message)}return}
   var m=ev.target.closest('.marca.clic');if(!m)return;
-  modal('Tiempo de '+m.querySelector('.nom').firstChild.textContent.trim(),"<label>Tiempo (mm:ss.cc)</label><input id='tT' type='text' placeholder='ej. 0:37.85' value='"+esc(m.dataset.t)+"'><div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><div><label>Serie</label><input id='tS' type='number' min='0' value='"+esc(m.dataset.s)+"'></div><div><label>Carril</label><input id='tC' type='number' min='0' value='"+esc(m.dataset.c)+"'></div></div><label style='display:flex;gap:8px;align-items:center'><input type='checkbox' id='tD' style='width:auto;margin:0'"+(m.dataset.dsq==='1'?' checked':'')+"> Descalificado (DSQ)</label>"+pie('Guardar'),
+  modal('Tiempo de '+m.querySelector('.nom').firstChild.textContent.trim(),"<label>Tiempo (mm:ss.cc)</label><input id='tT' type='text' aria-label='Tiempo (mm:ss.cc)' placeholder='ej. 0:37.85' value='"+esc(m.dataset.t)+"'><div class='row' style='grid-template-columns:1fr 1fr;gap:10px'><div><label>Serie</label><input id='tS' type='number' aria-label='Serie' min='0' value='"+esc(m.dataset.s)+"'></div><div><label>Carril</label><input id='tC' type='number' aria-label='Carril' min='0' value='"+esc(m.dataset.c)+"'></div></div><label style='display:flex;gap:8px;align-items:center'><input type='checkbox' id='tD' style='width:auto;margin:0'"+(m.dataset.dsq==='1'?' checked':'')+"> Descalificado (DSQ)</label>"+pie('Guardar'),
     async function(){try{await post('/marca',{prueba:m.dataset.prueba,participante:m.dataset.pid,tiempo:$('tT').value,serie:+$('tS').value||0,carril:+$('tC').value||0,dsq:$('tD').checked});pcgRecargar()}catch(e){err(e.message)}})});
 // duplicar / eliminar
 $('btnDuplicar').addEventListener('click',async function(){if(!await pcgConfirmar({titulo:'Nueva edición',mensaje:'Se crea un campeonato nuevo con los mismos datos, sin participantes ni resultados. Luego le pones las fechas.',confirmar:'Crear nueva edición',icono:'📄'}))return;try{var j=await post('/duplicar',{},'Creando la nueva edición…');pcgIr('/anfitrion/campeonatos/'+encodeURIComponent(j.id)+'/editar','Abriendo la nueva edición…')}catch(e){pcgToast(e.message)}});

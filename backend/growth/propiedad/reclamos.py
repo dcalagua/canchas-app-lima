@@ -550,6 +550,23 @@ def _reclamos_del_lugar(cancha_id: str) -> list[ReclamoPropiedad]:
     return pool
 
 
+_reflejados: set[int] = set()
+
+
+def reflejar_aprobacion_propia(cancha_id: str, solicitante: str) -> None:
+    """Migración 0004 (la anon key ya no puede poner `verificada`): si el
+    reclamo APROBADO del lugar es de quien pregunta (identidad VERIFICADA), el
+    backend vuelve a reflejar la aprobación en la nube. Cubre la cancha de
+    legado cuyo `dueno` se completó desde el APK DESPUÉS de aprobarse. Una vez
+    por reclamo y proceso; fail-safe."""
+    if not solicitante:
+        return
+    for r in _reclamos_del_lugar(cancha_id):
+        if r.solicitante_id == solicitante and r.estado == "activada" and r.id not in _reflejados:
+            _reflejados.add(r.id)
+            _nube_verificada(r, True)
+
+
 def estado(cancha_id: str, solicitante: str | None = None) -> dict:
     pool = _reclamos_del_lugar(cancha_id)
     if not pool:

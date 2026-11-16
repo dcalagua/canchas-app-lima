@@ -92,7 +92,7 @@ def _emo(dep: str) -> str:
 
 
 def _js(obj) -> str:
-    return json.dumps(obj, ensure_ascii=False).replace("</", "<\\/")
+    return ui.json_js(obj, ensure_ascii=False).replace("</", "<\\/")
 
 
 def fecha_legible(fecha: str, hora: str = "") -> str:
@@ -122,18 +122,18 @@ _CSS = """
 .jp-wrap{max-width:760px;margin:10px auto 70px;min-width:0}
 .jp-wrap h1{font-size:28px;margin:4px 0 6px;letter-spacing:-.3px}
 .jp-volver{color:#6a6a6a;text-decoration:none;font-size:14px}
-.jp-hero{background:linear-gradient(135deg,#0B8A3E,#067A38);color:#fff;border-radius:22px;padding:20px;margin:8px 0 14px}
+.jp-hero{background:linear-gradient(135deg,#3056ED,#2442C4);color:#fff;border-radius:22px;padding:20px;margin:8px 0 14px}
 .jp-hero h1{color:#fff;margin:0 0 2px}
 .jp-hero p{margin:0 0 12px;opacity:.92}
 .jp-hero .jp-link{display:inline-flex;align-items:center;gap:8px;background:rgba(255,255,255,.18);color:#fff;text-decoration:none;font-weight:700;font-size:13.5px;border-radius:10px;padding:8px 12px;margin:0 8px 6px 0}
 .jp-card{background:#fff;border:1px solid #EBEBEB;border-radius:18px;box-shadow:0 5px 14px rgba(0,0,0,.06);padding:16px;margin:0 0 14px;min-width:0}
 .jp-top{display:flex;align-items:center;gap:12px;min-width:0}
-.jp-dep{width:44px;height:44px;border-radius:50%;background:#EAF7EF;display:inline-flex;align-items:center;justify-content:center;font-size:22px;flex:none}
+.jp-dep{width:44px;height:44px;border-radius:50%;background:#EEF1FF;display:inline-flex;align-items:center;justify-content:center;font-size:22px;flex:none}
 .jp-top .t{flex:1;min-width:0}
 .jp-top .t b{display:block;font-size:16.5px;overflow-wrap:anywhere}
 .jp-top .t small{color:#6a6a6a}
 .jp-pill{display:inline-block;border-radius:999px;padding:5px 10px;font-weight:800;font-size:12px;white-space:nowrap}
-.jp-pill.ok{background:#EAF7EF;color:#067A38}.jp-pill.gris{background:#EBEBEB;color:#6a6a6a}
+.jp-pill.ok{background:#EEF1FF;color:#2442C4}.jp-pill.gris{background:#EBEBEB;color:#6a6a6a}
 .jp-pill.warn{background:#FFF6E0;color:#B7791F}.jp-pill.info{background:#EAF2FB;color:#1F5FA8}.jp-pill.bad{background:#FBEAEA;color:#C0392B}
 .jp-lin{display:flex;gap:8px;color:#555;font-size:13.5px;margin:6px 0 0;min-width:0}
 .jp-lin span:last-child{min-width:0;overflow-wrap:anywhere}
@@ -141,7 +141,7 @@ _CSS = """
 .jp-acc .btn{flex:1 1 auto}
 .jp-vacio{text-align:center;color:#6a6a6a;padding:34px 12px}
 .jp-vacio .em{font-size:54px;display:block;margin-bottom:8px}
-.jp-vacio b{display:block;color:#0A1B3D;font-size:18px;margin-bottom:4px}
+.jp-vacio b{display:block;color:#333333;font-size:18px;margin-bottom:4px}
 .jp-chips{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 12px}
 .jp-chips .chip{max-width:100%;white-space:normal}
 .jp-wrap.con-fab{padding-bottom:70px}
@@ -149,7 +149,7 @@ _CSS = """
 .jp-fab{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom));z-index:15;box-shadow:0 8px 22px rgba(0,0,0,.18);border-radius:999px}
 .jp-sec{font-weight:800;font-size:16px;margin:18px 0 8px}
 .jp-barra{height:8px;border-radius:999px;background:#EBEBEB;overflow:hidden;margin:12px 0 8px}
-.jp-barra i{display:block;height:100%;background:#0B8A3E;border-radius:999px}
+.jp-barra i{display:block;height:100%;background:#3056ED;border-radius:999px}
 .jp-barra.llena i{background:#F2C94C}
 .jp-cupos{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;font-size:13.5px}
 .jp-cupos .der{margin-left:auto;font-weight:800}
@@ -162,8 +162,8 @@ _CSS = """
 .jp-fila .q{flex:1;min-width:0}
 .jp-fila .q b{display:block;overflow-wrap:anywhere}
 .jp-fila .q small{color:#6a6a6a}
-.jp-n{width:30px;height:30px;border-radius:50%;background:#EAF7EF;color:#067A38;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none}
-.jp-av{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#0E8F67;color:#fff;font-weight:800}
+.jp-n{width:30px;height:30px;border-radius:50%;background:#EEF1FF;color:#2442C4;font-weight:800;display:inline-flex;align-items:center;justify-content:center;flex:none}
+.jp-av{width:36px;height:36px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#3056ED;color:#fff;font-weight:800}
 .jp-form label.l{display:block;font-weight:800;margin:16px 0 6px}
 .jp-form .ayuda{color:#6a6a6a;font-size:12.5px;margin:-2px 0 6px}
 .jp-form input[type=text],.jp-form select,.jp-form input[type=date]{width:100%;padding:12px;border:1px solid #E4E4E4;border-radius:12px;font:inherit;background:#fff}
@@ -171,7 +171,7 @@ _CSS = """
 .jp-step button{width:44px;height:44px;border-radius:50%;border:1px solid #E4E4E4;background:#fff;font-size:22px;cursor:pointer}
 .jp-step b{flex:1;text-align:center;font-size:26px}
 .jp-modo{display:flex;gap:12px;align-items:flex-start;border:1px solid #E4E4E4;border-radius:14px;padding:12px;margin:0 0 8px;cursor:pointer;background:#fff;width:100%;text-align:left;font:inherit}
-.jp-modo.sel{border:1.5px solid #0B8A3E;background:#EAF7EF}
+.jp-modo.sel{border:1.5px solid #3056ED;background:#EEF1FF}
 .jp-modo .em{font-size:22px}
 .jp-modo b{display:block}
 .jp-modo small{color:#555}
@@ -179,22 +179,22 @@ _CSS = """
 .jp-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:12px 0}
 .jp-stats div{background:#fff;border:1px solid #EBEBEB;border-radius:14px;padding:10px 6px;text-align:center;min-width:0}
 .jp-stats b{display:block;font-size:20px}
-.jp-stats small{color:#6a6a6a;font-size:11.5px}
-.jp-carnet{background:linear-gradient(135deg,#067A38,#0A1B3D);color:#fff;border-radius:20px;padding:18px;display:flex;gap:14px;align-items:center;min-width:0}
-.jp-carnet .jp-av{width:60px;height:60px;font-size:24px;background:#7CB518}
+.jp-stats small{color:#6a6a6a;font-size:12px}
+.jp-carnet{background:linear-gradient(135deg,#2442C4,#333333);color:#fff;border-radius:20px;padding:18px;display:flex;gap:14px;align-items:center;min-width:0}
+.jp-carnet .jp-av{width:60px;height:60px;font-size:24px;background:#7E98FF}
 .jp-carnet b{font-size:19px;display:block;overflow-wrap:anywhere}
 .jp-carnet small{opacity:.85;display:block}
-.jp-pro{display:inline-block;background:#7CB518;color:#fff;font-weight:900;font-size:10px;border-radius:6px;padding:2px 7px;margin-left:6px;vertical-align:middle}
+.jp-pro{display:inline-block;background:#7E98FF;color:#fff;font-weight:900;font-size:12px;border-radius:6px;padding:2px 7px;margin-left:6px;vertical-align:middle}
 .jp-cod{font-size:30px;font-weight:900;letter-spacing:3px;margin:4px 0 12px}
 .jp-slots{display:flex;flex-wrap:wrap;gap:8px}
 .jp-slot{border:1px solid #E4E4E4;background:#fff;border-radius:12px;padding:8px 12px;cursor:pointer;font:inherit;text-align:center;min-width:84px}
 .jp-slot b{display:block}
 .jp-slot small{color:#6a6a6a}
-.jp-slot.sel{background:#0B8A3E;border-color:#0B8A3E;color:#fff}
-.jp-slot.sel small{color:#EAF7EF}
+.jp-slot.sel{background:#3056ED;border-color:#3056ED;color:#fff}
+.jp-slot.sel small{color:#EEF1FF}
 .jp-mini{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13.5px}
 .jp-mini .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
-.jp-mini .pt{font-weight:900;color:#067A38}
+.jp-mini .pt{font-weight:900;color:#2442C4}
 .jp-bio{display:flex;gap:10px;padding:6px 0;font-size:14px}
 .jp-bio small{display:block;color:#6a6a6a}
 .pcg-dlg .caja .jp-chk{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #F0F0F0;cursor:pointer}
@@ -347,7 +347,7 @@ def crear_partido(p: dict) -> bool:
             if cols_v2():
                 cols += _COLS_V2
                 vals += [p.get("tipo") or "partido", p.get("modalidad") or "", p.get("nivel") or "",
-                         json.dumps(p.get("etiquetas") or []), p.get("cancha_id") or None]
+                         ui.json_js(p.get("etiquetas") or []), p.get("cancha_id") or None]
             marcas = ", ".join("%s::jsonb" if c == "etiquetas" else "%s" for c in cols)
             cur.execute(f"INSERT INTO pichangol_partidos ({', '.join(cols)}) VALUES ({marcas})", vals)
             cur.execute("SAVEPOINT g")
@@ -594,12 +594,12 @@ _CSS_JY = """
 .jp-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:4px 0 6px}
 .jp-tile{display:flex;flex-direction:column;align-items:flex-start;gap:4px;background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.28);border-radius:16px;padding:12px;text-decoration:none;font:inherit;text-align:left;cursor:pointer;min-width:0}
 .jp-tile .em{font-size:24px}.jp-tile b{font-size:14.5px}.jp-tile small{opacity:.9;font-size:12px}
-.jp-tile.sel{background:#fff;color:#0A1B3D}
+.jp-tile.sel{background:#fff;color:#333333}
 .jp-av-card{display:flex;gap:12px;align-items:center}
 .jp-av-card .t{flex:1;min-width:0}.jp-av-card .t b{display:block}.jp-av-card .t small{color:#6a6a6a}
 .jp-ubic{display:flex;flex-wrap:wrap;align-items:center;gap:8px;color:#555;font-size:13.5px;margin:4px 0 6px}
 .jp-ubic select{width:auto;padding:6px 10px;border:1px solid #E4E4E4;border-radius:999px;background:#fff;font:inherit}
-.jp-km{font-weight:700;color:#067A38;margin-left:4px}
+.jp-km{font-weight:700;color:#2442C4;margin-left:4px}
 .jp-nota{background:#FFF6E0;color:#7A5B00;border-radius:12px;padding:10px 12px;font-size:13px;margin:0 0 10px}
 .jp-ets{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}
 .jp-et{background:#F4F7FA;border:1px solid #EBEBEB;border-radius:999px;padding:4px 10px;font-size:12.5px}
@@ -608,7 +608,7 @@ _CSS_JY = """
 .jp-jug .q{flex:1;min-width:0}.jp-jug .q b{display:block;overflow-wrap:anywhere}.jp-jug .q small{color:#6a6a6a}
 .jp-jug .acc{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .jp-jug .acc .btn{padding:8px 12px;font-size:13px}
-.jp-av-img{width:46px;height:46px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#0E8F67;color:#fff;font-weight:800;font-size:18px}
+.jp-av-img{width:46px;height:46px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#3056ED;color:#fff;font-weight:800;font-size:18px}
 .jp-sw{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-top:1px solid #F0F0F0;cursor:pointer;text-align:left}
 .jp-sw input{width:auto!important;flex:none;margin-top:3px;transform:scale(1.2)}
 .jp-sw b{display:block}.jp-sw small{color:#6a6a6a}
@@ -823,10 +823,10 @@ window.jpCrear = function(tipo, reusar){
   var html = "<div class='jp-form' style='text-align:left'>"
     + "<label class='l'>Deporte</label><div class='jp-chips' id='jpDeps'>" + deps + "</div>"
     + "<label class='l'>¿Dónde se juega?</label><div class='ayuda'>Elige un local de ⟦MARCA⟧; si es otro lugar, usamos tu ubicación para avisar a los de la zona.</div>"
-    + "<input type='text' id='jpSede' list='jpSedes' maxlength='80' placeholder='Busca la cancha o el lugar'>"
+    + "<input type='text' id='jpSede' aria-label='Cancha o lugar' list='jpSedes' maxlength='80' placeholder='Busca la cancha o el lugar'>"
     + "<label class='l'>Fecha</label><div class='jp-chips' id='jpDias'>" + dias + "</div>"
-    + "<input type='date' id='jpFecha' min='" + JP.hoy + "' max='" + JP.max + "'>"
-    + "<label class='l'>Hora</label><select id='jpHora'>" + jpHoras('20:00') + "</select>"
+    + "<input type='date' id='jpFecha' aria-label='Fecha' min='" + JP.hoy + "' max='" + JP.max + "'>"
+    + "<label class='l'>Hora</label><select id='jpHora' aria-label='Hora'>" + jpHoras('20:00') + "</select>"
     + "<label class='l'>" + (F.tipo === 'partner' ? '¿Qué buscas?' : 'Jugadores en total') + "</label><div class='ayuda' id='jpFaltan'></div><div class='jp-chips' id='jpPre'></div>"
     + "<div class='jp-step' id='jpStep'><button type='button' data-paso='-1' aria-label='Menos'>−</button><b id='jpN'></b><button type='button' data-paso='1' aria-label='Más'>+</button></div>"
     + "<label class='l'>Nivel</label><div class='jp-chips' id='jpNiv'></div>"
@@ -1161,7 +1161,7 @@ def _chip_modo(m: str) -> str:
 def _barra(total_conf: int, cupos: int, espera: int, libres: int, cerrada: bool) -> str:
     ratio = min(1.0, total_conf / (cupos or 1))
     lleno = libres == 0
-    der = "" if cerrada else (f"<span class='der' style='color:{'#B7791F' if lleno else '#067A38'}'>{'Lista llena' if lleno else f'{libres} libres'}</span>")
+    der = "" if cerrada else (f"<span class='der' style='color:{'#B7791F' if lleno else '#2442C4'}'>{'Lista llena' if lleno else f'{libres} libres'}</span>")
     return (f"<div class='jp-barra{' llena' if lleno else ''}'><i style='width:{ratio * 100:.0f}%'></i></div>"
             f"<div class='jp-cupos'><span>👥 <b>{total_conf}/{cupos}</b> confirmados</span>"
             + (f"<span style='color:#6a6a6a'>⏳ {espera} en espera</span>" if espera else "") + der + "</div>")
@@ -1251,7 +1251,7 @@ def pagina_nueva_pichanga(request: Request, club: str = "") -> HTMLResponse:
                     f"<span><b>{nom}</b><small>{d}</small></span></button>" for k, (ico, nom, d) in _MODOS.items())
     cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap jp-form'><a class='jp-volver' href='/pichangas'>‹ Pichangas</a><h1>Nueva pichanga</h1>"
               f"<label class='l'>Local</label><div class='jp-chips' id='npClubs'>{locales}</div>"
-              "<label class='l'>Título</label><input type='text' id='npTit' maxlength='60' value='Fulbito' placeholder='Ej. Fulbito Máster'>"
+              "<label class='l'>Título</label><input type='text' id='npTit' aria-label='Título de la pichanga' maxlength='60' value='Fulbito' placeholder='Ej. Fulbito Máster'>"
               "<label class='l'>Deporte</label><div class='jp-chips' id='npDeps'></div>"
               f"<label class='l'>Categoría</label><div class='jp-chips' id='npCats'>{cats}</div>"
               f"<label class='l'>Cupos</label><div class='jp-chips' id='npCupos'>{cupos}</div>"
@@ -1362,7 +1362,7 @@ def pagina_ranking_socios(request: Request, club: str = "") -> HTMLResponse:
         chips = (f"<span class='jp-pill ok'>⚽ {f['jugo']} jugó</span><span class='jp-pill info'>✍️ {f['inscripciones']} inscrito</span>"
                  + (f"<span class='jp-pill warn'>⏳ {f['lista_espera']} en espera</span>" if f["lista_espera"] else "")
                  + (f"<span class='jp-pill bad'>🚫 {f['no_show']} no-show</span>" if f["no_show"] else ""))
-        html += (f"<div class='jp-fila'><span class='jp-n' style='background:{medallas.get(i, '#EAF7EF')}'>{i}</span>"
+        html += (f"<div class='jp-fila'><span class='jp-n' style='background:{medallas.get(i, '#EEF1FF')}'>{i}</span>"
                  f"<div class='q'><b>{e(f['socio_nombre'] or 'Socio')}</b><div class='jp-chips' style='margin:6px 0 0'>{chips}</div></div></div>")
     if not html:
         html = ("<div class='jp-vacio'><span class='em'>📊</span><b>Todavía sin datos</b>"
@@ -1410,7 +1410,7 @@ def pagina_pichanga(request: Request, cid: int) -> HTMLResponse:
     mi = conv.estado_socio(cid, yo)
     est = mi.get("estado_efectivo")
     banner = {
-        "confirmado": ("✅", "¡Estás dentro!", "Tu cupo está confirmado.", "#EAF7EF", "#067A38"),
+        "confirmado": ("✅", "¡Estás dentro!", "Tu cupo está confirmado.", "#EEF1FF", "#2442C4"),
         "lista_espera": ("⏳", "En lista de espera", f"Puesto {mi.get('posicion') or '-'}. Si alguien cancela, subes.", "#FFF6E0", "#B7791F"),
         "en_bolsa": ("🎲", "Anotado — en la bolsa", "Los cupos se definen al cerrar la inscripción.", "#EAF2FB", "#1F5FA8"),
     }.get(est, ("ℹ️", "No estás anotado", "La inscripción está cerrada." if cerrada else "Anótate mientras haya cupo.", "#F2F2F2", "#555"))
@@ -1592,25 +1592,25 @@ def pagina_referidos(request: Request) -> HTMLResponse:
     tope_html = ("<div class='jp-banner' style='background:#F4F4F4;color:#555'><span class='em'>ℹ️</span><div><b>Llegaste al tope de invitados con bono</b>"
                  "<small>Tus amigos igual reciben su bono de bienvenida.</small></div></div>") if est.get("tope_alcanzado") else ""
     canje = est.get("canjeado") or ""
-    canje_html = (f"<div class='jp-banner' style='background:#EAF7EF;color:#067A38'><span class='em'>✅</span><div><b>Ya canjeaste el código {e(canje)}</b>"
+    canje_html = (f"<div class='jp-banner' style='background:#EEF1FF;color:#2442C4'><span class='em'>✅</span><div><b>Ya canjeaste el código {e(canje)}</b>"
                   "<small>Solo se puede canjear un código por cuenta.</small></div></div>") if canje else (
         "<div class='jp-card'><b>¿Tienes el código de un amigo?</b><p class='sub' style='margin:4px 0 10px'>"
         + (f"Canjéalo y te sumamos {e(bono_txt)} a tu saldo (a tu amigo también). " if bono_txt else "")
         + "Solo puedes canjear un código una vez, y no el tuyo.</p>"
-        "<div style='display:flex;gap:8px'><input id='rfAmigo' maxlength='12' autocomplete='off' placeholder='PCG······' "
+        "<div style='display:flex;gap:8px'><input id='rfAmigo' aria-label='Código de tu amigo' maxlength='12' autocomplete='off' placeholder='PCG······' "
         "style='flex:1;min-width:0;text-transform:uppercase;letter-spacing:1px'>"
         "<button type='button' class='btn' id='rfBtn' onclick='rfCanjear()'>Canjear</button></div></div>")
     regla = (f"Comparte tu código. Cuando un amigo lo canjea, {e(bono_txt)} para cada uno, directo a tu saldo. 🎁"
              if bono_txt else f"Comparte tu código con tus amigos para que juegue contigo en {MARCA}.")
     cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap' style='max-width:600px'><a class='jp-volver' href='/perfil'>‹ Perfil</a>"
               "<h1>Invita y gana</h1>"
-              "<div class='jp-hero' style='text-align:center;background:linear-gradient(135deg,#7CB518,#0B8A3E)'>"
+              "<div class='jp-hero' style='text-align:center;background:linear-gradient(135deg,#7E98FF,#3056ED)'>"
               "<div style='font-size:40px'>🎁</div><p style='margin:6px 0 0'>Tu código</p>"
               f"<div class='jp-cod' id='rfCod'>{e(cod)}</div>"
-              + ui.boton_whatsapp(msg, etiqueta="💬 Invitar por WhatsApp", clase="btn", extra="style='background:#fff;color:#0B8A3E;width:100%'")
+              + ui.boton_whatsapp(msg, etiqueta="💬 Invitar por WhatsApp", clase="btn", extra="style='background:#fff;color:#3056ED;width:100%'")
               + "<button type='button' class='btn sec' style='margin-top:8px;width:100%;background:transparent;color:#fff;border-color:rgba(255,255,255,.6)' onclick='rfCopiar()'>⧉ Copiar código</button></div>"
               f"<p class='sub'>{regla}</p>"
-              f"<div class='jp-banner' style='background:#EAF7EF;color:#14463A'><span class='em'>👥</span><div><b>{e(estado_txt)}</b></div></div>"
+              f"<div class='jp-banner' style='background:#EEF1FF;color:#2442C4'><span class='em'>👥</span><div><b>{e(estado_txt)}</b></div></div>"
               f"{ganado_html}{tope_html}{canje_html}</div>"
               f"<script>window.RF={_js({'cod': cod, 'sim': sim})};</script><script>{_JS_BASE}"
               "window.rfCopiar=function(){ try{ navigator.clipboard.writeText(RF.cod).then(function(){ pcgToast('Código copiado'); }); }catch(_){ pcgToast(RF.cod); } };"
@@ -1769,9 +1769,9 @@ def pagina_carnet(request: Request, ref: str, deporte: str = "") -> HTMLResponse
     pro = stores.pro_activo(email)
     bio = bio_de(email)
     primer = nombre.split(" ")[0]
-    stats = (f"<div class='jp-stats'><div><b style='color:#0A1B3D'>{p['puntos']}</b><small>Puntos</small></div>"
-             f"<div><b>{p['pj']}</b><small>Jugados</small></div><div><b style='color:#0B8A3E'>{p['pg']}</b><small>Ganados</small></div>"
-             f"<div><b style='color:#067A38'>{p['pct']:.0f}%</b><small>Efectividad</small></div></div>")
+    stats = (f"<div class='jp-stats'><div><b style='color:#333333'>{p['puntos']}</b><small>Puntos</small></div>"
+             f"<div><b>{p['pj']}</b><small>Jugados</small></div><div><b style='color:#3056ED'>{p['pg']}</b><small>Ganados</small></div>"
+             f"<div><b style='color:#2442C4'>{p['pct']:.0f}%</b><small>Efectividad</small></div></div>")
     acciones = ""
     if email != yo:
         acciones += (f"<button type='button' class='btn' style='width:100%' data-retar='{e(ref_de(email))}' data-nombre='{e(nombre)}' data-dep='{e(dep)}'>"
@@ -1779,7 +1779,7 @@ def pagina_carnet(request: Request, ref: str, deporte: str = "") -> HTMLResponse
     acciones += "<button type='button' class='btn sec' style='width:100%;margin-top:8px' onclick='window.print()'>🖨️ Guardar carnet (PDF)</button>"
     acciones += "<button type='button' class='btn sec' style='width:100%;margin-top:8px' onclick='jcCopiar()'>🔗 Copiar enlace del carnet</button>"
     acad = "".join(f"<div class='jp-fila'><span>{'⚔️' if r['academia'] == 'Retos' else '🎓'}</span><div class='q'><b>{e(r['academia'])}</b></div>"
-                   f"<small style='color:#6a6a6a'>{r['pg']}G-{r['pp']}P</small><b style='color:#0B8A3E;margin-left:8px'>{r['puntos']} pts</b></div>"
+                   f"<small style='color:#6a6a6a'>{r['pg']}G-{r['pp']}P</small><b style='color:#3056ED;margin-left:8px'>{r['puntos']} pts</b></div>"
                    for r in p["por_academia"])
     t_ac = f"Juega en {len(p['por_academia'])} academias" if len(p["por_academia"]) > 1 else "Academia"
     bio_h = "".join(f"<div class='jp-bio'><span>{ico}</span><div><small>{e(et)}</small>{e(bio[k])}</div></div>"
@@ -1873,9 +1873,27 @@ def aplicar_descuento_slot(cancha_id: str, fecha: str, hora: str, pct: int) -> b
         return False
 
 
+# Mensaje extra del aviso: TEXTO LIBRE del dueño (ya existía y se conserva por
+# decisión del director, 16-nov-2026: "respetar la funcionalidad actual más que
+# el diseño"; máx. 160). Estas frases son solo SUGERENCIAS que rellenan el campo.
+PROMOS_LLENAR = {"ultima": "¡Último momento: aprovecha!", "amigos": "Arma tu partido con tus amigos.",
+                 "rapido": "Responde rápido: estas horas vuelan.", "luces": "Cancha lista y con luz para jugar."}
+
+
+def promo_llenar(valor) -> str:
+    """Texto del mensaje extra: una clave de las sugerencias (compatibilidad) se
+    convierte en su frase; si no, el texto libre del dueño normalizado (160)."""
+    v = re.sub(r"\s+", " ", str(valor or "")).strip()
+    return PROMOS_LLENAR.get(v) or v[:160]
+
+
+def _donde(c: dict) -> str:
+    return f"{c['club']} · {c['nombre']}" if c.get("club") else c.get("nombre") or "mi cancha"
+
+
 def texto_aviso(c: dict, nombre: str, horas: list[str], precios: list[int], dia: str, descuento: int, promo: str, sim: str) -> str:
-    """`_texto` del app."""
-    donde = f"{c['club']} · {c['nombre']}" if c.get("club") else c.get("nombre") or "mi cancha"
+    """`_texto` del app (la vista previa "Así les llega" lo replica en JS)."""
+    donde = _donde(c)
     off = f" 🔥 {descuento}% OFF" if descuento > 0 else ""
     desde = min(precios) if precios else 0
     extra = f"\n{promo}" if promo else ""
@@ -1885,8 +1903,10 @@ def texto_aviso(c: dict, nombre: str, horas: list[str], precios: list[int], dia:
 
 @router.get("/anfitrion/llenar", response_class=HTMLResponse)
 def pagina_llenar(request: Request, cancha: str = "", dia: int = 0) -> HTMLResponse:
-    from web.anfitrion import _cabecera, _contexto
+    from web.anfitrion import _contexto
     from web.router import _moneda_de, _pais_de
+    from web import estilos_v_comercio as vc
+    from web import vista_anfitrion as va
     ses, canchas, resp = _contexto(request, "/anfitrion/llenar")
     if resp is not None:
         return resp
@@ -1897,57 +1917,101 @@ def pagina_llenar(request: Request, cancha: str = "", dia: int = 0) -> HTMLRespo
     sim = _moneda_de(c)[0]
     libres = horas_libres(c, base, ahora)
     desc = datos.descuentos(c["id"], [base.isoformat(), (base + timedelta(days=1)).isoformat()])
+    valle_pct = int(c.get("descuento_valle") or 0)
     slots = []
     for h in libres:
         fr = horarios.fecha_real(base.isoformat(), c.get("hora_apertura") or "", c.get("hora_cierre") or "", h)
         slots.append({"h": h, "p0": horarios.precio_turno_de(c, h, 0), "pa": horarios.precio_turno_de(c, h, desc.get((fr, h), 0)),
                       "d": desc.get((fr, h), 0),
+                      "v": bool(valle_pct > 0 and horarios.es_valle(h, c.get("valle_desde") or "", c.get("valle_hasta") or "")),
                       "px": {str(p): horarios.precio_turno_de(c, h, p) for p in (10, 15, 20, 30)}})
     n_cli = len(clientes_de(canchas, ahora.date()))
-    opts = "".join(f"<a class='chip{' sel' if x['id'] == c['id'] else ''}' href='/anfitrion/llenar?cancha={quote(x['id'])}&dia={dia}'>"
-                   f"{e((x['club'] + ' · ' + x['nombre']) if x.get('club') else x['nombre'])}</a>" for x in canchas)
-    dias = "".join(f"<a class='chip{' sel' if i == dia else ''}' href='/anfitrion/llenar?cancha={quote(c['id'])}&dia={i}'>{t}</a>" for i, t in ((0, "Hoy"), (1, "Mañana")))
-    cfg = {"cancha": c["id"], "dia": dia, "sim": sim, "slots": slots, "n": n_cli}
-    lista = ("<div class='jp-slots' id='llSlots'></div><button type='button' class='btn sec' style='margin-top:10px' id='llTodas'>Seleccionar todas</button>"
-             if slots else f"<p class='sub'>{'No quedan horas libres hoy. 🎉' if dia == 0 else 'No hay horas libres mañana. 🎉'}</p>")
-    descs = "".join(f"<button type='button' class='chip{' sel' if p == 0 else ''}' data-desc='{p}'>{'Sin desc.' if p == 0 else f'{p}%'}</button>" for p in (0, 10, 15, 20, 30))
-    cuerpo = (f"<style>{_CSS}</style><div class='jp-wrap jp-form'><a class='jp-volver' href='/anfitrion/hoy'>‹ Hoy</a>"
-              "<h1>Llenar cancha</h1><p class='sub'>Elige las horas vacías y avísalas a tus clientes: no dejes la cancha sin jugar.</p>"
-              f"<label class='l'>Cancha</label><div class='jp-chips'>{opts}</div>"
-              f"<div class='jp-chips'>{dias}</div><label class='l'>Horas libres</label>{lista}"
-              f"<div id='llDescBox' style='display:none'><label class='l'>Descuento para llenar (opcional)</label><div class='jp-chips' id='llDesc'>{descs}</div>"
-              "<p class='ayuda' id='llDescAyuda'>Sin descuento: precio normal.</p></div>"
-              "<label class='l'>Mensaje o promo (opcional)</label><input type='text' id='llPromo' maxlength='160' placeholder='Ej.: 20% off hoy'>"
-              f"<div class='jp-acc'><button type='button' class='btn' id='llGo' disabled>Elige horas para avisar</button></div></div>"
-              f"<script>window.LL={_js(cfg)};</script><script>{_JS_BASE}{_JS_LLENAR}</script>")
-    return ui.shell("Llenar cancha", cuerpo, nav=_cabecera("hoy", ses), sesion=ses, ancho=True, titulo_tab=f"Llenar cancha · {MARCA}")
+
+    def _sub(x: dict) -> str:
+        monto, unidad = horarios.precio_publico(x)
+        dep = DEPORTES.get(str(x.get("deporte") or ""), (str(x.get("deporte") or "").capitalize(), ""))[0]
+        return f"{dep} · {_moneda_de(x)[0]} {monto:g} /{'turno' if unidad.startswith('por turno') else 'h'}"
+    lateral = va.lista_lateral(canchas, c["id"], lambda x: f"/anfitrion/llenar?cancha={quote(x['id'])}&dia={dia}", sub=_sub,
+                               contar=f"{len(canchas)}", filtro=len(canchas) > 6)
+    fecha_txt = f"{horarios.DIAS[base.weekday()].lower()} {base.day} {horarios.MESES[base.month - 1]}"
+    seg = va.segmentado([(f"/anfitrion/llenar?cancha={quote(c['id'])}&dia={i}", t, i == dia) for i, t in ((0, "Hoy"), (1, "Mañana"))],
+                        etiqueta="Día")
+    descs = "".join(f"<button type='button' class='{'sel' if p == 0 else ''}' data-desc='{p}' aria-pressed='{'true' if p == 0 else 'false'}'>"
+                    f"{'Precio normal' if p == 0 else f'−{p} %'}</button>" for p in (0, 10, 15, 20, 30))
+    promos = "".join(f"<button type='button' data-promo='{k}' aria-pressed='false'>{e(t)}</button>" for k, t in PROMOS_LLENAR.items())
+    if slots:
+        centro = ("<div class='vc-slots' id='llSlots' role='group' aria-label='Horas libres'></div>"
+                  "<div class='vc-ll-sel'><b id='llCuenta'>0 horas seleccionadas</b>"
+                  "<button type='button' class='vc-link' id='llTodas'>Seleccionar todas</button></div>"
+                  f"<span class='vc-ll-lbl' id='llDescLbl'>Descuento para llenarlas</span><div class='vc-chips' id='llDesc' role='group' aria-labelledby='llDescLbl'>{descs}</div>"
+                  "<p class='vc-ayuda' id='llDescAyuda'>Precio normal: no cambia lo que se cobra.</p>"
+                  f"<label class='vc-ll-lbl' for='llPromoTxt'>Mensaje o promo (opcional)</label>"
+                  "<input type='text' id='llPromoTxt' class='vc-ll-txt' maxlength='160' placeholder='Ej.: 20% off hoy' autocomplete='off'>"
+                  f"<div class='vc-chips vc-sug' id='llPromo' role='group' aria-label='Sugerencias de mensaje'>{promos}</div>")
+    else:
+        centro = va.vacio("calendario", "No quedan horas libres hoy" if dia == 0 else "No hay horas libres mañana",
+                          "Tu cancha está llena: no hace falta avisar a nadie.")
+    medio = va.panel(centro, "Horas libres", f"{c.get('nombre') or 'Cancha'} · {fecha_txt}", acciones=seg)
+    local = c.get("club") or c.get("nombre") or "Tu local"
+    derecha = va.panel(
+        f"<div class='vc-chat'><div class='vc-chat-cab'><span class='vc-chat-av' aria-hidden='true'>{e(local[:1].upper())}</span>"
+        f"<div><b>{e(local)}</b><small>Chat del local</small></div></div>"
+        "<div class='vc-burbuja vacia' id='llVista' aria-live='polite'>Elige una o más horas para ver el mensaje.</div></div>"
+        f"<p class='vc-nota vc-ll-cli'>{vc.ico('info', 16)}<span>Se avisa a tus {n_cli} cliente{'s' if n_cli != 1 else ''}: con app, por el chat del local; "
+        "sin app, por WhatsApp. Cada uno lo recibe con su nombre.</span></p>"
+        f"<button type='button' class='btn vc-ll-go' id='llGo' disabled>{vc.ico('megafono', 18)}<span>Elige horas para avisar</span></button>",
+        "Así les llega")
+    cfg = {"cancha": c["id"], "dia": dia, "sim": sim, "slots": slots, "n": n_cli, "donde": _donde(c),
+           "diaTxt": "hoy" if dia == 0 else "mañana", "marca": MARCA, "promos": PROMOS_LLENAR}
+    cuerpo = (va.cabecera("Llenar cancha", "Elige las horas vacías y avísalas a tus clientes: no dejes la cancha sin jugar.")
+              + f"<div class='va-tres vc-ll'>{lateral}{medio}{derecha}</div>"
+              + f"<script>window.LL={_js(cfg)};window.LL_ICO={_js({'chk': vc.ico('check', 13, 3), 'sol': vc.ico('sol', 13, 2.4)})};</script>"
+              + f"<style>{_CSS}</style><script>{_JS_BASE}{_JS_LLENAR}</script>")   # _CSS: filas del diálogo de WhatsApp
+    return ui.shell("Llenar cancha", va.vista(cuerpo, "vc-llenar"), sesion=ses, ancho=True, titulo_tab=f"Llenar cancha · {MARCA}")
 
 
 _JS_LLENAR = (r"""
-var sel = {}, desc = 0;
-function precio(s){ return (sel[s.h] && desc > 0) ? s.px[String(desc)] : (sel[s.h] ? s.p0 : s.pa); }
+var sel = {}, desc = 0, promo = '';
+function precio(s){ return sel[s.h] ? (desc > 0 ? s.px[String(desc)] : s.p0) : s.pa; }
+function texto(){
+  var hs = Object.keys(sel).sort(); if(!hs.length) return '';
+  var ps = LL.slots.filter(function(s){ return sel[s.h]; }).map(function(s){ return desc > 0 ? s.px[String(desc)] : s.p0; });
+  return '¡Hola <nombre>! 🎾 Tengo libre ' + LL.donde + ' ' + LL.diaTxt + ': ' + hs.join(', ') + ' (desde ' + LL.sim + ' ' + Math.min.apply(null, ps)
+    + (desc > 0 ? ' 🔥 ' + desc + '% OFF' : '') + '). ¿La quieres? Resérvala en ' + LL.marca + ' o respóndeme por aquí.' + (promo ? '\n' + promo : '');
+}
 function pintar(){
   var box = document.getElementById('llSlots');
-  if(box) box.innerHTML = LL.slots.map(function(s){ return "<button type='button' class='jp-slot" + (sel[s.h] ? ' sel' : '') + "' data-h='" + s.h + "'><b>" + s.h + "</b><small>" + jpEsc(LL.sim) + ' ' + precio(s) + (s.d && !sel[s.h] ? ' · −' + s.d + '%' : '') + "</small></button>"; }).join('');
+  if(box) box.innerHTML = LL.slots.map(function(s){
+    var on = !!sel[s.h], et = '';
+    if(on && desc > 0) et = ' · −' + desc + '%'; else if(!on && s.d) et = ' · −' + s.d + '%';
+    return "<button type='button' class='vc-slot" + (on ? ' sel' : '') + "' data-h='" + s.h + "' aria-pressed='" + on + "'><span class='chk'>" + LL_ICO.chk + "</span><b>" + s.h + "</b><small>"
+      + jpEsc(LL.sim) + ' ' + precio(s) + et + (s.v && !s.d ? " <span class='valle' title='Hora feliz'>" + LL_ICO.sol + "</span>" : '') + "</small></button>";
+  }).join('');
   var n = Object.keys(sel).length, go = document.getElementById('llGo');
-  go.disabled = !n; go.textContent = n ? 'Avisar a mis clientes (' + LL.n + ')' : 'Elige horas para avisar';
-  document.getElementById('llDescBox').style.display = n ? '' : 'none';
-  var t = document.getElementById('llTodas'); if(t) t.textContent = n === LL.slots.length ? 'Quitar todas' : 'Seleccionar todas';
-  document.getElementById('llDescAyuda').textContent = desc > 0 ? 'Se cobra ' + desc + '% menos en esas horas: es el precio REAL al reservar (no solo el aviso).' : 'Sin descuento: precio normal.';
-  document.querySelectorAll('#llDesc [data-desc]').forEach(function(b){ b.classList.toggle('sel', +b.dataset.desc === desc); });
+  go.disabled = !n; go.querySelector('span').textContent = n ? 'Avisar ' + n + (n === 1 ? ' hora' : ' horas') : 'Elige horas para avisar';
+  var c = document.getElementById('llCuenta'); if(c) c.textContent = n + (n === 1 ? ' hora seleccionada' : ' horas seleccionadas');
+  var t = document.getElementById('llTodas'); if(t) t.textContent = LL.slots.length && n === LL.slots.length ? 'Quitar todas' : 'Seleccionar todas';
+  var a = document.getElementById('llDescAyuda'); if(a) a.textContent = desc > 0 ? 'Se cobra ' + desc + '% menos en esas horas: es el precio REAL al reservar (no solo el aviso).' : 'Precio normal: no cambia lo que se cobra.';
+  document.querySelectorAll('#llDesc [data-desc]').forEach(function(b){ var s = +b.dataset.desc === desc; b.classList.toggle('sel', s); b.setAttribute('aria-pressed', s); });
+  document.querySelectorAll('#llPromo [data-promo]').forEach(function(b){ var s = LL.promos[b.dataset.promo] === promo; b.classList.toggle('sel', s); b.setAttribute('aria-pressed', s); });
+  var v = document.getElementById('llVista'), tx = texto();
+  if(v){ v.textContent = tx || 'Elige una o más horas para ver el mensaje.'; v.classList.toggle('vacia', !tx); }
 }
 document.addEventListener('click', function(ev){
   var t;
   if((t = ev.target.closest('[data-h]'))){ if(sel[t.dataset.h]) delete sel[t.dataset.h]; else sel[t.dataset.h] = 1; pintar(); return; }
   if((t = ev.target.closest('#llTodas'))){ if(Object.keys(sel).length === LL.slots.length) sel = {}; else LL.slots.forEach(function(s){ sel[s.h] = 1; }); pintar(); return; }
   if((t = ev.target.closest('[data-desc]'))){ desc = +t.dataset.desc; pintar(); return; }
+  if((t = ev.target.closest('[data-promo]'))){ var f = LL.promos[t.dataset.promo] || ''; promo = promo === f ? '' : f;
+    var i = document.getElementById('llPromoTxt'); if(i) i.value = promo; pintar(); return; }
 });
+document.addEventListener('input', function(ev){ if(ev.target.id === 'llPromoTxt'){ promo = ev.target.value.replace(/\s+/g, ' ').trim(); pintar(); } });
 document.getElementById('llGo').addEventListener('click', function(){
   var horas = Object.keys(sel); if(!horas.length) return;
   if(!LL.n){ pcgAvisar({titulo: 'Aún sin clientes', icono: 'ℹ️', mensaje: 'Aún no tienes clientes registrados para avisar.'}); return; }
   pcgConfirmar({titulo: 'Avisar a tus clientes', icono: '📣', mensaje: 'Se aplicará el precio elegido a ' + horas.length + ' hora(s) y se avisará a tus ' + LL.n + ' cliente(s): por el chat de ⟦MARCA⟧ a los que tienen la app y por WhatsApp a los demás.', confirmar: 'Avisar', cancelar: 'Cancelar'}).then(function(ok){
     if(!ok) return;
-    jpPost('/anfitrion/llenar/avisar', {cancha_id: LL.cancha, dia: LL.dia, horas: horas, descuento: desc, promo: document.getElementById('llPromo').value}, 'Avisando…').then(function(j){
+    jpPost('/anfitrion/llenar/avisar', {cancha_id: LL.cancha, dia: LL.dia, horas: horas, descuento: desc, promo: promo}, 'Avisando…').then(function(j){
       if(!j.ok){ jpFallo(j); return; }
       var msg = j.enviados > 0 ? '✅ Avisé a ' + j.enviados + ' cliente(s) por la app 📲' : (j.whatsapp.length ? 'Ningún cliente tiene la app aún.' : 'Listo.');
       if(!j.whatsapp.length){ pcgAvisar({titulo: 'Aviso enviado', icono: '📣', mensaje: msg}).then(function(){ pcgRecargar(); }); return; }
@@ -1992,7 +2056,7 @@ def avisar_libres(request: Request, body: dict = Body(default_factory=dict)) -> 
     clientes = clientes_de(canchas, ahora.date())
     if not clientes:
         return JSONResponse({"ok": False, "mensaje": "Aún no tienes clientes registrados para avisar."}, status_code=400)
-    promo = re.sub(r"\s+", " ", str(body.get("promo") or "")).strip()[:160]
+    promo = promo_llenar(body.get("promo"))   # texto libre del dueño (o una sugerencia)
     precios = []
     for h in horas:
         fr = horarios.fecha_real(base.isoformat(), c.get("hora_apertura") or "", c.get("hora_cierre") or "", h)

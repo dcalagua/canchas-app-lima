@@ -60,7 +60,7 @@ import empresa
 from db import pg
 from pagos import culqi
 from pagos.stock_productos import apartar_unidad, devolver_unidad  # noqa: F401 (tests los monkeypatchean aquí)
-from web import catalogos, datos, sesion, ui
+from web import catalogos, datos, miniaturas, sesion, ui
 from web.router import PLAY_URL, _moneda_de, _no_encontrada, _pago_web_disponible, _pasarela_web
 from config import MARCA  # noqa: E402 — nombre y dominio de marca (un solo lugar)
 
@@ -283,9 +283,14 @@ def _cat(clave: str) -> tuple[str, str]:
     return catalogos.CATEGORIAS_PRODUCTO.get(clave or "otros", catalogos.CATEGORIAS_PRODUCTO["otros"])
 
 
-def _foto_producto(p: dict, clase: str = "ph") -> str:
+def _foto_producto(p: dict, clase: str = "ph", grande: bool = False) -> str:
+    """Foto del producto como MINIATURA (`web/miniaturas.py`): la tarjeta del
+    feed pide ~480 px; la ficha (`grande`) ~960 px y con prioridad."""
     if (p.get("foto_url") or "").startswith("http"):
-        return f"<img src='{e(p['foto_url'])}' alt='{e(p.get('nombre'))}' loading='lazy'>"
+        if grande:
+            return miniaturas.img(p["foto_url"], p.get("nombre") or "", w=960,
+                                  sizes="(max-width: 600px) 100vw, 560px", prioridad=True)
+        return miniaturas.img(p["foto_url"], p.get("nombre") or "", sizes="(max-width: 560px) 46vw, 220px")
     return f"<span class='{clase}'>{_cat(p.get('categoria'))[1]}</span>"
 
 
@@ -310,7 +315,7 @@ _CSS = """<style>
 .mk-card{display:block;color:inherit;text-decoration:none;min-width:0}
 .mk-card .f{position:relative;aspect-ratio:1;border-radius:14px;overflow:hidden;background:var(--gris);display:flex;align-items:center;justify-content:center}
 .mk-card .f img{width:100%;height:100%;object-fit:cover;transition:transform .3s}.mk-card:hover .f img{transform:scale(1.03)}
-.mk-card .ph{font-size:46px}.mk-card .tag{position:absolute;left:10px;top:10px;background:#fff;border-radius:999px;padding:4px 9px;font-size:11.5px;font-weight:800;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.mk-card .ph{font-size:46px}.mk-card .tag{position:absolute;left:10px;top:10px;background:#fff;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:800;box-shadow:0 1px 4px rgba(0,0,0,.12)}
 .mk-card .tag.agot{background:var(--bad-bg);color:var(--bad-fg)}
 .mk-card b.n{display:block;margin-top:9px;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mk-card .pr{font-weight:800;font-size:15px;margin-top:1px}.mk-card .vd{display:flex;gap:4px;align-items:center;color:var(--tenue);font-size:12.5px;margin-top:2px;min-width:0}
@@ -354,7 +359,7 @@ def _js_culqi(cfg: dict) -> str:
     from web import pago_hospedado as ph
     hosp = bool(cfg.get("pasarela")) and cfg.get("pasarela") != "culqi"
     return (("" if hosp else "<script src='https://checkout.culqi.com/js/v4'></script>")
-            + "<script>window.__mk=" + json.dumps(cfg, ensure_ascii=False) + ";</script><script>"
+            + "<script>window.__mk=" + ui.json_js(cfg, ensure_ascii=False) + ";</script><script>"
             + (sesion.JS_SESION if sesion.activo() else "") + (ph.JS_IR_PASARELA if hosp else "") + (r"""
 (function(){
   var C = window.__mk, $ = function(id){ return document.getElementById(id); };
@@ -386,7 +391,7 @@ def _js_culqi(cfg: dict) -> str:
       Culqi.settings({ title: '⟦MARCA⟧', currency: 'PEN', amount: montoC });
       Culqi.options({ lang: 'es', installments: false,
         paymentMethods: { yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false },
-        style: { logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
+        style: { logo: '', bannerColor: '#333333', buttonBackground: '#3056ED', buttonText: 'Pagar', buttonTextColor: '#FFFFFF' } });
       window.culqi = function(){
         if(Culqi.token){
           var body = Object.assign({token: Culqi.token.id, medio: (Culqi.token.iin && Culqi.token.iin.card_brand) ? 'tarjeta' : 'yape'}, C.cuerpo || {});
@@ -452,7 +457,7 @@ def pagina_marketplace(request: Request) -> HTMLResponse:
               + f"<div class='mk-h'><div><h1>Marketplace {MARCA}</h1>"
               "<p class='sub'>Raquetas, pelotas e indumentaria de los locales y jugadores verificados. Pagas seguro y coordinas la entrega con el vendedor.</p></div>"
               "<div class='acc'><a class='btn sec' href='/mis-ordenes'>🛍️ Mis compras</a></div></div>"
-              "<div class='mk-busca'><span>🔍</span><input id='mkQ' type='search' placeholder='Buscar producto o vendedor…' autocomplete='off' maxlength='60'></div>"
+              "<div class='mk-busca'><span>🔍</span><input id='mkQ' type='search' aria-label='Buscar producto o vendedor' placeholder='Buscar producto o vendedor…' autocomplete='off' maxlength='60'></div>"
               + (f"<div class='mk-cats' id='mkCats'>{chips}</div>" if prods else "")
               + grid
               + "<a class='btn mk-fab' href='/anfitrion/tienda'>🏷️ Vender</a>"
@@ -492,7 +497,7 @@ def pagina_producto(request: Request, producto_id: str) -> HTMLResponse:
     precio = _monto(sim, p["precio"])
     av = (f"<img src='{e(perf['foto_url'])}' alt='' referrerpolicy='no-referrer'>" if perf.get("foto_url")
           else e((vend[:1] or "?").upper()))
-    ficha = (f"<div class='mk-foto'>{_foto_producto(p)}</div>"
+    ficha = (f"<div class='mk-foto'>{_foto_producto(p, grande=True)}</div>"
              f"<h1 style='margin-top:16px'>{e(p.get('nombre'))}</h1>"
              f"<div style='font-size:24px;font-weight:800;color:var(--esmeralda);margin-top:4px'>{e(precio)}</div>"
              f"<div style='display:flex;gap:8px;flex-wrap:wrap;margin-top:8px'><span class='pill'>{cat_em} {e(cat_n)}</span>"
@@ -717,7 +722,7 @@ def pagina_mis_ordenes(request: Request, nueva: str = "") -> HTMLResponse:
         sim = _moneda_de_venta(v, prod)
         et, cls, em = _ESTADOS.get(v["estado"], (v["estado"], "gris", "🧾"))
         es_bono = not v.get("producto_id") and str(v.get("producto_nombre") or "").startswith("Bono ")
-        foto = (f"<img src='{e(prod['foto_url'])}' alt=''>" if prod and (prod.get("foto_url") or "").startswith("http")
+        foto = (miniaturas.img(prod["foto_url"], sizes=miniaturas.SIZES_MINI, dims=False) if prod and (prod.get("foto_url") or "").startswith("http")
                 else ("🎟️" if es_bono else em))
         vend = v.get("vendedor_nombre") or perf.get(v["vendedor_email"], {}).get("nombre") or "—"
         try:
@@ -764,7 +769,7 @@ def pagina_mis_ordenes(request: Request, nueva: str = "") -> HTMLResponse:
               + f"<div style='margin-top:14px'>{lista}</div></div>"
               + ("<script>(function(){\n"
               "try{ var av = sessionStorage.getItem('pcg_aviso'); if(av){ var el = document.getElementById('avisoMk'); el.textContent = av; el.style.display = 'block'; sessionStorage.removeItem('pcg_aviso'); } }catch(e){}\n"
-              f"var PLAY = {json.dumps(PLAY_URL)};\n"
+              f"var PLAY = {ui.json_js(PLAY_URL)};\n"
               r"""document.querySelectorAll('[data-chat]').forEach(function(b){ b.addEventListener('click', function(){
   pcgConfirmar({titulo: 'Chat con el vendedor', mensaje: 'El chat para coordinar la entrega está en la app ⟦MARCA⟧, con la misma cuenta.', icono: '💬', confirmar: 'Abrir la app', cancelar: 'Ahora no'})
    .then(function(ok){ if(ok) window.open(PLAY, '_blank', 'noopener'); }); }); });
@@ -901,7 +906,7 @@ def pagina_bonos_local(request: Request, cancha_id: str) -> HTMLResponse:
                f"data-linea='{e(titulo)} · {e(club)}'>{e(_monto(sim, o['precio']))}</button>" if (puede and o["precio"] >= 1)
                else f"<span style='font-weight:800'>{e(_monto(sim, o['precio']))}</span>")
         packs.append(f"<div class='pack'><div class='h'>{o['horas']}h</div><div class='tx'><b>{e(titulo)}</b>"
-                     f"<div class='sub' style='margin:0;font-size:13px'>{e(_monto(sim, ph))}/hora" + (f" · ahorras {ahorro} %" if ahorro > 0 else "") + "</div></div>"
+                     f"<div class='sub' style='margin:0;font-size:13px'>{e(_monto(sim, ph))}/hora" + (f" · <span style='white-space:nowrap'>ahorras {ahorro} %</span>" if ahorro > 0 else "") + "</div></div>"
                      f"{btn}</div>")
     if not ofertas:
         cuerpo_packs = "<div class='mk-vacio'><div class='em'>🎟️</div><b>Este local aún no ofrece bonos</b>Cuando publique packs de horas aparecerán aquí.</div>"
@@ -909,7 +914,7 @@ def pagina_bonos_local(request: Request, cancha_id: str) -> HTMLResponse:
         cuerpo_packs = "".join(packs)
     nota = ""
     if mio:
-        nota = "<div class='estado warn'>Son los packs de tu local: así los ven los jugadores. Se administran desde la app (Mis canchas → Bonos).</div>"
+        nota = "<div class='estado warn'>Son los packs de tu local: así los ven los jugadores. <a href='/anfitrion/bonos'>Administrar mis bonos ›</a></div>"
     elif ofertas and not _pago_web_disponible(iso):
         nota = (f"<div class='estado warn'>Este local cobra en {e(sim)}: el pago en línea en esa moneda aún no está disponible en la web. "
                 f"<a href='{PLAY_URL}'>Compra tu bono en la app</a>.</div>")

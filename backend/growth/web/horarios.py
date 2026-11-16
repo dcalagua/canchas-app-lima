@@ -57,6 +57,15 @@ def slots(apertura: str, cierre: str, paso: int, desde_minutos: int | None = Non
     return out
 
 
+def slots_de(c: dict, desde_minutos: int | None = None) -> list[str]:
+    """Slots de la cancha `c` (o de su cancha EFECTIVA del día: un día cerrado
+    por las reglas del dueño no tiene turnos)."""
+    if c.get("_sin_turnos"):
+        return []
+    return slots(c.get("hora_apertura") or "07:00", c.get("hora_cierre") or "23:00",
+                 int(c.get("duracion_slot_min") or 60), desde_minutos)
+
+
 def hora_fin(inicio: str, paso: int) -> str:
     m = hora_en_minutos(inicio)
     if m is None:
@@ -134,7 +143,14 @@ def precio_slot(precio_hora: float, paso: int, descuento_slot: int = 0, *,
 
 def precio_turno_de(c: dict, hora: str, descuento_slot: int = 0) -> int:
     """Precio del turno `hora` de la cancha `c` (dict de `datos`). Fuente
-    ÚNICA de la web para mostrar, reservar y sugerir precio."""
+    ÚNICA de la web para mostrar, reservar y sugerir precio. Si `c` es la
+    cancha EFECTIVA de un día (`reservas.reglas.cancha_del_dia`), aplica las
+    franjas y el recargo de luz del dueño."""
+    if c.get("_reglas"):
+        from reservas import reglas as _reglas
+        p = _reglas.precio_turno(c, hora, descuento_slot)
+        if p is not None:
+            return p
     valle = int(c.get("descuento_valle") or 0)
     return precio_slot(
         float(c.get("precio_hora") or 0), int(c.get("duracion_slot_min") or 60),

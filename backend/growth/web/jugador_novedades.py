@@ -754,19 +754,19 @@ _CSS = """<style>
 .nv-fila .tx b{display:block;font-size:15.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nv-fila .tx small{display:block;color:#6a6a6a;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nv-fila .der{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:none;color:#6a6a6a;font-size:12.5px}
-.nv-badge{background:var(--esmeralda);color:#fff;border-radius:999px;font-size:11.5px;font-weight:800;padding:2px 7px;min-width:20px;text-align:center}
+.nv-badge{background:var(--esmeralda);color:#fff;border-radius:999px;font-size:12px;font-weight:800;padding:2px 7px;min-width:20px;text-align:center}
 .nv-aro{position:relative;width:58px;height:58px;border-radius:50%;flex:none;padding:3px;background:#C7CDD4}
-.nv-aro.nuevo{background:conic-gradient(#7CB518,#0B8A3E,#7CB518)}
+.nv-aro.nuevo{background:conic-gradient(#7E98FF,#3056ED,#7E98FF)}
 .nv-aro.mio{background:none;padding:0}
-.nv-aro .in{width:100%;height:100%;border-radius:50%;border:2.5px solid #fff;overflow:hidden;background:#0E8F67;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:20px}
+.nv-aro .in{width:100%;height:100%;border-radius:50%;border:2.5px solid #fff;overflow:hidden;background:#3056ED;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:20px}
 .nv-aro .in img,.nv-aro .in video{width:100%;height:100%;object-fit:cover}
-.nv-aro .in .txt{font-size:9px;padding:4px;text-align:center;line-height:1.1;overflow:hidden}
+.nv-aro .in .txt{font-size:12px;padding:4px;text-align:center;line-height:1.1;overflow:hidden}
 .nv-aro .mas{position:absolute;right:-2px;bottom:-2px;width:22px;height:22px;border-radius:50%;background:var(--esmeralda);color:#fff;border:2px solid #fff;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center;line-height:1}
 .nv-av{width:52px;height:52px;border-radius:50%;object-fit:cover;flex:none;display:inline-flex;align-items:center;justify-content:center;background:#EAF7EF;font-size:24px;overflow:hidden}
 .nv-av img{width:100%;height:100%;object-fit:cover}
 .nv-vacio{text-align:center;color:#6a6a6a;padding:26px 16px;font-size:14.5px}
 .nv-vacio .em{font-size:48px;display:block;margin-bottom:6px}
-.nv-fab{position:fixed;right:max(18px,env(safe-area-inset-right));bottom:max(22px,env(safe-area-inset-bottom));z-index:40;border:0;border-radius:18px;background:var(--esmeralda);color:#fff;font:inherit;font-weight:800;font-size:15px;padding:15px 18px;box-shadow:0 8px 22px rgba(11,138,62,.35);cursor:pointer}
+.nv-fab{position:fixed;right:max(18px,env(safe-area-inset-right));bottom:max(22px,env(safe-area-inset-bottom));z-index:40;border:0;border-radius:18px;background:var(--esmeralda);color:#fff;font:inherit;font-weight:800;font-size:15px;padding:15px 18px;box-shadow:0 8px 22px rgba(48,86,237,.35);cursor:pointer}
 .nv-opc{display:flex;align-items:center;gap:12px;width:100%;border:1px solid #E4E4E4;background:#fff;border-radius:14px;padding:12px;margin:0 0 8px;font:inherit;cursor:pointer;text-align:left;text-decoration:none;color:inherit}
 .nv-opc .em{font-size:24px;flex:none}.nv-opc b{display:block}.nv-opc small{color:#6a6a6a}
 .nv-buscar{width:100%;border:1px solid #E4E4E4;border-radius:999px;padding:11px 16px;font:inherit;font-size:15px;background:#F7F7F7;margin:4px 0 6px}
@@ -780,7 +780,7 @@ _CSS = """<style>
 .nv-barras i{flex:1;height:3px;border-radius:3px;background:rgba(255,255,255,.35);overflow:hidden}
 .nv-barras i b{display:block;height:100%;width:0;background:#fff}
 .nv-cab{position:absolute;top:calc(max(8px,env(safe-area-inset-top)) + 12px);left:10px;right:10px;display:flex;align-items:center;gap:10px;z-index:3;min-width:0}
-.nv-cab .av{width:38px;height:38px;border-radius:50%;object-fit:cover;background:#0E8F67;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none;overflow:hidden}
+.nv-cab .av{width:38px;height:38px;border-radius:50%;object-fit:cover;background:#3056ED;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none;overflow:hidden}
 .nv-cab .av img{width:100%;height:100%;object-fit:cover}
 .nv-cab .q{flex:1;min-width:0}.nv-cab .q b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 3px rgba(0,0,0,.5)}
 .nv-cab .q small{opacity:.85;font-size:12.5px;text-shadow:0 1px 3px rgba(0,0,0,.5)}
@@ -805,7 +805,7 @@ _CSS = """<style>
 .nv-menu button:hover,.nv-menu a:hover{background:#F2F2F2}
 .nv-lista-vistas{display:flex;flex-direction:column;gap:8px;text-align:left;max-height:50vh;overflow:auto}
 .nv-lista-vistas div{display:flex;align-items:center;gap:10px}
-.nv-lista-vistas .av{width:36px;height:36px;border-radius:50%;object-fit:cover;background:#0E8F67;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none;overflow:hidden}
+.nv-lista-vistas .av{width:36px;height:36px;border-radius:50%;object-fit:cover;background:#3056ED;color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:800;flex:none;overflow:hidden}
 .nv-lista-vistas .av img{width:100%;height:100%;object-fit:cover}
 .nv-lista-vistas small{color:#6a6a6a;margin-left:auto}
 /* Composer */
@@ -893,7 +893,7 @@ _JS_COMUN = r"""<script>
 
 def _js(obj) -> str:
     """JSON seguro dentro de <script> (sin cerrar la etiqueta)."""
-    return json.dumps(obj, ensure_ascii=False).replace("</", "<\\/")
+    return ui.json_js(obj, ensure_ascii=False).replace("</", "<\\/")
 
 
 def _sin_login(request: Request, ruta: str, titulo: str, que: str) -> HTMLResponse:
@@ -1055,7 +1055,7 @@ _VISOR_HTML = ("<div class='nv-visor' id='nvVisor' aria-modal='true' role='dialo
                "<button type='button' class='nv-zona der' id='nvDer' aria-label='Siguiente'></button>"
                "<div class='nv-pie' id='nvPie' style='display:none'></div>"
                "<form class='nv-pieBar' id='nvRespForm'><span id='nvResp' style='display:flex;gap:8px;flex:1;min-width:0'>"
-               "<input id='nvRespTxt' maxlength='1000' placeholder='Responder…' autocomplete='off'><button type='submit'>Enviar</button></span>"
+               "<input id='nvRespTxt' aria-label='Responder a la historia' maxlength='1000' placeholder='Responder…' autocomplete='off'><button type='submit'>Enviar</button></span>"
                "<button type='button' class='vistas' id='nvVistas' style='display:none'></button></form>"
                "</div></div>")
 
@@ -1340,7 +1340,7 @@ _JS_COMPOSER = r"""<script>
     var m = st.musica; b.innerHTML = "<div class='nv-mus'>" + (m.art ? "<img src='" + esc(m.art) + "' alt=''>" : '') + "<span class='tx'><b>🎵 " + esc(m.titulo) + "</b><small>" + esc(m.artista) + " · desde el segundo " + Math.round((m.inicio || 0) / 1000) + "</small></span><button type='button' id='nvMusQuitar'>Quitar</button></div>"; }
   var audio = new Audio();
   async function elegirMusica(){
-    var h = "<input class='nv-buscar' id='nvMusQ' placeholder='Busca una canción o artista' autocomplete='off'><div class='nv-mlista' id='nvMusLista'><p class='nv-ayuda'>Cargando destacadas…</p></div>";
+    var h = "<input class='nv-buscar' id='nvMusQ' aria-label='Buscar una canción o artista' placeholder='Busca una canción o artista' autocomplete='off'><div class='nv-mlista' id='nvMusLista'><p class='nv-ayuda'>Cargando destacadas…</p></div>";
     var p = pcgAvisar({titulo: 'Música para tu estado', icono: '🎵', confirmar: 'Cerrar', html: h});
     var lista = [], tm = 0, elegida = null;
     function pintar(ls){ lista = ls; var el = $('nvMusLista'); if(!el) return; if(!ls.length){ el.innerHTML = "<p class='nv-ayuda'>No encontramos canciones.</p>"; return; }
@@ -1410,7 +1410,7 @@ def pagina_nuevo_estado(request: Request, tipo: str = "texto") -> HTMLResponse:
     if tipo == "texto":
         fondos = "".join(f"<button type='button' aria-label='Fondo {i + 1}' data-bg='{v}' style='background:{color_css(v)}'></button>"
                          for i, v in enumerate(FONDOS))
-        medio = (f"<div class='nv-comp' id='nvComp'><textarea id='nvTexto' maxlength='{TEXTO_MAX}' placeholder='Escribe un estado'></textarea>"
+        medio = (f"<div class='nv-comp' id='nvComp'><textarea id='nvTexto' aria-label='Texto del estado' maxlength='{TEXTO_MAX}' placeholder='Escribe un estado'></textarea>"
                  f"<span class='nv-cont' id='nvCont'>0/{TEXTO_MAX}</span></div>"
                  f"<span class='nv-lbl'>Fondo</span><div class='nv-fondos'>{fondos}</div>")
     else:
@@ -1426,7 +1426,7 @@ def pagina_nuevo_estado(request: Request, tipo: str = "texto") -> HTMLResponse:
               "<div id='nvMusBox'></div>"
               "<p class='nv-ayuda'>Tu estado dura 24 horas y lo ven tus contactos.</p>"
               "<div class='nv-acc'><button type='button' class='btn lg' id='nvPublicar'>Publicar estado</button></div></div>"
-              + f"<script>window.NV_COMP = {json.dumps(cfg)};</script>" + _JS_COMUN + _JS_COMPOSER)
+              + f"<script>window.NV_COMP = {ui.json_js(cfg)};</script>" + _JS_COMUN + _JS_COMPOSER)
     return ui.shell("Nuevo estado", cuerpo, sesion=ses, titulo_tab=f"Nuevo estado · {MARCA}")
 
 
@@ -1466,7 +1466,7 @@ def pagina_canales(request: Request) -> HTMLResponse:
     yo = _low(ses["email"])
     cfg = {"cache": _clave_cache(yo, "canales"), "inicial": datos_canales(yo)}
     cuerpo = (_CSS + "<div class='nv-wrap'><div class='nv-top'><h1>Canales</h1><a class='btn' href='/canales/nuevo'>＋ Crear canal</a></div>"
-              "<input class='nv-buscar' id='nvBuscar' type='search' placeholder='Buscar' autocomplete='off'>"
+              "<input class='nv-buscar' id='nvBuscar' type='search' aria-label='Buscar canales' placeholder='Buscar' autocomplete='off'>"
               "<div id='nvCanales'></div><p style='margin-top:18px'><a href='/novedades'>‹ Volver a Novedades</a></p></div>"
               + f"<script>window.NV_CAN = {_js(cfg)};</script>" + _JS_COMUN + _JS_CANALES)
     return ui.shell("Canales", cuerpo, sesion=ses, titulo_tab=f"Canales · {MARCA}")
@@ -1515,7 +1515,7 @@ def _form_canal(ses: dict, c: dict | None) -> HTMLResponse:
               "<small class='nv-ayuda' id='nvDescC' style='display:block;text-align:right'></small>"
               + ("" if c else "<p class='nv-ayuda'>Tú serás el administrador. Solo tú publicas; los seguidores ven tus novedades y pueden reaccionar.</p>")
               + f"<div class='nv-acc'><button type='button' class='btn lg' id='nvGuardar'>{'Guardar cambios' if c else '📢 Crear canal'}</button></div></div></div>"
-              + f"<script>window.NV_FC = {json.dumps({'id': (c or {}).get('id') or ''})};</script>" + _JS_COMUN + _JS_FORM_CANAL)
+              + f"<script>window.NV_FC = {ui.json_js({'id': (c or {}).get('id') or ''})};</script>" + _JS_COMUN + _JS_FORM_CANAL)
     return ui.shell(titulo, cuerpo, sesion=ses, titulo_tab=f"{titulo} · {MARCA}")
 
 
@@ -1662,7 +1662,7 @@ _JS_CANAL = r"""<script>
       else { try{ blob = await U.comprimir(f); tipoB = 'image/jpeg'; }catch(e){ return pcgAvisar({titulo: 'Foto no válida', mensaje: 'Elige una imagen JPG o PNG.'}); } }
       url = URL.createObjectURL(blob);
       var h = (video ? "<video src='" + url + "' controls playsinline style='width:100%;max-height:50vh;border-radius:12px;background:#111'></video>" : "<img src='" + url + "' alt='' style='width:100%;max-height:50vh;object-fit:contain;border-radius:12px;background:#111'>")
-        + "<input class='nv-campo' id='nvCap' maxlength='1000' placeholder='Añade una descripción…'>";
+        + "<input class='nv-campo' id='nvCap' aria-label='Descripción' maxlength='1000' placeholder='Añade una descripción…'>";
       var cap = '', pr = pcgConfirmar({titulo: video ? 'Publicar video' : 'Publicar foto', icono: video ? '🎥' : '📷', confirmar: 'Publicar', cancelar: 'Cancelar', html: h});
       var ci = $('nvCap'); ci.addEventListener('input', function(){ cap = ci.value; });
       if(!(await pr)) return; pcgCargando(video ? 'Subiendo tu video…' : 'Subiendo tu foto…');
@@ -1703,7 +1703,7 @@ def pagina_canal(request: Request, canal_id: str) -> HTMLResponse:
         escribir = ("<div class='nv-escribir'><input type='file' id='nvPubFoto' accept='image/*' hidden><input type='file' id='nvPubVid' accept='video/mp4,video/quicktime,video/*' hidden>"
                     "<button type='button' class='ico' id='nvBtnFoto' aria-label='Publicar foto'>📷</button>"
                     "<button type='button' class='ico' id='nvBtnVid' aria-label='Publicar video'>🎥</button>"
-                    f"<textarea id='nvPubTxt' rows='1' maxlength='{POST_TEXTO_MAX}' placeholder='Escribe…'></textarea>"
+                    f"<textarea id='nvPubTxt' aria-label='Texto de la publicación' rows='1' maxlength='{POST_TEXTO_MAX}' placeholder='Escribe…'></textarea>"
                     "<button type='button' class='env' id='nvPubEnv'>Publicar</button></div>")
     cuerpo = (_CSS + "<div class='nv-wrap'><p style='margin:0 0 8px'><a href='/canales'>‹ Canales</a></p><div id='nvCanal'></div>" + escribir + "</div>"
               + f"<script>window.NV_CD = {_js(cfg)};</script>" + _JS_COMUN + _JS_CANAL)

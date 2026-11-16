@@ -224,6 +224,80 @@ fija la marca vieja por env en `tests/conftest.py`;
 `test_dominio_raiz.py` la redirección. Las referencias a "pichangol.app" de
 más abajo son históricas.
 
+## REDISEÑO AZUL de la web (9-nov-2026, rama `feat/web-rediseno-azul`)
+
+PDF del diseñador ("Soluciones EBIM", 7 frames). Detalle y pendientes:
+`docs/plan/REDISENO_AZUL.md`. Solo web (el APK sigue con su paleta).
+- **Paleta** (`web/ui.py::TOKENS`): azul `#3056ED` (CTA, barra, pie) · `#2442C4`
+  (hover) · `#7E98FF` SOLO decoración (con texto blanco no llega a AA) · tinte
+  `#E3E8FF` · texto `#333333`. Los nombres viejos (`--esmeralda`, `--noche`,
+  `--tinte`) apuntan a estos valores; el verde queda SOLO para estados (`--ok-*`).
+  **No escribir verdes de marca a mano** en pantallas nuevas.
+- **CSS del rediseño** en `web/estilos_rediseno.py`, al FINAL de `ui.CSS`.
+- **Cabecera** = barra azul fija + pastillas por deporte + franja celeste con el
+  buscador (`ui.cabecera(extra_banda=)`); el `<header>` es `display:contents`
+  (solo la barra es sticky; quien mida la cabecera suma sus franjas).
+- **Íconos de línea** en `web/iconos.py` (`iconos.svg("futbol")`, `currentColor`).
+- **Logo**: `static/brand/cl_*`; `ui.wordmark(color="blanco"|"azul")` y
+  `ui.logo_apilado()` usan el del diseñador solo si la marca es CanchaLibre y la
+  torre no tiene logo propio. `marca_logo` cae a `logo_canchalibre.png`.
+- **Portada**: los estilos de sus secciones viven en `legal/home.html` (bajo
+  `.marca`); el precio de Pro sale de `pro_precio_soles` (`{{PRO_PRECIO}}`).
+  Las tarjetas de servicios conservan `class="prod"` (Culqi: ≥5 servicios).
+  Orden: canchas → Qué ofrecemos → Servicios → Cómo funciona → Pagos →
+  "Compra segura" (Términos/Devoluciones/Privacidad/Libro en 4 tarjetas con
+  desplegables; el formulario del Libro sigue integrado en la raíz) → Contacto.
+- Test `tests/test_rediseno_azul.py`; barrido e2e en verde (204 pantallas).
+
+## REDISEÑO DEL MODO ANFITRIÓN (16-nov-2026, rama `feat/web-rediseno-anfitrion`)
+
+40 capturas del diseñador (`Downloads/Soluciones EBIM_2`). Inventario, errores
+del diseño que NO se copian, decisiones por defecto y fases F0–F8:
+`docs/plan/REDISENO_ANFITRION.md`. Solo web.
+- **F0 hecha: barra BLANCA con 5 desplegables** (`web/nav_anfitrion.py`:
+  HTML + CSS + JS). Los grupos salen de `anfitrion.GRUPOS_MENU` (el diseño los
+  calca); cada módulo tiene color + ícono de línea (`ICONOS`, `iconos.py`) y
+  texto corto sin jerga de un país (`DESC`). `ui.shell()` la pone sola en TODA
+  ruta `/anfitrion/*` con sesión (usa `ui.RUTA_REQUEST`, que fija el middleware
+  `_SeoAmbiente` de `main.py`) y agrega `body.pcg-anf` (fondo celeste);
+  `ui.cabecera(modo="anfitrion")` delega en `nav_anfitrion.barra()`. Las
+  pestañas Hoy/Calendario/… van como sub-navegación (`.anf-subtabs`) hasta F2.
+  Recepción (solo encargado) no ve `permisos.MENU_SOLO_DUENO` ni Encargados.
+  Celular (≤1100 px): botón "Menú" + acordeón. Pastilla "Modo anfitrión" →
+  modo jugador; el avatar abre el menú de la cuenta. **Módulo nuevo del
+  anfitrión = agregarlo a `GRUPOS_MENU` + `nav_anfitrion.ICONOS`** (el test
+  `tests/test_nav_anfitrion.py` lo exige). Logo de la barra = APILADO azul
+  (`cl_apilado_azul.png`, variante que eligió el usuario).
+- **F1 hecha: `/anfitrion` = TABLERO** (`web/anfitrion_inicio.py`; reemplaza al
+  menú de tarjetas, que ahora vive en la barra). Cifras reales: Reservas de hoy,
+  Pagos por confirmar (`cobro_directo_web.pendientes_operables`), Cobrado hoy
+  POR MONEDA (`anfitrion_negocio.caja_dia`; otra moneda va como "+ $ 20", nunca
+  se suman) y Ocupación; calendario semanal compacto de una cancha (`?cancha=`,
+  4 días antes → 2 después; en celular 4 días) con la misma regla de turnos que
+  el calendario operativo (reglas del club + fecha real de madrugada);
+  Pendientes de hoy; Ingresos 7 días; Accesos rápidos. Recepción no ve plata.
+  Sin canchas: bienvenida "Registra tu primera cancha". Test
+  `tests/test_inicio_anfitrion.py`.
+- **F2–F8 hechas (16-nov-2026): TODAS las vistas** sobre el kit
+  `web/vista_anfitrion.py` (`cabecera`, `kpi(s)`, `panel`, `pasos`, `pill`,
+  `segmentado`, `vacio`, `aviso`, `lista_lateral`, `tabla`, `vista`; tokens
+  `--anf-*` en `ui.TOKENS`) y una hoja por grupo `web/estilos_v_<canchas|club|
+  negocio|comercio|academia|perfil>.py` (prefijos de clase propios: `vmc`/`mc-`,
+  `vcl-`, `vn-`, `vc-`…, para no chocar). **Toda vista nueva del anfitrión usa
+  el kit.** Mis canchas unificado (`/anfitrion/mis-canchas` = `/calendario` =
+  `/canchas`: lista de locales + calendario Semana/Día + menú contextual;
+  `POST /anfitrion/bloqueo-dia`), asistente Agregar local (mismo POST,
+  borrador en localStorage), copiar reglas (`POST /anfitrion/reglas/{id}/
+  copiar`), sugerencias de ocupación, `POST /anfitrion/disponibilidad/lote`,
+  `GET /anfitrion/fijas/vista-previa`, `POST /anfitrion/cobros/recordar-todos`,
+  Mi perfil `/anfitrion/perfil` con **preferencias de avisos**
+  (`prefs_avisos.py`; Novedades nace APAGADA por consentimiento; recibos,
+  devoluciones y cancelaciones siempre salen; los títulos clasificados están
+  amarrados por test) y **cerrar sesión en todos los dispositivos** (época por
+  correo en `sesion.py`, `stores.sesion_epocas`). Detalle y pendientes de
+  decisiones en `docs/plan/REDISENO_ANFITRION.md` §8 (Llenar cancha conserva el
+  mensaje LIBRE con sugerencias; no-show/cobrar-en-cancha NO se implementan).
+
 ## Dominio oficial: `pichangol.app`
 
 El dominio de marca **YA ESTÁ REGISTRADO Y VIVO**. En Railway (`pg-backend`) el
@@ -1942,6 +2016,33 @@ para la API del APK.
   Playwright `$SP/pw_preload.js`. **HECHO 1-oct-2026 (autorizado):**
   `pg-backend-prd` movido a **us-east4 (Virginia)** (~115 ms a São Paulo,
   más cerca de Lima) y el arreglo pasado a PRD (`prd` = 420be2a).
+  **Ronda 3 (30-oct-2026, rama `feat/web-r3-velocidad`): MENOS VIAJES.** (1)
+  Medidor por request (`pg.medir_request`, ContextVar): la línea `[perf]` dice
+  `sql=N viajes/M ms` y `PERF_SQL=1` lo registra en toda request (`[sql] …`) +
+  cabecera `Server-Timing`. (2) **Memoria de lecturas de la request** (solo
+  GET/HEAD): `pg.memo_leer(clave, fn)` / `pg.memo_por_clave(prefijo, claves,
+  leer)` / `memo_guardar`; se vacía sola con CUALQUIER escritura (`_abrir`) y
+  con `datos.invalidar_canchas()`. La usan `datos.cancha`, `canchas_de_dueno`,
+  `reservas_de_usuario`, `niveles_de`, `esta_verificado`, `tiene_matriculas`,
+  `boleador`, `puntos_de`, `ocupados`/`descuentos`, `canjes_web_de_ref`,
+  `puntos_canje_neto`, perfiles (`jugador_liga.perfiles`), agenda/prefs/
+  locales/academias del chat y pasarela + medios del club (`RepoPG`). (3)
+  **Precargas en UNA consulta** (con respaldo: si fallan, cada función lee
+  como antes): `precargar_perfil`, `precargar_canjes_web` +
+  `precargar_puntos_canjes` (Mis reservas: eran 2 consultas POR reserva),
+  `precargar_dia` (reservas + bloqueos + descuentos), `canchas_por_ids`,
+  `jugador_mensajes.precargar_bandeja` (academias, grupos, agenda, prefs y el
+  resumen de hilos en un viaje); `puntos_de` en una consulta. (4)
+  `pg.conexion(atomica=False)` = una sentencia de escritura sin BEGIN/COMMIT
+  (marcar leído/entregados y `guardar_prefs` con `unnest`: antes N+2 viajes).
+  (5) Portada: estrellas y academias con la caché corta de canchas
+  (`datos._publico`). (6) Culqi (billetera) y Leaflet (portada) ya NO van en
+  `<head>`: se piden tras el `load` / al abrir el mapa. Antes → después (100 ms
+  por viaje simulados): Mis reservas 92→7 viajes, Perfil 8→2, Billetera 4→2,
+  Mensajes 16→4-6, chat 24→7-9, `/mensajes/nuevo` 8→2. Test
+  `tests/test_velocidad_viajes.py` (equivalencia contra Postgres real con
+  `TEST_DATABASE_URL`). **Regla:** página nueva = contar sus viajes con
+  `PERF_SQL=1`; nada de consultas dentro de un `for`.
 - **APARTADOS WEB VENCIDOS NO OCUPAN (caso real PRD, 1-oct-2026: las 20:00
   de "Campo deportivo Edu Jr." salían "Ocupado" sin ningún pago; era un
   apartado `web_hold` de 10 min que el cliente abandonó y que solo se borraba
@@ -4013,6 +4114,158 @@ Reemplaza al calendario fijo de `agente_redes.py` (al activarlo se apaga
   apuntarla a QAS ni PRD):
   `AGENTE_IA_PG_URL=postgresql://... python3 -m pytest tests/test_agente_ia.py -k pg`
   (crear antes las tablas base con `tests/fixtures/pichangol_base.sql` + el SQL).
+
+## Noche CanchaLibre (27-oct-2026, rama `feat/noche-canchalibre`)
+
+Decisiones del usuario: el dinero de la reserva va **DIRECTO al club** (su Culqi
+o sus medios manuales) y la plataforma vive **solo de la comisión por reserva**.
+Detalle y acciones pendientes: `docs/plan/BITACORA_NOCHE.md`.
+- **Migraciones versionadas:** `backend/growth/migraciones/NNNN_*.sql` +
+  `python -m db.migrar [--estado|--local]` (tabla `cl_schema_migraciones`). Postgres
+  local: `docker-compose.dev.yml` (55432). Tests de integración con
+  `TEST_DATABASE_URL` (fixture `tests/conftest_pg.py`; sin la variable se saltan).
+- **Identidad:** `auth_usuario.py` — `requiere_usuario` (ID token de Google
+  `X-User-Token` o cookie web) para TODO endpoint nuevo; `correo_del_cliente`
+  para legados que reciben `email` (`AUTH_USUARIO_ESTRICTO=1` exige token).
+- **Reglas de reserva:** `reservas/reglas.py` (columna `reglas_reserva`, 0002) →
+  "cancha efectiva del día" que usan `horarios.slots_de`/`precio_turno_de`;
+  endpoints `/reservas/politica|reglas`; el APK pide el día al servidor si la
+  cancha tiene reglas (`AppState.cargarDiaServidor`).
+- **Cobro directo:** `pagos/cobro_directo.py` + `web/cobro_directo_web.py`
+  (0003): Culqi del club con sk cifrada (`PAGOS_ENC_KEY`, fail-closed),
+  `culqi.*(llave=)`, vouchers (`/web/voucher`, `/club/pagos/*`, cron de
+  vencimiento), webhook `/pagos/culqi/webhook/club/{ref}`, comisión desde saldo
+  o `comision_deuda` (se salda en `stores.acreditar`; tope
+  `comision_deuda_tope_<ISO>` suspende cobros directos). `/web/asegurar` y
+  `/web/pagar` aceptan el token del APK (mismo flujo server-side).
+- **Seguridad:** `config_publica.py` (lista blanca de `/config/incentivos`);
+  liquidaciones solo con cobro real (`liq_exige_cargo`, sin cargo → en revisión);
+  `/pagos/reembolso-app`; 0004 impide a anon tocar `verificada`/`dueno`.
+- **APK:** sistema de diseño `lib/ui/ds.dart` (usar SIEMPRE en pantallas nuevas),
+  CTA `#0B7A57` (AA), **DM Sans** única (los `TextStyle` del tema heredan la
+  familia), `doradoTexto` para texto dorado. Pantallas: `club_pagos_screen`,
+  `pagos_por_confirmar_screen`, `reglas_reserva_screen`, `checkout_directo_screen`.
+  Goldens: `flutter test --update-goldens test/goldens` (tag `golden`, CI los excluye).
+- **CI:** job `backend` (Python 3.11 + Postgres + migraciones + pytest) y
+  `flutter test --exclude-tags golden`.
+- **Web (noche 28-oct, `docs/plan/BITACORA_NOCHE_WEB.md`):** la ficha cobra
+  con la llave pública DEL CLUB o con comprobante (`pcgVoucher`); el anfitrión
+  web tiene `/anfitrion/cobros-club`, `/pagos-por-confirmar` y `/reglas/{id}`
+  (`web/anfitrion_cobros_club.py`, lógica compartida en `cobro_directo_web.py`).
+  **Reglas:** todo JSON dentro de `<script>` va con `ui.json_js` (XSS); CSS y
+  `JS_NAV` se sirven versionados desde `/web/a/` (no en línea: en tests,
+  `conftest.con_assets`); `web/seguridad_web.py` = gzip, anti-iframe, CSP
+  solo-reporte, CSRF por origen y límites por IP (apagados en la suite);
+  colores = tokens del APK (`--esmeralda #0B7A57`), nunca hex sueltos nuevos.
+- **Web ronda 2 (29-oct, `docs/plan/PLAN_MEJORAS_WEB_2.md`):** 404/500 con la
+  marca para el navegador (`web/errores.py`; la API sigue en JSON);
+  `datos.canchas_publicas()` con caché de 30 s (`CANCHAS_TTL`, se borra en cada
+  escritura vía `@_invalida_canchas`; en tests va en 0); pestañas, títulos,
+  `/tenis` y pie salen de los deportes activos de la torre (`catalogos.
+  frase_deportes`, `titulo_raquetas`); **favoritos en la cuenta**
+  (`web/jugador_favoritos.py`, `stores.favoritos_web` en el snapshot,
+  `/mis-favoritos`); **calificar desde la web** (`web/jugador_resenas.py`, misma
+  `pichangol_resenas` del APK, solo si jugaste en el local, estrellas + chips sin
+  texto libre); `ui.monto`, `ui.unir_lugar`, `ui.codigo_corto`.
+  Ronda 2b: **lista de espera** (`web/jugador_espera.py`, misma `pichangol_espera`
+  del APK; turno ocupado → "Avísame", push al cancelar desde la web),
+  **notificaciones** (`/notificaciones`, lee `pichangol_avisos`), **`/ayuda`**
+  (FAQ + JSON-LD), **SEO** (`/sitemap.xml`, `/canchas/{deporte}/{zona}`),
+  **manifest** instalable, **mover el pin** del local ≤ 300 m (Editar local),
+  **agenda iCal** del dueño (`/anfitrion/agenda/<token>.ics`, token HMAC),
+  **reprogramar** (`/reserva/{ref}/cambiar`: misma cancha, mismo precio, con la
+  anticipación de cancelación; mueve las mismas filas con `datos.mover_reservas`)
+  y `[js]` en los logs con los errores de JavaScript de los usuarios.
+- **Encargados del local · rol único "Recepción" (ronda 3, solo web):** el
+  dueño invita por correo de Google en `/anfitrion/encargados?local=<cancha_id>`
+  (menú "Mi club" y Editar local → Encargados; el correo es el único texto
+  libre, tope 10 por local); la persona acepta/rechaza en `/anfitrion` (push +
+  correo `aviso`). Alcance = el LOCAL (`fidelidad.local_key` + canchas ancla:
+  sigue un renombre; una cancha que cambia de dueño sale sola). Recepción
+  PUEDE: Hoy/Calendario/Reservas del local, reserva manual (y quitarla),
+  bloquear, marcar cobrada/por cobrar, no-show y Pagos por confirmar (aprobar
+  o rechazar; `resuelto_por` = quien lo hizo). NO puede: ingresos, reportes,
+  caja, clientes, editar cancha/local, reglas, cobros del club, cancelar con
+  devolución, invitar. **Autorización en UN lugar:** `web/permisos.py`
+  (`canchas_para(email, accion)`, `puede`, `es_solo_encargado`, `auditar`);
+  `_contexto(..., accion=)` y `_canchas_sesion(request, accion)` de
+  `anfitrion.py` lo usan; sin `accion` siguen siendo solo del dueño y quien solo
+  es encargado recibe `sin_permiso` (403). El Pro de reserva manual/bloqueo es
+  el del DUEÑO. Datos en `web/encargados.py`; páginas y JSON en
+  `web/anfitrion_encargados.py`; migración `0005_encargados.sql`
+  (`cl_encargados` + bitácora `cl_encargados_acciones`, RLS sin políticas); sin
+  la migración todo queda oculto. Test `tests/test_web_encargados.py`.
+  Pendiente: APK (rol en "Mis canchas", vouchers y agenda del encargado).
+- **Web ronda 3 · barrido en CI + CSP en bloqueo (30-oct):** workflow
+  `.github/workflows/web-e2e.yml` levanta el backend contra un Postgres de CI con
+  `tests/e2e/semilla.sql` (fechas relativas a hoy; `tests/e2e/preparar_db.py`
+  crea las tablas extra de `docs/piloto/`) y corre `tests/e2e/barrido.mjs`
+  (Playwright, ~100 pantallas públicas/jugador/anfitrión a 390 y 1440 px + flujo
+  ficha → "Resumen de tu pago"). FALLA ante HTTP inesperado, error de JS,
+  diálogo del navegador, desborde horizontal, página sin `<h1>`, sin cabecera
+  CSP o con violación de CSP. **Toda pantalla web nueva se agrega a `RUTAS`
+  del barrido** (y sus datos a la semilla). La CSP ahora BLOQUEA
+  (`Content-Security-Policy`); corte de emergencia `WEB_CSP_MODO=reporte`. Sigue
+  con `'unsafe-inline'` (scripts/estilos en línea por todas partes: pasar a
+  nonces es aparte). Un recurso de un dominio nuevo (script, iframe, fuente)
+  hay que sumarlo a `seguridad_web.CSP` o el navegador lo bloquea. "No
+  encontrada" (`router._no_encontrada`) responde 404 de verdad, no 200.
+- **`web/router.py` partido en módulos (ronda 3, 30-oct):** `router.py` (136
+  líneas) solo compone y RE-EXPORTA los nombres de siempre (`wr._pais_de`,
+  `from web.router import …` siguen valiendo). El código vive en `web/comun.py`
+  (constantes, país/moneda, fotos, `_no_encontrada`), `explorador.py` (`/`,
+  `/canchas`, zonas, descubrir), `entrar.py` (sesión), `lugares.py`,
+  `disponibilidad.py`, `ficha.py` (`/reservar`, `/lugar`), `reserva_pago.py`
+  (asegurar/pagar/liberar, `confirmar_reserva_pagada`, `soltar_bloque`),
+  `cancelacion.py`, `mis_reservas.py`, `perfil.py` y `comprobante.py`.
+  **Para parchear en un test, parchea el módulo que DEFINE la función**, no
+  `router` (el re-export es otra referencia y el parche no surte efecto).
+  Las menciones `web/router.py::X` de este documento son históricas.
+- **Ronda 3 · velocidad (30-oct):** medidor de viajes a la base por request
+  (la línea `[perf]` termina en `sql=N viajes/M ms`; `PERF_SQL=1` imprime `[sql]`
+  y `Server-Timing`), memo de lecturas por request GET (`pg.memo_leer`, se borra
+  en cualquier escritura), precargas de una consulta (`precargar_perfil`,
+  `precargar_bandeja`, `canchas_por_ids`…) y `pg.conexion(atomica=False)` para
+  escrituras de una sola sentencia. Culqi v4 y Leaflet ya no bloquean la
+  billetera ni la portada (se cargan al usarse). Mis reservas pasó de 92 a 7
+  viajes. Las miniaturas de fotos: `web/miniaturas.py` (`/web/mini`, WebP en
+  `canchas/mini/`, solo nuestro Storage; Google solo cambia el ancho de la URL;
+  `WEB_MINIATURAS=0` lo apaga).
+- **Cada uno paga su parte (ronda 3, 30-oct-2026):** pago DIVIDIDO de una
+  reserva web entre amigos, dinero DIRECTO al club. `pagos/division.py` (reglas,
+  plata, `RepoPG`/`RepoMemoria`) + `web/dividir_pago.py` (ficha, `/dividir/{token}`,
+  `/web/dividir/{token}/estado|tomar|soltar|pagar|voucher|cancelar`, sección
+  "Pagos divididos" de Mis reservas, `/anfitrion/cobros-club/devoluciones`).
+  Migración `0006_dividir_pago.sql` (`cl_division_pago` + `cl_division_partes`,
+  RLS sin políticas; únicos: una división viva por reserva, un cobro = una
+  parte, un amigo = una parte viva). Solo clubes con cobro directo y sin seña,
+  bono, puntos, fidelidad ni boleador (oculto y rechazado en `/web/asegurar
+  {dividir: N}`). Reparto en céntimos: cada amigo ⌊total/N⌋, el organizador el
+  resto; cada parte ≥ S/ 3 · $ 3 · Bs 3. Hold `medio_pago = 'division'`: plazo =
+  min(2 h, inicio − 60 min) (`dividir_horas`, `dividir_margen_min`; < 30 min no
+  se ofrece), tope SQL 2 h 10 (`datos.HOLD_DIVISION_MAX_SEGUNDOS`). Cada uno
+  TOMA una parte (15 min) y la paga con el Culqi del club (`chr_…#n`) o voucher
+  (ref `div_…#n`, misma bandeja Pagos por confirmar; plazo = el de la división).
+  Un voucher en revisión NO cuenta. Todas pagadas (decidido con `FOR UPDATE`
+  de la división) → `confirmar_directo` UNA vez: mismas filas (`medio_pago =
+  'dividido'`, `usuario` = organizador), `cobro_directo` total `div:<id>`, una
+  comisión al dueño; sin cargo por servicio (el cobro directo no lo lleva).
+  Vence/cancela → se suelta el horario; Culqi → reembolso con la llave del club;
+  voucher aprobado o sin revisar → `devolver` (el club marca "Ya lo devolví" /
+  "No recibí ese pago"). Aviso al organizador 30 min antes ("Pagar lo que
+  falta"). Reserva confirmada que se cancela → `devolver_por_cancelacion`
+  (proporcional por parte, resto mayor y nunca más de lo que pagó cada parte;
+  un solo reembolso por cargo base). Cron: `division.barrer` en el de 1 min de
+  `main.py` (cada división con su try/except; retoma cierres cortados a mitad).
+  **Reglas tras la revisión (30-oct):** una lectura fallida NUNCA se toma como
+  "apartado perdido" (`datos.reservas_de(estricto=True)` → se reintenta);
+  `confirmar_directo` verifica que las filas quedaron confirmadas antes de
+  registrar el cobro y la comisión; el webhook de Culqi exige el MISMO club,
+  PEN y cargo capturado, e ignora cargos ya devueltos
+  (`cl_division_cargos_devueltos`); un voucher subido tarde retoma la parte o
+  queda como "pago fuera de plazo" para devolver (`cl_division_tardios`).
+  Migración `0007_dividir_pago_devoluciones.sql` (sin ella la opción no se
+  ofrece). APK: pendiente. Test `tests/test_web_dividir_pago.py`.
 
 ## Pendientes / backlog
 

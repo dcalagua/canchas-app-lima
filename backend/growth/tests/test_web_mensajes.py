@@ -239,7 +239,9 @@ def test_eliminar_reaparece_con_mensaje_nuevo_y_acciones_en_la_nube(monkeypatch,
     assert all(fk.prefs[(YO, h)]["oculto_en"] for h in (hc, hd)) and M.bandeja(YO)["filas"] == []
     assert len(fk.msgs) == 2
     # Llega algo más nuevo → reaparece SOLO ese hilo y la nube se limpia (como `chatOculto`).
-    fk.add(hc, "dueno@x.com", "¿Sigues interesada?", 60 * 24 * 30)
+    # Siempre DESPUÉS de "ahora": el borrado se marca con la hora real (un desfase
+    # fijo desde T0 dejó de ser futuro el 29-oct-2026 a las 15:00 UTC).
+    fk.add(hc, "dueno@x.com", "¿Sigues interesada?", int((datetime.now(timezone.utc) - T0).total_seconds() // 60) + 60)
     filas = M.bandeja(YO)["filas"]
     assert len(filas) == 1 and filas[0]["hilos"] == [hc] and filas[0]["preview"] == "¿Sigues interesada?"
     assert fk.prefs[(YO, hc)]["oculto_en"] is None and fk.prefs[(YO, hd)]["oculto_en"] is not None
@@ -414,7 +416,8 @@ def test_chat_web_pantalla_completa_en_movil_como_whatsapp(monkeypatch, fk):
     assert "<footer class='pie'>" not in html                       # sin pie del sitio
     assert "class='vol' href='/mensajes'" in html and "Club Sabor Golazo" in html  # ‹ + contacto
     assert "--mj-vh" in html and "visualViewport" in html            # el teclado no tapa el compositor
-    assert "body.pcg-chat header.nav" in html                        # cabecera del sitio fuera en móvil
+    from tests.conftest import con_assets
+    assert "body.pcg-chat header.nav" in con_assets(cli, html)       # cabecera del sitio fuera en móvil
     # Bandeja / nuevo: cabecera en una fila sin la pastilla en móvil; el pie se queda.
     for ruta in ("/mensajes", "/mensajes/nuevo"):
         h = cli.get(ruta).text

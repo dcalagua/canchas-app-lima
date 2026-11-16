@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
+
+import 'package:http/http.dart' as http;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -1227,6 +1229,7 @@ class AppState extends ChangeNotifier {
   Future<void> flushContabilidad() async {
     // Solicitudes de boleador que no llegaron al backend (el cliente ya pagó).
     unawaited(Boleadores.flushPendientes());
+    unawaited(_enviarReembolsos());
     if (_contaPend.isEmpty || !PagosService.disponible) return;
     var cambios = false;
     for (final e in [..._contaPend]) {
@@ -1267,15 +1270,49 @@ class AppState extends ChangeNotifier {
     if (cambios) await _persistirContabilidad();
   }
 
-  void _registrarReembolso(String reservaId, double monto, String motivo) {
+  void _registrarReembolso(String reservaId, double monto, String motivo,
+      {String chargeId = ''}) {
     if (monto <= 0) return;
     _reembolsosPend.add({
       'reserva_id': reservaId,
       'email': (usuario?.email ?? '').toLowerCase(),
       'monto': monto,
       'motivo': motivo,
+      // Cargo de Culqi: con él el BACKEND devuelve la plata (antes el
+      // reembolso quedaba solo en este teléfono).
+      'charge_id': chargeId,
     });
     unawaited(_persistirContabilidad());
+    unawaited(_enviarReembolsos());
+  }
+
+  /// Manda al backend los reembolsos en cola (`POST /pagos/reembolso-app`):
+  /// él verifica el cargo con la identidad del usuario y lo devuelve por Culqi
+  /// (o lo deja al operador). Un 200 saca la entrada de la cola.
+  Future<void> _enviarReembolsos() async {
+    if (_reembolsosPend.isEmpty || !PagosService.disponible) return;
+    var cambios = false;
+    for (final e in [..._reembolsosPend]) {
+      try {
+        final r = await http
+            .post(Uri.parse('${PagosService.baseUrl}/pagos/reembolso-app'),
+                headers: await PagosService.headersUsuario(json: true),
+                body: jsonEncode({
+                  'charge_id': (e['charge_id'] ?? '').toString(),
+                  'referencia': (e['reserva_id'] ?? '').toString(),
+                  'monto_soles': (e['monto'] as num?)?.toDouble() ?? 0,
+                  'motivo': (e['motivo'] ?? '').toString(),
+                }))
+            .timeout(const Duration(seconds: 20));
+        if (r.statusCode == 200) {
+          _reembolsosPend.remove(e);
+          cambios = true;
+        }
+      } catch (_) {
+        break; // sin red: se reintenta en el próximo flush
+      }
+    }
+    if (cambios) await _persistirContabilidad();
   }
 
   /// Una reserva pendiente (offline) que NO llegó a confirmarse: si su pago fue
@@ -1285,7 +1322,8 @@ class AppState extends ChangeNotifier {
     if (accion == null) return;
     if (accion['online'] == true) {
       _registrarReembolso(
-          reservaId, (accion['monto'] as num?)?.toDouble() ?? 0, motivo);
+          reservaId, (accion['monto'] as num?)?.toDouble() ?? 0, motivo,
+          chargeId: (accion['charge_id'] ?? '').toString());
     }
     unawaited(_persistirContabilidad());
   }
@@ -5696,7 +5734,49 @@ class AppState extends ChangeNotifier {
   /// turno manda sobre la hora feliz). Espejo exacto de la web
   /// (`horarios.precio_turno_de`); test `test_precio_por_turno.py`.
   int precioSlotEfectivo(Cancha c, String fecha, String hora) =>
+      _preciosServidor['${c.id}|$fecha|$hora'] ??
       c.precioTurnoEn(hora, pctSlot: descuentoSlotPct(c.id, fecha, hora));
+
+  // ── DÍA DEL SERVIDOR (reglas de reserva del dueño, oct-2026) ──
+  // Con reglas (horario por día, franjas, cierres, ventana) la grilla y los
+  // precios los calcula el backend (`GET /web/disponibilidad`): el APK no
+  // duplica esa lógica. Clave del día: "<canchaId>|<fecha base ISO>"; precio
+  // por "<canchaId>|<fecha REAL del turno>|<hora>" (madrugada = día siguiente).
+  final Map<String, ({List<String> horas, String cerrado})> _diasServidor = {};
+  final Map<String, int> _preciosServidor = {};
+  final Set<String> _diasCargando = {};
+
+  ({List<String> horas, String cerrado})? diaServidor(Cancha c, String fecha) =>
+      _diasServidor['${c.id}|$fecha'];
+
+  /// Pide al backend la grilla del día de una cancha CON REGLAS (sin reglas,
+  /// no hace nada: la grilla local es idéntica). Fail-safe: sin red queda la
+  /// grilla local y el servidor igual valida al apartar.
+  Future<void> cargarDiaServidor(Cancha c, String fecha) async {
+    final k = '${c.id}|$fecha';
+    if (!c.tieneReglas || !PagosService.disponible || _diasCargando.contains(k)) return;
+    _diasCargando.add(k);
+    try {
+      final uri = Uri.parse('${PagosService.baseUrl}/web/disponibilidad/${Uri.encodeComponent(c.id)}?fecha=$fecha');
+      final r = await http.get(uri).timeout(const Duration(seconds: 10));
+      if (r.statusCode != 200) return;
+      final j = jsonDecode(r.body) as Map<String, dynamic>;
+      if (j['ok'] != true) return;
+      final horas = <String>[];
+      for (final x in (j['slots'] as List? ?? [])) {
+        final m = Map<String, dynamic>.from(x as Map);
+        final h = m['hora'].toString();
+        horas.add(h);
+        _preciosServidor['${c.id}|${m['fecha']}|$h'] = (m['precio'] as num).toInt();
+      }
+      _diasServidor[k] = (horas: horas, cerrado: (j['cerrado'] ?? '').toString());
+      notifyListeners();
+    } catch (_) {
+      // sin red: grilla local
+    } finally {
+      _diasCargando.remove(k);
+    }
+  }
 
   /// El dueño aplica (pct>0) o quita (pct<=0) el descuento de un slot. Persiste
   /// local + nube para que valga en todos los dispositivos.
@@ -7539,24 +7619,6 @@ class AppState extends ChangeNotifier {
     _persistirDatos();
   }
 
-  /// Descuenta la comisión del saldo cuando entra una reserva a una cancha del
-  /// club activo. No llama notifyListeners (lo hace el método que la invoca).
-  void _consumirComision(Cancha cancha) {
-    if (cancha.club != SampleData.clubActivo) return;
-    if (saldoClub <= 0) return;
-    final c = comisionDe(cancha.precioHora, moneda: cancha.moneda);
-    saldoClub = (saldoClub - c).clamp(0, 1 << 31);
-    movimientos.insert(
-      0,
-      MovimientoSaldo(
-          tipo: TipoMovimiento.consumo,
-          monto: c,
-          concepto: 'Comisión · ${cancha.nombre}',
-          cuando: 'Ahora'),
-    );
-  }
-
-  int _contadorDemo = 1;
   int _contadorJugador = 1;
 
   static const _kUsuario = 'usuario_json';
@@ -8102,6 +8164,9 @@ class AppState extends ChangeNotifier {
           reclamoUbicacionMaxM = cacheDist;
           cambioCache = true;
         }
+        if (aplicarDeportesActivos(prefs.getStringList('deportes_activos'))) {
+          cambioCache = true;
+        }
         if (cambioCache) notifyListeners();
       }
     } catch (_) {}
@@ -8152,6 +8217,14 @@ class AppState extends ChangeNotifier {
       }
     }
     MarcaRemota.actualizar(j); // logo de la marca configurable en la torre
+    final deps = j['deportes_activos'];
+    if (deps is List && aplicarDeportesActivos(deps)) {
+      try {
+        await prefs?.setStringList(
+            'deportes_activos', [for (final d in deportesActivos) d.name]);
+      } catch (_) {}
+      cambio = true;
+    }
     final c = (j['canal'] ?? '').toString();
     if (c.isNotEmpty && c != canalComunicacion) {
       canalComunicacion = c;
@@ -8688,7 +8761,8 @@ class AppState extends ChangeNotifier {
         r.id != asegurada?.id);
     if (yaLocal) {
       _reembolsoSiPagado(cobro, cancha, fecha, hora, sena,
-          extrasPagados: bonoConExtras ? extras : const []);
+          extrasPagados: bonoConExtras ? extras : const [],
+          chargeId: operacionId);
       if (avisarJugador) {
         _avisarJugadorReserva(
           clave: '${cancha.id}_${fecha}_$hora',
@@ -8762,7 +8836,8 @@ class AppState extends ChangeNotifier {
       // Se cobró por adelantado (online/seña) pero el slot ya lo tomó otro →
       // registra el reembolso (no nos quedamos la plata).
       _reembolsoSiPagado(cobro, cancha, fecha, hora, sena,
-          extrasPagados: bonoConExtras ? extras : const []);
+          extrasPagados: bonoConExtras ? extras : const [],
+          chargeId: operacionId);
       if (avisarJugador) {
         _avisarJugadorReserva(
           clave: '${cancha.id}_${fecha}_$hora',
@@ -8875,13 +8950,14 @@ class AppState extends ChangeNotifier {
   /// plata del jugador.
   void _reembolsoSiPagado(
       String cobro, Cancha cancha, String fecha, String hora, int sena,
-      {List<ServicioExtra> extrasPagados = const []}) {
+      {List<ServicioExtra> extrasPagados = const [], String chargeId = ''}) {
     if (cobro == 'bono') {
       // Bono: los turnos no se pagaron ahora; solo los extras en línea.
       final m = extrasPagados.fold(0.0, (a, s) => a + s.precio);
       if (m > 0) {
         _registrarReembolso('ocupado_${cancha.id}_${fecha}_$hora', m,
-            'Horario ya tomado (servicios extra pagados con el bono)');
+            'Horario ya tomado (servicios extra pagados con el bono)',
+            chargeId: chargeId);
       }
       return;
     }
@@ -8890,7 +8966,8 @@ class AppState extends ChangeNotifier {
         ? sena.toDouble()
         : precioSlotEfectivo(cancha, fecha, hora).toDouble();
     _registrarReembolso('ocupado_${cancha.id}_${fecha}_$hora', monto,
-        'Horario ya tomado (pagado por adelantado)');
+        'Horario ya tomado (pagado por adelantado)',
+        chargeId: chargeId);
   }
 
   /// RESERVA DE VARIAS HORAS SEGUIDAS (ej. 18:00–20:00 = 2 Reservas del mismo
@@ -10206,40 +10283,6 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// Simula que ENTRA una reserva nueva por la app en un bloque valle libre.
-  /// Es el momento "mágico" del pitch de demo: que el dueño la vea entrar en vivo.
-  String? simularReservaEntrante() {
-    int idx = agenda.indexWhere(
-        (b) => b.reservaId == null && b.disponible && b.esHoraValle);
-    if (idx < 0) {
-      idx = agenda.indexWhere((b) => b.reservaId == null && b.disponible);
-    }
-    if (idx < 0) return null;
-
-    final bloque = agenda[idx];
-    final cancha = SampleData.canchaPorId(bloque.canchaId);
-    if (cancha == null) return null;
-
-    final nueva = Reserva(
-      id: 'demo${_contadorDemo++}',
-      canchaId: cancha.id,
-      jugador: 'Reserva por la app',
-      nivel: 'Intermedio 3.5',
-      dia: 'Hoy',
-      horaInicio: bloque.hora,
-      horaFin: _siguienteHora(bloque.hora),
-      estado: EstadoReserva.nueva,
-      traidaPorApp: true,
-      precio: cancha.precioHora.round(),
-      sena: (cancha.precioHora * 0.3).round(),
-    );
-    reservas.insert(0, nueva);
-    agenda[idx] = bloque.copyWith(reservaId: nueva.id);
-    _consumirComision(cancha);
-    notifyListeners();
-    _persistirDatos();
-    return '${cancha.nombre} · ${nueva.horaInicio} · +$monedaSimbolo ${nueva.precio}';
-  }
 
   String _siguienteHora(String hora) {
     final h = int.tryParse(hora.split(':').first);

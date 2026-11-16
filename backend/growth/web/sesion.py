@@ -22,6 +22,8 @@ import base64
 import hashlib
 import hmac
 import json
+import os
+import secrets
 import time
 import urllib.parse
 import urllib.request
@@ -38,20 +40,81 @@ def activo() -> bool:
     return bool(config.GOOGLE_WEB_CLIENT_ID)
 
 
+# Sin NINGÚN secreto configurado se usa uno aleatorio de este proceso: las
+# sesiones mueren al reiniciar, pero nadie puede falsificarlas (antes caía a
+# una constante conocida y cualquiera podía fabricar la cookie de otro).
+_EFIMERO = secrets.token_bytes(32)
+_avisado = {"v": False}
+
+
 def _secreto() -> bytes:
-    return (config.ADMIN_PANEL_TOKEN or config.APP_API_KEY or "pichangol-web").encode()
+    """Clave ESTABLE derivada de los secretos de siempre. Además de firmar
+    sesiones viejas, la usan módulos que necesitan refs deterministas
+    (mensajes, novedades, liga): por eso no cambia al agregar
+    `WEB_SESION_SECRETO`."""
+    v = config.ADMIN_PANEL_TOKEN or config.APP_API_KEY
+    if v:
+        return v.encode()
+    if not _avisado["v"]:
+        _avisado["v"] = True
+        print("[sesion] ⚠️ sin WEB_SESION_SECRETO / ADMIN_PANEL_TOKEN / APP_API_KEY: "
+              "las sesiones web usan una clave temporal (se cierran al reiniciar)", flush=True)
+    return _EFIMERO
 
 
-def _firmar(cuerpo: bytes) -> str:
-    return hmac.new(_secreto(), cuerpo, hashlib.sha256).hexdigest()[:40]
+def _claves_firma() -> list[bytes]:
+    """La 1.ª firma lo nuevo; todas verifican (rotar a `WEB_SESION_SECRETO`
+    no cierra las sesiones vigentes, que siguen firmadas con la de antes)."""
+    propia = (os.getenv("WEB_SESION_SECRETO") or "").strip()
+    claves = [propia.encode()] if propia else []
+    base = _secreto()
+    if base not in claves:
+        claves.append(base)
+    return claves
+
+
+def _firmar(cuerpo: bytes, clave: bytes | None = None) -> str:
+    return hmac.new(clave or _claves_firma()[0], cuerpo, hashlib.sha256).hexdigest()[:40]
+
+
+def firma_valida(cuerpo: bytes, firma: str) -> bool:
+    return any(hmac.compare_digest(_firmar(cuerpo, k), firma or "") for k in _claves_firma())
+
+
+def epoca(email: str | None) -> int:
+    """Época de sesión del correo (`stores.sesion_epocas`, viaja en el snapshot).
+    Las cookies llevan la época con que se emitieron: si es menor que la
+    vigente, ya no valen ("cerrar sesión en todos los dispositivos")."""
+    try:
+        from db.store import stores
+        return int((stores.sesion_epocas or {}).get((email or "").strip().lower(), 0) or 0)
+    except Exception:  # noqa: BLE001 — sin store, ninguna sesión se invalida por época
+        return 0
+
+
+def cerrar_todas(email: str) -> int:
+    """Sube la época del correo: TODAS las cookies emitidas antes (este y otros
+    navegadores) dejan de valer. Devuelve la época nueva; quien llama re-emite
+    la cookie del navegador actual para no sacarlo a él."""
+    em = (email or "").strip().lower()
+    if not em or "@" not in em:
+        raise ValueError("correo")
+    from db.store import stores
+    nueva = epoca(em) + 1
+    stores.sesion_epocas[em] = nueva
+    return nueva
 
 
 def emitir(datos: dict) -> str:
-    """Valor de cookie: base64url(json) + '.' + HMAC. Incluye `exp`."""
+    """Valor de cookie: base64url(json) + '.' + HMAC. Incluye `exp` y la
+    época de sesión vigente del correo (`ep`)."""
     d = {"email": (datos.get("email") or "").strip().lower()[:120],
          "nombre": (datos.get("nombre") or "").strip()[:80],
          "foto": (datos.get("foto") or "").strip()[:300],
          "exp": int(time.time()) + DIAS * 24 * 3600}
+    ep = epoca(d["email"])
+    if ep:
+        d["ep"] = ep
     cuerpo = base64.urlsafe_b64encode(json.dumps(d, separators=(",", ":")).encode()).decode().rstrip("=")
     return f"{cuerpo}.{_firmar(cuerpo.encode())}"
 
@@ -61,7 +124,7 @@ def leer(valor: str | None) -> dict | None:
     if not valor or "." not in valor:
         return None
     cuerpo, firma = valor.rsplit(".", 1)
-    if not hmac.compare_digest(_firmar(cuerpo.encode()), firma):
+    if not firma_valida(cuerpo.encode(), firma):
         return None
     try:
         pad = "=" * (-len(cuerpo) % 4)
@@ -69,6 +132,11 @@ def leer(valor: str | None) -> dict | None:
     except Exception:  # noqa: BLE001
         return None
     if not isinstance(d, dict) or int(d.get("exp", 0)) < time.time() or "@" not in str(d.get("email", "")):
+        return None
+    try:
+        if int(d.get("ep") or 0) < epoca(str(d["email"])):
+            return None  # se cerró la sesión en todos los dispositivos después de emitirla
+    except (TypeError, ValueError):
         return None
     return {"email": d["email"], "nombre": d.get("nombre") or "", "foto": d.get("foto") or ""}
 
@@ -157,7 +225,7 @@ def enlace_revision(volver: str = "") -> str:
         return ""
     q = f"?volver={urllib.parse.quote(volver, safe='')}" if volver else ""
     return (f"<div style='margin-top:10px;font-size:12.5px;color:#6b7280'>¿Eres revisor (Culqi, INDECOPI)? "
-            f"<a href='/entrar{q}#revision' style='color:#0B8A3E;font-weight:700'>Acceso de revisión con usuario y contraseña</a></div>")
+            f"<a href='/entrar{q}#revision' style='color:#3056ED;font-weight:700'>Acceso de revisión con usuario y contraseña</a></div>")
 
 
 def boton_google(callback: str = "onGoogleCred", volver: str = "") -> str:

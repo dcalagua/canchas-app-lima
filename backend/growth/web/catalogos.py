@@ -12,7 +12,41 @@ from __future__ import annotations
 # Deportes que el app OFRECE al dueño (`deportesActivos`): pádel se retiró del
 # piloto pero sigue en datos viejos, por eso se acepta si la cancha ya lo tenía.
 DEPORTES_ACTIVOS = ["futbol", "tenis", "pickleball", "voley", "basquet"]
+
+
+def deportes_activos() -> list[str]:
+    """Los que la torre tiene prendidos (`deportes_activos`, plan A1)."""
+    try:
+        from propiedad.panel import deportes_activos as _da
+        return _da()
+    except Exception:  # noqa: BLE001
+        return list(DEPORTES_ACTIVOS)
 DEPORTES_LEGADO = ["padel"]
+
+# Nombres en minúscula para armar frases ("fútbol, tenis y vóley").
+NOMBRE_DEPORTE = {"futbol": "fútbol", "tenis": "tenis", "padel": "pádel", "pickleball": "pickleball",
+                  "voley": "vóley", "basquet": "básquet", "natacion": "natación"}
+RAQUETAS = ["tenis", "padel", "pickleball"]
+
+
+def frase_deportes(deps: list[str], conjuncion: str = "y") -> str:
+    """["futbol", "tenis", "voley"] → "fútbol, tenis y vóley"."""
+    nombres = [NOMBRE_DEPORTE.get(d, d) for d in deps]
+    if len(nombres) <= 1:
+        return "".join(nombres)
+    return ", ".join(nombres[:-1]) + f" {conjuncion} " + nombres[-1]
+
+
+def raquetas_activas() -> list[str]:
+    """Deportes de raqueta prendidos en la torre (la portada /tenis los junta)."""
+    act = deportes_activos()
+    return [d for d in RAQUETAS if d in act] or ["tenis"]
+
+
+def titulo_raquetas() -> str:
+    """"Tenis y pickleball" (o "Tenis y pádel" si la torre prende pádel)."""
+    f = frase_deportes(raquetas_activas())
+    return f[:1].upper() + f[1:]
 
 # Tipo de piso por deporte (`superficiesDe`). Se guarda la ETIQUETA (texto) en
 # `superficie`, igual que el app.

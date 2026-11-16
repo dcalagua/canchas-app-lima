@@ -13,7 +13,9 @@ import sys
 import tokenize
 
 RAIZ = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RX = re.compile(r"(?<![\w/@.\-])(Pichangol|www\.pichangol\.app)(?![\w\-])")
+# También dentro de URLs de WhatsApp ("…%20Pichangol"), donde un dígito queda
+# justo antes y el borde de palabra no lo detectaba.
+RX = re.compile(r"(?:(?<![\w/@.\-])|(?<=%20))(Pichangol|www\.pichangol\.app)(?![\w\-])")
 
 
 def _archivos():

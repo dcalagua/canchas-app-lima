@@ -76,6 +76,7 @@ _ISO_POR_MONEDA = {"PEN": "PE", "BOB": "BO", "USD": "EC"}
 SIMBOLO = {"PEN": "S/", "BOB": "Bs", "USD": "$"}
 # `cuenta_screen._saldoBajo`: con 15 o menos el dueño deja de salir destacado.
 SALDO_BAJO = 15
+CULQI_JS = "https://checkout.culqi.com/js/v4"  # se carga tras el `load` (ver _JS_BILLETERA)
 
 
 _LIMA = timezone(timedelta(hours=-5))
@@ -370,31 +371,31 @@ _CSS = """
 .bil-nav::-webkit-scrollbar{display:none}
 .bil-nav a{flex:none;border:1px solid #E4E4E4;background:#fff;border-radius:999px;padding:8px 14px;font-weight:700;font-size:14px;color:var(--noche);text-decoration:none;box-shadow:0 1px 3px rgba(0,0,0,.06);white-space:nowrap}
 .bil-nav a.sel{background:#EBEBEB;border-color:#D6D6D6}
-.bil-saldo{background:linear-gradient(135deg,#128C7E,#075E54);color:#fff;border-radius:22px;padding:22px;box-shadow:0 8px 18px rgba(7,94,84,.35)}
+.bil-saldo{background:linear-gradient(135deg,#3056ED,#2442C4);color:#fff;border-radius:22px;padding:22px;box-shadow:0 8px 18px rgba(36,66,196,.35)}
 .bil-saldo .top{display:flex;align-items:center;gap:10px}
 .bil-saldo .top span{opacity:.8;font-size:15px}
 .bil-saldo .pill{margin-left:auto;background:rgba(255,255,255,.16);color:#fff;border-radius:99px;padding:5px 10px;font-size:12px;font-weight:800;white-space:nowrap}
 .bil-saldo .monto{font-size:38px;font-weight:800;margin:14px 0 4px;overflow-wrap:anywhere}
 .bil-saldo .txt{opacity:.7;font-size:13px;line-height:1.4}
-.bil-saldo .btn{width:100%;margin-top:18px;background:#fff;color:#0B8A3E}
+.bil-saldo .btn{width:100%;margin-top:18px;background:#fff;color:#3056ED}
 .bil-card{border-radius:16px;padding:14px;display:flex;gap:10px;align-items:center;margin-top:12px;border:1px solid var(--trazo);background:#fff;color:inherit;text-decoration:none;min-width:0}
 .bil-card .em{font-size:22px;flex:none}
 .bil-card .tx{flex:1;min-width:0;font-size:13.5px;line-height:1.35}
 .bil-card .tx b{display:block;font-size:14.5px}
 .bil-card .val{font-weight:800;font-size:17px;white-space:nowrap}
-.bil-card.regalo{background:#EEF8E4;border-color:#7CB518;color:#14463A;font-weight:600}
+.bil-card.regalo{background:#EEF1FF;border-color:#7E98FF;color:#2442C4;font-weight:600}
 .bil-card.bajo{background:#FFF1EC;border-color:#F3B8A5;color:#8F2A10}
 .bil-card.recibir{background:#E6F4EA;border-color:#9ED2B0}
-.bil-card.recibir .val{color:#067A38}
+.bil-card.recibir .val{color:#2442C4}
 .bil-card.warn{background:var(--warn-bg);border-color:#EAD28F;color:var(--warn-fg)}
 .bil-card.promo{background:linear-gradient(90deg,#FFF6D8,#FFEFC2);border-color:#E8D9A0;color:#7A5C00;font-weight:800}
 .bil-acc{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:18px 0 6px}
 .bil-acc a,.bil-acc button{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:0;font:inherit;color:inherit;text-decoration:none;cursor:pointer;padding:6px 2px;border-radius:14px;position:relative}
 .bil-acc .bur{width:52px;height:52px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px}
 .bil-acc small{font-size:12px;font-weight:700;text-align:center;line-height:1.15}
-.bil-acc .ins{position:absolute;top:0;left:calc(50% + 12px);background:#B08908;color:#fff;border:1.5px solid #fff;border-radius:99px;font-size:10px;font-weight:800;padding:2px 6px}
+.bil-acc .ins{position:absolute;top:0;left:calc(50% + 12px);background:#B08908;color:#fff;border:1.5px solid #fff;border-radius:99px;font-size:12px;font-weight:800;padding:2px 6px}
 .bil-cupon{margin:6px 0 4px;text-align:center}
-.bil-cupon summary{display:inline-block;cursor:pointer;color:#14463A;font-weight:700;list-style:none;padding:8px}
+.bil-cupon summary{display:inline-block;cursor:pointer;color:#2442C4;font-weight:700;list-style:none;padding:8px}
 .bil-cupon summary::-webkit-details-marker{display:none}
 .bil-cupon form{display:flex;gap:8px;max-width:420px;margin:6px auto 0}
 .bil-cupon input{flex:1;min-width:0;text-transform:uppercase;letter-spacing:1px}
@@ -417,7 +418,7 @@ _CSS = """
 .bmov .tx small{color:var(--tenue);font-size:12.5px}
 .bmov .der{text-align:right;flex:none}
 .bmov .der b{font-size:15.5px;white-space:nowrap}
-.bmov .der small{display:block;color:var(--tenue);font-size:11.5px}
+.bmov .der small{display:block;color:var(--tenue);font-size:12px}
 .bmov .rec{margin:0 12px 12px 64px;background:#F6F7F6;border-radius:10px;padding:8px 10px;font-size:13px}
 .bmov .rec div{display:flex;justify-content:space-between;gap:10px;padding:2px 0}
 .bmov .rec div b{white-space:nowrap}
@@ -432,24 +433,26 @@ _CSS = """
 .pag .tx b{display:block;font-size:14.5px;overflow-wrap:anywhere;line-height:1.3}
 .pag .tx small{color:var(--tenue);font-size:12.5px;display:block}
 .pag .mt{font-weight:800;font-size:15px;white-space:nowrap;text-align:right}
-.pag .mt small{display:block;font-weight:600;font-size:11.5px;color:var(--tenue)}
+.pag .mt small{display:block;font-weight:600;font-size:12px;color:var(--tenue)}
 .pag-res{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;background:#F4F7F5;border-radius:14px;padding:12px;margin:10px 0}
 .pag-res small{display:block;color:var(--tenue);font-size:12px}
 .pag-res b{font-size:15px;overflow-wrap:anywhere}
-.pts-top{background:#14463A;color:#fff;border-radius:18px;padding:20px;text-align:center}
+.pts-top{background:#2442C4;color:#fff;border-radius:18px;padding:20px;text-align:center}
 .pts-top .t{opacity:.75;font-weight:700;font-size:13px}
 .pts-top .n{font-size:44px;font-weight:900;line-height:1.1;margin:6px 0}
 .pts-top .v{font-size:14px}
 .pts-top .c{opacity:.75;font-size:12.5px;margin-top:4px}
 .pts-pend{background:#FBEAD2;color:#8A5A00;border-radius:12px;padding:10px 12px;font-weight:700;font-size:13px;margin-top:10px;line-height:1.35}
-.pts-como{background:#EEF8E4;border-radius:14px;padding:14px;margin-top:14px;font-size:13px;line-height:1.55}
+.pts-como{background:#EEF1FF;border-radius:14px;padding:14px;margin-top:14px;font-size:13px;line-height:1.55}
 .pts-como b{font-size:14px}
+.pts-como summary{cursor:pointer;list-style:none;min-height:32px;display:flex;align-items:center}.pts-como summary::after{content:'⌄';margin-left:auto;font-size:18px}
+.pts-como[open] summary{margin-bottom:6px}
 .pts-it{display:flex;gap:10px;align-items:center;border:1px solid var(--trazo);border-radius:12px;padding:10px 14px;margin-bottom:8px;background:#fff}
 .pts-it .em{font-size:20px;flex:none}
 .pts-it .tx{flex:1;min-width:0}
 .pts-it .tx b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.pts-it .tx small{color:var(--tenue);font-size:11.5px}
-.pts-it .n{font-weight:900;font-size:15px;color:#14463A;white-space:nowrap}
+.pts-it .tx small{color:var(--tenue);font-size:12px}
+.pts-it .n{font-weight:900;font-size:15px;color:#2442C4;white-space:nowrap}
 .pts-it .n.gris{color:var(--tenue)}.pts-it .n.rojo{color:#C0392B}
 .pais-actual{display:flex;align-items:center;gap:14px;background:#fff;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,.08);padding:18px}
 .pais-actual .flag{width:44px;height:30px;border-radius:5px;flex:none}
@@ -511,7 +514,7 @@ def _fila_mov(m: dict) -> str:
     rec = m["clase"] == "recarga"
     pagada = liq and m["liquidado"]
     con_recibo = liq and m["bruto"] > 0
-    color = "#7CB518" if rec else (("#0B8A3E" if pagada else "#067A38") if liq else "#C13515")
+    color = "#7E98FF" if rec else (("#3056ED" if pagada else "#2442C4") if liq else "#C13515")
     ic = "⬇️" if rec else (("✅" if pagada else "👛") if liq else "⬆️")
     signo = "+" if (rec or liq) else "−"
     medio = f" · {_MEDIO[m['medio']]}" if m["medio"] in _MEDIO else ""
@@ -558,21 +561,48 @@ _JS_BILLETERA = (r"""
   document.querySelectorAll('#recChips [data-monto]').forEach(function(ch){ ch.addEventListener('click', function(){ st.otro = false; st.monto = Number(ch.dataset.monto); err(''); pintar(); }); });
   var co = $('chipOtro'); if(co) co.addEventListener('click', function(){ st.otro = true; var i = $('montoOtro'); st.monto = Number(i.value || 0); pintar(); i.focus(); });
   var mi = $('montoOtro'); if(mi) mi.addEventListener('input', function(){ st.monto = Number(mi.value || 0); err(''); pintar(); });
+  // Culqi Checkout (≈260 KB) ya no bloquea la página: se pide DESPUÉS de que
+  // la billetera terminó de cargar (y, si aún no llegó, al pulsar Pagar).
+  var culqiP = null;
+  function cargarCulqi(){
+    if(window.Culqi) return Promise.resolve(true);
+    if(culqiP) return culqiP;
+    culqiP = new Promise(function(res){
+      var s = document.createElement('script'); s.src = C.culqiJs; s.async = true;
+      s.onload = function(){ res(!!window.Culqi); };
+      s.onerror = function(){ culqiP = null; res(false); };
+      document.head.appendChild(s);
+    });
+    return culqiP;
+  }
+  if(C.culqiJs){
+    if(document.readyState === 'complete') setTimeout(cargarCulqi, 0);
+    else window.addEventListener('load', function(){ setTimeout(cargarCulqi, 0); });
+  }
   function recargar(){
     err('');
     if(!(st.monto >= C.min && st.monto <= C.max && Math.floor(st.monto) === st.monto)){ err('Entre ' + C.moneda + ' ' + C.min + ' y ' + C.moneda + ' ' + C.max + ', sin decimales.'); return; }
     if(C.pasarela){ recargarPasarela(); return; }
-    if(!C.pk || !window.Culqi){ err('El pago en línea no está disponible por ahora.'); return; }
+    if(!C.pk || !C.culqiJs){ err('El pago en línea no está disponible por ahora.'); return; }
     var m = window.pcgMedioPago ? pcgMedioPago() : 'yape', monto = st.monto, bv = bono(monto);
     pcgResumenPago({moneda: C.moneda, medio: m, lineas: [{t: 'Recarga de saldo ⟦MARCA⟧', m: monto}], total: monto,
                     nota: (bv > 0 ? '🎁 Además recibes +' + fmt(bv) + ' de bono (lo pone ⟦MARCA⟧). ' : '') + 'El saldo se acredita al instante en tu billetera, la misma de la app.'})
       .then(function(ok){
         if(!ok) return;
+        if(!window.Culqi){ pcgCargando('Abriendo el pago seguro…', {demora: 250}); }
+        return cargarCulqi().then(function(listo){
+          pcgCargando(false);
+          if(!listo){ err('El pago en línea no está disponible por ahora. Inténtalo de nuevo en un momento.'); return; }
+          abrirCulqi(m, monto);
+        });
+      });
+  }
+  function abrirCulqi(m, monto){
         Culqi.publicKey = C.pk;
         Culqi.settings({title: '⟦MARCA⟧', currency: 'PEN', amount: Math.round(monto * 100)});
         Culqi.options({lang: 'es', installments: false,
           paymentMethods: {yape: m === 'yape', tarjeta: m === 'tarjeta', bancaMovil: false, agente: false, billetera: false, cuotealo: false},
-          style: {logo: '', bannerColor: '#0F1B2D', buttonBackground: '#0E8F67', buttonText: 'Pagar', buttonTextColor: '#FFFFFF'}});
+          style: {logo: '', bannerColor: '#333333', buttonBackground: '#3056ED', buttonText: 'Pagar', buttonTextColor: '#FFFFFF'}});
         window.culqi = function(){
           if(Culqi.token){
             var token = Culqi.token.id, medio = (Culqi.token.iin && Culqi.token.iin.card_brand) ? 'tarjeta' : 'yape';
@@ -591,7 +621,6 @@ _JS_BILLETERA = (r"""
           else { err((Culqi.error && Culqi.error.user_message) || 'No se pudo procesar el pago.'); }
         };
         Culqi.open();
-      });
   }
   // $ / Bs: la recarga se paga en la página de la pasarela del país y vuelve a /web/pago/{orden}.
   function recargarPasarela(){
@@ -660,10 +689,15 @@ def pagina_billetera(request: Request) -> HTMLResponse:
     except Exception:  # noqa: BLE001
         puntos = 0
 
+    # "Destacado" es de los DUEÑOS (sus canchas salen arriba mientras tengan
+    # saldo); a quien solo juega el sello "⏸ Pausado" no le decía nada.
     destacado = saldo > 0
+    sello = ""
+    if canchas:
+        sello = ("<span class='pill' title='Con saldo, tus canchas salen destacadas en el explorador.'>"
+                 + ("⭐ Tus canchas destacadas" if destacado else "⏸ Canchas sin destacar") + "</span>")
     tarjeta = (
-        f"<div class='bil-saldo'><div class='top'><span>Saldo {MARCA}</span>"
-        f"<span class='pill'>{'⭐ Destacado' if destacado else '⏸ Pausado'}</span></div>"
+        f"<div class='bil-saldo'><div class='top'><span>Saldo {MARCA}</span>{sello}</div>"
         f"<div class='monto'>{e(_dinero(sim, saldo))}</div>"
         "<div class='txt'>Es tu saldo único: el mismo de la app, para tus reservas, tus canchas y academias. "
         "Las comisiones de cada reserva se descuentan de aquí.</div>"
@@ -674,8 +708,9 @@ def pagina_billetera(request: Request) -> HTMLResponse:
                    f"de REGALO por unirte a {MARCA}: tus comisiones se descuentan de aquí primero, sin tocar tu plata.</span></div>")
     # "Saldo bajo" habla de salir destacado: solo aplica a quien tiene canchas.
     if canchas and saldo <= SALDO_BAJO and regalo <= 0:
-        avisos += ("<div class='bil-card bajo'><span class='em'>⚠️</span><span class='tx'>Saldo bajo: si llega a 0 dejas de "
-                   "aparecer destacado. Recarga para seguir recibiendo reservas.</span></div>")
+        avisos += ("<div class='bil-card warn'><span class='em'>💡</span><span class='tx'><b>Tu saldo está bajo</b>"
+                   "Con saldo, tus canchas salen destacadas y las comisiones se descuentan solas. "
+                   "<a href='#recargar'>Recargar ›</a></span></div>")
     for mon, v in pend.items():
         avisos += (f"<a class='bil-card recibir' href='/anfitrion/ingresos'><span class='em'>👛</span><span class='tx'>"
                    f"<b>Por recibir</b>De reservas online, ventas y torneos ({MARCA} te transfiere aparte).</span>"
@@ -697,11 +732,11 @@ def pagina_billetera(request: Request) -> HTMLResponse:
     ins = f"<span class='ins'>{'999+' if puntos > 999 else puntos}</span>" if puntos > 0 else ""
     acciones = (
         "<div class='bil-acc'>"
-        "<a href='#recargar'><span class='bur' style='background:#7CB51824'>➕</span><small>Recargar</small></a>"
+        "<a href='#recargar'><span class='bur' style='background:#7E98FF24'>➕</span><small>Recargar</small></a>"
         "<a href='/cuenta/tarjetas'>"
-        "<span class='bur' style='background:#14463A1F'>💳</span><small>Tarjetas</small></a>"
+        "<span class='bur' style='background:#2442C41F'>💳</span><small>Tarjetas</small></a>"
         f"<a href='/mis-puntos'><span class='bur' style='background:#B089081F'>⭐</span>{ins}<small>Puntos</small></a>"
-        "<a href='/mi-billetera/estado-de-cuenta'><span class='bur' style='background:#067A381F'>🧾</span><small>Estado<br>de cuenta</small></a>"
+        "<a href='/mi-billetera/estado-de-cuenta'><span class='bur' style='background:#2442C41F'>🧾</span><small>Estado<br>de cuenta</small></a>"
         "</div>")
     cupon = ("<details class='bil-cupon'><summary>🎟️ ¿Tienes un cupón? Canjéalo aquí</summary>"
              "<form id='formCupon' autocomplete='off'><input id='codCupon' maxlength='24' placeholder='CÓDIGO' aria-label='Código del cupón'>"
@@ -762,7 +797,9 @@ def pagina_billetera(request: Request) -> HTMLResponse:
             lista += ("<h2>Mi saldo</h2><p class='h2sub'>Tu monedero: recargas y gastos (comisiones, servicios, Pro).</p>"
                       + "".join(_fila_mov(m) for m in mios))
     pas_h = "" if P["pasarela"] == "culqi" else pago_hospedado.pasarela_para(P["iso_mon"])
+    con_culqi = "btnRecargar" in recargar and P["pasarela"] == "culqi"
     cfg = {"moneda": sim, "recargas": P["recargas"], "min": P["min"], "max": P["max"], "pk": config.CULQI_PUBLIC_KEY,
+           "culqiJs": CULQI_JS if con_culqi else "",
            "bono": {"pct": pct, "min": minimo, "tope": tope}, "play": PLAY_URL,
            "pasarela": pas_h, "pasarelaNombre": pago_hospedado.nombre_pasarela(pas_h) if pas_h else "",
            "recargaOk": _recarga_ok(request, email)}
@@ -771,8 +808,9 @@ def pagina_billetera(request: Request) -> HTMLResponse:
               + f"<h2 style='margin-top:30px'>Movimientos</h2>{lista}"
               + "<p class='sub' style='font-size:13px;margin-top:18px'>¿Buscas lo que pagaste en reservas y academias? "
                 "Está en <a href='/mis-pagos'>Mis pagos</a>.</p></div>"
-              + f"<script>window.__billetera={json.dumps(cfg)};</script><script>{_JS_BILLETERA}</script>")
-    head = "<script src='https://checkout.culqi.com/js/v4'></script>" if ("btnRecargar" in recargar and P["pasarela"] == "culqi") else ""
+              + f"<script>window.__billetera={ui.json_js(cfg)};</script><script>{_JS_BILLETERA}</script>")
+    # Culqi ya no va en <head> (bloqueaba la página ~0,3-0,8 s): lo carga el JS tras el `load`.
+    head = "<link rel='preconnect' href='https://checkout.culqi.com'>" if con_culqi else ""
     return ui.shell("Mi billetera", cuerpo, sesion=ses, titulo_tab=f"Mi billetera · {MARCA}", extra_head=head)
 
 
@@ -803,9 +841,13 @@ def pagina_estado_cuenta(request: Request) -> HTMLResponse:
         + f"</td><td>{'Por recibir' if m['clase'] == 'liquidacion' and not m['liquidado'] else ('Recibido' if m['clase'] == 'liquidacion' else ('Gasto' if m['clase'] == 'consumo' else 'Ingreso'))}</td>"
         f"<td class='m'>{'−' if m['clase'] == 'consumo' else '+'} {e(_dinero(m['moneda'], m['monto']))}</td></tr>" for m in movs)
     tabla = (f"<div class='est-wrap'><table class='est-tabla'><thead><tr><th>Fecha</th><th>Concepto</th><th>Tipo</th><th style='text-align:right'>Monto</th></tr></thead>"
-             f"<tbody>{filas}</tbody></table></div>") if movs else "<div class='bil-vacio'><span class='em'>👛</span><b>Aún no hay movimientos</b></div>"
+             f"<tbody>{filas}</tbody></table></div>") if movs else (
+                 "<div class='bil-vacio'><span class='em'>👛</span><b>Tu saldo aún no tiene movimientos</b>"
+                 "<span class='sub'>Lo que pagaste con tarjeta o Yape está en <a href='/mis-pagos'>Mis pagos</a>.</span></div>")
     cuerpo = (f"<style>{_CSS}</style><div class='bil'>{_nav('billetera')}<h1>Estado de cuenta</h1>"
               f"<p class='sub'>{e(ses.get('nombre') or email)} · {e(email)} · generado el {e(_fecha_larga(_ahora().isoformat()))}</p>"
+              "<p class='sub no-print' style='margin-top:-4px'>Movimientos de tu <b>saldo</b>: recargas, comisiones, devoluciones y bonos. "
+              "Tus reservas y compras pagadas con tarjeta o Yape están en <a href='/mis-pagos'>Mis pagos</a>.</p>"
               f"<div class='pag-res'><div><small>Saldo</small><b>{e(_dinero(sim, stores.saldo_centimos(email) / 100.0))}</b></div>"
               f"<div><small>Regalo</small><b>{e(_dinero(sim, stores.saldo_promo_centimos(email) / 100.0))}</b></div>"
               f"<div><small>Movimientos</small><b>{len(movs)}</b></div></div>"
@@ -975,13 +1017,13 @@ def _hoy() -> date:
 def _tarjeta_pago(p: dict) -> str:
     sim = p["moneda"]
     if p["estado"] == "bono":
-        color, ic, mt, sub = "#067A38", "🎟️", "Con bono", f"{p['sub']} · descontado de tu bono"
+        color, ic, mt, sub = "#2442C4", "🎟️", "Con bono", f"{p['sub']} · descontado de tu bono"
     elif p["estado"] == "pendiente":
         color, ic, mt, sub = "#C13515", "⏳", _dinero(sim, p["monto"]), f"{p['sub']} · por pagar en la cancha"
     elif p["estado"] == "pendiente_aca":
         color, ic, mt, sub = "#C13515", "⏳", _dinero(sim, p["monto"]), f"{p['sub']} · por pagar" if p["sub"] else "Por pagar"
     else:
-        color, ic, mt, sub = "#0B8A3E", p.get("em") or "✅", f"− {_dinero(sim, p['monto'])}", p["sub"]
+        color, ic, mt, sub = "#3056ED", p.get("em") or "✅", f"− {_dinero(sim, p['monto'])}", p["sub"]
     inner = (f"<span class='ic' style='background:{color}1F'>{ic}</span><span class='tx'><b>{e(p['titulo'])}</b>"
              f"<small>{e(sub)}</small></span><span class='mt' style='color:{color}'>{e(mt)}"
              + ("<small>Comprobante ›</small>" if p["href"] and p["href"] != "/mi-billetera" else "") + "</span>")
@@ -1086,18 +1128,19 @@ def pagina_mis_puntos(request: Request) -> HTMLResponse:
     cuerpo = (
         f"<style>{_CSS}</style><div class='bil'>{_nav('puntos')}<h1>Mis puntos</h1>"
         f"<div class='pts-top'><div class='t'>⭐ Puntos {MARCA}</div><div class='n'>{disponibles}</div>"
-        f"<div class='v'>Valen S/ {valor:.2f} en descuentos al reservar en línea</div>"
+        + (f"<div class='v'>Valen S/ {valor:.2f} en descuentos al reservar en línea</div>" if iso == "PE"
+           else "<div class='v'>Se canjean como descuento en reservas pagadas en línea en soles (Perú)</div>")
         + (f"<div class='c'>Ya canjeaste {canjeados} puntos 🎉</div>" if canjeados > 0 else "") + "</div>"
         + (f"<div class='pts-pend'>⏳ +{pendientes} por confirmar: pídele al local que marque tu pago en efectivo para acreditarlos.</div>"
            if pendientes > 0 else "")
-        + "<div class='pts-como'><b>Cómo funcionan</b><br>"
+        + "<details class='pts-como'><summary><b>Cómo funcionan</b></summary>"
           "• Ganas 1 punto por cada S/ 1 que pagas por la app o la web (últimos 12 meses).<br>"
           "• Pago en línea: puntos al instante. Efectivo: cuando el local confirma tu pago.<br>"
           f"• Los pedidos de bodega pagados con tu SALDO {MARCA} también suman (al entregarse). En efectivo no acumulan.<br>"
           "• Cada 100 puntos = S/ 3 de descuento al pagar en línea tu próxima reserva, en la web o en la app: marca “Usar 100 puntos” en el resumen "
           f"(un canje por reserva; no aplica con seña, bono ni premio de fidelidad). El descuento lo pone {MARCA}, no el local.<br>"
           "• Si cancelas a tiempo una reserva en la que usaste puntos, los recuperas."
-        + otra + "</div>"
+        + otra + "</details>"
         "<h2>Historial (últimos 12 meses)</h2>" + lista
         + "<p class='sub' style='font-size:13px;margin-top:18px'><a href='/mis-reservas'>Mis reservas</a> · "
           "<a href='/mi-billetera'>Mi billetera</a></p></div>")

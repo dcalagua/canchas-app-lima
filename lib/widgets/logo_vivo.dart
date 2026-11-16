@@ -5,9 +5,8 @@ import 'package:flutter/material.dart';
 import '../services/marca_remota.dart';
 import 'marca.dart';
 
-const _navyLogo = Color(0xFF0A1F3C); // azul marino de la pelota del logo
 
-/// El LOGO "EN VIVO" de Pichangol (regla del director para todo preload): el
+/// El LOGO "EN VIVO" de la marca (CanchaLibre) (regla del director para todo preload): el
 /// pin del logo quieto y la PELOTA DE ADENTRO cambiando de deporte (fútbol →
 /// tenis → básquet → vóley → béisbol) como un gif, con giro+fade al cambiar y
 /// un pulso suave continuo. La pelota animada se pinta ENCIMA de la pelota
@@ -32,12 +31,6 @@ class _LogoPichangolVivoState extends State<LogoPichangolVivo>
     Icons.sports_volleyball,
     Icons.sports_baseball,
   ];
-  // Posición de la pelota dentro de assets/brand/logo_pichangol.png (640×640):
-  // centro en (49.9%, 33.0%) y radio ≈10.5% del ancho. Medido del asset real.
-  static const double _fx = 0.4994;
-  static const double _fy = 0.3300;
-  static const double _fd = 0.225; // diámetro (fracción del ancho): cubre la impresa
-
   int _i = 0;
   Timer? _ciclo;
   late final AnimationController _pulso = AnimationController(
@@ -62,7 +55,6 @@ class _LogoPichangolVivoState extends State<LogoPichangolVivo>
   @override
   Widget build(BuildContext context) {
     final lado = widget.ancho;
-    final d = lado * _fd;
     if (MarcaRemota.logoUrl.value.isNotEmpty) {
       // Logo propio de la torre: el mismo pulso suave, sin la pelota animada
       // (su posición se midió sobre el logo de siempre).
@@ -81,59 +73,56 @@ class _LogoPichangolVivoState extends State<LogoPichangolVivo>
         ),
       );
     }
+    // Sin logo de la torre: marca DIBUJADA (rebrand CanchaLibre, oct-2026).
+    // El PNG anterior traía el texto "Pichangol"; ahora la pelota que cambia
+    // de deporte va sobre el círculo de la marca y debajo el nombre vigente
+    // (`kBrandName`), así un cambio de marca no exige assets nuevos.
+    final bola = lado * 0.46;
     return SizedBox(
       width: lado,
       height: lado,
-      child: Stack(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Positioned.fill(
-            child: Image.asset(
-              'assets/brand/logo_pichangol.png',
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Center(
-                child: PichangolWordmark(fontSize: 32),
-              ),
-            ),
-          ),
-          // Pelota animada, centrada EXACTO sobre la pelota impresa del logo.
-          Positioned(
-            left: lado * _fx - d / 2,
-            top: lado * _fy - d / 2,
-            width: d,
-            height: d,
-            child: AnimatedBuilder(
-              animation: _pulso,
-              builder: (context, child) {
-                // Pulso suave (1.00→1.07): la pelota "respira".
-                final s = 1 + 0.07 * Curves.easeInOut.transform(_pulso.value);
-                return Transform.scale(scale: s, child: child);
-              },
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: _navyLogo, // mismo navy de la pelota impresa
-                  shape: BoxShape.circle,
+          AnimatedBuilder(
+            animation: _pulso,
+            builder: (context, child) {
+              final s = 1 + 0.07 * Curves.easeInOut.transform(_pulso.value);
+              return Transform.scale(scale: s, child: child);
+            },
+            child: Container(
+              width: bola,
+              height: bola,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF0B7A57), Color(0xFF08654A)],
                 ),
-                child: Center(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 280),
-                    transitionBuilder: (child, anim) => RotationTransition(
-                      turns: Tween(begin: 0.85, end: 1.0).animate(anim),
-                      child: ScaleTransition(
-                        scale: anim,
-                        child: FadeTransition(opacity: anim, child: child),
-                      ),
+              ),
+              child: Center(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 280),
+                  transitionBuilder: (child, anim) => RotationTransition(
+                    turns: Tween(begin: 0.85, end: 1.0).animate(anim),
+                    child: ScaleTransition(
+                      scale: anim,
+                      child: FadeTransition(opacity: anim, child: child),
                     ),
-                    child: Icon(
-                      _deportes[_i],
-                      key: ValueKey(_i),
-                      color: Colors.white,
-                      size: d * 0.72,
-                    ),
+                  ),
+                  child: Icon(
+                    _deportes[_i],
+                    key: ValueKey(_i),
+                    color: Colors.white,
+                    size: bola * 0.56,
                   ),
                 ),
               ),
             ),
           ),
+          SizedBox(height: lado * 0.07),
+          PichangolWordmark(fontSize: lado * 0.13),
         ],
       ),
     );

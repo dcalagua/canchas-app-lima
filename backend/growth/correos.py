@@ -177,6 +177,17 @@ def al_pago(p) -> None:
 
 
 def encolar(tipo: str, *, pago_id: int | None = None, datos: dict | None = None) -> dict:
+    # Un aviso con `categoria` (p. ej. "novedades") respeta las preferencias de
+    # Mi perfil (`prefs_avisos`). Los recibos de pago NUNCA llevan categoría:
+    # son la constancia de cada cobro y siempre se envían.
+    cat = str((datos or {}).get("categoria") or "")
+    if tipo == "aviso" and cat:
+        try:
+            import prefs_avisos
+            if not prefs_avisos.quiere(str((datos or {}).get("para") or ""), cat):
+                return {"tipo": tipo, "omitido": "preferencia", "datos": datos or {}}
+        except Exception:  # noqa: BLE001
+            pass
     ahora = _ahora()
     ev = {"id": f"ev_{int(time.time() * 1_000_000)}_{len(_eventos())}", "tipo": tipo,
           "pago_id": pago_id, "datos": datos or {}, "creado": _iso(ahora),
@@ -248,7 +259,7 @@ def _liq(p) -> dict:
 
 # ── Plantilla HTML (estilo Airbnb, paleta del logo) ───────────────────────────
 
-_VERDE = "#0B8A3E"
+_VERDE = "#0B7A57"
 _TINTA = "#0A1B3D"
 _TENUE = "#6A7282"
 _BORDE = "#E7EAEE"
