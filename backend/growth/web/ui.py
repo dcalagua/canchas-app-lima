@@ -41,6 +41,9 @@ TOKENS = ("""
   --ok-bg:#E9F4EE;--ok-fg:#1F6E49;--warn-bg:#FDF2D6;--warn-fg:#946200;--bad-bg:#FBE7E7;--bad-fg:#C0392B;
   --rojo:#C13515;--sombra:0 2px 14px rgba(15,27,45,.06);--sombra2:0 10px 30px rgba(15,27,45,.10);
   --r:16px;--r-lg:20px;--r-btn:12px;
+  /* Modo anfitrión (diseñador, 16-nov-2026): fondo celeste, texto tinta, bordes suaves y colores de estado */
+  --anf-fondo:#F2F5FF;--anf-texto:#1B2140;--anf-tenue:#4B5468;--anf-borde:#E4E9F7;--anf-linea:#EEF1FA;
+  --anf-verde:#16A15A;--anf-naranja:#EE8A12;--anf-rojo:#D92D20;--anf-morado:#7B61FF;
 }
 """).replace('⟦MARCA⟧', MARCA)
 
@@ -754,6 +757,8 @@ from web.nav_anfitrion import CSS as _CSS_NAV_ANF  # noqa: E402 — barra del mo
 CSS += _CSS_NAV_ANF
 from web.anfitrion_inicio import CSS as _CSS_INICIO_ANF  # noqa: E402 — tablero de /anfitrion (16-nov-2026)
 CSS += _CSS_INICIO_ANF
+from web.vista_anfitrion import CSS_TODO as _CSS_VISTAS_ANF  # noqa: E402 — kit + vistas del modo anfitrión (16-nov-2026)
+CSS += _CSS_VISTAS_ANF
 
 
 def e(s) -> str:
@@ -1532,6 +1537,8 @@ JS_ABRIR_APP = JS_ABRIR_APP.replace("pe.ebim.pichangol", APP_PAQUETE)
 JS_NAV = JS_NAV + JS_ABRIR_APP
 from web.nav_anfitrion import JS as _JS_NAV_ANF  # noqa: E402
 JS_NAV = JS_NAV + _JS_NAV_ANF
+from web.vista_anfitrion import JS as _JS_VISTAS_ANF  # noqa: E402
+JS_NAV = JS_NAV + _JS_VISTAS_ANF
 
 
 def nav_simple(ses: dict | None = None, volver: str = "/canchas") -> str:

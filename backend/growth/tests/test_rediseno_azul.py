@@ -43,9 +43,9 @@ def test_paleta_del_disenador_y_contraste_aa():
     assert _contraste("FFFFFF", tok["azul-claro"]) < 3        # por eso #7E98FF es SOLO decoración
     assert _contraste(tok["tenue"], "FFFFFF") >= 4.5
     # el CSS del rediseño va al final y gana en la cascada
-    from web import anfitrion_inicio, estilos_rediseno, nav_anfitrion
-    # después solo la barra y el tablero del modo anfitrión (16-nov-2026)
-    assert ui.CSS.endswith(estilos_rediseno.CSS + nav_anfitrion.CSS + anfitrion_inicio.CSS)
+    from web import anfitrion_inicio, estilos_rediseno, nav_anfitrion, vista_anfitrion
+    # después solo la barra, el tablero y las vistas del modo anfitrión (16-nov-2026)
+    assert ui.CSS.endswith(estilos_rediseno.CSS + nav_anfitrion.CSS + anfitrion_inicio.CSS + vista_anfitrion.CSS_TODO)
 
 
 def test_cabecera_en_tres_franjas_en_la_portada():
