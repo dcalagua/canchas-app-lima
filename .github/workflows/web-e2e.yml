@@ -24,7 +24,8 @@ concurrency:
 jobs:
   barrido:
     name: Barrido web (Playwright)
-    runs-on: ubuntu-latest
+    # Ubuntu 24.04 fijo: ubuntu-latest pasó a 26.04 (oct-2026) y Playwright 1.56 no lo soporta.
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     services:
       postgres:
