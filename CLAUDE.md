@@ -295,7 +295,8 @@ del diseño que NO se copian, decisiones por defecto y fases F0–F8:
   devoluciones y cancelaciones siempre salen; los títulos clasificados están
   amarrados por test) y **cerrar sesión en todos los dispositivos** (época por
   correo en `sesion.py`, `stores.sesion_epocas`). Detalle y pendientes de
-  decisión en `docs/plan/REDISENO_ANFITRION.md` §8.
+  decisiones en `docs/plan/REDISENO_ANFITRION.md` §8 (Llenar cancha conserva el
+  mensaje LIBRE con sugerencias; no-show/cobrar-en-cancha NO se implementan).
 
 ## Dominio oficial: `pichangol.app`
 

@@ -144,9 +144,9 @@ Todas las vistas de las capturas quedaron hechas sobre el kit `web/vista_anfitri
 | Cerrar sesión en todos los dispositivos (época por correo en la cookie) | `POST /web/sesion/cerrar-todas` (`sesion.py`) | idem |
 | Verificar identidad dentro de Soy boleador (mismo endpoint de /cuenta/identidad) | `anfitrion_boleadores.py` | `test_web_academia_rediseno.py` |
 
-### Pendientes de decisión del director
-1. Reglas: ¿no-show "Marcar y cobrar" y "Aceptar cobrar en cancha"? (no existen; el diseñador los marcó "de ejemplo").
-2. Llenar cancha: el texto LIBRE de la promo se reemplazó por 4 frases a elegir (regla "sin texto libre"). Si se quiere el texto libre de vuelta, es un cambio chico.
-3. Política de privacidad: mencionar las preferencias de avisos por cuenta.
-4. Agregar local: el diseño trae "correo de contacto", "días que atiende" y "precio en horario punta", que no existen en el modelo (los dos últimos se configuran en Reglas de reserva).
-5. Los push que el APK escribe directo no pasan por las preferencias de avisos.
+### Decisiones tomadas (16-nov-2026; el director: "respetando la funcionalidad actual más que el diseño")
+1. Reglas: **no** se implementan el no-show "Marcar y cobrar" ni "Aceptar cobrar en cancha"; las reglas quedan como funcionan hoy.
+2. Llenar cancha: **vuelve el mensaje LIBRE** (ya existía; máx. 160), con las 4 frases como sugerencias que rellenan el campo (`jugador_partidos.promo_llenar`).
+3. Política de privacidad: **actualizada** (`legal/router.py`): preferencias de avisos por correo, novedades solo si se activan, y se borran con la cuenta.
+4. Agregar local: **no** se agrega "correo de contacto"; el registro queda igual (días y precio punta siguen en Reglas de reserva).
+5. Push que escribe el APK directo: **sin cambios** en la app; las preferencias se aplicarán cuando el rediseño llegue al APK.

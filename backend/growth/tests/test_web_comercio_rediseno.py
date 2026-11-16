@@ -85,15 +85,17 @@ def test_llenar_cancha_mensaje_extra_solo_por_seleccion(monkeypatch):
     cli = _cli()
     html = cli.get("/anfitrion/llenar?dia=1").text
     assert "id='llPromo'" in html and "data-promo='amigos'" in html and "Así les llega" in html
-    assert "<input type='text' id='llPromo'" not in html          # sin texto libre
+    assert "<input type='text' id='llPromoTxt'" in html and "maxlength='160'" in html   # texto libre (ya existía) + sugerencias
     assert '"v": true' in html                                    # 18:00 es hora feliz → ícono de valle
     assert "va-lat" in html and "Mañana" in html
     cuerpo = {"cancha_id": c["id"], "dia": 1, "horas": ["18:00"], "descuento": 0}
     assert cli.post("/anfitrion/llenar/avisar", json={**cuerpo, "promo": "amigos"}).json()["ok"]
     assert msgs[-1]["texto"].endswith("\n" + JP.PROMOS_LLENAR["amigos"])
-    # Texto libre (de una página vieja o a mano) se ignora: no viaja nada que el catálogo no tenga.
-    assert cli.post("/anfitrion/llenar/avisar", json={**cuerpo, "promo": "<b>¡Gratis!</b>"}).json()["ok"]
-    assert "Gratis" not in msgs[-1]["texto"] and msgs[-1]["texto"].endswith("respóndeme por aquí.")
+    # El texto libre del dueño viaja tal cual (normalizado, máx. 160), como siempre.
+    assert cli.post("/anfitrion/llenar/avisar", json={**cuerpo, "promo": "  20%   off hoy  " + "x" * 300}).json()["ok"]
+    assert msgs[-1]["texto"].split("\n")[-1] == ("20% off hoy " + "x" * 300)[:160]
+    assert cli.post("/anfitrion/llenar/avisar", json={**cuerpo, "promo": ""}).json()["ok"]
+    assert msgs[-1]["texto"].endswith("respóndeme por aquí.")
 
 
 def test_recordar_reservas_muchos_jugadores_y_recordar_a_todos(monkeypatch):

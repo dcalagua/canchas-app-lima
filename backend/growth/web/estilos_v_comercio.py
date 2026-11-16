@@ -156,6 +156,9 @@ CSS = r"""
 .vc-ll-lbl{display:block;font-weight:700;font-size:14px;margin:16px 0 8px}
 .vc-chips{display:flex;flex-wrap:wrap;gap:8px}
 .vc-chips button{border:1px solid var(--anf-borde);background:#fff;border-radius:999px;padding:8px 14px;font:inherit;font-size:13.5px;font-weight:700;color:var(--anf-texto);cursor:pointer;min-height:40px}
+.vc-ll-txt{width:100%;border:1px solid var(--anf-borde);border-radius:10px;padding:11px 14px;font:inherit;font-size:15px;min-height:44px;margin-bottom:8px}
+.vc-ll-txt:focus{outline:none;box-shadow:var(--foco);border-color:var(--azul)}
+.vc-sug button{font-weight:600;font-size:13px;min-height:36px}
 .vc-chips button.sel{background:var(--azul-tinte);border-color:var(--azul);color:var(--azul-osc)}
 .vc-ayuda{font-size:12.5px;color:var(--anf-tenue);margin:8px 0 0}
 .vc-chat{background:var(--anf-fondo);border-radius:14px;padding:14px}

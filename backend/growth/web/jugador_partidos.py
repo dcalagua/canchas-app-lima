@@ -1873,15 +1873,18 @@ def aplicar_descuento_slot(cancha_id: str, fecha: str, hora: str, pct: int) -> b
         return False
 
 
-# Mensaje extra del aviso: POR SELECCIÓN (regla "nada de texto libre"; el
-# diseño traía un campo libre "Mensaje o promo" que no se copia). La clave
-# viaja al servidor y aquí se convierte en el texto; cualquier otra cosa se ignora.
+# Mensaje extra del aviso: TEXTO LIBRE del dueño (ya existía y se conserva por
+# decisión del director, 16-nov-2026: "respetar la funcionalidad actual más que
+# el diseño"; máx. 160). Estas frases son solo SUGERENCIAS que rellenan el campo.
 PROMOS_LLENAR = {"ultima": "¡Último momento: aprovecha!", "amigos": "Arma tu partido con tus amigos.",
                  "rapido": "Responde rápido: estas horas vuelan.", "luces": "Cancha lista y con luz para jugar."}
 
 
-def promo_llenar(clave) -> str:
-    return PROMOS_LLENAR.get(str(clave or "").strip(), "")
+def promo_llenar(valor) -> str:
+    """Texto del mensaje extra: una clave de las sugerencias (compatibilidad) se
+    convierte en su frase; si no, el texto libre del dueño normalizado (160)."""
+    v = re.sub(r"\s+", " ", str(valor or "")).strip()
+    return PROMOS_LLENAR.get(v) or v[:160]
 
 
 def _donde(c: dict) -> str:
@@ -1935,15 +1938,16 @@ def pagina_llenar(request: Request, cancha: str = "", dia: int = 0) -> HTMLRespo
                         etiqueta="Día")
     descs = "".join(f"<button type='button' class='{'sel' if p == 0 else ''}' data-desc='{p}' aria-pressed='{'true' if p == 0 else 'false'}'>"
                     f"{'Precio normal' if p == 0 else f'−{p} %'}</button>" for p in (0, 10, 15, 20, 30))
-    promos = ("<button type='button' class='sel' data-promo='' aria-pressed='true'>Sin mensaje extra</button>"
-              + "".join(f"<button type='button' data-promo='{k}' aria-pressed='false'>{e(t)}</button>" for k, t in PROMOS_LLENAR.items()))
+    promos = "".join(f"<button type='button' data-promo='{k}' aria-pressed='false'>{e(t)}</button>" for k, t in PROMOS_LLENAR.items())
     if slots:
         centro = ("<div class='vc-slots' id='llSlots' role='group' aria-label='Horas libres'></div>"
                   "<div class='vc-ll-sel'><b id='llCuenta'>0 horas seleccionadas</b>"
                   "<button type='button' class='vc-link' id='llTodas'>Seleccionar todas</button></div>"
                   f"<span class='vc-ll-lbl' id='llDescLbl'>Descuento para llenarlas</span><div class='vc-chips' id='llDesc' role='group' aria-labelledby='llDescLbl'>{descs}</div>"
                   "<p class='vc-ayuda' id='llDescAyuda'>Precio normal: no cambia lo que se cobra.</p>"
-                  f"<span class='vc-ll-lbl' id='llPromoLbl'>Mensaje extra (opcional)</span><div class='vc-chips' id='llPromo' role='group' aria-labelledby='llPromoLbl'>{promos}</div>")
+                  f"<label class='vc-ll-lbl' for='llPromoTxt'>Mensaje o promo (opcional)</label>"
+                  "<input type='text' id='llPromoTxt' class='vc-ll-txt' maxlength='160' placeholder='Ej.: 20% off hoy' autocomplete='off'>"
+                  f"<div class='vc-chips vc-sug' id='llPromo' role='group' aria-label='Sugerencias de mensaje'>{promos}</div>")
     else:
         centro = va.vacio("calendario", "No quedan horas libres hoy" if dia == 0 else "No hay horas libres mañana",
                           "Tu cancha está llena: no hace falta avisar a nadie.")
@@ -1973,7 +1977,7 @@ function texto(){
   var hs = Object.keys(sel).sort(); if(!hs.length) return '';
   var ps = LL.slots.filter(function(s){ return sel[s.h]; }).map(function(s){ return desc > 0 ? s.px[String(desc)] : s.p0; });
   return '¡Hola <nombre>! 🎾 Tengo libre ' + LL.donde + ' ' + LL.diaTxt + ': ' + hs.join(', ') + ' (desde ' + LL.sim + ' ' + Math.min.apply(null, ps)
-    + (desc > 0 ? ' 🔥 ' + desc + '% OFF' : '') + '). ¿La quieres? Resérvala en ' + LL.marca + ' o respóndeme por aquí.' + (promo ? '\n' + LL.promos[promo] : '');
+    + (desc > 0 ? ' 🔥 ' + desc + '% OFF' : '') + '). ¿La quieres? Resérvala en ' + LL.marca + ' o respóndeme por aquí.' + (promo ? '\n' + promo : '');
 }
 function pintar(){
   var box = document.getElementById('llSlots');
@@ -1989,7 +1993,7 @@ function pintar(){
   var t = document.getElementById('llTodas'); if(t) t.textContent = LL.slots.length && n === LL.slots.length ? 'Quitar todas' : 'Seleccionar todas';
   var a = document.getElementById('llDescAyuda'); if(a) a.textContent = desc > 0 ? 'Se cobra ' + desc + '% menos en esas horas: es el precio REAL al reservar (no solo el aviso).' : 'Precio normal: no cambia lo que se cobra.';
   document.querySelectorAll('#llDesc [data-desc]').forEach(function(b){ var s = +b.dataset.desc === desc; b.classList.toggle('sel', s); b.setAttribute('aria-pressed', s); });
-  document.querySelectorAll('#llPromo [data-promo]').forEach(function(b){ var s = b.dataset.promo === promo; b.classList.toggle('sel', s); b.setAttribute('aria-pressed', s); });
+  document.querySelectorAll('#llPromo [data-promo]').forEach(function(b){ var s = LL.promos[b.dataset.promo] === promo; b.classList.toggle('sel', s); b.setAttribute('aria-pressed', s); });
   var v = document.getElementById('llVista'), tx = texto();
   if(v){ v.textContent = tx || 'Elige una o más horas para ver el mensaje.'; v.classList.toggle('vacia', !tx); }
 }
@@ -1998,8 +2002,10 @@ document.addEventListener('click', function(ev){
   if((t = ev.target.closest('[data-h]'))){ if(sel[t.dataset.h]) delete sel[t.dataset.h]; else sel[t.dataset.h] = 1; pintar(); return; }
   if((t = ev.target.closest('#llTodas'))){ if(Object.keys(sel).length === LL.slots.length) sel = {}; else LL.slots.forEach(function(s){ sel[s.h] = 1; }); pintar(); return; }
   if((t = ev.target.closest('[data-desc]'))){ desc = +t.dataset.desc; pintar(); return; }
-  if((t = ev.target.closest('[data-promo]'))){ promo = t.dataset.promo; pintar(); return; }
+  if((t = ev.target.closest('[data-promo]'))){ var f = LL.promos[t.dataset.promo] || ''; promo = promo === f ? '' : f;
+    var i = document.getElementById('llPromoTxt'); if(i) i.value = promo; pintar(); return; }
 });
+document.addEventListener('input', function(ev){ if(ev.target.id === 'llPromoTxt'){ promo = ev.target.value.replace(/\s+/g, ' ').trim(); pintar(); } });
 document.getElementById('llGo').addEventListener('click', function(){
   var horas = Object.keys(sel); if(!horas.length) return;
   if(!LL.n){ pcgAvisar({titulo: 'Aún sin clientes', icono: 'ℹ️', mensaje: 'Aún no tienes clientes registrados para avisar.'}); return; }
@@ -2050,7 +2056,7 @@ def avisar_libres(request: Request, body: dict = Body(default_factory=dict)) -> 
     clientes = clientes_de(canchas, ahora.date())
     if not clientes:
         return JSONResponse({"ok": False, "mensaje": "Aún no tienes clientes registrados para avisar."}, status_code=400)
-    promo = promo_llenar(body.get("promo"))   # solo las frases del catálogo (sin texto libre)
+    promo = promo_llenar(body.get("promo"))   # texto libre del dueño (o una sugerencia)
     precios = []
     for h in horas:
         fr = horarios.fecha_real(base.isoformat(), c.get("hora_apertura") or "", c.get("hora_cierre") or "", h)

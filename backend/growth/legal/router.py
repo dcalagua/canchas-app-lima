@@ -214,7 +214,12 @@ def privacidad() -> str:
       requiere imagen, esa imagen se guarda en un espacio privado y se elimina
       cuando dejas de necesitarla o cuando borras tus datos.</li>
       <li><b>Notificaciones:</b> un identificador del dispositivo para enviarte
-      avisos (reserva confirmada, pedido listo). No identifica a la persona.</li>
+      avisos (reserva confirmada, pedido listo). No identifica a la persona.
+      Si administras un local o una academia, guardamos también <b>qué avisos
+      quieres recibir</b> (nuevas reservas, pagos por confirmar, cuotas de la
+      academia y novedades), asociado a tu correo, para respetarlo en cada envío.
+      Las novedades y promociones solo te llegan si las activas; los recibos de
+      pago, devoluciones y cancelaciones se envían siempre.</li>
       <li><b>Pagos de Yape o QR de tu academia (opcional, sólo academias con
       Android):</b> si activas "Confirmar mis pagos automáticamente", {MARCA}
       lee en ese celular <b>únicamente las notificaciones de la app Yape</b>
@@ -347,6 +352,7 @@ def eliminar_cuenta() -> str:
       identidad.</li>
       <li>Tus canchas o productos publicados, si eres dueño.</li>
       <li>Tus tokens de notificaciones y de redes sociales conectadas.</li>
+      <li>Tus preferencias de avisos.</li>
     </ul>
 
     <h2>Qué se conserva, y por qué</h2>
