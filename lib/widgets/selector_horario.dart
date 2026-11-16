@@ -47,6 +47,13 @@ class SelectorHorario extends StatelessWidget {
             Expanded(child: _dropHora('Cierra', cierre, onCierre)),
           ],
         ),
+        const SizedBox(height: 6),
+        Text(
+            'El último turno EMPIEZA a la hora de cierre: cierra 23:00 → último '
+            'turno 23:00 a 00:00. Cierre 00:00 = medianoche. Para 24 h, pon abre '
+            'y cierra en 00:00. Cancha de madrugada (ej. 18:00 a 02:00): elige el '
+            'cierre del día siguiente.',
+            style: TextStyle(fontSize: 11.5, color: tinta.withOpacity(0.6))),
         const SizedBox(height: 16),
         const Text('Duración del turno',
             style: TextStyle(fontWeight: FontWeight.w700)),

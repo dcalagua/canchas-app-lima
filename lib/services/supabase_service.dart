@@ -20,4 +20,81 @@ class SupabaseService {
   }
 
   static SupabaseClient get client => Supabase.instance.client;
+
+  /// Host del proyecto al que apunta el APK (p. ej. `abcd1234.supabase.co`),
+  /// SIN la anon key. Sirve para diagnosticar: confirma que estás configurando
+  /// el MISMO proyecto que usa la app. Vacío = Supabase sin configurar.
+  static String get proyecto {
+    if (_url.isEmpty) return 'sin configurar';
+    return Uri.tryParse(_url)?.host ?? _url;
+  }
+
+  /// URL pública de una Edge Function (`.../functions/v1/<nombre>`), o null si
+  /// Supabase no está configurado.
+  static String? funcionUrl(String nombre) =>
+      _url.isEmpty ? null : '$_url/functions/v1/$nombre';
+
+  /// Enlace público (web) de un campeonato, para compartir a quien no tiene la
+  /// app. Lo sirve el BACKEND growth (`GET /c/{id}`, dominio de marca si
+  /// LANDING_BASE_URL está seteado) — la Edge Function `campeonato-web` quedó
+  /// deprecada (su deploy manual servía el HTML como texto plano). Fallback:
+  /// la función vieja solo si no hay backend configurado.
+  /// URL pública de la CARTA de la bodega del dueño (QR imprimible). null si
+  /// no hay backend configurado.
+  static String? paginaBodega(String cartaId) {
+    const landing = String.fromEnvironment('LANDING_BASE_URL');
+    const growth = String.fromEnvironment('GROWTH_API_URL');
+    final base = landing.isNotEmpty
+        ? landing
+        : growth.isNotEmpty
+            ? growth
+            : null;
+    if (base == null) return null;
+    return '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}/b/$cartaId';
+  }
+
+  /// URL de una ILUSTRACIÓN de marca (estados vacíos/momentos del app, estilo
+  /// flat con la paleta Pichangol; el backend la genera una vez y la cachea).
+  /// null si no hay backend configurado — se usa el emoji.
+  static String? ilustracionPichangol(String clave) {
+    const landing = String.fromEnvironment('LANDING_BASE_URL');
+    const growth = String.fromEnvironment('GROWTH_API_URL');
+    final base = landing.isNotEmpty
+        ? landing
+        : growth.isNotEmpty
+            ? growth
+            : null;
+    if (base == null) return null;
+    return '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}/ilustracion/$clave';
+  }
+
+  /// URL del PACKSHOT IA genérico por tipo de producto de la bodega (imagen
+  /// automática sin marca; el backend la genera una vez y la cachea). null si
+  /// no hay backend configurado — se usa el emoji.
+  static String? packshotBodega(String tipo) {
+    const landing = String.fromEnvironment('LANDING_BASE_URL');
+    const growth = String.fromEnvironment('GROWTH_API_URL');
+    final base = landing.isNotEmpty
+        ? landing
+        : growth.isNotEmpty
+            ? growth
+            : null;
+    if (base == null) return null;
+    return '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}/bodega/packshot/$tipo';
+  }
+
+  static String? paginaCampeonato(String id) {
+    const landing = String.fromEnvironment('LANDING_BASE_URL');
+    const growth = String.fromEnvironment('GROWTH_API_URL');
+    final base = landing.isNotEmpty
+        ? landing
+        : growth.isNotEmpty
+            ? growth
+            : null;
+    if (base != null) {
+      return '${base.endsWith('/') ? base.substring(0, base.length - 1) : base}/c/$id';
+    }
+    final fn = funcionUrl('campeonato-web');
+    return fn == null ? null : '$fn?id=$id';
+  }
 }

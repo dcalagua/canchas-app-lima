@@ -72,3 +72,21 @@ mal), registrar el caso y ajustar:
 | Country Club El Bosque | Detectado (club) | por nombre "country club" / tipo `country_club` |
 | Loza deportiva de barrio | Detectado (fútbol) | jerga informal |
 | Gimnasio / tienda deportiva | NO detectado | descarte por tipo/palabra |
+| **"Tenis Americanos" (zapatería)** | **NO detectado** | "tenis" en jerga = zapatillas; se descarta por tipo `shoe_store`/palabra de calzado, y porque `tenis` sin señal de recinto (club/cancha/academia) no basta |
+| **Pista de skate / patinaje** | **NO detectado** | skate/patineta/BMX/atletismo no son canchas reservables del marketplace (descarte por palabra) |
+
+## Ambigüedad de "tenis" (importante)
+
+En Perú/Bolivia **"tenis" también significa zapatillas**. Por eso el nombre
+`tenis`/`tennis` **solo** clasifica como cancha de tenis si además hay una
+**señal de recinto** (`club`, `cancha`, `academia`, `court`, `lawn`, `sede`,
+`country`, o nombre fuertemente deportivo) **o** un tipo deportivo de Google.
+`raqueta`/`racquet` sí son inequívocos → tenis directo.
+
+## Vóley y básquet
+
+Muchos locales alquilan la misma **loza multiuso** para vóley y básquet. Se
+detectan por nombre (`vóley`/`voley`/`voleibol`/`volley`; `básquet`/`basquet`/
+`basket`) y por las consultas `cancha de vóley` / `cancha de básquet`. Ojo: las
+**lozas municipales** ("loza deportiva") siguen fuera del marketplace (no son
+alquilables); solo entran locales privados con señal de recinto.

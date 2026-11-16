@@ -1,0 +1,3 @@
+tags:
+  golden:
+    description: Capturas de pantalla (dependen del SO; se corren en macOS con --update-goldens).

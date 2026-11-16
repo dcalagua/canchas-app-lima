@@ -1,0 +1,12 @@
+{
+  "name": "canchalibre-barrido-web",
+  "private": true,
+  "description": "Barrido Playwright de la web (CI): estado, errores JS, diálogos, desborde, h1 y CSP.",
+  "type": "module",
+  "scripts": {
+    "barrido": "node barrido.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.56.1"
+  }
+}
