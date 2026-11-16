@@ -81,12 +81,40 @@ def firma_valida(cuerpo: bytes, firma: str) -> bool:
     return any(hmac.compare_digest(_firmar(cuerpo, k), firma or "") for k in _claves_firma())
 
 
+def epoca(email: str | None) -> int:
+    """Época de sesión del correo (`stores.sesion_epocas`, viaja en el snapshot).
+    Las cookies llevan la época con que se emitieron: si es menor que la
+    vigente, ya no valen ("cerrar sesión en todos los dispositivos")."""
+    try:
+        from db.store import stores
+        return int((stores.sesion_epocas or {}).get((email or "").strip().lower(), 0) or 0)
+    except Exception:  # noqa: BLE001 — sin store, ninguna sesión se invalida por época
+        return 0
+
+
+def cerrar_todas(email: str) -> int:
+    """Sube la época del correo: TODAS las cookies emitidas antes (este y otros
+    navegadores) dejan de valer. Devuelve la época nueva; quien llama re-emite
+    la cookie del navegador actual para no sacarlo a él."""
+    em = (email or "").strip().lower()
+    if not em or "@" not in em:
+        raise ValueError("correo")
+    from db.store import stores
+    nueva = epoca(em) + 1
+    stores.sesion_epocas[em] = nueva
+    return nueva
+
+
 def emitir(datos: dict) -> str:
-    """Valor de cookie: base64url(json) + '.' + HMAC. Incluye `exp`."""
+    """Valor de cookie: base64url(json) + '.' + HMAC. Incluye `exp` y la
+    época de sesión vigente del correo (`ep`)."""
     d = {"email": (datos.get("email") or "").strip().lower()[:120],
          "nombre": (datos.get("nombre") or "").strip()[:80],
          "foto": (datos.get("foto") or "").strip()[:300],
          "exp": int(time.time()) + DIAS * 24 * 3600}
+    ep = epoca(d["email"])
+    if ep:
+        d["ep"] = ep
     cuerpo = base64.urlsafe_b64encode(json.dumps(d, separators=(",", ":")).encode()).decode().rstrip("=")
     return f"{cuerpo}.{_firmar(cuerpo.encode())}"
 
@@ -104,6 +132,11 @@ def leer(valor: str | None) -> dict | None:
     except Exception:  # noqa: BLE001
         return None
     if not isinstance(d, dict) or int(d.get("exp", 0)) < time.time() or "@" not in str(d.get("email", "")):
+        return None
+    try:
+        if int(d.get("ep") or 0) < epoca(str(d["email"])):
+            return None  # se cerró la sesión en todos los dispositivos después de emitirla
+    except (TypeError, ValueError):
         return None
     return {"email": d["email"], "nombre": d.get("nombre") or "", "foto": d.get("foto") or ""}
 

@@ -167,7 +167,8 @@ def test_ranking_partidos_categorias_y_tabla(mundo):
 def test_reportes_kpis_morosidad_y_programas(mundo, monkeypatch):
     monkeypatch.setattr(ops, "_comision_digital", lambda a, i, f: (5.0, {"cobros": 1, "bruto_soles": 200, "comision_soles": 10, "neto_soles": 190}))
     html = _cli().get("/anfitrion/academia/reportes?academia=ac_1&rango_sel=todo").text
-    assert "Cobrado</small><b>S/ 200.00" in html and "Por cobrar</small><b>S/ 200.00" in html
+    assert "<span>Cobrado</span></div><div class='va-kpi-v'><b class=''>S/ 200.00" in html
+    assert "<span>Por cobrar</span></div><div class='va-kpi-v'><b class='warn'>S/ 200.00" in html
     assert "Morosidad hoy (1)" in html and "Bola Roja" in html and "B-0001" in html
     assert "Neto para tu academia" in html and "S/ 190.00" in html
     r = ops.rango("pasado", ops.date(2026, 3, 15))

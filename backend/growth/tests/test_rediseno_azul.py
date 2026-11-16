@@ -43,8 +43,9 @@ def test_paleta_del_disenador_y_contraste_aa():
     assert _contraste("FFFFFF", tok["azul-claro"]) < 3        # por eso #7E98FF es SOLO decoración
     assert _contraste(tok["tenue"], "FFFFFF") >= 4.5
     # el CSS del rediseño va al final y gana en la cascada
-    from web import estilos_rediseno
-    assert ui.CSS.endswith(estilos_rediseno.CSS)
+    from web import anfitrion_inicio, estilos_rediseno, nav_anfitrion, vista_anfitrion
+    # después solo la barra, el tablero y las vistas del modo anfitrión (16-nov-2026)
+    assert ui.CSS.endswith(estilos_rediseno.CSS + nav_anfitrion.CSS + anfitrion_inicio.CSS + vista_anfitrion.CSS_TODO)
 
 
 def test_cabecera_en_tres_franjas_en_la_portada():
@@ -68,9 +69,11 @@ def test_paginas_interiores_llevan_el_buscador_chico_en_la_franja():
 
 
 def test_modo_anfitrion_sin_franja_y_con_pestanas_en_la_barra():
+    # Desde el rediseño del anfitrión (16-nov-2026) la barra es blanca con los desplegables
+    # y las pestañas de Mis canchas van en una sub-navegación debajo.
     html = ui.cabecera(tabs="<a class='cat sel' href='/anfitrion'>Hoy</a>", modo="anfitrion")
-    assert "cl-anf" in html and "class='cl-banda" not in html and "class='cab-links'" not in html
-    assert "class='cab-tabs'" in html
+    assert "class='nav anf-cab'" in html and "class='cl-banda" not in html and "class='cab-links'" not in html
+    assert "class='anf-subtabs'" in html
 
 
 def test_logo_canchalibre_y_respaldo_con_otra_marca(monkeypatch):

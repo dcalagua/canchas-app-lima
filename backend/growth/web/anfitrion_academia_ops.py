@@ -480,24 +480,27 @@ def enviar_mensaje(aid: str, cuenta: str, autor: str, autor_nombre: str, texto: 
 
 # ── sesión / cabecera ─────────────────────────────────────────────────────────
 
-_TABS = [("asistencia", "✅", "Asistencia"), ("evaluaciones", "📋", "Evaluación"),
-         ("ranking", "🏆", "Ranking"), ("reportes", "📊", "Reportes"), ("chats", "💬", "Chats"), ("sedes", "📍", "Sedes")]
+_TABS = [("alumnos", "Alumnos"), ("cobros", "Cobros"), ("asistencia", "Asistencia"), ("evaluaciones", "Evaluación"),
+         ("ranking", "Ranking"), ("reportes", "Reportes"), ("chats", "Chats"), ("sedes", "Sedes")]
 
 
-def _cab(ses: dict) -> str:
-    """Cabecera del modo anfitrión con las MISMAS pestañas de Mi academia web."""
-    tabs = ("<a class='cat' href='/anfitrion/academia'><span class='ico'>📣</span>Mis academias</a>"
-            "<a class='cat' href='/anfitrion/academia/alumnos'><span class='ico'>🎓</span>Alumnos</a>")
-    return ui.cabecera(tabs=tabs, ses=ses, volver="/anfitrion", modo="anfitrion")
-
-
-def _secciones(sel: str, aid: str) -> str:
-    """Tira de secciones de la operación (el menú de `mi_academia_screen`);
-    Cobros lleva al módulo existente `/anfitrion/cobros`."""
+def secciones(sel: str, aid: str) -> str:
+    """Tira de secciones de la academia (el menú de `mi_academia_screen`) como
+    segmentado del kit; Cobros lleva al módulo existente `/anfitrion/cobros`."""
+    from web import vista_anfitrion as va
     q = f"?academia={up.quote(aid)}" if aid else ""
-    items = [f"<a class='chip' href='/anfitrion/cobros{q}'>💰 Cobros</a>"]
-    items += [f"<a class='chip{' sel' if k == sel else ''}' href='/anfitrion/academia/{k}{q}'>{ico} {t}</a>" for k, ico, t in _TABS]
-    return "<nav class='aco-secc aco-noimp' aria-label='Secciones de la academia'>" + "".join(items) + "</nav>"
+    ops = [((f"/anfitrion/cobros{q}" if k == "cobros" else f"/anfitrion/academia/{k}{q}"), t, k == sel) for k, t in _TABS]
+    return f"<div class='vac-secc aco-noimp'>{va.segmentado(ops, etiqueta='Secciones de la academia')}</div>"
+
+
+def selector_academia(acads: list[dict], a: dict, ruta: str) -> str:
+    """Con varias academias, segmentado para cambiar de academia."""
+    if len(acads) < 2:
+        return ""
+    from web import vista_anfitrion as va
+    return "<div class='vac-acads aco-noimp'>" + va.segmentado(
+        [(f"{ruta}?academia={up.quote(x['id'])}", x.get("nombre") or "Academia", x["id"] == a["id"]) for x in acads],
+        etiqueta="Academia") + "</div>"
 
 
 def _entrar_o_app(request: Request, ruta: str):
@@ -526,16 +529,11 @@ def _contexto(request: Request, ruta: str, academia: str):
     return ses, acads, a, None
 
 
-def _chips_academia(acads: list[dict], a: dict, ruta: str) -> str:
-    if len(acads) < 2:
-        return ""
-    return "<div class='chips' style='margin-top:12px'>" + "".join(
-        f"<a class='chip{' sel' if x['id'] == a['id'] else ''}' href='{ruta}?academia={e(up.quote(x['id']))}'>{e(x.get('nombre') or 'Academia')}</a>"
-        for x in acads) + "</div>"
-
-
 def _pagina(ses: dict, acads: list[dict], a: dict, sel: str, titulo: str, sub: str, cuerpo: str, js: str = "",
             extra_head: str = "") -> HTMLResponse:
+    """Vista de operación con el encabezado del kit ("‹ Módulo · academia",
+    vuelve a Mi academia), la tira de secciones y el candado del plan."""
+    from web import vista_anfitrion as va
     ruta = f"/anfitrion/academia/{sel}"
     a.setdefault("dueno", ses.get("email") or "")
     from web import academia_plan_web as apw
@@ -543,12 +541,10 @@ def _pagina(ses: dict, acads: list[dict], a: dict, sel: str, titulo: str, sub: s
         # PLAN ACADEMIA vencido: la gestión se pausa; los pagos reportados siguen en Cobros.
         cuerpo, js, extra_head = apw.paywall(a), "", ""
     cfg = ui.json_js({"aid": a["id"], "sim": _sim(a)}, ensure_ascii=False).replace("</", "<\\/")
-    html = ("<a class='anf-back' href='/anfitrion/academia'>‹ Mi academia</a>"
-            f"<h1 class='anf-hola' style='margin-top:6px'>{e(titulo)}</h1><p class='sub'>{e(a.get('nombre') or 'Academia')} · {sub}</p>"
-            f"{_secciones(sel, a['id'])}{_chips_academia(acads, a, ruta)}{cuerpo}"
-            f"<style>{_CSS}</style><script>window.ACO={cfg};{_JS_BASE}{js}</script>")
-    return ui.shell(titulo, html, nav=_cab(ses), sesion=ses, ancho=True,
-                    titulo_tab=f"{titulo} · Mi academia", extra_head=extra_head)
+    html = va.vista(va.cabecera(titulo, f"{a.get('nombre') or 'Academia'} · {sub}", volver="/anfitrion/academia")
+                    + secciones(sel, a["id"]) + selector_academia(acads, a, ruta) + cuerpo
+                    + f"<script>window.ACO={cfg};{_JS_BASE}{js}</script>", "vac")
+    return ui.shell(titulo, html, sesion=ses, ancho=True, titulo_tab=f"{titulo} · Mi academia", extra_head=extra_head)
 
 
 def _ses_json(request: Request):
@@ -566,50 +562,10 @@ def _no_encontrada() -> JSONResponse:
     return JSONResponse({"ok": False, "error": "no_encontrada", "mensaje": "No encontramos esa academia en tu cuenta."}, status_code=404)
 
 
-_CSS = """
-.aco-secc{display:flex;gap:8px;overflow-x:auto;margin-top:14px;padding-bottom:4px;scrollbar-width:none}
-.aco-secc::-webkit-scrollbar{display:none}
-.aco-secc .chip{flex:none}
-.aco-card{background:var(--blanco);border:1px solid var(--trazo);border-radius:18px;padding:16px 18px;box-shadow:var(--sombra);min-width:0}
-.aco-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr));gap:14px;margin-top:16px}
-.aco-fila{display:flex;align-items:center;gap:12px;min-width:0}
-.aco-fila>div{min-width:0}
-.aco-av{width:44px;height:44px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;background:var(--esmeralda);overflow:hidden;font-size:17px}
-.aco-av img{width:100%;height:100%;object-fit:cover}
-.aco-cuota{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--trazo);flex-wrap:wrap}
-.aco-cuota .t{min-width:0;flex:1 1 180px}
-.aco-cuota .acc{display:flex;gap:6px;flex-wrap:wrap}
-.aco-mini{font-size:13px;padding:7px 11px;border-radius:999px}
-.aco-n{font-size:12.5px;color:var(--tenue)}
-.aco-bar{display:flex;align-items:flex-end;gap:10px;height:150px;margin-top:10px}
-.aco-bar div{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0}
-.aco-bar i{display:block;width:100%;max-width:46px;border-radius:8px 8px 3px 3px;background:var(--esmeralda)}
-.aco-bar small{font-size:12px;color:var(--tenue);margin-top:4px}
-.aco-bar b{font-size:12px;margin-bottom:3px;white-space:nowrap}
-.aco-rub{display:flex;gap:6px;flex-wrap:wrap}
-.aco-rub .chip{padding:7px 12px;font-size:13px}
-.aco-rub .chip.ok.sel{background:var(--ok-bg);border-color:var(--ok-fg);color:var(--ok-fg)}
-.aco-rub .chip.warn.sel{background:var(--warn-bg);border-color:var(--warn-fg);color:var(--warn-fg)}
-.aco-rub .chip.bad.sel{background:var(--bad-bg);border-color:var(--bad-fg);color:var(--bad-fg)}
-.aco-hab{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--trazo);flex-wrap:wrap}
-.aco-prog{height:8px;border-radius:99px;background:var(--gris);overflow:hidden;margin-top:6px}
-.aco-prog i{display:block;height:100%;background:var(--esmeralda)}
-.aco-rk td:first-child{font-weight:800;width:52px;white-space:nowrap}
-.aco-msgs{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;padding:14px;background:#EFEAE2;border-radius:16px}
-.aco-msg{max-width:78%;padding:8px 12px;border-radius:14px;background:#fff;font-size:14.5px;overflow-wrap:anywhere;box-shadow:0 1px 1px rgba(0,0,0,.06)}
-.aco-msg.yo{align-self:flex-end;background:#D9FDD3}
-.aco-msg small{display:block;font-size:12px;color:var(--tenue);margin-top:2px;text-align:right}
-.aco-dlg label{display:block;font-weight:700;font-size:13.5px;margin:12px 0 6px}
-.aco-dlg .chips{margin:0}
-.aco-dlg select,.aco-dlg input{width:100%}
-.aco-sede{border:1px solid var(--trazo);border-radius:16px;padding:14px;margin-top:12px}
-.aco-sede .mapa{height:200px;border-radius:12px;margin-top:8px}
-.aco-dos{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(200px,100%),1fr));gap:10px}
-.aco-aviso{margin-top:14px}
-@media print{.cab,header,footer,.aco-noimp,.chips,.anf-back{display:none!important}.aco-card{box-shadow:none}}
-"""
+# Estilos: `web/estilos_v_academia.py` (clases .aco-* y .vac-*), en el CSS del sitio.
 
 _JS_BASE = r"""
+(function(){var s=document.querySelector('.vac-secc .va-seg a.sel');if(s&&s.scrollIntoView)s.scrollIntoView({block:'nearest',inline:'center'})})();
 function acoPost(url,body,msg){pcgCargando(msg||'Guardando…',{demora:250});return fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})}).then(function(r){return r.json().catch(function(){return {ok:false}})}).catch(function(){return {ok:false,mensaje:'No se pudo guardar. Revisa tu conexión.'}}).then(function(j){pcgCargando(false);return j})}
 function acoErr(j){pcgAvisar({titulo:'No se pudo',mensaje:(j&&(j.mensaje||j.error))||'Inténtalo otra vez.',icono:'⚠️'})}
 function acoDlg(){return document.getElementById('pcgDlgMsg')}
@@ -639,9 +595,15 @@ def _av(m: dict) -> str:
 
 # ══ ASISTENCIA ════════════════════════════════════════════════════════════════
 
+def _vacio(ico: str, titulo: str, texto: str = "") -> str:
+    from web import vista_anfitrion as va
+    return va.panel(va.vacio(ico, titulo, texto))
+
+
 def _falta_sql(que: str) -> str:
-    return (f"<div class='aviso warn aco-aviso'>⚙️ {que} en la web se activa cuando el equipo de {MARCA} termine de "
-            "configurarla. Mientras tanto, regístrala en la app.</div>")
+    from web import vista_anfitrion as va
+    return va.aviso(f"{va.e(que)} en la web se activa cuando el equipo de {MARCA} termine de configurarla. Mientras tanto, regístrala en la app.",
+                    "warn", ico="reloj")
 
 
 @router.get("/anfitrion/academia/asistencia", response_class=HTMLResponse)
@@ -660,30 +622,35 @@ def pagina_asistencia(request: Request, academia: str = "", dia: str = "") -> HT
     marcas = asistencias_de(a["id"], clave) if activa else {}
     totales = clases_asistidas(a["id"]) if activa else {}
     presentes = sum(1 for m in mats if (marcas.get(m.get("id")) or {}).get("presente"))
+    faltaron = sum(1 for m in mats if marcas.get(m.get("id")) and not marcas[m.get("id")].get("presente"))
+    avisados = sum(1 for m in mats if (marcas.get(m.get("id")) or {}).get("avisado"))
     q = f"academia={up.quote(a['id'])}"
-    nav_dia = (f"<div class='aco-noimp' style='display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px'>"
-               f"<a class='chip' href='/anfitrion/academia/asistencia?{q}&dia={(d - timedelta(days=1)).isoformat()}' aria-label='Día anterior'>‹</a>"
-               f"<b style='font-size:17px'>{DIAS_CORTOS[d.weekday()]} {_f(d)}{' · Hoy' if d == hoy else ''}</b>"
-               f"<a class='chip' href='/anfitrion/academia/asistencia?{q}&dia={(d + timedelta(days=1)).isoformat()}' aria-label='Día siguiente'>›</a>"
-               f"<input type='date' id='acoDia' value='{clave}' style='max-width:170px' aria-label='Elegir el día'>"
-               + ("" if d == hoy else f"<a class='chip' href='/anfitrion/academia/asistencia?{q}'>Hoy</a>") + "</div>")
+    nav_dia = (f"<div class='vac-dia aco-noimp'>"
+               f"<a class='btn sec aco-mini' href='/anfitrion/academia/asistencia?{q}&dia={(d - timedelta(days=1)).isoformat()}' aria-label='Día anterior'>‹</a>"
+               f"<b>{DIAS_CORTOS[d.weekday()]} {_f(d)}{' · Hoy' if d == hoy else ''}</b>"
+               f"<a class='btn sec aco-mini' href='/anfitrion/academia/asistencia?{q}&dia={(d + timedelta(days=1)).isoformat()}' aria-label='Día siguiente'>›</a>"
+               f"<input type='date' id='acoDia' value='{clave}' aria-label='Elegir el día'>"
+               + ("" if d == hoy else f"<a class='btn suave aco-mini' href='/anfitrion/academia/asistencia?{q}'>Hoy</a>") + "</div>")
     filas = ""
     for m in mats:
         mk = marcas.get(m.get("id")) or {}
         pres = bool(mk.get("presente"))
-        filas += (f"<div class='aco-card aco-fila' style='justify-content:space-between;flex-wrap:wrap'>"
-                  f"<div class='aco-fila' style='flex:1 1 200px'>{_av(m)}<div><b>{e(m.get('nombre') or 'Alumno')}</b>"
+        filas += (f"<div class='aco-card aco-fila aco-asis'>"
+                  f"<div class='aco-fila'>{_av(m)}<div><b>{e(m.get('nombre') or 'Alumno')}</b>"
                   f"<div class='aco-n'>{totales.get(m.get('id'), 0)} clases{' · avisado ✓' if mk.get('avisado') else ''}"
                   f"{' · sin app' if not m.get('email') else ''}</div></div></div>"
                   f"<div class='aco-rub'><span class='chip ok{' sel' if pres else ''}' data-asis='{e(m.get('id'))}' data-v='1'>✅ Vino</span>"
                   f"<span class='chip bad{' sel' if mk and not pres else ''}' data-asis='{e(m.get('id'))}' data-v='0'>✖ Faltó</span></div></div>")
+    from web import vista_anfitrion as va
     cuerpo = (nav_dia + ("" if activa else _falta_sql("La asistencia"))
-              + (f"<div class='kpis' style='margin-top:14px'><div class='kpi'><small>Presentes</small><b>{presentes} de {len(mats)}</b></div></div>"
-                 "<div class='acciones aco-noimp' style='margin-top:14px'>"
-                 f"<button class='btn sec' id='acoTodos' {'disabled' if not activa else ''}>✅ Todos presentes</button>"
-                 f"<button class='btn' id='acoAvisar' {'disabled' if not activa else ''}>🔔 Avisar a los padres</button></div>"
-                 f"<div style='display:grid;gap:10px;margin-top:14px'>{filas}</div>" if mats else
-                 "<div class='anf-vacio' style='margin-top:18px'>Aún no tienes alumnos en esta academia.</div>"))
+              + ((va.kpis([va.kpi("comparar", "Presentes", f"{presentes} de {len(mats)}"),
+                           va.kpi("calendario", "Faltaron", str(faltaron), color="rojo"),
+                           va.kpi("campana", "Padres avisados", str(avisados), color="morado")])
+                  + "<div class='vac-acc aco-noimp'>"
+                  f"<button class='btn sec' id='acoTodos' {'disabled' if not activa else ''}>✓ Todos presentes</button>"
+                  f"<button class='btn' id='acoAvisar' {'disabled' if not activa else ''}>Avisar a los padres</button></div>"
+                  f"<div class='vac-lista'>{filas}</div>") if mats else
+                 va.panel(va.vacio("comparar", "Aún no tienes alumnos en esta academia", "Cuando se matriculen, aquí tomas lista."))))
     js = "window.ACO.dia=" + ui.json_js(clave) + ";window.ACO.ids=" + ui.json_js([m.get("id") for m in mats]) + ";" + _JS_ASIS
     return _pagina(ses, acads, a, "asistencia", "Asistencia", "Marca quién vino y avisa a los padres.", cuerpo, js)
 
@@ -830,13 +797,13 @@ def pagina_evaluaciones(request: Request, academia: str = "", alumno: str = "", 
     mats = sorted(matriculas_de(a["id"]), key=lambda m: str(m.get("nombre") or "").lower())
     q = f"academia={up.quote(a['id'])}"
     if not plan:
-        cuerpo = ("<div class='anf-vacio' style='margin-top:18px'>Aún no tienes un plan de trabajo para este deporte. "
-                  "Arma tu plan en la app (Mi academia → Planes de trabajo) y aparecerá aquí.</div>")
+        cuerpo = _vacio("estrella", "Aún no tienes un plan de trabajo para este deporte",
+                        "Arma tu plan en la app (Mi academia → Planes de trabajo) y aparecerá aquí.")
         return _pagina(ses, acads, a, "evaluaciones", "Evaluación", "Rúbrica y bitácora de clases.", cuerpo)
     q = f"{q}&plan={up.quote(plan['id'])}"
     chips_plan = ""
     if len(opciones) > 1:
-        chips_plan = "<div class='chips aco-noimp' style='margin-top:12px'>" + "".join(
+        chips_plan = "<div class='chips aco-noimp vac-filtros'>" + "".join(
             f"<a class='chip{' sel' if p['id'] == plan['id'] else ''}' href='/anfitrion/academia/evaluaciones?academia={e(up.quote(a['id']))}"
             f"&plan={e(up.quote(p['id']))}{('&alumno=' + e(up.quote(alumno))) if alumno else ''}'>"
             f"{'📘' if p.get('propio') else '📗'} {e(p['nombre'])}</a>" for p in opciones) + "</div>"
@@ -847,13 +814,13 @@ def pagina_evaluaciones(request: Request, academia: str = "", alumno: str = "", 
         tarjetas = ""
         for m in mats:
             p = progreso(plan, {h: n for (al, h), n in evals.items() if al == m.get("id")})
-            tarjetas += (f"<a class='aco-card aco-fila' style='text-decoration:none;color:inherit' href='/anfitrion/academia/evaluaciones?{q}&alumno={e(up.quote(str(m.get('id'))))}'>"
-                         f"{_av(m)}<div style='flex:1'><b>{e(m.get('nombre') or 'Alumno')}</b>"
+            tarjetas += (f"<a class='aco-card aco-fila aco-link' href='/anfitrion/academia/evaluaciones?{q}&alumno={e(up.quote(str(m.get('id'))))}'>"
+                         f"{_av(m)}<div class='aco-crece'><b>{e(m.get('nombre') or 'Alumno')}</b>"
                          f"<div class='aco-n'>{p['logrado']} logradas · {p['enProceso']} en proceso · {p['sinEvaluar']} sin evaluar</div>"
                          f"<div class='aco-prog'><i style='width:{p['pct']:.0f}%'></i></div></div><b>{p['pct']:.0f}%</b></a>")
         cuerpo = ((_falta_sql("La evaluación") if not activa else "") + chips_plan
-                  + f"<div class='aco-card' style='margin-top:14px'><b>📘 {e(plan['nombre'])}</b><div class='aco-n'>{e(plan['nivel'])} · {len(plan['habilidades'])} habilidades · {len(plan['sesiones'])} clases</div></div>"
-                  + (f"<div class='aco-grid'>{tarjetas}</div>" if mats else "<div class='anf-vacio' style='margin-top:18px'>Aún no tienes alumnos en esta academia.</div>"))
+                  + f"<div class='aco-card'><b>{e(plan['nombre'])}</b><div class='aco-n'>{e(plan['nivel'])} · {len(plan['habilidades'])} habilidades · {len(plan['sesiones'])} clases</div></div>"
+                  + (f"<div class='aco-grid'>{tarjetas}</div>" if mats else _vacio("comparar", "Aún no tienes alumnos en esta academia")))
         return _pagina(ses, acads, a, "evaluaciones", "Evaluación", "Toca un alumno para evaluarlo.", cuerpo)
     niveles = {h: n for (al, h), n in evals.items() if al == sel.get("id")}
     p = progreso(plan, niveles)
@@ -861,7 +828,7 @@ def pagina_evaluaciones(request: Request, academia: str = "", alumno: str = "", 
     for h in plan["habilidades"]:
         chips = "".join(f"<span class='chip {cls}{' sel' if niveles.get(h) == k else ''}' data-eval='{e(h)}' data-v='{k}'>{t}</span>"
                         for k, (t, _v, cls) in NIVELES.items())
-        rub += f"<div class='aco-hab'><b style='font-size:14.5px'>{e(h)}</b><div class='aco-rub'>{chips}</div></div>"
+        rub += f"<div class='aco-hab'><b>{e(h)}</b><div class='aco-rub'>{chips}</div></div>"
     notas = notas_de(a["id"], str(sel.get("id"))) if tabla_existe("pichangol_academia_notas") else []
     titulos = {s["numero"]: s["titulo"] for s in plan["sesiones"]}
     dadas = len({n["sesionNumero"] for n in notas if n["planId"] == plan["id"] and n["sesionNumero"] > 0})
@@ -873,13 +840,13 @@ def pagina_evaluaciones(request: Request, academia: str = "", alumno: str = "", 
         bit += (f"<div class='aco-cuota'><div class='t'><b>{_f(f)}</b> <span class='pill {cls}'>{e(t)}</span>"
                 f"<div class='aco-n'>{e(ses_t)}</div>{('<div>' + e(n['nota']) + '</div>') if n['nota'] else ''}</div>"
                 f"<button class='btn sec aco-mini' data-nota-borrar='{e(n['id'])}'>Quitar</button></div>")
-    cuerpo = (f"<a class='anf-back' href='/anfitrion/academia/evaluaciones?{q}'>‹ Todos los alumnos</a>"
+    cuerpo = (f"<a class='va-miga' href='/anfitrion/academia/evaluaciones?{q}'>‹ Todos los alumnos</a>"
               + ("" if activa else _falta_sql("La evaluación")) + chips_plan
-              + f"<div class='aco-card aco-fila' style='margin-top:12px'>{_av(sel)}<div style='flex:1'><b style='font-size:17px'>{e(sel.get('nombre'))}</b>"
+              + f"<div class='aco-card aco-fila aco-alumno'>{_av(sel)}<div class='aco-crece'><b>{e(sel.get('nombre'))}</b>"
               f"<div class='aco-n'>{e(plan['nombre'])}</div><div class='aco-prog'><i style='width:{p['pct']:.0f}%'></i></div></div>"
-              f"<b style='font-size:22px'>{p['pct']:.0f}%</b></div>"
-              f"<div class='aco-card' style='margin-top:14px'><b>Habilidades</b><div class='aco-n'>Cada toque se guarda al instante.</div>{rub}</div>"
-              f"<div class='aco-card' style='margin-top:14px'><div style='display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center'>"
+              f"<b class='aco-pct'>{p['pct']:.0f}%</b></div>"
+              f"<div class='aco-card'><b>Habilidades</b><div class='aco-n'>Cada toque se guarda al instante.</div>{rub}</div>"
+              f"<div class='aco-card'><div class='vac-sub-t'>"
               f"<div><b>Bitácora de clases</b><div class='aco-n'>{dadas}/{len(plan['sesiones'])} clases del plan</div></div>"
               f"<button class='btn' id='acoNota'>＋ Registrar clase de hoy</button></div>"
               + (bit or "<p class='aco-n'>Aún no registras clases de este alumno.</p>") + "</div>")
@@ -1005,17 +972,16 @@ def pagina_ranking(request: Request, academia: str = "", sede: str = "", categor
     q = f"academia={up.quote(a['id'])}"
     filtros = ""
     if len(sedes) > 1:
-        filtros += "<div class='chips aco-noimp' style='margin-top:12px'>" + f"<a class='chip{'' if sede else ' sel'}' href='?{q}&categoria={e(up.quote(categoria))}'>Todas las sedes</a>" + "".join(
+        filtros += "<div class='chips aco-noimp vac-filtros'>" + f"<a class='chip{'' if sede else ' sel'}' href='?{q}&categoria={e(up.quote(categoria))}'>Todas las sedes</a>" + "".join(
             f"<a class='chip{' sel' if s.get('id') == sede else ''}' href='?{q}&sede={e(up.quote(str(s.get('id'))))}&categoria={e(up.quote(categoria))}'>📍 {e(s.get('nombre'))}</a>" for s in sedes) + "</div>"
     if cats_usadas:
-        filtros += "<div class='chips aco-noimp' style='margin-top:10px'>" + f"<a class='chip{'' if categoria else ' sel'}' href='?{q}&sede={e(up.quote(sede))}'>Todas</a>" + "".join(
+        filtros += "<div class='chips aco-noimp vac-filtros'>" + f"<a class='chip{'' if categoria else ' sel'}' href='?{q}&sede={e(up.quote(sede))}'>Todas</a>" + "".join(
             f"<a class='chip{' sel' if c == categoria else ''}' href='?{q}&sede={e(up.quote(sede))}&categoria={e(up.quote(c))}'>{e(c)}</a>" for c in cats_usadas) + "</div>"
-    filas = "".join(
-        f"<tr><td>{i + 1}{' 🥇' if i == 0 and s['pj'] else (' 🥈' if i == 1 and s['pj'] else (' 🥉' if i == 2 and s['pj'] else ''))}</td>"
-        f"<td><b>{e(s['nombre'])}</b>{('<div class=aco-n>' + e(s['categoria']) + '</div>') if s['categoria'] else ''}</td>"
-        f"<td><b>{s['puntos']}</b></td><td>{s['pj']}</td><td>{s['pg']}</td><td>{s['pp']}</td><td>{s['pct']:.0f}%</td>"
-        f"<td><button class='chip aco-mini aco-noimp' data-cat='{e(s['id'])}' data-nombre='{e(s['nombre'])}' data-actual='{e(s['categoria'])}'>🏷️ Categoría</button></td></tr>"
-        for i, s in enumerate(tabla))
+    filas = [[f"{i + 1}{' 🥇' if i == 0 and s['pj'] else (' 🥈' if i == 1 and s['pj'] else (' 🥉' if i == 2 and s['pj'] else ''))}",
+              f"<b>{e(s['nombre'])}</b>{('<small>' + e(s['categoria']) + '</small>') if s['categoria'] else ''}",
+              f"<b>{s['puntos']}</b>", str(s['pj']), str(s['pg']), str(s['pp']), f"{s['pct']:.0f}%",
+              f"<button class='btn sec aco-mini aco-noimp' data-cat='{e(s['id'])}' data-nombre='{e(s['nombre'])}' data-actual='{e(s['categoria'])}'>Categoría</button>"]
+             for i, s in enumerate(tabla)]
     nombres_sede = {s.get("id"): s.get("nombre") for s in sedes}
     partidos = sorted([p for p in (a.get("partidos") or []) if isinstance(p, dict)], key=lambda p: str(p.get("fecha") or ""), reverse=True)
     lista = ""
@@ -1026,13 +992,14 @@ def pagina_ranking(request: Request, academia: str = "", sede: str = "", categor
                   f"<div class='aco-n'>{_f(f)} · ganó {e(gan)}{(' · ' + e(p.get('marcador'))) if p.get('marcador') else ''}"
                   f"{(' · 📍 ' + e(nombres_sede.get(p.get('sedeId'), ''))) if p.get('sedeId') and nombres_sede.get(p.get('sedeId')) else ''}</div></div>"
                   f"<button class='btn sec aco-mini aco-noimp' data-partido-borrar='{e(p.get('id'))}'>Quitar</button></div>")
+    from web import vista_anfitrion as va
     cuerpo = (filtros
-              + "<div class='acciones aco-noimp' style='margin-top:14px'><button class='btn' id='acoPartido'"
+              + "<div class='vac-acc aco-noimp'><button class='btn' id='acoPartido'"
               + (" disabled" if len(mats) < 2 else "") + ">＋ Registrar resultado</button></div>"
-              + (f"<div class='tabla aco-rk' style='margin-top:14px'><table><thead><tr><th>#</th><th>Jugador</th><th>Pts</th><th>PJ</th><th>PG</th><th>PP</th><th>%</th><th></th></tr></thead><tbody>{filas}</tbody></table></div>"
-                 if tabla else "<div class='anf-vacio' style='margin-top:18px'>Aún no hay alumnos en esta vista.</div>")
-              + f"<p class='aco-n' style='margin-top:8px'>Victoria {PUNTOS_VICTORIA} pts · derrota {PUNTOS_DERROTA} pt. Estos partidos también suman al ranking global de {MARCA}.</p>"
-              + f"<div class='aco-card' style='margin-top:16px'><b>Partidos ({len(partidos)})</b>{lista or '<p class=aco-n>Aún no registras partidos.</p>'}</div>")
+              + va.panel(va.tabla(["#", "Jugador", "Pts", "PJ", "PG", "PP", "%", ""], filas, clase="aco-rk",
+                                  vacia=va.vacio("trofeo", "Aún no hay alumnos en esta vista")), "Tabla de posiciones")
+              + f"<p class='aco-n aco-nota'>Victoria {PUNTOS_VICTORIA} pts · derrota {PUNTOS_DERROTA} pt. Estos partidos también suman al ranking global de {MARCA}.</p>"
+              + f"<div class='aco-card'><b>Partidos ({len(partidos)})</b>{lista or '<p class=aco-n>Aún no registras partidos.</p>'}</div>")
     cfg = {"alumnos": sorted([{"id": m.get("id"), "nombre": m.get("nombre")} for m in mats], key=lambda x: str(x["nombre"] or "").lower()),
            "sedes": [{"id": s.get("id"), "nombre": s.get("nombre")} for s in sedes] if len(sedes) > 1 else [],
            "cats": sorted(set(CATEGORIAS_RANKING) | set(cats_usadas), key=lambda c: (c not in CATEGORIAS_RANKING, CATEGORIAS_RANKING.index(c) if c in CATEGORIAS_RANKING else 0, c))}
@@ -1259,22 +1226,22 @@ def pagina_reportes(request: Request, academia: str = "", rango_sel: str = "mes"
     mats = matriculas_de(a["id"])
     r = reporte(a, mats, rango_sel, sede, hoy)
     q = f"academia={up.quote(a['id'])}"
-    chips = "<div class='chips aco-noimp' style='margin-top:12px'>" + "".join(
+    chips = "<div class='chips aco-noimp vac-filtros'>" + "".join(
         f"<a class='chip{' sel' if k == rango_sel else ''}' href='?{q}&rango_sel={k}&sede={e(up.quote(sede))}'>{t}</a>" for k, t in RANGOS.items()) + "</div>"
     if r["por_sede"]:
-        chips += "<div class='chips aco-noimp' style='margin-top:10px'>" + f"<a class='chip{'' if sede else ' sel'}' href='?{q}&rango_sel={rango_sel}'>Todas las sedes</a>" + "".join(
+        chips += "<div class='chips aco-noimp vac-filtros'>" + f"<a class='chip{'' if sede else ' sel'}' href='?{q}&rango_sel={rango_sel}'>Todas las sedes</a>" + "".join(
             f"<a class='chip{' sel' if s['id'] == sede else ''}' href='?{q}&rango_sel={rango_sel}&sede={e(up.quote(str(s['id'])))}'>📍 {e(s['nombre'])}</a>" for s in r["por_sede"]) + "</div>"
     mx = max([x["total"] for x in r["meses"]] + [1])
     barras = "".join(f"<div><b>{('' if not x['total'] else e(sim) + ' ' + format(x['total'], '.0f'))}</b><i style='height:{max(3, x['total'] / mx * 110):.0f}px;{'opacity:.25' if not x['total'] else ''}'></i><small>{x['mes']}</small></div>"
                      for x in r["meses"])
     moros = "".join(f"<div class='aco-cuota'><div class='t'><b>{e(x['nombre'])}</b><div class='aco-n'>{'vencido hace ' + str(x['dias']) + ' días' if x['vencido'] else 'por vencer'}</div></div>"
-                    f"<b style='color:{'var(--bad-fg)' if x['vencido'] else 'var(--noche)'}'>{e(sim)} {x['deuda']:.2f}</b></div>" for x in r["morosos"][:30])
+                    f"<b class='{'aco-rojo' if x['vencido'] else ''}'>{e(sim)} {x['deuda']:.2f}</b></div>" for x in r["morosos"][:30])
     progs = "".join(f"<div class='aco-cuota'><span>{e(k)}</span><b>{v} alumno{'s' if v != 1 else ''}</b></div>" for k, v in r["por_programa"])
     sedes_html = "".join(f"<div class='aco-cuota'><span>📍 {e(s['nombre'])} · {s['alumnos']} alumno{'s' if s['alumnos'] != 1 else ''}</span><b>{e(sim)} {s['cobrado']:.2f}</b></div>" for s in r["por_sede"])
     pct, res = _comision_digital(a, r["ini"], r["fin"])
     bruto, com, neto = _num(res.get("bruto_soles")), _num(res.get("comision_soles")), _num(res.get("neto_soles"))
     pct_ef = (com / bruto * 100) if bruto > 0 else pct
-    comision = (f"<div class='aco-card'><b>💳 Cobro digital · es como tu POS</b><div class='aco-n'>Lo que tus alumnos pagan en línea lleva {pct_ef:.1f}% de comisión; el efectivo 0%.</div>"
+    comision = (f"<div class='aco-card'><b>Cobro digital · es como tu POS</b><div class='aco-n'>Lo que tus alumnos pagan en línea lleva {pct_ef:.1f}% de comisión; el efectivo 0%.</div>"
                 f"<div class='aco-cuota'><span>{int(_num(res.get('cobros')))} cobros en línea</span><b>{e(sim)} {bruto:.2f}</b></div>"
                 f"<div class='aco-cuota'><span>Comisión {MARCA}</span><b>− {e(sim)} {com:.2f}</b></div>"
                 f"<div class='aco-cuota'><span><b>Neto para tu academia</b></span><b>{e(sim)} {neto:.2f}</b></div></div>")
@@ -1282,34 +1249,31 @@ def pagina_reportes(request: Request, academia: str = "", rango_sel: str = "mes"
     club = ""
     if ret > 0:
         al_club = r["cobrado"] * ret / 100
-        club = (f"<div class='aco-card'><b>🤝 Liquidación al club · {ret:g}%</b>"
+        club = (f"<div class='aco-card'><b>Liquidación al club · {ret:g}%</b>"
                 f"<div class='aco-cuota'><span>Cobrado en el período</span><b>{e(sim)} {r['cobrado']:.2f}</b></div>"
                 f"<div class='aco-cuota'><span>Para el club</span><b>{e(sim)} {al_club:.2f}</b></div>"
                 f"<div class='aco-cuota'><span><b>Para la academia</b></span><b>{e(sim)} {r['cobrado'] - al_club:.2f}</b></div></div>")
+    from web import vista_anfitrion as va
+
     def _estado_mov(c: dict) -> str:
         if c.get("pagada"):
-            return f"<span class='pill ok'>Pagada · B-{str(r['boletas'].get(c.get('id'), 0)).zfill(4)}</span>"
-        return "<span class='pill bad'>Vencida</span>" if _vencida(c, hoy) else "<span class='pill warn'>Por cobrar</span>"
+            return va.pill(f"Pagada · B-{str(r['boletas'].get(c.get('id'), 0)).zfill(4)}", "ok")
+        return va.pill("Vencida", "bad") if _vencida(c, hoy) else va.pill("Por cobrar", "warn")
 
-    movs = "".join(
-        f"<tr><td>{_f(_ref(c))}</td><td>{e(r['nombres'].get(c.get('alumnoId'), ''))}</td><td>{e(c.get('concepto'))}</td><td>{e(sim)} {_num(c.get('monto')):.2f}</td>"
-        f"<td>{_estado_mov(c)}</td></tr>"
-        for c in r["movs"][:400])
-    cuerpo = (chips + f"<p class='aco-n' style='margin-top:10px'>{_f(r['ini'])} – {_f(r['fin'] if rango_sel != 'todo' else hoy)}</p>"
-              "<div class='kpis' style='margin-top:10px'>"
-              f"<div class='kpi'><small>Cobrado</small><b>{e(sim)} {r['cobrado']:.2f}</b></div>"
-              f"<div class='kpi'><small>Por cobrar</small><b>{e(sim)} {r['por_cobrar']:.2f}</b></div>"
-              f"<div class='kpi'><small>Vencido</small><b style='color:var(--bad-fg)'>{e(sim)} {r['vencido']:.2f}</b></div>"
-              f"<div class='kpi'><small>Alumnos</small><b>{r['alumnos']}</b></div></div>"
-              f"<div class='aco-grid'><div class='aco-card'><b>Ingresos cobrados · últimos 6 meses</b><div class='aco-bar'>{barras}</div></div>"
+    movs = [[_f(_ref(c)), e(r['nombres'].get(c.get('alumnoId'), '')), e(c.get('concepto')), f"{e(sim)} {_num(c.get('monto')):.2f}", _estado_mov(c)]
+            for c in r["movs"][:400]]
+    cuerpo = (chips + f"<p class='aco-n aco-rango'>{_f(r['ini'])} – {_f(r['fin'] if rango_sel != 'todo' else hoy)}</p>"
+              + va.kpis([va.kpi("billete", "Cobrado", f"{e(sim)} {r['cobrado']:.2f}", color="verde"),
+                         va.kpi("reloj", "Por cobrar", f"{e(sim)} {r['por_cobrar']:.2f}", color="naranja", tono="warn"),
+                         va.kpi("campana", "Vencido", f"{e(sim)} {r['vencido']:.2f}", color="rojo", tono="bad"),
+                         va.kpi("comparar", "Alumnos", str(r['alumnos']))])
+              + f"<div class='aco-grid'><div class='aco-card'><b>Ingresos cobrados · últimos 6 meses</b><div class='aco-bar'>{barras}</div></div>"
               f"<div class='aco-card'><b>Morosidad hoy ({len(r['morosos'])})</b>{moros or '<p class=aco-n>Nadie debe. 🎉</p>'}</div>"
               f"<div class='aco-card'><b>Alumnos por programa</b>{progs or '<p class=aco-n>Sin alumnos.</p>'}</div>"
               + (f"<div class='aco-card'><b>Cobrado y alumnos por sede</b>{sedes_html}</div>" if sedes_html else "")
               + comision + club + "</div>"
-              f"<div style='display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:18px;flex-wrap:wrap'><b>Movimientos ({len(r['movs'])})</b>"
-              "<button class='btn sec aco-noimp' onclick='window.print()'>🖨️ Imprimir / guardar PDF</button></div>"
-              + (f"<div class='tabla' style='margin-top:10px'><table><thead><tr><th>Fecha</th><th>Alumno</th><th>Concepto</th><th>Monto</th><th>Estado</th></tr></thead><tbody>{movs}</tbody></table></div>"
-                 if movs else "<div class='anf-vacio' style='margin-top:10px'>Sin movimientos en este rango.</div>"))
+              + va.panel(va.tabla(["Fecha", "Alumno", "Concepto", "Monto", "Estado"], movs, vacia=va.vacio("recibo", "Sin movimientos en este rango")),
+                         f"Movimientos ({len(r['movs'])})", acciones="<button class='btn sec aco-noimp' onclick='window.print()'>Imprimir / guardar PDF</button>", clase="aco-movs"))
     return _pagina(ses, acads, a, "reportes", "Reportes", "Ingresos, morosidad y alumnos.", cuerpo)
 
 
@@ -1371,17 +1335,17 @@ def pagina_chats(request: Request, academia: str = "") -> HTMLResponse:
         ini = e(titulo[:1].upper())
         if ult:
             prev = ("Tú: " if ult["esProfe"] else "") + (ult["texto"] or "📎 Adjunto")
-            lista += (f"<a class='aco-card aco-fila' style='text-decoration:none;color:inherit' href='{e(url_chat(a['id'], em))}'>"
-                      f"<div class='aco-av'>{ini}</div><div style='flex:1'><b>{e(titulo)}</b>"
-                      f"<div class='aco-n' style='white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>{e(prev)}</div></div>"
+            lista += (f"<a class='aco-card aco-fila aco-link' href='{e(url_chat(a['id'], em))}'>"
+                      f"<div class='aco-av'>{ini}</div><div class='aco-crece'><b>{e(titulo)}</b>"
+                      f"<div class='aco-n aco-corta'>{e(prev)}</div></div>"
                       f"{_NUEVO if not ult['esProfe'] else ''}</a>")
         else:
-            lista += (f"<div class='aco-card aco-fila'><div class='aco-av'>{ini}</div><div style='flex:1'><b>{e(titulo)}</b>"
+            lista += (f"<div class='aco-card aco-fila'><div class='aco-av'>{ini}</div><div class='aco-crece'><b>{e(titulo)}</b>"
                       f"<div class='aco-n'>Sin mensajes todavía</div></div>"
                       f"<button class='btn sec aco-mini' data-escribir='{e(ref_cuenta(em))}' data-nombre='{e(titulo)}'>✉️ Escribir</button></div>")
-    cuerpo = ((f"<div style='display:grid;gap:10px;margin-top:14px'>{lista}</div>" if lista else
-               "<div class='anf-vacio' style='margin-top:18px'>Aún no hay alumnos con la app en esta academia. Cuando se matriculen con su cuenta, aquí aparece su chat.</div>")
-              + "<p class='aco-n' style='margin-top:14px'>Las conversaciones se abren en <a href='/mensajes'>Mensajes</a>, igual que en la app.</p>")
+    cuerpo = ((f"<div class='vac-lista'>{lista}</div>" if lista else
+               _vacio("chat", "Aún no hay alumnos con la app en esta academia", "Cuando se matriculen con su cuenta, aquí aparece su chat."))
+              + "<p class='aco-n aco-nota'>Las conversaciones se abren en <a href='/mensajes'>Mensajes</a>, igual que en la app.</p>")
     return _pagina(ses, acads, a, "chats", "Chats", "Un chat por cada cuenta de alumno.", cuerpo, _JS_CHAT)
 
 
@@ -1436,10 +1400,10 @@ def pagina_sedes(request: Request, academia: str = "") -> HTMLResponse:
     cfg = {"sedes": [s for s in (a.get("sedes") or []) if isinstance(s, dict)], "horarios": a.get("horarios") or {},
            "precios": a.get("preciosSede") or {}, "programas": _programas(a), "planes": planes,
            "centro": [a.get("lat") or -12.0464, a.get("lng") or -77.0428]}
-    cuerpo = ("<div class='aco-card' style='margin-top:14px'><b>¿Entrenas en varios lugares?</b><div class='aco-n'>Agrega tus sedes. Cada programa puede tener su horario "
+    cuerpo = ("<div class='va-aviso info'><div class='va-aviso-t'><b>¿Entrenas en varios lugares?</b> Agrega tus sedes. Cada programa puede tener su horario "
               "en cada sede y cada plan su precio en esa sede (vacío = precio base del plan). Tus alumnos lo ven al matricularse.</div></div>"
               "<div id='acoSedes'></div>"
-              "<div class='acciones aco-noimp' style='margin-top:14px'><button class='btn sec' id='acoSedeMas'>＋ Agregar sede</button>"
+              "<div class='vac-acc vac-acc-fin aco-noimp'><button class='btn sec' id='acoSedeMas'>＋ Agregar sede</button>"
               "<button class='btn' id='acoSedesGuardar'>Guardar cambios</button></div>")
     lf = ("<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css' crossorigin=''>"
           "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js' crossorigin=''></script>")
@@ -1450,7 +1414,7 @@ def pagina_sedes(request: Request, academia: str = "") -> HTMLResponse:
 _JS_SEDES = r"""
 var S=ACO.sedes.map(function(s){return {id:s.id,nombre:s.nombre||'',direccion:s.direccion||'',lat:s.lat,lng:s.lng}});
 function pintar(){var box=document.getElementById('acoSedes');var h='';
- if(!S.length)h="<div class='anf-vacio' style='margin-top:12px'>Aún no agregas sedes: tu academia usa su sede principal.</div>";
+ if(!S.length)h="<div class='va-panel'><div class='va-vacio'><b>Aún no agregas sedes</b><p>Tu academia usa su sede principal.</p></div></div>";
  S.forEach(function(s,i){h+="<div class='aco-sede' data-i='"+i+"'><div style='display:flex;justify-content:space-between;gap:8px;align-items:center'><b>📍 Sede "+(i+1)+"</b><button class='btn sec aco-mini' data-quitar='"+i+"'>Quitar</button></div>"+
   "<div class='aco-dos' style='margin-top:8px'><div><label class='aco-n'>Nombre del local</label><input data-k='nombre' aria-label='Nombre del local de la sede' maxlength='80' value='"+acoEsc(s.nombre)+"' placeholder='Ej. Club Las Palmas'></div>"+
   "<div><label class='aco-n'>Dirección <span>(opcional)</span></label><input data-k='direccion' aria-label='Dirección de la sede (opcional)' maxlength='120' value='"+acoEsc(s.direccion)+"' placeholder='Calle y número'></div></div>"+

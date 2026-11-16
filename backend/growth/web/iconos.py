@@ -61,6 +61,26 @@ _I: dict[str, str] = {
     "techado": "<path d='M2.5 11L12 4l9.5 7'/><path d='M5 9.5V20h14V9.5'/>",
     "wifi": "<path d='M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.6 16a5 5 0 0 1 6.8 0'/><path d='M12 19.5h.01' stroke-width='3'/>",
     "alquiler": "<circle cx='9' cy='9' r='5.5'/><path d='M12.9 12.9L19 19M16.5 6.5l2 2'/>",
+    # ── módulos del modo anfitrión (barra con desplegables, nov-2026) ──
+    "cancha": "<rect x='2.5' y='5.5' width='19' height='13' rx='1.8'/><path d='M12 5.5v13'/><circle cx='12' cy='12' r='2.6'/>"
+              "<path d='M2.5 9.5h3v5h-3M21.5 9.5h-3v5h3'/>",
+    "billete": "<rect x='2.5' y='6' width='19' height='12' rx='2'/><circle cx='12' cy='12' r='2.6'/><path d='M6 9.5v.01M18 14.5v.01' stroke-width='2.6'/>",
+    "auricular": "<path d='M4.5 14v-2a7.5 7.5 0 0 1 15 0v2'/><rect x='3' y='13' width='4' height='6' rx='1.6'/><rect x='17' y='13' width='4' height='6' rx='1.6'/>"
+                 "<path d='M19 19c0 1.4-1.6 2.2-4 2.2h-1.5'/>",
+    "portapapeles": "<rect x='5' y='4.5' width='14' height='17' rx='2'/><rect x='9' y='2.5' width='6' height='4' rx='1.2'/><path d='M8.5 11h7M8.5 14.5h7M8.5 18h4'/>",
+    "interruptor": "<rect x='2.5' y='7' width='19' height='10' rx='5'/><circle cx='16.5' cy='12' r='3'/>",
+    "barras": "<path d='M4 20.5h16'/><rect x='5' y='11' width='3.4' height='7.5' rx='.8'/><rect x='10.3' y='5.5' width='3.4' height='13' rx='.8'/>"
+              "<rect x='15.6' y='8.5' width='3.4' height='10' rx='.8'/>",
+    "caja": "<rect x='3' y='10' width='18' height='10.5' rx='2'/><path d='M6 10V5.5h8V10M14 7.5h3.5V10'/><path d='M7 14h.01M10.5 14h.01M14 14h.01M7 17h.01M10.5 17h.01M14 17h.01' stroke-width='2.4'/>",
+    "etiqueta": "<path d='M3.5 12.4V4.5a1 1 0 0 1 1-1h7.9l8.6 8.6a1.5 1.5 0 0 1 0 2.1l-6.8 6.8a1.5 1.5 0 0 1-2.1 0z'/><circle cx='8' cy='8' r='1.6'/>",
+    "campana": "<path d='M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z'/><path d='M10 20.5a2.2 2.2 0 0 0 4 0'/>",
+    "trofeo": "<path d='M7.5 3.5h9v6a4.5 4.5 0 0 1-9 0z'/><path d='M7.5 5.5H4.5v1.5a3 3 0 0 0 3 3M16.5 5.5h3v1.5a3 3 0 0 1-3 3M12 14v3.5M8 20.5h8M9.5 17.5h5v3h-5z'/>",
+    "edificio": "<path d='M3 20.5h18M4.5 20.5V9.5L12 4l7.5 5.5v11'/><path d='M9 20.5v-5h6v5M8 11h.01M12 11h.01M16 11h.01' stroke-width='2.2'/>",
+    "tienda": "<path d='M3.5 9.5L5 4.5h14l1.5 5c0 1.5-1.3 2.5-2.8 2.5S15 11 15 9.5c0 1.5-1.3 2.5-3 2.5s-3-1-3-2.5C9 11 7.8 12 6.3 12S3.5 11 3.5 9.5z'/>"
+              "<path d='M5 12v8.5h14V12M10 20.5v-5h4v5'/>",
+    "archivo": "<rect x='3' y='4' width='18' height='5' rx='1.4'/><path d='M4.5 9v10.5a1 1 0 0 0 1 1h13a1 1 0 0 0 1-1V9M10 13h4'/>",
+    "boleador": "<circle cx='14.5' cy='4.5' r='2'/><path d='M8 21l3-6 3 2.5V21M6 11l3.5-3.5 4 1.5 2.5 3.5M11 15l2.5-6'/><circle cx='19.5' cy='15.5' r='1.6'/>",
+    "intercambio": "<path d='M4 8h14l-3-3M20 16H6l3 3'/>",
 }
 
 # Amenidades del catálogo (claves del APP y de la web) → ícono.

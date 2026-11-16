@@ -249,6 +249,55 @@ PDF del diseñador ("Soluciones EBIM", 7 frames). Detalle y pendientes:
   desplegables; el formulario del Libro sigue integrado en la raíz) → Contacto.
 - Test `tests/test_rediseno_azul.py`; barrido e2e en verde (204 pantallas).
 
+## REDISEÑO DEL MODO ANFITRIÓN (16-nov-2026, rama `feat/web-rediseno-anfitrion`)
+
+40 capturas del diseñador (`Downloads/Soluciones EBIM_2`). Inventario, errores
+del diseño que NO se copian, decisiones por defecto y fases F0–F8:
+`docs/plan/REDISENO_ANFITRION.md`. Solo web.
+- **F0 hecha: barra BLANCA con 5 desplegables** (`web/nav_anfitrion.py`:
+  HTML + CSS + JS). Los grupos salen de `anfitrion.GRUPOS_MENU` (el diseño los
+  calca); cada módulo tiene color + ícono de línea (`ICONOS`, `iconos.py`) y
+  texto corto sin jerga de un país (`DESC`). `ui.shell()` la pone sola en TODA
+  ruta `/anfitrion/*` con sesión (usa `ui.RUTA_REQUEST`, que fija el middleware
+  `_SeoAmbiente` de `main.py`) y agrega `body.pcg-anf` (fondo celeste);
+  `ui.cabecera(modo="anfitrion")` delega en `nav_anfitrion.barra()`. Las
+  pestañas Hoy/Calendario/… van como sub-navegación (`.anf-subtabs`) hasta F2.
+  Recepción (solo encargado) no ve `permisos.MENU_SOLO_DUENO` ni Encargados.
+  Celular (≤1100 px): botón "Menú" + acordeón. Pastilla "Modo anfitrión" →
+  modo jugador; el avatar abre el menú de la cuenta. **Módulo nuevo del
+  anfitrión = agregarlo a `GRUPOS_MENU` + `nav_anfitrion.ICONOS`** (el test
+  `tests/test_nav_anfitrion.py` lo exige). Logo de la barra = APILADO azul
+  (`cl_apilado_azul.png`, variante que eligió el usuario).
+- **F1 hecha: `/anfitrion` = TABLERO** (`web/anfitrion_inicio.py`; reemplaza al
+  menú de tarjetas, que ahora vive en la barra). Cifras reales: Reservas de hoy,
+  Pagos por confirmar (`cobro_directo_web.pendientes_operables`), Cobrado hoy
+  POR MONEDA (`anfitrion_negocio.caja_dia`; otra moneda va como "+ $ 20", nunca
+  se suman) y Ocupación; calendario semanal compacto de una cancha (`?cancha=`,
+  4 días antes → 2 después; en celular 4 días) con la misma regla de turnos que
+  el calendario operativo (reglas del club + fecha real de madrugada);
+  Pendientes de hoy; Ingresos 7 días; Accesos rápidos. Recepción no ve plata.
+  Sin canchas: bienvenida "Registra tu primera cancha". Test
+  `tests/test_inicio_anfitrion.py`.
+- **F2–F8 hechas (16-nov-2026): TODAS las vistas** sobre el kit
+  `web/vista_anfitrion.py` (`cabecera`, `kpi(s)`, `panel`, `pasos`, `pill`,
+  `segmentado`, `vacio`, `aviso`, `lista_lateral`, `tabla`, `vista`; tokens
+  `--anf-*` en `ui.TOKENS`) y una hoja por grupo `web/estilos_v_<canchas|club|
+  negocio|comercio|academia|perfil>.py` (prefijos de clase propios: `vmc`/`mc-`,
+  `vcl-`, `vn-`, `vc-`…, para no chocar). **Toda vista nueva del anfitrión usa
+  el kit.** Mis canchas unificado (`/anfitrion/mis-canchas` = `/calendario` =
+  `/canchas`: lista de locales + calendario Semana/Día + menú contextual;
+  `POST /anfitrion/bloqueo-dia`), asistente Agregar local (mismo POST,
+  borrador en localStorage), copiar reglas (`POST /anfitrion/reglas/{id}/
+  copiar`), sugerencias de ocupación, `POST /anfitrion/disponibilidad/lote`,
+  `GET /anfitrion/fijas/vista-previa`, `POST /anfitrion/cobros/recordar-todos`,
+  Mi perfil `/anfitrion/perfil` con **preferencias de avisos**
+  (`prefs_avisos.py`; Novedades nace APAGADA por consentimiento; recibos,
+  devoluciones y cancelaciones siempre salen; los títulos clasificados están
+  amarrados por test) y **cerrar sesión en todos los dispositivos** (época por
+  correo en `sesion.py`, `stores.sesion_epocas`). Detalle y pendientes de
+  decisiones en `docs/plan/REDISENO_ANFITRION.md` §8 (Llenar cancha conserva el
+  mensaje LIBRE con sugerencias; no-show/cobrar-en-cancha NO se implementan).
+
 ## Dominio oficial: `pichangol.app`
 
 El dominio de marca **YA ESTÁ REGISTRADO Y VIVO**. En Railway (`pg-backend`) el

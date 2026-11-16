@@ -894,7 +894,17 @@ def _aviso_push_usuario(email: str, titulo: str, cuerpo: str,
                         tipo: str = "aviso") -> None:
     """Encola un push al usuario vía la tabla `pichangol_avisos` de Supabase
     (Database Webhook → Edge Function push-aviso). Best-effort: sin Supabase
-    configurado o con error de red, no rompe el flujo."""
+    configurado o con error de red, no rompe el flujo. Respeta las
+    preferencias de avisos del destinatario (`prefs_avisos`: nuevas reservas,
+    pagos por confirmar, cuotas de la academia y novedades; lo demás siempre
+    sale)."""
+    try:
+        import prefs_avisos
+        if prefs_avisos.silenciado(email, titulo, tipo):
+            print(f"[avisos] {email}: '{titulo}' no se envía (lo apagó en Mi perfil)", flush=True)
+            return
+    except Exception:  # noqa: BLE001 — una preferencia jamás bloquea un aviso por error
+        pass
     if not config.SUPABASE_URL or not config.SUPABASE_ANON_KEY:
         return
     base = config.SUPABASE_URL

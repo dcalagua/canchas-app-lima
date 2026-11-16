@@ -38,6 +38,7 @@ import academia_plan as _ap
 import config
 import paises
 from web import almacen, catalogos, datos, sesion, ui
+from web import vista_anfitrion as _va
 from web.anfitrion import JS_PAGAR, _en_segundo_plano, _sesion_o_entrar
 from web.router import DEPORTES, PLAY_URL, e
 
@@ -97,12 +98,6 @@ def _seccion_cobro(cd: dict, iso: str) -> str:
             "<p class='sub' style='font-size:12.5px;margin-top:10px'>Déjalo vacío si prefieres coordinar el pago por WhatsApp.</p></section>")
 
 
-def _cab(ses: dict | None, sel: str = "") -> str:
-    tabs = (f"<a class='cat{' sel' if sel == 'academias' else ''}' href='/anfitrion/academia'><span class='ico'>📣</span>Mis academias</a>"
-            f"<a class='cat{' sel' if sel == 'alumnos' else ''}' href='/anfitrion/academia/alumnos'><span class='ico'>🎓</span>Alumnos</a>")
-    return ui.cabecera(tabs=tabs, ses=ses, volver="/anfitrion", modo="anfitrion")
-
-
 def _mias(email: str) -> list[dict]:
     return datos.academias_de_dueno(email)
 
@@ -134,30 +129,112 @@ def geo_pais(iso: str) -> JSONResponse:
 
 # ── Lista ─────────────────────────────────────────────────────────────────────
 
-def _tarjeta(a: dict, n_alumnos: int) -> str:
+def _m(v: float, sim: str) -> str:
+    """Monto corto ("S/ 1 580", "$ 12.50"): sin decimales si es entero."""
+    v = float(v or 0)
+    return ui.monto(v, sim, 0 if abs(v - round(v)) < 0.005 else 2)
+
+
+def _landing_existe(aid: str) -> bool:
+    """`/l/{id}` solo existe si el dueño GENERÓ su landing en el app."""
+    try:
+        from db.store import stores as _st
+        return aid in (_st.landings or {})
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def resumen_cobros(mats: list[dict]) -> tuple[float, float]:
+    """(por cobrar, vencido) de las matrículas: cuotas sin pagar."""
+    hoy = date.today().isoformat()
+    por_cobrar = vencido = 0.0
+    for m in mats:
+        for c in (m.get("cuotas") or []):
+            if isinstance(c, dict) and not c.get("pagada"):
+                por_cobrar += float(c.get("monto") or 0)
+                if _fecha(c.get("vencimiento")) < hoy:
+                    vencido += float(c.get("monto") or 0)
+    return por_cobrar, vencido
+
+
+# Accesos de "GESTIONA TU ACADEMIA" (captura Frame 32): (clave, ícono, título, ruta).
+_GESTION = (("alumnos", "comparar", "Alumnos", "/anfitrion/academia/alumnos"),
+            ("cobros", "billete", "Cobros", "/anfitrion/cobros"),
+            ("asistencia", "calendario", "Asistencia", "/anfitrion/academia/asistencia"),
+            ("evaluaciones", "estrella", "Evaluación", "/anfitrion/academia/evaluaciones"),
+            ("ranking", "trofeo", "Ranking", "/anfitrion/academia/ranking"),
+            ("reportes", "barras", "Reportes", "/anfitrion/academia/reportes"),
+            ("chats", "chat", "Chats", "/anfitrion/academia/chats"),
+            ("sedes", "pin", "Sedes y horarios", "/anfitrion/academia/sedes"))
+
+
+def _tile(href: str, ico: str, titulo: str, sub: str, *, clase_sub: str = "", lock: bool = False, nueva: bool = False) -> str:
+    from web import estilos_v_academia as sva
+    return (f"<a class='vac-tile{' lock' if lock else ''}' href='{e(href)}'" + (" target='_blank' rel='noopener'" if nueva else "") + ">"
+            f"<span class='vac-tile-top'>{sva.cuadro(ico)}<span class='chev' aria-hidden='true'>›</span></span>"
+            f"<b>{e(titulo)}</b><small class='{clase_sub}'>{e(sub)}</small></a>")
+
+
+def _tarjeta(a: dict, mats: list[dict]) -> str:
+    """Tarjeta de una academia: identidad, cifras reales y los accesos de
+    gestión (captura Frame 32). Con el plan vencido, los accesos de gestión
+    llevan candado (la página muestra el candado del plan); Cobros y la ficha
+    pública siguen abiertos."""
+    from web import estilos_v_academia as sva
+    from web import iconos
+    from web import vista_anfitrion as va
+    aid = a["id"]
+    q = quote(aid, safe="")
     dep = str(a.get("deporte") or "tenis")
-    logo = f"<img src='{e(a['logoUrl'])}' alt=''>" if a.get("logoUrl") else f"<span>{_EMOJI.get(dep, '🏟️')}</span>"
-    planes = a.get("planes") or []
-    sede = a.get("sedeClub") or "Sin sede"
-    zona = a.get("zona") or ""
-    return (f"<div class='anf-cancha'><div class='f'>{logo}</div><div style='flex:1;min-width:0'>"
-            f"<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b style='font-size:16px'>{e(a.get('nombre') or 'Academia')}</b>"
-            f"<span class='pill'>{_EMOJI.get(dep, '')} {e(_NOMBRE.get(dep, dep.capitalize()))}</span>{_apw().pill_plan(a)}</div>"
-            f"<div class='sub' style='margin:2px 0 0'>📍 {e(sede)}{(' · ' + e(zona)) if zona else ''}</div>"
-            f"<div class='sub' style='margin:6px 0 0;color:var(--noche);font-weight:600'>{n_alumnos} alumno{'s' if n_alumnos != 1 else ''} · {len(planes)} plan{'es' if len(planes) != 1 else ''}"
-            f"{(' · ' + e(_moneda(a)) + ' ' + format(min(float(p.get('precioMes') or 0) for p in planes), '.2f') + '/mes desde') if planes else ''}</div>"
-            "<div class='acciones' style='margin-top:10px'>"
-            f"<a class='btn' href='/anfitrion/academia/{e(a['id'])}/editar'>✏️ Editar</a>"
-            f"<a class='btn sec' href='/anfitrion/academia/alumnos?academia={e(a['id'])}'>🎓 Alumnos</a>"
-            f"<a class='btn sec' href='/l/{e(a['id'])}' target='_blank' rel='noopener'>🌐 Landing</a>"
-            + (f"<a class='btn sec' href='/anfitrion/academia/plan?academia={e(a['id'])}'>🎓 Plan Academia</a>" if _ap.es_suscripcion() else "")
-            + "</div><div class='acciones' style='margin-top:8px'>"
-            + "".join(f"<a class='btn sec' href='{ruta}?academia={e(a['id'])}'>{txt}</a>" for txt, ruta in (
-                ("💰 Cobros", "/anfitrion/cobros"), ("✅ Asistencia", "/anfitrion/academia/asistencia"),
-                ("📋 Evaluación", "/anfitrion/academia/evaluaciones"), ("🏆 Ranking", "/anfitrion/academia/ranking"),
-                ("📊 Reportes", "/anfitrion/academia/reportes"), ("💬 Chats", "/anfitrion/academia/chats"),
-                ("📍 Sedes y horarios", "/anfitrion/academia/sedes")))
-            + "</div></div></div>")
+    sim = _moneda(a)
+    logo = (f"<img src='{e(a['logoUrl'])}' alt='Logo de {e(a.get('nombre') or 'la academia')}'>" if a.get("logoUrl")
+            else sva.svg("academias", 48, 1.8))
+    planes = [p for p in (a.get("planes") or []) if isinstance(p, dict)]
+    precios = [float(p.get("precioMes") or 0) for p in planes if float(p.get("precioMes") or 0) > 0]
+    sede = ui.unir_lugar(str(a.get("sedeClub") or ""), str(a.get("zona") or ""), sep=" · ") or "Sin sede"
+    vigente = _apw().beneficios(a)
+    pills = va.pill(_NOMBRE.get(dep, dep.capitalize()), "azul", ico=dep if iconos.existe(dep) else "estrella") + _apw().pill_plan(a)
+    if not _ap.habilitada(a):
+        pills += va.pill(f"Oculta al público en {_ap.NOMBRE_PAIS.get(_ap.pais_de(a), 'su país')}", "gris")
+    landing = _landing_existe(aid)
+    acc = ((f"<a class='btn sec' href='/l/{e(aid)}' target='_blank' rel='noopener'>Ver landing</a>" if landing else "")
+           + f"<a class='btn' href='/anfitrion/academia/{e(aid)}/editar'>Editar academia</a>")
+    por_cobrar, vencido = resumen_cobros(mats)
+    n = len(mats)
+    sedes = [s for s in (a.get("sedes") or []) if isinstance(s, dict)]
+    tiles = ""
+    for clave, ico, tit, ruta in _GESTION:
+        href = f"{ruta}?academia={q}"
+        if clave == "cobros":
+            sub, cls = ((f"{_m(por_cobrar, sim)} por cobrar", "bad") if por_cobrar > 0 else ("Todo al día", "ok"))
+            tiles += _tile(href, ico, tit, sub, clase_sub=cls)
+            continue
+        if not vigente:
+            tiles += _tile(href, ico, tit, "Requiere Plan Academia", lock=True)
+            continue
+        sub = {"alumnos": f"{n} alumno{'s' if n != 1 else ''}", "asistencia": "Toma lista por clase",
+               "evaluaciones": "Progreso de cada alumno", "ranking": "Tabla de tus alumnos", "reportes": "Alumnos y cobros",
+               "chats": "Mensajes con alumnos",
+               "sedes": (f"{len(sedes)} sede{'s' if len(sedes) != 1 else ''} · horarios" if sedes else "Dónde y cuándo entrenan")}[clave]
+        tiles += _tile(href, ico, tit, sub)
+    if landing:
+        tiles += _tile(f"/l/{aid}", "pagina", "Landing", "Tu página pública", nueva=True)
+    else:
+        tiles += _tile(f"/academia/{aid}", "pagina", "Ficha pública", "Así te ven tus alumnos", nueva=True)
+    if _ap.es_suscripcion():
+        est = _ap.estado(a)
+        sub_plan = {"prueba": f"Prueba · {int(est.get('dias_restantes') or 0)} días",
+                    "activa": f"Activo hasta el {est.get('vence_txt') or ''}"}.get(est["estado"], "Vencido · actívalo")
+        tiles += _tile(f"/anfitrion/academia/plan?academia={q}", "regalo", "Plan Academia", sub_plan,
+                       clase_sub="bad" if est["estado"] == "vencida" else "")
+    stats = (f"<div><small>Alumnos</small><b>{n}</b></div>"
+             f"<div><small>Planes</small><b>{len(planes)}</b></div>"
+             + (f"<div><small>Desde</small><b>{e(_m(min(precios), sim))}/mes</b></div>" if precios else ""))
+    return (f"<section class='va-panel vac-card' id='acad-{e(aid)}'><div class='vac-card-top'><div class='vac-logo'>{logo}</div>"
+            f"<div class='vac-card-t'><h2>{e(a.get('nombre') or 'Academia')}</h2><div class='vac-pills'>{pills}</div>"
+            f"<div class='vac-lugar'>{sva.svg('pin', 16)}<span>{e(sede)}</span></div><div class='vac-stats'>{stats}</div></div>"
+            f"<div class='vac-card-acc'>{acc}</div></div>"
+            f"<div class='vac-gest'><small>Gestiona tu academia</small><div class='vac-tiles'>{tiles}</div></div></section>")
 
 
 def _simbolo_iso(a: dict) -> tuple[str, str]:
@@ -168,35 +245,38 @@ def _simbolo_iso(a: dict) -> tuple[str, str]:
 
 @router.get("/anfitrion/academia", response_class=HTMLResponse)
 def pagina_academias(request: Request, guardado: str = "") -> HTMLResponse:
+    from web import vista_anfitrion as va
     ses, resp = _sesion_o_entrar(request, "/anfitrion/academia")
     if resp is not None:
         return resp
     acads = _mias(ses["email"])
+    for a in acads:
+        a.setdefault("dueno", ses["email"])
     mats = datos.matriculas_de_academias([a["id"] for a in acads]) if acads else []
-    por_ac: dict[str, int] = {}
+    por_ac: dict[str, list[dict]] = {}
     for m in mats:
-        por_ac[str(m.get("academiaId"))] = por_ac.get(str(m.get("academiaId")), 0) + 1
-    aviso = "<div class='aviso ok' style='margin-top:14px'>✅ Academia guardada. Ya se ve en la app y en tu landing.</div>" if guardado else ""
+        por_ac.setdefault(str(m.get("academiaId")), []).append(m)
+    aviso = va.aviso("Academia guardada. Ya se ve en la app y en tu landing.", "ok", ico="check") if guardado else ""
     if not acads:
-        cuerpo = ("<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
-                  f"{aviso}<div style='max-width:760px;margin:24px auto 0'>"
-                  f"<h1 class='anf-hola'>Hola, {e((ses.get('nombre') or ses.get('email') or '').split(' ')[0])} 👋</h1>"
-                  "<p class='sub' style='font-size:16px'>Con esta cuenta todavía no tienes una academia. Créala aquí y administra alumnos, cuotas y tu landing desde la app y desde la web.</p>"
-                  "<div class='kpis' style='margin-top:22px'>"
-                  "<div class='kpi'><small>1 · Créala</small><b style='font-size:16px'>Deporte, sede, planes y tarifario</b></div>"
-                  "<div class='kpi'><small>2 · Matricula</small><b style='font-size:16px'>Tus alumnos y sus cuotas, desde la app</b></div>"
-                  f"<div class='kpi'><small>3 · Difunde</small><b style='font-size:16px'>Landing y redes con {MARCA}</b></div></div>"
-                  "<div class='acciones' style='margin-top:24px'><a class='btn' href='/anfitrion/academia/nueva'>＋ Crear mi academia</a></div></div>")
-        return ui.shell("Mi academia", cuerpo, nav=_cab(ses, "academias"), sesion=ses, ancho=True, titulo_tab="Mi academia · Modo anfitrión")
-    cuerpo = ("<a class='anf-back' href='/anfitrion'>‹ Modo anfitrión</a>"
-              "<div style='display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap'>"
-              "<div><h1 class='anf-hola' style='margin-top:6px'>Mi academia</h1>"
-              f"<p class='sub'>{len(acads)} academia{'s' if len(acads) != 1 else ''} · {len(mats)} alumno{'s' if len(mats) != 1 else ''}. Edita aquí o en la app: es la misma academia.</p></div>"
-              "<a class='btn sec' href='/anfitrion/academia/nueva'>＋ Otra academia</a></div>"
-              f"{aviso}{_apw().banner_plan(acads)}"
-              f"<div class='anf-grid' style='grid-template-columns:repeat(auto-fill,minmax(min(360px,100%),1fr));margin-top:16px'>{''.join(_tarjeta(a, por_ac.get(a['id'], 0)) for a in acads)}</div>"
-              + ("" if _ap.es_suscripcion() else ui.tarjeta_comision('academias', *_simbolo_iso(acads[0]))))
-    return ui.shell("Mi academia", cuerpo, nav=_cab(ses, "academias"), sesion=ses, ancho=True, titulo_tab="Mi academia · Modo anfitrión")
+        nombre = (ses.get("nombre") or ses.get("email") or "").split(" ")[0]
+        cuerpo = va.vista(
+            va.cabecera("Mi academia", f"Hola, {nombre}. Con esta cuenta todavía no tienes una academia.", volver="/anfitrion")
+            + aviso
+            + va.pasos([("academias", "1. Créala", "Deporte, sede, planes y tarifario"),
+                        ("comparar", "2. Matricula", "Tus alumnos y sus cuotas, en la app y aquí"),
+                        ("pagina", "3. Difunde", f"Landing y redes con {MARCA}")])
+            + va.panel(va.vacio("academias", "Crea tu academia",
+                                "Créala aquí y administra alumnos, cuotas y tu landing desde la app y desde la web.",
+                                "<a class='btn' href='/anfitrion/academia/nueva'>＋ Crear mi academia</a>")), "vac")
+        return ui.shell("Mi academia", cuerpo, sesion=ses, ancho=True, titulo_tab="Mi academia · Modo anfitrión")
+    sub = (f"{len(acads)} academia{'s' if len(acads) != 1 else ''} · {len(mats)} alumno{'s' if len(mats) != 1 else ''}. "
+           "Edita aquí o en la app: es la misma academia.")
+    cuerpo = va.vista(
+        va.cabecera("Mi academia", sub, volver="/anfitrion", acciones="<a class='btn sec' href='/anfitrion/academia/nueva'>＋ Otra academia</a>")
+        + aviso + _apw().banner_plan(acads)
+        + "".join(_tarjeta(a, por_ac.get(a["id"], [])) for a in acads)
+        + ("" if _ap.es_suscripcion() else ui.tarjeta_comision('academias', *_simbolo_iso(acads[0]))), "vac")
+    return ui.shell("Mi academia", cuerpo, sesion=ses, ancho=True, titulo_tab="Mi academia · Modo anfitrión")
 
 
 # ── Alumnos y cuotas ──────────────────────────────────────────────────────────
@@ -205,8 +285,19 @@ def _fecha(v) -> str:
     return str(v or "")[:10]
 
 
+def _pagina_gestion(ses: dict, acads: list[dict], a: dict, titulo: str, sub: str, cuerpo: str, ruta: str) -> HTMLResponse:
+    """Vista de gestión de la academia con el encabezado del kit y la tira de
+    secciones (la misma de asistencia, ranking, reportes…)."""
+    from web import anfitrion_academia_ops as ops
+    from web import vista_anfitrion as va
+    html = va.vista(va.cabecera(titulo, f"{a.get('nombre') or 'Academia'} · {sub}", volver="/anfitrion/academia")
+                    + ops.secciones("alumnos", a["id"]) + ops.selector_academia(acads, a, ruta) + cuerpo, "vac")
+    return ui.shell(titulo, html, sesion=ses, ancho=True, titulo_tab=f"{titulo} · Mi academia")
+
+
 @router.get("/anfitrion/academia/alumnos", response_class=HTMLResponse)
 def pagina_alumnos(request: Request, academia: str = "") -> HTMLResponse:
+    from web import vista_anfitrion as va
     ses, resp = _sesion_o_entrar(request, "/anfitrion/academia/alumnos")
     if resp is not None:
         return resp
@@ -215,49 +306,45 @@ def pagina_alumnos(request: Request, academia: str = "") -> HTMLResponse:
         return HTMLResponse("", status_code=302, headers={"Location": "/anfitrion/academia"})
     a = next((x for x in acads if x["id"] == academia), acads[0])
     a.setdefault("dueno", ses["email"])
+    ruta = "/anfitrion/academia/alumnos"
     if not _apw().beneficios(a):
-        chips = "".join(f"<a class='chip{' sel' if x['id'] == a['id'] else ''}' href='/anfitrion/academia/alumnos?academia={e(x['id'])}'>{e(x.get('nombre') or 'Academia')}</a>" for x in acads)
-        cuerpo = ("<a class='anf-back' href='/anfitrion/academia'>‹ Mi academia</a><h1 class='anf-hola' style='margin-top:6px'>Alumnos</h1>"
-                  + (f"<div class='chips' style='margin-top:12px'>{chips}</div>" if len(acads) > 1 else "") + _apw().paywall(a))
-        return ui.shell("Alumnos", cuerpo, nav=_cab(ses, "alumnos"), sesion=ses, ancho=True, titulo_tab="Alumnos · Mi academia")
+        return _pagina_gestion(ses, acads, a, "Alumnos", "Matrículas y cuotas.", _apw().paywall(a), ruta)
     sim = _moneda(a)
     mats = datos.matriculas_de_academias([a["id"]])
     hoy = date.today().isoformat()
     mes = hoy[:7]
-    por_cobrar = vencido = cobrado_mes = 0.0
-    filas = ""
+    por_cobrar, vencido = resumen_cobros(mats)
+    cobrado_mes = 0.0
+    filas = []
     for m in sorted(mats, key=lambda x: str(x.get("nombre") or "").lower()):
         cuotas = [c for c in (m.get("cuotas") or []) if isinstance(c, dict)]
         pend = [c for c in cuotas if not c.get("pagada")]
         venc = [c for c in pend if _fecha(c.get("vencimiento")) < hoy]
         deuda = sum(float(c.get("monto") or 0) for c in pend)
-        por_cobrar += deuda
-        vencido += sum(float(c.get("monto") or 0) for c in venc)
         cobrado_mes += sum(float(c.get("monto") or 0) for c in cuotas if c.get("pagada") and _fecha(c.get("fechaPago")).startswith(mes))
-        estado = ("<span class='pill bad'>Vencida</span>" if venc else ("<span class='pill warn'>Por cobrar</span>" if pend else "<span class='pill ok'>Al día</span>"))
+        estado = (va.pill("Vencida", "bad") if venc else (va.pill("Por cobrar", "warn") if pend else va.pill("Al día", "ok")))
         tel = str(m.get("apoderadoWhatsapp") or m.get("whatsapp") or "")
-        quien = e(m.get("nombre") or "Alumno") + (f"<div class='sub' style='margin:0;font-size:12px'>Apoderado: {e(m.get('apoderadoNombre'))}</div>" if m.get("apoderadoNombre") else "")
+        quien = f"<b>{e(m.get('nombre') or 'Alumno')}</b>" + (f"<small>Apoderado: {e(m.get('apoderadoNombre'))}</small>" if m.get("apoderadoNombre") else "")
         if m.get("parentesco") == "familiar":
-            quien += f"<div class='sub' style='margin:0;font-size:12px'>Familiar · paga {e(m.get('email') or '')}</div>"
+            quien += f"<small>Familiar · paga {e(m.get('email') or '')}</small>"
         if int(m.get("ordenHermano") or 1) > 1:
-            quien += f"<div class='sub' style='margin:0;font-size:12px'>{int(m['ordenHermano'])}.º de la familia · descuento familiar</div>"
+            quien += f"<small>{int(m['ordenHermano'])}.º de la familia · descuento familiar</small>"
         prox = min((_fecha(c.get("vencimiento")) for c in pend), default="")
-        filas += (f"<tr><td><b>{quien}</b></td><td>{e(str(m.get('edad') or '—'))}</td><td>{e(tel or '—')}</td>"
-                  f"<td>{len(cuotas) - len(pend)}/{len(cuotas)}</td><td>{e(sim)} {deuda:.2f}{(' · vence ' + e(prox)) if prox else ''}</td><td>{estado}</td>"
-                  f"<td>{('<a class=chip href=https://wa.me/' + ''.join(ch for ch in tel if ch.isdigit()) + ' target=_blank rel=noopener>💬</a>') if tel else ''}</td></tr>")
-    chips = "".join(f"<a class='chip{' sel' if x['id'] == a['id'] else ''}' href='/anfitrion/academia/alumnos?academia={e(x['id'])}'>{e(x.get('nombre') or 'Academia')}</a>" for x in acads)
-    cuerpo = ("<a class='anf-back' href='/anfitrion/academia'>‹ Mi academia</a>"
-              "<h1 class='anf-hola' style='margin-top:6px'>Alumnos</h1><p class='sub'>Matrículas y cuotas de tu academia. Los cobros y recordatorios se registran en la app.</p>"
-              f"<div class='chips' style='margin-top:12px'>{chips}</div>"
-              "<div class='kpis' style='margin-top:16px'>"
-              f"<div class='kpi'><small>Alumnos</small><b>{len(mats)}</b></div>"
-              f"<div class='kpi'><small>Cobrado este mes</small><b>{e(ui.monto(cobrado_mes, sim))}</b></div>"
-              f"<div class='kpi'><small>Por cobrar</small><b>{e(ui.monto(por_cobrar, sim))}</b></div>"
-              f"<div class='kpi'><small>Vencido</small><b style='color:var(--bad-fg)'>{e(ui.monto(vencido, sim))}</b></div></div>"
-              + (f"<div class='tabla' style='margin-top:18px'><table><thead><tr><th>Alumno</th><th>Edad</th><th>WhatsApp</th><th>Cuotas pagadas</th><th>Deuda</th><th>Estado</th><th></th></tr></thead><tbody>{filas}</tbody></table></div>"
-                 if mats else "<div class='anf-vacio' style='margin-top:18px'>Aún no hay alumnos matriculados en esta academia. Matricúlalos desde la app (Mi academia → Alumnos).</div>")
-              + f"<p style='margin-top:18px'><a class='btn' href='/anfitrion/cobros?academia={quote(a['id'], safe='')}'>💳 Cobros</a></p>")
-    return ui.shell("Alumnos", cuerpo, nav=_cab(ses, "alumnos"), sesion=ses, ancho=True, titulo_tab="Alumnos · Mi academia")
+        digitos = "".join(ch for ch in tel if ch.isdigit())
+        wa = (f"<a class='btn sec aco-mini' href='https://wa.me/{digitos}' target='_blank' rel='noopener' "
+              f"aria-label='WhatsApp de {e(m.get('nombre') or 'el alumno')}'>WhatsApp</a>") if digitos else ""
+        filas.append([quien, e(str(m.get("edad") or "—")), e(tel or "—"), f"{len(cuotas) - len(pend)}/{len(cuotas)}",
+                      f"{e(sim)} {deuda:.2f}" + (f"<small>vence {e(prox)}</small>" if prox else ""), estado, wa])
+    cuerpo = (va.kpis([va.kpi("comparar", "Alumnos", str(len(mats))),
+                       va.kpi("billete", "Cobrado este mes", e(ui.monto(cobrado_mes, sim)), color="verde"),
+                       va.kpi("reloj", "Por cobrar", e(ui.monto(por_cobrar, sim)), color="naranja", tono="warn"),
+                       va.kpi("campana", "Vencido", e(ui.monto(vencido, sim)), color="rojo", tono="bad")])
+              + va.panel(va.tabla(["Alumno", "Edad", "WhatsApp", "Cuotas pagadas", "Deuda", "Estado", ""], filas,
+                                  vacia=va.vacio("comparar", "Aún no hay alumnos",
+                                                 "Matricúlalos desde la app (Mi academia → Alumnos) o comparte tu ficha para que se matriculen.")),
+                         "Matrículas", "Las cuotas se cobran en Cobros y los recordatorios salen solos.",
+                         acciones=f"<a class='btn' href='/anfitrion/cobros?academia={quote(a['id'], safe='')}'>Ir a Cobros</a>"))
+    return _pagina_gestion(ses, acads, a, "Alumnos", "Matrículas y cuotas de tu academia.", cuerpo, ruta)
 
 
 # ── Editor ────────────────────────────────────────────────────────────────────
@@ -320,8 +407,7 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
     dep_ops = [(d, f"{_EMOJI.get(d, '')} {_NOMBRE.get(d, d.capitalize())}") for d in catalogos.DEPORTES_ACADEMIA]
     pct = lambda v: "Sin descuento" if v == 0 else f"{v} %"  # noqa: E731
     cuerpo = f"""
-<div class='edit-top'><a class='volver-lnk' href='/anfitrion/academia'>‹ Mi academia</a>
-<h1 class='anf-hola' style='margin-top:8px'>{'Crear academia' if nueva else 'Editar academia'}</h1><p class='sub'>{'Tu marca independiente: puede rotar de sede sin perder alumnos ni historia.' if nueva else e(a.get('nombre') or '')}</p></div>
+{_va.cabecera('Crear academia' if nueva else 'Editar academia', 'Tu marca independiente: puede rotar de sede sin perder alumnos ni historia.' if nueva else (a.get('nombre') or ''), volver='/anfitrion/academia')}
 <div class='edit-grid'><nav class='edit-nav'>{nav}</nav>
 <form id='fAc' class='edit-form' autocomplete='off' novalidate>
  <section class='panel edit-sec' id='sec-identidad'><h2>Identidad</h2>
@@ -365,7 +451,8 @@ def _editor(ses: dict, a: dict, *, nueva: bool) -> HTMLResponse:
 <div class='barra-guardar'><div class='wrap-xl'><span class='sub' id='msgGuardar' style='margin:0'>Los cambios se ven al instante en la app y en tu landing.</span>
 {'' if nueva else "<button type='button' class='btn sec' id='btnEliminar' style='color:var(--rojo);margin-right:8px'>🗑 Eliminar</button>"}<button type='button' class='btn' id='btnGuardar'>{'Crear academia' if nueva else 'Guardar cambios'}</button></div></div>
 <script>var CFG={ui.json_js(cfg, ensure_ascii=False)};</script><script>{JS_PAGAR}</script><script>{_JS_EDITOR}</script>"""
-    return ui.shell("Academia", cuerpo, nav=_cab(ses, "academias"), sesion=ses, ancho=True, extra_head=_LEAFLET,
+    cuerpo = _va.vista(cuerpo, "vac vac-editor")
+    return ui.shell("Academia", cuerpo, sesion=ses, ancho=True, extra_head=_LEAFLET,
                     titulo_tab=f"{'Crear' if nueva else 'Editar'} academia · Modo anfitrión")
 
 

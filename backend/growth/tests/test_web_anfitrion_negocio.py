@@ -120,7 +120,7 @@ def test_caja_del_dia_desglose_cierre_y_auto_cierre(cli, monkeypatch):
     monkeypatch.setattr(ng, "reservas_dueno", lambda ids, a, b: [dict(r) for r in filas if a <= r["fecha"] <= b])
     html = cli.get("/anfitrion/caja").text
     # cajaDia: cobrado = 60 (yape) + 20 (seña); por cobrar 40; bono no suma plata pero ocupa.
-    assert "S/ 80" in html and "S/ 40" in html and "📱 Yape/Plin" in html and "🔒 Señas (online)" in html
+    assert "S/ 80" in html and "S/ 40" in html and "Yape / Plin" in html and "Señas (online)" in html
     assert "Seña S/ 20 pagada · cobra S/ 40.00" in html and "Cerrar caja del día" in html
     # El día anterior sin cierre queda con cierre AUTOMÁTICO (sin confirmar).
     neg = stores.negocio_web[YO]
@@ -146,7 +146,7 @@ def test_clientes_segmentos_ficha_y_notas(cli, monkeypatch):
     assert "VIP · 1" in html and "En riesgo · 1" in html and "Deudores · 1" in html and "Nuevos · 1" in html
     assert "Debe S/ 60.00" in html and '"wa": "912345678"' in html
     html = cli.get("/anfitrion/clientes?seg=riesgo").text
-    assert "Ana" in html and "Carlos" not in html.split("id='listaCli'")[1].split("</div><div class='anf-vacio'")[0]
+    assert "Ana" in html and "Carlos" not in html.split("id='listaCli'")[1].split("id='cliVacio'")[0]
     assert cli.post("/anfitrion/clientes/nota", json={"clave": "ana@x.com", "texto": "Juega martes"}).json()["ok"]
     assert stores.negocio_web[YO]["notas"]["ana@x.com"] == "Juega martes"
     assert "Juega martes" in cli.get("/anfitrion/clientes").text
@@ -162,7 +162,7 @@ def test_bonos_crear_editar_pausar_y_vendidos(cli, monkeypatch):
     monkeypatch.setattr(ng, "activar_oferta", lambda i, e, a: i == "bof_1")
     monkeypatch.setattr(ng, "eliminar_oferta", lambda i, e: i == "bof_1")
     html = cli.get("/anfitrion/bonos").text
-    assert "Bonos · Club Raqueta" in html and "10 horas" in html and "S/ 50.00/hora" in html and "3 / 10" in html and "le quedan 7 de 10 h" in html
+    assert "Bonos · Club Raqueta" in html and "10 horas" in html and "S/ 50.00 por hora" in html and "3 / 10" in html and "le quedan 7 de 10 h" in html
     r = cli.post("/anfitrion/bonos/guardar", json={"club": "Club Raqueta", "horas": 4, "precio": "220", "nombre": "Pack 4"})
     assert r.json()["ok"] and guardados[-1][0]["horas"] == 4 and guardados[-1][0]["activo"] and guardados[-1][1] == YO
     assert cli.post("/anfitrion/bonos/guardar", json={"club": "Otro local", "horas": 4, "precio": 1}).status_code == 404
@@ -277,3 +277,124 @@ def test_multi_moneda_nunca_mezcla_soles_con_dolares(cli, monkeypatch):
 def test_sin_dialogos_nativos():
     for js in (ng.JS_TIP, ng.JS_CAJA, ng.JS_CLIENTES, ng.JS_BONOS, ng.JS_FIJAS, ng.JS_DISPO, ng.JS_COBROS, ng.JS_FILTRO_RESERVAS):
         assert "confirm(" not in js.replace("pcgConfirmar(", "") and "alert(" not in js and "prompt(" not in js
+
+
+# ── Rediseño del diseñador (16-nov-2026): funciones nuevas ──────────────────
+
+def test_vistas_sin_nav_vieja_y_con_el_kit(cli, monkeypatch):
+    hoy = _hoy()
+    monkeypatch.setattr(ng, "reservas_dueno", lambda ids, a, b: [_res(1, hoy.isoformat())])
+    for ruta in ("/anfitrion/reportes", "/anfitrion/ocupacion", "/anfitrion/reportes/cobros", "/anfitrion/cancelaciones",
+                 "/anfitrion/caja", "/anfitrion/clientes", "/anfitrion/bonos", "/anfitrion/fijas", "/anfitrion/disponibilidad"):
+        html = cli.get(ruta).text
+        assert "class='va vn" in html and "class='va-cab'" in html, ruta
+        assert "‹ Mis canchas" not in html and "class='ng-nav'" not in html, ruta
+    # Reportes: pestañas con ícono y segmentado 7/30 días.
+    html = cli.get("/anfitrion/reportes?d=30").text
+    assert "class='vn-tabs'" in html and "aria-current='page'>" in html and "30 días" in html and "Más reportes" in html
+
+
+def test_sugerencias_de_ocupacion_por_reglas():
+    hoy = _hoy()
+    desde = hoy - timedelta(days=29)
+    activas = []
+    for i in range(30):  # 17:00 se reserva todos los días; las mañanas de los lunes, nunca
+        d = desde + timedelta(days=i)
+        activas.append(_res(i, d.isoformat(), "17:00"))
+        if d.weekday() != 0:
+            activas.append(_res(100 + i, d.isoformat(), "08:00"))
+    sug = ng.sugerencias_ocupacion(activas, [dict(CANCHA)], desde, hoy)
+    tipos = {s["tipo"]: s for s in sug}
+    assert tipos["punta"]["titulo"] == "17:00 se llena casi todos los días" and tipos["punta"]["href"] == "/anfitrion/reglas/c1"
+    assert tipos["valle"]["titulo"] == "Las mañanas de los lunes casi no se usan" and tipos["valle"]["href"] == "/anfitrion/llenar"
+    # Pocos datos → no se inventa nada.
+    assert ng.sugerencias_ocupacion(activas[:10], [dict(CANCHA)], desde, hoy) == []
+    assert ng.sugerencias_ocupacion(activas, [dict(CANCHA)], hoy - timedelta(days=5), hoy) == []
+    # Un local parejo (todas las horas al 30 %) no tiene hora "que se llena".
+    parejo = [_res(i, (desde + timedelta(days=i)).isoformat(), f"{7 + (i % 15):02d}:00") for i in range(30)]
+    assert not [s for s in ng.sugerencias_ocupacion(parejo * 3, [dict(CANCHA)], desde, hoy) if s["tipo"] == "punta"]
+
+
+def test_ocupacion_muestra_sugerencias_y_filtra_cancha(cli, monkeypatch):
+    hoy = _hoy()
+    filas = [_res(i, (hoy - timedelta(days=i)).isoformat(), "17:00") for i in range(40)]
+    monkeypatch.setattr(ng, "reservas_dueno", lambda ids, a, b: [dict(r) for r in filas if r["cancha_id"] in ids and a <= r["fecha"] <= b])
+    monkeypatch.setattr(ng, "_resenas", lambda ids: [])
+    html = cli.get("/anfitrion/ocupacion?p=d30").text
+    assert "17:00 se llena casi todos los días" in html and "Reglas de reserva ›" in html and "class='vn-hm'" in html
+    assert "Lun" in html and "Más reservas" in html
+
+
+def test_vista_previa_de_reservas_fijas(cli, monkeypatch):
+    hoy = _hoy()
+    dia = (hoy + timedelta(days=1)).weekday() + 1
+    manana = hoy + timedelta(days=1)
+    ocupado = (manana + timedelta(days=14)).isoformat()
+    monkeypatch.setattr(datos, "ocupados", lambda cid, fechas: {(ocupado, "19:00")})
+    r = cli.get(f"/anfitrion/fijas/vista-previa?cancha_id=c1&dia={dia}&hora=19:00").json()
+    assert r["ok"] and len(r["crea"]) == 3 and r["salta"] == [{"fecha": ocupado, "motivo": "ocupado o bloqueado"}]
+    assert r["texto"].startswith(horarios.DIAS[manana.weekday()]) and r["texto"].endswith("· 19:00")
+    assert cli.get(f"/anfitrion/fijas/vista-previa?cancha_id=c1&dia={dia}&hora=03:00").status_code == 400
+    assert cli.get(f"/anfitrion/fijas/vista-previa?cancha_id=ajena&dia={dia}&hora=19:00").status_code == 404
+    assert ng._texto_fechas(["2026-11-18", "2026-11-25", "2026-12-02"], "21:00") == "Mié 18, 25 nov y 2 dic · 21:00"
+    assert ng._texto_fechas(["2026-11-04", "2026-11-11", "2026-11-18"], "21:00") == "Mié 4, 11 y 18 nov · 21:00"
+
+
+def test_disponibilidad_cerrar_dia_y_abrir_valle_en_lote(cli, monkeypatch):
+    hoy = _hoy()
+    manana = (hoy + timedelta(days=1)).isoformat()
+    monkeypatch.setattr(ng, "reservas_dueno", lambda ids, a, b: [_res(1, manana, "19:00")])
+    monkeypatch.setattr(datos, "bloqueos_de", lambda ids, fechas: {("c1", manana, "08:00"), ("c1", manana, "15:00")})
+    monkeypatch.setattr(datos, "ocupados", lambda cid, fechas: {(manana, "19:00"), (manana, "08:00"), (manana, "15:00"), (manana, "20:00")})
+    lotes = []
+    monkeypatch.setattr(ng, "_bloquear_lote", lambda cid, pares, bloquear: lotes.append((cid, sorted(pares), bloquear)) or True)
+    html = cli.get(f"/anfitrion/disponibilidad?cancha=c1&fecha={manana}").text
+    assert "data-lote='cerrar_dia' data-n='12'" in html and "data-lote='abrir_valle' data-n='1'" in html
+    # Cerrar el día: los 16 turnos menos el reservado, los 2 ya cerrados y el apartado web (20:00).
+    r = cli.post("/anfitrion/disponibilidad/lote", json={"cancha_id": "c1", "base": manana, "accion": "cerrar_dia"}).json()
+    assert r["ok"] and r["n"] == 12 and lotes[-1][2] is True
+    horas = [h for _f, h in lotes[-1][1]]
+    assert "19:00" not in horas and "08:00" not in horas and "15:00" not in horas and "20:00" not in horas
+    # Abrir horas valle (sin franja configurada = mañanas): solo las 08:00 que estaban cerradas.
+    r = cli.post("/anfitrion/disponibilidad/lote", json={"cancha_id": "c1", "base": manana, "accion": "abrir_valle"}).json()
+    assert r["ok"] and r["n"] == 1 and lotes[-1] == ("c1", [(manana, "08:00")], False)
+    # Nunca toca turnos que ya pasaron.
+    ayer = (hoy - timedelta(days=1)).isoformat()
+    n = len(lotes)
+    assert cli.post("/anfitrion/disponibilidad/lote", json={"cancha_id": "c1", "base": ayer, "accion": "cerrar_dia"}).json()["n"] == 0
+    assert len(lotes) == n
+    assert cli.post("/anfitrion/disponibilidad/lote", json={"cancha_id": "ajena", "base": manana, "accion": "cerrar_dia"}).status_code == 404
+    assert cli.post("/anfitrion/disponibilidad/lote", json={"cancha_id": "c1", "base": manana, "accion": "otra"}).status_code == 400
+    assert TestClient(app, base_url="https://testserver").post("/anfitrion/disponibilidad/lote", json={}).status_code == 401
+
+
+def test_recordar_a_todos_en_lote_sin_repetir_la_semana(cli, monkeypatch):
+    hoy = date.today()
+    monkeypatch.setattr(datos, "academias_de_dueno", lambda e: [{"id": "ac1", "nombre": "Top Spin", "moneda": "S/", "dueno": YO}] if e == YO else [])
+    venc = (hoy - timedelta(days=3)).isoformat()
+    mats = [{"id": "al1", "nombre": "Mateo", "apoderadoNombre": "Carla", "email": "carla@x.com",
+             "cuotas": [{"id": "cu1", "concepto": "Oct", "monto": 180, "vencimiento": venc, "pagada": False}]},
+            {"id": "al2", "nombre": "Sofía", "whatsapp": "999888777", "email": "",
+             "cuotas": [{"id": "cu2", "concepto": "Oct", "monto": 240, "vencimiento": venc, "pagada": False}]},
+            {"id": "al3", "nombre": "Leo", "email": "leo@x.com",
+             "cuotas": [{"id": "cu3", "concepto": "Oct", "monto": 100, "vencimiento": venc, "pagada": False}]},
+            {"id": "al4", "nombre": "Ana", "email": "", "cuotas": [{"id": "cu4", "concepto": "Oct", "monto": 90, "pagada": False}]}]
+    monkeypatch.setattr(datos, "matriculas_de_academias", lambda ids: [dict(m) for m in mats])
+    # A Leo ya se le recordó hace 2 días: no se le repite.
+    ng.marcar_recordado_de(YO, "al3", (datetime.now(timezone.utc) - timedelta(days=2)).isoformat())
+    lotes = []
+    monkeypatch.setattr(ng, "_mensajes_academia_lote", lambda aid, autor, nom, envios: lotes.append((aid, envios)) or True)
+    html = cli.get("/anfitrion/cobros").text
+    assert "Tienes 3 alumnos por recordar" in html and "id='recTodos'" in html and "Tiene la app" in html and "con Carla" in html
+    r = cli.post("/anfitrion/cobros/recordar-todos", json={"academia_id": "ac1"}).json()
+    assert r["ok"] and r["app"] == 1 and len(lotes) == 1 and [em for em, _t in lotes[0][1]] == ["carla@x.com"]
+    assert "Mis clases y pagos" in lotes[0][1][0][1]
+    assert [w["id"] for w in r["whatsapp"]] == ["al2"] and r["whatsapp"][0]["wa"].startswith("https://wa.me/999888777")
+    assert r["sin_contacto"] == ["Ana"]
+    assert "al1" in stores.negocio_web[YO]["recordados"] and "al2" not in stores.negocio_web[YO]["recordados"]
+    # Segunda vez en la semana: Carla ya no recibe otro aviso.
+    r = cli.post("/anfitrion/cobros/recordar-todos", json={"academia_id": "ac1"}).json()
+    assert r["app"] == 0 and len(lotes) == 1
+    assert cli.post("/anfitrion/cobros/recordar-todos", json={"academia_id": "otra"}).status_code == 404
+    # Agregar cuota: la vista del kit con el nombre de la academia (no el del último plan).
+    assert "Agregar cuota · Top Spin" in cli.get("/anfitrion/cobros/agregar").text

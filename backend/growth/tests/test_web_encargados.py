@@ -59,7 +59,7 @@ def _invitar_y_aceptar(dueno_cli=None, cancha="c_lima", email=RECEP):
 def test_dueno_invita_y_la_persona_acepta(enc):
     dueno, recep = _cli(DUENO), _cli(RECEP)
     pag = dueno.get("/anfitrion/encargados?local=c_lima").text
-    assert "Equipo de Club Raqueta" in pag and "Correo de Google de la persona" in pag and "Recepción puede" in pag
+    assert "Equipo de Club Raqueta" in pag and "Invitar por correo de Google" in pag and "Recepción puede" in pag
     assert "Club Sur" in pag  # chips por local
     # Validaciones (el correo es el único texto libre).
     assert dueno.post("/anfitrion/encargados/invitar", json={"cancha_id": "c_lima", "email": "no-es-correo"}).json()["error"] == "correo_invalido"
@@ -124,8 +124,9 @@ def test_recepcion_opera_agenda_reservas_bloqueos_y_pagos_del_local(enc):
     f = _manana()
     hoy = recep.get("/anfitrion/mis-canchas")
     assert hoy.status_code == 200 and "2 canchas" in hoy.text and "Comprobantes por confirmar" in hoy.text
-    # Pestañas: solo Hoy, Calendario y Reservas.
-    assert "/anfitrion/calendario'" in hoy.text and "/anfitrion/ingresos'" not in hoy.text and "/anfitrion/canchas'" not in hoy.text
+    # Mis canchas de la recepción: agenda y lista de reservas, sin Ingresos, sin Editar ni Reglas.
+    assert "/anfitrion/reservas'" in hoy.text and "/anfitrion/ingresos'" not in hoy.text and "/anfitrion/canchas'" not in hoy.text
+    assert "/editar'" not in hoy.text and "/anfitrion/reglas/" not in hoy.text and "/agregar'" not in hoy.text
     cal = recep.get(f"/anfitrion/calendario?cancha=c_lima&desde={f}").text
     assert "Cancha Central" in cal and "Nocturna" in cal and "Cancha Guayaquil" not in cal  # solo el local asignado
     assert "Reserva manual" in cal and "/anfitrion/reglas/" not in cal and '"puedeCancelar": false' in cal
@@ -258,7 +259,9 @@ def test_recepcion_aprueba_y_rechaza_comprobantes_del_local(enc, directo, monkey
     recep = _cli(RECEP)
     pag = recep.get("/anfitrion/pagos-por-confirmar").text
     assert f"data-aprobar='{pid}'" in pag and f"data-aprobar='{pid2}'" in pag and pid3 not in pag
-    assert "Por revisar <small>(2)</small>" in pag and "‹ Modo anfitrión" in pag and "Cobros de tu club" not in pag
+    assert "Por revisar<i>2</i>" in pag and "Cobros de tu club" not in pag
+    # La recepción no copia reglas (ni ve las del dueño).
+    assert recep.post("/anfitrion/reglas/c_lima/copiar", json={"destinos": ["c_gye"]}).status_code == 404
     assert "aria-label='2 por revisar'" in recep.get("/anfitrion").text
     assert recep.get(f"/anfitrion/pagos-por-confirmar/{pid}/imagen").status_code == 200
     assert recep.get(f"/anfitrion/pagos-por-confirmar/{pid3}/imagen").status_code == 404
@@ -317,7 +320,7 @@ def test_quien_tiene_canchas_propias_y_ayuda_en_otro_local(enc):
     assert "La Mía" in cal and "Cancha Central" in cal and '"puedeCancelar": true' in cal
     assert '"puedeCancelar": false' in recep.get("/anfitrion/calendario?cancha=c_lima").text
     ing = recep.get("/anfitrion/ingresos")
-    assert ing.status_code == 200 and "/anfitrion/ingresos'" in ing.text
+    assert ing.status_code == 200 and "Cuenta de cobro" in ing.text
     can = recep.get("/anfitrion/canchas").text
     assert "La Mía" in can and "Cancha Central" not in can
     assert recep.get("/anfitrion/cancha/c_lima/editar").status_code == 404
