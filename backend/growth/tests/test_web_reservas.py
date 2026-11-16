@@ -938,7 +938,7 @@ def test_modo_anfitrion_en_la_web_como_airbnb(db, monkeypatch):
     monkeypatch.setattr(sesion, "_tokeninfo", lambda t: {"email": "dueno@x.com", "email_verified": "true", "aud": "cid-web", "name": "Don Dueño", "exp": "9999999999"})
     cli.post("/web/sesion", json={"credential": "x"})
     hoy = cli.get("/anfitrion/mis-canchas").text
-    assert "¡Hola, Don!" in hoy and "href='/anfitrion'" in hoy and "Cambiar a modo jugador" in hoy and "Modo anfitrión" not in hoy.split("cab-der")[1].split("</div>")[0]
+    assert "¡Hola, Don!" in hoy and "href='/anfitrion'" in hoy and "Cambiar a modo jugador" in hoy and "class='anf-modo' href='/'" in hoy  # la pastilla "Modo anfitrión" lleva al modo jugador
     assert "Próximos 7 días <small>(1)</small>" in hoy and "Ana" in hoy and "999888777" in hoy and "Pagada en línea · yape" in hoy
     for k in ("/anfitrion/mis-canchas", "/anfitrion/calendario", "/anfitrion/reservas", "/anfitrion/ingresos", "/anfitrion/canchas"):
         assert f"href='{k}'" in hoy

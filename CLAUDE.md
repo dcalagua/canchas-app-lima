@@ -249,6 +249,25 @@ PDF del diseñador ("Soluciones EBIM", 7 frames). Detalle y pendientes:
   desplegables; el formulario del Libro sigue integrado en la raíz) → Contacto.
 - Test `tests/test_rediseno_azul.py`; barrido e2e en verde (204 pantallas).
 
+## REDISEÑO DEL MODO ANFITRIÓN (16-nov-2026, rama `feat/web-rediseno-anfitrion`)
+
+40 capturas del diseñador (`Downloads/Soluciones EBIM_2`). Inventario, errores
+del diseño que NO se copian, decisiones por defecto y fases F0–F8:
+`docs/plan/REDISENO_ANFITRION.md`. Solo web.
+- **F0 hecha: barra BLANCA con 5 desplegables** (`web/nav_anfitrion.py`:
+  HTML + CSS + JS). Los grupos salen de `anfitrion.GRUPOS_MENU` (el diseño los
+  calca); cada módulo tiene color + ícono de línea (`ICONOS`, `iconos.py`) y
+  texto corto sin jerga de un país (`DESC`). `ui.shell()` la pone sola en TODA
+  ruta `/anfitrion/*` con sesión (usa `ui.RUTA_REQUEST`, que fija el middleware
+  `_SeoAmbiente` de `main.py`) y agrega `body.pcg-anf` (fondo celeste);
+  `ui.cabecera(modo="anfitrion")` delega en `nav_anfitrion.barra()`. Las
+  pestañas Hoy/Calendario/… van como sub-navegación (`.anf-subtabs`) hasta F2.
+  Recepción (solo encargado) no ve `permisos.MENU_SOLO_DUENO` ni Encargados.
+  Celular (≤1100 px): botón "Menú" + acordeón. Pastilla "Modo anfitrión" →
+  modo jugador; el avatar abre el menú de la cuenta. **Módulo nuevo del
+  anfitrión = agregarlo a `GRUPOS_MENU` + `nav_anfitrion.ICONOS`** (el test
+  `tests/test_nav_anfitrion.py` lo exige).
+
 ## Dominio oficial: `pichangol.app`
 
 El dominio de marca **YA ESTÁ REGISTRADO Y VIVO**. En Railway (`pg-backend`) el

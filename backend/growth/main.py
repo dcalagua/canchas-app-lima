@@ -224,6 +224,7 @@ class _SeoAmbiente:
         host = (hdrs.get("x-forwarded-host") or hdrs.get("host") or "").split(",")[0].strip()
         proto = (hdrs.get("x-forwarded-proto") or scope.get("scheme") or "http").split(",")[0].strip()
         token = _ui.BASE_REQUEST.set(f"{proto}://{host}" if host else "")
+        token_ruta = _ui.RUTA_REQUEST.set(scope.get("path") or "")
         try:
             if config.sitio_indexable():
                 return await self.app(scope, receive, send)
@@ -255,6 +256,7 @@ class _SeoAmbiente:
 
             return await self.app(scope, receive, _send)
         finally:
+            _ui.RUTA_REQUEST.reset(token_ruta)
             _ui.BASE_REQUEST.reset(token)
 
 
